@@ -3177,6 +3177,9 @@ internal data class TripLine(
     // The stops the trip boards and leaves this line at, every ride of it on every card, as its map
     // keeps them (SPEC *Line page → Map*); [leg]'s own where the line stands alone.
     val riding: Set<String> = setOf(leg.fromId, leg.toId).filterTo(HashSet()) { it.isNotBlank() },
+    // Each ride of this line, the stops it calls at in order ([mapCalls]): where its map shows an alert in
+    // full, folding one anywhere else (SPEC *Line page → Map*).
+    val rides: List<List<String>> = listOf(mapCalls(leg)).filter { it.size >= 2 },
     // What its map draws of [status] ([LineMap.alertKey]), worked out with the line: a status rebuilt with
     // the same alert keeps the map up, another redraws it. Null where not worked out: [status] itself.
     val mapKey: String? = null,
@@ -3232,6 +3235,7 @@ internal fun tripLines(
     // Per line, where every ride of it boards and gets off: a trip can leave a line and rejoin it,
     // and another card ride it between other stops (Codex, #606).
     val riding = HashMap<String, MutableSet<String>>()
+    val rides = HashMap<String, MutableSet<List<String>>>()
     // Per line, the worst status as the cards show it (less what was dismissed), and as TfL gave it.
     val worstShown = HashMap<String, LineStatus>()
     val worstRaw = HashMap<String, LineStatus>()
@@ -3250,6 +3254,7 @@ internal fun tripLines(
             if (leg.lineId.isBlank()) continue
             legs.putIfAbsent(leg.lineId, pillNamed(leg))
             riding.getOrPut(leg.lineId) { LinkedHashSet() } += listOf(leg.fromId, leg.toId).filter { it.isNotBlank() }
+            mapCalls(leg).takeIf { it.size >= 2 }?.let { rides.getOrPut(leg.lineId) { LinkedHashSet() } += it }
             keep(worstShown, leg.lineId, statuses[leg.lineId])
             keep(worstRaw, leg.lineId, raw[leg.lineId])
             val was = raw[leg.lineId]
@@ -3277,6 +3282,7 @@ internal fun tripLines(
             leg = leg,
             status = status,
             riding = riding[id].orEmpty(),
+            rides = rides[id].orEmpty().toList(),
             // The map draws the one still named too (Codex, #606).
             mapKey = LineMap.alertKey(status, quieted),
             dismissed = id !in shown && raw?.disrupted == true,
@@ -3289,6 +3295,13 @@ internal fun tripLines(
     }
     return lines.sortedWith(tripLineOrder)
 }
+
+/**
+ * Where [leg] calls, in order, for its line's map: its planned path where the Planner gave one, which says
+ * the branch it takes where two join the same stops (Codex, #613); else its two ends.
+ */
+internal fun mapCalls(leg: TripLeg): List<String> =
+    RouteDisruption.rideCalls(leg).ifEmpty { listOf(leg.fromId, leg.toId).filter { it.isNotBlank() } }
 
 /**
  * [dismissed], an alert the rider dismissed, where it's worse than [status], the one that stands: still

@@ -167,9 +167,15 @@
     <!-- A screen reader's word for a station on the map with a closed track drawn to it, still served. -->
     <!-- TODO: translate -->
     <string name="line_map_beside_closure" tools:ignore="MissingTranslation">Next to a closure</string>
-    <!-- Under the map's heading when the closure the page shows can't be placed on the map. -->
+    <!-- Under the map's heading when a closure TfL places can't be put on the map. -->
     <!-- TODO: translate -->
     <string name="line_map_closure_not_placed" tools:ignore="MissingTranslation">This closure isn\'t on the map</string>
+    <!-- A screen reader's words for a fold on the map holding a station with no service, drawn ⛔. -->
+    <!-- TODO: translate -->
+    <string name="line_map_fold_closure" tools:ignore="MissingTranslation">Has a closure</string>
+    <!-- A screen reader's words for a fold on the map holding a station an alert names, drawn ⚠. -->
+    <!-- TODO: translate -->
+    <string name="line_map_fold_alert" tools:ignore="MissingTranslation">Has an alert</string>
     <!-- A screen reader's word for a starred station on the map, which draws a star. -->
     <!-- TODO: translate -->
     <string name="line_map_starred" tools:ignore="MissingTranslation">Starred</string>

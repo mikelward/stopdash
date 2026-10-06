@@ -2474,20 +2474,35 @@ it isn't a closure TfL places, marks the stations its words name with the route 
 stretch: a guess from prose is shown as one (principle 1). That holds beside a closure from another
 alert, so the map always shows where the page's alert is; a placed closure's own words aren't read
 that way, since they name where it is already drawn and the stations it sends riders to instead,
-unless none of its track is on the map (a bus's way back left off), when they are. A closure the rider
-dismissed, still named on the page beside a milder alert that stands, is drawn the same way. A closure the map
-can't put anywhere, neither its track nor a station its words name being drawn, is said in a line under
-the map's heading ("This closure isn't on the map"), so the map is never read as unaffected.
+unless none of its track is on the map (a bus's way back left off), when they are. Each closure TfL
+places is taken on its own, whichever one the page shows. A closure the rider dismissed, still named
+on the page beside a milder alert that stands, is drawn the same way. A closure the map can't put
+anywhere, neither its track nor a station its words name being drawn, is said in a line under the
+map's heading ("This closure isn't on the map"), so the map is never read as unaffected.
 
-**Folding.** The map opens folded, so where the alert is reads at a glance with the rest of the line
-around it (maintainer, 2026-10-06). With an alert placed on it, each stretch of the line the alert
-doesn't reach folds to one row naming the line's ends it leads to ("Edgware · High Barnet · Mill
-Hill East", "22 stations"); a stretch between two kept stations that leads to no end of the line
-shows its runs instead, each on one track, so no row jumps between two trunks. With good service the
+**An alert shows in full only where it touches the rider** (maintainer, 2026-10-06): at their own
+stops, and on the stretches their trip rides on the line, each from where it boards to where it gets
+off; a closure counts there only where it shuts a track the trip rides, the way it rides it. Anywhere
+else an alert stays folded and gives nothing away of where it is: the stations it's
+placed on fold with the plain stations around them on their track, up to the next station the map
+shows (a junction, an end of the line, the rider's own), a station on its own included, and the fold
+says how many and how bad without naming any of them ("9 stations ⛔"): ⛔ where a station or a track
+in it has no service (one way or both), else ⚠ where an alert's words name a station. A tap opens it in full. A
+junction or an end a closure begins beside stays on the page as it would with good service, its
+closed track running into the fold (Kennington, beside a closure of the Battersea branch). A fold
+leading to the line's ends is still named by them, an alert in it or not: that says where it leads,
+not where the alert is. Opened from the home screen, with no trip, the rider's starred stops stand in
+for a ride: they stay on the page, and read "No service" where a closure shuts one.
+
+**Folding.** The map opens folded, so what's the rider's reads at a glance with the rest of the line
+around it (maintainer, 2026-10-06). With an alert on the rider's own stops or a stretch they ride,
+each other stretch of the line folds to one row naming the line's ends it leads to ("Edgware · High
+Barnet · Mill Hill East", "22 stations"); a stretch between two kept stations that leads to no end of
+the line shows its runs instead, each on one track, so no row jumps between two trunks. Otherwise the
 line's ends and junctions show, and only the runs of plain stations between them fold ("Burnt Oak to
-Chalk Farm", "8 stations"). A tap opens a fold where it is, below what's above it, which doesn't move;
-an opened stretch shows its ends and junctions with its runs still folded. "Show all stations" opens
-everything and "Fold" puts it back as it opened. **The rider's own stops never fold** (maintainer,
+Chalk Farm", "8 stations"), any alert among them folding its run as above. A tap opens a fold where
+it is, below what's above it, which doesn't move; an opened stretch shows its ends and junctions with
+its runs still folded. "Show all stations" opens everything and "Fold" puts it back as it opened. **The rider's own stops never fold** (maintainer,
 2026-10-06): their starred stops (a starred row's or journey's end, starred) and the stops of the
 trip they're riding the line on (the route page's blue dot).
 

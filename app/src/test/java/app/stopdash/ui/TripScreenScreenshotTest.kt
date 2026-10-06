@@ -40,6 +40,9 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -3864,33 +3867,79 @@ class TripScreenScreenshotTest {
                 }
             }
         }
-        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText(shown).fetchSemanticsNodes().isNotEmpty() }
+        // Once the map is in: the page is a lazy list, so [shown] is drawn once scrolled to.
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("Loading map…").fetchSemanticsNodes().isEmpty() && hasLine(shown) }
+    }
+
+    // Whether the line page's list holds [text], scrolled to it where it does: a lazy list composes only what's on screen.
+    private fun hasLine(text: String): Boolean {
+        val list = composeRule.onAllNodes(hasScrollAction()).fetchSemanticsNodes()
+        if (list.isEmpty()) return false
+        // performScrollToNode fails when no item holds [text]: that answers no.
+        return runCatching { composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(text)) }.isSuccess
+    }
+
+    private fun lineMapRow(text: String): SemanticsNodeInteraction {
+        assertTrue("$text on the page", hasLine(text))
+        return composeRule.onNodeWithText(text)
     }
 
     private fun northernLeg(from: Pair<String, String> = "" to "", to: Pair<String, String> = "" to "") =
         leg("tube", "northern", "Northern", from, to, 0, 10, 2)
 
     @Test
-    fun a_part_suspended_line_opens_on_its_closure_with_the_rest_folded() {
+    fun a_closure_off_the_riders_stops_folds_saying_how_bad_and_opens_on_a_tap() {
         // King's Cross St. Pancras starred: a big interchange, standing in for the rider's own.
-        showLinePage(TripLine(northernLeg(), northernPartSuspended), northernLine, shown = "Nine Elms", starred = setOf("940GZZLUKSX"))
-        composeRule.onNodeWithText("Edgware · High Barnet · Mill Hill East").assertExists()
-        composeRule.onNodeWithText("King's Cross St. Pancras ★").assertExists()
-        composeRule.onAllNodesWithText("No service").assertCountEquals(2)
+        showLinePage(TripLine(northernLeg(), northernPartSuspended), northernLine, shown = "King's Cross St. Pancras ★", starred = setOf("940GZZLUKSX"))
+        // The Battersea branch folded, saying there's no service in it without naming where (maintainer, 2026-10-06).
+        assertFalse(hasLine("Nine Elms"))
+        assertFalse(hasLine("Battersea Power Station"))
+        lineMapRow("2 stations \u26D4")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Has a closure"))
         // Where the closure begins, said to a screen reader as well as drawn (Codex, #606).
-        composeRule.onNodeWithText("Kennington")
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Next to a closure"))
-        composeRule.onNodeWithText("Edgware · High Barnet · Mill Hill East").performClick()
-        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("Finchley Central").fetchSemanticsNodes().isNotEmpty() }
-        composeRule.onNodeWithText("Fold").performClick()
-        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("Finchley Central").fetchSemanticsNodes().isEmpty() }
+        lineMapRow("Kennington").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Next to a closure"))
+        lineMapRow("2 stations \u26D4").performClick()
+        composeRule.waitUntil(10_000) { hasLine("Nine Elms") }
+        composeRule.onAllNodesWithText("No service").assertCountEquals(2)
+        lineMapRow("Fold").performClick()
+        composeRule.waitUntil(10_000) { !hasLine("Nine Elms") }
+    }
+
+    @Test
+    fun a_closure_of_one_station_folds_with_its_run_naming_none() {
+        // A made-up closure shutting Mornington Crescent alone, off any ride: it folds with the plain
+        // stations around it on the Charing Cross branch, the fold saying how many and how bad, not
+        // where (maintainer, 2026-10-06).
+        val shut = listOf("940GZZLUCTN", "940GZZLUMTC", "940GZZLUEUS")
+        val status = LineStatus("northern", 3, "Part Suspended", closures = listOf(PartClosure(3, "Part Suspended", null, listOf(shut, shut.asReversed()))))
+        showLinePage(TripLine(northernLeg(), status), northernLine, shown = "9 stations \u26D4")
+        assertFalse(hasLine("Mornington Crescent"))
+        assertTrue("the junction it begins beside stays", hasLine("Camden Town"))
+    }
+
+    @Test
+    fun a_closure_on_the_stretch_the_trip_rides_shows_in_full() {
+        // A made-up closure between Angel and Moorgate, on a ride from King's Cross St. Pancras to Bank.
+        val shut = listOf("940GZZLUAGL", "940GZZLUODS", "940GZZLUMGT")
+        val words = "No service between Angel and Moorgate."
+        val status = LineStatus(
+            "northern", 3, "Part Suspended", fullText = words,
+            closures = listOf(PartClosure(3, "Part Suspended", words, listOf(shut, shut.asReversed()))),
+        )
+        // The Planner's path, every stop it calls at after boarding.
+        val leg = northernLeg("940GZZLUKSX" to "King's Cross St. Pancras", "940GZZLUBNK" to "Bank").copy(path = shut + "940GZZLUBNK")
+        showLinePage(TripLine(leg, status), northernLine, shown = "Old Street")
+        composeRule.onAllNodesWithText("No service").assertCountEquals(1)
+        lineMapRow("Edgware · High Barnet · Mill Hill East")
     }
 
     @Test
     fun a_closure_dismissed_while_a_milder_alert_stands_is_still_drawn() {
         // The page names the suspension the rider dismissed beside the minor delays: its map draws it (Codex, #606).
         val line = TripLine(northernLeg(), LineStatus("northern", 9, "Minor Delays"), quieted = northernPartSuspended)
-        showLinePage(line, northernLine, shown = "Nine Elms")
+        showLinePage(line, northernLine, shown = "2 stations \u26D4")
+        lineMapRow("2 stations \u26D4").performClick()
+        composeRule.waitUntil(10_000) { hasLine("Nine Elms") }
         composeRule.onAllNodesWithText("No service").assertCountEquals(2)
     }
 
@@ -3907,11 +3956,11 @@ class TripScreenScreenshotTest {
                 }
             }
         }
-        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("Edgware · High Barnet · Mill Hill East").fetchSemanticsNodes().isNotEmpty() }
-        composeRule.onNodeWithText("Edgware · High Barnet · Mill Hill East").performClick()
-        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("Finchley Central").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.waitUntil(10_000) { hasLine("Burnt Oak to Chalk Farm") }
+        lineMapRow("Burnt Oak to Chalk Farm").performClick()
+        composeRule.waitUntil(10_000) { hasLine("Colindale") }
         restoration.emulateSavedInstanceStateRestore()
-        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("Finchley Central").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.waitUntil(10_000) { hasLine("Colindale") }
         composeRule.onNodeWithText("Fold").assertExists()
     }
 
@@ -3934,7 +3983,7 @@ class TripScreenScreenshotTest {
     @Test
     @Config(qualifiers = "en-rGB-w411dp-h914dp-night-420dpi")
     fun line_page_part_suspended() {
-        showLinePage(TripLine(northernLeg(), northernPartSuspended), northernLine, shown = "Nine Elms", starred = setOf("940GZZLUKSX"))
+        showLinePage(TripLine(northernLeg(), northernPartSuspended), northernLine, shown = "2 stations \u26D4", starred = setOf("940GZZLUKSX"))
         captureSnapshot("line-page-part-suspended.png")
     }
 
