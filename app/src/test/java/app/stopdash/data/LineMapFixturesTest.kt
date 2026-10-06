@@ -10,7 +10,8 @@ import org.junit.Test
 /**
  * The line page's map from recorded TfL route sequences, read through the app's own parser: the
  * Northern line (two trunks, Euston on both, three northern ends), the District (five ends meeting at
- * Earl's Court) and the Circle (a loop that runs on to Hammersmith).
+ * Earl's Court), the Circle (a loop that runs on to Hammersmith) and the Central (two branches each end,
+ * and the Hainault loop).
  */
 class LineMapFixturesTest {
     private val json = Json { ignoreUnknownKeys = true }
@@ -21,6 +22,7 @@ class LineMapFixturesTest {
     private val northern = sequence("route_sequence_northern_outbound.json")
     private val district = sequence("route_sequence_district.json")
     private val circle = sequence("route_sequence_circle.json")
+    private val central = sequence("route_sequence_central_outbound.json")
 
     private fun LineMap.names(filter: (LineMap.Row) -> Boolean) = rows.filter(filter).mapTo(HashSet()) { it.name }
 
@@ -64,6 +66,31 @@ class LineMapFixturesTest {
         assertEquals(LineMap.Level.CLOSURE, branch.level)
         assertEquals("Nine Elms", branch.first)
         assertTrue("its stations named only once it's opened", branch.unnamed)
+    }
+
+    @Test
+    fun `the Central line's delays fold between its ends and junctions, every one of them on the page`() {
+        // As TfL worded today's delays: the alert names every end and both junctions it runs between.
+        val text = "Central Line: Minor delays between North Acton and West Ruislip/Ealing Broadway, and between " +
+            "Leytonstone and Epping/Hainault via Newbury Park due to train cancellations. GOOD SERVICE on the rest of the line."
+        val map = LineMap.of(central, alertText = text)!!
+        assertEquals(setOf("West Ruislip", "Ealing Broadway", "Epping", "Hainault"), map.names { it.end })
+        assertEquals(setOf("North Acton", "Leytonstone", "Woodford", "Hainault"), map.names { it.junction })
+        assertTrue(map.rows.filter { it.end || it.junction }.all { it.level == LineMap.Level.WARNING })
+        val items = map.folded(emptySet())
+        // Every end and junction stands on its own, an alert on it or not (maintainer, 2026-10-06), and
+        // nothing else: the stations the delays name between them fold, saying how bad without naming any.
+        assertEquals(
+            // Trimmed without stations' positions, as TfL lists it: west to east.
+            listOf("Ealing Broadway", "West Ruislip", "North Acton", "Leytonstone", "Woodford", "Hainault", "Epping"),
+            items.filterIsInstance<LineMap.Item.Station>().map { it.row.name },
+        )
+        val folds = items.filterIsInstance<LineMap.Item.Fold>()
+        assertTrue(folds.filter { it.level != null }.all { it.unnamed && it.level == LineMap.Level.WARNING })
+        // The trunk between the two junctions, the delays named only at its ends, folds as a plain run.
+        val trunk = folds.single { it.level == null }
+        assertEquals("East Acton" to "Leyton", trunk.first to trunk.last)
+        assertEquals(20, trunk.count)
     }
 
     @Test

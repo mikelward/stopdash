@@ -1,0 +1,2201 @@
+{
+ "lineId": "central",
+ "direction": "outbound",
+ "stations": [
+  {
+   "id": "940GZZLUBKE",
+   "name": "Barkingside Underground Station",
+   "topMostParentId": "940GZZLUBKE",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUBKH",
+   "name": "Buckhurst Hill Underground Station",
+   "topMostParentId": "940GZZLUBKH",
+   "modes": [
+    "bus",
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "167",
+     "name": "167"
+    },
+    {
+     "id": "677",
+     "name": "677"
+    },
+    {
+     "id": "central",
+     "name": "Central"
+    },
+    {
+     "id": "w14",
+     "name": "W14"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUBLG",
+   "name": "Bethnal Green Underground Station",
+   "topMostParentId": "940GZZLUBLG",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUCHL",
+   "name": "Chancery Lane Underground Station",
+   "topMostParentId": "940GZZLUCHL",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUCWL",
+   "name": "Chigwell Underground Station",
+   "topMostParentId": "940GZZLUCWL",
+   "modes": [
+    "tube",
+    "bus"
+   ],
+   "lines": [
+    {
+     "id": "167",
+     "name": "167"
+    },
+    {
+     "id": "667",
+     "name": "667"
+    },
+    {
+     "id": "677",
+     "name": "677"
+    },
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUDBN",
+   "name": "Debden Underground Station",
+   "topMostParentId": "940GZZLUDBN",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUEAN",
+   "name": "East Acton Underground Station",
+   "topMostParentId": "940GZZLUEAN",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUEPG",
+   "name": "Epping Underground Station",
+   "topMostParentId": "940GZZLUEPG",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUFLP",
+   "name": "Fairlop Underground Station",
+   "topMostParentId": "940GZZLUFLP",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUGGH",
+   "name": "Grange Hill Underground Station",
+   "topMostParentId": "940GZZLUGGH",
+   "modes": [
+    "bus",
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "462",
+     "name": "462"
+    },
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUGTH",
+   "name": "Gants Hill Underground Station",
+   "topMostParentId": "940GZZLUGTH",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUHBN",
+   "name": "Holborn Underground Station",
+   "topMostParentId": "940GZZLUHBN",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    },
+    {
+     "id": "piccadilly",
+     "name": "Piccadilly"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUHGR",
+   "name": "Hanger Lane Underground Station",
+   "topMostParentId": "940GZZLUHGR",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUHLT",
+   "name": "Hainault Underground Station",
+   "topMostParentId": "940GZZLUHLT",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUHPK",
+   "name": "Holland Park Underground Station",
+   "topMostParentId": "940GZZLUHPK",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLULGN",
+   "name": "Loughton Underground Station",
+   "topMostParentId": "940GZZLULGN",
+   "modes": [
+    "bus",
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "167",
+     "name": "167"
+    },
+    {
+     "id": "20",
+     "name": "20"
+    },
+    {
+     "id": "397",
+     "name": "397"
+    },
+    {
+     "id": "677",
+     "name": "677"
+    },
+    {
+     "id": "central",
+     "name": "Central"
+    },
+    {
+     "id": "w14",
+     "name": "W14"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLULGT",
+   "name": "Lancaster Gate Underground Station",
+   "topMostParentId": "940GZZLULGT",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLULYN",
+   "name": "Leyton Underground Station",
+   "topMostParentId": "940GZZLULYN",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLULYS",
+   "name": "Leytonstone Underground Station",
+   "topMostParentId": "940GZZLULYS",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUMBA",
+   "name": "Marble Arch Underground Station",
+   "topMostParentId": "940GZZLUMBA",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUMED",
+   "name": "Mile End Underground Station",
+   "topMostParentId": "940GZZLUMED",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    },
+    {
+     "id": "district",
+     "name": "District"
+    },
+    {
+     "id": "hammersmith-city",
+     "name": "Hammersmith & City"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUNAN",
+   "name": "North Acton Underground Station",
+   "topMostParentId": "940GZZLUNAN",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUNBP",
+   "name": "Newbury Park Underground Station",
+   "topMostParentId": "940GZZLUNBP",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUNHG",
+   "name": "Notting Hill Gate Underground Station",
+   "topMostParentId": "940GZZLUNHG",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    },
+    {
+     "id": "circle",
+     "name": "Circle"
+    },
+    {
+     "id": "district",
+     "name": "District"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUNHT",
+   "name": "Northolt Underground Station",
+   "topMostParentId": "940GZZLUNHT",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUOXC",
+   "name": "Oxford Circus Underground Station",
+   "topMostParentId": "940GZZLUOXC",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "bakerloo",
+     "name": "Bakerloo"
+    },
+    {
+     "id": "central",
+     "name": "Central"
+    },
+    {
+     "id": "victoria",
+     "name": "Victoria"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUPVL",
+   "name": "Perivale Underground Station",
+   "topMostParentId": "940GZZLUPVL",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUQWY",
+   "name": "Queensway Underground Station",
+   "topMostParentId": "940GZZLUQWY",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLURBG",
+   "name": "Redbridge Underground Station",
+   "topMostParentId": "940GZZLURBG",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLURSG",
+   "name": "Ruislip Gardens Underground Station",
+   "topMostParentId": "940GZZLURSG",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLURVY",
+   "name": "Roding Valley Underground Station",
+   "topMostParentId": "940GZZLURVY",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUSNB",
+   "name": "Snaresbrook Underground Station",
+   "topMostParentId": "940GZZLUSNB",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUSPU",
+   "name": "St. Paul's Underground Station",
+   "topMostParentId": "940GZZLUSPU",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUSWF",
+   "name": "South Woodford Underground Station",
+   "topMostParentId": "940GZZLUSWF",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUTHB",
+   "name": "Theydon Bois Underground Station",
+   "topMostParentId": "940GZZLUTHB",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUWCY",
+   "name": "White City Underground Station",
+   "topMostParentId": "940GZZLUWCY",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUWOF",
+   "name": "Woodford Underground Station",
+   "topMostParentId": "940GZZLUWOF",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUWSD",
+   "name": "Wanstead Underground Station",
+   "topMostParentId": "940GZZLUWSD",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "940GZZLUWTA",
+   "name": "West Acton Underground Station",
+   "topMostParentId": "940GZZLUWTA",
+   "modes": [
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    }
+   ]
+  },
+  {
+   "id": "HUBBAN",
+   "name": "Bank",
+   "modes": [
+    "bus",
+    "dlr",
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "133",
+     "name": "133"
+    },
+    {
+     "id": "141",
+     "name": "141"
+    },
+    {
+     "id": "21",
+     "name": "21"
+    },
+    {
+     "id": "25",
+     "name": "25"
+    },
+    {
+     "id": "26",
+     "name": "26"
+    },
+    {
+     "id": "43",
+     "name": "43"
+    },
+    {
+     "id": "8",
+     "name": "8"
+    },
+    {
+     "id": "central",
+     "name": "Central"
+    },
+    {
+     "id": "dlr",
+     "name": "DLR"
+    },
+    {
+     "id": "n21",
+     "name": "N21"
+    },
+    {
+     "id": "n242",
+     "name": "N242"
+    },
+    {
+     "id": "n25",
+     "name": "N25"
+    },
+    {
+     "id": "n26",
+     "name": "N26"
+    },
+    {
+     "id": "n550",
+     "name": "N550"
+    },
+    {
+     "id": "n551",
+     "name": "N551"
+    },
+    {
+     "id": "n8",
+     "name": "N8"
+    },
+    {
+     "id": "northern",
+     "name": "Northern"
+    },
+    {
+     "id": "waterloo-city",
+     "name": "Waterloo & City"
+    }
+   ]
+  },
+  {
+   "id": "HUBBDS",
+   "name": "Bond Street",
+   "modes": [
+    "elizabeth-line",
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    },
+    {
+     "id": "elizabeth",
+     "name": "Elizabeth line"
+    },
+    {
+     "id": "jubilee",
+     "name": "Jubilee"
+    }
+   ]
+  },
+  {
+   "id": "HUBEAL",
+   "name": "Ealing Broadway",
+   "modes": [
+    "bus",
+    "elizabeth-line",
+    "national-rail",
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "112",
+     "name": "112"
+    },
+    {
+     "id": "226",
+     "name": "226"
+    },
+    {
+     "id": "central",
+     "name": "Central"
+    },
+    {
+     "id": "district",
+     "name": "District"
+    },
+    {
+     "id": "e1",
+     "name": "E1"
+    },
+    {
+     "id": "e10",
+     "name": "E10"
+    },
+    {
+     "id": "e9",
+     "name": "E9"
+    },
+    {
+     "id": "elizabeth",
+     "name": "Elizabeth line"
+    },
+    {
+     "id": "great-western-railway",
+     "name": "Great Western Railway"
+    }
+   ]
+  },
+  {
+   "id": "HUBGFD",
+   "name": "Greenford",
+   "modes": [
+    "bus",
+    "national-rail",
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "395",
+     "name": "395"
+    },
+    {
+     "id": "central",
+     "name": "Central"
+    },
+    {
+     "id": "great-western-railway",
+     "name": "Great Western Railway"
+    }
+   ]
+  },
+  {
+   "id": "HUBLST",
+   "name": "Liverpool Street",
+   "modes": [
+    "bus",
+    "elizabeth-line",
+    "national-rail",
+    "overground",
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "c2c",
+     "name": "c2c"
+    },
+    {
+     "id": "central",
+     "name": "Central"
+    },
+    {
+     "id": "circle",
+     "name": "Circle"
+    },
+    {
+     "id": "elizabeth",
+     "name": "Elizabeth line"
+    },
+    {
+     "id": "greater-anglia",
+     "name": "Greater Anglia"
+    },
+    {
+     "id": "hammersmith-city",
+     "name": "Hammersmith & City"
+    },
+    {
+     "id": "metropolitan",
+     "name": "Metropolitan"
+    },
+    {
+     "id": "weaver",
+     "name": "Weaver"
+    }
+   ]
+  },
+  {
+   "id": "HUBSPB",
+   "name": "Shepherd's Bush",
+   "modes": [
+    "bus",
+    "national-rail",
+    "overground",
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    },
+    {
+     "id": "mildmay",
+     "name": "Mildmay"
+    },
+    {
+     "id": "southern",
+     "name": "Southern"
+    }
+   ]
+  },
+  {
+   "id": "HUBSRA",
+   "name": "Stratford",
+   "modes": [
+    "bus",
+    "dlr",
+    "elizabeth-line",
+    "international-rail",
+    "national-rail",
+    "overground",
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "104",
+     "name": "104"
+    },
+    {
+     "id": "108",
+     "name": "108"
+    },
+    {
+     "id": "158",
+     "name": "158"
+    },
+    {
+     "id": "238",
+     "name": "238"
+    },
+    {
+     "id": "241",
+     "name": "241"
+    },
+    {
+     "id": "25",
+     "name": "25"
+    },
+    {
+     "id": "257",
+     "name": "257"
+    },
+    {
+     "id": "262",
+     "name": "262"
+    },
+    {
+     "id": "276",
+     "name": "276"
+    },
+    {
+     "id": "308",
+     "name": "308"
+    },
+    {
+     "id": "339",
+     "name": "339"
+    },
+    {
+     "id": "388",
+     "name": "388"
+    },
+    {
+     "id": "425",
+     "name": "425"
+    },
+    {
+     "id": "473",
+     "name": "473"
+    },
+    {
+     "id": "678",
+     "name": "678"
+    },
+    {
+     "id": "69",
+     "name": "69"
+    },
+    {
+     "id": "86",
+     "name": "86"
+    },
+    {
+     "id": "97",
+     "name": "97"
+    },
+    {
+     "id": "c2c",
+     "name": "c2c"
+    },
+    {
+     "id": "central",
+     "name": "Central"
+    },
+    {
+     "id": "d8",
+     "name": "D8"
+    },
+    {
+     "id": "dlr",
+     "name": "DLR"
+    },
+    {
+     "id": "elizabeth",
+     "name": "Elizabeth line"
+    },
+    {
+     "id": "greater-anglia",
+     "name": "Greater Anglia"
+    },
+    {
+     "id": "jubilee",
+     "name": "Jubilee"
+    },
+    {
+     "id": "mildmay",
+     "name": "Mildmay"
+    },
+    {
+     "id": "n205",
+     "name": "N205"
+    },
+    {
+     "id": "n25",
+     "name": "N25"
+    },
+    {
+     "id": "n8",
+     "name": "N8"
+    },
+    {
+     "id": "n86",
+     "name": "N86"
+    }
+   ]
+  },
+  {
+   "id": "HUBSRU",
+   "name": "South Ruislip",
+   "modes": [
+    "bus",
+    "national-rail",
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    },
+    {
+     "id": "chiltern-railways",
+     "name": "Chiltern Railways"
+    }
+   ]
+  },
+  {
+   "id": "HUBTCR",
+   "name": "Tottenham Court Road",
+   "modes": [
+    "elizabeth-line",
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    },
+    {
+     "id": "elizabeth",
+     "name": "Elizabeth line"
+    },
+    {
+     "id": "northern",
+     "name": "Northern"
+    }
+   ]
+  },
+  {
+   "id": "HUBWRU",
+   "name": "West Ruislip",
+   "modes": [
+    "bus",
+    "national-rail",
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "central",
+     "name": "Central"
+    },
+    {
+     "id": "chiltern-railways",
+     "name": "Chiltern Railways"
+    }
+   ]
+  }
+ ],
+ "stopPointSequences": [
+  {
+   "stopPoint": [
+    {
+     "id": "940GZZLUWRP",
+     "name": "West Ruislip Underground Station",
+     "topMostParentId": "HUBWRU",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLURSG",
+     "name": "Ruislip Gardens Underground Station",
+     "topMostParentId": "940GZZLURSG",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUSRP",
+     "name": "South Ruislip Underground Station",
+     "topMostParentId": "HUBSRU",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUNHT",
+     "name": "Northolt Underground Station",
+     "topMostParentId": "940GZZLUNHT",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUGFD",
+     "name": "Greenford Underground Station",
+     "topMostParentId": "HUBGFD",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUPVL",
+     "name": "Perivale Underground Station",
+     "topMostParentId": "940GZZLUPVL",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUHGR",
+     "name": "Hanger Lane Underground Station",
+     "topMostParentId": "940GZZLUHGR",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUNAN",
+     "name": "North Acton Underground Station",
+     "topMostParentId": "940GZZLUNAN",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "stopPoint": [
+    {
+     "id": "940GZZLUNAN",
+     "name": "North Acton Underground Station",
+     "topMostParentId": "940GZZLUNAN",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUEAN",
+     "name": "East Acton Underground Station",
+     "topMostParentId": "940GZZLUEAN",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUWCY",
+     "name": "White City Underground Station",
+     "topMostParentId": "940GZZLUWCY",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUSBC",
+     "name": "Shepherd's Bush (Central) Underground Station",
+     "topMostParentId": "HUBSPB",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUHPK",
+     "name": "Holland Park Underground Station",
+     "topMostParentId": "940GZZLUHPK",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUNHG",
+     "name": "Notting Hill Gate Underground Station",
+     "topMostParentId": "940GZZLUNHG",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      },
+      {
+       "id": "circle",
+       "name": "Circle"
+      },
+      {
+       "id": "district",
+       "name": "District"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUQWY",
+     "name": "Queensway Underground Station",
+     "topMostParentId": "940GZZLUQWY",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLULGT",
+     "name": "Lancaster Gate Underground Station",
+     "topMostParentId": "940GZZLULGT",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUMBA",
+     "name": "Marble Arch Underground Station",
+     "topMostParentId": "940GZZLUMBA",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUBND",
+     "name": "Bond Street Underground Station",
+     "topMostParentId": "HUBBDS",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      },
+      {
+       "id": "jubilee",
+       "name": "Jubilee"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUOXC",
+     "name": "Oxford Circus Underground Station",
+     "topMostParentId": "940GZZLUOXC",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "bakerloo",
+       "name": "Bakerloo"
+      },
+      {
+       "id": "central",
+       "name": "Central"
+      },
+      {
+       "id": "victoria",
+       "name": "Victoria"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUTCR",
+     "name": "Tottenham Court Road Underground Station",
+     "topMostParentId": "HUBTCR",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      },
+      {
+       "id": "northern",
+       "name": "Northern"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUHBN",
+     "name": "Holborn Underground Station",
+     "topMostParentId": "940GZZLUHBN",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      },
+      {
+       "id": "piccadilly",
+       "name": "Piccadilly"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUCHL",
+     "name": "Chancery Lane Underground Station",
+     "topMostParentId": "940GZZLUCHL",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUSPU",
+     "name": "St. Paul's Underground Station",
+     "topMostParentId": "940GZZLUSPU",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUBNK",
+     "name": "Bank Underground Station",
+     "topMostParentId": "HUBBAN",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      },
+      {
+       "id": "northern",
+       "name": "Northern"
+      },
+      {
+       "id": "waterloo-city",
+       "name": "Waterloo & City"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLULVT",
+     "name": "Liverpool Street Underground Station",
+     "topMostParentId": "HUBLST",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      },
+      {
+       "id": "circle",
+       "name": "Circle"
+      },
+      {
+       "id": "hammersmith-city",
+       "name": "Hammersmith & City"
+      },
+      {
+       "id": "metropolitan",
+       "name": "Metropolitan"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUBLG",
+     "name": "Bethnal Green Underground Station",
+     "topMostParentId": "940GZZLUBLG",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUMED",
+     "name": "Mile End Underground Station",
+     "topMostParentId": "940GZZLUMED",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      },
+      {
+       "id": "district",
+       "name": "District"
+      },
+      {
+       "id": "hammersmith-city",
+       "name": "Hammersmith & City"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUSTD",
+     "name": "Stratford Underground Station",
+     "topMostParentId": "HUBSRA",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      },
+      {
+       "id": "jubilee",
+       "name": "Jubilee"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLULYN",
+     "name": "Leyton Underground Station",
+     "topMostParentId": "940GZZLULYN",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLULYS",
+     "name": "Leytonstone Underground Station",
+     "topMostParentId": "940GZZLULYS",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "stopPoint": [
+    {
+     "id": "940GZZLULYS",
+     "name": "Leytonstone Underground Station",
+     "topMostParentId": "940GZZLULYS",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUSNB",
+     "name": "Snaresbrook Underground Station",
+     "topMostParentId": "940GZZLUSNB",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUSWF",
+     "name": "South Woodford Underground Station",
+     "topMostParentId": "940GZZLUSWF",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUWOF",
+     "name": "Woodford Underground Station",
+     "topMostParentId": "940GZZLUWOF",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "stopPoint": [
+    {
+     "id": "940GZZLUWOF",
+     "name": "Woodford Underground Station",
+     "topMostParentId": "940GZZLUWOF",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUBKH",
+     "name": "Buckhurst Hill Underground Station",
+     "topMostParentId": "940GZZLUBKH",
+     "modes": [
+      "bus",
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "167",
+       "name": "167"
+      },
+      {
+       "id": "677",
+       "name": "677"
+      },
+      {
+       "id": "central",
+       "name": "Central"
+      },
+      {
+       "id": "w14",
+       "name": "W14"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLULGN",
+     "name": "Loughton Underground Station",
+     "topMostParentId": "940GZZLULGN",
+     "modes": [
+      "bus",
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "167",
+       "name": "167"
+      },
+      {
+       "id": "20",
+       "name": "20"
+      },
+      {
+       "id": "397",
+       "name": "397"
+      },
+      {
+       "id": "677",
+       "name": "677"
+      },
+      {
+       "id": "central",
+       "name": "Central"
+      },
+      {
+       "id": "w14",
+       "name": "W14"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUDBN",
+     "name": "Debden Underground Station",
+     "topMostParentId": "940GZZLUDBN",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUTHB",
+     "name": "Theydon Bois Underground Station",
+     "topMostParentId": "940GZZLUTHB",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUEPG",
+     "name": "Epping Underground Station",
+     "topMostParentId": "940GZZLUEPG",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "stopPoint": [
+    {
+     "id": "940GZZLULYS",
+     "name": "Leytonstone Underground Station",
+     "topMostParentId": "940GZZLULYS",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUWSD",
+     "name": "Wanstead Underground Station",
+     "topMostParentId": "940GZZLUWSD",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLURBG",
+     "name": "Redbridge Underground Station",
+     "topMostParentId": "940GZZLURBG",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUGTH",
+     "name": "Gants Hill Underground Station",
+     "topMostParentId": "940GZZLUGTH",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUNBP",
+     "name": "Newbury Park Underground Station",
+     "topMostParentId": "940GZZLUNBP",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUBKE",
+     "name": "Barkingside Underground Station",
+     "topMostParentId": "940GZZLUBKE",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUFLP",
+     "name": "Fairlop Underground Station",
+     "topMostParentId": "940GZZLUFLP",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUHLT",
+     "name": "Hainault Underground Station",
+     "topMostParentId": "940GZZLUHLT",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "stopPoint": [
+    {
+     "id": "940GZZLUWOF",
+     "name": "Woodford Underground Station",
+     "topMostParentId": "940GZZLUWOF",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLURVY",
+     "name": "Roding Valley Underground Station",
+     "topMostParentId": "940GZZLURVY",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUCWL",
+     "name": "Chigwell Underground Station",
+     "topMostParentId": "940GZZLUCWL",
+     "modes": [
+      "tube",
+      "bus"
+     ],
+     "lines": [
+      {
+       "id": "167",
+       "name": "167"
+      },
+      {
+       "id": "667",
+       "name": "667"
+      },
+      {
+       "id": "677",
+       "name": "677"
+      },
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUGGH",
+     "name": "Grange Hill Underground Station",
+     "topMostParentId": "940GZZLUGGH",
+     "modes": [
+      "bus",
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "462",
+       "name": "462"
+      },
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUHLT",
+     "name": "Hainault Underground Station",
+     "topMostParentId": "940GZZLUHLT",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "stopPoint": [
+    {
+     "id": "940GZZLUEBY",
+     "name": "Ealing Broadway Underground Station",
+     "topMostParentId": "HUBEAL",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      },
+      {
+       "id": "district",
+       "name": "District"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUWTA",
+     "name": "West Acton Underground Station",
+     "topMostParentId": "940GZZLUWTA",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    },
+    {
+     "id": "940GZZLUNAN",
+     "name": "North Acton Underground Station",
+     "topMostParentId": "940GZZLUNAN",
+     "modes": [
+      "tube"
+     ],
+     "lines": [
+      {
+       "id": "central",
+       "name": "Central"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "orderedLineRoutes": [
+  {
+   "name": "Ealing Broadway  &harr;  Epping ",
+   "naptanIds": [
+    "940GZZLUEBY",
+    "940GZZLUWTA",
+    "940GZZLUNAN",
+    "940GZZLUEAN",
+    "940GZZLUWCY",
+    "940GZZLUSBC",
+    "940GZZLUHPK",
+    "940GZZLUNHG",
+    "940GZZLUQWY",
+    "940GZZLULGT",
+    "940GZZLUMBA",
+    "940GZZLUBND",
+    "940GZZLUOXC",
+    "940GZZLUTCR",
+    "940GZZLUHBN",
+    "940GZZLUCHL",
+    "940GZZLUSPU",
+    "940GZZLUBNK",
+    "940GZZLULVT",
+    "940GZZLUBLG",
+    "940GZZLUMED",
+    "940GZZLUSTD",
+    "940GZZLULYN",
+    "940GZZLULYS",
+    "940GZZLUSNB",
+    "940GZZLUSWF",
+    "940GZZLUWOF",
+    "940GZZLUBKH",
+    "940GZZLULGN",
+    "940GZZLUDBN",
+    "940GZZLUTHB",
+    "940GZZLUEPG"
+   ]
+  },
+  {
+   "name": "Ealing Broadway  &harr;  Hainault ",
+   "naptanIds": [
+    "940GZZLUEBY",
+    "940GZZLUWTA",
+    "940GZZLUNAN",
+    "940GZZLUEAN",
+    "940GZZLUWCY",
+    "940GZZLUSBC",
+    "940GZZLUHPK",
+    "940GZZLUNHG",
+    "940GZZLUQWY",
+    "940GZZLULGT",
+    "940GZZLUMBA",
+    "940GZZLUBND",
+    "940GZZLUOXC",
+    "940GZZLUTCR",
+    "940GZZLUHBN",
+    "940GZZLUCHL",
+    "940GZZLUSPU",
+    "940GZZLUBNK",
+    "940GZZLULVT",
+    "940GZZLUBLG",
+    "940GZZLUMED",
+    "940GZZLUSTD",
+    "940GZZLULYN",
+    "940GZZLULYS",
+    "940GZZLUWSD",
+    "940GZZLURBG",
+    "940GZZLUGTH",
+    "940GZZLUNBP",
+    "940GZZLUBKE",
+    "940GZZLUFLP",
+    "940GZZLUHLT"
+   ]
+  },
+  {
+   "name": "West Ruislip  &harr;  Epping ",
+   "naptanIds": [
+    "940GZZLUWRP",
+    "940GZZLURSG",
+    "940GZZLUSRP",
+    "940GZZLUNHT",
+    "940GZZLUGFD",
+    "940GZZLUPVL",
+    "940GZZLUHGR",
+    "940GZZLUNAN",
+    "940GZZLUEAN",
+    "940GZZLUWCY",
+    "940GZZLUSBC",
+    "940GZZLUHPK",
+    "940GZZLUNHG",
+    "940GZZLUQWY",
+    "940GZZLULGT",
+    "940GZZLUMBA",
+    "940GZZLUBND",
+    "940GZZLUOXC",
+    "940GZZLUTCR",
+    "940GZZLUHBN",
+    "940GZZLUCHL",
+    "940GZZLUSPU",
+    "940GZZLUBNK",
+    "940GZZLULVT",
+    "940GZZLUBLG",
+    "940GZZLUMED",
+    "940GZZLUSTD",
+    "940GZZLULYN",
+    "940GZZLULYS",
+    "940GZZLUSNB",
+    "940GZZLUSWF",
+    "940GZZLUWOF",
+    "940GZZLUBKH",
+    "940GZZLULGN",
+    "940GZZLUDBN",
+    "940GZZLUTHB",
+    "940GZZLUEPG"
+   ]
+  },
+  {
+   "name": "West Ruislip  &harr;  Hainault  via Woodford",
+   "naptanIds": [
+    "940GZZLUWRP",
+    "940GZZLURSG",
+    "940GZZLUSRP",
+    "940GZZLUNHT",
+    "940GZZLUGFD",
+    "940GZZLUPVL",
+    "940GZZLUHGR",
+    "940GZZLUNAN",
+    "940GZZLUEAN",
+    "940GZZLUWCY",
+    "940GZZLUSBC",
+    "940GZZLUHPK",
+    "940GZZLUNHG",
+    "940GZZLUQWY",
+    "940GZZLULGT",
+    "940GZZLUMBA",
+    "940GZZLUBND",
+    "940GZZLUOXC",
+    "940GZZLUTCR",
+    "940GZZLUHBN",
+    "940GZZLUCHL",
+    "940GZZLUSPU",
+    "940GZZLUBNK",
+    "940GZZLULVT",
+    "940GZZLUBLG",
+    "940GZZLUMED",
+    "940GZZLUSTD",
+    "940GZZLULYN",
+    "940GZZLULYS",
+    "940GZZLUSNB",
+    "940GZZLUSWF",
+    "940GZZLUWOF",
+    "940GZZLURVY",
+    "940GZZLUCWL",
+    "940GZZLUGGH",
+    "940GZZLUHLT"
+   ]
+  },
+  {
+   "name": "West Ruislip  &harr;  Hainault  via Newbury Park",
+   "naptanIds": [
+    "940GZZLUWRP",
+    "940GZZLURSG",
+    "940GZZLUSRP",
+    "940GZZLUNHT",
+    "940GZZLUGFD",
+    "940GZZLUPVL",
+    "940GZZLUHGR",
+    "940GZZLUNAN",
+    "940GZZLUEAN",
+    "940GZZLUWCY",
+    "940GZZLUSBC",
+    "940GZZLUHPK",
+    "940GZZLUNHG",
+    "940GZZLUQWY",
+    "940GZZLULGT",
+    "940GZZLUMBA",
+    "940GZZLUBND",
+    "940GZZLUOXC",
+    "940GZZLUTCR",
+    "940GZZLUHBN",
+    "940GZZLUCHL",
+    "940GZZLUSPU",
+    "940GZZLUBNK",
+    "940GZZLULVT",
+    "940GZZLUBLG",
+    "940GZZLUMED",
+    "940GZZLUSTD",
+    "940GZZLULYN",
+    "940GZZLULYS",
+    "940GZZLUWSD",
+    "940GZZLURBG",
+    "940GZZLUGTH",
+    "940GZZLUNBP",
+    "940GZZLUBKE",
+    "940GZZLUFLP",
+    "940GZZLUHLT"
+   ]
+  }
+ ]
+}

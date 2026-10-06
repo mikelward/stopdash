@@ -173,16 +173,16 @@ class LineMap internal constructor(
      * and its plain runs fold. A fold opened shows every station it holds. An alert off the rider's own stops and
      * stretches folds with the plain stations around it on its track, a station on its own included,
      * its fold saying how many and how bad ([Item.Fold.level]) without naming any of them
-     * ([Item.Fold.unnamed]; maintainer, 2026-10-06), though an end of the line it's placed on still
+     * ([Item.Fold.unnamed]; maintainer, 2026-10-06), though an end or a junction it's placed on still
      * shows. The rider's own stops never fold (SPEC *Line page → Map*).
      */
     @WorkerThread
     fun folded(opened: Set<String>, all: Boolean = false): List<Item> {
         if (all) return rows.map { Item.Station(it) }
-        // Its own row from the first: the rider's, and with nothing of theirs alerted, the line's ends,
-        // an alert on one or not, so every end reads at a glance (maintainer, 2026-10-06), and its
-        // junctions, unless an alert is placed on one, which folds with the rest of where it is.
-        fun shown(row: Row) = row.kept || !alerted && (row.end || row.junction && row.level == null)
+        // Its own row from the first: the rider's, and with nothing of theirs alerted, the line's ends and
+        // junctions, an alert on one or not, so where the line goes and parts reads at a glance
+        // (maintainer, 2026-10-06).
+        fun shown(row: Row) = row.kept || !alerted && (row.end || row.junction)
         val items = ArrayList<Item>()
         var i = 0
         while (i < rows.size) {
@@ -216,20 +216,25 @@ class LineMap internal constructor(
     // Rows [from] until [until], each run on one track folded unless [opened] holds it: two or more plain
     // stations, or with an alert placed on one, the alert and the plain stations around it, a station on
     // its own included, its fold saying how many and how bad without naming any of them: off the rider's
-    // route an alert stays folded, giving nothing away of where (maintainer, 2026-10-06).
+    // route an alert stays folded, giving nothing away of where (maintainer, 2026-10-06). An end or a
+    // junction never folds into a run, an alert on it or not.
     private fun runs(from: Int, until: Int, opened: Set<String>, into: MutableList<Item>) {
-        fun folds(row: Row) = row.plain || row.level != null
+        fun folds(row: Row) = row.plain || row.level != null && !row.end && !row.junction
         var i = from
         while (i < until) {
             val row = rows[i]
+            if (!folds(row)) {
+                into += Item.Station(row)
+                i++
+                continue
+            }
             var end = i + 1
-            if (folds(row)) while (end < until && folds(rows[end]) && rows[end].column == row.column) end++
+            while (end < until && folds(rows[end]) && rows[end].column == row.column) end++
             val key = "run:${row.key}"
             if (key in opened) {
                 for (k in i until end) into += Item.Station(rows[k])
             } else {
-                // A junction an alert folds draws each branch it parts into, as a section does.
-                val fold = if (rows.subList(i, end).any { it.junction }) sectionFold(key, i, end) else runFold(key, i, end)
+                val fold = runFold(key, i, end)
                 into += when {
                     // An alert in it, a closed track between two stations still served included.
                     fold.level != null -> fold.copy(unnamed = true)
@@ -241,7 +246,7 @@ class LineMap internal constructor(
         }
     }
 
-    private fun sectionFold(key: String, from: Int, until: Int, unnamed: Boolean = false): Item.Fold {
+    private fun sectionFold(key: String, from: Int, until: Int): Item.Fold {
         val span = rows.subList(from, until)
         val columns = sortedSetOf<Int>()
         span.forEach { row ->
@@ -257,7 +262,7 @@ class LineMap internal constructor(
                 closed = span.any { row -> (row.top + row.bottom).any { it.closed && (it.from == c || it.to == c) } },
             )
         }
-        return fold(key, rails, span, section = true, closedTrack = rails.any { it.closed }).copy(unnamed = unnamed)
+        return fold(key, rails, span, section = true, closedTrack = rails.any { it.closed })
     }
 
     private fun runFold(key: String, from: Int, until: Int): Item.Fold {

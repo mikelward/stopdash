@@ -2533,11 +2533,13 @@ else an alert stays folded and gives nothing away of where it is: the stations i
 placed on fold with the plain stations around them on their track, up to the next station the map
 shows (a junction, an end of the line, the rider's own), a station on its own included, and the fold
 says how many and how bad without naming any of them ("9 stations ⛔"): ⛔ where a station or a track
-in it has no service (one way or both), else ⚠ where an alert's words name a station. A tap opens it in full. **An
-end of the line always shows**, an alert on it or not (maintainer, 2026-10-06): Uxbridge, named in a
-delay along its branch, stays on the page with its ⚠, the stations along the branch folding behind it.
-A junction or an end a closure begins beside stays on the page as it would with good service, its
-closed track running into the fold (Kennington, beside a closure of the Battersea branch). A fold
+in it has no service (one way or both), else ⚠ where an alert's words name a station. A tap opens it in full. **The
+line's ends and junctions always show**, an alert on one or not (maintainer, 2026-10-06), so where the
+line goes and where it parts read at a glance: Uxbridge, named in a delay along its branch, stays on
+the page with its ⚠, the stations along the branch folding behind it; a Central line delay naming
+North Acton and Leytonstone leaves both on the page with the trunk between them a plain run. A junction
+or an end a closure begins beside stays as it would with good service, its closed track running into
+the fold (Kennington, beside a closure of the Battersea branch). A fold
 leading to the line's ends is still named by them, an alert in it or not: that says where it leads,
 not where the alert is. Opened from the home screen, with no trip, the rider's starred stops stand in
 for a ride, and so does the line's station nearest them where one is within walking reach: they stay
