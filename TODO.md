@@ -59,10 +59,10 @@ exercises the whole spine the widget later renders from.
 - [ ] The smaller per-tick and per-recomposition passes: `MainActivity`'s farther
       cards built (`fartherCards`, `fartherDistanceMeters`) and the farther stations
       reached (`reachedStopIds`, `fartherReached`, and `FartherBuses.stationStops`/`candidates`
-      before their `produceState` hops), all in composition; the search and lookup results worked over after their requests
-      (`StationSearchViewModel.start`'s filter and map, `StationStopsViewModel.retry`'s centered stops,
-      `FavoritePlacesViewModel.onPick`'s `FixedLocation.centerOf` and `startSearch`'s
-      `withBundledPositions`). The DataStore stores (starred rows and journeys, dismissed alerts, alerts
+      before their `produceState` hops), all in composition. The search and lookup results are worked
+      over on the worker after their requests (`StationSearchViewModel`'s ranking and merging,
+      `StationStopsViewModel.retry`'s centered stops, `FavoritePlacesViewModel`'s picked center and
+      bundled positions). The DataStore stores (starred rows and journeys, dismissed alerts, alerts
       behind, favorite places) now read and map on the worker (#538). Not a closed list: sweep the screens, the stores, and every view-model
       function a click handler or effect calls, for any pass over a collection that grows with its
       input on the main thread before checking it off. Known still there: `refresh`'s nearby places

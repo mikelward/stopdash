@@ -18,6 +18,7 @@ import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.TflException
 import app.stopdash.domain.UkPostcode
+import app.stopdash.domain.Workers
 import app.stopdash.domain.YourStops
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -79,6 +80,8 @@ class StationSearchViewModel(
     // [io]. Only a To… picker supplies it — the default keeps none.
     private val recordPlace: suspend (PlaceHit) -> Unit = {},
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    // Ranks and merges each answer, off the main thread (AGENTS.md *Main thread*).
+    private val compute: CoroutineDispatcher = Workers.compute,
     private val debounceMillis: Long = DEBOUNCE_MILLIS,
     private val warn: (String) -> Unit = {},
 ) : ViewModel() {
@@ -235,7 +238,15 @@ class StationSearchViewModel(
             // Re-ranks the stops with the newly-read stops; the geocoded places are unchanged, so keep
             // the ones already shown rather than dropping them or re-geocoding.
             // Nothing is being tapped on the way back, so the whole list is ranked afresh here.
-            val result = if (remote != null) {
+            val result = withContext(compute) { reranked(stations, trimmed, local, remote, shown) }
+            if (result.matches.isNotEmpty() || result.places.isNotEmpty()) _state.update { it.copy(result = result) }
+        }
+    }
+
+    // [rerank]'s answer: [local] ranked with [remote] (TfL's answer behind the matches on screen) when
+    // there is one, else alone with [shown]'s failure kept; [shown]'s places kept either way.
+    private fun reranked(stations: StationIndex, trimmed: String, local: List<StationMatch>, remote: List<StationMatch>?, shown: Result.Matches): Result.Matches =
+        if (remote != null) {
                 val ranked = stations.rank(trimmed, local, remote)
                 Result.Matches(ranked, places = shown.places, entries = SearchResults.merge(trimmed, ranked, shown.places))
             } else {
@@ -246,9 +257,6 @@ class StationSearchViewModel(
                     entries = SearchResults.merge(trimmed, local, shown.places),
                 )
             }
-            if (result.matches.isNotEmpty() || result.places.isNotEmpty()) _state.update { it.copy(result = result) }
-        }
-    }
 
     private fun readYours(): Deferred<YourStops> {
         val generation = ++yoursGeneration
@@ -312,7 +320,8 @@ class StationSearchViewModel(
             var shown: List<SearchEntry> =
                 (_state.value.result as? Result.Matches)?.takeIf { entriesFor == trimmed }?.entries.orEmpty()
             if (local.isNotEmpty()) {
-                shown = SearchResults.appended(shown, trimmed, local.take(LOCAL_PREVIEW), emptyList())
+                val before = shown
+                shown = withContext(compute) { SearchResults.appended(before, trimmed, local.take(LOCAL_PREVIEW), emptyList()) }
                 entriesFor = trimmed
                 _state.update { it.copy(result = Result.Matches(local, entries = shown), searching = true) }
             }
@@ -337,11 +346,15 @@ class StationSearchViewModel(
             val stops: Result.Matches? = try {
                 val remote = withContext(io) { finder.searchStations(trimmed) }
                 remoteFor = trimmed to remote
-                // Uncapped, to tell a row folded into its twin from one only past the cap; capped for
-                // what's newly added.
-                val everyStop = stations.rank(trimmed, local, remote, limit = Int.MAX_VALUE)
-                val ranked = everyStop.take(StationIndex.DEFAULT_LIMIT)
-                shown = SearchResults.appended(shown, trimmed, ranked, emptyList(), everyStop = everyStop)
+                val before = shown
+                val (ranked, entries) = withContext(compute) {
+                    // Uncapped, to tell a row folded into its twin from one only past the cap; capped for
+                    // what's newly added.
+                    val everyStop = stations.rank(trimmed, local, remote, limit = Int.MAX_VALUE)
+                    val ranked = everyStop.take(StationIndex.DEFAULT_LIMIT)
+                    ranked to SearchResults.appended(before, trimmed, ranked, emptyList(), everyStop = everyStop)
+                }
+                shown = entries
                 Result.Matches(ranked, entries = shown)
             } catch (e: CancellationException) {
                 throw e
@@ -354,7 +367,8 @@ class StationSearchViewModel(
                 if (local.isEmpty()) {
                     null
                 } else {
-                    shown = SearchResults.appended(shown, trimmed, local, emptyList())
+                    val before = shown
+                    shown = withContext(compute) { SearchResults.appended(before, trimmed, local, emptyList()) }
                     Result.Matches(local, remoteFailure = failureKind, entries = shown)
                 }
             }
@@ -365,12 +379,15 @@ class StationSearchViewModel(
             // Fold in the geocoded places (or none) — the stops are already on screen.
             val places = placesDeferred.await()
             // The places join below whatever is already listed, ranked among themselves.
-            shown = SearchResults.appended(shown, trimmed, emptyList(), places)
+            val before = shown
             // The rows on screen are the answer: the stops and places the result carries are read off
             // them, so a row a Retry kept (a place an earlier geocode found) is neither dropped from
             // the state nor hidden behind a failure the new answer alone would have shown.
-            val shownPlaces = shown.filterIsInstance<SearchEntry.Place>().map { it.hit }
-            val shownStops = shown.filterIsInstance<SearchEntry.Stop>().map { it.match }
+            val (withPlaces, shownStops, shownPlaces) = withContext(compute) {
+                val rows = SearchResults.appended(before, trimmed, emptyList(), places)
+                Triple(rows, rows.filterIsInstance<SearchEntry.Stop>().map { it.match }, rows.filterIsInstance<SearchEntry.Place>().map { it.hit })
+            }
+            shown = withPlaces
             val result: Result = when {
                 shown.isNotEmpty() -> Result.Matches(
                     stops?.matches ?: shownStops,
@@ -408,6 +425,8 @@ class StationStopsViewModel(
     private val finder: StationFinder,
     private val stationId: String,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    // Centers and maps the stops TfL returns, off the main thread (AGENTS.md *Main thread*).
+    private val compute: CoroutineDispatcher = Workers.compute,
     private val warn: (String) -> Unit = {},
 ) : ViewModel() {
     sealed interface State {
@@ -434,8 +453,9 @@ class StationStopsViewModel(
         load = viewModelScope.launch {
             _state.value = try {
                 val stops = withContext(io) { finder.stationStops(stationId) }
-                val center = FixedLocation.centerOf(stops)
-                if (stops.isEmpty()) State.NoStops else State.Ready(stops.map(StopLocation::toStopRef), center)
+                withContext(compute) {
+                    if (stops.isEmpty()) State.NoStops else State.Ready(stops.map(StopLocation::toStopRef), FixedLocation.centerOf(stops))
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TflException) {
