@@ -4255,14 +4255,67 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `with none of the plan's trains listed, only a branch's, the trip takes the branch by itself`() = runTest {
+        // A forked line: from A through B, then on to C (the rider's way) or to Y. The board lists only a
+        // train to Y (the Planner's timetable promised one to C): the rider will take that one, change at B
+        // (maintainer, 2026-10-06).
+        sequences["red"] = app.stopdash.domain.LineSequence(
+            listOf(app.stopdash.domain.LineRoute("A ↔ C", listOf("A", "B", "C")), app.stopdash.domain.LineRoute("A ↔ Y", listOf("A", "B", "Y"))),
+            mapOf("A" to "A", "B" to "B", "C" to "C", "Y" to "Y"),
+        )
+        departures["A"] = listOf(Departure("red", "Red", "outbound", "Y", null, at(6), "tube", vehicleId = "2"))
+        trains["2"] = listOf(call("A", 6), call("B", 8), call("Y", 10))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(route, "C", readyAt = now)
+        boardReads = 0
+        tracker.refresh()
+        val taken = checkNotNull(tracker.trip.value)
+        assertEquals(listOf("B", "C"), taken.route.legs.map { it.toId })
+        // The board read once: the shortened ride's is the same stop's (Codex, #630).
+        assertEquals(1, boardReads)
+        assertEquals(taken.route.legs[0], tracker.nextBoard.value?.ride)
+        assertEquals(taken, kept)
+        // The ride to B follows the train to Y, which takes the rider there.
+        assertEquals("2", taken.vehicleId)
+        assertTrue(logged.any { "took the branch" in it })
+        // Said on the trip's screen until the rider is past the ride to B, kept with the trip for a restart (Codex, #630).
+        assertEquals(Triple(0, "C", "B"), Triple(taken.branchTakenLeg, taken.branchTakenTo, taken.branchTakenFork))
+        // A reroute that can't be kept moves nothing, the board shown with it (Codex, #630).
+        assertTrue(tracker.end())
+        tracker.start(route, "C", readyAt = now)
+        saves = false
+        tracker.refresh()
+        assertEquals(route, tracker.trip.value?.route)
+        assertEquals(ride, tracker.nextBoard.value?.ride)
+        saves = true
+        // A route TfL can't give is asked for once a refresh, however many look for it (Codex, #630).
+        assertTrue(tracker.end())
+        tracker.start(route, "C", readyAt = now)
+        routeFails = true
+        sequencesRead.clear()
+        tracker.refresh()
+        assertEquals(1, sequencesRead.count { it == "red" })
+        routeFails = false
+        // With a train of the plan's listed, nothing is taken.
+        assertTrue(tracker.end())
+        departures["A"] = listOf(Departure("red", "Red", "outbound", "Y", null, at(6), "tube", vehicleId = "2"), train("1", 11))
+        trains["1"] = listOf(call("A", 11), call("B", 13), call("C", 15))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertEquals(1, tracker.trip.value?.route?.legs?.size)
+    }
+
+    @Test
     fun `a branch taken once the walk to the ride is over picks its train at once`() = runTest {
         sequences["red"] = app.stopdash.domain.LineSequence(
             listOf(app.stopdash.domain.LineRoute("A ↔ C", listOf("A", "B", "C")), app.stopdash.domain.LineRoute("A ↔ Y", listOf("A", "B", "Y"))),
             mapOf("A" to "A", "B" to "B", "C" to "C", "Y" to "Y"),
         )
         val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(2))
-        departures["A"] = listOf(Departure("red", "Red", "outbound", "Y", null, at(4), "tube", vehicleId = "2"))
+        // A train of the plan's listed too: the branch is the rider's to take, not taken by itself.
+        departures["A"] = listOf(Departure("red", "Red", "outbound", "Y", null, at(4), "tube", vehicleId = "2"), train("1", 11))
         trains["2"] = listOf(call("A", 4), call("B", 6), call("Y", 8))
+        trains["1"] = listOf(call("A", 11), call("B", 13), call("C", 15))
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         tracker.start(TripRoute(listOf(toA, ride)), "C", readyAt = now)
         tracker.refresh()

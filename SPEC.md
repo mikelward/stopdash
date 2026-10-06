@@ -1988,9 +1988,16 @@ them there:
   ("(Battersea)"), with the next few times TfL lists for it while there's a board. **When the board lists
   none of the plan's own trains but some off it** (maintainer, 2026-10-06; the Journey Planner's timetable
   can route a train TfL's live board doesn't list, with no alert to say so), they're the board's only live
-  trains, so they show open, no button, under a warning in the error color: "None going to …", and
-  "Change at …" when every one turns off at the same stop, led by the plan's own row with a dash for
-  its times, so the planned train reads as missing, not the board as short. They're read from the
+  trains, so they show open, no button, under a warning in the error color: "None direct to …" (where
+  the rider gets off: these still get there, with a change), and "Change at …" when every one turns off
+  at the same stop, led by the plan's own row with a dash for its times, named by the terminus the
+  Planner's train runs to, as the platform's boards say it ("High Barnet —"), so the planned train
+  reads as missing, not the board as short. **The trip then takes the
+  branch by itself** (maintainer, 2026-10-06), by the soonest such train the rider can catch, as Take
+  this one would: the ride becomes one to where it turns off and a change there, so the next board shows
+  at the change. Only from a fresh board with every train checked, before a train is followed; at worst
+  the change's board lists the train the rider is already on. The warning stays under the trip's card
+  until the rider is past that ride, kept with the trip through a restart, so the reroute doesn't hide why. They're read from the
   line's route, not TfL's live labels, so a branch shows even when TfL lists none of its trains or names
   them for the other branch, as it can; route patterns that run on alike past the fork are one row,
   named by a "via" past the fork, else by where it ends. **Other lines from the platform** are offered

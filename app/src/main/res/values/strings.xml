@@ -867,6 +867,9 @@
     <string name="on_the_way_trains_checking">Checking more lines…</string>
     <string name="on_the_way_trains_unchecked">Couldn\'t check every line</string>
     <string name="on_the_way_trains_none">None going to %1$s</string>
+    <!-- The board's warning, %1$s where the rider gets off, when none of the plan's trains is listed but
+         some that turn off on the way are: they still get there, with a change. -->
+    <string name="on_the_way_trains_none_direct">None direct to %1$s</string>
     <string name="on_the_way_lost">Can\'t find your train</string>
     <string name="on_the_way_lost_bus">Can\'t find your bus</string>
     <string name="on_the_way_lost_coach">Can\'t find your coach</string>

@@ -301,6 +301,10 @@ private data class PersistedActiveTrip(
     // none known, so every branch is offered, as then.
     val aheadLeg: Int = -1,
     val aheadStop: Int = -1,
+    // A branch the trip took by itself. Absent from a trip kept before it was: none.
+    val branchTakenLeg: Int = -1,
+    val branchTakenTo: String = "",
+    val branchTakenFork: String = "",
 ) {
     fun toTrip() = ActiveTrip(
         route = TripRoute(legs.map { it.toLeg() }),
@@ -332,6 +336,9 @@ private data class PersistedActiveTrip(
         onFootChanges = onFootChanges?.toSet(),
         aheadLeg = aheadLeg,
         aheadStop = aheadStop,
+        branchTakenLeg = branchTakenLeg,
+        branchTakenTo = branchTakenTo,
+        branchTakenFork = branchTakenFork,
     )
 
     companion object {
@@ -364,6 +371,9 @@ private data class PersistedActiveTrip(
             destinationStopId = trip.destinationStopId,
             aheadLeg = trip.aheadLeg,
             aheadStop = trip.aheadStop,
+            branchTakenLeg = trip.branchTakenLeg,
+            branchTakenTo = trip.branchTakenTo,
+            branchTakenFork = trip.branchTakenFork,
         )
     }
 }

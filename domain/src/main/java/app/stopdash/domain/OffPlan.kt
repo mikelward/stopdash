@@ -185,6 +185,8 @@ object OffPlan {
         val split = trip.copy(
             route = TripRoute(legs),
             warnedLeg = if (trip.warnedLeg < 0) trip.warnedLeg else shift(trip.warnedLeg),
+            // Said through the ride to its fork: a split of that ride, or one before it, carries it on (Codex, #630).
+            branchTakenLeg = if (trip.branchTakenLeg < rideIndex) trip.branchTakenLeg else trip.branchTakenLeg + 1,
             onFootChanges = trip.onFootChanges?.mapTo(HashSet(), ::shift),
             disruptionsHeard = shiftKeys(trip.disruptionsHeard, rideIndex),
             disruptionsDismissed = shiftKeys(trip.disruptionsDismissed, rideIndex),
@@ -197,6 +199,19 @@ object OffPlan {
             else -> OnTheWay.atLeg(split, rideIndex, now)
         }
     }
+
+    /**
+     * [taken], [trip] split at [rideIndex] for [branch] by the trip itself ([take]), marked so its screen says
+     * why until the rider is past the ride to the fork ([ActiveTrip.branchTakenLeg]). A ride already split so
+     * keeps its first mark, carried on by [take]: what the rider was going to, and where they change for it
+     * (Codex, #630).
+     */
+    fun takenBySelf(trip: ActiveTrip, taken: ActiveTrip, rideIndex: Int, branch: Branch): ActiveTrip =
+        if (trip.branchTakenLeg >= rideIndex) {
+            taken
+        } else {
+            taken.copy(branchTakenLeg = rideIndex, branchTakenTo = trip.route.legs[rideIndex].toName, branchTakenFork = branch.forkName)
+        }
 
     // [ride] as two: to where [branch] leaves it, on its line, and on from there. The Planner's times are
     // shared out by stops, as no time is known for the stop between.

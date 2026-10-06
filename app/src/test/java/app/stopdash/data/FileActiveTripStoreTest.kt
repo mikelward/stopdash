@@ -90,6 +90,15 @@ class FileActiveTripStoreTest {
     }
 
     @Test
+    fun `a branch the trip took by itself is kept across a reload`() {
+        val file = File(tmp.root, "active-trip.json")
+        // Said until the rider is past the ride to the fork, a restart included (Codex, #630).
+        val taken = trip.copy(branchTakenLeg = 0, branchTakenTo = "Morden", branchTakenFork = "Kennington")
+        FileActiveTripStore(file).save(taken)
+        assertEquals(taken, FileActiveTripStore(file).load())
+    }
+
+    @Test
     fun `the stop known ahead on board is kept across a reload, and absent from an older trip`() {
         val file = File(tmp.root, "active-trip.json")
         val ahead = trip.copy(aheadLeg = 0, aheadStop = 1)
