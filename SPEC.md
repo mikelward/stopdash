@@ -2501,8 +2501,9 @@ Barnet · Mill Hill East", "22 stations"); a stretch between two kept stations t
 the line shows its runs instead, each on one track, so no row jumps between two trunks. Otherwise the
 line's ends and junctions show, and only the runs of plain stations between them fold ("Burnt Oak to
 Chalk Farm", "8 stations"), any alert among them folding its run as above. A tap opens a fold where
-it is, below what's above it, which doesn't move; an opened stretch shows its ends and junctions with
-its runs still folded. "Show all stations" opens everything and "Fold" puts it back as it opened. **The rider's own stops never fold** (maintainer,
+it is, below what's above it, which doesn't move, showing every station it holds in one tap, never its
+ends alone with the rest folded again (maintainer, 2026-10-06). "Show all stations" opens everything
+and "Fold" puts it back as it opened. **The rider's own stops never fold** (maintainer,
 2026-10-06): their starred stops (a starred row's or journey's end, starred) and the stops of the
 trip they're riding the line on (the route page's blue dot).
 
