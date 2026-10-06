@@ -3174,6 +3174,36 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `a line whose trains couldn't be followed is named on the disruptions row`() {
+        val good = LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service")
+        val state = TripViewModel.State(
+            routes = listOf(route),
+            live = mapOf("B" to TripViewModel.StopLive(listOf(train("blue", "C", 16)), now)),
+            statuses = mapOf("red" to good, "blue" to good.copy(lineId = "blue")),
+            statusesAt = mapOf("red" to now, "blue" to now),
+            closures = route.legs.flatMap { listOf(it.fromId, it.toId) }.associateWith { emptyList() },
+        )
+        val cards = checkNotNull(tripEstimates(state, now, Duration.ZERO, emptyMap())).map { listOf(it) }
+        fun row(sequences: Map<String, LineSequence?>) = tripRow(cards, emptyMap(), state, now, sequences, emptySet())
+        // Its route placed every train: nothing unknown.
+        assertFalse(row(mapOf("blue" to blue)).unknown)
+        // Still loading, it isn't unknown: the caller's check ([tripCheckState]) says it's checking.
+        assertFalse(row(emptyMap()).unknown)
+        // Its route failed to load: the row says the blue line couldn't be checked, where the banner was,
+        // and the lines page marks it so its note says what that means.
+        val failed = row(mapOf("blue" to null))
+        assertTrue(failed.unknown)
+        assertEquals(listOf("blue"), failed.unknownLines.map { it.lineId })
+        assertEquals(listOf("blue"), failed.every.filter { it.unknown }.map { it.leg.lineId })
+        assertTrue(failed.linesUnknown)
+        // Another line's route still loading keeps the row checking, but the failed line is never a
+        // good service on the lines page meanwhile (Codex, #618).
+        val meanwhile = tripRow(cards, emptyMap(), state, now, mapOf("blue" to null), emptySet(), routesChecking = true)
+        assertTrue(meanwhile.checking)
+        assertEquals(listOf("blue"), meanwhile.every.filter { it.unknown }.map { it.leg.lineId })
+    }
+
+    @Test
     fun `two legs on one line from one stop are told apart by where they get off`() {
         val one = TripLeg("bus", "43", "43", "A", "A", "C", "C", at(5), at(15), path = listOf("B", "C"))
         val other = one.copy(toId = "D", toName = "D", path = listOf("B", "D"))

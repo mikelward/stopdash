@@ -581,8 +581,8 @@ internal fun tripCheckState(
 }
 
 /**
- * The trains [tripCheckState] found it couldn't check, by line, stop and reason: the banner says only
- * "Some routes couldn't be checked", so these are what the debug log records (SPEC principle 2).
+ * The trains [tripCheckState] found it couldn't check, by line, stop and reason: the disruptions row
+ * names only their lines ([trainsUnchecked]), so these are what the debug log records (SPEC principle 2).
  */
 internal fun tripMisses(
     state: TripViewModel.State,
@@ -600,12 +600,40 @@ private fun legChecks(
     now: Instant,
     sequences: Map<String, LineSequence?>,
     lines: Map<TripLeg, RideLines>,
-): List<DirectTrips.Result> =
+): List<DirectTrips.Result> = legResults(state, estimates, now, sequences, lines).map { it.second }
+
+// [legChecks]' results, each with the leg it judged.
+private fun legResults(
+    state: TripViewModel.State,
+    estimates: List<TripTiming.Estimate>,
+    now: Instant,
+    sequences: Map<String, LineSequence?>,
+    lines: Map<TripLeg, RideLines>,
+): List<Pair<TripLeg, DirectTrips.Result>> =
     estimates.flatMap { it.route.rides }.distinct().flatMap { lines[it]?.legs ?: listOf(it) }.distinct().mapNotNull { leg ->
         val stop = state.live[leg.fromId] ?: return@mapNotNull null
         if (Staleness.isStale(stop.fetchedAt, now)) return@mapNotNull null
-        legFilter(leg, stop, now, sequences)?.result
+        legFilter(leg, stop, now, sequences)?.result?.let { leg to it }
     }
+
+/**
+ * The lines whose live trains couldn't be checked against where the rider gets off once their checks
+ * were done ([TripMessage.INCOMPLETE]): each once, as its pill names it. The disruptions row names
+ * them after "Unknown:" (maintainer, 2026-10-04), where a banner over the routes used to come and go.
+ */
+@WorkerThread
+internal fun trainsUnchecked(
+    state: TripViewModel.State,
+    estimates: List<TripTiming.Estimate>,
+    now: Instant,
+    sequences: Map<String, LineSequence?>,
+    lines: Map<TripLeg, RideLines>,
+): List<TripLeg> = legResults(state, estimates, now, sequences, lines)
+    .filter { (_, result) -> result.unresolved && !result.pending }
+    .map { it.first }
+    .filter { it.lineId.isNotBlank() }
+    .distinctBy { it.lineId }
+    .map(::pillNamed)
 
 /**
  * The trains a first-leg row times, at most [cap]: the soonest the rider can reach, after as many of
@@ -1551,12 +1579,7 @@ private fun TripContent(
                 // The lines avoided, under the modes: each a chip a tap stops avoiding.
                 avoided.onStopAvoiding?.let { AvoidedLineChips(avoided.lines, it) }
             }
-            // Settled here, once, so the list's reveal waits on the banner it would otherwise slide under (Codex, #543).
-            // Per surface, so a return from an open route never brings its banner back to the list, and per
-            // plan, so one plan's failure never stands over another's placeholder, and per routes left out, so a
-            // failure of a route hidden or avoided never stands over those that remain (Codex, #543).
-            val incomplete = key(open != null, cards == null, planKey, excluded) { settled(check == TripMessage.INCOMPLETE, at = false) }
-            TripBanners(framing?.failed.orEmpty(), check, incomplete, locationBanner, onRelocate, hiddenModes, onShowAllModes)
+            TripBanners(framing?.failed.orEmpty(), locationBanner, onRelocate, hiddenModes, onShowAllModes)
             // Hold still (SPEC *Engineering quality bar*): the list appears once, after its plan, its live
             // refresh and its routes' checks have landed, rather than settle under the rider's
             // thumb as each lands (maintainer, 2026-10-04). Never longer than [REVEAL_CAP_MILLIS].
@@ -1593,7 +1616,6 @@ private fun TripContent(
                 rememberTripRow(it, liveRideLines, liveState, tickNow, liveSequences, alerts.dismissed, loads.loading, listCheck == TripMessage.CHECKING, rowWork, hold = revealedState.value)
             }
             // What the list waits for, each by name for the reveal's log line ([RevealLog]).
-            val bannerSettled = open != null || incomplete == (check == TripMessage.INCOMPLETE)
             // The pill columns measured for the cards about to show, not the last plan's.
             val widthsIn = widths != null && listView != null && widths.isFor(listView, pillWidth)
             val rowIn = row?.checking == false
@@ -1601,7 +1623,7 @@ private fun TripContent(
             if (!revealedState.value) {
                 val waiting = revealLog.waitingFor(
                     liveState.routes != null, cards != null, liveState.refreshing, liveState.planning, listCheck == TripMessage.CHECKING,
-                    bannerSettled, headed != null, widthsIn, rowIn, loads.loading.size,
+                    headed != null, widthsIn, rowIn, loads.loading.size,
                 )
                 SideEffect { revealLog.note(liveState.routes != null, waiting) }
             }
@@ -1618,10 +1640,9 @@ private fun TripContent(
                 // being worked out never holds the list back past the moment both have landed.
                 liveState,
                 listCheck,
-                // Everything the list draws is in: its banner, its cards' order, its disruptions, and every
-                // route loaded (a line with no trains predicted can't make the check wait on it, Codex, #543).
-                // The banner shown is an open route's, not the list's: the list's own settles at once on return.
-                settledAround = bannerSettled && headed != null && widthsIn && rowIn && loads.loading.isEmpty(),
+                // Everything the list draws is in: its cards' order, its disruptions, and every route
+                // loaded (a line with no trains predicted can't make the check wait on it, Codex, #543).
+                settledAround = headed != null && widthsIn && rowIn && loads.loading.isEmpty(),
             )
             val revealed = revealedState.value
             Box(Modifier.fillMaxSize()) {
@@ -1681,9 +1702,6 @@ internal fun failedStops(estimates: List<TripTiming.Estimate>, state: TripViewMo
 private fun TripBanners(
     // The shown routes' boarding stops whose last refresh failed ([failedStops]), worked out with the frame.
     failed: List<String>,
-    check: TripMessage?,
-    // The "couldn't be checked" banner, settled by the caller ([settled]).
-    incomplete: Boolean,
     locationBanner: LocationBanner?,
     onRelocate: () -> Unit,
     hiddenModes: Set<String>,
@@ -1705,10 +1723,9 @@ private fun TripBanners(
         val which = if (failed.size == 1) failed[0] else stringResource(R.string.partial_refresh_more, failed[0], failed.size - 1)
         Banner(stringResource(R.string.partial_refresh_no_reason, which))
     }
-    // A route still loading says so in the disruptions row over the routes, which holds its place
-    // ([DisruptionsRow]), rather than in a banner that came and went over the list (maintainer,
-    // 2026-10-04). One that couldn't be checked says so here, once that has held ([settled]).
-    if (incomplete) Banner(stringResource(R.string.journey_incomplete))
+    // A route still loading, or one whose trains couldn't be checked, says so in the disruptions row
+    // over the routes, which holds its place ([DisruptionsRow]), rather than in a banner that came and
+    // went over the list (maintainer, 2026-10-04).
     if (hiddenModes.isNotEmpty()) {
         ActionBanner(
             text = stringResource(R.string.modes_hidden, hiddenGroupsLabel(hiddenModes)),
@@ -1776,7 +1793,6 @@ internal class RevealLog(private val started: kotlin.time.TimeMark = kotlin.time
         refreshing: Boolean,
         planning: Boolean,
         checking: Boolean,
-        bannerSettled: Boolean,
         ordered: Boolean,
         widthsIn: Boolean,
         rowIn: Boolean,
@@ -1786,7 +1802,6 @@ internal class RevealLog(private val started: kotlin.time.TimeMark = kotlin.time
         if (planning) add("a re-plan")
         if (refreshing) add("a refresh")
         if (checking) add("the line checks")
-        if (!bannerSettled) add("its banner")
         if (!ordered) add("its cards' order")
         if (!widthsIn) add("its pill columns")
         if (!rowIn) add("the disruptions row")
@@ -3079,7 +3094,8 @@ internal class TripRow(
  * ([cardStatuses] along its rides, less what was [dismissed]) and its closure notices
  * ([routeClosures]), then the check's word ([statusNote]): checking while a check runs or a line's
  * route loads ([loading], [routesChecking]: the "Checking routes…" banner this row replaced,
- * maintainer, 2026-10-04), else what couldn't be checked ([unchecked]). Judges trains along rides: on
+ * maintainer, 2026-10-04), else what couldn't be checked ([unchecked]), the lines whose trains couldn't
+ * be followed among them ([trainsUnchecked]: the "Some routes couldn't be checked" banner it replaced). Judges trains along rides: on
  * a worker only.
  */
 @WorkerThread
@@ -3124,10 +3140,17 @@ internal fun tripRow(
     val disrupted = lines.values.toList()
     val closed = stops.joinToString(", ")
     val checking = note == true || routesChecking
-    if (checking || note == null) {
-        return TripRow(checking, lines = disrupted, stops = closed, every = tripLines(cards, rideLines, state, now, sequences, dismissed, lines.keys, checking, emptySet()))
+    // The lines whose trains couldn't be followed to where the rider gets off: once the routes are
+    // checked, they're named here too, the row standing in for the banner that came and went. While
+    // another check runs the row says "Checking…", but the lines page still marks each such line as
+    // unchecked, never a good service (Codex, #618).
+    val trains = trainsUnchecked(state, estimates, now, sequences, rideLines)
+    if (checking || (note == null && trains.isEmpty())) {
+        val unknown = trains.mapTo(HashSet()) { it.lineId }
+        return TripRow(checking, lines = disrupted, stops = closed, every = tripLines(cards, rideLines, state, now, sequences, dismissed, lines.keys, checking, unknown))
     }
-    val (unknownLines, unknownStops) = unchecked(estimates, state, now, sequences, rideLines)
+    val (uncheckedLines, unknownStops) = if (note == null) emptyList<TripLeg>() to emptyList() else unchecked(estimates, state, now, sequences, rideLines)
+    val unknownLines = (uncheckedLines + trains).distinctBy { it.lineId }
     val every = tripLines(cards, rideLines, state, now, sequences, dismissed, lines.keys, false, unknownLines.mapTo(HashSet()) { it.lineId })
     return TripRow(false, disrupted, closed, unknown = true, unknownLines = unknownLines, unknownStops = unknownStops.joinToString(", "), every = every)
 }

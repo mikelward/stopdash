@@ -1331,7 +1331,10 @@ Planner's line.
 2026-10-04): "Disruptions:" then each disrupted line's pill (as the cards' ⚠s judge them, less what
 was dismissed) and each stop with a closure notice in force, then the check's word — "Checking…"
 while one runs, "Unknown:" and the pills and stops it couldn't check when one couldn't (in red), else
-"None" once there's nothing to show. It replaced a note that came and went as the page's loads landed one after another, moving
+"None" once there's nothing to show. A line whose trains couldn't be followed to where the rider gets
+off (its route failed to load) is named there too: the row took the place of the "Some routes couldn't
+be checked" banner, which slid in over the routes once the list showed (maintainer, 2026-10-04), and the
+lines page says what an unchecked line means for its times. It replaced a note that came and went as the page's loads landed one after another, moving
 every card under it for the first few seconds. A new check says so at once; any other word waits
 until it has held for a moment (1.5 s), so a gap between two loads never reads as "None" or as
 "couldn't check". While the row's lines are still being worked out for newer cards it shows the last
