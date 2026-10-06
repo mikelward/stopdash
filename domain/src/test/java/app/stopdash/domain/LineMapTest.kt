@@ -369,19 +369,21 @@ class LineMapTest {
     fun `a closure off the rider's stops and rides folds with where it is, its fold saying how bad`() {
         val map = LineMap.of(northern(), closures = closure)!!
         val items = map.folded(emptySet())
-        // The line as with good service, but the Battersea branch folded: no station of it named on its own.
+        // The line as with good service, but Nine Elms folded: no station of it named on its own but the
+        // line's end, which always shows (maintainer, 2026-10-06).
         assertEquals(
             listOf(
                 "Edgware", "[Burnt Oak to Chalk Farm]", "High Barnet", "[Totteridge & Whetstone to West Finchley]",
                 "Mill Hill East", "Finchley Central", "[East Finchley to Kentish Town]", "Camden Town",
                 "[Mornington Crescent to Waterloo]", "[Euston to Elephant & Castle]", "Kennington",
-                "[2 CLOSURE]", "[Oval to South Wimbledon]", "Morden",
+                "[1 CLOSURE]", "Battersea Power Station", "[Oval to South Wimbledon]", "Morden",
             ),
             items.labels(),
         )
-        val battersea = items.filterIsInstance<LineMap.Item.Fold>().single { it.ends == listOf("Battersea Power Station") }
+        assertEquals(LineMap.Level.CLOSURE, map.row("Battersea Power Station").level)
+        val battersea = items.filterIsInstance<LineMap.Item.Fold>().single { it.first == "Nine Elms" }
         assertEquals(LineMap.Level.CLOSURE, battersea.level)
-        assertEquals(2, battersea.count)
+        assertEquals(1, battersea.count)
         assertTrue("the plain runs say nothing", items.filterIsInstance<LineMap.Item.Fold>().filter { it !== battersea }.all { it.level == null })
         // A tap shows it in full.
         assertEquals(
@@ -395,6 +397,51 @@ class LineMapTest {
         // named beside it to say where.
         assertTrue("[8 WARNING]" in words.labels())
         assertTrue(words.labels().none { "Burnt Oak" in it || "Golders Green" in it || "Chalk Farm" in it })
+    }
+
+    @Test
+    fun `an end of the line an alert names still shows, the stations along it folding`() {
+        // The Metropolitan line, trimmed at Baker Street, with a delay between Harrow-on-the-Hill and
+        // Uxbridge: Uxbridge, the branch's end, stays on the page; the stations along it fold, saying
+        // how bad (maintainer, 2026-10-06).
+        val met = mapOf(
+            "940GZZLUAMS" to "Amersham", "940GZZLUCSM" to "Chesham", "940GZZLUCAL" to "Chalfont & Latimer",
+            "940GZZLUCYD" to "Chorleywood", "940GZZLURKW" to "Rickmansworth", "940GZZLUWAF" to "Watford",
+            "940GZZLUCXY" to "Croxley", "940GZZLUMPK" to "Moor Park", "940GZZLUNWD" to "Northwood",
+            "940GZZLUNWH" to "Northwood Hills", "940GZZLUPNR" to "Pinner", "940GZZLUNHA" to "North Harrow",
+            "940GZZLUUXB" to "Uxbridge", "940GZZLUHGD" to "Hillingdon", "940GZZLUICK" to "Ickenham",
+            "940GZZLURSP" to "Ruislip", "940GZZLURSM" to "Ruislip Manor", "940GZZLUEAE" to "Eastcote",
+            "940GZZLURYL" to "Rayners Lane", "940GZZLUWHW" to "West Harrow", "940GZZLUHOH" to "Harrow-on-the-Hill",
+            "940GZZLUNKP" to "Northwick Park", "940GZZLUPRD" to "Preston Road", "940GZZLUWYP" to "Wembley Park",
+            "940GZZLUFYR" to "Finchley Road", "940GZZLUBST" to "Baker Street",
+        )
+        val metIds = met.entries.associate { (id, name) -> name to id }
+        fun met(vararg stations: String) = stations.map { metIds.getValue(it) }
+        val trunk = met("Harrow-on-the-Hill", "Northwick Park", "Preston Road", "Wembley Park", "Finchley Road", "Baker Street")
+        val toMoorPark = met("Moor Park", "Northwood", "Northwood Hills", "Pinner", "North Harrow") + trunk
+        val routes = listOf(
+            met("Amersham", "Chalfont & Latimer", "Chorleywood", "Rickmansworth") + toMoorPark,
+            met("Chesham", "Chalfont & Latimer", "Chorleywood", "Rickmansworth") + toMoorPark,
+            met("Watford", "Croxley") + toMoorPark,
+            met("Uxbridge", "Hillingdon", "Ickenham", "Ruislip", "Ruislip Manor", "Eastcote", "Rayners Lane", "West Harrow") + trunk,
+        )
+        val sequence = LineSequence(
+            routes = routes.map { LineRoute("", it, "outbound") } + routes.map { LineRoute("", it.asReversed(), "inbound") },
+            stopNames = met,
+            stopPositions = mapOf(
+                "Amersham" to 51.674, "Chesham" to 51.705, "Watford" to 51.657, "Uxbridge" to 51.546, "Baker Street" to 51.522,
+            ).entries.associate { (name, lat) -> metIds.getValue(name) to (lat to 0.0) },
+        )
+        val text = "Metropolitan Line: Minor delays between Harrow-on-the-Hill and Uxbridge due to an earlier " +
+            "track fault at Ickenham. GOOD SERVICE on the rest of the line."
+        val map = LineMap.of(sequence, alertText = text)!!
+        assertTrue(map.row("Uxbridge").end)
+        assertEquals(LineMap.Level.WARNING, map.row("Uxbridge").level)
+        val labels = map.folded(emptySet()).labels()
+        assertTrue(labels.containsAll(listOf("Amersham", "Chesham", "Watford", "Uxbridge")))
+        // The stations along the branch fold behind it, naming none of them.
+        assertTrue(labels.none { "Ickenham" in it || "Hillingdon" in it || "West Harrow" in it })
+        assertTrue(labels[labels.indexOf("Uxbridge") + 1].endsWith(" WARNING]"))
     }
 
     @Test
