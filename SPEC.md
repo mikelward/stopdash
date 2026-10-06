@@ -1985,7 +1985,12 @@ them there:
   don't crowd the board: under the board of trains that take the rider on while they walk to or wait
   for the ride, and under the step while they're on board it (riding, or on a train the trip can no
   longer place on the ride), when the board is gone. Each is a row, **grayed, its name in brackets**
-  ("(Battersea)"), with the next few times TfL lists for it while there's a board. They're read from the
+  ("(Battersea)"), with the next few times TfL lists for it while there's a board. **When the board lists
+  none of the plan's own trains but some off it** (maintainer, 2026-10-06; the Journey Planner's timetable
+  can route a train TfL's live board doesn't list, with no alert to say so), they're the board's only live
+  trains, so they show open, no button, under a warning in the error color: "None going to …", and
+  "Change at …" when every one turns off at the same stop, led by the plan's own row with a dash for
+  its times, so the planned train reads as missing, not the board as short. They're read from the
   line's route, not TfL's live labels, so a branch shows even when TfL lists none of its trains or names
   them for the other branch, as it can; route patterns that run on alike past the fork are one row,
   named by a "via" past the fork, else by where it ends. **Other lines from the platform** are offered
