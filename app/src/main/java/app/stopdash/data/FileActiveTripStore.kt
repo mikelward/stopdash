@@ -305,6 +305,12 @@ private data class PersistedActiveTrip(
     val branchTakenLeg: Int = -1,
     val branchTakenTo: String = "",
     val branchTakenFork: String = "",
+    // Where the rider was seen past a ride's stop. Absent from a trip kept before it was: none.
+    val pastLeg: Int = -1,
+    val pastAtId: String = "",
+    val pastAtName: String = "",
+    val offLeg: PersistedTripLeg? = null,
+    val offAt: String? = null,
 ) {
     fun toTrip() = ActiveTrip(
         route = TripRoute(legs.map { it.toLeg() }),
@@ -339,6 +345,11 @@ private data class PersistedActiveTrip(
         branchTakenLeg = branchTakenLeg,
         branchTakenTo = branchTakenTo,
         branchTakenFork = branchTakenFork,
+        pastLeg = pastLeg,
+        pastAtId = pastAtId,
+        pastAtName = pastAtName,
+        offLeg = offLeg?.toLeg(),
+        offAt = offAt?.let(Instant::parse),
     )
 
     companion object {
@@ -374,6 +385,11 @@ private data class PersistedActiveTrip(
             branchTakenLeg = trip.branchTakenLeg,
             branchTakenTo = trip.branchTakenTo,
             branchTakenFork = trip.branchTakenFork,
+            pastLeg = trip.pastLeg,
+            pastAtId = trip.pastAtId,
+            pastAtName = trip.pastAtName,
+            offLeg = trip.offLeg?.let { PersistedTripLeg.of(it) },
+            offAt = trip.offAt?.toString(),
         )
     }
 }

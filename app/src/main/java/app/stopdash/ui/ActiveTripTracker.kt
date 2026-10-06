@@ -742,10 +742,14 @@ class ActiveTripTracker(
             // Not a branch taken by itself: no card shows it, so Keep going isn't an answer to it (Codex, #633).
             val dismissed = trip.disruptionsDismissed + shown.filter { it !is RouteDisruption.Signal.NoneDirect }.map { it.dismissKey }
             if (dismissed.size == trip.disruptionsDismissed.size) return@withContext null to null
-            trip.copy(disruptionsDismissed = dismissed) to known?.let { known ->
+            // Kept going from a stop gone past: it's let go of, and with it the fixes asked for to follow it (Codex, #635).
+            val goneOn = shown.any { it is RouteDisruption.Signal.Missed && it.legIndex == trip.pastLeg }
+            val after = trip.copy(disruptionsDismissed = dismissed).let { if (goneOn) it.copy(pastLeg = -1, pastAtId = "", pastAtName = "") else it }
+            after to known?.let { known ->
                 val signals = known.signals.filter { signal -> signal.dismissKey !in dismissed }
                 val until = signals.map { stands[it.key] }.takeIf { it.all { own -> own != null } }?.filterNotNull()?.minOrNull()
-                Triple(signals, until, RouteDisruption.cards(signals))
+                // Whether a stop gone past still stands among them, worked out here, off the caller's thread (Codex, #635).
+                Triple(signals, until, RouteDisruption.cards(signals)) to signals.any { it is RouteDisruption.Signal.Missed }
             }
         }
         if (kept == null) return@withLock
@@ -755,13 +759,19 @@ class ActiveTripTracker(
         _notKept.value = !saved
         if (!saved) return@withLock
         _trip.value = kept
-        val (signals, until, cards) = left ?: Triple(emptyList<RouteDisruption.Signal>(), null, emptyList())
+        val (signals, until, cards) = left?.first ?: Triple(emptyList<RouteDisruption.Signal>(), null, emptyList())
+        val missedLeft = left?.second == true
         when {
             signals.isEmpty() || until == null -> takeDisruptionDown()
             // Something found since the screen showed [shown], not dismissed: the alert stays up, as that
             // alone, already heard, so it isn't sounded again (Codex on #519).
             else -> {
                 _routeDisruptions.value = KnownDisruptions(signals, SteadyClock.stamp(until), cards)
+                // Kept going from a stop gone past: plan again isn't from there under what's left, until the
+                // next refresh says where from (Codex, #635).
+                if (!missedLeft && trip.pastAtId.isNotBlank() &&
+                    _replanFrom.value?.id == trip.pastAtId
+                ) _replanFrom.value = null
                 if (disruptionUp && !postDisruption(kept, signals, DisruptionPost.KEEP, until)) takeDisruptionDown(known = false)
             }
         }
@@ -886,6 +896,8 @@ class ActiveTripTracker(
                             }
                         }
                     }
+                    // Seen past where they got off a ride, or back from it (maintainer, 2026-10-06): kept with the trip.
+                    notePast(rider?.takeIf { allowed }, asked)
                     // The fix as given, with when: aged once, where it's used, for all the time since (Codex on #479).
                     // Only a fix precise location still allows picks where to plan again from (Codex, #542).
                     checkDisruptions(boards, rider?.takeIf { allowed && preciseAllowed() }, asked)
@@ -967,6 +979,8 @@ class ActiveTripTracker(
         val change = answered?.let { changeSignal(trip, progress, boards) }
         // The branch the trip took by itself, none of the plan's trains listed: said as long as that answer.
         val noneDirect = answered?.let { RouteDisruption.noneDirect(trip, progress) }
+        // Seen past where they got off a ride ([notePast]): said as long as that answer, as the worst there is.
+        val missed = answered?.let { RouteDisruption.missed(trip, progress) }
         // Joined with what else is known there, and what the rider dismissed on the trip's screen
         // ([dismissDisruptions]) left out, neither shown nor alerted again: on [io], not the caller's (the
         // main) thread, as is keying what's new to hear (Codex on #519).
@@ -974,7 +988,7 @@ class ActiveTripTracker(
         // no longer than the trip's own answer: what's kept stands as long as the earliest of them, never
         // as long as one let go of (Codex on #519).
         val (checked, deadline) = withContext(io) {
-            val withChange = listOfNotNull(change, noneDirect).fold(found) { all, signal ->
+            val withChange = listOfNotNull(change, noneDirect, missed).fold(found) { all, signal ->
                 if (answered != null) all.with(signal, answered.plus(CURRENT_FOR)) else all
             }
             val kept = withChange.copy(signals = withChange.signals.filter { it.dismissKey !in trip.disruptionsDismissed })
@@ -1000,7 +1014,10 @@ class ActiveTripTracker(
             disruptionUp -> if (!postDisruption(trip, known.signals, DisruptionPost.KEEP, until)) takeDisruptionDown(known = false)
         }
         // Only once the alert is out: the routes it may read never hold up what's known (Codex on #479).
-        _replanFrom.value = replanStop(trip, progress, rider, asked)
+        // Seen past a ride's stop, from the stop they're at or heading for: the plan's stops are behind them.
+        // Only while that alert stands: once dismissed (Keep going), another alert plans again as it would (Codex, #635).
+        val missedKept = known.signals.firstNotNullOfOrNull { it as? RouteDisruption.Signal.Missed }
+        _replanFrom.value = missedKept?.let { ReplanOrigin.Stop(it.atId, it.atName) } ?: replanStop(trip, progress, rider, asked)
     }
 
     // No train of its line predicted for the ride at a change the rider is a few minutes from
@@ -1848,6 +1865,70 @@ class ActiveTripTracker(
     // Each line's route as a refresh read it, answer or failure: asked for once a refresh, so a failing
     // TfL brings no second request for it (Codex, #630). Null outside a refresh.
     private var routesRead: HashMap<String, LineSequence?>? = null
+
+    // Where [rider] puts the trip's rider against the ride they last got off ([OnTheWay.lastRideOff]):
+    // seen past its stop on its line ([OnTheWay.pastStop]), kept with the trip as where to plan again
+    // from; or, seen past it before, back there or on toward the next ride ([OnTheWay.backFromPast]),
+    // let go of; so too, fix or none, once they've boarded on from it, so going back never brings it back
+    // (Codex, #635). Said in the log by the ride and a stop id, never where the rider is.
+    private suspend fun notePast(given: LocationFix?, asked: Long) {
+        val trip = _trip.value ?: return
+        val progress = _progress.value ?: return
+        val settled = OnTheWay.settledPast(trip)
+        if (settled != trip) {
+            keep(settled, progress)
+            return
+        }
+        val index = OnTheWay.lastRideOff(trip) ?: return
+        if (given == null) return
+        // The line ridden, where another of the ride's took it (Codex, #635).
+        val marked = trip.pastLeg == index && trip.pastAtId.isNotBlank()
+        // Back where the trip keeps them placed, looked for before any route read, which can be a slow request
+        // the fix would age out waiting on (Codex, #635).
+        if (marked) {
+            val early = aged(given, Duration.ofMillis(elapsed() - asked))
+            val nextAt = listOfNotNull(OnTheWay.rideAfterPast(trip)?.fromAt)
+            if (early != null && withContext(compute) { OnTheWay.backFromPast(trip, early, null, nextAt) }) {
+                warn("on the way: back from past the stop of ride $index")
+                keep(trip.copy(pastLeg = -1, pastAtId = "", pastAtName = ""), progress)
+                return
+            }
+        }
+        // The next ride's stop, where the Planner placed it and everywhere its line's routes do, by any id one
+        // calls it: a big interchange's platforms can be far from the Planner's point (Codex, #635). Looked for
+        // before the gone-past line's route is read, whose read the fix could age out waiting on (Codex, #635).
+        val next = if (marked) OnTheWay.rideAfterPast(trip) else null
+        val nextAt = next?.let { ride ->
+            listOfNotNull(ride.fromAt) + routeOf(ride.lineId)?.let { withContext(compute) { OnTheWay.boardingPlaces(ride, it) } }.orEmpty()
+        }.orEmpty()
+        if (marked && nextAt.isNotEmpty()) {
+            val seen = aged(given, Duration.ofMillis(elapsed() - asked))
+            if (seen != null && withContext(compute) { OnTheWay.backFromPast(trip, seen, null, nextAt) }) {
+                warn("on the way: back from past the stop of ride $index")
+                keep(trip.copy(pastLeg = -1, pastAtId = "", pastAtName = ""), progress)
+                return
+            }
+        }
+        // Without it, only going back is looked for, by the places kept with the trip (Codex, #635).
+        val route = routeOf(OnTheWay.offRide(trip, index).lineId)
+        // Aged by the routes' reads, which can be requests: a fix fresh before them may be where the rider was (Codex, #635).
+        val rider = aged(given, Duration.ofMillis(elapsed() - asked)) ?: return
+        val now = clock()
+        if (marked && withContext(compute) { OnTheWay.backFromPast(trip, rider, route, nextAt) }) {
+            warn("on the way: back from past the stop of ride $index")
+            keep(trip.copy(pastLeg = -1, pastAtId = "", pastAtName = ""), progress)
+            return
+        }
+        if (route == null) return
+        // Kept going from it once: not looked for again on this ride, nor fixes asked for to (Codex, #635).
+        if (!marked && RouteDisruption.missedKey(index, OnTheWay.offRide(trip, index).toId) in trip.disruptionsDismissed) return
+        // Seen past it, or further on since: where to plan again from moves with their train (Codex, #635).
+        // Once seen past it, followed as far on as their train takes them, not only its first few stops (Codex, #635).
+        val past = withContext(compute) { OnTheWay.pastStop(trip, rider, route, now, if (marked) Int.MAX_VALUE else OnTheWay.PAST_STOPS, following = marked) } ?: return
+        if (marked && past.atId == trip.pastAtId) return
+        warn("on the way: seen past the stop of ride $index, by stop ${past.atId}")
+        keep(trip.copy(pastLeg = past.rideIndex, pastAtId = past.atId, pastAtName = past.atName), progress)
+    }
 
     // [lineId]'s route ([lineSequence]), or null when it can't be had: a failure said coarsely, by
     // the line and the kind of error.

@@ -957,4 +957,28 @@ class RouteDisruptionTest {
         val line = Signal.Line(2, "blue", "Blue", status("blue", 3, "Part Suspended"), Tier.MEDIUM)
         assertEquals(listOf(line), RouteDisruption.cards(listOf(none!!, line)))
     }
+
+    @Test
+    fun `a stop the rider was seen past is heard, high, until they board on`() {
+        // Off the first ride at C, seen past it, by D (maintainer, 2026-10-06).
+        val past = trip.copy(legIndex = 1, pastLeg = 0, pastAtId = "X", pastAtName = "X")
+        val walking = TripProgress.Walking(walk, at(20))
+        val missed = RouteDisruption.missed(past, walking)
+        assertEquals(Signal.Missed(0, "red", "Red", "C", "C", "X", "X"), missed)
+        assertEquals(Tier.HIGH, missed?.tier)
+        assertEquals("missed/0/C", missed?.key)
+        // A card, with the ride it's on, and a plan again from where they are.
+        assertEquals(listOf(missed!!), RouteDisruption.cards(listOf(missed)))
+        // Waiting for the next ride, still; on it, or arrived, or with none seen, not.
+        assertEquals(missed, RouteDisruption.missed(past.copy(legIndex = 2), waiting))
+        // On board seen or said: no longer. Only as the next train's time went by: it stands (Codex, #635).
+        assertNull(RouteDisruption.missed(past.copy(legIndex = 2, boarded = true, onBoardSeen = true), waiting))
+        assertEquals(missed, RouteDisruption.missed(past.copy(legIndex = 2, boarded = true), waiting))
+        assertNull(RouteDisruption.missed(past, TripProgress.Arrived))
+        assertNull(RouteDisruption.missed(trip.copy(legIndex = 1), walking))
+        // Ridden as another line ran it: named as that line, where they were seen past it (Codex, #635).
+        val blue = trip.route.legs[0].copy(lineId = "blue", lineName = "Blue")
+        assertEquals("blue", RouteDisruption.missed(past.copy(offLeg = blue), walking)?.lineId)
+        assertEquals(blue, RouteDisruption.rideAt(past.copy(offLeg = blue), 0, trip.route.legs[0]))
+    }
 }

@@ -117,6 +117,25 @@ object RouteDisruption {
             override val tier: Tier get() = Tier.MEDIUM
             override val key: String get() = "nonedirect/$legIndex/$lineId/$toName/$forkName"
         }
+
+        /**
+         * The rider was seen past [stopName] ([stopId]), where they got off ride [legIndex] on the line
+         * [lineId] (named [lineName]), still on its line, at or heading for [atName] ([atId]), the stop to
+         * plan again from ([ActiveTrip.pastLeg]; maintainer, 2026-10-06: the one to say loudest). Heard
+         * once for that ride's stop.
+         */
+        data class Missed(
+            override val legIndex: Int,
+            val lineId: String,
+            val lineName: String,
+            val stopId: String,
+            val stopName: String,
+            val atId: String,
+            val atName: String,
+        ) : Signal {
+            override val tier: Tier get() = Tier.HIGH
+            override val key: String get() = missedKey(legIndex, stopId)
+        }
     }
 
     /**
@@ -183,7 +202,23 @@ object RouteDisruption {
             is Signal.Unpredicted -> Pair(signal.lineId, signal.stopId)
             // Said under the trip's step, not as a card ([cards] leaves it out).
             is Signal.NoneDirect -> signal.key
+            is Signal.Missed -> signal.key
         }
+    }
+
+    /** [Signal.Missed]'s key, and what a dismissal of it keeps: the ride gone past, by index, and its stop. */
+    fun missedKey(legIndex: Int, stopId: String): String = "missed/$legIndex/$stopId"
+
+    /**
+     * The stop the rider was seen past ([Signal.Missed], [ActiveTrip.pastLeg]) while they're yet to board
+     * on from it, or null: none seen, on board the next ride, or arrived.
+     */
+    fun missed(trip: ActiveTrip, progress: TripProgress?): Signal.Missed? {
+        if (progress == TripProgress.Arrived || trip.pastAtId.isBlank()) return null
+        if (trip.route.legs.getOrNull(trip.pastLeg)?.isWalk != false || OnTheWay.lastRideOff(trip) != trip.pastLeg) return null
+        // As the line ridden runs it, which is where they were seen past it (Codex, #635).
+        val ride = OnTheWay.offRide(trip, trip.pastLeg)
+        return Signal.Missed(trip.pastLeg, ride.lineId, ride.lineName, ride.toId, ride.toName.ifBlank { ride.toId }, trip.pastAtId, trip.pastAtName.ifBlank { trip.pastAtId })
     }
 
     /**
@@ -444,8 +479,13 @@ object RouteDisruption {
      * seen), the ride as that line runs it, its own stops at either end (a bus's other pole of the pair,
      * say); else the leg itself.
      */
-    fun rideAt(trip: ActiveTrip, index: Int, leg: TripLeg): TripLeg =
-        if (index == trip.legIndex) OnTheWay.ridingOn(trip) ?: leg else leg
+    fun rideAt(trip: ActiveTrip, index: Int, leg: TripLeg): TripLeg = when {
+        index == trip.legIndex -> OnTheWay.ridingOn(trip) ?: leg
+        // The ride gone past ([ActiveTrip.pastLeg]), as the line it was ridden on runs it: read off the trip,
+        // never worked out, as a card is drawn (Codex, #635).
+        index == trip.pastLeg && trip.offLeg != null && !leg.isWalk -> trip.offLeg
+        else -> leg
+    }
 
     /**
      * The stops the trip still has to reach, each with the coming leg that reaches it first: a coming

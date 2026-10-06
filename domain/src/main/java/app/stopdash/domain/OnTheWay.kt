@@ -94,6 +94,19 @@ data class ActiveTrip(
     val branchTakenLeg: Int = -1,
     val branchTakenTo: String = "",
     val branchTakenFork: String = "",
+    // Seen past where they got off ride [pastLeg] (maintainer, 2026-10-06: the unexpected is said), on its
+    // line at or heading for stop [pastAtId] (named [pastAtName]), the stop to plan again from ([pastStop]).
+    // Kept with the trip, so a restart still says it, until the rider is back or boards on. -1 with none.
+    val pastLeg: Int = -1,
+    val pastAtId: String = "",
+    val pastAtName: String = "",
+    // The ride last got off as its line was ridden ([vehicleLeg]) where another of the ride's lines took
+    // it, so a stop gone past is looked for on the line ridden ([pastStop]; Codex, #635). Null when it
+    // was the plan's own line; kept through the walks after it, until the next ride is left.
+    val offLeg: TripLeg? = null,
+    // When the rider got off that ride: kept as it happened, as a later leg's start can be moved (a tap,
+    // a walk seen done early), so how long since isn't worked back from it ([pastStop]; Codex, #635).
+    val offAt: Instant? = null,
 ) {
     /** The leg the rider is on, or null once they've arrived. */
     val leg: TripLeg? get() = route.legs.getOrNull(legIndex)
@@ -802,6 +815,10 @@ object OnTheWay {
         if (walksToEnd(trip, now)) return true
         if (seesWalkEnd(trip, now) || stationRiddenTo(trip, now) != null || watchesWait(trip, now)) return true
         if (watchesRide(trip, now)) return true
+        // Seen past a stop, while it stands: a fix follows them on, or sees them back, however long since (Codex,
+        // #635). It ends once they're back or on board onward, when it's let go of ([settledPast], with each step
+        // and refresh). Read off the kept mark, no work over the trip's legs: this is asked on the main thread (Codex, #635).
+        if (trip.pastAtId.isNotBlank()) return true
         return mayBeLeftBehind(trip, now)
     }
 
@@ -1013,18 +1030,265 @@ object OnTheWay {
     @WorkerThread
     fun ridePositions(leg: TripLeg, sequence: LineSequence): Map<String, Coordinates> {
         val seen = sequence.callingAt(leg.fromId).callingAt(leg.toId)
-        fun placed(id: String): Coordinates? {
-            seen.stopPositions[id]?.let { (lat, lon) -> return Coordinates(lat, lon) }
-            val poles = seen.stopAreas.filterValues { it == id }.keys.mapNotNull { seen.stopPositions[it] }
-            if (poles.isEmpty()) return null
-            return Coordinates(poles.map { it.first }.average(), poles.map { it.second }.average())
-        }
         val placed = LinkedHashMap<String, Coordinates>()
-        (listOf(leg.fromId) + leg.path + leg.toId).distinct().forEach { id -> placed(id)?.let { placed[id] = it } }
+        (listOf(leg.fromId) + leg.path + leg.toId).distinct().forEach { id -> placedIn(seen, id)?.let { placed[id] = it } }
         leg.fromAt?.let { placed.putIfAbsent(leg.fromId, it) }
         leg.toAt?.let { placed.putIfAbsent(leg.toId, it) }
         return placed
     }
+
+    // [id] and the ids [sequence]'s routes call the same station by ([LineSequence.callingAt]), each route
+    // on its own: one can list [id] itself while another lists a sibling (Codex, #635).
+    private fun sameStation(sequence: LineSequence, id: String): Set<String> =
+        sequence.routes.flatMapTo(hashSetOf(id)) { route ->
+            val now = sequence.copy(routes = listOf(route)).callingAt(id).routes.single()
+            route.stopIds.zip(now.stopIds).filter { (a, b) -> b == id && a != id }.map { it.first }
+        }
+
+    /** Every place [sequence], [ride]'s line's route, puts where it boards: by its stop and, for a bus, its pair's poles. */
+    @WorkerThread
+    fun boardingPlaces(ride: TripLeg, sequence: LineSequence): List<Coordinates> =
+        (stationPlaces(sequence, ride.fromId) + ride.fromArea.takeIf { it.isNotBlank() }?.let { stationPlaces(sequence, it) }.orEmpty()).distinct()
+
+    /** Every place [sequence]'s routes put station [id], by any id one calls it ([sameStation]). */
+    @WorkerThread
+    fun stationPlaces(sequence: LineSequence, id: String): List<Coordinates> =
+        // A bus's stop pair by each of its poles too, not only their middle: a pair's poles can be far apart (Codex, #635).
+        sameStation(sequence, id).let { ids -> ids + sequence.stopAreas.filterValues { it in ids }.keys }.mapNotNull { placedIn(sequence, it) }
+
+    // Where [sequence] places stop [id]: its own position, or the middle of its area's poles.
+    private fun placedIn(sequence: LineSequence, id: String): Coordinates? {
+        sequence.stopPositions[id]?.let { (lat, lon) -> return Coordinates(lat, lon) }
+        val poles = sequence.stopAreas.filterValues { it == id }.keys.mapNotNull { sequence.stopPositions[it] }
+        if (poles.isEmpty()) return null
+        return Coordinates(poles.map { it.first }.average(), poles.map { it.second }.average())
+    }
+
+    /**
+     * The ride [trip]'s rider last got off, while they're yet to board the next (walking to it, or
+     * waiting for its train): its index, or null with none, or once they're on board again.
+     */
+    fun lastRideOff(trip: ActiveTrip): Int? {
+        val leg = trip.leg ?: return null
+        var i = trip.legIndex - 1
+        while (i >= 0 && trip.route.legs[i].isWalk) i--
+        val off = i.takeIf { it >= 0 }
+        // On board only as the next train's time went by, neither seen nor said, while seen past the ride before:
+        // still off that one, maybe on the train they went past it on (Codex, #635).
+        if (!leg.isWalk && (trip.boarded || trip.onBoardSeen)) return off?.takeIf { !trip.onBoardSeen && it == trip.pastLeg && trip.pastAtId.isNotBlank() }
+        return off
+    }
+
+    /**
+     * The next few stops ([PAST_STOPS]) of [ride]'s line beyond where it gets off, the way it runs, from
+     * [sequence], its line's route: one list for each way it may go on (a branch each), nearest first,
+     * kept apart so no way runs between two branches (Codex, #635). None where the route doesn't run
+     * the ride.
+     */
+    @WorkerThread
+    fun onward(ride: TripLeg, sequence: LineSequence, count: Int = PAST_STOPS): List<List<String>> =
+        onwardFrom(ride, sequence, count).map { it.second }.distinct()
+
+    // [onward]'s ways, each with the id its own route calls where the ride gets off: a branch can list it by
+    // a sibling whose place differs from another branch's (Codex, #635).
+    @WorkerThread
+    private fun onwardFrom(ride: TripLeg, sequence: LineSequence, count: Int): List<Pair<String, List<String>>> {
+        val named = (ride.path + listOf(ride.fromId, ride.toId)).toHashSet()
+        val found = sequence.routes.flatMap { line ->
+            // Each route seen from the ride's own stop ids on its own: a branch can list a station by a
+            // sibling id another branch doesn't (Codex, #635).
+            // Its path's stops too, so it can be matched stop by stop (Codex, #635).
+            // The ends last, so a path naming one by a sibling id never undoes them (Codex, #635).
+            // A bus's path names its stops by pair ("490G…") where the route lists poles: each pole as its pair
+            // where the ride names that pair, so its path matches stop by stop (Codex, #635).
+            val stops = (ride.path + listOf(ride.fromId, ride.toId))
+                .fold(sequence.copy(routes = listOf(line))) { seen, id -> seen.callingAt(id) }.routes.single().stopIds
+                // And either end by its pair, where the ride's pole isn't one the route lists (Codex, #635).
+                .map { id ->
+                    val area = sequence.stopAreas[id]
+                    when {
+                        id in named -> id
+                        area != null && area == ride.fromArea -> ride.fromId
+                        area != null && area == ride.toArea -> ride.toId
+                        else -> area?.takeIf { it in named } ?: id
+                    }
+                }
+            // Run the way the ride goes: a route listed the other way, backwards.
+            // The visits the ride boards and gets off at, the way it runs: on a loop, each pair its own path
+            // spans, a way on from each, as which lap they boarded can't be told (Codex, #635); else the
+            // nearest pair that runs from one to the other.
+            fun pairs(way: List<String>) = way.indices.filter { way[it] == ride.fromId }.flatMap { from ->
+                way.indices.filter { it > from && way[it] == ride.toId }.map { from to it }
+            }
+            val own = line.stopIds
+            pairs(stops).map { Triple(stops, it, own[it.second]) } +
+                pairs(stops.reversed()).map { Triple(stops.reversed(), it, own.reversed()[it.second]) }
+        }
+        // Matched by the stops between, on every route, where the ride's path names them: two branches with as
+        // many stops between that rejoin there aren't both its way (Codex, #635). Else by as many; else the
+        // nearest pair on each.
+        // The path as it reaches where the ride gets off, by the id the ends were resolved to: ending there by
+        // another id, or leaving it out, as a path can (Codex, #635).
+        val paths = if (ride.path.isEmpty()) emptyList() else listOf(ride.path.dropLast(1) + ride.toId, ride.path + ride.toId).distinct()
+        val spans = found.filter { (way, p) -> way.subList(p.first + 1, p.second + 1) in paths }
+            .ifEmpty { found.filter { (_, p) -> p.second - p.first == ride.path.size } }
+            // Each way by the platform its route gets off at too: two calling the station by sibling ids are kept
+            // apart, each measured from its own (Codex, #635).
+            .ifEmpty { found.groupBy { it.first to it.third }.values.mapNotNull { pairs -> pairs.minByOrNull { (_, p) -> p.second - p.first } } }
+        return spans.map { (way, pair, offId) -> offId to way.drop(pair.second + 1).take(count) }.filter { it.second.isNotEmpty() }.distinct()
+    }
+
+    /**
+     * Ride [index] of [trip] as the line it was ridden on runs it: another of the ride's lines where one
+     * took it ([ActiveTrip.offLeg], the ride last got off), else the plan's.
+     */
+    fun offRide(trip: ActiveTrip, index: Int): TripLeg =
+        trip.offLeg?.takeIf { index == lastRideOff(trip) } ?: trip.route.legs[index]
+
+    /** Where a rider was seen past the stop they got off ride [rideIndex] at ([pastStop]): at or heading for [atId]. */
+    data class Past(val rideIndex: Int, val atId: String, val atName: String)
+
+    /**
+     * Whether [rider], soon after getting off a ride ([lastRideOff]), is seen still on its line beyond
+     * where they got off (maintainer, 2026-10-06: going past the change is the one to say loudest): at
+     * one of its next stops ([onward]), or between them near its way, and further from where they got off
+     * than they could have walked since ([PAST_WALK_MPS]), so on a train. [sequence] is that ride's
+     * line's route. The stop it names is the one to plan again from: where they're seen, or the next
+     * ahead of them. Null when they aren't seen so: near where they got off, too slow for a train, or
+     * only near a stop the trip goes on to anyway (a walk there).
+     */
+    @WorkerThread
+    fun pastStop(trip: ActiveTrip, rider: LocationFix, sequence: LineSequence, now: Instant, stops: Int = PAST_STOPS, following: Boolean = false): Past? {
+        val index = lastRideOff(trip) ?: return null
+        // As the line ridden runs it ([ActiveTrip.offLeg]), which [sequence] is the route of.
+        val ride = offRide(trip, index)
+        val accuracy = rider.accuracyMeters?.toDouble() ?: return null
+        val seen = sequence.callingAt(ride.fromId).callingAt(ride.toId)
+        // Where it's placed by the id the ride names, if anywhere: a way calling it by a placed sibling is
+        // measured from that all the same (Codex, #635).
+        val off = placedIn(seen, ride.toId) ?: ride.toAt
+        // When they got off ([ActiveTrip.offAt]); for a trip kept without it, worked back from when the leg
+        // after it began, its change time and any walks since, with theirs, taken back (Codex, #635).
+        val walked = trip.route.legs.subList(index + 1, trip.legIndex).fold(Duration.ZERO) { all, leg -> all.plus(leg.run).plus(leg.changeAfter) }
+        val offAt = trip.offAt ?: trip.legStartedAt.minus(walked).minus(ride.changeAfter)
+        val since = Duration.between(offAt, now)
+        // Once seen past it ([following]), followed however long they stay on: the window and pace say only
+        // whether they went past it at all (Codex, #635).
+        if (!following && (since.isNegative || since > PAST_WINDOW)) return null
+        // Far enough beyond where they got off, and fast enough since, measured from where each way's own route
+        // places it (Codex, #635).
+        fun beyond(from: Coordinates): Boolean {
+            val fromOff = distance(rider.coordinates, from) - accuracy
+            return fromOff >= PAST_METERS && (following || fromOff / since.seconds.coerceAtLeast(1) >= PAST_WALK_MPS)
+        }
+        // Not a stop the trip goes on to anyway, nor at one: a walk there is the plan.
+        val legsOn = trip.route.legs.drop(index + 1)
+        // By station: a later leg can name one by a sibling id of the line's own (Codex, #635).
+        // A bus's by its stop pair too, each of its poles as the route lists them (Codex, #635).
+        // A bus leg by its stop pair too, whichever pole it names (Codex, #635).
+        val later = legsOn.flatMapTo(HashSet()) { listOf(it.fromId, it.toId, it.fromArea, it.toArea).filter(String::isNotBlank) }
+            .flatMapTo(HashSet()) { sameStation(sequence, it) }
+            .let { ids -> ids + sequence.stopAreas.filterValues { it in ids }.keys }
+        val laterAt = legsOn.flatMap { listOfNotNull(it.fromAt, it.toAt) } + later.mapNotNull { placedIn(seen, it) }
+        if (laterAt.any { near(rider, it, AT_STOP_WITHIN_METERS) }) return null
+        // Every stop kept for the line's shape; one the trip goes on to is only never where they're past it (Codex, #635).
+        // Each way from where its own route places the stop they got off at, and only one far enough beyond it
+        // (Codex, #635). Every placed stop kept for being at one: a stop with no place leaves out only its own.
+        // A way calling it by another id with no place of its own is left out, never measured from another
+        // route's platform (Codex, #635).
+        val found = onwardFrom(ride, sequence, stops).mapNotNull { (offId, way) ->
+            (placedIn(sequence, offId) ?: off?.takeIf { offId == ride.toId })?.let { from -> from to way.map { id -> id to placedIn(seen, id) } }
+        }.filter { (from, _) -> beyond(from) }.let { all ->
+            // Once seen past it, only the ways on through where they were seen: their train runs one branch
+            // (Codex, #635).
+            // And on from there, never back along a line that doubles back (Codex, #635).
+            if (!following || trip.pastAtId.isBlank()) all
+            else all.mapNotNull { (from, way) ->
+                val at = way.indexOfFirst { it.first == trip.pastAtId }
+                if (at < 0) null else (way[at].second ?: from) to way.drop(at)
+            }.ifEmpty { all }
+        }
+        fun named(id: String) = seen.stopNames[id].orEmpty()
+        // The nearest such, not the first along the line: a bus's stops can be close enough for one fix to be at two (Codex, #635).
+        found.flatMap { it.second }.filter { (id, at) -> id !in later && at != null && near(rider, at, AT_STOP_WITHIN_METERS) }
+            .minByOrNull { (_, at) -> distance(rider.coordinates, at!!) }?.let { (id, _) -> return Past(index, id, named(id)) }
+        // Between them, near one way on from where they got off, the nearest stretch: each branch on its own
+        // (Codex, #635). A stretch only between two placed neighbours: a stop TfL gives no place for isn't
+        // bridged by a straight line, which a bend would make a false shortcut, but those either side of it
+        // still count (Codex, #635). Each stretch named by the stop it runs to.
+        val (stops, stretch) = found.mapNotNull { (from, stops) ->
+            val ats = listOf(from) + stops.map { it.second }
+            val segments = stops.indices.mapNotNull { k ->
+                val a = ats[k] ?: return@mapNotNull null
+                val b = ats[k + 1] ?: return@mapNotNull null
+                k to fromLine(rider.coordinates, a, b)
+            }
+            segments.minByOrNull { it.second }?.let { stops to it }
+        }.minByOrNull { it.second.second } ?: return null
+        val (k, offWay) = stretch
+        if (offWay + accuracy > ROUTE_WITHIN_METERS) return null
+        // The stop that stretch runs to: the one their train calls at next, by where they are along the line,
+        // not how far they are from where they got off, which a bend makes no measure (Codex, #635). Unless
+        // the trip goes there anyway, when the next after it.
+        val ahead = stops.drop(k).firstOrNull { it.first !in later } ?: return null
+        return Past(index, ahead.first, named(ahead.first))
+    }
+
+    /**
+     * Whether [rider] is back where they got off the ride [Past.rideIndex] or on toward the next, so a
+     * stop they were seen past ([ActiveTrip.pastLeg]) no longer stands: near where they got off, or
+     * near the next ride's boarding stop. [sequence] is the gone-past ride's line's route.
+     */
+    @WorkerThread
+    fun backFromPast(trip: ActiveTrip, rider: LocationFix, sequence: LineSequence?, nextAt: List<Coordinates> = emptyList()): Boolean {
+        if (trip.pastLeg !in trip.route.legs.indices) return false
+        val ride = offRide(trip, trip.pastLeg)
+        // Back toward where they got off, by any id a route calls it, each where it's placed (Codex, #635), or at
+        // the next ride's stop itself ([nextAt], where it's placed): a line gone past can run near it (Codex, #635).
+        // Without the line's route ([sequence] null), by where the Planner placed it alone (Codex, #635).
+        // A bus's by its pair's poles too, whichever the Planner named (Codex, #635).
+        val offAts = sequence?.let { route ->
+            stationPlaces(route, ride.toId) + ride.toArea.takeIf { it.isNotBlank() }?.let { stationPlaces(route, it) }.orEmpty()
+        }.orEmpty() + listOfNotNull(ride.toAt)
+        return offAts.any { near(rider, it, BACK_METERS) } ||
+            nextAt.any { near(rider, it, AT_STOP_WITHIN_METERS) }
+    }
+
+    /** The ride after [trip]'s ride gone past ([ActiveTrip.pastLeg]), the one they go on by, or null. */
+    fun rideAfterPast(trip: ActiveTrip): TripLeg? {
+        val index = (trip.pastLeg + 1 until trip.route.legs.size).firstOrNull { !trip.route.legs[it].isWalk } ?: return null
+        // As the line it's followed on runs it, where that's another of its lines ([ActiveTrip.vehicleLeg]): its
+        // own platform, which can be far from the plan's (Codex, #635).
+        return trip.vehicleLeg?.takeIf { index == trip.legIndex } ?: trip.route.legs[index]
+    }
+
+    /**
+     * How long after getting off a ride a rider can be seen past its stop ([pastStop]): the fixes asked
+     * for then (a walk's, a wait's) come no later, and a train's this long gone is somewhere else.
+     */
+    val PAST_WINDOW: Duration = Duration.ofMinutes(15)
+
+    /**
+     * How far beyond where they got off a rider must be seen to be past it ([pastStop]), their fix's
+     * uncertainty counted against it: further than a big station's entrances, or a road's two stops.
+     */
+    const val PAST_METERS = 500.0
+
+    /**
+     * Faster than this from where they got off, they're on a train, not walking ([pastStop]): a brisk
+     * walk is about 1.5 m/s, a run for a train not much more than this for long.
+     */
+    const val PAST_WALK_MPS = 2.5
+
+    /**
+     * How near where they got off a rider seen past it must be seen to be back ([backFromPast]): well inside
+     * [PAST_METERS], so a fix wavering about that distance doesn't let it go (Codex, #635), yet wide enough
+     * for a big station's entrances and platforms around the point it's placed at.
+     */
+    const val BACK_METERS = 250.0
+
+    /** How many of a line's stops past where a rider gets off are looked at ([onward]). */
+    const val PAST_STOPS = 3
 
     /**
      * The poles of stop pair [area] ("490G…", a road's poles together) that [sequence], a line's route,
@@ -1635,11 +1899,41 @@ object OnTheWay {
      * soon" for it is said again. Past the last leg is arrived; an earlier leg goes back to it, so a
      * tap made by mistake can be undone.
      */
-    fun atLeg(trip: ActiveTrip, index: Int, now: Instant): ActiveTrip = trip.copy(
-        legIndex = index.coerceIn(0, trip.route.legs.size), legStartedAt = now,
-        vehicleId = "", vehicleLeg = null, vehicleOffId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null, warnedLeg = -1, waitFrom = null, heldFrom = null,
-        onBoardSeen = false, seenAlongStop = -1, seenAlongAt = null, aheadLeg = -1, aheadStop = -1,
-    )
+    fun atLeg(trip: ActiveTrip, index: Int, now: Instant): ActiveTrip {
+        val to = index.coerceIn(0, trip.route.legs.size)
+        // The line the ride they're then off was ridden on: the one they're leaving, as when its train moves
+        // them on ([nextLeg]); the one they were already off, as it was; one skipped, or none, the plan's
+        // (Codex, #635).
+        val offIndex = lastRideOff(trip.copy(legIndex = to, boarded = false, onBoardSeen = false))
+        val offLeg = when (offIndex) {
+            null -> null
+            trip.legIndex -> trip.vehicleLeg.takeIf { trip.leg?.isWalk == false }
+            lastRideOff(trip) -> trip.offLeg
+            else -> null
+        }
+        // When they got off: now, leaving the ride by their word; as it was, off the same one; else unknown.
+        val offAt = when (offIndex) {
+            null -> null
+            trip.legIndex -> now.takeIf { trip.leg?.isWalk == false }
+            lastRideOff(trip) -> trip.offAt
+            else -> null
+        }
+        return settledPast(
+            trip.copy(
+                legIndex = to, legStartedAt = now,
+                vehicleId = "", vehicleLeg = null, offLeg = offLeg, offAt = offAt, vehicleOffId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null, warnedLeg = -1, waitFrom = null, heldFrom = null,
+                onBoardSeen = false, seenAlongStop = -1, seenAlongAt = null, aheadLeg = -1, aheadStop = -1,
+            ),
+        )
+    }
+
+    /**
+     * [trip] without the stop it was seen past ([ActiveTrip.pastLeg]) once the rider is no longer off that
+     * ride ([lastRideOff]): boarded on, or moved by their word, so going back never brings it back (Codex,
+     * #635). Unchanged otherwise.
+     */
+    fun settledPast(trip: ActiveTrip): ActiveTrip =
+        if (trip.pastAtId.isBlank() || lastRideOff(trip) == trip.pastLeg) trip else trip.copy(pastLeg = -1, pastAtId = "", pastAtName = "")
 
     /**
      * A step of a trip on the way, as its screen lists them and Back and Next move through them: a
@@ -1784,10 +2078,12 @@ object OnTheWay {
         // older snapshot never brings back what Keep going dismissed, nor sounds again what was heard (Codex on #519).
         trip.leftRide?.takeIf { step.onBoard && step == stepBefore(trip) && stepOf(it) == step }
             ?.let {
-                return it.copy(
-                    warnedLeg = -1, alertLeft = false, leftRide = null,
-                    disruptionsDismissed = it.disruptionsDismissed + trip.disruptionsDismissed,
-                    disruptionsHeard = it.disruptionsHeard + trip.disruptionsHeard,
+                return settledPast(
+                    it.copy(
+                        warnedLeg = -1, alertLeft = false, leftRide = null,
+                        disruptionsDismissed = it.disruptionsDismissed + trip.disruptionsDismissed,
+                        disruptionsHeard = it.disruptionsHeard + trip.disruptionsHeard,
+                    ),
                 )
             }
         val moved = if (!step.onBoard) {
@@ -1803,7 +2099,7 @@ object OnTheWay {
         // On board a ride and moved on by Next: kept, so Back can undo just that. Kept with no train
         // named too, so Back is on board as they said, not on one at the platform by then (Codex, PR #384).
         val left = trip.takeIf { stepOf(it).onBoard && step == stepAfter(it) }
-        return moved.copy(leftRide = left?.copy(leftRide = null))
+        return settledPast(moved.copy(leftRide = left?.copy(leftRide = null)))
     }
 
     /**
@@ -1890,7 +2186,9 @@ object OnTheWay {
         val leg = trip.leg
         val doneAt = if (leg?.isWalk == true) trip.legStartedAt.plus(leg.run) else trip.dueOffAt
         val from = (doneAt?.takeIf { it.isBefore(now) } ?: now).plus(leg?.changeAfter ?: Duration.ZERO)
-        val next = trip.copy(legIndex = trip.legIndex + 1, legStartedAt = from, vehicleId = "", vehicleLeg = null, vehicleOffId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null, waitFrom = null, onBoardSeen = false, seenAlongStop = -1, seenAlongAt = null, heldFrom = null)
+        val offRide = leg?.isWalk == false
+        val next = trip.copy(legIndex = trip.legIndex + 1, legStartedAt = from, vehicleId = "", vehicleLeg = null, offLeg = if (offRide) trip.vehicleLeg else trip.offLeg,
+            offAt = if (offRide) doneAt?.takeIf { it.isBefore(now) } ?: now else trip.offAt, vehicleOffId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null, waitFrom = null, onBoardSeen = false, seenAlongStop = -1, seenAlongAt = null, heldFrom = null)
         val onward = next.leg ?: return next to TripProgress.Arrived
         if (onward.isWalk) {
             val until = from.plus(onward.run)

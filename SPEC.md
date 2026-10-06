@@ -1910,7 +1910,18 @@ them there:
   "Jubilee: none soon at Bond Street"), and **the trip taking a branch by itself** because none of the
   plan's trains is listed (*Branches off the plan*; maintainer, 2026-10-06: the unexpected is said),
   "None direct to Morden · Change at Kennington", heard once and kept up until the rider is past the
-  ride to the change, said under the trip's step rather than as a card. Minor delays and the like never alert. A **bus** line's alert
+  ride to the change, said under the trip's step rather than as a card. **High** too: the rider **seen past
+  the stop they got off at** (maintainer, 2026-10-06: the one to say loudest), "Missed Liverpool Street",
+  first seen from the fixes the walk or wait after it already takes: within fifteen minutes of getting
+  off, at least 500 m beyond the stop (the fix's uncertainty counted against it), at or between the line's
+  next few stops, and faster than walking pace since getting off, so on a train; never at a stop the trip
+  goes on to anyway. Its card offers **Plan again from** where they are (the stop they're at, or the next
+  their train reaches), the plan's own stops being behind them. Where they went past is kept, through a
+  restart, until they're seen back where they got off or at the next ride's stop, or board on (seen or said);
+  fixes go on being asked for until then, or until the rider taps Keep going on it, which lets it go for
+  that ride (a battery cost only while it stands); its alert,
+  like every one, stands only while the trip's answer is live, and is back with the next refresh that works. Only a change is watched so:
+  arriving ends the trip, so the last stop isn't yet (`TODO.md`). Minor delays and the like never alert. A **bus** line's alert
   that names stops only off the rider's part of the route is left out, and the debug log says so
   (maintainer, 2026-10-01): TfL gives a bus diversion's stretch only as prose ("not serving stops
   between 'Bank Station' and 'Moorgate Station'"), read as the route page marks it, and a diversion at

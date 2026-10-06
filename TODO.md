@@ -1710,10 +1710,28 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [x] **Alert a branch the trip took by itself** (maintainer, 2026-10-06): sounds once through
             "route disruption" (no new channel), "None direct to … · Change at …", kept up silently
             until the rider is past the ride to the change; no card, as the step already says it.
-      - [ ] **Alert the rest of the unexpected** (maintainer, 2026-10-06: with the item above), the same
-            way: when the rider is seen on another train than the plan's, and, most urgently, when
-            they're seen past their change stop (what to do now: back from the next stop, or a new
-            route from where they are). Needs the tracker to notice both first.
+      - [x] **Alert a stop gone past** (maintainer, 2026-10-06: the one to say loudest): seen on the
+            ride's line beyond where they got off, at a train's pace, within 15 min, from the walk's or
+            wait's own fixes; High, "Missed …", with Plan again from where they are; kept until back.
+      - [ ] **Alert a rider on another train than the plan's** (maintainer, 2026-10-06), the same way,
+            once the tracker notices it (the item above on a branch taken without a tap).
+      - [ ] (Consider) **A stop gone past while the trip still has them on the ride**: with no calls
+            to move the trip on (a train not found), the ride isn't over, so the fixes after it aren't
+            read for this; the riding-by-position count could see them past it.
+      - [ ] **A trip's last stop gone past**: arriving forgets the trip, so a fix past the last ride's end
+            is never read for this; it needs the trip kept a while after arriving, with its own screen
+            state (Codex, #635).
+      - [ ] (Consider) **A stop gone past on a loop that calls at it twice**: the mark keeps a stop id, so
+            on a line calling at that stop again further on, following it can drop back to the first
+            visit; keep which visit it was (Codex, #635).
+      - [ ] **Don't move a trip on past a stop gone past by the timetable alone**: seen past a stop, the
+            trip can still take the next ride as boarded and done as its times go by, and the mark goes with
+            it; hold the trip there until boarding is seen or said, or they're seen back (Codex, #635). So too
+            a first sighting past it: the refresh that takes them as on the next train by its time alone
+            reads the fix after, and doesn't look (Codex, #635).
+      - [ ] (Consider) **Read the two lines' routes together when seeing a rider back from a stop gone past**:
+            one slow read can age a fix out before the other's places are looked at; the next refresh, with
+            both cached, sees it (Codex, #635).
       - [x] **Change branch, from the trip's screen, riding or waiting** (maintainer, 2026-10-05):
             **Other routes** under the board, and under the step on board (riding, or lost on a train
             that changed its branch), lists the branches still ahead and reroutes from the one picked,
