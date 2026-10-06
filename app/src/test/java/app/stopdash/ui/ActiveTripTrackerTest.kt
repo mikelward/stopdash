@@ -1703,6 +1703,8 @@ class ActiveTripTrackerTest {
         assertEquals("7", tracker.trip.value?.vehicleId)
         assertTrue(tracker.trip.value?.boarded == true)
         assertEquals("B", (tracker.progress.value as TripProgress.Riding).nextStop)
+        // 7's calls, read to place them, are the ride's own answer: its time stays should the next refresh fail (Codex, #611).
+        assertEquals(now, tracker.answeredAt.value)
         assertEquals(tracker.trip.value, kept)
         assertTrue(logged.none { "51." in it })
     }
@@ -3473,6 +3475,28 @@ class ActiveTripTrackerTest {
         now = at(5).plusSeconds(10)
         tracker.refresh()
         assertFalse(ActiveTripTracker.isCurrent(tracker.updatedAt.value, now))
+    }
+
+    @Test
+    fun `a failed refresh keeps when the step was last answered, for its time left to stay`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        // Started, not yet asked: no answer to keep a time from.
+        assertNull(tracker.answeredAt.value)
+        tracker.refresh()
+        val answered = now
+        assertEquals(answered, tracker.answeredAt.value)
+        // TfL out of reach: no longer current, but the last answer's time is kept.
+        failing = true
+        now = at(5)
+        tracker.refresh()
+        assertNull(tracker.updatedAt.value)
+        assertEquals(answered, tracker.answeredAt.value)
+        // A step moved on by hand has no answer of its own: nothing kept until TfL answers for it.
+        tracker.goTo(Step(0), Step(0, onBoard = true))
+        assertNull(tracker.answeredAt.value)
     }
 
     @Test
@@ -5292,6 +5316,21 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `a ride entered as its lookup fails has no answer of its own to keep a time from`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        tracker.start(route, "C", readyAt = at(3))
+        now = at(3)
+        unknownStops += "A"
+        // The walk runs out its time and the ride's lookup fails in the same refresh: "Updating…", not
+        // a time kept from an answer the ride never had (Codex, #611).
+        tracker.refresh()
+        assertEquals(1, tracker.trip.value?.legIndex)
+        assertTrue(tracker.failed.value)
+        assertNull(tracker.answeredAt.value)
+    }
+
+    @Test
     fun `a failed board read as the walk ends isn't asked for again to pick the train`() = runTest {
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         departures["A"] = listOf(train("3", 6))
@@ -5327,6 +5366,8 @@ class ActiveTripTrackerTest {
         trains["3"] = emptyList()
         tracker.refresh()
         assertTrue(tracker.progress.value is TripProgress.Walking)
+        // The ride's answer moved the trip on: the leg it moved to has had none of its own (Codex, #611).
+        assertNull(tracker.answeredAt.value)
         assertEquals(second, tracker.nextBoard.value?.ride)
         assertEquals(departures["D"], tracker.nextBoard.value?.departures)
     }

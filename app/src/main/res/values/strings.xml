@@ -791,6 +791,11 @@
     <string name="on_the_way_due">Due in %1$d min</string>
     <!-- In place of a train's time or stops, back after a while away, until the next answer. -->
     <string name="on_the_way_updating">Updating…</string>
+    <!-- In place of a ride's stops (or a train's due time) once the last answer is too old to stand
+         behind, while the step's last known time stays beside it. -->
+    <string name="on_the_way_checking">Checking…</string>
+    <!-- As on_the_way_checking, with the step's last known time (%1$s, "3 min · 09:25"), where there's one line. -->
+    <string name="on_the_way_checking_time">Checking… · %1$s</string>
     <!-- The trip couldn't be saved on the device (storage full or failing): it may end, or come back out of date, if the app closes. -->
     <string name="on_the_way_not_kept">Couldn\'t save the trip on this phone</string>
     <!-- Android refused to follow the trip with the app closed; reopening the app tries again. -->
@@ -858,6 +863,8 @@
     <string name="on_the_way_lost_cable_car">Can\'t find your cable car</string>
     <string name="on_the_way_arrived">You\'ve arrived</string>
     <string name="on_the_way_failed">Couldn\'t update just now</string>
+    <!-- The ongoing notification's line after a failed update, with the step's last known time (%1$s, "16 min · 09:25"). -->
+    <string name="on_the_way_failed_time">Couldn\'t update · %1$s</string>
     <string name="on_the_way_alerts_off">Get-off alerts are off</string>
     <string name="get_off_soon_channel">Get off soon</string>
     <!-- The stop being next, %1$s the stop: the get-off-soon alert's title, and the next step on the trip's card,

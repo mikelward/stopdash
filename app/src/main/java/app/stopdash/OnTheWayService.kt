@@ -26,7 +26,10 @@ import app.stopdash.domain.awaitRefresh
 import app.stopdash.domain.refreshFix
 import app.stopdash.ui.ActiveTripTracker
 import app.stopdash.ui.ON_THE_WAY_REFRESH
+import app.stopdash.ui.fromTfl
 import app.stopdash.ui.nextStepText
+import app.stopdash.ui.stepTime
+import app.stopdash.ui.stepTimeText
 import app.stopdash.watch.WatchTripSync
 import java.time.Duration
 import java.time.Instant
@@ -68,7 +71,7 @@ class OnTheWayService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val tracker = MainActivity.activeTrip(applicationContext)
         OnTheWayNotification.ensureChannel(this)
-        val first = OnTheWayNotification.build(this, tracker.trip.value, tracker.progress.value, tracker.failed.value, tracker.updatedAt.value, Instant.now())
+        val first = OnTheWayNotification.build(this, tracker.trip.value, tracker.progress.value, tracker.failed.value, tracker.updatedAt.value, Instant.now(), tracker.answeredAt.value)
         // Location too when it's allowed: a fix just after boarding shows a rider left behind.
         val canLocate = locationAllowed()
         val withLocation = enterForeground(canLocate, warn = { StopdashDebugLog.warning("on the way: %s", it) }) { type ->
@@ -89,10 +92,11 @@ class OnTheWayService : Service() {
             awake = awake ?: OnTheWayWakeLock.acquire(this)
             following = scope.launch {
                 // Shown again on each change, and on each tick, so its minutes count down and an answer
-                // grown old turns to Updating… though nothing else changed.
+                // grown old turns to Checking… (or Updating…) though nothing else changed.
                 val shown = launch {
-                    combine(tracker.trip, tracker.progress, tracker.failed, tracker.updatedAt, ticks(NOTIFICATION_TICK)) { trip, progress, failed, updatedAt, _ ->
-                        if (trip != null) OnTheWayNotification.show(this@OnTheWayService, trip, progress, failed, updatedAt)
+                    val answers = combine(tracker.updatedAt, tracker.answeredAt, ::Pair)
+                    combine(tracker.trip, tracker.progress, tracker.failed, answers, ticks(NOTIFICATION_TICK)) { trip, progress, failed, (updatedAt, answeredAt), _ ->
+                        if (trip != null) OnTheWayNotification.show(this@OnTheWayService, trip, progress, failed, updatedAt, answeredAt)
                     }.collect()
                 }
                 // The trip on a paired watch with the app, for as long as it's followed here.
@@ -359,10 +363,16 @@ internal object OnTheWayNotification {
 
     /**
      * The notification for [trip] at [progress] at [now]; [failed] says it isn't current, and a train's
-     * time or stops from no recent answer ([updatedAt], as on the trip's screen) say it's updating.
+     * stops from no recent answer ([updatedAt], as on the trip's screen) say "Checking…" beside the
+     * step's last known time where it had an answer ([answeredAt]), or say it's updating where not.
      */
-    fun build(context: Context, trip: ActiveTrip?, progress: TripProgress?, failed: Boolean, updatedAt: Instant?, now: Instant): Notification {
-        val (title, detail) = nextStepText(context.resources, progress, now, current = ActiveTripTracker.isCurrent(updatedAt, now))
+    fun build(context: Context, trip: ActiveTrip?, progress: TripProgress?, failed: Boolean, updatedAt: Instant?, now: Instant, answeredAt: Instant? = null): Notification {
+        val current = ActiveTripTracker.isCurrent(updatedAt, now)
+        val (title, detail) = nextStepText(context.resources, progress, now, current, asOf = answeredAt)
+        // Failed with an answer of the step's own: the failure said, the last known time kept beside it, as the screen keeps it.
+        val failedText = (stepTime(progress, current = true, now).takeIf { !current && fromTfl(progress) && answeredAt != null })
+            ?.let { context.getString(R.string.on_the_way_failed_time, stepTimeText(context.resources, it, now)) }
+            ?: context.getString(R.string.on_the_way_failed)
         val open = Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             .putExtra(GetOffSoonAlert.EXTRA_OPEN_ON_THE_WAY, true)
@@ -370,7 +380,7 @@ internal object OnTheWayNotification {
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_appbar_route_arrow)
             .setContentTitle(title)
-            .setContentText(if (failed) context.getString(R.string.on_the_way_failed) else detail)
+            .setContentText(if (failed) failedText else detail)
             .setSubText(trip?.let { context.getString(R.string.on_the_way_title, it.destinationName) })
             .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
             .setOngoing(true)
@@ -380,10 +390,10 @@ internal object OnTheWayNotification {
             .build()
     }
 
-    fun show(context: Context, trip: ActiveTrip, progress: TripProgress?, failed: Boolean, updatedAt: Instant?) {
+    fun show(context: Context, trip: ActiveTrip, progress: TripProgress?, failed: Boolean, updatedAt: Instant?, answeredAt: Instant? = null) {
         if (!GetOffSoonAlert.canNotify(context)) return
         try {
-            NotificationManagerCompat.from(context).notify(ID, build(context, trip, progress, failed, updatedAt, Instant.now()))
+            NotificationManagerCompat.from(context).notify(ID, build(context, trip, progress, failed, updatedAt, Instant.now(), answeredAt))
         } catch (e: SecurityException) {
             StopdashDebugLog.warning("on the way: %s", "ongoing notification refused: ${e::class.simpleName}")
         }

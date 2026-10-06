@@ -905,6 +905,7 @@ class MainActivity : ComponentActivity() {
                 }
                 val onTheWayProgress by tracker.progress.collectAsStateWithLifecycle()
                 val onTheWayUpdatedAt by tracker.updatedAt.collectAsStateWithLifecycle()
+                val onTheWayAnsweredAt by tracker.answeredAt.collectAsStateWithLifecycle()
                 val openOnTheWayAsked by openOnTheWay.collectAsStateWithLifecycle()
                 LaunchedEffect(openOnTheWayAsked) {
                     if (openOnTheWayAsked) {
@@ -985,7 +986,7 @@ class MainActivity : ComponentActivity() {
                         startOnTheWay(route, destinationName, readyAt, destinations, destinationIds, destinationStopId, false)
                     },
                     LocalOnTheWayBanner provides onTheWayTrip?.let { trip ->
-                        OnTheWayBannerState(trip, onTheWayProgress, onTheWayUpdatedAt) { onTheWayOpen = true }
+                        OnTheWayBannerState(trip, onTheWayProgress, onTheWayUpdatedAt, onTheWayAnsweredAt) { onTheWayOpen = true }
                     },
                 ) {
                     NearbyArea(
@@ -1042,6 +1043,7 @@ class MainActivity : ComponentActivity() {
                                     onBack = { if (onTheWayProgress == TripProgress.Arrived) end() else onTheWayOpen = false },
                                     alertsOff = alertsOff,
                                     current = ActiveTripTracker.isCurrent(onTheWayUpdatedAt, now),
+                                    asOf = onTheWayAnsweredAt,
                                     notKept = notKept,
                                     endFailed = endFailed,
                                     appOpenOnly = appOpenOnly,

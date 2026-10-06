@@ -70,6 +70,16 @@ class OnTheWayNotificationTest {
     }
 
     @Test
+    fun `a failed update keeps the step's last known time beside it`() {
+        // An answer of the step's own before the failure: its time stays, the failure still said (Codex, #611).
+        val failed = OnTheWayNotification.build(app, trip, riding, failed = true, updatedAt = null, now = now, answeredAt = now.minusSeconds(120))
+        assertEquals("Couldn't update · 12 min · 08:14", failed.extras.getString(Notification.EXTRA_TEXT))
+        // Only grown old, not failed: the stops are checked, the time kept.
+        val old = OnTheWayNotification.build(app, trip, riding, failed = false, updatedAt = null, now = now, answeredAt = now.minusSeconds(120))
+        assertEquals("Checking… · 12 min · 08:14", old.extras.getString(Notification.EXTRA_TEXT))
+    }
+
+    @Test
     fun `a train's time from no recent answer says it's updating, not as current`() {
         val waiting = TripProgress.Waiting(leg, now.plus(Duration.ofMinutes(4)))
         // Restored after the app was closed: no answer yet, so the old time isn't stood behind.

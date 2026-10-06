@@ -86,9 +86,10 @@ internal object WatchTripSync {
     suspend fun follow(context: Context, tracker: ActiveTripTracker) {
         val app = context.applicationContext
         val channel = DataLayerWatchChannel(app, WriteGenerations(app.getSharedPreferences("watch_sync", Context.MODE_PRIVATE)))
-        combine(tracker.trip, tracker.progress, tracker.updatedAt, tracker.nextBoard, merge(ticks(), routesLoaded.drop(1).map { })) { trip, progress, updatedAt, board, _ ->
-            TripState(trip, progress, updatedAt, board)
-        }.collectLatest { (trip, progress, updatedAt, board) ->
+        val answers = combine(tracker.updatedAt, tracker.answeredAt, ::Pair)
+        combine(tracker.trip, tracker.progress, answers, tracker.nextBoard, merge(ticks(), routesLoaded.drop(1).map { })) { trip, progress, (updatedAt, answeredAt), board, _ ->
+            TripState(trip, progress, updatedAt, board, answeredAt)
+        }.collectLatest { (trip, progress, updatedAt, board, answeredAt) ->
             if (trip == null) return@collectLatest
             // The home-screen widget shows the same trip (SPEC *On the way*). It goes first and on its own:
             // a watch lookup that stalls can't keep it from the trip (Codex on #600).
@@ -96,7 +97,7 @@ internal object WatchTripSync {
             var built: WatchTrip? = null
             suspend fun build(): WatchTrip = built ?: run {
                 val now = Instant.now()
-                val (title, detail) = nextStepText(app.resources, progress, now, current = ActiveTripTracker.isCurrent(updatedAt, now))
+                val (title, detail) = nextStepText(app.resources, progress, now, current = ActiveTripTracker.isCurrent(updatedAt, now), asOf = answeredAt)
                 // The trains, their poles and the screen's note, all worked out on IO: nothing that grows
                 // with the board runs on the service's main-thread scope.
                 val (found, note) = withContext(Dispatchers.IO) { trainsFor(app, trip, board, now) }
@@ -294,6 +295,7 @@ internal object WatchTripSync {
         val progress: app.stopdash.domain.TripProgress?,
         val updatedAt: Instant?,
         val board: ActiveTripTracker.NextBoard?,
+        val answeredAt: Instant?,
     )
 }
 

@@ -159,6 +159,17 @@ class ActiveTripTracker(
     private val _updatedAt = MutableStateFlow<Instant?>(null)
     val updatedAt: StateFlow<Instant?> = _updatedAt.asStateFlow()
 
+    // When the step as shown was last answered by TfL, kept through a failed refresh (unlike
+    // [updatedAt]) so a surface can keep that answer's time left while it checks (SPEC principle 2)
+    // rather than none; null where the step has no answer of its own yet (a new trip, a step moved on,
+    // a reroute).
+    private val _answeredAt = MutableStateFlow<Instant?>(null)
+    val answeredAt: StateFlow<Instant?> = _answeredAt.asStateFlow()
+
+    // The step [answeredAt] answered ([answeredStep]): a step since entered without a lookup of its own
+    // (a walk ended into a ride, say) has no answer, however recent the last one (Codex, #611).
+    private var answeredFor: List<Any?>? = null
+
     // Whether the trip couldn't be saved on the device (a restart may lose it, or bring it back out of date): said, not hidden.
     private val _notKept = MutableStateFlow(false)
     val notKept: StateFlow<Boolean> = _notKept.asStateFlow()
@@ -470,6 +481,7 @@ class ActiveTripTracker(
                 planned.copy(onFootChanges = withContext(io) { OnTheWay.changesOnFoot(planned.route, stations()) })
             }
             _updatedAt.value = null
+            _answeredAt.value = null
             boardSeenRide = null
             boardSeen.clear()
             rideDirections.clear()
@@ -544,6 +556,7 @@ class ActiveTripTracker(
             // The step moved to has no answer of its own yet: the last one's isn't passed off as its
             // (a ride's time, its next stop still blank), which waits for the pick below (Codex, PR #384).
             _updatedAt.value = null
+            _answeredAt.value = null
             _progress.value = standing(moved, now, picking = true)
             settleBoard()
             val boards = HashMap<TripLeg, Result<NextBoard>>()
@@ -612,6 +625,7 @@ class ActiveTripTracker(
             _trip.value = taken.copy(alertLeft = false)
             // The rerouted ride has no answer of its own yet: the last one's isn't passed off as its.
             _updatedAt.value = null
+            _answeredAt.value = null
             _progress.value = standing(taken, now)
             settleBoard()
             val boards = HashMap<TripLeg, Result<NextBoard>>()
@@ -766,6 +780,7 @@ class ActiveTripTracker(
         _nextBoard.value = null
         _failed.value = false
         _updatedAt.value = null
+        _answeredAt.value = null
         _notKept.value = false
         unsaved = false
         rideDirections.clear()
@@ -1146,6 +1161,8 @@ class ActiveTripTracker(
         // Whether this step already looked for a train on its leg: none found, it isn't looked for
         // again at once (a TfL request each), only on the next refresh.
         var searched = false
+        // The leg TfL answered for in this step, if it did: only a step still on it is that answer's ([answeredAt]).
+        var looked: Int? = null
         // Seen along the ride while its train is still awaited: they're on a train that has left the
         // boarding stop, whichever the trip was following (maintainer, 2026-09-29).
         // The leg this step began on, once the fix has moved it: [boardedAlong] can finish the ride.
@@ -1154,6 +1171,8 @@ class ActiveTripTracker(
         if (along != null) {
             trip = along.trip
             calls = along.calls
+            // Their train found by where they were seen, its calls read: the ride's own answer (Codex, #611).
+            looked = trip.legIndex.takeIf { along.calls != null && !along.failed }
             // Seen where they get off, the ride is done: a "get off soon" said for it is taken back, as when
             // a fix moves them on above (Codex, PR #449).
             if (before.warnedLeg == before.legIndex && trip.legIndex != before.legIndex) trip = trip.copy(alertLeft = true)
@@ -1182,6 +1201,7 @@ class ActiveTripTracker(
                 } else {
                     calls = vehicles.vehicleCalls(trip.vehicleId, OnTheWay.followedLine(trip))
                 }
+                looked = trip.legIndex.takeIf { !failed }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TflException.NotFound) {
@@ -1210,6 +1230,8 @@ class ActiveTripTracker(
             // longer stood behind on any surface (its time, stops left and get off soon wait).
             _failed.value = true
             _updatedAt.value = null
+            // The last answer's time stays only for the step it answered.
+            if (answeredStep(trip) != answeredFor) _answeredAt.value = null
             // A "time to board" counting down to a time no longer stood behind comes down with it
             // (D4), for good: it has been heard, and bringing it back could bring back one the rider
             // swiped away, which nothing here can see once the refresh has failed (Codex, PR #440).
@@ -1329,6 +1351,14 @@ class ActiveTripTracker(
         // no arrival: [OnTheWay.eta]), so the step is current; the failure is still said.
         _failed.value = positional
         _updatedAt.value = now
+        // Only for the leg answered: one the answer moved the trip on to (off a train straight onto the next
+        // ride, say) has had no answer of its own (Codex, #611).
+        if (looked == next.legIndex) {
+            _answeredAt.value = now
+            answeredFor = answeredStep(next)
+        } else if (answeredStep(next) != answeredFor) {
+            _answeredAt.value = null
+        }
         if (progress == TripProgress.Arrived) {
             // Forgotten on the device first: the trip gone from the screen can cancel the caller.
             // One that can't be would come back on the next start, so it's kept, said, and tried
@@ -1862,6 +1892,9 @@ class ActiveTripTracker(
     // no train named: the rider said they were on and none at the platform was found then, so it
     // can't find their train, not that they're riding (Codex, PR #384). Unless [picking], where a
     // pick follows at once ([goTo]) to say which.
+    // Which step an answer is for: its leg, whether the rider's on board, and the train followed.
+    private fun answeredStep(trip: ActiveTrip): List<Any?> = listOf(trip.legIndex, trip.boarded, trip.vehicleId)
+
     private fun standing(trip: ActiveTrip, now: Instant, picking: Boolean = false): TripProgress {
         val leg = trip.leg ?: return TripProgress.Arrived
         return when {

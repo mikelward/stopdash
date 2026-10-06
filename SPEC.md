@@ -1759,7 +1759,8 @@ them there:
   long is left and when it gets there; then the step ("Walk to Stratford"), the one large line, so it
   reads first, over a row with a ride's stops left ("4 stops", "Next stop") and, at its end, how long
   until the step's done and when ("16 min · 08:18"), the minutes first. Where the step's time isn't
-  known or no longer stands, its own words stay ("Finding your train…", "Updating…"). A time is
+  known, its own words stay ("Finding your train…", "Updating…"); from an answer that no longer
+  stands, its time stays beside "Checking…" in place of the stops. A time is
   never squeezed or cut: where a row's text and time don't both fit (a narrow window, large text),
   the text yields (the time keeps its one line wherever it fits beside the text's last stub), its places shortened as a board's are ("Upper Taxi Road" → "U. Taxi Rd", then
   the shortest form) and cut with a single "…" only as a last resort. The step shortens its places'
@@ -1778,8 +1779,9 @@ them there:
   without a time. Like the step, it claims no time it can't take from a train: none with no train on
   that board either, while where the rider gets off is beyond TfL's predictions, or for
   a rider on board by where they were seen until their train is told, nor once the time it's counted
-  from (TfL's, or the end of a walk or change) has passed without a newer one. It waits, as the step's own times do, while the
-  last answer is too old to stand behind.
+  from (TfL's, or the end of a walk or change) has passed without a newer one. While the last answer
+  is too old to stand behind, it shows as that answer had it while the step's row says "Checking…",
+  as the step's own times do.
 - **Following it.** The trip asks TfL for **the followed train's calls ahead of it**
   (`/Vehicle/{id}/Arrivals`, in one request) about every 30 s while it is shown, and sooner on the
   move: while the app is open and a fix could move the trip on, each new fix as the rider moves
@@ -1823,9 +1825,15 @@ them there:
   first held, since the next lap would have taken them away. A rider still there after that time may
   have missed it, however late the train has been called since, which is left to the check for one
   left behind. Only the fixes the trip already takes count: none is asked for this.
-- **Only a recent answer is live.** A train's time, the stops left and "get off soon" show only
-  while the last answer is under about a minute and a quarter old; back after a while away, the
-  step stays but its details say **Updating…** until the next answer (principle 1).
+- **Only a recent answer is live.** A train's time, the stops left and "get off soon" show as live
+  only while the last answer is under about a minute and a quarter old. Older, or after a failed
+  refresh, the step stays, its stops (or a train's due time) say **Checking…**, and the time left and
+  arrival keep the step's last answer's (principles 1 and 2; maintainer, 2026-10-06), a time already
+  gone by dropped, and "get off soon" withheld; with no answer for the step yet (just moved on, a
+  reroute, a restart) a time or stops held from before say **Updating…** until the next one (a wait
+  with no train yet still says "Finding your train…"). The card, the main view's banner, the
+  ongoing notification and the watch alike; the notification, one line, says "Couldn't update" beside
+  the time after a failed refresh.
 - **Time left on the ride** beside its stops (maintainer, 2026-09-29): "6 stops (~6 min) · next …",
   counted to when the train followed is due where they get off, as the boards count a time; none while
   that stop is beyond TfL's predictions, as no time is claimed there.

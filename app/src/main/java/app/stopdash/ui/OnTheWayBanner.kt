@@ -18,9 +18,16 @@ import java.time.Instant
 
 /**
  * A trip on the way, for the card pinned atop the main view: the [trip], where it stands, when that
- * was last brought up to date ([updatedAt], see [ActiveTripTracker.isCurrent]), and [onOpen].
+ * was last brought up to date ([updatedAt], see [ActiveTripTracker.isCurrent]), when the step was last
+ * answered ([answeredAt], its time left kept once no longer current), and [onOpen].
  */
-class OnTheWayBannerState(val trip: ActiveTrip, val progress: TripProgress?, val updatedAt: Instant?, val onOpen: () -> Unit)
+class OnTheWayBannerState(
+    val trip: ActiveTrip,
+    val progress: TripProgress?,
+    val updatedAt: Instant?,
+    val answeredAt: Instant? = null,
+    val onOpen: () -> Unit,
+)
 
 /** The trip on the way, provided by the activity; null with none (or in a test). */
 val LocalOnTheWayBanner = compositionLocalOf<OnTheWayBannerState?> { null }
@@ -67,8 +74,9 @@ internal fun OnTheWayBanner(state: OnTheWayBannerState, now: Instant, modifier: 
     // Judged against the live clock and the live state's own update: an answer it has since withdrawn
     // (a failed refresh, a step moved on by hand) isn't current (Codex, #526).
     val current = ActiveTripTracker.isCurrent(state.updatedAt, now)
-    // Held back, as on the trip screen, while the answer it's from is too old to stand behind.
-    val stale = !current && fromTfl(progress)
+    // Held back, as on the trip screen, while the answer it's from is too old to stand behind, unless
+    // the step had an answer of its own, whose time stays while its stops are checked.
+    val stale = !current && fromTfl(progress) && state.answeredAt == null
     NextStep(
         state.trip.destinationName,
         // Timed from the live progress and clock ([OnTheWay.etaFrom]), so it counts down and drops once
@@ -77,6 +85,7 @@ internal fun OnTheWayBanner(state: OnTheWayBannerState, now: Instant, modifier: 
         progress,
         now,
         current,
+        asOf = state.answeredAt,
         modifier = modifier.clickable(role = Role.Button, onClick = state.onOpen),
         tag = "onTheWayBanner",
         // Until the first frame is in, the card reads "On the way" (a screen reader's label too), its

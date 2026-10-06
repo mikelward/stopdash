@@ -112,6 +112,9 @@ internal fun OnTheWayScreen(
     onEnd: () -> Unit,
     onBack: () -> Unit,
     current: Boolean = true,
+    // When the step's last answer was had ([ActiveTripTracker.answeredAt]): while it's no longer
+    // [current], its time stays beside "Checking…" (principle 2); null holds it back.
+    asOf: Instant? = null,
     // The trip couldn't be saved on the device, so a restart may lose it or bring it back out of date: said, not hidden.
     notKept: Boolean = false,
     // End trip couldn't forget the trip on the device, so it's still on the way.
@@ -223,19 +226,20 @@ internal fun OnTheWayScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxSize().padding(padding).testTag("onTheWay"),
         ) {
-            // Time left and when they get there (maintainer, 2026-10-01). Not from an answer too old to
-            // stand behind ([current]): it waits, as the step's own times do.
-            // The board's next train only for the ride the rider is still to board: another ride's board
-            // times nothing here.
-            val nextDue = nextTrains?.takeIf { it.ride == (progress as? TripProgress.Waiting)?.leg ?: (progress as? TripProgress.Lost)?.leg }?.nextDue
-            val eta = trip?.let { t -> etaTail?.let { OnTheWay.etaFrom(t, progress, now, it, nextDue) } }
+            // Time left and when they get there (maintainer, 2026-10-01). From an answer too old to stand
+            // behind ([current]), the step's own answer's alone, beside "Checking…", as its own time is.
             val stale = !current && fromTfl(progress)
+            // The board's next train only for the ride the rider is still to board: another ride's board
+            // times nothing here. Not while stale: the answered train's time gone by doesn't say they missed
+            // it, so the arrival goes with it rather than move to another train (Codex, #611).
+            val nextDue = nextTrains?.takeIf { !stale && it.ride == (progress as? TripProgress.Waiting)?.leg ?: (progress as? TripProgress.Lost)?.leg }?.nextDue
+            val eta = trip?.let { t -> etaTail?.let { OnTheWay.etaFrom(t, progress, now, it, nextDue) } }
             // The card leads with the whole trip, then the step at hand (maintainer, 2026-10-03). The next
             // ride's trains sit right under it, the board the rider is heading for, before the route, and
             // close enough to read as the card's own (4dp, as the board's rows; maintainer, 2026-10-03).
             item(key = "next") {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    NextStep(destination, eta?.takeIf { !stale }, progress, now, current)
+                    NextStep(destination, eta?.takeIf { !stale || asOf != null }, progress, now, current, asOf = asOf)
                     // On board the ride the board is for (its train taken to have left with them, say): the
                     // board's branches don't say which forks are behind them, so the ride's own stand in (Codex, #586).
                     val aboardBoard = nextTrains != null && trip != null && (trip.boarded || trip.onBoardSeen) && sameRide(nextTrains.ride, trip.leg)
@@ -1032,9 +1036,14 @@ internal fun NextStep(
     // out on a worker ([OnTheWayBanner]); null works them out here.
     destinationForms: List<String>? = null,
     titleForms: List<String>? = null,
+    // When the step's last answer was had ([ActiveTripTracker.answeredAt]): while it's too old to stand
+    // behind ([current]), its time still shows, its stops "Checking…"; null holds them back.
+    asOf: Instant? = null,
 ) {
-    val detail = nextStepText(progress, now, current).second
-    val at = stepTime(progress, current, now)
+    val detail = nextStepText(progress, now, current, asOf).second
+    // From an answer too old to stand behind, its time stays while its stops are checked (maintainer, 2026-10-06).
+    val checking = !current && fromTfl(progress) && asOf != null
+    val at = stepTime(progress, current || checking, now)
     // Timed, the step's time stands in for its own words, which say the same; a ride's stops stay beside
     // it, as a walk's distance left does, where a fix has placed the rider (maintainer, 2026-10-03).
     // Not until the rider's distance units are known (null while their choice loads): never a moment in
@@ -1047,6 +1056,8 @@ internal fun NextStep(
         StopDistance.label(walkLeft, system).let { if (walking?.estimated == true) stringResource(R.string.on_the_way_walk_left_estimated, it) else it }
     } else if (at == null) {
         detail
+    } else if (checking) {
+        stringResource(R.string.on_the_way_checking)
     } else if (progress is TripProgress.Riding) {
         LocalConfiguration.current // Read again on a configuration change (locale, font scale).
         rideStopsLeft(LocalContext.current.resources, progress)
@@ -1156,8 +1167,14 @@ internal fun stepTime(progress: TripProgress?, current: Boolean, now: Instant): 
  * as the boards count, then the clock time (maintainer, 2026-10-03).
  */
 @Composable
-private fun stepTimeText(at: Instant, now: Instant): String =
-    stringResource(R.string.on_the_way_step_time, CLOCK.format(at.atZone(LONDON)), Countdown.minutes(at, now).toInt())
+private fun stepTimeText(at: Instant, now: Instant): String {
+    LocalConfiguration.current // Read again on a configuration change (locale, font scale).
+    return stepTimeText(LocalContext.current.resources, at, now)
+}
+
+/** [stepTimeText] from [resources], for the notification and the watch. */
+internal fun stepTimeText(resources: Resources, at: Instant, now: Instant): String =
+    resources.getString(R.string.on_the_way_step_time, CLOCK.format(at.atZone(LONDON)), Countdown.minutes(at, now).toInt())
 
 /** The next step's card colors: "get off soon" stands out, the one step with a deadline a stop away. */
 @Composable
@@ -1199,9 +1216,9 @@ internal fun destinationTitleForms(resources: Resources, destination: String): L
 
 /** What the rider does next, as a title and a detail line — the trip's screen and its banner alike. */
 @Composable
-internal fun nextStepText(progress: TripProgress?, now: Instant, current: Boolean = true): Pair<String, String> {
+internal fun nextStepText(progress: TripProgress?, now: Instant, current: Boolean = true, asOf: Instant? = null): Pair<String, String> {
     LocalConfiguration.current // Read again on a configuration change (locale, font scale).
-    return nextStepText(LocalContext.current.resources, progress, now, current)
+    return nextStepText(LocalContext.current.resources, progress, now, current, asOf = asOf)
 }
 
 /**
@@ -1215,16 +1232,23 @@ internal fun nextStepText(
     now: Instant,
     current: Boolean = true,
     place: (String) -> String = { it },
+    // When the step's last answer was had ([ActiveTripTracker.answeredAt]): while [current] is false its
+    // time still shows beside "Checking…"; null says "Updating…".
+    asOf: Instant? = null,
 ): Pair<String, String> {
-    // A train's time or stops from an answer too old to stand behind ([current]): the step stays,
-    // its details wait for the next answer.
+    // A train's time or stops from an answer too old to stand behind ([current]): the step stays, its
+    // stops say "Checking…" while the last answer's time left stays beside them (maintainer, 2026-10-06),
+    // or "Updating…" where the step has no answer of its own.
     // Nor "Get off at": the stop being next is what that answer said, and it no longer stands, so the
     // step is the ride until the next one says (Codex, PR #456).
     // Seen on board or not: once told to get off, it doesn't go back to boarding.
     if (fromTfl(progress) && !current) {
         val title = (progress as? TripProgress.Riding)?.takeIf { it.getOffSoon }?.let { resources.getString(R.string.on_the_way_ride_to, place(it.leg.toName)) }
             ?: nextStepText(resources, progress, now, place = place).first
-        return title to resources.getString(R.string.on_the_way_updating)
+        if (asOf == null) return title to resources.getString(R.string.on_the_way_updating)
+        // A time gone by is dropped ([stepTime]): "Checking…" alone, never a train taken as not found.
+        val at = stepTime(progress, current = true, now)
+        return title to (at?.let { resources.getString(R.string.on_the_way_checking_time, stepTimeText(resources, it, now)) } ?: resources.getString(R.string.on_the_way_checking))
     }
     return when (progress) {
         // The line of the train followed, which can be another of the ride's lines than the Planner's.
