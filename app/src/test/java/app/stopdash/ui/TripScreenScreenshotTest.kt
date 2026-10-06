@@ -4213,6 +4213,32 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun line_page_nearest_station() {
+        // King's Cross St. Pancras nearest the rider, Bank starred: big interchanges standing in for the
+        // rider's own. The nearest stays on the page, saying why, with no star; the closure still folds.
+        val line = TripLine(northernLeg(), northernPartSuspended, nearby = setOf("940GZZLUKSX"))
+        showLinePage(line, northernLine, shown = "King's Cross St. Pancras", starred = setOf("940GZZLUBNK"))
+        lineMapRow("King's Cross St. Pancras").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Nearest"))
+        lineMapRow("Nearest")
+        lineMapRow("Bank ★")
+        lineMapRow("2 stations \u26D4")
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText("King's Cross St. Pancras"))
+        captureSnapshot("line-page-nearest.png")
+    }
+
+    @Test
+    fun the_nearest_station_closed_says_both() {
+        // A made-up closure through King's Cross St. Pancras, the station nearest the rider: it says it has
+        // no service and that it's the nearest, never one in place of the other (Codex, #626).
+        val shut = listOf("940GZZLUEUS", "940GZZLUKSX", "940GZZLUAGL")
+        val status = LineStatus("northern", 3, "Part Suspended", closures = listOf(PartClosure(3, "Part Suspended", null, listOf(shut, shut.asReversed()))))
+        showLinePage(TripLine(northernLeg(), status, nearby = setOf("940GZZLUKSX")), northernLine, shown = "King's Cross St. Pancras")
+        lineMapRow("King's Cross St. Pancras")
+        composeRule.onNodeWithText("No service").assertExists()
+        composeRule.onNodeWithText("Nearest").assertExists()
+    }
+
+    @Test
     fun line_page_good_service() {
         // A trip riding the Northern from King's Cross St. Pancras to Bank: both its stops stay out of the folds.
         val line = TripLine(northernLeg("940GZZLUKSX" to "King's Cross St. Pancras", "940GZZLUBNK" to "Bank"), LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service"))

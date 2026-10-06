@@ -249,6 +249,9 @@ fun MainScreen(
     // From "near me now" (`stopId` → meters): collapse a line served by several adjacent
     // nearby stops to its nearest stop. Empty for a location-free list, shown unchanged.
     stopDistanceMeters: Map<String, Double> = emptyMap(),
+    // Each line's stop nearest the rider within walking reach, both tiers' (line id → stop id), which a
+    // line's map keeps on the page. Empty for a location-free list.
+    nearestStops: Map<String, String> = emptyMap(),
     // Shows a near-me stop (`stopId`, place name) in the maps app, from a tap on its header's
     // distance; null leaves the distance inert.
     onOpenStopMap: ((String, String) -> Unit)? = null,
@@ -830,7 +833,7 @@ fun MainScreen(
             rememberWorked(
                 homeWork,
                 // Compared part by part, a snapshot by identity, never by its contents (Codex, #598).
-                Inputs(loaded, stopDistanceMeters, always, alwaysNetworks, dismissed, now, refreshing, starred, journeys, shown, cardJourneys),
+                Inputs(loaded, stopDistanceMeters, always, alwaysNetworks, dismissed, now, refreshing, starred, journeys, shown, cardJourneys, nearestStops),
                 keep = { _, _ -> true },
             ) {
                 // A journey card still checking may yet show another line it rides: the last row (or
@@ -848,7 +851,7 @@ fun MainScreen(
                 val journeyLines = HashSet<String>()
                 journeys.forEach { journeyLines += it.lineId }
                 journeyCards.forEach { card -> (card.state as? JourneyCardState.Trains)?.rows?.forEach { journeyLines += it.lineId } }
-                HomeLines.row(loaded, stopDistanceMeters, always, dismissed, now, refreshing, alwaysNetworks, starred, journeyLines, journeys)
+                HomeLines.row(loaded, stopDistanceMeters, always, dismissed, now, refreshing, alwaysNetworks, starred, journeyLines, journeys, nearestStops)
             } ?: TripRow.CHECKING
         }
     }

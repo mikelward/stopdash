@@ -2504,7 +2504,8 @@ junction or an end a closure begins beside stays on the page as it would with go
 closed track running into the fold (Kennington, beside a closure of the Battersea branch). A fold
 leading to the line's ends is still named by them, an alert in it or not: that says where it leads,
 not where the alert is. Opened from the home screen, with no trip, the rider's starred stops stand in
-for a ride: they stay on the page, and read "No service" where a closure shuts one.
+for a ride, and so does the line's station nearest them where one is within walking reach: they stay
+on the page, and read "No service" where a closure shuts one.
 
 **Folding.** The map opens folded, so what's the rider's reads at a glance with the rest of the line
 around it (maintainer, 2026-10-06). With an alert on the rider's own stops or a stretch they ride,
@@ -2516,8 +2517,9 @@ Chalk Farm", "8 stations"), any alert among them folding its run as above. A tap
 it is, below what's above it, which doesn't move, showing every station it holds in one tap, never its
 ends alone with the rest folded again (maintainer, 2026-10-06). "Show all stations" opens everything
 and "Fold" puts it back as it opened. **The rider's own stops never fold** (maintainer,
-2026-10-06): their starred stops (a starred row's or journey's end, starred) and the stops of the
-trip they're riding the line on (the route page's blue dot).
+2026-10-06): their starred stops (a starred row's or journey's end, starred), the stops of the
+trip they're riding the line on (the route page's blue dot), and, opened from the home screen, the
+line's station nearest them within walking reach, reading "Nearest" (maintainer, 2026-10-06).
 
 ### Freshness
 

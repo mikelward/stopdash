@@ -89,6 +89,41 @@ class HomeLinesTest {
     }
 
     @Test
+    fun `each line's map keeps its station nearest the rider, within reach and only where there's a position`() {
+        // Big interchanges stand in for where the rider is.
+        val loaded = DeparturesUiState.Loaded(
+            listOf(
+                stop("940GZZLUKSX", "northern" to "tube", "victoria" to "tube"),
+                stop("940GZZLUEUS", "northern" to "tube"),
+                stop("940GZZLUWLO", "jubilee" to "tube"),
+            ),
+            now,
+            determinedLineIds = setOf("northern", "victoria", "jubilee"),
+        )
+        val distances = mapOf("940GZZLUKSX" to 300.0, "940GZZLUEUS" to 150.0, "940GZZLUWLO" to 2000.0)
+        val nearest = HomeLines.row(loaded, distances, tube(), emptySet(), now).every.associate { it.leg.lineId to it.nearby }
+        assertEquals(setOf("940GZZLUEUS"), nearest["northern"])
+        assertEquals(setOf("940GZZLUKSX"), nearest["victoria"])
+        // Beyond the walking reach, or a line with no stop near: nothing kept.
+        assertEquals(emptySet<String>(), nearest["jubilee"])
+        assertEquals(emptySet<String>(), nearest["central"])
+        // The watched list has no position to measure from.
+        assertTrue(HomeLines.row(loaded, emptyMap(), tube(), emptySet(), now).every.all { it.nearby.isEmpty() })
+    }
+
+    @Test
+    fun `a near station whose times aren't fetched still counts as a line's nearest, by its own data`() {
+        val loaded = DeparturesUiState.Loaded(listOf(stop("940GZZLUKSX", "victoria" to "tube")), now, determinedLineIds = setOf("victoria"))
+        // Euston, nearer, in the tier not fetched yet; Waterloo beyond the walking reach.
+        val distances = mapOf("940GZZLUKSX" to 300.0, "940GZZLUEUS" to 150.0, "940GZZLUWLO" to 2000.0)
+        val stops = mapOf("victoria" to "940GZZLUEUS", "northern" to "940GZZLUEUS", "jubilee" to "940GZZLUWLO")
+        val nearest = HomeLines.row(loaded, distances, tube(), emptySet(), now, nearestStops = stops).every.associate { it.leg.lineId to it.nearby }
+        assertEquals(setOf("940GZZLUEUS"), nearest["victoria"])
+        assertEquals(setOf("940GZZLUEUS"), nearest["northern"])
+        assertEquals(emptySet<String>(), nearest["jubilee"])
+    }
+
+    @Test
     fun `a nearby stop's route with no departure is left out, unless the list shows its alert`() {
         val quiet = stop("near", "73" to "bus").copy(lines = listOf(LineRef("73", "73", "bus"), LineRef("n73", "N73", "bus"), LineRef("25", "25", "bus")))
         val suspended = LineStatus("25", 16, "Suspended")

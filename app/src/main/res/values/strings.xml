@@ -182,6 +182,9 @@
     <!-- A screen reader's word for a starred station on the map, which draws a star. -->
     <!-- TODO: translate -->
     <string name="line_map_starred" tools:ignore="MissingTranslation">Starred</string>
+    <!-- Under a station on a line's map: the line's station nearest the rider, kept unfolded. -->
+    <!-- TODO: translate -->
+    <string name="line_map_nearest" tools:ignore="MissingTranslation">Nearest</string>
     <!-- Under a fold on the map: how many stations it holds. -->
     <!-- TODO: translate -->
     <plurals name="line_map_stations" tools:ignore="MissingTranslation">

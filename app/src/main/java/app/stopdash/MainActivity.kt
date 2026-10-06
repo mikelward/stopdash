@@ -2298,6 +2298,7 @@ class MainActivity : ComponentActivity() {
                     // (a watched-stops view), which is shown as-is.
                     // Plus an opened farther station's stops, so its departures show beside its card.
                     stopDistanceMeters = ready.distanceMeters + fartherDistanceMeters,
+                    nearestStops = ready.nearestStopByLine,
                     journeys = shownJourneys,
                     farJourneyMeters = farJourneyMeters,
                     nearbyKey = stopsKey,

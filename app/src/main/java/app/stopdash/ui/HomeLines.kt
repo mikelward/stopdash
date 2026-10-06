@@ -6,6 +6,7 @@ import app.stopdash.domain.LineMap
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.NearbySelection
+import app.stopdash.domain.NearestByLine
 import app.stopdash.domain.StarredJourney
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.TripLeg
@@ -120,6 +121,9 @@ object HomeLines {
         journeyLines: Set<String> = emptySet(),
         // Their starred journeys, whose ends a line's map keeps on the page with the starred rows' stops.
         journeys: List<StarredJourney> = emptyList(),
+        // Each line's stop nearest the rider within reach by the nearby stops' own data, both tiers, a
+        // stop whose times aren't fetched included ([NearbyStopsViewModel.State.Ready.nearestStopByLine]).
+        nearestStops: Map<String, String> = emptyMap(),
     ): TripRow {
         val alwaysLines = linesOf(networks)
         val refs = LinkedHashMap<String, LineRef>()
@@ -147,6 +151,8 @@ object HomeLines {
                 }
             }
         }
+        // Each line's stop nearest the rider within reach, which its map keeps on the page.
+        val nearest = NearestByLine.merged(loaded?.stops.orEmpty(), nearestStops, distances)
         val listChecked = loaded?.determinedLineIds.orEmpty()
         // What the list couldn't check, said here in place of its banner (maintainer, 2026-10-05): its line
         // whose check didn't answer, a farther stop's too, named among the unchecked; a stop whose closure
@@ -218,6 +224,7 @@ object HomeLines {
                 quieted = quieted,
                 checking = id in checking,
                 unknown = id !in known && id !in checking,
+                nearby = nearest[id]?.let { setOf(it) }.orEmpty(),
             )
         // The page: worst first as a trip's orders them, then, as bad as each other, the rider's own lines
         // ahead of a network's far away (maintainer, 2026-10-05).

@@ -331,6 +331,16 @@ class LineMapTest {
     }
 
     @Test
+    fun `the station nearest the rider never folds, and isn't starred`() {
+        val kingsCross = ids.getValue("King's Cross St. Pancras")
+        assertFalse("King's Cross St. Pancras" in LineMap.of(northern())!!.folded(emptySet()).labels())
+        val near = LineMap.forStatus(northern(), null, nearby = setOf(kingsCross))!!
+        assertTrue(near.row("King's Cross St. Pancras").nearby)
+        assertFalse(near.row("King's Cross St. Pancras").starred)
+        assertTrue("King's Cross St. Pancras" in near.folded(emptySet()).labels())
+    }
+
+    @Test
     fun `with good service only the plain runs fold, the ends and junctions stay`() {
         val map = LineMap.of(northern())!!
         assertEquals(
