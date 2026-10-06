@@ -228,10 +228,11 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   subscribes on PR open; otherwise call `subscribe_pr_activity`. The subscription
   delivers reviews, comments, and CI failures; it can't deliver CI success, the merge, or
   Codex's clean verdict, so keep exactly one scheduled check armed while the PR is open.
-  Prefer a relative delay. **Read `mergeable_state` at every check, wake and drive step**:
-  `dirty` or `behind` (where the ruleset requires up-to-date branches) → fetch main by
-  refspec (*Sync before you start*), rebase onto the fresh `origin/main`, and lease-guarded
-  force-push at once, unasked. A base move sends no event, so this read is the only signal.
+  Prefer a relative delay. **Read `mergeable_state` at every scheduled check, PR-event
+  wake and drive step**: `dirty` or `behind` (where the ruleset requires up-to-date
+  branches) → fetch main by refspec (*Sync before you start*), rebase onto the fresh
+  `origin/main`, and lease-guarded force-push at once, unasked. A base move sends no event,
+  so this read is the only signal.
   Merged/closed → one last reply-and-resolve pass, then cancel the check and unsubscribe.
 - **"Drive"** runs the loop automatically: pick the next actionable `TODO.md` item,
   implement it, open the PR, wait for the automatic Codex review, address every comment,
