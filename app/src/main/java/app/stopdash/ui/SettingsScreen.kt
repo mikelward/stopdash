@@ -234,7 +234,7 @@ fun SettingsScreen(
                     // Until both stored choices are read, neither "Off" nor a default that may not be the rider's
                     // (Codex, #592): a dash, as the trip pickers show.
                     summary = if (showDisruptionsRowLoaded && summaryNetworksLoaded) {
-                        disruptionsSummary(showDisruptionsRow, summaryNetworks)
+                        disruptionsSummary(showDisruptionsRow)
                     } else {
                         "–"
                     },
@@ -846,20 +846,13 @@ private fun SettingSwitchRow(
     }
 }
 
-/** The disruptions row's line in Settings: off, or what it covers ("Tube and lines near you"). */
+/**
+ * The disruptions row's line in Settings: what it does, since its name alone doesn't say (maintainer,
+ * 2026-10-06), or "Off". What it covers is on its page.
+ */
 @Composable
-private fun disruptionsSummary(on: Boolean, networks: Set<String>): String {
-    if (!on) return stringResource(R.string.settings_disruptions_row_off)
-    val chosen = HomeLines.Network.of(networks)
-    // Every one, the default, said in two words rather than five names (Concise copy).
-    if (chosen.size == HomeLines.Network.entries.size) return stringResource(R.string.settings_disruptions_row_all)
-    val names = chosen.map { stringResource(networkName(it)) }
-    return if (names.isEmpty()) {
-        stringResource(R.string.settings_disruptions_row_nearby)
-    } else {
-        stringResource(R.string.settings_disruptions_row_covers, names.joinToString(", "))
-    }
-}
+private fun disruptionsSummary(on: Boolean): String =
+    stringResource(if (on) R.string.settings_disruptions_row_description else R.string.settings_disruptions_row_off)
 
 /**
  * The disruptions summary's own page (maintainer, 2026-10-05: its settings control only the row, so

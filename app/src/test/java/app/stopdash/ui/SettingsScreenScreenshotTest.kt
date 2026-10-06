@@ -77,7 +77,7 @@ class SettingsScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("All networks and lines near you").assertIsDisplayed()
+        composeRule.onNodeWithText("Show alerts and delays on the home screen").assertIsDisplayed()
         captureSnapshot("settings-disruptions-summary.png")
         composeRule.onNodeWithTag("disruptionsSummaryRow").performClick()
         composeRule.onNodeWithTag("disruptionsSummaryPage").assertIsDisplayed()
@@ -141,6 +141,21 @@ class SettingsScreenScreenshotTest {
     }
 
     @Test
+    fun the_disruptions_summary_says_what_it_does_or_that_its_off() {
+        var show by mutableStateOf(true)
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = {}, showDisruptionsRow = show)
+            }
+        }
+        composeRule.onNodeWithText("Show alerts and delays on the home screen").assertIsDisplayed()
+        show = false
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Off").assertIsDisplayed()
+        composeRule.onNodeWithText("Show alerts and delays on the home screen").assertDoesNotExist()
+    }
+
+    @Test
     fun the_disruptions_summary_says_nothing_until_its_choices_are_read() {
         composeRule.setContent {
             StopDashTheme {
@@ -152,7 +167,7 @@ class SettingsScreenScreenshotTest {
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Off").assertDoesNotExist()
-        composeRule.onNodeWithText("All networks and lines near you").assertDoesNotExist()
+        composeRule.onNodeWithText("Show alerts and delays on the home screen").assertDoesNotExist()
         composeRule.onNodeWithText("–").assertIsDisplayed()
         // Nor does its page open, its controls not yet known.
         composeRule.onNodeWithTag("disruptionsSummaryRow").assertIsNotEnabled().performClick()

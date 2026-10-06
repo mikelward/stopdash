@@ -437,9 +437,8 @@
     <string name="settings_disruptions_row_summary">One row of line status above the list</string>
     <string name="settings_disruptions_row_show">Show on home screen</string>
     <string name="settings_disruptions_row_off">Off</string>
-    <string name="settings_disruptions_row_covers">%1$s and lines near you</string>
-    <string name="settings_disruptions_row_nearby">Lines near you</string>
-    <string name="settings_disruptions_row_all">All networks and lines near you</string>
+    <!-- Under "Disruptions summary" in Settings while the row shows: what it does. -->
+    <string name="settings_disruptions_row_description">Show alerts and delays on the home screen</string>
     <!-- Under the Disruptions summary switch: the networks it always covers, one chip each. -->
     <string name="settings_summary_networks_title">Always include</string>
     <string name="settings_summary_networks_summary">Lines near you are always included</string>
