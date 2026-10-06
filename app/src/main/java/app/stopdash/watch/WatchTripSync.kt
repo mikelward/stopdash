@@ -105,7 +105,7 @@ internal object WatchTripSync {
                 val topology = withContext(Dispatchers.IO) { RouteTopologyStore.load(app) }
                 // A train leaving before the rider can board is grayed, as the trip's screen grays it.
                 val readyAt = OnTheWay.readyAt(trip, progress)
-                WatchTrips.build(trip, title, detail, found.trains, now, note, readyAt, poleOf = { found.poles[it] }, topology = topology) { leg, onBoard ->
+                WatchTrips.build(trip, title, detail, found.trains, now, note, readyAt, poleOf = { found.poles[it] }, topology = topology, old = found.old) { leg, onBoard ->
                     stepText(app, leg, onBoard)
                 }.also { built = it }
             }
@@ -184,8 +184,8 @@ internal object WatchTripSync {
     // The trains that take the rider on the next ride, from its boards (the boarding pole's and the
     // pair's other poles', each as the ride boards there), as the trip's screen keeps them
     // ([OnTheWay.boardTrains]), with what that screen says of them ([app.stopdash.ui.NextTrainsSection]):
-    // a failed update over the last good board's rows, "Updating…" in place of a stale board's,
-    // "Loading" before the first, and why none are listed. A line whose route isn't held yet is loaded
+    // a failed update over the last good board's rows, a stale board's rows as marked guesses under
+    // "Checking…" ([WatchTrip.oldDepartures]), "Loading" before the first, and why none are listed. A line whose route isn't held yet is loaded
     // through the shared repository, so its trains aren't dropped for want of one ([sequences]); a failed
     // load is tried again after [ROUTE_RETRY], not on every tick.
     //
@@ -199,9 +199,9 @@ internal object WatchTripSync {
         if (board == null || board.ride != ride) return none to res.getString(R.string.on_the_way_trains_loading)
         val fetchedAt = board.fetchedAt ?: return none to res.getString(R.string.on_the_way_failed)
         val failed = board.failed || board.partial
-        if (Staleness.isStale(fetchedAt, now)) {
-            return none to res.getString(if (failed) R.string.on_the_way_failed else R.string.on_the_way_updating)
-        }
+        // Too old to stand behind (D4): its rows still go, as old ones the watch marks as guesses, as the
+        // trip's screen keeps them under "Checking…" (maintainer, 2026-10-06).
+        val old = Staleness.isStale(fetchedAt, now)
         val routes = MainActivity.routeStops(context)
         val sequences = OnTheWay.boardLineIds(ride, board.boards.values.flatten()).let { sequences(routes, it) }
         val own = OnTheWay.boardTrains(ride, board.departures, fetchedAt, sequences, now)
@@ -223,13 +223,14 @@ internal object WatchTripSync {
         val upcoming = Countdown.upcoming(list, now)
         val note = when {
             failed -> res.getString(R.string.on_the_way_failed)
+            old -> res.getString(R.string.on_the_way_checking)
             pending && upcoming.isEmpty() -> res.getString(R.string.on_the_way_trains_loading)
             pending -> res.getString(R.string.on_the_way_trains_checking)
             unresolved -> res.getString(R.string.on_the_way_trains_unchecked)
             upcoming.isEmpty() -> res.getString(R.string.on_the_way_trains_none, ride.toName)
             else -> ""
         }
-        return FoundTrains(list, trains) to note
+        return FoundTrains(list, trains, old) to note
     }
 
     // [pole] as the watch labels its trains ([WatchTrips.Pole]): "Stop N" by its letter, else the towards
@@ -300,4 +301,4 @@ internal object WatchTripSync {
 }
 
 // The next ride's trains ([WatchTripSync.trainsFor]), listed, and the pole each boards at by identity.
-private class FoundTrains(val trains: List<Departure>, val poles: Map<Departure, WatchTrips.Pole?>)
+private class FoundTrains(val trains: List<Departure>, val poles: Map<Departure, WatchTrips.Pole?>, val old: Boolean = false)

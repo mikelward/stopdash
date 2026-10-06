@@ -203,6 +203,9 @@ internal data class WidgetTripTrain(
     val stop: String,
     // Leaves before the rider can be there: drawn muted, as the trip's screen grays it.
     val missed: Boolean,
+    // From a board the phone holds as too old to stand behind ([WatchTrip.oldDepartures]): its time a
+    // marked guess, drawn dimmed, though the trip itself is current.
+    val guess: Boolean = false,
 )
 
 /**
@@ -263,7 +266,9 @@ internal fun widgetTripModel(
     // isn't shown as live, nor at all, and the widget shows its departures (Codex on #600).
     if (age >= WIDGET_TRIP_GONE_AFTER || age < WIDGET_TRIP_CLOCK_SKEW.negated()) return null
     val stale = age >= WIDGET_TRIP_STALE_AFTER
-    val due = trip.departures
+    // An old board's trains ([WatchTrip.oldDepartures]) read as guesses, as the trip's screen draws them (D4).
+    val old = trip.departures.isEmpty() && trip.oldDepartures.isNotEmpty()
+    val due = (if (old) trip.oldDepartures else trip.departures)
         .map { Departure(it.lineId, it.lineName, "", it.destination, null, Instant.ofEpochMilli(it.dueAt), it.mode) to it }
         .filter { Countdown.upcoming(listOf(it.first), now).isNotEmpty() }
         .sortedBy { it.first.expectedArrival }
@@ -276,9 +281,10 @@ internal fun widgetTripModel(
                 lineName = first.lineName,
                 mode = first.mode,
                 destination = first.destination,
-                countdown = if (stale) Countdown.staleLabel(departures) else Countdown.mergedLabel(departures, now),
+                countdown = if (stale || old) Countdown.staleLabel(departures) else Countdown.mergedLabel(departures, now),
                 stop = stop,
                 missed = group.first().second.missed,
+                guess = old,
             )
         }
     }

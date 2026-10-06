@@ -446,6 +446,12 @@ it before committing to the design.
   Each is named with its branch where that's a choice from the stop ("Morden/Bank"), as the tile
   and the trip screen name them, so the watch's trip and its departures read alike (maintainer,
   2026-10-06).
+- **A board too old to stand behind** (D4; maintainer, 2026-10-06): its trains still go, as the trip
+  screen keeps them under "Checking…", but in their own field, `WatchTrip.oldDepartures`, not
+  `departures`, and the watch draws them as marked guesses ("21:14?") as it does a trip gone out of
+  date. The phone's home-screen widget, drawn from the same item, dims them as guesses too. A field
+  of their own rather than a flag, so a watch app older than the phone's ignores them and shows
+  only the note, never an old board's times as live.
 - **On the tile** (maintainer, 2026-10-06): while the watch shows a trip, the tile shows it in the
   departures' place, as the phone's widget does (`TileTrip`): the heading, what to do now, and the
   next ride's trains under their poles. Its timeline changes at each train's departure and countdown minute,

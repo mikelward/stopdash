@@ -36,6 +36,11 @@ data class WatchTrip(
     // What the trip's screen says of those trains, in the phone's words: their update failed, they're
     // being updated, loading, or none go there. Empty when the trains speak for themselves.
     val departuresNote: String = "",
+    // The trains from a board too old to stand behind (SPEC D4), in place of [departures], drawn as
+    // marked guesses ("21:14?") as the trip's screen draws them. A field of their own, not a flag on
+    // [departures]: a watch that doesn't know it ignores it and shows only [departuresNote], never an
+    // old board's times as live.
+    val oldDepartures: List<Train> = emptyList(),
     val sentAt: Long,
     // When the trip was started on the phone, epoch milliseconds: which trip this is, so the same
     // route followed again reads as another trip. 0 from a phone that didn't say.

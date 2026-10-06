@@ -48,9 +48,11 @@ internal object WatchTrips {
         readyAt: Instant? = null,
         poleOf: (Departure) -> Pole? = { null },
         topology: RouteTopology = RouteTopology.EMPTY,
+        // [trains] are from a board too old to stand behind: sent as [WatchTrip.oldDepartures].
+        old: Boolean = false,
         dispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.Default,
         stepText: (leg: TripLeg, onBoard: Boolean) -> String,
-    ): WatchTrip = kotlinx.coroutines.withContext(dispatcher) { assemble(trip, title, detail, trains, now, trainsNote, readyAt, poleOf, topology, stepText) }
+    ): WatchTrip = kotlinx.coroutines.withContext(dispatcher) { assemble(trip, title, detail, trains, now, trainsNote, readyAt, poleOf, topology, old, stepText) }
 
     // [build]'s work, on whichever thread calls it.
     private fun assemble(
@@ -64,6 +66,7 @@ internal object WatchTrips {
         readyAt: Instant?,
         poleOf: (Departure) -> Pole?,
         topology: RouteTopology,
+        old: Boolean,
         stepText: (leg: TripLeg, onBoard: Boolean) -> String,
     ): WatchTrip {
         val steps = OnTheWay.steps(trip)
@@ -81,6 +84,18 @@ internal object WatchTrips {
         val upcoming = if (departuresAt < 0) emptyList() else Countdown.upcoming(trains, now)
         val shown = sent(upcoming, readyAt)
         val stops = labels(shown.mapNotNull(poleOf))
+        val sentTrains = shown.map {
+            // Shortened as the boards say it ("Brixton", not "Brixton Underground Station").
+            val label = DepartureLabels.destinationLabel(it.destination, it.direction) ?: it.destination
+            // With its branch where it's a choice from this stop ("Morden/Bank"), as the tile, the
+            // widget and the trip's screen name it: two branches' trains read apart (maintainer, 2026-10-06).
+            val stop = poleOf(it)?.key?.ifBlank { null } ?: ride?.fromId.orEmpty()
+            val branch = topology.grouping(it.lineId, stop, it.destination, it.branch).label
+            // Shortened as the widget shortens it ("Newbury Pk"): the watch and the trip widget are narrow too.
+            val destination = if (branch != null) "$label/${abbreviateBranch(branch)}" else label
+            val missed = readyAt != null && it.expectedArrival.isBefore(readyAt)
+            WatchTrip.Train(it.lineId, it.lineName, it.mode, destination, it.expectedArrival.toEpochMilli(), poleOf(it)?.let { pole -> stops[pole.key] }.orEmpty(), missed)
+        }
         return WatchTrip(
             title = title,
             detail = detail,
@@ -95,18 +110,8 @@ internal object WatchTrips {
                 )
             },
             current = current,
-            departures = shown.map {
-                // Shortened as the boards say it ("Brixton", not "Brixton Underground Station").
-                val label = DepartureLabels.destinationLabel(it.destination, it.direction) ?: it.destination
-                // With its branch where it's a choice from this stop ("Morden/Bank"), as the tile, the
-                // widget and the trip's screen name it: two branches' trains read apart (maintainer, 2026-10-06).
-                val stop = poleOf(it)?.key?.ifBlank { null } ?: ride?.fromId.orEmpty()
-                val branch = topology.grouping(it.lineId, stop, it.destination, it.branch).label
-                // Shortened as the widget shortens it ("Newbury Pk"): the watch and the trip widget are narrow too.
-                val destination = if (branch != null) "$label/${abbreviateBranch(branch)}" else label
-                val missed = readyAt != null && it.expectedArrival.isBefore(readyAt)
-                WatchTrip.Train(it.lineId, it.lineName, it.mode, destination, it.expectedArrival.toEpochMilli(), poleOf(it)?.let { pole -> stops[pole.key] }.orEmpty(), missed)
-            },
+            departures = if (old) emptyList() else sentTrains,
+            oldDepartures = if (old) sentTrains else emptyList(),
             departuresAt = if (upcoming.isEmpty() && trainsNote.isEmpty()) -1 else departuresAt,
             departuresNote = if (departuresAt < 0) "" else trainsNote,
             sentAt = now.toEpochMilli(),

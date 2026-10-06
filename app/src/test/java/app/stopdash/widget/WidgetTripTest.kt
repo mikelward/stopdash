@@ -68,6 +68,18 @@ class WidgetTripTest {
     }
 
     @Test
+    fun `an old board's trains on a current trip read as dimmed guesses`() {
+        // The phone holds the board as too old to stand behind and sends its trains apart (D4).
+        val model = widgetTripModel(trip(departures = emptyList()).copy(oldDepartures = trains(), departuresNote = "Checking…"), now)!!
+        assertFalse(model.stale)
+        assertEquals("Checking…", model.note)
+        assertEquals(listOf("Walthamstow Central", "Seven Sisters"), model.trains.map { it.destination })
+        assertTrue(model.trains.all { it.guess && it.countdown.endsWith("?") })
+        // Redrawn by the time the soonest goes, as it drops off.
+        assertFalse(model.redrawAt.isAfter(now.plusSeconds(180)))
+    }
+
+    @Test
     fun `a trip the phone stopped updating goes, and the departures come back`() {
         assertNull(widgetTripModel(trip(sentAt = now.minus(WIDGET_TRIP_GONE_AFTER)), now))
         assertNull(widgetTripModel(null, now))
