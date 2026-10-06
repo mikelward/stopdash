@@ -28,6 +28,7 @@ class RemoveFavoriteJourneyTest {
         val state = MutableStateFlow(initial)
         override fun journeys(): Flow<List<FavoriteJourney>?> = state
         override suspend fun toggle(journey: FavoriteJourney) {}
+        override suspend fun add(journey: FavoriteJourney) {}
         override suspend fun remove(journey: FavoriteJourney) {
             state.value = state.value?.filterNot { it.key == journey.key }
         }
@@ -65,6 +66,7 @@ class RemoveFavoriteJourneyTest {
         val journeys = object : FavoriteJourneysStore {
             override fun journeys(): Flow<List<FavoriteJourney>?> = MutableStateFlow(null)
             override suspend fun toggle(journey: FavoriteJourney) {}
+        override suspend fun add(journey: FavoriteJourney) {}
             override suspend fun remove(journey: FavoriteJourney) {}
         }
         val widget = FakeWidget()
@@ -80,6 +82,7 @@ class RemoveFavoriteJourneyTest {
             val journeys = object : FavoriteJourneysStore {
                 override fun journeys(): Flow<List<FavoriteJourney>?> = MutableStateFlow(emptyList())
                 override suspend fun toggle(journey: FavoriteJourney) {}
+        override suspend fun add(journey: FavoriteJourney) {}
                 override suspend fun remove(journey: FavoriteJourney) {
                     ranOn = Thread.currentThread().name
                 }

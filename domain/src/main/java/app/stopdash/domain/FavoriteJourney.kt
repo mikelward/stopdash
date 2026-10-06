@@ -117,6 +117,10 @@ object Journeys {
     fun toggle(starred: List<FavoriteJourney>, journey: FavoriteJourney): List<FavoriteJourney> =
         if (starred.any { it.key == journey.key }) starred.filterNot { it.key == journey.key } else starred + journey
 
+    /** [starred] with [journey] (by [FavoriteJourney.key]); one already there leaves it as it is. */
+    fun add(starred: List<FavoriteJourney>, journey: FavoriteJourney): List<FavoriteJourney> =
+        if (starred.any { it.key == journey.key }) starred else starred + journey
+
     /** [starred] without [journey] (by [FavoriteJourney.key]); one not there leaves it as it is. */
     fun remove(starred: List<FavoriteJourney>, journey: FavoriteJourney): List<FavoriteJourney> =
         starred.filterNot { it.key == journey.key }
@@ -615,12 +619,20 @@ interface FavoriteJourneysStore {
      */
     suspend fun remove(journey: FavoriteJourney)
 
+    /**
+     * Saves [journey] if it isn't saved, and never removes it: a stop page's Favorite, where a second
+     * tap landing before the first's write is read back must not take the journey off again (Codex on
+     * #631). Off the main thread.
+     */
+    suspend fun add(journey: FavoriteJourney)
+
     companion object {
         /** Persists nothing and reads an empty list: tests and an unwired build. */
         val NONE: FavoriteJourneysStore = object : FavoriteJourneysStore {
             override fun journeys() = kotlinx.coroutines.flow.flowOf<List<FavoriteJourney>?>(emptyList())
             override suspend fun toggle(journey: FavoriteJourney) {}
             override suspend fun remove(journey: FavoriteJourney) {}
+            override suspend fun add(journey: FavoriteJourney) {}
         }
     }
 }

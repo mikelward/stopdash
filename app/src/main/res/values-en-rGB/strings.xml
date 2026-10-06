@@ -23,4 +23,6 @@
     <string name="action_star_journey">Favourite journey</string>
     <string name="action_unstar_journey">Remove favourite</string>
     <string name="route_stop_journey_starred">Favourite journey</string>
+    <string name="station_journey_add">Favourite</string>
+    <string name="station_journey_write_failed_away">Couldn\'t save your favourite journey</string>
 </resources>

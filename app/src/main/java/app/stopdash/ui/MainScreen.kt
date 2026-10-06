@@ -1132,6 +1132,7 @@ fun MainScreen(
             journeysLoading = journeysLoading,
             onToggleJourney = onToggleJourney,
             onDismissJourneyTip = onDismissJourneyTip,
+            onOpenStop = LocalOpenRouteStop.current,
         )
         return
     }
@@ -1287,8 +1288,11 @@ fun MainScreen(
         // state, no request of its own. Not on a station's page, nor a drill-down from the list (a
         // station, a platform or a favorite journey), each its own view.
         val onTheWay = LocalOnTheWayBanner.current?.takeIf { stationTitle == null && platformRows == null && !journeyViewOpen }
+        // A stop opened from a route page's stop list: the journey there to favorite, atop its page.
+        val stationJourney = LocalStationJourney.current?.takeIf { stationTitle != null && platformRows == null && !journeyViewOpen }
         Column(Modifier.fillMaxSize().padding(innerPadding)) {
             if (onTheWay != null) OnTheWayBanner(onTheWay, now, Modifier.padding(start = 16.dp, top = 8.dp, end = 16.dp))
+            if (stationJourney != null) StationJourneyRow(stationJourney)
             val content = Modifier.fillMaxWidth().weight(1f)
             when (state) {
                 // A more direct update prompt than the top-bar overflow dot, which is easy to miss
@@ -1846,8 +1850,16 @@ internal fun emptyStateUncertain(state: DeparturesUiState.Loaded, stamps: StopSt
         // aged empty snapshot (e.g. one restored from storage) still prompts a refresh.
         (state.stops.isEmpty() && Staleness.isStale(state.fetchedAt, now))
 
-/** Each saved journey that boards at a route page's stop, with the page's stops it ends at, and all of those. */
-internal class JourneysHere(val byJourney: Map<FavoriteJourney, Set<String>>, val starredStopIds: Set<String>) {
+/**
+ * Each saved journey that boards at a route page's stop, with the page's stops it ends at, and all of
+ * those; and [byStop], the first such journey ending at each stop, so a tap on one is a lookup, never a
+ * scan of the saved list (AGENTS.md *Main thread*; Codex on #631).
+ */
+internal class JourneysHere(
+    val byJourney: Map<FavoriteJourney, Set<String>>,
+    val starredStopIds: Set<String>,
+    val byStop: Map<String, FavoriteJourney> = emptyMap(),
+) {
     companion object {
         val NONE = JourneysHere(emptyMap(), emptySet())
     }
@@ -2012,22 +2024,28 @@ internal fun journeysHere(
 ): JourneysHere {
     val pageSequence = page?.sequence
     val pageStopIds = page?.stops?.mapTo(HashSet()) { it.id }.orEmpty()
+    // Each journey as it runs from this page's boarding stop, for [JourneysHere.byStop]: a saved A→B
+    // seen on B's page toward A is offered as B→A (Codex on #631).
+    val boarding = HashMap<FavoriteJourney, FavoriteJourney>()
     val byJourney = journeys.mapNotNull { j ->
         // The saved ids only when the other end is itself on this page's list; a bus's
         // way back may board at a saved pole but alight across the road.
         val byId = when (stopId) {
-            j.from.stopId -> setOf(j.to.stopId)
-            j.to.stopId -> setOf(j.from.stopId)
+            j.from.stopId -> setOf(j.to.stopId).also { boarding[j] = j }
+            j.to.stopId -> setOf(j.from.stopId).also { boarding[j] = j.reversed() }
             else -> null
         }?.takeIf { pageSequence == null || it.any { id -> id in pageStopIds } }
         val placed = byId ?: pageSequence?.let { seq ->
             listOf(j, j.reversed()).firstNotNullOfOrNull { cand ->
                 Journeys.segment(cand, seq, lineId)?.takeIf { it.originId == stopId }?.destinationIds
+                    ?.also { boarding[j] = cand }
             }
         }
         placed?.let { j to it }
     }.toMap()
-    return JourneysHere(byJourney, byJourney.values.flatMapTo(HashSet()) { it })
+    val byStop = HashMap<String, FavoriteJourney>()
+    for ((journey, ids) in byJourney) for (id in ids) byStop.putIfAbsent(id, boarding[journey] ?: journey)
+    return JourneysHere(byJourney, byJourney.values.flatMapTo(HashSet()) { it }, byStop)
 }
 
 /** Whether any of [listed] is step-free only by a lift in [table], so a lift outage can change it. */
@@ -4725,6 +4743,10 @@ internal fun RouteDetailScreen(
     // stop's closure check behind [disruptionUnknown] and [disruptionChecking] stays off it (Codex, #623).
     lineUnknown: Boolean = disruptionUnknown || stale,
     lineChecking: Boolean = disruptionChecking,
+    // Opens a tapped station on the stop list as its own page, with the journey there to favorite
+    // (maintainer, 2026-10-06); false when that station is already open beneath this page, which then
+    // closes to show it. Null leaves a tap inert.
+    onOpenStop: ((RouteStopOpen) -> Boolean)? = null,
 ) {
     BackHandler(onBack = onBack)
     // "View line" in the overflow: the line's own page over this one, with its map (maintainer,
@@ -5159,6 +5181,27 @@ internal fun RouteDetailScreen(
                 "${followed?.destination}|${followed?.branch}|${followed?.platform}|${followed?.direction}|" +
                 "${followed?.destinationId}|${followed?.via}"
             val railState = rememberRailState(stops, marksReady = stepFree.known && starsReady, page = railKey)
+            // Whether a journey from here can be favorited: a line to place it on, rail or bus.
+            val journeysHereFavorable = row.lineId.isNotBlank() &&
+                (Connections.isRail(rowMode, row.lineId) || rowMode.equals("bus", ignoreCase = true))
+            // The favorite journey from the boarding stop to [stop], as a long press saves it or the
+            // stop's page offers it.
+            fun journeyTo(stop: RouteStop): FavoriteJourney {
+                val positions = (stops as? RouteStopsUi.Loaded)?.positions.orEmpty()
+                val areas = (stops as? RouteStopsUi.Loaded)?.sequence?.stopAreas.orEmpty()
+                // The name as the list shows it: a stop TfL gave no name keeps its id,
+                // so a saved journey's heading never has a blank end. Its stop area rides
+                // along, so "Find a station" can open the end as the whole place.
+                fun end(id: String, name: String) =
+                    JourneyEnd(id, name.ifBlank { id }, positions[id]?.first, positions[id]?.second, areas[id].orEmpty())
+                // A saved journey this stop already ends on this page is toggled (off) as
+                // itself, rather than saved again under this direction's pole ids.
+                // Looked up, not scanned: worked out with the page's journeys on the worker.
+                val existing = journeysHere.here.byStop[stop.id]
+                return existing ?: FavoriteJourney(
+                    end(row.stopId, row.stopName), end(stop.id, stop.name), row.lineId, row.lineName, rowMode,
+                )
+            }
             // Every station from here to where the soonest train terminates (SPEC *Route detail*).
             RouteStopsSection(
                 state = railState,
@@ -5179,28 +5222,29 @@ internal fun RouteDetailScreen(
                 // With none here, a tap can only star: the first lands at once. A star still shown after the
                 // last was taken off waits, or a second tap would put it back.
                 journeyTapsReady = journeysHere.current || noJourneysHere,
-                onToggleJourneyTo = onToggleJourney
-                    ?.takeIf { row.lineId.isNotBlank() && (Connections.isRail(rowMode, row.lineId) || rowMode.equals("bus", ignoreCase = true)) }
-                    ?.let { toggle ->
-                        { stop ->
-                            val positions = (stops as? RouteStopsUi.Loaded)?.positions.orEmpty()
-                            val areas = (stops as? RouteStopsUi.Loaded)?.sequence?.stopAreas.orEmpty()
-                            // The name as the list shows it: a stop TfL gave no name keeps its id,
-                            // so a saved journey's heading never has a blank end. Its stop area rides
-                            // along, so "Find a station" can open the end as the whole place.
-                            fun end(id: String, name: String) =
-                                JourneyEnd(id, name.ifBlank { id }, positions[id]?.first, positions[id]?.second, areas[id].orEmpty())
-                            // A saved journey this stop already ends on this page is toggled (off) as
-                            // itself, rather than starred again under this direction's pole ids.
-                            // A tap's own lookup, over this row's few saved journeys.
-                            val existing = journeysHere.here.byJourney.entries.firstOrNull { stop.id in it.value }?.key
-                            toggle(
-                                existing ?: FavoriteJourney(
-                                    end(row.stopId, row.stopName), end(stop.id, stop.name), row.lineId, row.lineName, rowMode,
-                                ),
-                            )
-                        }
-                    },
+                onToggleJourneyTo = onToggleJourney?.takeIf { journeysHereFavorable }?.let { toggle -> { stop -> toggle(journeyTo(stop)) } },
+                onOpenStop = onOpenStop?.let { open ->
+                    { stop ->
+                        val loaded = stops as? RouteStopsUi.Loaded
+                        // The stop's area where TfL gave one, so a bus stop opens as the whole place with
+                        // its poles both ways; a station's id is its own area.
+                        val area = loaded?.sequence?.stopAreas?.get(stop.id).orEmpty()
+                        // The boarding stop is no journey's far end; nor is one past a journey this page
+                        // can't favorite (no line, or a mode without a route to place it on). Offered even
+                        // while the page's marks are being worked out: the stop's page reads whether it's
+                        // saved from the store itself, by key (Codex on #631).
+                        val first = loaded?.stops?.firstOrNull()?.id == stop.id
+                        val opened = open(
+                            RouteStopOpen(
+                                stationId = area.ifBlank { stop.id },
+                                name = stop.name.ifBlank { stop.id },
+                                journey = if (!first && journeysHereFavorable) journeyTo(stop) else null,
+                                hubId = loaded?.sequence?.stopHubs?.get(stop.id).orEmpty(),
+                            ),
+                        )
+                        if (!opened) onBack()
+                    }
+                },
             )
         }
     }

@@ -49,6 +49,15 @@ class DataStoreFavoriteJourneysStoreTest {
     }
 
     @Test
+    fun `add saves a journey once, either way round, and never removes one`() = runTest {
+        val store = DataStoreFavoriteJourneysStore(FakeDataStore(null))
+        store.add(journey)
+        // A second Favorite, landing before the first is read back, leaves it saved.
+        store.add(journey.reversed())
+        assertEquals(listOf(journey), store.journeys().first())
+    }
+
+    @Test
     fun `remove unstars a journey, either way round, and never stars one`() = runTest {
         val store = DataStoreFavoriteJourneysStore(FakeDataStore(null))
         store.toggle(journey)
@@ -105,6 +114,18 @@ class DataStoreFavoriteJourneysStoreTest {
         OffMainReads().use { reads ->
             val stored = PersistedFavoriteJourneys(journeys = reads.recorded(PersistedFavoriteJourney(PersistedJourneyEnd("A", "A"), PersistedJourneyEnd("B", "B"), "victoria")))
             reads.fromCaller { DataStoreFavoriteJourneysStore(reads.dataStore<PersistedFavoriteJourneys?>(stored), compute = reads.worker).journeys().first() }
+            assertTrue(reads.reads.isNotEmpty())
+            assertEquals(setOf(OffMainReads.WORKER), reads.reads.toSet())
+        }
+    }
+
+    @Test
+    fun `a favorite journey is saved off the caller's thread`() {
+        // An edit maps and searches the whole stored list, and DataStore runs it in the caller's context:
+        // a tap's main thread hops to the worker first (AGENTS.md *Main thread*).
+        OffMainReads().use { reads ->
+            val stored = PersistedFavoriteJourneys(journeys = reads.recorded(PersistedFavoriteJourney(PersistedJourneyEnd("A", "A"), PersistedJourneyEnd("B", "B"), "victoria")))
+            reads.fromCaller { DataStoreFavoriteJourneysStore(reads.dataStore<PersistedFavoriteJourneys?>(stored), compute = reads.worker).add(journey) }
             assertTrue(reads.reads.isNotEmpty())
             assertEquals(setOf(OffMainReads.WORKER), reads.reads.toSet())
         }

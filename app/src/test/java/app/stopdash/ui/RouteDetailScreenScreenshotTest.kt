@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import androidx.compose.runtime.mutableStateOf
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
@@ -22,6 +23,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
@@ -1162,6 +1164,168 @@ class RouteDetailScreenScreenshotTest {
         // The boarding stop itself isn't a journey end: it has no star action.
         composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your stop"))
             .assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnLongClick))
+    }
+
+    @Test
+    fun tappingAStation_opensItsPage_withTheJourneyThere() {
+        val stops = listOf(
+            RouteStop("940GZZLUVIC", "Victoria"),
+            RouteStop("940GZZLUGPK", "Green Park"),
+            RouteStop("940GZZLUOXC", "Oxford Circus"),
+        )
+        val savedToOxford = FavoriteJourney(
+            JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUOXC", "Oxford Circus"), "victoria",
+        )
+        val opened = mutableListOf<RouteStopOpen>()
+        val toggled = mutableListOf<FavoriteJourney>()
+        setDetail {
+            StopDashTheme {
+                RouteDetailScreen(
+                    row = healthyRow(platform = "Northbound - Platform 5"),
+                    isStarred = false,
+                    starrable = true,
+                    disruptionUnknown = false,
+                    stale = false,
+                    now = now,
+                    onToggleStar = {},
+                    onBack = {},
+                    routeStops = RouteStopsUi.Loaded(stops),
+                    journeys = listOf(savedToOxford),
+                    onToggleJourney = { toggled += it },
+                    onOpenStop = {
+                        opened += it
+                        true
+                    },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+
+        // A tap opens the station, offering the journey from the boarding stop to it; nothing is saved.
+        composeRule.onNodeWithText("Green Park", substring = true).performClick()
+        composeRule.waitForIdle()
+        assertEquals(
+            RouteStopOpen(
+                "940GZZLUGPK",
+                "Green Park",
+                FavoriteJourney(
+                    JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUGPK", "Green Park"), "victoria",
+                    lineName = "Victoria", mode = "tube",
+                ),
+            ),
+            opened.single(),
+        )
+        assertTrue(toggled.isEmpty())
+        // A saved journey's end offers that journey itself, so its page can remove it.
+        composeRule.onNodeWithText("Oxford Circus", substring = true).performClick()
+        composeRule.waitForIdle()
+        assertEquals(savedToOxford, opened.last().journey)
+        // The boarding stop opens too, with no journey to offer.
+        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your stop"))
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.waitForIdle()
+        assertEquals(RouteStopOpen("940GZZLUVIC", "Victoria", null), opened.last())
+        // The long press still saves at once.
+        composeRule.onNodeWithText("Green Park", substring = true).performTouchInput { longClick() }
+        composeRule.waitForIdle()
+        assertEquals("940GZZLUGPK", toggled.single().to.stopId)
+    }
+
+    @Test
+    fun tappingASavedJourneysEnd_offersItFromThisBoardingStop() {
+        val stops = listOf(RouteStop("940GZZLUVIC", "Victoria"), RouteStop("940GZZLUOXC", "Oxford Circus"))
+        // Saved the other way round: Oxford Circus to Victoria.
+        val savedBack = FavoriteJourney(JourneyEnd("940GZZLUOXC", "Oxford Circus"), JourneyEnd("940GZZLUVIC", "Victoria"), "victoria")
+        val opened = mutableListOf<RouteStopOpen>()
+        setDetail {
+            StopDashTheme {
+                RouteDetailScreen(
+                    row = healthyRow(platform = "Northbound - Platform 5"),
+                    isStarred = false,
+                    starrable = true,
+                    disruptionUnknown = false,
+                    stale = false,
+                    now = now,
+                    onToggleStar = {},
+                    onBack = {},
+                    routeStops = RouteStopsUi.Loaded(stops),
+                    journeys = listOf(savedBack),
+                    onToggleJourney = {},
+                    onOpenStop = {
+                        opened += it
+                        true
+                    },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Oxford Circus", substring = true).performClick()
+        composeRule.waitForIdle()
+        // Offered as it runs from here, Victoria to Oxford Circus: the same journey, the page's way round.
+        assertEquals(savedBack.reversed(), opened.single().journey)
+    }
+
+    @Test
+    fun tappingAStation_whileTheSavedJourneysAreReadAgain_stillOffersTheJourney() {
+        val stops = listOf(RouteStop("940GZZLUVIC", "Victoria"), RouteStop("940GZZLUGPK", "Green Park"))
+        val opened = mutableListOf<RouteStopOpen>()
+        // Read once, so the rail is up; then read again (a favorite changed elsewhere), the rail staying.
+        var loading by mutableStateOf(false)
+        setDetail {
+            StopDashTheme {
+                RouteDetailScreen(
+                    row = healthyRow(platform = "Northbound - Platform 5"),
+                    isStarred = false,
+                    starrable = true,
+                    disruptionUnknown = false,
+                    stale = false,
+                    now = now,
+                    onToggleStar = {},
+                    onBack = {},
+                    routeStops = RouteStopsUi.Loaded(stops),
+                    journeysLoading = loading,
+                    onToggleJourney = {},
+                    onOpenStop = {
+                        opened += it
+                        true
+                    },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        loading = true
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Green Park", substring = true).performClick()
+        composeRule.waitForIdle()
+        assertEquals("940GZZLUGPK", opened.single().journey?.to?.stopId)
+    }
+
+    @Test
+    fun tappingTheStationAlreadyOpen_closesTheRoutePageToShowIt() {
+        val stops = listOf(RouteStop("940GZZLUVIC", "Victoria"), RouteStop("940GZZLUGPK", "Green Park"))
+        var backs = 0
+        setDetail {
+            StopDashTheme {
+                RouteDetailScreen(
+                    row = healthyRow(platform = "Northbound - Platform 5"),
+                    isStarred = false,
+                    starrable = true,
+                    disruptionUnknown = false,
+                    stale = false,
+                    now = now,
+                    onToggleStar = {},
+                    onBack = { backs++ },
+                    routeStops = RouteStopsUi.Loaded(stops),
+                    // The host says the station is already open beneath this page.
+                    onOpenStop = { false },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your stop"))
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.waitForIdle()
+        assertEquals(1, backs)
     }
 
     @Test

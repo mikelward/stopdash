@@ -671,17 +671,22 @@ fun StationPlaceholderScreen(
             )
         },
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-            when (state) {
-                is StationStopsViewModel.State.Failed -> Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(stringResource(errorMessage(state.kind)), textAlign = TextAlign.Center)
-                    TextButton(onClick = onRetry) { Text(stringResource(R.string.route_stops_retry)) }
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            // A stop opened from a route page: the journey there, from the first frame and whether or not
+            // its stops load, where the page it stands in for has it (Codex on #631).
+            LocalStationJourney.current?.let { StationJourneyRow(it) }
+            Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                when (state) {
+                    is StationStopsViewModel.State.Failed -> Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(stringResource(errorMessage(state.kind)), textAlign = TextAlign.Center)
+                        TextButton(onClick = onRetry) { Text(stringResource(R.string.route_stops_retry)) }
+                    }
+                    StationStopsViewModel.State.NoStops -> Message(stringResource(R.string.station_no_departures))
+                    else -> CircularProgressIndicator()
                 }
-                StationStopsViewModel.State.NoStops -> Message(stringResource(R.string.station_no_departures))
-                else -> CircularProgressIndicator()
             }
         }
     }

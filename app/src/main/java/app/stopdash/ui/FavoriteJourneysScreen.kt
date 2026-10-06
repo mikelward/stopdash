@@ -87,7 +87,8 @@ internal suspend fun removeFavoriteJourney(
  * The favorite journeys, reached from Settings and hosted as an activity-level overlay like
  * [FavoritePlacesScreen], so its own Back closes it (maintainer, 2026-10-05: a journey starred by
  * mistake had no place to be seen and removed but its own card). Each row names the journey and its
- * line, with Remove; starring stays on the route page's stop list (a long press).
+ * line, with Remove. Add opens the station search: from there a line's route page, where a tapped
+ * stop's page offers the journey there (a long press on the stop saves it at once).
  *
  * UI-only: it reflects [state] and reports a removal through [onRemove], so it stays
  * JVM/Robolectric-renderable for the screenshot test without a store.
@@ -100,6 +101,9 @@ fun FavoriteJourneysScreen(
     onDismissWriteError: () -> Unit = {},
     // Reads the store again after it couldn't be read (a disk error, or a newer StopDash's file).
     onRetry: () -> Unit = {},
+    // Starts adding one: the station search, then a line's route page, where a tapped stop's page
+    // offers the journey there (maintainer, 2026-10-06). Null shows no Add.
+    onAdd: (() -> Unit)? = null,
 ) {
     BackHandler(onBack = onBack)
     Surface(modifier = Modifier.fillMaxSize()) {
@@ -115,6 +119,11 @@ fun FavoriteJourneysScreen(
                     modifier = Modifier.weight(1f),
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (onAdd != null) {
+                        TextButton(onClick = onAdd, modifier = Modifier.testTag("addJourney")) {
+                            Text(stringResource(R.string.favorite_journeys_add))
+                        }
+                    }
                     TextButton(onClick = onBack) { Text(stringResource(R.string.action_back)) }
                     AppMenuOverflow()
                 }

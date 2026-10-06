@@ -791,7 +791,9 @@ uses). A **web link** in an alert — with or without `https://`, as TfL writes 
 tfl.gov.uk/status-updates") — is underlined and opens in the browser on tap; only http/https links
 are made, an email address isn't treated as one, and with no browser the tap says so. Below that it lists **every station from the boarding stop to where the soonest train
 terminates** (a short-working ends where it does, not at the line's end), on a rail in the line's
-color. The boarding stop is marked with a blue "you are here" dot (map-location blue, ringed to
+color. **A tap on a station opens its own page** (maintainer, 2026-10-06), by its stop area where TfL
+gives one, so a bus stop opens as the whole place; Back returns to the route page (from a station's
+own page, the opened one takes its place). A trip's route pages leave their stations inert for now. The boarding stop is marked with a blue "you are here" dot (map-location blue, ringed to
 stand off a blue line's rail), announced to a screen reader as "Your stop"; every other stop, the terminus included, is hollow,
 so the one filled dot is the rider's (the terminus keeps a bold name). **A station step-free for the line
 carries TfL's own symbol after its name** (maintainer, 2026-10-02), from the bundled table (*Data
@@ -981,7 +983,11 @@ A rider can **favorite a journey** — a segment between two stops, rail or bus 
 called *starred* until 2026-10-06, when the maintainer renamed them *favorite journeys*, en-GB
 *favourite*): on a route page, a long press on a stop on the stop list (after the boarding stop) saves
 the segment from the boarding stop to it — both directions — and marks the stop with a star; another
-long press removes it. A long press, not a tap (maintainer, 2026-10-05): a stray tap while scrolling the stops
+long press removes it. **A tap on the stop opens its page** (*Route detail*), headed by the same
+journey ("Victoria ➔ Warren Street") with **Favorite**, or **Remove favorite** once saved (maintainer,
+2026-10-06): the discoverable path, the long press the shortcut. It waits on the saved journeys
+being read rather than guess which way a tap goes, says a change it couldn't save, and a removal
+drops the widget's pins as Settings' Remove does. The boarding stop's page offers no journey. A long press, not a tap (maintainer, 2026-10-05): a stray tap while scrolling the stops
 favorite journeys the rider never meant to, which then pinned to the widget.
 A journey is a **segment, not a line**: the same two stops starred from another line's page (the 43
 or the 134 between two shared stops) are the same journey. Favorite journeys lead the near-me list as
@@ -1071,7 +1077,11 @@ cue of its own, so a starrable stop list opens with a one-line tip ("Long-press 
 there") until the user dismisses it (maintainer, 2026-09-24); the dismissal is kept with the app's
 settings. **Settings lists the favorite journeys** (maintainer, 2026-10-05), third, under the
 disruptions switch: each by its two stops and line, with **Remove**, so one starred by mistake can be
-found and dropped without riding past its card; Remove only ever removes the favorite. Favorite journeys are
+found and dropped without riding past its card; Remove only ever removes the favorite. Its **Add**
+(maintainer, 2026-10-06) opens the station search over the main view: the rider picks where they
+board, taps a line's departures for its route page, then taps the stop they get off at and its
+**Favorite**. One line between two stops, as a long press makes; picking two arbitrary stops (a
+journey with no single line, or a change) waits on *Trips with a change*. Favorite journeys are
 kept on the device with the rest of the user's config and never logged (*Privacy*).
 
 ### Trips with a change

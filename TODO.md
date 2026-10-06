@@ -2078,10 +2078,21 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
   - [x] **Star from the stop list by long press, not tap** (maintainer, 2026-10-05, after a stray tap
         starred a journey that then pinned to the widget): no visible button on each row; the tip
         now says a long press stars.
-    - [ ] **What a plain tap on a stop does** — nothing for now; the stop's own departures is the
-          candidate.
+    - [x] **What a plain tap on a stop does** (maintainer, 2026-10-06): opens the stop's page,
+          headed by the journey there with Favorite / Remove favorite.
+      - [ ] **A trip's route pages** (On the way, a planned trip) leave their stops inert: the trip
+            screen ranks above the station page, so a tap there would open it out of sight.
+      - [ ] **From a station's own route page**, the tapped stop's page takes the station's place,
+            so Back skips back past the route page; a stack of station pages would keep it.
   - [x] **Starred journeys in Settings** (maintainer, 2026-10-05): listed by their stops and line,
         each with Remove.
+  - [x] **Call them favorite journeys** (maintainer, 2026-10-06; *favourite* in en-GB). The saved
+        file keeps its `starred-journeys.json` name.
+  - [x] **Add a favorite journey from Settings** (maintainer, 2026-10-06): Add opens the station
+        search; a line's route page, then a stop's page, saves it. One line between two stops (v1).
+    - [ ] **Two arbitrary stops** (asked 2026-10-06, deferred): pick From and To in the search, then
+          find a line at From whose route reaches To (the card's same cached route lookups), saying
+          "No direct route" when none does. A pair needing a change waits on *Trips with a change*.
   - [ ] **Rename a starred journey** — needs a label in the stored file (a schema version bump, so
         an older build can't drop it on its next write).
   - [ ] **Converge "journey" and "trip"** (maintainer, 2026-10-05: "longer term we'll need to

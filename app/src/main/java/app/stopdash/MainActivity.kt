@@ -39,6 +39,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -215,6 +216,11 @@ import app.stopdash.ui.SettingsScreen
 import app.stopdash.ui.FavoriteJourneysUi
 import app.stopdash.ui.FavoriteJourneysScreen
 import app.stopdash.ui.removeFavoriteJourney
+import app.stopdash.ui.LocalOpenRouteStop
+import app.stopdash.ui.LocalStationJourney
+import app.stopdash.ui.RouteStopOpen
+import app.stopdash.ui.RouteStopOpenSaver
+import app.stopdash.ui.StationJourneyState
 import app.stopdash.ui.StationPlaceholderScreen
 import app.stopdash.ui.StationSearchScreen
 import app.stopdash.ui.StationSearchViewModel
@@ -283,6 +289,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -674,6 +681,20 @@ class MainActivity : ComponentActivity() {
                 var replanningHere by rememberSaveable { mutableStateOf(false) }
                 var openStationId by rememberSaveable { mutableStateOf<String?>(null) }
                 var openStationName by rememberSaveable { mutableStateOf("") }
+                // A station tapped on a route page's stop list, and the journey there its page offers
+                // to favorite: offered only while that station is the one open.
+                var routeStopOpened by rememberSaveable(stateSaver = RouteStopOpenSaver) { mutableStateOf<RouteStopOpen?>(null) }
+                // The journey whose last change on a stop page didn't save, by key: said only on its own
+                // row, never on another stop's opened since. Process-lived, like the write, so a failure
+                // after a rotation still says so (Codex on #631).
+                val stopJourneyFailed = StopJourneyWrites.failed
+                // Forgotten once its station closes or another opens, so the same station found later
+                // by search isn't headed by an old journey (Codex on #631).
+                LaunchedEffect(openStationId) {
+                    if (routeStopOpened != null && routeStopOpened?.stationId != openStationId) {
+                        routeStopOpened = null
+                    }
+                }
                 // Back on the main view, the station closed: a station opened later is planned as usual.
                 LaunchedEffect(openStationId, stationSearchOpen) {
                     if (openStationId == null && !stationSearchOpen) replanning = false
@@ -964,7 +985,91 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+                // A route page's tapped station opens as its own page, above whatever's showing, its Back
+                // returning there (maintainer, 2026-10-06). The station already open beneath the route
+                // page (a station's own route, tapped at its boarding stop) isn't opened again: false,
+                // and the route page closes to show it, headed by the journey there (Codex on #631).
+                val openRouteStop: (RouteStopOpen) -> Boolean = { open ->
+                    routeStopOpened = open
+                    // Only this journey's old failure is forgotten: each is keyed, so others need no clearing,
+                    // and one remove keeps the tap's work constant (AGENTS.md *Main thread*; Codex on #631).
+                    open.journey?.key?.let { stopJourneyFailed.remove(it) }
+                    val already = open.isOpen(openStationId)
+                    if (!already) {
+                        originChange = null
+                        stationTo = ToChoice.NONE
+                        openStationId = open.stationId
+                        openStationName = open.name
+                    }
+                    !already
+                }
+                val stopJourney = routeStopOpened?.takeIf { it.stationId == openStationId }?.journey
+                val stopJourneyState = stopJourney?.let { journey ->
+                    val store = remember { DataStoreFavoriteJourneysStore.from(applicationContext, warn = ::logStarWarning) }
+                    // The saved journeys' keys, worked out on the worker so composition only looks one up
+                    // (AGENTS.md *Main thread*). Wrapped, so "not read yet" (null here) is told from
+                    // "unreadable" (null keys), which the row says, with Retry (Codex on #631). Retry
+                    // collects anew: a failed read's flow has ended.
+                    var readAttempt by remember { mutableIntStateOf(0) }
+                    val read by remember(store, readAttempt) {
+                        store.journeys().map { list -> KeysRead(list?.mapTo(HashSet()) { it.key }) }.flowOn(Workers.compute)
+                    }.collectAsStateWithLifecycle(initialValue = null)
+                    val saved = read?.keys?.let { journey.key in it }
+                    // Which journey's row is on screen, so a late failure knows whether it has one to show on.
+                    DisposableEffect(journey.key) {
+                        StopJourneyWrites.shown = journey.key
+                        onDispose { if (StopJourneyWrites.shown == journey.key) StopJourneyWrites.shown = null }
+                    }
+                    // The process's scope, so a tap followed at once by Back still lands.
+                    val overlayScope = rememberCoroutineScope()
+                    val writeScope = (application as? StopdashApp)?.applicationScope ?: overlayScope
+                    StationJourneyState(
+                        journey,
+                        saved,
+                        journey.key in stopJourneyFailed,
+                        unavailable = read != null && read?.keys == null,
+                        onRetry = { readAttempt++ },
+                    ) toggle@{
+                        // The button waits on the read; a tap can't land before it, but nothing is guessed if one does.
+                        if (saved == null) return@toggle
+                        UsageEvents.log(UsageEvent.Tapped(if (saved) UsageEvent.Tap.UNSTAR else UsageEvent.Tap.STAR))
+                        // Numbered, so only the latest tap's result is said: an earlier write failing after a
+                        // later one landed doesn't claim the change failed (Codex on #631).
+                        val attempt = StopJourneyWrites.begin(journey.key)
+                        writeScope.launch {
+                            try {
+                                // A removal drops the widget's pins for it too, as Settings' Remove does.
+                                if (saved) {
+                                    removeFavoriteJourney(journey, store, WidgetSnapshotStore(applicationContext), warn = ::logStarWarning)
+                                } else {
+                                    // Added, not toggled: a second tap before the first is read back
+                                    // can't take it off again (Codex on #631).
+                                    store.add(journey)
+                                }
+                                StopJourneyWrites.finish(journey.key, attempt, failed = false)
+                            } catch (e: IOException) {
+                                // Logged without the stations, and said on the row (SPEC principle 2).
+                                logStarWarning("stop page journey not saved: ${e::class.simpleName}")
+                                val latest = StopJourneyWrites.finish(journey.key, attempt, failed = true)
+                                // Its row gone (Back before the write failed), it's said app-wide instead,
+                                // never dropped (SPEC principle 2; Codex on #631). Judged on the main thread from
+                                // where the app is now, which Back changes at once, as well as from the row's
+                                // own marker, which is cleared only when the row leaves composition.
+                                if (latest) {
+                                    withContext(Dispatchers.Main) {
+                                        val stillOpen = routeStopOpened?.takeIf { it.isOpen(openStationId) }?.journey?.key == journey.key
+                                        if (!stillOpen || StopJourneyWrites.shown != journey.key) {
+                                            Toast.makeText(applicationContext, R.string.station_journey_write_failed_away, Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 CompositionLocalProvider(
+                    LocalOpenRouteStop provides openRouteStop,
+                    LocalStationJourney provides stopJourneyState,
                     LocalHideUndoCarrier provides hideUndoCarrier,
                     LocalAppMenu provides AppMenuActions(
                         updateAvailable = updateAvailable.value,
@@ -992,6 +1097,8 @@ class MainActivity : ComponentActivity() {
                 ) {
                     NearbyArea(
                         overlayOpen = onTheWayOpen || licensesOpen || settingsOpen || favoritePlacesOpen || favoriteJourneysOpen || stationSearchOpen || openStationId != null,
+                        // A stop opened from a route page keeps that page under it, for Back.
+                        keepBody = openStationId != null && routeStopOpened?.stationId == openStationId,
                         aboveOverlay = {
                             ForegroundReturnLatcher(
                                 isReady = { nearbyViewModel.state.value is NearbyStopsViewModel.State.Ready },
@@ -1170,6 +1277,19 @@ class MainActivity : ComponentActivity() {
                                 FavoriteJourneysScreen(
                                     state = FavoriteJourneysUi(read?.journeys, loaded = read != null, writeFailed = journeyRemoveFailed),
                                     onBack = { favoriteJourneysOpen = false },
+                                    // The station search, over the main view: Settings and this list close,
+                                    // as the search ranks under them ([topOverlay]).
+                                    // A station open under Settings closes too, so the search shows, not it
+                                    // (Codex on #631).
+                                    onAdd = {
+                                        favoriteJourneysOpen = false
+                                        settingsOpen = false
+                                        originChange = null
+                                        openStationId = null
+                                        openStationName = ""
+                                        stationTo = ToChoice.NONE
+                                        stationSearchOpen = true
+                                    },
                                     onRemove = { journey ->
                                         JourneyRemovals.attempt(removeScope, warn = ::logStarWarning) {
                                             removeFavoriteJourney(journey, journeyStore, WidgetSnapshotStore(applicationContext), warn = ::logStarWarning)
@@ -3905,6 +4025,10 @@ internal fun topOverlay(
  * latch is out of composition then (#136). Extracted as the real host so [ForegroundReturnTest] can
  * render it and pin that the above-overlay slot survives the overlay, rather than reconstructing the
  * topology in the test.
+ *
+ * With [keepBody], what [body] saved (an open route page, its scroll) is kept while the overlay is
+ * up and given back when it closes: a stop opened from a route page returns there on Back (Codex on
+ * #631). Otherwise it's dropped, so any other overlay closes onto the list afresh, as it always has.
  */
 @Composable
 internal fun NearbyArea(
@@ -3912,10 +4036,19 @@ internal fun NearbyArea(
     aboveOverlay: @Composable () -> Unit,
     overlayContent: @Composable () -> Unit,
     body: @Composable () -> Unit,
+    keepBody: Boolean = false,
 ) {
     aboveOverlay()
-    if (overlayOpen) overlayContent() else body()
+    val saved = rememberSaveableStateHolder()
+    if (overlayOpen) {
+        overlayContent()
+        LaunchedEffect(keepBody) { if (!keepBody) saved.removeState(NEARBY_BODY) }
+    } else {
+        saved.SaveableStateProvider(NEARBY_BODY) { body() }
+    }
 }
+
+private const val NEARBY_BODY = "nearby-body"
 
 /**
  * Holds the one bit "a background→foreground return is pending re-location," retained across a
@@ -4419,11 +4552,47 @@ private fun logUpdateWarning(message: String) = StopdashDebugLog.warning("update
 /** One read of the saved journeys: [journeys] is null when the store couldn't be read. */
 private class JourneysRead(val journeys: List<FavoriteJourney>?)
 
+/** The saved journeys' keys as read: null [keys] when the file couldn't be read. */
+private class KeysRead(val keys: Set<String>?)
+
 /**
  * Settings' favorite-journey removals, process-lived as each runs on the process's scope: [failed] says
  * whether the latest one failed to save. Numbered, so an earlier attempt that ends after a later one
  * can't set or clear what the later one says (Codex on #589).
  */
+/**
+ * The journey (by key) whose Favorite or Remove on a stop's page last failed to save: held for the
+ * process, as the write runs in the application's scope and may fail after a rotation (Codex on #631).
+ */
+internal object StopJourneyWrites {
+    // Every journey whose latest write failed, by key: one journey's failure never replaces another's
+    // (Codex on #631).
+    // A state map, updated in place by key: no copy that grows with the failures (AGENTS.md *Main thread*).
+    val failed = androidx.compose.runtime.mutableStateMapOf<String, Unit>()
+    private val counter = java.util.concurrent.atomic.AtomicLong()
+    // Each journey's latest write, by key: only a later write of the same journey supersedes one, so
+    // changing another journey never swallows this one's failure (Codex on #631).
+    private val latest = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    /** A new write of [key]'s journey: clears what its last said, and numbers this one. */
+    @Synchronized
+    fun begin(key: String): Long {
+        failed.remove(key)
+        return counter.incrementAndGet().also { latest[key] = it }
+    }
+
+    /** The journey whose stop-page row is on screen, if any. Main thread only. */
+    var shown: String? = null
+
+    /** [attempt]'s result for [key], said only while it's still that journey's latest write; whether it was. */
+    @Synchronized
+    fun finish(key: String, attempt: Long, failed: Boolean): Boolean {
+        val isLatest = latest[key] == attempt
+        if (isLatest) if (failed) this.failed[key] = Unit else this.failed.remove(key)
+        return isLatest
+    }
+}
+
 internal object JourneyRemovals {
     val failed = MutableStateFlow(false)
     private val latest = java.util.concurrent.atomic.AtomicLong()
