@@ -5,7 +5,7 @@ import java.time.Instant
 /**
  * The stops a trip checks for closures (SPEC *Trips with a change*), and how a route stands by them:
  * every stop a leg boards or gets off at, walks included, so where the route ends is checked as the
- * list checks a starred journey's far end (*Alerts for the journey shown*).
+ * list checks a favorite journey's far end (*Alerts for the journey shown*).
  */
 object TripClosures {
     /**

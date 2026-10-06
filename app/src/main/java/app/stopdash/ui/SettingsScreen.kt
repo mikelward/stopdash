@@ -130,8 +130,8 @@ fun SettingsScreen(
     onDismissStepFreeError: () -> Unit = {},
     // Opens the favorite-places editor (SPEC D9), hosted as its own overlay by the caller.
     onOpenFavoritePlaces: () -> Unit = {},
-    // Opens the starred-journeys list (SPEC *Journeys*), hosted as its own overlay by the caller.
-    onOpenStarredJourneys: () -> Unit = {},
+    // Opens the favorite-journeys list (SPEC *Journeys*), hosted as its own overlay by the caller.
+    onOpenFavoriteJourneys: () -> Unit = {},
     // Whether the home screen shows its disruptions row (maintainer, 2026-10-05), as [distanceUnits] is
     // handled: held until read, a choice that didn't save said here until dismissed.
     showDisruptionsRow: Boolean = true,
@@ -252,13 +252,13 @@ fun SettingsScreen(
                         },
                     )
                 }
-                // The starred journeys, third, after the disruptions switch
+                // The favorite journeys, third, after the disruptions switch
                 // the maintainer placed second: what the rider has saved, like the places.
                 SettingNavRow(
-                    title = stringResource(R.string.settings_starred_journeys_title),
-                    summary = stringResource(R.string.settings_starred_journeys_summary),
-                    onClick = onOpenStarredJourneys,
-                    testTag = "starredJourneysRow",
+                    title = stringResource(R.string.settings_favorite_journeys_title),
+                    summary = stringResource(R.string.settings_favorite_journeys_summary),
+                    onClick = onOpenFavoriteJourneys,
+                    testTag = "favoriteJourneysRow",
                 )
                 // What's hidden, under the places: like them, it decides what the list shows. Only
                 // while something is, as with the list's banner.

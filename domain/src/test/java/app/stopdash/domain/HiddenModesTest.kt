@@ -65,7 +65,7 @@ class HiddenModesTest {
     }
 
     @Test
-    fun `a stop wants its National Rail board unless National Rail is hidden and no starred journey rides it`() {
+    fun `a stop wants its National Rail board unless National Rail is hidden and no favorite journey rides it`() {
         val tube = LineRef("victoria", "Victoria", "tube")
         val rail = LineRef("thameslink", "Thameslink", "National-Rail")
         val railHidden = setOf("national-rail")

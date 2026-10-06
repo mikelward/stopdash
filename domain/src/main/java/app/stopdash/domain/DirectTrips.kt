@@ -4,7 +4,7 @@ import androidx.annotation.WorkerThread
 /**
  * The departures from a stop that call at another (SPEC *Finding stops → From… To…*): a trip's leg
  * boarding at Highgate and getting off at Euston keeps the Northern line trains whose path reaches
- * Euston and drops the rest. Like a starred journey's card ([Journeys.trains]), a departure is judged
+ * Euston and drops the rest. Like a favorite journey's card ([Journeys.trains]), a departure is judged
  * by its own line's route ([RouteStops]); one whose route is still loading or failed, or whose path
  * the route can't resolve, is left out and flagged rather than guessed either way (SPEC principle 1).
  */

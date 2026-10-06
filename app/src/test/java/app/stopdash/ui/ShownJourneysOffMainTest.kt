@@ -8,7 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createComposeRule
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.JourneyEnd
-import app.stopdash.domain.StarredJourney
+import app.stopdash.domain.FavoriteJourney
 import java.util.concurrent.Executors
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -37,8 +37,8 @@ class ShownJourneysOffMainTest {
     private val here = Coordinates(0.0, 0.0)
 
     // From a stop beside the rider to one a little way off, and one well over a mile from both ends.
-    private val near = StarredJourney(JourneyEnd("A", "Aye", 0.001, 0.0), JourneyEnd("B", "Bee", 0.01, 0.0), "example")
-    private val far = StarredJourney(JourneyEnd("C", "Cee", 0.1, 0.0), JourneyEnd("D", "Dee", 0.11, 0.0), "example")
+    private val near = FavoriteJourney(JourneyEnd("A", "Aye", 0.001, 0.0), JourneyEnd("B", "Bee", 0.01, 0.0), "example")
+    private val far = FavoriteJourney(JourneyEnd("C", "Cee", 0.1, 0.0), JourneyEnd("D", "Dee", 0.11, 0.0), "example")
 
     @Test
     fun the_journeys_are_oriented_and_measured_on_the_worker() {
@@ -46,8 +46,8 @@ class ShownJourneysOffMainTest {
         try {
             val walkedOn = mutableListOf<String>()
             // Read by the work as it walks the saved journeys, so it says where that ran.
-            val saved = object : List<StarredJourney> by listOf(near, far) {
-                override fun iterator(): Iterator<StarredJourney> {
+            val saved = object : List<FavoriteJourney> by listOf(near, far) {
+                override fun iterator(): Iterator<FavoriteJourney> {
                     walkedOn += Thread.currentThread().name.substringBefore(" @")
                     return listOf(near, far).iterator()
                 }
@@ -154,7 +154,7 @@ class ShownJourneysOffMainTest {
         // Held until released by hand.
         val scheduler = TestCoroutineScheduler()
         val held = StandardTestDispatcher(scheduler)
-        var saved by mutableStateOf<List<StarredJourney>?>(null)
+        var saved by mutableStateOf<List<FavoriteJourney>?>(null)
         var shown: ShownJourneys? = null
         composeRule.setContent {
             CompositionLocalProvider(LocalWorker provides held) {

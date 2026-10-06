@@ -267,7 +267,7 @@ class MainViewModel(
     private val nearStops: List<StopRef>
         get() = eagerStops
 
-    // The origins of the starred journeys (SPEC *Journeys*), fetched alongside the near-me stops so a
+    // The origins of the favorite journeys (SPEC *Journeys*), fetched alongside the near-me stops so a
     // journey card has its departures. One not already near is fetched but never saved to the widget
     // snapshot, which shows only the nearby set ([journeyOnly]).
     private var journeyStops: List<StopRef> = emptyList()
@@ -349,7 +349,7 @@ class MainViewModel(
         if (nearIds.isEmpty()) stops else stops.filter { it.stopId in nearIds }
 
     /**
-     * The starred journeys' [keys], their cards' latest [checks], and the stop each is shown from
+     * The favorite journeys' [keys], their cards' latest [checks], and the stop each is shown from
      * ([shownFrom], its direction — a journey flipped while its route can't place it yet reports no
      * check, so its old pin goes until one does), for the widget's pins ([WidgetJourneys.apply]).
      */
@@ -447,7 +447,7 @@ class MainViewModel(
     private var journeyStopsJob: Job? = null
     private var journeyStopsReportedWhileOut = false
 
-    // The far ends of the starred journeys as shown (SPEC *Journeys*): only their stop-level
+    // The far ends of the favorite journeys as shown (SPEC *Journeys*): only their stop-level
     // disruptions (a closure, a moved stop) are checked, not their departures, so a journey card can
     // say its destination is closed. Checked with every refresh, reusing [disruptionCache].
     private var journeyDestinations: List<StopRef> = emptyList()
@@ -2452,7 +2452,7 @@ class MainViewModel(
         }
     }
 
-    /** What a same-set [reconcile] changes about the starred journeys' stops. */
+    /** What a same-set [reconcile] changes about the favorite journeys' stops. */
     class JourneyChanges(val drop: Set<String>, val await: Boolean)
 
     /** A same-set [reconcile] worked out: what it sets, each null when it changes nothing. */

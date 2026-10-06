@@ -3,7 +3,7 @@ package app.stopdash.domain
 import androidx.annotation.WorkerThread
 
 /**
- * One end of a [StarredJourney]: a station the rider boards or alights at, with its published
+ * One end of a [FavoriteJourney]: a station the rider boards or alights at, with its published
  * position (TfL's, from the route sequence — never the rider's own fix) so the nearer end can be
  * picked. Position is null when TfL gave none; such a journey keeps its saved direction.
  */
@@ -19,7 +19,7 @@ data class JourneyEnd(
 )
 
 /**
- * A starred journey (SPEC *Journeys*): a segment the rider travels, both ways — "Highgate ↔ King's
+ * A favorite journey (SPEC *Journeys*): a segment the rider travels, both ways — "Highgate ↔ King's
  * Cross St. Pancras", or two bus stops shared by the 43 and the 134. Direct only: the card shows
  * every train or bus from one end whose route calls at the other, on any line; a journey needing a
  * change is routing, a non-goal for now. [from] → [to] is the saved orientation, starred from
@@ -27,7 +27,7 @@ data class JourneyEnd(
  * ([Journeys.oriented]). Stored on the device like the starred rows and, like them, never logged (a
  * pair of stops can reveal home and work).
  */
-data class StarredJourney(
+data class FavoriteJourney(
     val from: JourneyEnd,
     val to: JourneyEnd,
     // The line it was starred from. Its route places the segment's stops in each direction (a bus
@@ -43,7 +43,7 @@ data class StarredJourney(
      */
     val key: String get() = listOf(from.stopId, to.stopId).sorted().joinToString("|")
 
-    fun reversed(): StarredJourney = copy(from = to, to = from)
+    fun reversed(): FavoriteJourney = copy(from = to, to = from)
 
     /** The line as a stop declares it, for fetching the origin. */
     val line: LineRef get() = LineRef(lineId, lineName, mode)
@@ -113,12 +113,12 @@ object Journeys {
      */
     const val SAME_PLACE_RADIUS_METERS = 150.0
 
-    /** Flip [journey] in or out of [starred], matched by [StarredJourney.key]. */
-    fun toggle(starred: List<StarredJourney>, journey: StarredJourney): List<StarredJourney> =
+    /** Flip [journey] in or out of [starred], matched by [FavoriteJourney.key]. */
+    fun toggle(starred: List<FavoriteJourney>, journey: FavoriteJourney): List<FavoriteJourney> =
         if (starred.any { it.key == journey.key }) starred.filterNot { it.key == journey.key } else starred + journey
 
-    /** [starred] without [journey] (by [StarredJourney.key]); one not there leaves it as it is. */
-    fun remove(starred: List<StarredJourney>, journey: StarredJourney): List<StarredJourney> =
+    /** [starred] without [journey] (by [FavoriteJourney.key]); one not there leaves it as it is. */
+    fun remove(starred: List<FavoriteJourney>, journey: FavoriteJourney): List<FavoriteJourney> =
         starred.filterNot { it.key == journey.key }
 
     /**
@@ -126,14 +126,14 @@ object Journeys {
      * trains the rider can catch from where they are. Without a position (a location-free list) or
      * an end's coordinates, the saved orientation stands.
      */
-    fun oriented(journey: StarredJourney, latitude: Double?, longitude: Double?): StarredJourney {
+    fun oriented(journey: FavoriteJourney, latitude: Double?, longitude: Double?): FavoriteJourney {
         if (latitude == null || longitude == null) return journey
         val fromMeters = distanceTo(journey.from, latitude, longitude) ?: return journey
         val toMeters = distanceTo(journey.to, latitude, longitude) ?: return journey
         return if (toMeters < fromMeters) journey.reversed() else journey
     }
 
-    /** Within this of either end, a starred journey is near enough to show in full: about a mile. */
+    /** Within this of either end, a favorite journey is near enough to show in full: about a mile. */
     const val NEAR_METERS: Double = 1609.0
 
     /**
@@ -144,7 +144,7 @@ object Journeys {
      * trains on a guess (SPEC principle 1).
      */
     fun farMeters(
-        journey: StarredJourney,
+        journey: FavoriteJourney,
         latitude: Double?,
         longitude: Double?,
         nearMeters: Double = NEAR_METERS,
@@ -162,7 +162,7 @@ object Journeys {
      */
     @WorkerThread
     fun farJourneys(
-        journeys: List<StarredJourney>,
+        journeys: List<FavoriteJourney>,
         latitude: Double?,
         longitude: Double?,
         fixConfirmed: Boolean,
@@ -192,7 +192,7 @@ object Journeys {
      */
     @WorkerThread
     fun stopIdsToHoldBack(
-        journeys: List<StarredJourney>,
+        journeys: List<FavoriteJourney>,
         latitude: Double?,
         longitude: Double?,
         fixConfirmed: Boolean,
@@ -212,7 +212,7 @@ object Journeys {
      */
     @WorkerThread
     fun releasesHeldJourney(
-        journeys: List<StarredJourney>,
+        journeys: List<FavoriteJourney>,
         latitude: Double?,
         longitude: Double?,
         fixConfirmed: Boolean,
@@ -231,7 +231,7 @@ object Journeys {
      */
     @WorkerThread
     fun turnsShownJourney(
-        journeys: List<StarredJourney>,
+        journeys: List<FavoriteJourney>,
         shownLatitude: Double?,
         shownLongitude: Double?,
         latitude: Double?,
@@ -260,7 +260,7 @@ object Journeys {
      * another line that merely passes near an end hasn't been shown to serve it.
      */
     @WorkerThread
-    fun segment(journey: StarredJourney, lineSequence: LineSequence, lineId: String = journey.lineId): JourneySegment? {
+    fun segment(journey: FavoriteJourney, lineSequence: LineSequence, lineId: String = journey.lineId): JourneySegment? {
         val sequence = lineSequence.callingAtEnds(journey)
         for (tier in 0..maxTier(journey, lineId)) {
             val pairs = sequence.routes.flatMap { route ->
@@ -321,7 +321,7 @@ object Journeys {
         sequences: Map<String, LineSequence?>,
         // The journey (this way round), so each line can place the far end on its own route — another
         // route may stop at a different pole of the destination's stop area.
-        journey: StarredJourney? = null,
+        journey: FavoriteJourney? = null,
     ): JourneyTrains {
         var pending = false
         var unresolved = false
@@ -460,7 +460,7 @@ object Journeys {
         pole?.hubId?.takeIf { it.isNotBlank() } ?: sequence?.stopHubs?.get(originId).orEmpty()
 
     /** [this] with [journey]'s ends in place of the sibling stop ids its routes call at. */
-    private fun LineSequence.callingAtEnds(journey: StarredJourney): LineSequence =
+    private fun LineSequence.callingAtEnds(journey: FavoriteJourney): LineSequence =
         callingAt(journey.from.stopId).callingAt(journey.to.stopId)
 
     /**
@@ -485,7 +485,7 @@ object Journeys {
      */
     @WorkerThread
     fun siblingPoles(
-        journey: StarredJourney,
+        journey: FavoriteJourney,
         originId: String,
         poles: List<StopLocation>,
         sequences: Map<String, LineSequence?>,
@@ -531,7 +531,7 @@ object Journeys {
      * its starred line (a pole served one way only). A station missing from a rail route is a
      * journey that can't be placed, not one a nearby station stands in for.
      */
-    private fun maxTier(journey: StarredJourney, lineId: String): Int =
+    private fun maxTier(journey: FavoriteJourney, lineId: String): Int =
         if (journey.bus && lineId == journey.lineId) 3 else 2
 
     /** Whether some route of [sequence] calls at [originId] and then one of [destinations]. */
@@ -599,28 +599,28 @@ object Journeys {
 }
 
 /**
- * Reads and writes the starred journeys (SPEC *Journeys*). A seam so a ViewModel depends on the
+ * Reads and writes the favorite journeys (SPEC *Journeys*). A seam so a ViewModel depends on the
  * capability, not DataStore; mirrors [StarredRowsStore]. [journeys] emits the saved list at once
  * and on every change — null when a stored list exists that this build can't read (a newer schema),
  * which the store then preserves rather than overwrite. [toggle] and [remove] run off the main thread.
  */
-interface StarredJourneysStore {
-    fun journeys(): kotlinx.coroutines.flow.Flow<List<StarredJourney>?>
+interface FavoriteJourneysStore {
+    fun journeys(): kotlinx.coroutines.flow.Flow<List<FavoriteJourney>?>
 
-    suspend fun toggle(journey: StarredJourney)
+    suspend fun toggle(journey: FavoriteJourney)
 
     /**
      * Unstars [journey] if it's starred, and never stars it: Settings' Remove, where a second tap
      * landing after the first's write must not bring the journey back. Off the main thread.
      */
-    suspend fun remove(journey: StarredJourney)
+    suspend fun remove(journey: FavoriteJourney)
 
     companion object {
         /** Persists nothing and reads an empty list: tests and an unwired build. */
-        val NONE: StarredJourneysStore = object : StarredJourneysStore {
-            override fun journeys() = kotlinx.coroutines.flow.flowOf<List<StarredJourney>?>(emptyList())
-            override suspend fun toggle(journey: StarredJourney) {}
-            override suspend fun remove(journey: StarredJourney) {}
+        val NONE: FavoriteJourneysStore = object : FavoriteJourneysStore {
+            override fun journeys() = kotlinx.coroutines.flow.flowOf<List<FavoriteJourney>?>(emptyList())
+            override suspend fun toggle(journey: FavoriteJourney) {}
+            override suspend fun remove(journey: FavoriteJourney) {}
         }
     }
 }

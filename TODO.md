@@ -1744,7 +1744,7 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             interchange's stops (the 43 and 134 at Archway), set aside for strict same-stop; its
             branch holds the place-based version if that's revisited.
     - [ ] **Star a From… To… trip as a journey**: the trip has no single starred line, which
-          `StarredJourney` places its ends on, so it needs a line-free journey first.
+          `FavoriteJourney` places its ends on, so it needs a line-free journey first.
     - [x] **To… from the near-me list** (maintainer, 2026-09-24): the overflow's *To…* starts
           from the list's default stops plus any within 0.2 mi (`hereOriginIds`). *Superseded
           2026-09-26: To… plans a trip from the rider's nearest stop (SPEC "Trips with a change").*
@@ -3591,7 +3591,7 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 - **To… is a look with no Star button (autopilot, 2026-09-24).** Picking a destination narrows
   the departures to those that call there; no trip is saved (the destination goes into *To…*'s
   own recent list since 2026-09-26). *Alternative:* star the trip straight
-  away, which needs a line-free journey (`StarredJourney` places its ends on one starred line's
+  away, which needs a line-free journey (`FavoriteJourney` places its ends on one starred line's
   route); logged under *Find a station* above. **Reversible:** the To… state is a few saved UI values
   in `MainActivity`; the filter is a pure `DirectTrips` function.
   *Superseded 2026-09-26: To… plans a trip (SPEC "Trips with a change").*

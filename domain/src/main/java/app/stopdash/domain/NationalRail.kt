@@ -229,7 +229,7 @@ class RailAwareTflClient(
     }
 
     // Nothing shown at the stop runs on National Rail (the mode is hidden), so its station's board
-    // isn't asked for. A twin that still shows it (a starred journey's origin) takes it over at once,
+    // isn't asked for. A twin that still shows it (a favorite journey's origin) takes it over at once,
     // rather than wait out this stop's hold. With no board to leave out (no key, no station) it's the
     // usual fetch, which asks for none and keeps a station's "No key" for when its rows show again.
     override suspend fun arrivals(stopId: String, railBoard: Boolean): List<Departure> {

@@ -777,7 +777,7 @@ internal fun widgetColumns(
 }
 
 /**
- * The starred journeys' departures at the top of the widget (SPEC *Journeys*): at each journey
+ * The favorite journeys' departures at the top of the widget (SPEC *Journeys*): at each journey
  * origin, a row keeps only the departures the app found to call at the far end (by line,
  * destination and branch), fresh rows ahead of stale ones (as the rest of the list) and soonest
  * first within each. The widget can't load route data, so a destination the app hasn't seen yet

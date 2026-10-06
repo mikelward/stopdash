@@ -48,7 +48,7 @@ data class PersistedSnapshot(
     val version: Int = CURRENT_VERSION,
     val stops: List<PersistedStop> = emptyList(),
     val fetchedAtMillis: Long = 0L,
-    // The widget's starred journeys and journey-only stops ([DeparturesSnapshot]), added in version
+    // The widget's favorite journeys and journey-only stops ([DeparturesSnapshot]), added in version
     // 2. Defaulted, so a version-1 snapshot reads back with none.
     val journeys: List<PersistedWidgetJourney> = emptyList(),
     val journeyOnlyStopIds: List<String> = emptyList(),

@@ -9,7 +9,7 @@ import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.RouteTopology
-import app.stopdash.domain.StarredJourney
+import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopGroup
@@ -99,7 +99,7 @@ internal class ShownRows(
     val from: ListRows,
     val cards: List<JourneyCard>,
     val cardRows: List<DepartureRow>,
-    val journeys: List<StarredJourney>,
+    val journeys: List<FavoriteJourney>,
 )
 
 /** A platform or station view ([platformViewOf]): what the saved view keys on, and its inputs. */
@@ -190,7 +190,7 @@ internal fun shownRowsOf(
     starred: Set<StarredRow>,
     stopDistanceMeters: Map<String, Double>,
     cards: List<JourneyCard> = emptyList(),
-    journeys: List<StarredJourney> = emptyList(),
+    journeys: List<FavoriteJourney> = emptyList(),
     topology: RouteTopology = RouteTopology.EMPTY,
 ): ShownRows {
     val rows = DepartureRows.pinStarred(

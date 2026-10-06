@@ -22,7 +22,7 @@ class JourneysTest {
         stopNames = mapOf("TOP" to "Top", "MID" to "Mid", "BOTA" to "Bottom A", "SIDE" to "Side", "BOTB" to "Bottom B"),
     )
 
-    private val journey = StarredJourney(
+    private val journey = FavoriteJourney(
         from = JourneyEnd("TOP", "Top", 51.51, -0.12),
         to = JourneyEnd("MID", "Mid", 51.49, -0.12),
         lineId = "example",
@@ -55,7 +55,7 @@ class JourneysTest {
         },
     )
 
-    private val parkToHill = StarredJourney(
+    private val parkToHill = FavoriteJourney(
         JourneyEnd("PARKN", "Park", 51.500, -0.12), JourneyEnd("HILLN", "Hill", 51.510, -0.12), "b1", "B1", "bus",
     )
 
@@ -101,7 +101,7 @@ class JourneysTest {
         ),
     )
 
-    private val kingToNorth = StarredJourney(JourneyEnd("KING", "King"), JourneyEnd("NORTH", "North End"), "example")
+    private val kingToNorth = FavoriteJourney(JourneyEnd("KING", "King"), JourneyEnd("NORTH", "North End"), "example")
 
     @Test
     fun `a train on the other branch is offered with where to change, only when no direct one is due`() {
@@ -452,7 +452,7 @@ class JourneysTest {
         assertFalse(toMid.unresolved)
         assertTrue("MID" in toMid.reachedIds)
         // Only one branch reaches Side: it can't be vouched for either way, and says so.
-        val toSide = StarredJourney(JourneyEnd("TOP", "Top", 51.51, -0.12), JourneyEnd("SIDE", "Side", 51.48, -0.12), "example")
+        val toSide = FavoriteJourney(JourneyEnd("TOP", "Top", 51.51, -0.12), JourneyEnd("SIDE", "Side", 51.48, -0.12), "example")
         val sideTrains = Journeys.trains(
             Journeys.segment(toSide, forked)!!, rowsAt("TOP", departure("Check Front of Train", 60)), sequences, toSide,
         )

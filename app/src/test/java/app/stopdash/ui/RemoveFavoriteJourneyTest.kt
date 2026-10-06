@@ -2,8 +2,8 @@ package app.stopdash.ui
 
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.SnapshotStore
-import app.stopdash.domain.StarredJourney
-import app.stopdash.domain.StarredJourneysStore
+import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.FavoriteJourneysStore
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.WidgetJourneysReport
 import java.io.IOException
@@ -19,16 +19,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Settings' Remove unstars a journey and unpins it from the widget at once (SPEC *Journeys*). */
-class RemoveStarredJourneyTest {
+class RemoveFavoriteJourneyTest {
     // Public TfL interchanges only (SPEC *Privacy*).
-    private val victoria = StarredJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), "victoria")
-    private val northern = StarredJourney(JourneyEnd("940GZZLUEUS", "Euston"), JourneyEnd("940GZZLUWLO", "Waterloo"), "northern")
+    private val victoria = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), "victoria")
+    private val northern = FavoriteJourney(JourneyEnd("940GZZLUEUS", "Euston"), JourneyEnd("940GZZLUWLO", "Waterloo"), "northern")
 
-    private class FakeJourneys(initial: List<StarredJourney>?) : StarredJourneysStore {
+    private class FakeJourneys(initial: List<FavoriteJourney>?) : FavoriteJourneysStore {
         val state = MutableStateFlow(initial)
-        override fun journeys(): Flow<List<StarredJourney>?> = state
-        override suspend fun toggle(journey: StarredJourney) {}
-        override suspend fun remove(journey: StarredJourney) {
+        override fun journeys(): Flow<List<FavoriteJourney>?> = state
+        override suspend fun toggle(journey: FavoriteJourney) {}
+        override suspend fun remove(journey: FavoriteJourney) {
             state.value = state.value?.filterNot { it.key == journey.key }
         }
     }
@@ -45,7 +45,7 @@ class RemoveStarredJourneyTest {
     fun `removing a journey unpins it from the widget, keeping the others`() = runTest {
         val journeys = FakeJourneys(listOf(victoria, northern))
         val widget = FakeWidget()
-        removeStarredJourney(victoria, journeys, widget, Mutex())
+        removeFavoriteJourney(victoria, journeys, widget, Mutex())
         assertEquals(listOf(northern), journeys.state.value)
         assertEquals(setOf(northern.key), widget.reports.single().keys)
         assertTrue(widget.reports.single().checks.isEmpty())
@@ -55,20 +55,20 @@ class RemoveStarredJourneyTest {
     fun `a failed unpin is logged, not reported as a failed removal`() = runTest {
         val journeys = FakeJourneys(listOf(victoria))
         val warnings = mutableListOf<String>()
-        removeStarredJourney(victoria, journeys, FakeWidget(fail = true), Mutex(), warn = { warnings += it })
-        assertEquals(emptyList<StarredJourney>(), journeys.state.value)
+        removeFavoriteJourney(victoria, journeys, FakeWidget(fail = true), Mutex(), warn = { warnings += it })
+        assertEquals(emptyList<FavoriteJourney>(), journeys.state.value)
         assertEquals(1, warnings.size)
     }
 
     @Test
     fun `an unreadable store after the removal leaves the pins for the main screen`() = runTest {
-        val journeys = object : StarredJourneysStore {
-            override fun journeys(): Flow<List<StarredJourney>?> = MutableStateFlow(null)
-            override suspend fun toggle(journey: StarredJourney) {}
-            override suspend fun remove(journey: StarredJourney) {}
+        val journeys = object : FavoriteJourneysStore {
+            override fun journeys(): Flow<List<FavoriteJourney>?> = MutableStateFlow(null)
+            override suspend fun toggle(journey: FavoriteJourney) {}
+            override suspend fun remove(journey: FavoriteJourney) {}
         }
         val widget = FakeWidget()
-        removeStarredJourney(victoria, journeys, widget, Mutex())
+        removeFavoriteJourney(victoria, journeys, widget, Mutex())
         assertTrue(widget.reports.isEmpty())
     }
 
@@ -77,14 +77,14 @@ class RemoveStarredJourneyTest {
         val worker = Executors.newSingleThreadExecutor { Thread(it, "remove-worker") }
         try {
             var ranOn: String? = null
-            val journeys = object : StarredJourneysStore {
-                override fun journeys(): Flow<List<StarredJourney>?> = MutableStateFlow(emptyList())
-                override suspend fun toggle(journey: StarredJourney) {}
-                override suspend fun remove(journey: StarredJourney) {
+            val journeys = object : FavoriteJourneysStore {
+                override fun journeys(): Flow<List<FavoriteJourney>?> = MutableStateFlow(emptyList())
+                override suspend fun toggle(journey: FavoriteJourney) {}
+                override suspend fun remove(journey: FavoriteJourney) {
                     ranOn = Thread.currentThread().name
                 }
             }
-            removeStarredJourney(victoria, journeys, FakeWidget(), Mutex(), worker = worker.asCoroutineDispatcher())
+            removeFavoriteJourney(victoria, journeys, FakeWidget(), Mutex(), worker = worker.asCoroutineDispatcher())
             // Debug builds suffix the coroutine's name to the thread's.
             assertTrue(ranOn.orEmpty().startsWith("remove-worker"))
             assertTrue(!Thread.currentThread().name.startsWith("remove-worker"))
