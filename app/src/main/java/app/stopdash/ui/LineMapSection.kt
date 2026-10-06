@@ -81,7 +81,8 @@ private class Laid(val from: LineSequence?, val statusKey: Any?, val map: LineMa
 /**
  * [lineId]'s map for its page (SPEC *Line page → Map*): its route data from the route pages' own
  * day-long cache ([LocalRouteStops]), loaded when the page opens and never on a refresh path, laid out
- * with [status]'s alert placed on it and the rider's [starred] and [riding] stops kept, then folded as
+ * with [status]'s alert placed on it, the rider's [starred] and [riding] stops kept and an alert on the
+ * [rides] they take shown in full, then folded as
  * [opened] and [all] say. Both run on [LocalWorker], never in composition; while a tap's new folding
  * is worked out the last one stands, so nothing moves under the finger. A map laid out for another
  * status never stands in, though: it would draw a closure that has ended, or none where one began, under
@@ -101,6 +102,7 @@ internal fun rememberLineMap(
     retry: Int,
     statusKey: Any? = status,
     quieted: LineStatus? = null,
+    rides: List<List<String>> = emptyList(),
 ): LineMapUi? {
     val repository = LocalRouteStops.current ?: return null
     val worker = LocalWorker.current
@@ -122,8 +124,8 @@ internal fun rememberLineMap(
     }
     val sequence = source as? LineSequence
     val laidSlot = remember { mutableStateOf<Worked<Inputs, Laid>?>(null) }
-    val laid = rememberWorked(laidSlot, Inputs(sequence, status, statusKey, starred, riding, quieted), keep = { _, _ -> true }) {
-        Laid(sequence, statusKey, sequence?.let { LineMap.forStatus(it, status, starred, riding, quieted) })
+    val laid = rememberWorked(laidSlot, Inputs(sequence, status, statusKey, starred, riding, quieted, rides), keep = { _, _ -> true }) {
+        Laid(sequence, statusKey, sequence?.let { LineMap.forStatus(it, status, starred, riding, quieted, rides) })
     }
     // A map laid out for this route data and this status, for starred or ridden stops since changed
     // standing in until the new one is in; never one laid out before the data came, which would read
@@ -200,7 +202,7 @@ internal fun rememberLineMapSection(line: TripLine, starred: Set<String>): LineM
     var retry by remember(leg.lineId) { mutableIntStateOf(0) }
     var opened by rememberSaveable(leg.lineId, stateSaver = OpenedFoldsSaver) { mutableStateOf<OpenedFolds?>(null) }
     var all by rememberSaveable(leg.lineId) { mutableStateOf(false) }
-    val ui = rememberLineMap(leg.lineId, line.status, starred, line.riding, opened, all, retry, line.mapKey ?: line.status, line.quieted)
+    val ui = rememberLineMap(leg.lineId, line.status, starred, line.riding, opened, all, retry, line.mapKey ?: line.status, line.quieted, line.rides)
     val atFirst = opened == null && !all
     return if (ui == null) {
         null
@@ -383,13 +385,29 @@ private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color) {
 private fun FoldRow(fold: LineMap.Item.Fold, columns: Int, railColor: Color, onOpen: () -> Unit) {
     val closedColor = MaterialTheme.colorScheme.error
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    // Where a stretch leads, by the line's ends folded into it; else its first and last stations.
-    val title = if (fold.section && fold.ends.isNotEmpty()) fold.endsText else stringResource(R.string.line_map_run, fold.first, fold.last)
+    val stations = pluralStringResource(R.plurals.line_map_stations, fold.count, fold.count)
+    // Where a stretch leads, by the line's ends folded into it; else its first and last stations, or the
+    // one it holds. An alert's own stretch off the rider's, how many it holds: its every name is one the
+    // alert affects (maintainer, 2026-10-06).
+    val title = when {
+        fold.unnamed -> stations
+        fold.section && fold.ends.isNotEmpty() -> fold.endsText
+        fold.count == 1 -> fold.first
+        else -> stringResource(R.string.line_map_run, fold.first, fold.last)
+    }
     val clickLabel = pluralStringResource(R.plurals.line_map_show, fold.count, fold.count)
+    // How bad an alert folded into it is, without naming where (maintainer, 2026-10-06): no service, or a
+    // station an alert names, as the route page marks one.
+    val (glyph, state) = when (fold.level) {
+        LineMap.Level.CLOSURE -> "\u26D4" to stringResource(R.string.line_map_fold_closure)
+        LineMap.Level.WARNING -> "\u26A0" to stringResource(R.string.line_map_fold_alert)
+        null -> null to null
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)
-            .clickable(onClickLabel = clickLabel, role = Role.Button, onClick = onOpen),
+            .clickable(onClickLabel = clickLabel, role = Role.Button, onClick = onOpen)
+            .semantics { if (state != null) stateDescription = state },
     ) {
         Canvas(Modifier.width(gutterWidth(columns)).fillMaxHeight()) {
             val inset = 12.dp.toPx()
@@ -414,8 +432,15 @@ private fun FoldRow(fold: LineMap.Item.Fold, columns: Int, railColor: Color, onO
             verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
             modifier = Modifier.weight(1f).heightIn(min = 56.dp).padding(vertical = 8.dp),
         ) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-            Text(pluralStringResource(R.plurals.line_map_stations, fold.count, fold.count), style = MaterialTheme.typography.bodyMedium, color = muted)
+            Text(
+                buildAnnotatedString {
+                    append(title)
+                    if (glyph != null) withStyle(SpanStyle(color = closedColor)) { append(" $glyph") }
+                },
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+            )
+            if (!fold.unnamed) Text(stations, style = MaterialTheme.typography.bodyMedium, color = muted)
         }
         // Read out by the row's click label.
         Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = muted, modifier = Modifier.padding(horizontal = 12.dp))

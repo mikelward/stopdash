@@ -3026,6 +3026,15 @@ class TripViewModelTest {
         val lines = tripLines(cards, emptyMap(), state, now, emptyMap(), emptySet(), emptySet(), false, emptySet())
         assertEquals(setOf("A", "B", "X", "C"), lines.single { it.leg.lineId == "blue" }.riding)
         assertEquals(setOf("B", "X"), lines.single { it.leg.lineId == "red" }.riding)
+        // Each ride its own stretch, where the map shows an alert in full.
+        assertEquals(listOf(listOf("A", "B"), listOf("X", "C")), lines.single { it.leg.lineId == "blue" }.rides)
+    }
+
+    @Test
+    fun `a ride's planned path goes to its line's map, else its two ends`() {
+        // The path says which branch it rides where two join the same stops (Codex, #613).
+        assertEquals(listOf(listOf("A", "B", "C")), TripLine(leg("blue", "A", "C", 5, 10).copy(path = listOf("B", "C")), null).rides)
+        assertEquals(listOf(listOf("A", "C")), TripLine(leg("blue", "A", "C", 5, 10), null).rides)
     }
 
     @Test
@@ -3044,7 +3053,6 @@ class TripViewModelTest {
         assertEquals("Severe Delays", line.quieted?.description)
         // Its map draws the one still named too, so that keys it (Codex, #606).
         assertEquals(LineMap.alertKey(line.status, line.quieted), line.mapKey)
-        assertNotEquals(LineMap.alertKey(line.status), line.mapKey)
     }
 
     @Test

@@ -49,14 +49,19 @@ class LineMapFixturesTest {
     }
 
     @Test
-    fun `today's Battersea closure folds the rest of the Northern line away`() {
+    fun `today's Battersea closure folds with its branch, saying there's no service in it`() {
         // Shut both ways: TfL lists it once each way round.
         val closure = listOf(listOf("940GZZLUKNG", "940GZZNEUGST", "940GZZBPSUST"), listOf("940GZZBPSUST", "940GZZNEUGST", "940GZZLUKNG"))
         val map = LineMap.of(northern, closures = closure)!!
         assertEquals(setOf("Nine Elms", "Battersea Power Station"), map.names { it.unserved })
-        val labels = map.folded(emptySet()).labels()
-        assertTrue(labels.containsAll(listOf("Kennington", "Nine Elms", "Battersea Power Station")))
-        assertTrue("everything else is folded", labels.size <= 6)
+        val items = map.folded(emptySet())
+        // Off the rider's own stops and rides, the branch it shuts folds, Kennington still on the page.
+        assertTrue("Kennington" in items.labels())
+        assertTrue("Nine Elms" !in items.labels())
+        val branch = items.filterIsInstance<LineMap.Item.Fold>().single { it.level != null }
+        assertEquals(LineMap.Level.CLOSURE, branch.level)
+        assertEquals(listOf("Battersea Power Station"), branch.ends)
+        assertTrue("its stations named only once it's opened", branch.unnamed)
     }
 
     @Test
