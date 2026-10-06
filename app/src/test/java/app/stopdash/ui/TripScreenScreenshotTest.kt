@@ -3712,6 +3712,34 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun the_lines_pages_menu_closes_it_and_opens_the_disruptions_settings() {
+        var closed = 0
+        var opened = 0
+        val menu = AppMenuActions(
+            updateAvailable = false, onOpenAppListing = {}, onSendBugReport = {}, onOpenLicenses = {},
+            onOpenDisruptionsSettings = { opened++ },
+        )
+        composeRule.setContent {
+            StopDashTheme { CompositionLocalProvider(LocalAppMenu provides menu) { TripLinesPage(TripRow(checking = false), onClose = { closed++ }) } }
+        }
+        composeRule.onNodeWithContentDescription(composeRule.activity.getString(R.string.menu_more)).performClick()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.menu_settings)).performClick()
+        assertEquals("the page closes, so Settings isn't opened under it", 1, closed)
+        assertEquals(1, opened)
+    }
+
+    @Test
+    fun without_somewhere_to_open_settings_the_lines_page_offers_none() {
+        val menu = AppMenuActions(updateAvailable = false, onOpenAppListing = {}, onSendBugReport = {}, onOpenLicenses = {})
+        composeRule.setContent {
+            StopDashTheme { CompositionLocalProvider(LocalAppMenu provides menu) { TripLinesPage(TripRow(checking = false), onClose = {}) } }
+        }
+        composeRule.onNodeWithContentDescription(composeRule.activity.getString(R.string.menu_more)).performClick()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.menu_send_bug_report)).assertExists()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.menu_settings)).assertDoesNotExist()
+    }
+
+    @Test
     fun a_reason_page_restored_while_the_trip_checks_again_never_shows_its_saved_reason() {
         fun line(id: String, name: String, status: LineStatus) =
             TripLine(leg("tube", id, name, "A" to "King's Cross", "B" to "Euston", 0, 10, 2), status)

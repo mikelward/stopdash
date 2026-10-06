@@ -3470,9 +3470,13 @@ internal fun TripLinesPage(
                     },
                     // The app's overflow, as on every screen: a report can start where the problem is seen.
                     // On a disrupted line's page it also dismisses that alert (maintainer, 2026-10-06: an
-                    // overflow action, as a × beside it would read as closing the page).
+                    // overflow action, as a × beside it would read as closing the page). Then Settings,
+                    // opening on the disruptions summary's page: what the row and this page cover is set
+                    // there. The page closes first, so Settings isn't opened under it, and Back from that
+                    // page goes up to Settings, then out.
                     actions = {
                         val dismissing = reasonLine?.takeIf { onDismiss != null && it.dismissable }?.status
+                        val openSettings = LocalAppMenu.current?.onOpenDisruptionsSettings
                         AppMenuOverflow { close ->
                             if (dismissing != null && onDismiss != null) {
                                 DropdownMenuItem(
@@ -3480,6 +3484,16 @@ internal fun TripLinesPage(
                                     onClick = {
                                         close()
                                         onDismiss(dismissing)
+                                    },
+                                )
+                            }
+                            if (openSettings != null) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.menu_settings)) },
+                                    onClick = {
+                                        close()
+                                        onClose()
+                                        openSettings()
                                     },
                                 )
                             }

@@ -42,6 +42,9 @@ data class AppMenuActions(
     val onOpenAppListing: () -> Unit,
     val onSendBugReport: () -> Unit,
     val onOpenLicenses: () -> Unit,
+    // Opens Settings on the disruptions summary's page, whose Back goes up to Settings itself: what the
+    // lines page offers, the row's own settings being what a rider there reaches for. Null offers none.
+    val onOpenDisruptionsSettings: (() -> Unit)? = null,
 )
 
 /** The activity's [AppMenuActions]; null (a test, a preview) offers none. */

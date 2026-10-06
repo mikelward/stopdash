@@ -164,13 +164,20 @@ fun SettingsScreen(
     // Opens StopDash's Play Store page on a connected watch that doesn't have it (SPEC *Wear OS*),
     // the near-me card's offer kept here for good; null (no such watch) shows no row.
     onInstallOnWatch: (() -> Unit)? = null,
+    // Opened for the disruptions summary (the lines page's menu): its page is open over Settings from
+    // the first frame, and its Back goes up to Settings, never straight out.
+    startOnDisruptions: Boolean = false,
+    // Its page closed, back up to Settings: the caller drops [startOnDisruptions], so Settings composed
+    // afresh (back from a page opened over it) opens at the top, not on that page again (Codex, #607).
+    onDisruptionsClosed: () -> Unit = {},
 ) {
     // Counts the overflow's openings: each re-masks both keys ([ApiKeyRow]) before "Send bug report"
     // can be picked, since the report's screenshot is of this screen and a revealed key would be
     // in it in plain text (Codex on #377). A credential is never one of the report's disclosures.
     var menuOpens by remember { mutableIntStateOf(0) }
-    // The disruptions summary's own page, over this one; its Back returns here.
-    var disruptionsOpen by rememberSaveable { mutableStateOf(false) }
+    // The disruptions summary's own page, over this one; its Back returns here. Open from the start
+    // when Settings is opened for it (the lines page's menu), so Back from it goes up to Settings.
+    var disruptionsOpen by rememberSaveable(startOnDisruptions) { mutableStateOf(startOnDisruptions) }
     BackHandler(onBack = onBack)
     Box(modifier = Modifier.fillMaxSize()) {
     // Off the screen while the page is open, so neither TalkBack nor a keyboard reaches the covered
@@ -409,7 +416,10 @@ fun SettingsScreen(
             networksLoaded = summaryNetworksLoaded,
             networksWriteFailed = summaryNetworksWriteFailed,
             onDismissNetworksError = onDismissSummaryNetworksError,
-            onBack = { disruptionsOpen = false },
+            onBack = {
+                disruptionsOpen = false
+                onDisruptionsClosed()
+            },
         )
     }
     }
