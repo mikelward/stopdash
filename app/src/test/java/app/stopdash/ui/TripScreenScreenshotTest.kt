@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
+import app.stopdash.data.TflRouteSequenceDto
 import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.Departure
 import app.stopdash.domain.MaxWalk
@@ -72,6 +73,7 @@ import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.PartClosure
 import app.stopdash.domain.RouteSequenceSource
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.StopDisruption
@@ -88,6 +90,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertFalse
@@ -3811,6 +3814,147 @@ class TripScreenScreenshotTest {
         composeRule.setContent { StopDashTheme { Surface { TripLinesContent(row, modifier = Modifier.padding(vertical = 16.dp)) } } }
         composeRule.onNodeWithText("Couldn't check").assertIsDisplayed()
         captureSnapshot("trip-lines.png")
+    }
+
+    // The real Northern line from a recorded TfL sequence, with its ends' positions as TfL gives them
+    // live (this recording was trimmed before the app read them), so it stands north up as on a phone.
+    private val northernLine: LineSequence by lazy {
+        Json { ignoreUnknownKeys = true }
+            .decodeFromString<TflRouteSequenceDto>(checkNotNull(javaClass.getResource("/fixtures/route_sequence_northern_outbound.json")).readText())
+            .toLineSequence()
+            .copy(
+                stopPositions = mapOf(
+                    "940GZZLUEGW" to (51.61365 to -0.27493),
+                    "940GZZLUHBT" to (51.65054 to -0.1943),
+                    "940GZZLUMHL" to (51.60823 to -0.20999),
+                    "940GZZLUMDN" to (51.40214 to -0.19484),
+                    "940GZZBPSUST" to (51.47993 to -0.14214),
+                ),
+            )
+    }
+
+    private val districtLine: LineSequence by lazy {
+        Json { ignoreUnknownKeys = true }
+            .decodeFromString<TflRouteSequenceDto>(checkNotNull(javaClass.getResource("/fixtures/route_sequence_district.json")).readText())
+            .toLineSequence()
+    }
+
+    // The Northern line's part suspension as TfL worded it, its closed stretch placed by TfL's sections,
+    // shut both ways: once each way round.
+    private val suspensionText =
+        "Northern Line: No service between Kennington and Battersea Power Station while we fix a faulty train at Nine Elms. GOOD SERVICE on the rest of the line."
+    private val northernPartSuspended = LineStatus(
+        "northern", 3, "Part Suspended",
+        fullText = suspensionText,
+        closures = listOf(
+            PartClosure(
+                3, "Part Suspended", suspensionText,
+                listOf(listOf("940GZZLUKNG", "940GZZNEUGST", "940GZZBPSUST"), listOf("940GZZBPSUST", "940GZZNEUGST", "940GZZLUKNG")),
+            ),
+        ),
+    )
+
+    // A line's own page off the lines page, its map drawn from [sequence]; waits until [shown] is drawn.
+    private fun showLinePage(line: TripLine, sequence: LineSequence, shown: String, starred: Set<String> = emptySet()) {
+        val repository = RouteStopsRepository(object : RouteSequenceSource {
+            override suspend fun routeSequence(lineId: String, direction: String): LineSequence = sequence
+        })
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalRouteStops provides repository) {
+                    Surface { TripLineReason(line, starred = starred) }
+                }
+            }
+        }
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText(shown).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    private fun northernLeg(from: Pair<String, String> = "" to "", to: Pair<String, String> = "" to "") =
+        leg("tube", "northern", "Northern", from, to, 0, 10, 2)
+
+    @Test
+    fun a_part_suspended_line_opens_on_its_closure_with_the_rest_folded() {
+        // King's Cross St. Pancras starred: a big interchange, standing in for the rider's own.
+        showLinePage(TripLine(northernLeg(), northernPartSuspended), northernLine, shown = "Nine Elms", starred = setOf("940GZZLUKSX"))
+        composeRule.onNodeWithText("Edgware · High Barnet · Mill Hill East").assertExists()
+        composeRule.onNodeWithText("King's Cross St. Pancras ★").assertExists()
+        composeRule.onAllNodesWithText("No service").assertCountEquals(2)
+        // Where the closure begins, said to a screen reader as well as drawn (Codex, #606).
+        composeRule.onNodeWithText("Kennington")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Next to a closure"))
+        composeRule.onNodeWithText("Edgware · High Barnet · Mill Hill East").performClick()
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("Finchley Central").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithText("Fold").performClick()
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("Finchley Central").fetchSemanticsNodes().isEmpty() }
+    }
+
+    @Test
+    fun a_closure_dismissed_while_a_milder_alert_stands_is_still_drawn() {
+        // The page names the suspension the rider dismissed beside the minor delays: its map draws it (Codex, #606).
+        val line = TripLine(northernLeg(), LineStatus("northern", 9, "Minor Delays"), quieted = northernPartSuspended)
+        showLinePage(line, northernLine, shown = "Nine Elms")
+        composeRule.onAllNodesWithText("No service").assertCountEquals(2)
+    }
+
+    @Test
+    fun a_fold_opened_stays_open_when_the_page_is_restored() {
+        val repository = RouteStopsRepository(object : RouteSequenceSource {
+            override suspend fun routeSequence(lineId: String, direction: String): LineSequence = northernLine
+        })
+        val restoration = StateRestorationTester(composeRule)
+        restoration.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalRouteStops provides repository) {
+                    Surface { TripLineReason(TripLine(northernLeg(), northernPartSuspended)) }
+                }
+            }
+        }
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("Edgware · High Barnet · Mill Hill East").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithText("Edgware · High Barnet · Mill Hill East").performClick()
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("Finchley Central").fetchSemanticsNodes().isNotEmpty() }
+        restoration.emulateSavedInstanceStateRestore()
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("Finchley Central").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithText("Fold").assertExists()
+    }
+
+    @Test
+    fun a_closure_the_map_cant_place_is_said_rather_than_drawn_as_unaffected() {
+        // A made-up bus whose way back calls in another order (so it's left off the map), shut only at a
+        // stop of that way back, and named only by it: the page says the closure isn't on the map.
+        val names = mapOf("A1" to "Alpha", "A2" to "Alpha", "B1" to "Beta", "B2" to "Beta", "C1" to "Gamma", "C2" to "Gamma", "D1" to "Delta", "D2" to "Delta", "X2" to "Xray")
+        val bus = LineSequence(
+            routes = listOf(LineRoute("", listOf("A1", "B1", "C1", "D1"), "outbound"), LineRoute("", listOf("D2", "X2", "B2", "C2", "A2"), "inbound")),
+            stopNames = names,
+            stopAreas = names.keys.associateWith { it.take(1).lowercase() },
+        )
+        val words = "Buses are not calling at Xray."
+        val status = LineStatus("b", 3, "Part Suspended", fullText = words, closures = listOf(PartClosure(3, "Part Suspended", words, listOf(listOf("D2", "X2")))))
+        showLinePage(TripLine(leg("bus", "b", "B", "" to "", "" to "", 0, 10, 2), status), bus, shown = "This closure isn't on the map")
+        composeRule.onNodeWithText("Alpha").assertExists()
+    }
+
+    @Test
+    @Config(qualifiers = "en-rGB-w411dp-h914dp-night-420dpi")
+    fun line_page_part_suspended() {
+        showLinePage(TripLine(northernLeg(), northernPartSuspended), northernLine, shown = "Nine Elms", starred = setOf("940GZZLUKSX"))
+        captureSnapshot("line-page-part-suspended.png")
+    }
+
+    @Test
+    fun line_page_good_service() {
+        // A trip riding the Northern from King's Cross St. Pancras to Bank: both its stops stay out of the folds.
+        val line = TripLine(northernLeg("940GZZLUKSX" to "King's Cross St. Pancras", "940GZZLUBNK" to "Bank"), LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service"))
+        showLinePage(line, northernLine, shown = "Show all stations")
+        composeRule.onNodeWithText("King's Cross St. Pancras").assertExists()
+        composeRule.onNodeWithText("Show all stations").assertExists()
+        captureSnapshot("line-page-good-service.png")
+    }
+
+    @Test
+    fun line_page_district() {
+        val line = TripLine(leg("tube", "district", "District", "" to "", "" to "", 0, 10, 2), LineStatus("district", LineStatus.GOOD_SERVICE, "Good Service"))
+        showLinePage(line, districtLine, shown = "Show all stations")
+        captureSnapshot("line-page-district.png")
     }
 
     @Test

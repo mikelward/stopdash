@@ -50,7 +50,8 @@ class LineMapFixturesTest {
 
     @Test
     fun `today's Battersea closure folds the rest of the Northern line away`() {
-        val closure = listOf(listOf("940GZZLUKNG", "940GZZNEUGST", "940GZZBPSUST"))
+        // Shut both ways: TfL lists it once each way round.
+        val closure = listOf(listOf("940GZZLUKNG", "940GZZNEUGST", "940GZZBPSUST"), listOf("940GZZBPSUST", "940GZZNEUGST", "940GZZLUKNG"))
         val map = LineMap.of(northern, closures = closure)!!
         assertEquals(setOf("Nine Elms", "Battersea Power Station"), map.names { it.unserved })
         val labels = map.folded(emptySet()).labels()

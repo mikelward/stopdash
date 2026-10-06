@@ -4,8 +4,6 @@ import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.annotation.WorkerThread
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -123,6 +121,7 @@ import app.stopdash.domain.headedCards
 import app.stopdash.domain.remainingAfter
 import app.stopdash.domain.Headway
 import app.stopdash.domain.HiddenModes
+import app.stopdash.domain.LineMap
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.AlertStart
@@ -3042,6 +3041,8 @@ internal class TripRow(
     val unknownStops: String = "",
     // Every line the cards ride, each with its status, as the row's lines page lists them ([TripLine]).
     val every: List<TripLine> = emptyList(),
+    // The rider's starred stops (rows and journeys' ends), which a line's map never folds away.
+    val starredStops: Set<String> = emptySet(),
 ) {
     /**
      * [lines]' and [unknownLines]' names, as a screen reader hears a one-line row that draws only the
@@ -3065,7 +3066,7 @@ internal class TripRow(
     @WorkerThread
     fun sameAs(other: TripRow?): Boolean = other != null && checking == other.checking && unknown == other.unknown &&
         stops == other.stops && unknownStops == other.unknownStops && lines == other.lines && unknownLines == other.unknownLines &&
-        every == other.every
+        every == other.every && starredStops == other.starredStops
 
     companion object {
         /** "Checking…" alone: before the first row is worked out, or once the last is too old to show. */
@@ -3150,6 +3151,12 @@ internal data class TripLine(
     val quieted: LineStatus? = null,
     // A stand-in while a restored page's order is applied: its pill alone, claiming no status.
     val restoring: Boolean = false,
+    // The stops the trip boards and leaves this line at, every ride of it on every card, as its map
+    // keeps them (SPEC *Line page → Map*); [leg]'s own where the line stands alone.
+    val riding: Set<String> = setOf(leg.fromId, leg.toId).filterTo(HashSet()) { it.isNotBlank() },
+    // What its map draws of [status] ([LineMap.alertKey]), worked out with the line: a status rebuilt with
+    // the same alert keeps the map up, another redraws it. Null where not worked out: [status] itself.
+    val mapKey: String? = null,
 ) {
     /** Whether the page shows [status]'s disruption: a line kept from before still warns of it. */
     val disrupted: Boolean get() = status?.disrupted == true
@@ -3199,6 +3206,9 @@ internal fun tripLines(
     unknown: Set<String>,
 ): List<TripLine> {
     val legs = LinkedHashMap<String, TripLeg>()
+    // Per line, where every ride of it boards and gets off: a trip can leave a line and rejoin it,
+    // and another card ride it between other stops (Codex, #606).
+    val riding = HashMap<String, MutableSet<String>>()
     // Per line, the worst status as the cards show it (less what was dismissed), and as TfL gave it.
     val worstShown = HashMap<String, LineStatus>()
     val worstRaw = HashMap<String, LineStatus>()
@@ -3216,6 +3226,7 @@ internal fun tripLines(
         for (leg in card.first().route.rides.indices.flatMap { cardRideLines(card, it, rideLines) }) {
             if (leg.lineId.isBlank()) continue
             legs.putIfAbsent(leg.lineId, pillNamed(leg))
+            riding.getOrPut(leg.lineId) { LinkedHashSet() } += listOf(leg.fromId, leg.toId).filter { it.isNotBlank() }
             keep(worstShown, leg.lineId, statuses[leg.lineId])
             keep(worstRaw, leg.lineId, raw[leg.lineId])
             val was = raw[leg.lineId]
@@ -3238,16 +3249,15 @@ internal fun tripLines(
         // A line whose latest check failed couldn't be checked until one succeeds, whatever else keeps
         // the row checking: a refresh can go on for another line after its request failed (Codex, #559).
         val pending = checking && inDoubt && id !in state.statusFailedLines && !omitted
+        val quieted = if (id in shown) quietedBeside(worstDismissed[id], status) else null
         TripLine(
             leg = leg,
             status = status,
+            riding = riding[id].orEmpty(),
+            // The map draws the one still named too (Codex, #606).
+            mapKey = LineMap.alertKey(status, quieted),
             dismissed = id !in shown && raw?.disrupted == true,
-            // A worse alert the rider dismissed while a milder one stands: still named (Codex, #559).
-            // As bad as the one standing counts too, if it's another alert (Codex, #559).
-            quieted = worstDismissed[id]?.takeIf {
-                id in shown && status != null && worstFirst.compare(it, status) <= 0 &&
-                    DismissedAlert.ofLineStatus(it) != DismissedAlert.ofLineStatus(status)
-            },
+            quieted = quieted,
             checking = pending,
             // A finished check names what it couldn't check; a line with no current status is never
             // passed off as a good service, whatever the note says.
@@ -3255,6 +3265,15 @@ internal fun tripLines(
         )
     }
     return lines.sortedWith(tripLineOrder)
+}
+
+/**
+ * [dismissed], an alert the rider dismissed, where it's worse than [status], the one that stands: still
+ * named beside it on the lines page (Codex, #559), and drawn on the line's map (Codex, #606). As bad as
+ * the one standing counts too, if it's another alert (Codex, #559). Null where it isn't.
+ */
+internal fun quietedBeside(dismissed: LineStatus?, status: LineStatus?): LineStatus? = dismissed?.takeIf {
+    status != null && worstFirst.compare(it, status) <= 0 && DismissedAlert.ofLineStatus(it) != DismissedAlert.ofLineStatus(status)
 }
 
 /**
@@ -3391,8 +3410,9 @@ internal val LocalDismissLineAlert = compositionLocalOf<LineAlertDismissal?> { n
 /**
  * Every line a trip rides with its status, as a full-screen dialog over the trip, with Back and the
  * arrow to return (maintainer, 2026-10-04: a full-screen dialog, not a sheet; one the home screen can
- * open too, so it reads only what it's given and the app's own menu). A line with a disruption opens
- * its own page with TfL's reason ([TripLineReason]); Back returns to the lines, where they were. Reads
+ * open too, so it reads only what it's given and the app's own menu). Every line opens its own page:
+ * TfL's reason where it's disrupted, and the line's map ([TripLineReason]); Back returns to the lines,
+ * where they were. Reads
  * the row as it was worked out on the worker ([TripRow.every]); nothing is worked out here.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -3506,7 +3526,7 @@ internal fun TripLinesPage(
         ) { padding ->
             if (onReason) {
                 if (reasonLine != null) {
-                    TripLineReason(reasonLine, Modifier.padding(padding))
+                    TripLineReason(reasonLine, Modifier.padding(padding), starred = row.starredStops)
                 } else {
                     // Restoring: the line's pill and the reason as last shown, in their places, until the
                     // line is back.
@@ -3523,6 +3543,7 @@ internal fun TripLinesPage(
                         Modifier.padding(padding),
                         reasonText.takeIf { settled },
                         quietedText.takeIf { settled },
+                        restoring = true,
                     )
                 }
             } else {
@@ -3533,7 +3554,6 @@ internal fun TripLinesPage(
                     pending = held.pending,
                     state = listState,
                     gone = gone,
-                    dismissable = onDismiss != null,
                     onOpenLine = { index, line ->
                         reasonId = line.leg.lineId
                         reasonName = line.leg.lineName
@@ -3547,20 +3567,37 @@ internal fun TripLinesPage(
 
 /**
  * A line's page off the trip's lines: its row as the lines show it, then TfL's reason for its
- * disruption in full. Live: a disruption that clears says so, as the row does, and the reason goes.
+ * disruption in full, then the line's map with the alert placed on it and the rider's [starred] stops
+ * kept ([LineMapSection]). Live: a disruption that clears says so, as the row does, and the reason
+ * goes. No map while the page is [restoring] its line, so the map is never drawn for a status that
+ * isn't the line's and then redrawn when it is.
  */
 @Composable
-private fun TripLineReason(line: TripLine, modifier: Modifier = Modifier, restored: String? = null, restoredQuieted: String? = null) {
+internal fun TripLineReason(
+    line: TripLine,
+    modifier: Modifier = Modifier,
+    restored: String? = null,
+    restoredQuieted: String? = null,
+    starred: Set<String> = emptySet(),
+    restoring: Boolean = false,
+) {
     val reason = line.reason ?: restored
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
-        TripLineRow(line)
+    // The worse alert the rider dismissed, under the one that stands, toned down.
+    val quieted = line.quietedReason ?: restoredQuieted
+    val map = if (restoring) null else rememberLineMapSection(line, starred)
+    val railColor = lineRailColor(line.leg.lineId, line.leg.mode, line.leg.lineName)
+    // A list, so a long line's map draws only the stations on screen.
+    LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
+        item(key = "line") { TripLineRow(line) }
         if (reason != null) {
-            Text(reason, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 16.dp))
+            item(key = "reason") { Text(reason, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 16.dp)) }
         }
-        // The worse alert the rider dismissed, under the one that stands, toned down.
-        (line.quietedReason ?: restoredQuieted)?.let {
-            Text(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 16.dp))
+        if (quieted != null) {
+            item(key = "quieted") {
+                Text(quieted, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 16.dp))
+            }
         }
+        if (map != null) lineMapSection(map, railColor)
     }
 }
 
@@ -3667,34 +3704,25 @@ internal fun inOpenedOrder(
 
 /**
  * One line in the trip's lines: its pill and its status, one row high whatever the status says, so a
- * check landing never pushes the lines under it down (Codex, #559). A line with TfL's reason for a
- * disruption opens it on a tap ([onOpen]), on a page of its own, never inline.
+ * check landing never pushes the lines under it down (Codex, #559). Every line opens its own page on a
+ * tap ([onOpen]), never inline: TfL's reason where it's disrupted, and the line's map.
  */
 @Composable
 private fun TripLineRow(
     line: TripLine,
     onOpen: (() -> Unit)? = null,
     @StringRes gone: Int = R.string.trip_lines_gone,
-    // Whether its page offers a dismiss: a disruption without TfL's reason opens too, for its ×.
-    dismissable: Boolean = false,
 ) {
     val style = MaterialTheme.typography.bodyMedium
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val status = line.status
-    val opens = onOpen.takeIf { line.reason != null || line.quietedReason != null || (dismissable && line.dismissable) }
+    // Every line has a page, its map on it whatever its status; a stand-in or a line gone has nothing to open.
+    val opens = onOpen.takeIf { !line.restoring && !line.gone }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth()
-            .then(
-                if (opens != null) {
-                    // "Show reason" only where there's one to show (Codex, #603).
-                    val label = if (line.reason != null || line.quietedReason != null) R.string.trip_lines_reason else R.string.trip_lines_line
-                    Modifier.clickable(onClickLabel = stringResource(label)) { opens() }
-                } else {
-                    Modifier
-                },
-            ),
+            .then(if (opens != null) Modifier.clickable(onClickLabel = stringResource(R.string.trip_lines_line)) { opens() } else Modifier),
     ) {
         LinePill(line.leg.lineName, line.leg.lineId, line.leg.mode)
         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -3738,8 +3766,6 @@ internal fun TripLinesContent(
     onOpenLine: ((Int, TripLine) -> Unit)? = null,
     // What a line no longer among the row's says: off the trip, or (home) no longer near.
     @StringRes gone: Int = R.string.trip_lines_gone,
-    // Whether a line's page offers a dismiss ([TripLinesPage]'s onDismiss).
-    dismissable: Boolean = false,
 ) {
     val style = MaterialTheme.typography.bodyMedium
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
@@ -3771,7 +3797,7 @@ internal fun TripLinesContent(
             item(key = "none") { Text(stringResource(none), style = style, color = muted) }
         }
         itemsIndexed(lines, key = { _, line -> line.leg.lineId }) { index, line ->
-            TripLineRow(line, onOpenLine?.let { open -> { open(index, line) } }, gone, dismissable)
+            TripLineRow(line, onOpenLine?.let { open -> { open(index, line) } }, gone)
         }
         if (row.stops.isNotEmpty()) {
             item(key = "stops") { Text(stringResource(R.string.trip_lines_stops, row.stops), style = style) }

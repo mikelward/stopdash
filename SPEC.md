@@ -1345,16 +1345,17 @@ running ahead of one running with delays, whatever TfL's numbers say). Disruptio
 first; then lines that couldn't be checked (a failed or left-out check stays so until one succeeds);
 then "Checking…" lines; then any the rider dismissed, just above the good services, still named by the
 alert dismissed ("Diversions · dismissed", never the "Good service" left once it's gone) but toned down, since a dismissal quiets the alert, not the line's state (maintainer, 2026-10-05: demoted,
-not hidden); then the good services. A dismissed line is never on the row's pills: on the home
+not hidden); then the good services. A worse alert dismissed while a milder one stands is named beside
+it, toned down the same way, on the home screen's page as on a trip's. A dismissed line is never on the row's pills: on the home
 screen's row, a line counts as dismissed once its alert is dismissed every way it's disrupted, as the
 list's rows dismiss their own way's alert. A line with no current status is never
 called a good service. The stops the row names follow, then, only when a line couldn't be checked, a
 note that its times may be wrong. While the page is open each line keeps its place, so a check landing
 changes what a line says, never where it is; a line new since it opened goes last, one gone from the trip
-keeps its place saying so, and a rotation keeps the order. Each line is one row high whatever its status; a disrupted line's TfL reason is a tap away,
-on a page of its own, whose overflow menu dismisses that alert as a departure's line page does (maintainer,
-2026-10-06: an overflow action, since a × reads as closing the page); a disruption without a reason opens
-its page too, for that action. A trip with no ride says it has no lines. The page renders the row as it was
+keeps its place saying so, and a rotation keeps the order. Each line is one row high whatever its status, and every line opens a page of its own: TfL's
+reason where it's disrupted, and the line's map (*Line page*). A disrupted line's page has an overflow menu that dismisses
+that alert as a departure's line page does (maintainer, 2026-10-06: an overflow action, since a × reads as closing the
+page). A trip with no ride says it has no lines. The page renders the row as it was
 worked out, never working anything out itself.
 
 **Once the list is showing, its cards re-sort as their times move** (maintainer, 2026-10-04): the
@@ -2418,6 +2419,58 @@ other. When the disruption lookup fails but arrivals succeed, stopdash does **no
 those departures as verified-clean: it keeps the last-good disruption state (aged and
 stamped like any other data) or marks the affected departures "status unknown", rather
 than showing normal-looking times whose disruption status was never actually checked.
+
+### Line page
+
+**Every line opens a page of its own from the lines page, its map on it whatever its status**
+(maintainer, 2026-10-06: "tapping on any line should show the line name and the route map, even ones
+with good service"). The page is the line's row as the lines page shows it, TfL's reason where it's
+disrupted, then the map.
+
+**Map.** The whole line, one station a row down the page, each branch on a rail of its own in the
+line's color, curving into another where branches meet and out where they part, as TfL's own line
+diagrams draw a branching line. It's laid out from the line's TfL routes, never from a picture of
+the line, so whatever TfL runs is what's drawn, a new station or branch included, and it reads north
+to south where TfL gives stations' positions. A bus calls at a different pole each way (across the
+road, or round a one-way street): the way back is drawn too where it runs elsewhere, each of its
+poles taken as the stop across the road where TfL puts both in one stop area, but never so as to draw
+a stop twice. A station two branches call at without meeting there
+is drawn once on each (Euston on the Northern line's two trunks; Edgware Road where the Circle comes
+round again before running on to Hammersmith), since no train goes from one to the other there and a
+curve between them would say one does. A line whose routes can't be read top to bottom (a loop with
+no end), or would need more branches side by side than a phone has room for, says it has no map
+rather than drawing a wrong one. The route data comes from the route pages' day-long cache: loaded
+when the page opens, never on a refresh path, saying so while it loads and why when it can't. A map
+drawn for an alert that has since changed never stands in for the new one (a closure that has ended,
+or none where one began): it says it's loading for that moment instead (principle 1 over holding
+still).
+
+**Where the alert is.** A closure TfL places (its affected sections, the part suspension's or part
+closure's own) draws the track it shuts dashed in red, and a station whose every track is shut reads
+"No service"; the open stations at its ends stay plain but always on the page, since they're where
+the rider changes or turns back. TfL shuts a stretch one way or both and its sections say which, so a
+station shut only one way reads "No service one way": trains still call going the other way, and
+"No service" would say none do. TfL gives its sections only as data, so the alert the page shows, where
+it isn't a closure TfL places, marks the stations its words name with the route page's ⚠, never a red
+stretch: a guess from prose is shown as one (principle 1). That holds beside a closure from another
+alert, so the map always shows where the page's alert is; a placed closure's own words aren't read
+that way, since they name where it is already drawn and the stations it sends riders to instead,
+unless none of its track is on the map (a bus's way back left off), when they are. A closure the rider
+dismissed, still named on the page beside a milder alert that stands, is drawn the same way. A closure the map
+can't put anywhere, neither its track nor a station its words name being drawn, is said in a line under
+the map's heading ("This closure isn't on the map"), so the map is never read as unaffected.
+
+**Folding.** The map opens folded, so where the alert is reads at a glance with the rest of the line
+around it (maintainer, 2026-10-06). With an alert placed on it, each stretch of the line the alert
+doesn't reach folds to one row naming the line's ends it leads to ("Edgware · High Barnet · Mill
+Hill East", "22 stations"); a stretch between two kept stations that leads to no end of the line
+shows its runs instead, each on one track, so no row jumps between two trunks. With good service the
+line's ends and junctions show, and only the runs of plain stations between them fold ("Burnt Oak to
+Chalk Farm", "8 stations"). A tap opens a fold where it is, below what's above it, which doesn't move;
+an opened stretch shows its ends and junctions with its runs still folded. "Show all stations" opens
+everything and "Fold" puts it back as it opened. **The rider's own stops never fold** (maintainer,
+2026-10-06): their starred stops (a starred row's or journey's end, starred) and the stops of the
+trip they're riding the line on (the route page's blue dot).
 
 ### Freshness
 

@@ -868,7 +868,7 @@ fun MainScreen(
                 val journeyLines = HashSet<String>()
                 journeys.forEach { journeyLines += it.lineId }
                 journeyCards.forEach { card -> (card.state as? JourneyCardState.Trains)?.rows?.forEach { journeyLines += it.lineId } }
-                HomeLines.row(loaded, stopDistanceMeters, always, dismissed, now, refreshing, alwaysNetworks, starred, journeyLines)
+                HomeLines.row(loaded, stopDistanceMeters, always, dismissed, now, refreshing, alwaysNetworks, starred, journeyLines, journeys)
             } ?: TripRow.CHECKING
         }
     }

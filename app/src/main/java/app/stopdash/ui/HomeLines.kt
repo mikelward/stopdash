@@ -2,9 +2,11 @@ package app.stopdash.ui
 
 import androidx.annotation.WorkerThread
 import app.stopdash.domain.DismissedAlert
+import app.stopdash.domain.LineMap
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.NearbySelection
+import app.stopdash.domain.StarredJourney
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.TripLeg
 import java.time.Instant
@@ -116,6 +118,8 @@ object HomeLines {
         // every line their starred journeys ride ([journeyLines]).
         starred: Set<StarredRow> = emptySet(),
         journeyLines: Set<String> = emptySet(),
+        // Their starred journeys, whose ends a line's map keeps on the page with the starred rows' stops.
+        journeys: List<StarredJourney> = emptyList(),
     ): TripRow {
         val alwaysLines = linesOf(networks)
         val refs = LinkedHashMap<String, LineRef>()
@@ -199,13 +203,19 @@ object HomeLines {
             val id = ref.id
             val was = raw[id]
             val dismissedHere = was?.disrupted == true && (shown[id]?.disrupted != true || everyWayDismissed(was))
+            // A dismissed line names the alert it dismissed ("Diversions · dismissed"), never what's left
+            // once it's gone, which with only planned work left read "Good service" (maintainer,
+            // 2026-10-05).
+            val status = if (dismissedHere) was else shown[id] ?: was
+            // Its worse alert dismissed while a milder one stands: named beside it, as on a trip's lines
+            // page, so its map's closure has words on the page (Codex, #606).
+            val quieted = if (dismissedHere) null else quietedBeside(was?.takeIf { DismissedAlert.ofLineStatus(it) in dismissed }, status)
             TripLine(
                 leg = pillNamed(TripLeg(ref.mode, id, ref.name, "", "", "", "", Instant.EPOCH, Instant.EPOCH)),
-                // A dismissed line names the alert it dismissed ("Diversions · dismissed"), never what's left
-                // once it's gone, which with only planned work left read "Good service" (maintainer,
-                // 2026-10-05).
-                status = if (dismissedHere) was else shown[id] ?: was,
+                status = status,
+                mapKey = LineMap.alertKey(status, quieted),
                 dismissed = dismissedHere,
+                quieted = quieted,
                 checking = id in checking,
                 unknown = id !in known && id !in checking,
             )
@@ -223,6 +233,15 @@ object HomeLines {
             unknownLines = unknown,
             unknownStops = unknownStops,
             every = every,
+            starredStops = buildSet {
+                starred.forEach { add(it.stopId) }
+                journeys.forEach { journey ->
+                    for (end in listOf(journey.from, journey.to)) {
+                        add(end.stopId)
+                        if (end.areaId.isNotBlank()) add(end.areaId)
+                    }
+                }
+            },
         )
     }
 

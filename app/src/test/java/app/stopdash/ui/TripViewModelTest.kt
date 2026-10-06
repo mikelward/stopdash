@@ -22,6 +22,7 @@ import app.stopdash.domain.StopGroup
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.PlacedStand
+import app.stopdash.domain.LineMap
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.RideLines
@@ -3016,6 +3017,18 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `a line the trip leaves and rejoins keeps both rides' stops for its map`() {
+        // Off the blue at B, the red to X, back on the blue to C (Codex, #606): every ride's stops stay on
+        // the blue's map, not only the first ride's.
+        val twice = TripRoute(listOf(leg("blue", "A", "B", 5, 10), leg("red", "B", "X", 12, 18), leg("blue", "X", "C", 20, 30)))
+        val state = TripViewModel.State(routes = listOf(twice))
+        val cards = checkNotNull(tripEstimates(state, now, Duration.ZERO, emptyMap())).map { listOf(it) }
+        val lines = tripLines(cards, emptyMap(), state, now, emptyMap(), emptySet(), emptySet(), false, emptySet())
+        assertEquals(setOf("A", "B", "X", "C"), lines.single { it.leg.lineId == "blue" }.riding)
+        assertEquals(setOf("B", "X"), lines.single { it.leg.lineId == "red" }.riding)
+    }
+
+    @Test
     fun `a worse alert dismissed while a milder one stands is still named on the trip's lines page`() {
         val severe = LineStatus("blue", 6, "Severe Delays")
         val minor = LineStatus("blue", 9, "Minor Delays")
@@ -3029,6 +3042,9 @@ class TripViewModelTest {
         assertEquals("Minor Delays", line.status?.description)
         assertEquals(false, line.dismissed)
         assertEquals("Severe Delays", line.quieted?.description)
+        // Its map draws the one still named too, so that keys it (Codex, #606).
+        assertEquals(LineMap.alertKey(line.status, line.quieted), line.mapKey)
+        assertNotEquals(LineMap.alertKey(line.status), line.mapKey)
     }
 
     @Test

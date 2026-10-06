@@ -2504,6 +2504,23 @@ Builds on Phase 1's minimal line-status marking.
 - [x] **On the way notes the coming stations' notices** (maintainer, 2026-10-04): a notice that neither
       closes nor moves a station still ahead gets a quiet card on the trip's screen, never an alert
       (`RouteDisruption.stationNotes`, carried with the route check).
+- [x] **Every line's page has its map** (maintainer, 2026-10-06; SPEC *Line page*). `LineMap` lays the
+      line out from its TfL route sequence, one station a row and a column per branch, turned north up
+      where TfL gives positions; a station two branches call at without meeting there gets a row on
+      each. TfL's closure sections close the track they cover, else the alert's named stations are
+      marked. It opens folded: around the alert with the rest of the line folded to the ends it leads
+      to, or with good service to the line's ends and junctions; the rider's starred and trip stops
+      never fold. Tested on the real Northern line and recorded Northern, District and Circle
+      sequences.
+- [ ] **Coming-up closures on a line's page** (discussed 2026-10-06). TfL's future statuses
+      (`/Line/{id}/Status/{from}/to/{to}`) for the next week, each drawn on the map like a closure in
+      force: one free request when the page opens, cached for hours, a failure saying so with a retry.
+- [ ] **A trip's lines page keeps the rider's starred stops on the map too.** Only the home screen's
+      row passes them today (the trip passes the stops it rides); the trip's row needs the starred
+      rows and journeys read alongside its own work.
+- [ ] **The route page draws the line as the folding map too** (maintainer, 2026-10-06): its stop list
+      becomes the line page's map (`LineMap`), with the path the rider takes open, from the stop they
+      board at to where they get off, and the rest of the line folded to the ends it leads to.
 - [ ] **The home screen's line page shows its boarding station's notice** (maintainer, 2026-10-04). A
       line page can read "No disruptions reported" while the station it boards at has a notice in
       force (an escalator out, say); the stop's own notice belongs there too.
