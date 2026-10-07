@@ -1242,8 +1242,8 @@ internal fun NextStep(
     } else {
         ""
     }
-    // A ride's stops left beside its next stop, the stop abbreviated and cut with "…" where it still doesn't
-    // fit, the count held still (maintainer, 2026-10-07). Untimed too, where the step's words are the stops:
+    // A ride's stops left beside its next stop, the stop in the longest of its forms that fits and cut with "…"
+    // where none does, the count held still (maintainer, 2026-10-07). Untimed too, where the step's words are the stops:
     // current, or counted from where the rider was seen, which no answer going stale touches (Codex, #655).
     val stopsSplit = (progress as? TripProgress.Riding)
         ?.takeIf { !checking && (at != null || ((current || !fromTfl(it)) && (it.seen || it.getOffSoon))) }
@@ -1324,6 +1324,22 @@ private fun CardRow(start: List<String>, ends: List<String>, endTag: String? = n
                 used + with(density) { ((if (end.isNotEmpty()) gap else 0.dp) + (if (tail.count.isNotEmpty()) 4.dp else 0.dp)).roundToPx() } <= constraints.maxWidth
             }
         }
+        // The next stop shortened only as far as it must be: the first of its forms (as named, its words
+        // shortened, its floor) that fits beside the count and the time, else the shortest, cut with "…"
+        // (maintainer, 2026-10-07).
+        val next = remember(tail, end, style, fontScale, constraints.maxWidth) {
+            tail?.let {
+                val room = constraints.maxWidth - stubWidth - measurer.measure(end, style, maxLines = 1).size.width -
+                    with(density) { ((if (end.isNotEmpty()) gap else 0.dp) + (if (it.count.isNotEmpty()) 4.dp else 0.dp)).roundToPx() }
+                // Three forms at most, fixed ([RideStops]): the longest that fits, measured as the row's other text is.
+                fun fits(form: String) = measurer.measure(form, startStyle, maxLines = 1).size.width <= room
+                when {
+                    fits(it.nextFull) -> it.nextFull
+                    fits(it.nextShort) -> it.nextShort
+                    else -> it.nextFloor
+                }
+            }
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
             // With no count to fall back on (not counted), the next stop stays, cut as it must be (Codex, #655).
             if (tail != null && !tailFits && tail.count.isNotEmpty()) {
@@ -1333,12 +1349,12 @@ private fun CardRow(start: List<String>, ends: List<String>, endTag: String? = n
                     if (tail.count.isNotEmpty()) Text(tail.count, style = startStyle, maxLines = 1, softWrap = false)
                     // Abbreviated, so read in full ([RideStops.nextFull]).
                     Text(
-                        tail.next,
+                        next.orEmpty(),
                         style = startStyle,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false).testTag("onTheWayNextStop")
-                            .then(if (tail.next != tail.nextFull) Modifier.semantics { contentDescription = tail.nextFull } else Modifier),
+                            .then(if (next != tail.nextFull) Modifier.semantics { contentDescription = tail.nextFull } else Modifier),
                     )
                 }
             } else if (stub != null) {
@@ -1661,37 +1677,47 @@ internal fun rideStopsLeft(resources: Resources, progress: TripProgress.Riding):
     }
 
 /**
- * A ride's stops left ([count], empty where they aren't counted) and its [next] stop abbreviated, as the card
- * shows them, [nextFull] as named, and [nextStub], the least of it the card shows rather than leave it out.
+ * A ride's stops left ([count], empty where they aren't counted) and its next stop in the forms the card tries,
+ * longest first: [nextFull] as named, [nextShort] its common words shortened, [nextFloor] at its shortest; and
+ * [nextStub], the least of it the card shows rather than leave it out.
  */
-internal data class RideStops(val count: String, val next: String, val nextFull: String, val nextStub: String)
+internal data class RideStops(
+    val count: String,
+    val nextFull: String,
+    val nextShort: String,
+    val nextFloor: String,
+    val nextStub: String,
+)
 
 /**
  * [progress]'s stops left and its next stop for the card's row, where the next is named and there are two or
- * more stops left, or they aren't counted: the stop as [TripProgress.Riding.nextStopShort] has it, worked out
+ * more stops left, or they aren't counted: the stop in the forms [TripProgress.Riding] has ([TripProgress.Riding.nextStopShort], [TripProgress.Riding.nextStopFloor]), worked out
  * off the main thread, so this is lookups alone. Null otherwise: "Next stop", or the count alone (maintainer,
  * 2026-10-07).
  */
 internal fun rideStopsSplit(resources: Resources, progress: TripProgress.Riding): RideStops? {
     val next = progress.nextStop ?: return null
     val short = progress.nextStopShort ?: return null
-    // Stops left not counted (a bus beyond its predictions): "Next: …" alone, the stop abbreviated all the same
-    // (Codex, #655).
+    val floor = progress.nextStopFloor ?: return null
+    // Stops left not counted (a bus beyond its predictions): "Next: …" alone, the stop shortened as it must be
+    // all the same (Codex, #655).
     if (progress.stopsLeft == null) {
         return RideStops(
             "",
-            resources.getString(R.string.on_the_way_next_is, short),
             resources.getString(R.string.on_the_way_next_is, next),
-            resources.getString(R.string.on_the_way_next_is, short.take(1) + "…"),
+            resources.getString(R.string.on_the_way_next_is, short),
+            resources.getString(R.string.on_the_way_next_is, floor),
+            resources.getString(R.string.on_the_way_next_is, next.take(1) + "…"),
         )
     }
     val left = progress.stopsLeft?.takeIf { it >= 2 } ?: return null
     return RideStops(
         resources.getQuantityString(R.plurals.on_the_way_stops_left, left, left),
-        resources.getString(R.string.on_the_way_next_tail, short),
         resources.getString(R.string.on_the_way_next_tail, next),
+        resources.getString(R.string.on_the_way_next_tail, short),
+        resources.getString(R.string.on_the_way_next_tail, floor),
         // The least of it worth showing: the stop's first letter, then "…".
-        resources.getString(R.string.on_the_way_next_tail, short.take(1) + "…"),
+        resources.getString(R.string.on_the_way_next_tail, next.take(1) + "…"),
     )
 }
 

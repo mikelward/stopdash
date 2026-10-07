@@ -2165,12 +2165,18 @@ class OnTheWayTest {
     }
 
     @Test
-    fun a_rides_next_stop_comes_abbreviated_with_it() {
-        // Shortened where the progress is built, so the card only reads it; a copy to another stop shortens that one.
+    fun a_rides_next_stop_comes_in_each_form_the_card_tries() {
+        // Worked out where the progress is built, so the card only measures them: as named, its words
+        // shortened, then its floor, each once; a copy to another stop works out that one's.
         val riding = TripProgress.Riding(long, "Tottenham Court Road", 2, null, false)
         assertEquals("Tottenham Court Rd", riding.nextStopShort)
+        assertEquals("Tottenham Court Rd", riding.nextStopFloor)
         assertEquals("U. Taxi Rd", riding.copy(nextStop = "Upper Taxi Road").nextStopShort)
+        val alpha = riding.copy(nextStop = "Alpha Hill Broadway")
+        assertEquals("Alpha Hill Broadway", alpha.nextStopShort)
+        assertEquals("Alpha H. B.", alpha.nextStopFloor)
+        assertEquals("Stratford", riding.copy(nextStop = "Stratford").nextStopFloor)
         assertEquals(null, riding.copy(nextStop = null).nextStopShort)
-        assertEquals(null, riding.copy(nextStop = "").nextStopShort)
+        assertEquals(null, riding.copy(nextStop = "").nextStopFloor)
     }
 }
