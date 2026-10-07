@@ -54,6 +54,14 @@ class FirebaseTelemetryBackend private constructor(
         analytics.logEvent(event.name, usageEventBundle(event))
     }
 
+    /**
+     * Sets each of [properties] as an Analytics user property ([UsageProperties]: categories and buckets
+     * only). The SDK keeps them with the app-instance's data, so a withdrawal's reset clears them too.
+     */
+    fun setUserProperties(properties: Map<String, String>) {
+        properties.forEach { (name, value) -> analytics.setUserProperty(name, value) }
+    }
+
     override fun discardUnsent() {
         attemptAll(
             { crashlytics.deleteUnsentReports() },

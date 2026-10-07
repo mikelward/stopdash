@@ -94,6 +94,8 @@ import app.stopdash.domain.Staleness
 import app.stopdash.domain.cleanStopName
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripProgress
+import app.stopdash.domain.UsageEvent
+import app.stopdash.telemetry.ReportScreen
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.withContext
@@ -170,6 +172,8 @@ internal fun OnTheWayScreen(
     // stays on the map whatever the trip does since, its end and a rotation after it included, with nothing
     // live to find it again in (Codex, #627).
     var boardRide by rememberSaveable(stateSaver = TappedRideSaver) { mutableStateOf<TripLeg?>(null) }
+    // For the usage stats, the board's line page while it's open over the trip, else the trip.
+    ReportScreen(if (boardLine != null) UsageEvent.Screen.LINE else UsageEvent.Screen.ON_THE_WAY)
     boardLine?.let { line ->
         BoardLinePage(line, boardRide, lineChecks, now, onClose = { boardLine = null; boardRide = null })
     }

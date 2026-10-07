@@ -89,6 +89,8 @@ import app.stopdash.domain.TflException
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.Workers
 import app.stopdash.domain.TripRoute
+import app.stopdash.domain.UsageEvent
+import app.stopdash.telemetry.UsageEvents
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -2477,6 +2479,106 @@ class TripScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Start").performClick()
         composeRule.runOnIdle { assertEquals(viaCanadaWater, started) }
+    }
+
+    @Test
+    fun a_route_opened_again_from_elsewhere_isnt_counted_by_the_card_it_was_once_opened_from() {
+        val events = mutableListOf<UsageEvent>()
+        UsageEvents.consent = { true }
+        UsageEvents.install { events += it }
+        val openRoute = mutableStateOf<String?>(null)
+        try {
+            composeRule.setContent {
+                StopDashTheme(dynamicColor = false) {
+                    TripScreen(
+                        title = "To Canary Wharf", state = planned, now = now, access = Duration.ofMinutes(2),
+                        routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {},
+                        onStart = {}, openRoute = openRoute,
+                    )
+                }
+            }
+            composeRule.onNodeWithText("27 min · ~08:29").performClick()
+            composeRule.waitForIdle()
+            val key = composeRule.runOnIdle { openRoute.value }
+            // Closed, then the same route opened by the trip itself, as a Direct row's tap does.
+            composeRule.runOnIdle { openRoute.value = null }
+            composeRule.waitForIdle()
+            composeRule.runOnIdle { openRoute.value = key }
+            composeRule.waitForIdle()
+            composeRule.onNodeWithText("Start").performClick()
+            composeRule.runOnIdle { assertEquals("unknown", events.single { it.name == "trip_start" }.params["choice"]) }
+        } finally {
+            UsageEvents.resetForTest()
+        }
+    }
+
+    @Test
+    fun an_opened_and_started_route_is_counted_by_its_cards_label() {
+        val events = mutableListOf<UsageEvent>()
+        UsageEvents.consent = { true }
+        UsageEvents.install { events += it }
+        try {
+            composeRule.setContent {
+                StopDashTheme(dynamicColor = false) {
+                    TripScreen(
+                        title = "To Canary Wharf", state = planned, now = now, access = Duration.ofMinutes(2),
+                        routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {},
+                        onStart = {},
+                    )
+                }
+            }
+            composeRule.onNodeWithText("27 min · ~08:29").performClick()
+            composeRule.waitForIdle()
+            composeRule.onNodeWithText("Start").performClick()
+            composeRule.runOnIdle {
+                val opened = events.single { it.name == "route_open" }
+                val started = events.single { it.name == "trip_start" }
+                // Started by the label the rider opened it under, with its one change.
+                assertEquals(opened.params["choice"], started.params["choice"])
+                assertTrue(opened.params["choice"] in UsageEvent.RouteChoice.entries.map { it.value } - "unknown")
+                assertEquals("1", started.params["changes"])
+            }
+        } finally {
+            UsageEvents.resetForTest()
+        }
+    }
+
+    @Test
+    fun a_trip_counts_as_the_trip_screen_and_a_line_page_opened_from_it_as_a_route() {
+        val events = mutableListOf<UsageEvent>()
+        UsageEvents.consent = { true }
+        UsageEvents.install { events += it }
+        try {
+            // With the app menu, whose overflow holds the route page's "View line".
+            val menu = AppMenuActions(updateAvailable = false, onOpenAppListing = {}, onSendBugReport = {}, onOpenLicenses = {})
+            composeRule.setContent {
+                StopDashTheme(dynamicColor = false) {
+                    CompositionLocalProvider(LocalAppMenu provides menu) {
+                        TripScreen(
+                            title = "To Canary Wharf", state = planned, now = now, access = Duration.ofMinutes(2),
+                            routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {},
+                        )
+                    }
+                }
+            }
+            // An open route is still the trip.
+            composeRule.onNodeWithText("27 min · ~08:29").performClick()
+            composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodesWithText("Stratford").fetchSemanticsNodes().isNotEmpty() }
+            composeRule.onNodeWithText("Stratford").performClick()
+            composeRule.waitForIdle()
+            composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(0)
+            // Its line's own page over the route page ("View line"), then back to the route page.
+            composeRule.onNodeWithContentDescription(composeRule.activity.getString(R.string.menu_more)).performClick()
+            composeRule.onNodeWithText(composeRule.activity.getString(R.string.route_detail_view_line)).performClick()
+            composeRule.waitForIdle()
+            composeRule.onNode(hasContentDescription(composeRule.activity.getString(R.string.action_back)) and onLinePage).performClick()
+            composeRule.waitForIdle()
+            composeRule.runOnIdle {
+                assertEquals(listOf("trip", "route", "line", "route"), events.filter { it.name == "screen_view" }.map { it.params["screen_name"] })
+            }
+        } finally {
+            UsageEvents.resetForTest()
+        }
     }
 
     @Test

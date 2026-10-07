@@ -3,6 +3,8 @@ package app.stopdash.widget
 import android.content.Context
 import app.stopdash.data.logAppSettingsWarning
 import app.stopdash.domain.AppSettings
+import app.stopdash.domain.UsageEvent
+import app.stopdash.telemetry.UsageEvents
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -47,6 +49,7 @@ suspend fun applyLiveWidgetRefresh(
     liveWidgetRefreshMutex.withLock {
         try {
             settings.setLiveWidgetRefresh(enabled)
+            UsageEvents.settingChanged(UsageEvent.SettingChanged.liveWidget(enabled))
             applyWidgetRefreshSetting(context, enabled)
             LiveWidgetRefreshResult.APPLIED
         } catch (e: CancellationException) {

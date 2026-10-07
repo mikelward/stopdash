@@ -147,6 +147,7 @@ import app.stopdash.domain.TflException
 import app.stopdash.domain.TripClosures
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
+import app.stopdash.domain.UsageEvent
 import app.stopdash.domain.TripTiming
 import app.stopdash.domain.riderLineName
 import app.stopdash.domain.WalkingSpeed
@@ -162,6 +163,8 @@ import app.stopdash.domain.isStop
 import app.stopdash.domain.onPoles
 import app.stopdash.domain.placedOnPoles
 import app.stopdash.domain.placedStands
+import app.stopdash.telemetry.ReportScreen
+import app.stopdash.telemetry.UsageEvents
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -1206,6 +1209,17 @@ private fun TripContent(
     }
     // Saved as text ([OpenRoute.encode]), read back whole.
     val openRef = remember(heldOpenKey.value) { OpenRoute.parse(heldOpenKey.value) }
+    // How the card the open route came from was labeled, by that route's plan ([OpenRoute.plan]), for the
+    // usage stats' count of the routes started ([UsageEvent.TripStarted]): what the rider chose by.
+    val openedChoice = rememberSaveable { mutableStateOf<Pair<String, UsageEvent.RouteChoice>?>(null) }
+    // Forgotten once the route closes, however (Back, gone from the plan, let go by the trip): the same
+    // route opened again from elsewhere, a Direct row, isn't counted by the card's label.
+    LaunchedEffect(openRef == null) { if (openRef == null) openedChoice.value = null }
+    // Counts a Start of [route], the one open, by its card's label: unknown if it wasn't opened from one here.
+    val countStart = { route: TripRoute ->
+        val choice = openedChoice.value?.takeIf { it.first == openRef?.plan }?.second ?: UsageEvent.RouteChoice.UNKNOWN
+        UsageEvents.log(UsageEvent.TripStarted(choice, route.rides.size))
+    }
     fun setOpen(open: OpenRoute?) {
         val saved = open?.encode()
         heldOpenKey.value = saved
@@ -1385,8 +1399,22 @@ private fun TripContent(
     LaunchedEffect(detailKey, detailRow == null, frame == null) {
         if (detailKey != null && detailRow == null && frame != null) detailKey = null
     }
+    // The route page's line page ("View line") open over it, kept with the page it's for.
+    val routeLineOpen = rememberSaveable(detailKey) { mutableStateOf(false) }
+    // For the usage stats, the trip's routes (an open one included), a line's page opened from them, or
+    // its own line's page over that. A page still open while its frame is worked out again (a rotation,
+    // a re-locate) is still that page.
+    val routeOpen = detailRow != null || (detailKey != null && frame == null)
+    ReportScreen(
+        when {
+            !routeOpen -> UsageEvent.Screen.TRIP
+            routeLineOpen.value -> UsageEvent.Screen.LINE
+            else -> UsageEvent.Screen.ROUTE
+        },
+    )
     if (detailRow != null) {
         RouteDetailScreen(
+            lineOpen = routeLineOpen,
             // With its stop's notice in force, dismissed or not, so the page never calls a closed or
             // moved stop clean.
             row = detailRow.copy(stopDisruption = stopNotice(state.closures[detailRow.stopId], now)),
@@ -1518,6 +1546,7 @@ private fun TripContent(
                 TextButton(
                     onClick = {
                         confirmReplace = null
+                        countStart(replacement)
                         onReplaceTrip?.invoke(replacement)
                     },
                     enabled = openCanStart,
@@ -1572,6 +1601,7 @@ private fun TripContent(
                 Button(
                     onClick = {
                         confirmReplace = null
+                        countStart(open.route)
                         onStart(open.route)
                     },
                     enabled = openCanStart,
@@ -1749,7 +1779,11 @@ private fun TripContent(
                                 // What the card opens, worked out with the frame it's drawn from: a train through a
                                 // change keeps the planned route it's made from, though newer arrivals no longer
                                 // list it, and the tap only reads (Codex, #529).
-                                onOpen = { setOpen(frame?.list?.opens?.get(routeKey(it.route)) ?: OpenRoute(routeKey(it.route))) },
+                                onOpen = { estimate, choice ->
+                                    val opening = frame?.list?.opens?.get(routeKey(estimate.route)) ?: OpenRoute(routeKey(estimate.route))
+                                    openedChoice.value = opening.plan to choice
+                                    setOpen(opening)
+                                },
                                 onHideMode = hideMode,
                                 onAvoidLine = avoided.onAvoid,
                                 row = row ?: TripRow.CHECKING,
@@ -1981,7 +2015,8 @@ private fun RouteList(
     // The frame's own time ([TripFrame.now]), which its cards were worked out for.
     now: Instant,
     onRetry: () -> Unit,
-    onOpen: (TripTiming.Estimate) -> Unit,
+    // A card tapped: its best route, and how the card was labeled ([UsageEvent.RouteChoice]).
+    onOpen: (TripTiming.Estimate, UsageEvent.RouteChoice) -> Unit,
     onHideMode: ((String) -> Unit)?,
     // A card's long press also offers to avoid each line it rides ([AvoidedLines]); null offers not.
     onAvoidLine: ((String) -> Unit)? = null,
@@ -1996,6 +2031,7 @@ private fun RouteList(
     // ([TripListView.listed]), so a card never shows without its header, nor under another's.
     val listed = view.listed.cards
     val order = view.listed.order
+    val choices = view.listed.choices
     // Cards re-sort as their times move (maintainer, 2026-10-04), sliding to their new places rather
     // than jumping, and a tap on a card while it moves is dropped: it could land on the card that just
     // moved under the finger. Each card watches its own place ([rememberSliding]), whatever moved it.
@@ -2062,7 +2098,12 @@ private fun RouteList(
                                         enabled = !sliding.moving,
                                         onLongClickLabel = onLongPress?.let { moreLabel },
                                         onLongClick = onLongPress,
-                                        onClick = { onOpen(card.first()) },
+                                        onClick = {
+                                            // Worked out with the cards ([ListedCards.choices]): the tap only reads it.
+                                            val choice = choices.getOrNull(position) ?: UsageEvent.RouteChoice.UNKNOWN
+                                            UsageEvents.log(UsageEvent.RouteOpened(choice, position + 1))
+                                            onOpen(card.first(), choice)
+                                        },
                                     )
                                     .padding(horizontal = 16.dp, vertical = 12.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -3070,6 +3111,9 @@ internal class ListedCards(
     val cards: List<List<TripTiming.Estimate>>,
     val order: List<HeadedCard>,
     val keys: CardOrder,
+    // How each card in [order] was labeled, for the usage stats ([UsageEvent.RouteChoice]), worked out
+    // with them so a tap only reads its own.
+    val choices: List<UsageEvent.RouteChoice> = emptyList(),
 )
 
 /**
@@ -3085,7 +3129,8 @@ internal fun listedCards(cards: List<List<TripTiming.Estimate>>, previous: CardO
     val keys = order.map { cardKey(cards[it.index].first().route) }
     val headers = order.map { it.header }
     val same = previous != null && keys == previous.keys && headers == previous.headers
-    return ListedCards(cards, order, if (same) previous else CardOrder(keys, headers))
+    val first = headers.firstOrNull().orEmpty()
+    return ListedCards(cards, order, if (same) previous else CardOrder(keys, headers), headers.map { UsageEvent.RouteChoice.of(it, first) })
 }
 
 /**

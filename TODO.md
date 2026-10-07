@@ -313,6 +313,24 @@ exercises the whole spine the widget later renders from.
           time-to-fix in bands, and nearby stops per mode bucketed (0 / 1 / 2–3 / 4+). *Done
           (`UsageEvent`, `UsageEvents`): "More stops" is now opening a farther place, by mode
           group; search is opening From… or To… (it runs as you type, with no submit).*
+    - [x] **More usage stats: screens, opens, trips, settings, setup** (maintainer, 2026-10-07):
+          screen views, what opened the app, trip plans and their outcome, the route opened and
+          started by its card's label, every setting change, widget refresh taps, and user
+          properties for the rider's setup (trip options, hidden modes, widgets, watch, favorites
+          counts, own key yes/no, notifications, location). Events raised before the stored choice
+          loads are now held and follow it. `dev-docs/firebase.md` lists them all.
+      - [ ] **Register the custom definitions** in Google Analytics once the project exists
+            (`dev-docs/firebase.md` step 6), or the new parameters stay out of the reports.
+      - [ ] Next candidates, each categories only: how a trip on the way ended (arrived, ended by
+            the rider, replaced), each alert shown (get off soon, time to board, disruption), and
+            how often a refresh failed and why (offline, rate-limited).
+      - [ ] A `setting_change` goes out before the user properties it changes are sent again, so it
+            (and any event in that moment) carries the old ones; its own `value` is the new setting
+            (Codex, #660). Send the properties first if a report ever needs them in step.
+      - [ ] An install that opted in while a crash from before consent was waiting starts collecting
+            on a later launch, after its startup check; that launch's held events (its `open`, its
+            first `screen_view`) go before it and are dropped (Codex, #660; left by the maintainer,
+            2026-10-07). Release them once collection is on, should it ever matter.
     - [x] **Check the stored opt-in before Firebase starts**, not after: Firebase's init provider
           starts the SDKs from their own persisted flags before `Application.onCreate`, while our
           consent load runs afterwards, off the main thread. Today that's safe by ordering (an SDK

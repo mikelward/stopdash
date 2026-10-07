@@ -779,6 +779,29 @@ class OnTheWayScreenScreenshotTest {
     }
 
     @Test
+    fun a_trains_line_page_counts_as_a_line_page_and_closing_it_as_the_trip_again() {
+        val events = mutableListOf<app.stopdash.domain.UsageEvent>()
+        app.stopdash.telemetry.UsageEvents.consent = { true }
+        app.stopdash.telemetry.UsageEvents.install { events += it }
+        try {
+            show(
+                trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)),
+                nextTrains = NextTrains(jubilee, listOf(jubileeTrain("Stanmore", 21)), readyAt = at(24)).withGroups(now),
+            )
+            composeRule.onNodeWithText("Stanmore").performClick()
+            composeRule.waitForIdle()
+            val onLinePage = androidx.compose.ui.test.hasAnyAncestor(hasTestTag("tripLinesPage"))
+            composeRule.onNode(androidx.compose.ui.test.hasContentDescription(composeRule.activity.getString(app.stopdash.R.string.action_back)) and onLinePage).performClick()
+            composeRule.waitForIdle()
+            composeRule.runOnIdle {
+                assertEquals(listOf("on_the_way", "line", "on_the_way"), events.filter { it.name == "screen_view" }.map { it.params["screen_name"] })
+            }
+        } finally {
+            app.stopdash.telemetry.UsageEvents.resetForTest()
+        }
+    }
+
+    @Test
     fun a_train_on_the_board_keeps_its_ride_on_the_map_when_the_trip_ends() {
         // The page keeps the ride the train was tapped for, where it gets off included: the trip ending under
         // it never takes that stretch off its map, nor does a rotation after it (Codex, #627).

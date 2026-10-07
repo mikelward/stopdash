@@ -15,6 +15,8 @@ import androidx.work.WorkerParameters
 import androidx.work.await
 import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.data.WatchRefreshOutcome
+import app.stopdash.domain.UsageEvent
+import app.stopdash.telemetry.UsageEvents
 import java.time.Instant
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -147,6 +149,7 @@ internal fun tapRefreshPolicy(queued: List<WorkInfo.State>): ExistingWorkPolicy 
  */
 class RefreshWidgetAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.WIDGET_REFRESH))
         requestWidgetRefresh(context)
     }
 }

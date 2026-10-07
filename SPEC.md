@@ -3436,12 +3436,31 @@ automatic events and its IP-derived region, under a random app-instance ID (rese
 Crashlytics keeps its own installation ID); the advertising ID is not collected. stopdash adds its
 own events in **categories and ranges only**, never a stop, line, journey, search text or coordinate
 (maintainer, 2026-09-24): each tap by kind (a journey card, a stop row, a change card, swapping a
-journey, starring or unstarring, opening search or Settings), opening a farther place (by mode) or
-the faraway favorites, the location permission left after asking (precise, approximate or denied),
-how a near-me fix went (fresh, last known or failed) with its accuracy and time in ranges, and how
-many stops of each mode a near-me lookup found (0, 1, 2–3, 4+). Every value comes from a fixed list,
-so nothing a screen holds can be passed through, and an event is dropped, never held, until the
-stored choice reads yes. Turning the setting
+journey, starring or unstarring, opening search or Settings, refreshing the widget), opening a
+farther place (by mode) or the faraway favorites, the location permission left after asking
+(precise, approximate or denied), how a near-me fix went (fresh, last known or failed) with its
+accuracy and time in ranges, and how many stops of each mode a near-me lookup found (0, 1, 2–3, 4+).
+Since 2026-10-07 (maintainer: "what walk speed and accessibility settings… which type of route"),
+also: each screen as it comes up (Analytics' own `screen_view`, named by the app, since one activity
+draws them all), what opened the app (its icon on a cold start, the widget, a notification or a
+shortcut), each trip plan (how it went: routes, none, partly or wholly failed and why; its route
+count in ranges; from here or a stop, to a stop or a place; first or again), each route opened from
+its card and each started (by the card's label: Fastest, Simplest, Least walking, a combination,
+Other, or none; its rank or its changes in ranges), and each setting changed with its new value as a
+category or band (a line avoided, hidden or added to the disruptions row counts only that one was).
+And **user properties**, sent as the opt-in lands, when a setting changes and each time the app
+comes to the front, so each event reads against the rider's setup: the trip options (walking speed,
+longest walk, step-free level, modes off, avoided lines as a count), hidden modes by group with
+hidden lines as a count, distance units, text size in bands, the Settings switches, whether there's
+an own TfL or National Rail key (never the key), widgets placed, a paired watch with the app or a
+connected one without it, starred rows, saved places and favorite journeys as counts in ranges, and whether notifications
+and location are allowed. Step-free choices are sent though they can hint at a rider's mobility: the
+maintainer asked for them, they're user properties under the resettable app-instance ID, and they
+read as a routing preference ("step-free to the platform" is also what a suitcase or a buggy needs).
+Every value comes from a fixed list, so nothing a screen holds can be passed through. An event raised
+before the stored choice has loaded (a cold start's open and first screen) is held in memory, at most
+16, and follows that choice, as the crash log's held lines do; one raised once it reads no is
+dropped. Turning the setting
 on never releases a crash captured before consent: collection starts at once only if the crash SDK
 found none waiting, otherwise the crash is discarded and collection starts on a later launch that
 finds none; turning it off stops collection and discards what's unsent, so no report crosses the
