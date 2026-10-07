@@ -181,7 +181,7 @@ class SettingsScreenScreenshotTest {
             StopDashTheme {
                 DisruptionsSummaryPage(
                     show = true, onShowChange = {}, showLoaded = loaded, showWriteFailed = false, onDismissShowError = {},
-                    networks = setOf("tube"), onNetworksChange = {}, networksLoaded = loaded, networksWriteFailed = false,
+                    networks = setOf("tube"), onToggleLine = {}, networksLoaded = loaded, networksWriteFailed = false,
                     onDismissNetworksError = {}, onBack = {},
                 )
             }
@@ -189,31 +189,86 @@ class SettingsScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("disruptionsSummaryPage").assertIsDisplayed()
         composeRule.onNodeWithTag("disruptionsRowSwitch").assertDoesNotExist()
-        composeRule.onNodeWithTag("summaryNetwork-tube").assertDoesNotExist()
+        composeRule.onNodeWithTag("summaryLine-victoria").assertDoesNotExist()
         loaded = true
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("disruptionsRowSwitch").assertIsOn()
-        composeRule.onNodeWithTag("summaryNetwork-tube").assertIsSelected()
+        composeRule.onNodeWithTag("summaryLine-victoria").assertIsSelected()
     }
 
     @Test
     fun the_summary_always_includes_the_chosen_networks() {
-        val chosen = mutableListOf<Set<String>>()
+        val tapped = mutableListOf<String>()
         composeRule.setContent {
             StopDashTheme {
                 SettingsScreen(
                     liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = {},
-                    summaryNetworks = setOf("tube"), onSummaryNetworksChange = { chosen += it },
+                    summaryNetworks = setOf("tube"), onToggleSummaryLine = { tapped += it },
                 )
             }
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("disruptionsSummaryRow").performClick()
         composeRule.onNodeWithText("Always include").assertIsDisplayed()
+        waitForSelected("summaryLine-victoria")
         captureSnapshot("settings-summary-networks.png")
-        composeRule.onNodeWithTag("summaryNetwork-overground").performScrollTo().performClick()
-        composeRule.onNodeWithTag("summaryNetwork-tube").performScrollTo().performClick()
-        org.junit.Assert.assertEquals(listOf(setOf("tube", "overground"), emptySet<String>()), chosen)
+        // A tap names its line; the setting works out the choice ([SummaryNetworksSetting.toggle]).
+        composeRule.onNodeWithTag("summaryLine-dlr").performScrollTo().performClick()
+        org.junit.Assert.assertEquals(listOf("dlr"), tapped)
+    }
+
+    @Test
+    fun the_summary_picks_lines_one_by_one_in_groups() {
+        // The tube's Victoria line picked alone, then an Overground line and the DLR (maintainer, 2026-10-06).
+        var chosen by mutableStateOf(setOf("victoria"))
+        composeRule.setContent {
+            StopDashTheme {
+                DisruptionsSummaryPage(
+                    show = true, onShowChange = {}, showLoaded = true, showWriteFailed = false, onDismissShowError = {},
+                    networks = chosen, onToggleLine = { chosen = HomeLines.toggle(chosen, it) }, networksLoaded = true, networksWriteFailed = false,
+                    onDismissNetworksError = {}, onBack = {},
+                )
+            }
+        }
+        waitForSelected("summaryLine-victoria")
+        composeRule.onNodeWithTag("summaryLine-central").assertIsNotSelected()
+        captureSnapshot("settings-summary-lines.png", heightPx = 2400)
+        composeRule.onNodeWithTag("summaryLine-liberty").performScrollTo().performClick()
+        waitForSelected("summaryLine-liberty")
+        org.junit.Assert.assertEquals(setOf("victoria", "liberty"), chosen)
+        composeRule.onNodeWithTag("summaryLine-dlr").performScrollTo().performClick()
+        waitForSelected("summaryLine-dlr")
+        org.junit.Assert.assertEquals(setOf("victoria", "liberty", "dlr"), chosen)
+        composeRule.onNodeWithTag("summaryLine-victoria").performScrollTo().performClick()
+        waitForSelected("summaryLine-victoria", selected = false)
+        org.junit.Assert.assertEquals(setOf("liberty", "dlr"), chosen)
+    }
+
+    @Test
+    fun a_line_choice_that_did_not_save_shows_above_the_chips() {
+        composeRule.setContent {
+            StopDashTheme {
+                DisruptionsSummaryPage(
+                    show = true, onShowChange = {}, showLoaded = true, showWriteFailed = false, onDismissShowError = {},
+                    networks = setOf("victoria"), onToggleLine = {}, networksLoaded = true, networksWriteFailed = true,
+                    onDismissNetworksError = {}, onBack = {},
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        // Above every chip, so it's in view wherever on the page the tap was (Codex, #642).
+        val error = composeRule.onNodeWithText(composeRule.activity.getString(app.stopdash.R.string.settings_disruptions_row_write_failed))
+            .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val firstChip = composeRule.onNodeWithTag("summaryLine-bakerloo").fetchSemanticsNode().boundsInRoot
+        org.junit.Assert.assertTrue("$error above $firstChip", error.bottom <= firstChip.top)
+    }
+
+    /** Waits for a tap's choice, worked out on the worker, to show on its chip. */
+    private fun waitForSelected(tag: String, selected: Boolean = true) {
+        val state = if (selected) androidx.compose.ui.test.isSelected() else androidx.compose.ui.test.isNotSelected()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag(tag) and state).fetchSemanticsNodes().isNotEmpty()
+        }
     }
 
     @Test

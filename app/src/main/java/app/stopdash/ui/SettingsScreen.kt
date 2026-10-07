@@ -45,8 +45,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
@@ -139,10 +141,10 @@ fun SettingsScreen(
     showDisruptionsRowLoaded: Boolean = true,
     showDisruptionsRowWriteFailed: Boolean = false,
     onDismissShowDisruptionsRowError: () -> Unit = {},
-    // The networks the row always covers, on top of the lines near the rider ([HomeLines.Network]; the
-    // tube by default), handled as [showDisruptionsRow] is.
+    // The lines the row always covers, on top of the lines near the rider ([HomeLines.PICKER]; none by
+    // default), handled as [showDisruptionsRow] is. A tap names its line ([onToggleSummaryLine]).
     summaryNetworks: Set<String> = HomeLines.DEFAULT_NETWORKS,
-    onSummaryNetworksChange: (Set<String>) -> Unit = {},
+    onToggleSummaryLine: (String) -> Unit = {},
     summaryNetworksLoaded: Boolean = true,
     summaryNetworksWriteFailed: Boolean = false,
     onDismissSummaryNetworksError: () -> Unit = {},
@@ -412,7 +414,7 @@ fun SettingsScreen(
             showWriteFailed = showDisruptionsRowWriteFailed,
             onDismissShowError = onDismissShowDisruptionsRowError,
             networks = summaryNetworks,
-            onNetworksChange = onSummaryNetworksChange,
+            onToggleLine = onToggleSummaryLine,
             networksLoaded = summaryNetworksLoaded,
             networksWriteFailed = summaryNetworksWriteFailed,
             onDismissNetworksError = onDismissSummaryNetworksError,
@@ -650,9 +652,9 @@ private fun AvoidedRow(lines: List<Pair<String, String>>, onRemove: (String) -> 
 
 /** A setting's failure notice ([text]) with a Dismiss action, shown under its control. */
 @Composable
-private fun SettingErrorRow(text: String, onDismiss: () -> Unit) {
+private fun SettingErrorRow(text: String, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -867,7 +869,7 @@ internal fun DisruptionsSummaryPage(
     showWriteFailed: Boolean,
     onDismissShowError: () -> Unit,
     networks: Set<String>,
-    onNetworksChange: (Set<String>) -> Unit,
+    onToggleLine: (String) -> Unit,
     networksLoaded: Boolean,
     networksWriteFailed: Boolean,
     onDismissNetworksError: () -> Unit,
@@ -913,27 +915,41 @@ internal fun DisruptionsSummaryPage(
                         onDismiss = onDismissShowError,
                     )
                 }
-                // Which networks it always covers: only while the row shows, as it says nothing otherwise.
-                if (show) SummaryNetworksRow(networks, onNetworksChange, enabled = networksLoaded)
+                // A line choice that didn't save, above the chips rather than under all twenty of them, and
+                // brought into view and announced, so a tap far down the page never seems to have saved
+                // (principle 2 ranks above holding still; Codex, #642).
                 if (networksWriteFailed) {
+                    LaunchedEffect(Unit) { scrollState.animateScrollTo(0) }
                     SettingErrorRow(
                         text = stringResource(R.string.settings_disruptions_row_write_failed),
                         onDismiss = onDismissNetworksError,
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                     )
                 }
+                // Which lines it always covers: only while the row shows, as it says nothing otherwise.
+                if (show) SummaryNetworksRow(networks, onToggleLine, enabled = networksLoaded)
             }
         }
     }
 }
 
 /**
- * The networks the disruptions summary always covers ([HomeLines.Network]), one chip each, selected
- * while covered; a tap turns one on or off. The lines near the rider are covered whatever's chosen, so
- * none chosen is fine. Until the stored choice is read ([enabled] false) none shows selected.
+ * What the disruptions summary always covers: a chip per line, the Tube's and the Overground's each under
+ * the network's name and the single-line networks' under "Other" (maintainer, 2026-10-06: lines picked
+ * one by one, in groups; 2026-10-07: no chip for a whole network, the row leans on the rider's own). A chip shows
+ * selected while covered. The lines near the rider and their favorites' are covered whatever's chosen,
+ * so none chosen is fine. Until the stored choice is read ([enabled] false) none shows selected.
+ *
+ * A tap names its line, and the setting turns it the other way on its latest choice, off the main
+ * thread and in order, whether or not this page is still open ([app.stopdash.data.SummaryNetworksSetting.toggle]).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SummaryNetworksRow(selected: Set<String>, onChange: (Set<String>) -> Unit, enabled: Boolean) {
+private fun SummaryNetworksRow(selected: Set<String>, onToggle: (String) -> Unit, enabled: Boolean) {
+    val slot = remember { mutableStateOf<Worked<Inputs, List<List<Boolean>>>?>(null) }
+    // The last chips stand while a tap's are worked out, so nothing blinks out under the finger. Keyed by
+    // the choice's identity ([Inputs]), so nothing compares the set's contents on this thread (Codex, #642).
+    val covered = rememberWorked(slot, Inputs(selected), keep = { _, _ -> true }) { HomeLines.covered(selected) }
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).testTag("summaryNetworks")) {
         Text(stringResource(R.string.settings_summary_networks_title), style = MaterialTheme.typography.bodyLarge)
         Text(
@@ -941,16 +957,27 @@ private fun SummaryNetworksRow(selected: Set<String>, onChange: (Set<String>) ->
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-            HomeLines.Network.entries.forEach { network ->
-                val on = network.key in selected
-                FilterChip(
-                    selected = enabled && on,
-                    onClick = { onChange(if (on) selected - network.key else selected + network.key) },
-                    label = { Text(stringResource(networkName(network)), maxLines = 1) },
-                    enabled = enabled,
-                    modifier = Modifier.testTag("summaryNetwork-${network.key}"),
-                )
+        // Every chip is drawn from the first frame, none selected or tappable until which are selected is
+        // worked out (Codex, #642).
+        HomeLines.PICKER.forEachIndexed { g, (network, lines) ->
+            Text(
+                stringResource(network?.let(::networkName) ?: R.string.settings_summary_other),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
+                lines.forEachIndexed { i, line ->
+                    FilterChip(
+                        selected = enabled && covered?.get(g)?.get(i) == true,
+                        onClick = { onToggle(line.id) },
+                        label = { Text(line.name, maxLines = 1) },
+                        // Not before which are selected is in: a chip shown off that is on would turn off
+                        // when tapped to turn it on (Codex, #642).
+                        enabled = enabled && covered != null,
+                        modifier = Modifier.testTag("summaryLine-${line.id}"),
+                    )
+                }
             }
         }
     }

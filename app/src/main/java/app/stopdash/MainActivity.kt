@@ -1440,7 +1440,7 @@ class MainActivity : ComponentActivity() {
                                     showDisruptionsRowWriteFailed = showDisruptionsRowWriteFailed,
                                     onDismissShowDisruptionsRowError = DisruptionsRowSetting::writeFailureShown,
                                     summaryNetworks = summaryNetworks,
-                                    onSummaryNetworksChange = SummaryNetworksSetting::set,
+                                    onToggleSummaryLine = SummaryNetworksSetting::toggle,
                                     summaryNetworksLoaded = summaryNetworksLoaded,
                                     summaryNetworksWriteFailed = summaryNetworksWriteFailed,
                                     onDismissSummaryNetworksError = SummaryNetworksSetting::writeFailureShown,
