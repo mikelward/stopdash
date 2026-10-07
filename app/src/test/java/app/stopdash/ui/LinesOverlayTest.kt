@@ -310,4 +310,59 @@ class LinesOverlayTest {
         composeRule.waitForIdle()
         assertEquals(null, stop)
     }
+
+    @Test
+    fun a_stop_s_position_survives_a_restore_and_older_saves_still_restore() {
+        val scope = androidx.compose.runtime.saveable.SaverScope { true }
+        val kx = LineStopRef("940GZZLUKSX", "King's Cross St. Pancras", "350 m", position = Coordinates(51.5302, -0.1238))
+        val euston = LineStopRef("940GZZLUEUS", "Euston", null, onLine = false).openedFrom(kx)
+        assertEquals(euston, LineStopRefSaver.restore(with(LineStopRefSaver) { scope.save(euston) }!!))
+        // #667's five strings a stop, without positions.
+        val older = arrayListOf("940GZZLUEUS", "Euston", "", "0", "1", "940GZZLUKSX", "King's Cross St. Pancras", "350 m", "1", "0")
+        val restored = LineStopRefSaver.restore(older)!!
+        assertEquals("940GZZLUEUS", restored.id)
+        assertEquals("940GZZLUKSX", restored.previous?.id)
+        assertEquals(null, restored.position)
+    }
+
+    @Test
+    fun a_stop_the_index_does_not_hold_favorites_where_the_map_placed_it() {
+        val line = LineRef("victoria", "Victoria", "tube")
+        val model = LinesViewModel(
+            loadLines = { listOf(line) },
+            loadRecent = { emptyList() },
+            recordOpen = { listOf(it) },
+            lineStatus = { LineStatus(lineId = "victoria", severity = LineStatus.GOOD_SERVICE, description = "Good Service") },
+            io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
+            saved = SavedStateHandle(),
+        )
+        // A stop the (empty) index doesn't hold, placed by the map: a synthetic central London point.
+        val placed = Coordinates(51.5, -0.12)
+        var favorited: Coordinates? = null
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides Dispatchers.Unconfined) {
+                    LinesOverlay(
+                        model, open = line, onOpen = {}, onBack = {},
+                        stop = LineStopRef("490X", "Somewhere Road", position = placed),
+                        onFavorite = { _, position -> favorited = position },
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("lineStopFavorite").performClick()
+        // The map's position, so no lookup is needed (Codex on #670).
+        assertEquals(placed, favorited)
+    }
+
+    @Test
+    fun a_stop_to_add_as_a_place_survives_a_restore() {
+        val scope = androidx.compose.runtime.saveable.SaverScope { true }
+        val placed = app.stopdash.domain.StationMatch("940GZZLUEUS", "Euston", latitude = 51.5282, longitude = -0.1337)
+        assertEquals(placed, StationMatchSaver.restore(with(StationMatchSaver) { scope.save(placed) }!!))
+        val unplaced = app.stopdash.domain.StationMatch("490X", "Somewhere Road")
+        assertEquals(unplaced, StationMatchSaver.restore(with(StationMatchSaver) { scope.save(unplaced) }!!))
+    }
 }

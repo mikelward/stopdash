@@ -2686,7 +2686,9 @@ Builds on Phase 1's minimal line-status marking.
           records, one place, no hub. Its details' board asks for both, but From and To open one id, as
           the station search does (it folds the pair into one match). The station page and trip planning
           would need to take several ids; an interchange's (St Pancras) already open its hub.
-  - [ ] **Favorite it**: star the stop from its details, as a long press does on a route page's list.
+  - [x] **Favorite it**: a star on the stop's details adds it as a favorite place, through the editor
+        filled in with the stop (maintainer, 2026-10-07: a favorite place, not its services pinned).
+    - [ ] The star doesn't show a stop that is already a favorite place; matching one by position is open.
   - [ ] **Show it on a map / walk there**: hand its position to the phone's maps app.
   - [ ] **A bus stop's letter and direction** ("Stop H, towards Oxford Circus"), from its pole data.
   - [ ] **Open a stop from every line page**: the home screen's lines row and a trip's lines page draw

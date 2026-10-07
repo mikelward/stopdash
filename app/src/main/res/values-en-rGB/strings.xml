@@ -11,6 +11,7 @@
     <string name="settings_favorite_places_title">Favourite places</string>
     <string name="settings_summary_networks_summary">Favourite places and lines near you are always included</string>
     <string name="favorite_places_title">Favourite places</string>
+    <string name="line_stop_favorite">Add to favourite places</string>
     <string name="place_icon_shop">Shop</string>
     <string name="place_icon_theater">Theatre</string>
     <string name="favorite_places_edit_action">Edit favourite places</string>

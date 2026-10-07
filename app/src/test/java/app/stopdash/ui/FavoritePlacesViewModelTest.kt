@@ -100,6 +100,86 @@ class FavoritePlacesViewModelTest {
     }
 
     @Test
+    fun `a stop's Favorite starts a custom place named for it at its position`() = runTest {
+        val store = FakeStore()
+        val model = vm(store, FakeFinder())
+        advanceUntilIdle()
+        model.startAddAt(oxford)
+        val editor = model.state.value.editor!!
+        assertEquals(FavoriteKind.CUSTOM, editor.kind)
+        assertEquals(Coordinates(51.5, -0.12), editor.coordinate)
+        assertEquals("Oxford Circus", editor.label)
+        assertTrue(editor.canSave)
+        model.commit()
+        advanceUntilIdle()
+        assertEquals(listOf("Oxford Circus"), store.saved.map { it.label })
+    }
+
+    @Test
+    fun `a stop's Favorite with no position resolves it from the stop's members`() = runTest {
+        val model = vm(FakeStore(), FakeFinder(stops = { listOf(StopLocation("490X", "Somewhere Road", 51.52, -0.13)) }))
+        advanceUntilIdle()
+        model.startAddAt(positionless)
+        advanceUntilIdle()
+        assertEquals(Coordinates(51.52, -0.13), model.state.value.editor?.coordinate)
+    }
+
+    @Test
+    fun `a stop's Favorite whose lookup fails keeps its row with a retry`() = runTest {
+        var fail = true
+        val model = vm(FakeStore(), FakeFinder(stops = {
+            if (fail) throw IOException("offline") else listOf(StopLocation("490X", "Somewhere Road", 51.52, -0.13))
+        }))
+        advanceUntilIdle()
+        model.startAddAt(positionless)
+        advanceUntilIdle()
+        val editor = model.state.value.editor!!
+        // The stop stays listed, its failure on its row, not "No matches" (Codex on #670).
+        assertEquals(listOf(positionless), editor.results)
+        assertTrue(positionless.id in editor.resolveFailedIds)
+        assertNull(editor.coordinate)
+        // A tap on it again is the retry.
+        fail = false
+        model.onPick(positionless)
+        advanceUntilIdle()
+        assertEquals(Coordinates(51.52, -0.13), model.state.value.editor?.coordinate)
+    }
+
+    @Test
+    fun `a stop's Favorite cut short by a restore resumes its lookup and keeps the rider's edits`() = runTest {
+        val saved = SavedStateHandle()
+        var fail = true
+        val finder = FakeFinder(stops = {
+            if (fail) throw IOException("offline") else listOf(StopLocation("490X", "Somewhere Road", 51.52, -0.13))
+        })
+        val first = FavoritePlacesViewModel(FakeStore(), finder, io = dispatcher, compute = dispatcher, savedState = saved, newId = { "id-1" })
+        advanceUntilIdle()
+        first.startAddAt(positionless)
+        advanceUntilIdle()
+        first.onLabelChange("Gran's")
+        // The process dies; a new model restores the draft from saved state alone.
+        fail = false
+        val second = FavoritePlacesViewModel(FakeStore(), finder, io = dispatcher, compute = dispatcher, savedState = saved, newId = { "id-2" })
+        advanceUntilIdle()
+        val editor = second.state.value.editor!!
+        assertEquals(Coordinates(51.52, -0.13), editor.coordinate)
+        // The rider's label stands; the draft's id too (Codex on #670).
+        assertEquals("Gran's", editor.label)
+        assertEquals("id-1", editor.draftId)
+        assertNull(editor.pendingStop)
+    }
+
+    @Test
+    fun `searching for another place drops the stop's pending lookup`() = runTest {
+        val model = vm(FakeStore(), FakeFinder(stops = { throw IOException("offline") }))
+        advanceUntilIdle()
+        model.startAddAt(positionless)
+        advanceUntilIdle()
+        model.onQueryChange("Oxf")
+        assertNull(model.state.value.editor?.pendingStop)
+    }
+
+    @Test
     fun `adding searches, picks a positioned match, and saves it`() = runTest {
         val store = FakeStore()
         val model = vm(store, FakeFinder(search = { listOf(oxford, positionless) }))

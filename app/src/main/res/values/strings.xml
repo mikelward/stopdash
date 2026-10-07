@@ -381,6 +381,7 @@
     <string name="line_stop_same_hub">Same interchange</string>
     <string name="line_stop_nearby">Nearby</string>
     <string name="line_stop_open_line">Open %1$s</string>
+    <string name="line_stop_favorite">Add to favorite places</string>
     <string name="stop_board_empty">No departures</string>
     <string name="stop_board_also_here">Also here</string>
     <!-- Placeholder in the destination search opened by "To…", beside its "To" label; it finds

@@ -143,6 +143,9 @@ class FavoritePlacesViewModel(
         // The place's icon, or null for none, and what its chip shows (null: the default).
         val icon: String? = null,
         val chipShows: ChipLabel? = null,
+        // The stop a stop's details' Favorite opened this editor for ([startAddAt]), until its position is
+        // in: saved with the draft, so a restore resumes its lookup rather than losing the stop (Codex on #670).
+        val pendingStop: StationMatch? = null,
     ) {
         val editing: Boolean get() = existingId != null
         val canSave: Boolean get() = coordinate != null && label.isNotBlank() && !saving
@@ -179,8 +182,17 @@ class FavoritePlacesViewModel(
                 _state.update { it.copy(places = FavoritePlacesSet.Unavailable, loaded = true) }
             }
         }
-        // A draft restored from saved state re-runs its search so the results match the query again.
-        _state.value.editor?.query?.let { if (it.isNotBlank()) startSearch(it) }
+        // A draft restored from saved state re-runs its search so the results match the query again,
+        // or, opened for a stop whose position never came, that stop's lookup, the rest of the draft as
+        // the rider left it (Codex on #670).
+        val restored = _state.value.editor
+        val pending = restored?.pendingStop
+        if (restored != null && pending != null && restored.coordinate == null) {
+            updateEditor { it.copy(query = pending.name, results = listOf(pending)) }
+            onPick(pending)
+        } else {
+            restored?.query?.let { if (it.isNotBlank()) startSearch(it) }
+        }
     }
 
     /** Begin adding a place of [kind]; [defaultLabel] pre-fills the label (e.g. "Home"). */
@@ -200,6 +212,18 @@ class FavoritePlacesViewModel(
                 icon = FavoritePlaceIcon.defaultFor(kind),
             ),
         )
+    }
+
+    /**
+     * Begin adding [match] as a place (a stop's details' Favorite): a custom place named for it at its
+     * position, resolved from its stops where it carries none, as a pick from the search is; the rider
+     * can still change its name, icon and days before saving. The stop stands as the search's one
+     * result, so a lookup that fails shows on its row with a retry, as on a searched one (Codex on #670).
+     */
+    fun startAddAt(match: StationMatch) {
+        startAdd(FavoriteKind.CUSTOM, "")
+        updateEditor { it.copy(query = match.name, results = listOf(match), pendingStop = match) }
+        onPick(match)
     }
 
     /** Begin editing [place]; its saved location stands until the user picks a new one. */
@@ -272,6 +296,8 @@ class FavoritePlacesViewModel(
         updateEditor {
             it.copy(
                 query = query, coordinate = null, placeName = null, resolvingId = null,
+                // The rider is searching for another place: a restore no longer goes back to the stop.
+                pendingStop = null,
                 postcodeResolving = false, postcodeCandidates = emptyList(),
                 postcodeNoResults = false, postcodeFailed = false,
             )
@@ -437,6 +463,7 @@ class FavoritePlacesViewModel(
             val deriveLabel = it.label.isBlank() || it.labelFromPick
             it.copy(
                 coordinate = coordinate,
+                pendingStop = null,
                 placeName = name,
                 label = if (deriveLabel) name else it.label,
                 labelFromPick = deriveLabel,
@@ -630,6 +657,9 @@ class FavoritePlacesViewModel(
         savedState[KEY_ICON] = editor?.icon
         savedState[KEY_CHIP_SHOWS] = editor?.chipShows?.name
         savedState[KEY_SHOW_ON_DAYS] = editor?.showOnDays?.map(DayOfWeek::getValue)?.toIntArray()
+        // The stop's public id and name, never what the rider typed.
+        val pending = editor?.pendingStop
+        savedState[KEY_PENDING] = pending?.let { arrayListOf(it.id, it.name) }
     }
 
     private fun restoreEditor(): Editor? {
@@ -652,6 +682,8 @@ class FavoritePlacesViewModel(
             icon = savedState.get<String>(KEY_ICON),
             chipShows = savedState.get<String>(KEY_CHIP_SHOWS)
                 ?.let { name -> ChipLabel.values().firstOrNull { it.name == name } },
+            pendingStop = savedState.get<ArrayList<String>>(KEY_PENDING)
+                ?.takeIf { it.size == 2 }?.let { StationMatch(it[0], it[1]) },
         )
     }
 
@@ -667,6 +699,7 @@ class FavoritePlacesViewModel(
         private const val KEY_LON = "editor.lon"
         private const val KEY_PLACE = "editor.placeName"
         private const val KEY_SHOW_ON_DAYS = "editor.showOnDays"
+        private const val KEY_PENDING = "editor.pendingStop"
         private const val KEY_ICON = "editor.icon"
         private const val KEY_CHIP_SHOWS = "editor.chipShows"
     }

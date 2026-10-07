@@ -81,6 +81,7 @@ import app.stopdash.ui.LinesViewModel
 import app.stopdash.ui.LinesOverlay
 import app.stopdash.ui.LineRefSaver
 import app.stopdash.ui.LineStopRefSaver
+import app.stopdash.ui.StationMatchSaver
 import app.stopdash.ui.StopDepartures
 import app.stopdash.ui.LineStopRef
 import app.stopdash.ui.lineStopRefs
@@ -736,6 +737,11 @@ class MainActivity : ComponentActivity() {
                 // The saved places were opened by a long press in a From… station's To… search: a place
                 // picked there routes that station's trip, not one from here (Codex, #347).
                 var placesFromStation by rememberSaveable { mutableStateOf(false) }
+                // A stop's details' Favorite: the stop to add as a place as the editor opens (its id, name and
+                // position, if the index has one), and that the editor came from there, so closing it after
+                // Save or Cancel returns to the stop rather than to the list of places.
+                var placeToAdd by rememberSaveable(stateSaver = StationMatchSaver) { mutableStateOf<StationMatch?>(null) }
+                var placesFromStop by rememberSaveable { mutableStateOf(false) }
                 val openLicenses = { licensesOpen = true }
                 // "Find a station" (SPEC *Finding stops*): the search, and the station opened from it
                 // (its TfL id and name). Hosted as overlays like Settings, so the near-me departures
@@ -1338,11 +1344,32 @@ class MainActivity : ComponentActivity() {
                                 )
                                 val favoritePlacesState by favoritePlacesModel.state
                                     .collectAsStateWithLifecycle()
+                                // Opened from a stop's details: its editor starts filled in with the stop, once; the
+                                // editor's own draft keeps the stop until its position is in (Codex on #670).
+                                LaunchedEffect(placeToAdd) {
+                                    placeToAdd?.let(favoritePlacesModel::startAddAt)
+                                    placeToAdd = null
+                                }
+                                // And its Save or Cancel goes back to the stop: once its editor has been up, so the
+                                // frame before it opens doesn't count as closing it.
+                                val editing = favoritePlacesState.editor != null
+                                var stopEditorShown by rememberSaveable { mutableStateOf(false) }
+                                LaunchedEffect(editing, placesFromStop) {
+                                    if (!placesFromStop) return@LaunchedEffect
+                                    if (editing) {
+                                        stopEditorShown = true
+                                    } else if (stopEditorShown) {
+                                        stopEditorShown = false
+                                        placesFromStop = false
+                                        favoritePlacesOpen = false
+                                    }
+                                }
                                 FavoritePlacesScreen(
                                     state = favoritePlacesState,
                                     onBack = {
                                         favoritePlacesOpen = false
                                         placesFromStation = false
+                                        placesFromStop = false
                                     },
                                     // Tap a favorite → plan a trip to its coordinate from the rider's
                                     // current location: drop the list's departures, open the here-trip
@@ -1524,6 +1551,12 @@ class MainActivity : ComponentActivity() {
                                             }
                                         } else {
                                             null
+                                        },
+                                        // Favorite: the editor of favorite places over Lines…, filled in with the stop.
+                                        onFavorite = { stop, position ->
+                                            placeToAdd = StationMatch(stop.id, stop.name, latitude = position?.latitude, longitude = position?.longitude)
+                                            placesFromStop = true
+                                            favoritePlacesOpen = true
                                         },
                                         // Back from the search: Lines… closes, the next opening at the top on
                                         // the recent lines, not where this one was.
