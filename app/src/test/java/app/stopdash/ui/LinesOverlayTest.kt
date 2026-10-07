@@ -36,6 +36,9 @@ import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertEquals
 import androidx.test.espresso.Espresso
 import org.junit.Assert.assertTrue
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import kotlinx.coroutines.asCoroutineDispatcher
+import androidx.compose.ui.test.onAllNodesWithTag
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -523,5 +526,210 @@ class LinesOverlayTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Brixton").assertExists()
         composeRule.onAllNodesWithContentDescription("Back").assertCountEquals(2)
+    }
+
+    @Test
+    fun a_bus_stop_s_details_show_its_letter_and_the_way_its_buses_go() {
+        val line = LineRef("299", "299", "bus")
+        // A made-up bus line: its route places the stop in a stop area, whose poles carry its letter.
+        val route = LineSequence(
+            listOf(app.stopdash.domain.LineRoute("North End - South End", listOf("490X", "490Y"), "inbound")),
+            mapOf("490X" to "Somewhere Road", "490Y" to "Nowhere Lane"),
+            stopAreas = mapOf("490X" to "490G0"),
+        )
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource, app.stopdash.domain.StopAreaSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence = route
+                override suspend fun stopAreaPoles(areaId: String) = listOf(
+                    app.stopdash.domain.StopLocation("490X", "Somewhere Road", 51.5, -0.12, stopLetter = "H", towards = "North End Or Elsewhere"),
+                    app.stopdash.domain.StopLocation("490Z", "Somewhere Road", 51.5, -0.12, stopLetter = "J", towards = "South End"),
+                )
+            },
+            io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
+        )
+        // The line's map was drawn from its route, so the route is in the cache when a stop is tapped.
+        kotlinx.coroutines.runBlocking { repository.load("299", "") }
+        val model = LinesViewModel(
+            loadLines = { listOf(line) },
+            loadRecent = { emptyList() },
+            recordOpen = { listOf(it) },
+            lineStatus = { LineStatus(lineId = "299", severity = LineStatus.GOOD_SERVICE, description = "Good Service") },
+            io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
+            saved = SavedStateHandle(),
+        )
+        var stop by mutableStateOf(LineStopRef("490X", "Somewhere Road"))
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(
+                    LocalWorker provides Dispatchers.Unconfined,
+                    LocalRouteStops provides repository,
+                ) {
+                    LinesOverlay(model, open = line, onOpen = {}, onBack = {}, stop = stop)
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        // Its own pole's letter, and the first place its buses go towards.
+        composeRule.onNodeWithTag("lineStopPole").assertTextContains("Stop H, towards North End")
+        // A stop no route places in an area (a station, or one off the line) shows none.
+        stop = LineStopRef("490Y", "Nowhere Lane")
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("lineStopPole").assertDoesNotExist()
+    }
+
+    /** A made-up bus line whose stop 490X sits in area 490G0, with [poles] there. */
+    private fun poleRepository(
+        poles: List<app.stopdash.domain.StopLocation>,
+        asked: MutableList<String> = mutableListOf(),
+    ) = RouteStopsRepository(
+        object : RouteSequenceSource, app.stopdash.domain.StopAreaSource {
+            override suspend fun routeSequence(lineId: String, direction: String) = LineSequence(
+                listOf(app.stopdash.domain.LineRoute("North End - South End", listOf("490X"), "inbound")),
+                mapOf("490X" to "Somewhere Road"),
+                stopAreas = mapOf("490X" to "490G0"),
+            )
+            override suspend fun stopAreaPoles(areaId: String): List<app.stopdash.domain.StopLocation> {
+                synchronized(asked) { asked += Thread.currentThread().name }
+                return poles
+            }
+        },
+        io = Dispatchers.Unconfined,
+        compute = Dispatchers.Unconfined,
+    )
+
+    private fun showStop(
+        repository: RouteStopsRepository,
+        line: LineRef = LineRef("299", "299", "bus"),
+        worker: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.Unconfined,
+    ) {
+        val model = LinesViewModel(
+            loadLines = { listOf(line) },
+            loadRecent = { emptyList() },
+            recordOpen = { listOf(it) },
+            lineStatus = { LineStatus(lineId = line.id, severity = LineStatus.GOOD_SERVICE, description = "Good Service") },
+            io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
+            saved = SavedStateHandle(),
+        )
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(
+                    LocalWorker provides worker,
+                    LocalRouteStops provides repository,
+                ) {
+                    LinesOverlay(model, open = line, onOpen = {}, onBack = {}, stop = LineStopRef("490X", "Somewhere Road"))
+                }
+            }
+        }
+        composeRule.waitForIdle()
+    }
+
+    @Test
+    fun a_restored_stop_page_loads_the_route_to_find_its_letter() {
+        // No map has drawn the route yet (a page restored after process death): the lookup loads it.
+        showStop(
+            poleRepository(
+                listOf(app.stopdash.domain.StopLocation("490X", "Somewhere Road", 51.5, -0.12, stopLetter = "H", towards = "North End")),
+            ),
+        )
+        composeRule.onNodeWithTag("lineStopPole").assertTextContains("Stop H, towards North End")
+    }
+
+    @Test
+    fun a_pole_with_only_a_bearing_shows_the_way_it_faces() {
+        showStop(
+            poleRepository(listOf(app.stopdash.domain.StopLocation("490X", "Somewhere Road", 51.5, -0.12, bearing = "SW"))),
+        )
+        composeRule.onNodeWithTag("lineStopPole").assertTextContains("Southwest-bound")
+    }
+
+    @Test
+    fun a_bus_stop_s_pole_is_looked_up_on_the_worker() {
+        val worker = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+            .asCoroutineDispatcher()
+        try {
+            val asked = mutableListOf<String>()
+            showStop(
+                poleRepository(
+                    listOf(app.stopdash.domain.StopLocation("490X", "Somewhere Road", 51.5, -0.12, stopLetter = "H")),
+                    asked,
+                ),
+                worker = worker,
+            )
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodesWithTag("lineStopPole").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertTrue("asked on $asked", asked.isNotEmpty() && asked.all { it.startsWith("test-worker") })
+        } finally {
+            worker.close()
+        }
+    }
+
+    @Test
+    fun a_station_s_details_ask_for_no_poles() {
+        val asked = mutableListOf<String>()
+        // A tube line's route places its stations in areas too; a station shows no letter, so none is asked.
+        showStop(
+            poleRepository(
+                listOf(app.stopdash.domain.StopLocation("490X", "Somewhere Road", 51.5, -0.12, stopLetter = "H")),
+                asked,
+            ),
+            line = LineRef("victoria", "Victoria", "tube"),
+        )
+        composeRule.onNodeWithTag("lineStopPole").assertDoesNotExist()
+        // No line held for a letter a station never shows.
+        composeRule.onNodeWithTag("lineStopPoleSlot").assertDoesNotExist()
+        assertTrue("asked on $asked", asked.isEmpty())
+    }
+
+    @Test
+    fun a_bus_stop_s_line_for_its_letter_is_held_while_it_s_looked_up() {
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource, app.stopdash.domain.StopAreaSource {
+                override suspend fun routeSequence(lineId: String, direction: String) = LineSequence(
+                    listOf(app.stopdash.domain.LineRoute("North End - South End", listOf("490X"), "inbound")),
+                    mapOf("490X" to "Somewhere Road"),
+                    stopAreas = mapOf("490X" to "490G0"),
+                )
+                override suspend fun stopAreaPoles(areaId: String): List<app.stopdash.domain.StopLocation> {
+                    release.await()
+                    return listOf(app.stopdash.domain.StopLocation("490X", "Somewhere Road", 51.5, -0.12, stopLetter = "H"))
+                }
+            },
+            io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
+        )
+        showStop(repository)
+        // Still being looked up: no letter yet, but its line is already there.
+        composeRule.onNodeWithTag("lineStopPole").assertDoesNotExist()
+        composeRule.onNodeWithTag("lineStopPoleSlot").assertExists()
+        release.complete(Unit)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("lineStopPole").assertTextContains("Stop H", substring = true)
+    }
+
+    // Real text measurement, so a long line wraps as it would on a phone.
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    @Test
+    fun what_is_under_a_bus_stop_s_letter_does_not_move_when_it_comes_in() {
+        var pole by mutableStateOf<app.stopdash.domain.StopQualifier?>(null)
+        composeRule.setContent {
+            StopDashTheme {
+                LineStopPage(
+                    name = "Somewhere Road", distance = null, onFrom = {}, onTo = {}, onBack = {},
+                    boardPending = true, pole = pole, poleSlot = true,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        val before = composeRule.onNodeWithText("Loading departures…").getUnclippedBoundsInRoot()
+        // A long "towards", well past one line on a phone: still held to the one line it was given.
+        pole = app.stopdash.domain.StopQualifier.BusStop("H", "North End Interchange Bus Station And The Long Road Beyond It")
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("lineStopPole").assertTextContains("Stop H", substring = true)
+        assertEquals(before, composeRule.onNodeWithText("Loading departures…").getUnclippedBoundsInRoot())
     }
 }

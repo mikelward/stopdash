@@ -82,7 +82,13 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
 import app.stopdash.R
+import androidx.annotation.WorkerThread
 import app.stopdash.domain.DepartureRow
+import app.stopdash.domain.RouteStopsRepository
+import app.stopdash.domain.StopQualifier
+import app.stopdash.domain.TflException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withContext
 import app.stopdash.domain.UsageEvent
 import app.stopdash.telemetry.ReportScreen
 import app.stopdash.telemetry.UsageEvents
@@ -209,6 +215,17 @@ internal fun LinesOverlay(
             }
             // Its lines and the stations beside it, from the bundled index, worked out off the main thread.
             LaunchedEffect(stop.id) { viewModel.stopLinks(stop.id) }
+            // A bus stop's letter and the way its buses go, from its stop area's poles (one cached request).
+            val routes = LocalRouteStops.current
+            val worker = LocalWorker.current
+            var pole by remember(stop.id) { mutableStateOf<StopQualifier?>(null) }
+            LaunchedEffect(stop.id, routes) {
+                val repository = routes ?: return@LaunchedEffect
+                // A bus stop only: a station's area has no letters, and asking for its poles would spend a
+                // request on a qualifier it never shows.
+                if (!line.mode.equals("bus", ignoreCase = true)) return@LaunchedEffect
+                pole = withContext(worker) { stopPole(repository, line.id, stop.id) }
+            }
             val heldLinks by viewModel.links.collectAsStateWithLifecycle()
             val links = heldLinks?.takeIf { it.stopId == stop.id }?.links
             // A stop's details are a window of their own over the line's page (itself one, [TripLinesPage]),
@@ -266,6 +283,8 @@ internal fun LinesOverlay(
                                 // Its board waiting on its links: "Loading departures…" meanwhile, never a blank (Codex on #664).
                                 boardPending = board == null,
                                 view = view,
+                                pole = pole,
+                                poleSlot = line.mode.equals("bus", ignoreCase = true),
                                 onOpenRoute = { row, focus ->
                                     UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.STOP_ROW))
                                     routeKey = row.detailKey()
@@ -368,6 +387,12 @@ internal fun LineStopPage(
     mapReady: Boolean = true,
     // A row's route page, as on a station's page; null leaves the rows inert.
     onOpenRoute: ((DepartureRow, RouteFocus?) -> Unit)? = null,
+    // A bus stop's letter and the way its buses go ("Stop H, towards Oxford Circus"), from its pole's
+    // data; null for a station, or while it's looked up.
+    pole: StopQualifier? = null,
+    // A bus stop's line is kept for [pole] from the first frame, blank while it's looked up (or if the
+    // lookup finds none), so what's under it never moves when it comes in.
+    poleSlot: Boolean = false,
 ) {
     BackHandler(onBack = onBack)
     Scaffold(
@@ -418,6 +443,25 @@ internal fun LineStopPage(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = onFrom, enabled = actionsReady) { Text(stringResource(R.string.line_stop_from)) }
                     if (onTo != null) Button(onClick = onTo, enabled = actionsReady) { Text(stringResource(R.string.line_stop_to)) }
+                }
+            }
+            // Under From and To, as it comes in after them, so they never move; its line held from the first
+            // frame, so nothing under it moves either (Codex on #675). Held with a no-break space, as an empty
+            // Text is shorter than a line of text.
+            val cue = groupHeaderSpoken(pole)
+            if (poleSlot || cue != null) {
+                item(key = "pole") {
+                    Box(Modifier.testTag("lineStopPoleSlot")) {
+                        Text(
+                            cue?.replaceFirstChar { it.uppercase() } ?: "\u00A0",
+                            style = MaterialTheme.typography.titleMedium,
+                            // One line, as held: a long "towards" on a narrow screen or a large font is
+                            // cut short rather than growing into what's under it (Codex on #675).
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = if (cue != null) Modifier.testTag("lineStopPole") else Modifier,
+                        )
+                    }
                 }
             }
             // The links come in after the first frame: under From and To, so those never move as they arrive
@@ -765,3 +809,31 @@ internal val LineRefSaver: Saver<LineRef?, ArrayList<String>> = Saver(
     save = { line -> line?.let { arrayListOf(it.id, it.name, it.mode) } },
     restore = { saved -> if (saved.size == 3) LineRef(saved[0], saved[1], saved[2]) else null },
 )
+
+/**
+ * A bus stop's letter and the way its buses go, from its pole's data: its stop area, as [lineId]'s route
+ * data places it, and that area's poles, both from the route pages' day-long cache (one request per
+ * area). The route is loaded if it isn't held yet (a restored page, before the line's map has asked for
+ * it): joined with the map's own request, never a second one. Its letter and "towards", else "towards"
+ * alone, else its compass bearing, as the near-me list heads its poles. Null for a stop no route places
+ * in an area, a pole with none of them, or where a lookup failed (logged by the repository), as the stop's
+ * details are whole without it.
+ */
+@WorkerThread
+internal suspend fun stopPole(repository: RouteStopsRepository, lineId: String, stopId: String): StopQualifier? {
+    val pole = try {
+        val route = repository.cached(lineId, "") ?: repository.load(lineId, "")
+        val area = route.stopAreas[stopId] ?: return null
+        repository.loadPoles(area).firstOrNull { it.id == stopId } ?: return null
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: TflException) {
+        return null
+    }
+    return when {
+        pole.stopLetter.isNotBlank() -> StopQualifier.BusStop(pole.stopLetter, pole.towards.ifBlank { null })
+        pole.towards.isNotBlank() -> StopQualifier.Towards(pole.towards)
+        pole.bearing.isNotBlank() -> StopQualifier.BusBearing(pole.bearing)
+        else -> null
+    }
+}
