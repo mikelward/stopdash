@@ -1205,6 +1205,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               device by the maintainer (2026-09-28).
         - [x] **Long-press a place chip to open Favorite places** (maintainer, 2026-09-28). Checked on
               a device by the maintainer (2026-09-28).
+        - [ ] **Launcher shortcuts to each favorite place** (maintainer, 2026-10-07): long-pressing the
+              app icon offers a trip to each saved place (SPEC *Launcher shortcuts*). Built
+              (`PlaceShortcuts`, `LauncherShortcuts`); needs a device check of the icons in the launcher
+              and of a tap from a cold start and with the app open.
         - [x] **Favorite chips on the "no stops nearby" screen** (Codex on #315): with nothing in
               range the list gave way to the location gate, which had no chips. Done: the gate's
               "No stops found nearby" heads the chips as the list's empty state does (the same

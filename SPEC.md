@@ -1273,6 +1273,20 @@ house, the briefcase and the graduation cap — including ones saved before icon
 custom place with none; tapping the chosen icon clears it, and a cleared icon stays cleared. A trip's
 title and TalkBack use the name alone, so an icon-only chip is still announced by name. A **long press** on a chip opens the saved places' own screen, to edit them (maintainer, 2026-09-28).
 
+**Launcher shortcuts** (maintainer, 2026-10-07): long-pressing StopDash's icon on the home screen
+offers **one shortcut per saved place**, in the saved order, as many as the launcher shows, each
+labeled with the place's name and drawn with its icon (the app's own for a place with none). A tap
+opens the app on the **trip to that place from the rider's position**, as its chip does, closing
+whatever screen was on top. Unlike the chips, every place is offered every day and none is left out
+for being where the rider is: the long press is asked for, and keeping the list in step with the
+day or the rider's position would cost a wakeup for nothing. The shortcuts follow the saved places
+— added, renamed, reordered or removed in the app — and a shortcut **pinned** to the home screen
+for a place since removed is disabled, the launcher saying "Place no longer saved"; one tapped in
+the moment before that lands says the same in the app, as does one tapped while the places can't
+be read ("Couldn't read your places"), never opening a trip silently or nowhere. A shortcut carries
+only the place's saved id, never its coordinate, so what the launcher keeps names no position and a
+tap routes to the place as it is saved now.
+
 The trip's top bar carries the app's **overflow** as the list's does — its red dot while an update
 is available, "Update available", "Send bug report" and About — so a problem seen on a trip can be
 reported from it (maintainer, 2026-09-26). So does **every other screen** with no menu of its own —
