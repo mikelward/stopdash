@@ -167,7 +167,6 @@ import app.stopdash.domain.StepFree
 import app.stopdash.domain.StepFreeAccess
 import app.stopdash.domain.StopClosureCache
 import app.stopdash.domain.Workers
-import app.stopdash.domain.StopMap
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.TimetableRepository
 import app.stopdash.domain.ToChoice
@@ -1569,6 +1568,8 @@ class MainActivity : ComponentActivity() {
                                         } else {
                                             null
                                         },
+                                        // Show on map: the stop in the maps app, a labeled pin at its published position.
+                                        onShowOnMap = { stop, at -> openStopMap(at.latitude, at.longitude, stop.name) },
                                         // Favorite: the editor of favorite places over Lines…, filled in with the stop.
                                         onFavorite = { stop, position ->
                                             placeToAdd = StationMatch(stop.id, stop.name, latitude = position?.latitude, longitude = position?.longitude)
@@ -2115,11 +2116,13 @@ class MainActivity : ComponentActivity() {
      * a toast and logs rather than failing silently (SPEC principle 2); the log carries no coordinate.
      */
     private fun openStopMap(latitude: Double, longitude: Double, name: String) {
-        try {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(StopMap.geoUri(latitude, longitude, name))))
-        } catch (e: android.content.ActivityNotFoundException) {
-            logLocationWarning("no maps app to show a stop: ${e.javaClass.simpleName}")
-            Toast.makeText(this, R.string.map_open_failed, Toast.LENGTH_SHORT).show()
+        lifecycleScope.openStopMapOn(Dispatchers.Default, latitude, longitude, name) { uri ->
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)))
+            } catch (e: android.content.ActivityNotFoundException) {
+                logLocationWarning("no maps app to show a stop: ${e.javaClass.simpleName}")
+                Toast.makeText(this@MainActivity, R.string.map_open_failed, Toast.LENGTH_SHORT).show()
+            }
         }
     }
 

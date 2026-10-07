@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -364,5 +365,42 @@ class LinesOverlayTest {
         assertEquals(placed, StationMatchSaver.restore(with(StationMatchSaver) { scope.save(placed) }!!))
         val unplaced = app.stopdash.domain.StationMatch("490X", "Somewhere Road")
         assertEquals(unplaced, StationMatchSaver.restore(with(StationMatchSaver) { scope.save(unplaced) }!!))
+    }
+
+    @Test
+    fun show_on_map_opens_the_stop_where_it_is_and_waits_for_a_position() {
+        val line = LineRef("victoria", "Victoria", "tube")
+        val model = LinesViewModel(
+            loadLines = { listOf(line) },
+            loadRecent = { emptyList() },
+            recordOpen = { listOf(it) },
+            lineStatus = { LineStatus(lineId = "victoria", severity = LineStatus.GOOD_SERVICE, description = "Good Service") },
+            io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
+            saved = SavedStateHandle(),
+        )
+        // A synthetic central London point, as the map placed the stop.
+        val placed = Coordinates(51.5, -0.12)
+        var stop by mutableStateOf(LineStopRef("490X", "Somewhere Road", position = placed))
+        var shown: Pair<String, Coordinates>? = null
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides Dispatchers.Unconfined) {
+                    LinesOverlay(
+                        model, open = line, onOpen = {}, onBack = {},
+                        stop = stop,
+                        onShowOnMap = { at, position -> shown = at.name to position },
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("lineStopMap").performClick()
+        assertEquals("Somewhere Road" to placed, shown)
+        // A stop placed by neither the map nor the (empty) index can't be shown: the pin stays, greyed,
+        // so the star beside it doesn't move.
+        stop = LineStopRef("490Y", "Nowhere Lane")
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("lineStopMap").assertIsNotEnabled()
     }
 }

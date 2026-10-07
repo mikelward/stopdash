@@ -1,11 +1,23 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.withContext
+
 /**
  * The `geo:` link that shows a stop in the user's maps app: a pin at the stop's own coordinate,
  * labeled with its name. Built from TfL's published stop position — never the user's fix — so
  * the maps app learns only which stop was tapped. Pure and JVM-testable.
  */
 object StopMap {
+    /**
+     * [geoUri] built on [dispatcher], for a tap handler: encoding walks every byte of the name,
+     * so it hops off the main thread first (AGENTS.md *Main thread: read and dispatch only*).
+     */
+    suspend fun geoUriOn(dispatcher: CoroutineDispatcher, latitude: Double, longitude: Double, label: String): String =
+        withContext(dispatcher) { geoUri(latitude, longitude, label) }
+
+    @WorkerThread
     fun geoUri(latitude: Double, longitude: Double, label: String): String {
         val at = "$latitude,$longitude"
         val name = label.trim()

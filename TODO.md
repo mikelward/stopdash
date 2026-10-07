@@ -2707,7 +2707,8 @@ Builds on Phase 1's minimal line-status marking.
   - [x] **Favorite it**: a star on the stop's details adds it as a favorite place, through the editor
         filled in with the stop (maintainer, 2026-10-07: a favorite place, not its services pinned).
     - [ ] The star doesn't show a stop that is already a favorite place; matching one by position is open.
-  - [ ] **Show it on a map / walk there**: hand its position to the phone's maps app.
+  - [x] **Show it on a map**: a pin on the stop's details hands its position to the phone's maps app.
+    - [ ] Walking directions there, not just the pin (a `google.navigation:` or Maps directions URL).
   - [ ] **A bus stop's letter and direction** ("Stop H, towards Oxford Circus"), from its pole data.
   - [ ] **Open a stop from every line page**: the home screen's lines row and a trip's lines page draw
         the same map, its stations inert there for now.
