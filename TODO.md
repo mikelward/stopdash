@@ -139,6 +139,11 @@ exercises the whole spine the widget later renders from.
       work; smaller loops the UI still calls in composition (a row's `Countdown.entries`, and the like)
       aren't marked yet, so `WorkerThreadCall` can't see them. Mark each as its screen moves off the
       main thread, its calls joining the baseline until then.
+- [ ] **One thread-safe recorder for the off-main tests.** About twenty tests note the thread their
+      work ran on in a plain list the worker writes and the test thread reads (`reads +=
+      Thread.currentThread().name`), which can throw `ConcurrentModificationException` when the read
+      catches a write: `ShownJourneysOffMainTest` did on CI (#676's run). It was fixed with a guard; a
+      shared recorder (a synchronized list with a `threads()` read) would close the rest at once.
 - [ ] Sharpen `WorkerThreadCall` where it still guesses: a helper's default argument doing the work
       (`fun rows(v = RouteStops.resolve(…))`) isn't followed, and a local function or stored lambda is
       matched to its calls by name, so a shadowing local of the same name is attributed to it. A
