@@ -282,6 +282,90 @@ class LineMapTest {
         assertEquals(listOf("Alpha", "Beta", "Gamma", "Delta"), apart.rows.map { it.name })
     }
 
+    // The made-up bus line's stops, a hundred meters or so apart down one street, and its way back's own
+    // poles: Alpha's stand round the corner, named the same but in no stop area of its own.
+    private val busPositions = mapOf(
+        "A1" to (51.5000 to -0.12), "B1" to (51.4990 to -0.12), "C1" to (51.4980 to -0.12), "D1" to (51.4970 to -0.12),
+        "A3" to (51.5002 to -0.1205), "D3" to (51.4970 to -0.1202), "Z3" to (51.4800 to -0.12),
+    )
+
+    private fun spread(back: List<String>, names: Map<String, String> = emptyMap(), hubs: Map<String, String> = emptyMap()) =
+        bus(back).copy(
+            stopNames = busNames + mapOf("A3" to "Alpha", "D3" to "Delta Station", "Z3" to "Delta") + names,
+            stopAreas = busAreas,
+            stopPositions = busPositions,
+            stopHubs = hubs,
+        )
+
+    @Test
+    fun `the way back's stops at the same place are one row, not a fork`() {
+        // Ending at Alpha's other stand, in no stop area with the outbound one: the same name, yards away.
+        val stand = LineMap.of(spread(listOf("D2", "C2", "B2", "A3")))!!
+        assertEquals(listOf("Alpha", "Beta", "Gamma", "Delta"), stand.rows.map { it.name })
+        assertEquals(1, stand.columns)
+        // Starting at a stop of the same interchange, its name spelled its own way ("Delta Station").
+        val hub = LineMap.of(spread(listOf("D3", "C2", "B2", "A2"), hubs = mapOf("D1" to "HUBD", "D3" to "HUBD")))!!
+        assertEquals(listOf("Alpha", "Beta", "Gamma", "Delta"), hub.rows.map { it.name })
+        assertEquals(1, hub.columns)
+        // An interchange with two of its stops on the route: the one of its name; one named apart from
+        // both is a place of its own, its row named as alerts name it (Codex, #663).
+        val twoInHub = mapOf("C1" to "HUBD", "D1" to "HUBD", "D3" to "HUBD")
+        val byName = LineMap.of(spread(listOf("D3", "C2", "B2", "A2"), names = mapOf("D3" to "Delta"), hubs = twoInHub))!!
+        assertEquals(listOf("Alpha", "Beta", "Gamma", "Delta"), byName.rows.map { it.name })
+        val unknown = spread(listOf("D3", "C2", "B2", "A2"), names = mapOf("D3" to "Concourse"), hubs = twoInHub)
+        val unplaced = LineMap.of(unknown.copy(stopPositions = unknown.stopPositions - "D3"))!!
+        assertEquals(1, unplaced.rows.count { it.name == "Concourse" })
+        val words = "Buses are not calling at Concourse."
+        val alert = LineMap.forStatus(unknown, LineStatus("b", 3, "Part Suspended", fullText = words))!!
+        assertEquals(setOf("Concourse"), alert.rows.filter { it.marked }.mapTo(HashSet()) { it.name })
+        // The same name far down the road is somewhere else: drawn as its own stop.
+        val far = LineMap.of(spread(listOf("Z3", "C2", "B2", "A2")))!!
+        assertEquals(2, far.rows.count { it.name == "Delta" })
+    }
+
+    @Test
+    fun `a way back passing a stop without calling runs through it, not round it`() {
+        val skipping = LineMap.of(spread(listOf("D2", "B2", "A2")))!!
+        assertEquals(listOf("Alpha", "Beta", "Gamma", "Delta"), skipping.rows.map { it.name })
+        assertEquals(1, skipping.columns)
+        assertTrue(skipping.rows.none { it.junction })
+        // Shut the way back between the stops either side, it shuts the track drawn through the stop it
+        // passes: placed on the map, not left to its words (Codex, #663).
+        val words = "Buses are not running between Delta and Beta."
+        val shut = LineMap.forStatus(
+            spread(listOf("D2", "B2", "A2")),
+            LineStatus("b", 3, "Part Suspended", fullText = words, closures = listOf(PartClosure(3, "Part Suspended", words, listOf(listOf("D2", "B2"))))),
+        )!!
+        assertTrue(shut.closurePlaced)
+        assertTrue(shut.row("Beta").bottom.single().closedGoingUp)
+        assertTrue(shut.row("Gamma").bottom.single().closedGoingUp)
+        assertFalse(shut.row("Alpha").bottom.single().closed)
+        // Nor when another pattern of the way back leaves the outbound way drawn alone (Codex, #663).
+        val alone = LineMap.forStatus(
+            spread(listOf("D2", "B2", "A2")).let { it.copy(routes = it.routes + LineRoute("", listOf("D2", "B2", "C2", "A2"), "inbound")) },
+            LineStatus("b", 3, "Part Suspended", fullText = words, closures = listOf(PartClosure(3, "Part Suspended", words, listOf(listOf("D2", "B2"))))),
+        )!!
+        assertEquals(listOf("Alpha", "Beta", "Gamma", "Delta"), alone.rows.map { it.name })
+        assertTrue(alone.closurePlaced)
+        assertTrue(alone.row("Gamma").bottom.single().closedGoingUp)
+        // Nor through a branch the way back may not run: two between the stops either side, neither taken.
+        val branches = spread(listOf("D2", "B2", "A2")).let {
+            it.copy(routes = it.routes + LineRoute("", listOf("A1", "B1", "X2", "D1"), "outbound"))
+        }
+        val either = LineMap.forStatus(
+            branches,
+            LineStatus("b", 3, "Part Suspended", fullText = words, closures = listOf(PartClosure(3, "Part Suspended", words, listOf(listOf("D2", "B2"))))),
+        )!!
+        // Shut on its own direct track instead, neither branch's stop.
+        assertTrue(either.closurePlaced)
+        assertTrue(either.rows.filter { it.name == "Gamma" || it.name == "Xray" }.none { row ->
+            (row.top + row.bottom).any { it.closed && (it.from == row.column || it.to == row.column) }
+        })
+        // One with a stop of its own between still forks there.
+        val elsewhere = LineMap.of(spread(listOf("D2", "C2", "X2", "A2")))!!
+        assertEquals(2, elsewhere.columns)
+    }
+
     @Test
     fun `a closure the rider dismissed while a milder alert stands is drawn too, or said to be off the map`() {
         val text = "No service between Kennington and Battersea Power Station."
