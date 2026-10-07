@@ -309,6 +309,9 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
   and, by line id only,
   a starred journey its line's route can't place (never its two ends together, which would
   record a route you travel),
+- **what a trip plan's journey planner answer offered**: how many routes, and each by its lines
+  alone (e.g. `102+northern, northern`: line ids, "walk" for a route on foot) — never a stop, a
+  place or either end of the trip,
 - **why a trip route's arrival is withheld** ("arrival unknown"): which of its legs (by number),
   that leg's mode and line id, the reason (e.g. its line's predictions don't show it running
   often), how many predictions it had, and minute counts (how long before you'd reach the stop

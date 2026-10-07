@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
 import java.time.Duration
 import java.time.Instant
 
@@ -64,6 +65,14 @@ data class TripLeg(
 data class TripRoute(val legs: List<TripLeg>) {
     /** The legs ridden, walks left out: the line pills a route shows. */
     val rides: List<TripLeg> get() = legs.filterNot { it.isWalk }
+
+    /**
+     * The route by its lines alone, for the debug log: each ride's line id (its mode where it has none)
+     * joined by "+", "walk" for a route on foot. Never a stop or place: what the Planner offered, said
+     * as `docs/PRIVACY.md` lets the log say it. Work over the route's legs: off the main thread (Codex, #653).
+     */
+    @get:WorkerThread
+    val linesLabel: String get() = rides.joinToString("+") { it.lineId.ifBlank { it.mode } }.ifEmpty { "walk" }
 
     /** The Planner's time on foot over the whole route: to the first stop, between rides and to the end. */
     val walking: Duration get() = legs.filter { it.isWalk }.fold(Duration.ZERO) { sum, leg -> sum + leg.run }

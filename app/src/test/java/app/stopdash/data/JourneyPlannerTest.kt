@@ -290,9 +290,10 @@ class JourneyPlannerTest {
         val timed = warnings.map { it.replace(Regex("in \\d+ ms \\(waited \\d+ ms to send\\)"), "in N ms (waited W ms to send)") }
         assertEquals(
             setOf(
-                "journey planner: 3 routes in N ms (waited W ms to send)",
-                "journey planner (fewest changes): 3 routes in N ms (waited W ms to send)",
-                "journey planner (least walking): 3 routes in N ms (waited W ms to send)",
+                // And what each offered, by its lines alone: what the Planner gave, told from what StopDash shows.
+                "journey planner: 3 routes in N ms (waited W ms to send): mildmay+jubilee, windrush+jubilee, windrush+elizabeth",
+                "journey planner (fewest changes): 3 routes in N ms (waited W ms to send): mildmay+jubilee, windrush+jubilee, windrush+elizabeth",
+                "journey planner (least walking): 3 routes in N ms (waited W ms to send): mildmay+jubilee, windrush+jubilee, windrush+elizabeth",
             ),
             timed.toSet(),
         )
@@ -708,6 +709,6 @@ class JourneyPlannerTest {
 
     private companion object {
         // A request's timing line, whatever its outcome.
-        val TIMED = Regex(": [^:]+ in \\d+ ms \\((waited \\d+ ms to send|not sent)\\)$")
+        val TIMED = Regex(": [^:]+ in \\d+ ms \\((waited \\d+ ms to send|not sent)\\)(: .+)?$")
     }
 }

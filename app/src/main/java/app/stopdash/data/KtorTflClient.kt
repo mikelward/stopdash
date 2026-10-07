@@ -227,11 +227,17 @@ class KtorTflClient(
         val asked = kotlin.time.TimeSource.Monotonic.markNow()
         var waited: Long? = null
         var outcome: String? = null
+        var offered = ""
         try {
             return planRequest(source, fromParam, toParam, speed, maxWalk, stepFree, modes, preference, via) { status ->
                 if (waited == null) waited = asked.elapsedNow().inWholeMilliseconds
                 status?.let { outcome = it }
-            }.also { routes -> if (outcome == null) outcome = "${routes.size} routes" }
+            }.also { routes ->
+                if (outcome == null) outcome = "${routes.size} routes"
+                // Each route by its lines alone ([TripRoute.linesLabel]): a bug report then says what the
+                // Planner offered, so a route it didn't is told from one StopDash left out.
+                offered = routes.takeIf { it.isNotEmpty() }?.joinToString(", ", prefix = ": ") { it.linesLabel }.orEmpty()
+            }
         } catch (e: CancellationException) {
             outcome = "canceled"
             throw e
@@ -241,7 +247,7 @@ class KtorTflClient(
             throw e
         } finally {
             val sent = waited?.let { "waited $it ms to send" } ?: "not sent"
-            warn("$source: ${outcome ?: "failed"} in ${asked.elapsedNow().inWholeMilliseconds} ms ($sent)")
+            warn("$source: ${outcome ?: "failed"} in ${asked.elapsedNow().inWholeMilliseconds} ms ($sent)$offered")
         }
     }
 

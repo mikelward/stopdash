@@ -23,6 +23,15 @@ class TripRouteTest {
     private val destination = setOf("C", "E")
 
     @Test
+    fun `a route is told in the log by its lines alone`() {
+        // Its rides' line ids joined, a ride with none by its mode, a route on foot as a walk; no stop or place.
+        val bus = ride("", "W", "B").copy(mode = "bus")
+        assertEquals("red+blue", TripRoute(listOf(walk("X", "A"), ride("red", "A", "B"), walk("B", "C"), ride("blue", "C", "E"))).linesLabel)
+        assertEquals("bus+red", TripRoute(listOf(bus, ride("red", "B", "C"))).linesLabel)
+        assertEquals("walk", TripRoute(listOf(walk("X", "E"))).linesLabel)
+    }
+
+    @Test
     fun `a route that rides through the destination and on passes it`() {
         // On past C to F, and a bus back to E: the rider would have got off at C.
         val route = TripRoute(listOf(ride("red", "A", "F", listOf("B", "C", "F")), ride("bus", "F", "E")))
