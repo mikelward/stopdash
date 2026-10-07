@@ -169,6 +169,44 @@ class PlaceDirectViewModelTest {
     }
 
     @Test
+    fun `a train no Retry can check leaves none found unchecked but not failed, a route that failed to load is a failure`() = runBlocking {
+        for (failure in listOf<TflException>(TflException.NotFound(null), TflException.Offline(null))) {
+            val failing = RouteStopsRepository(
+                object : RouteSequenceSource {
+                    override suspend fun routeSequence(lineId: String, direction: String): LineSequence = throw failure
+                },
+                clock = { now },
+            )
+            val model = PlaceDirectViewModel(
+                ends = { listOf(DirectTrips.End("BOT", "Bottom")) },
+                client = client { listOf(departure("Bottom", 60)) },
+                routes = failing,
+                arrivals = ArrivalsCache(),
+                clock = { now },
+                io = Dispatchers.Unconfined,
+                compute = Dispatchers.Unconfined,
+            ).apply { setOrigin(listOf(StopRef("TOP", "Top"))) }
+            model.refresh()
+            val ready = model.state.value as PlaceDirectViewModel.State.Ready
+            val name = failure::class.simpleName
+            assertTrue(name, ready.rows.isEmpty())
+            assertTrue(name, ready.uncertain)
+            // TfL having no route for the line: no Retry will tell; one that failed to load may.
+            assertEquals(name, failure !is TflException.NotFound, ready.retryable)
+        }
+    }
+
+    @Test
+    fun `a train whose destination its line's route can't place leaves none found unchecked but not failed`() = runBlocking {
+        val model = model(client { listOf(departure("Nowhere on the route", 60)) })
+        model.refresh()
+        val ready = model.state.value as PlaceDirectViewModel.State.Ready
+        assertTrue(ready.rows.isEmpty())
+        assertTrue(ready.uncertain)
+        assertFalse(ready.retryable)
+    }
+
+    @Test
     fun `a stop that couldn't be had is said under the rows`() = runBlocking {
         val model = model(client { stopId -> if (stopId == "MID") throw TflException.Offline(null) else listOf(departure("Bottom", 60)) })
             .apply { setOrigin(listOf(StopRef("TOP", "Top"), StopRef("MID", "Mid"))) }

@@ -15,6 +15,7 @@ import app.stopdash.domain.LineStatusBatch
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.NearbyStopsCache
 import app.stopdash.domain.PlaceStops
+import app.stopdash.domain.TflException
 import app.stopdash.domain.PlaceDirect
 import app.stopdash.domain.RouteMiss
 import app.stopdash.domain.RouteStopsRepository
@@ -84,12 +85,14 @@ class PlaceDirectViewModel(
         data object Failed : State
 
         /**
-         * The [rows] going there, each with its countdown label worked out at the last tick, or none:
-         * "None" if every line was checked, else "Couldn't check". [uncertain] when a stop's arrivals
-         * or a line's route couldn't be had, said under any rows too; [checking] while a route loads.
+         * The [rows] going there, each with its countdown label worked out at the last tick, or none.
+         * [uncertain] when some train or line couldn't be checked, said on the header; [retryable] when
+         * that's for something a Retry may get (a stop's arrivals, a line's route, a status or closure
+         * that failed to load), so with no rows it reads "Couldn't check" with a Retry, else "None".
+         * [checking] while a route loads.
          */
         @Immutable
-        data class Ready(val rows: List<ShownRow>, val checking: Boolean, val uncertain: Boolean) : State
+        data class Ready(val rows: List<ShownRow>, val checking: Boolean, val uncertain: Boolean, val retryable: Boolean = uncertain) : State
     }
 
     /**
@@ -304,7 +307,7 @@ class PlaceDirectViewModel(
         // When asked: what a fetch is stamped with.
         val askedAt = clock()
         val fetched = coroutineScope { stops.map { stop -> async { arrivalsOf(stop, askedAt, pulled) } }.awaitAll() }
-        val sequences = sequencesFor(fetched.filterNotNull(), hidden)
+        val (sequences, routesFailed) = sequencesFor(fetched.filterNotNull(), hidden)
         // The lines the rows would show, so their status is in hand before they do: a delayed or
         // part-suspended line is said on its row, never shown as running normally.
         val rowLines = PlaceDirect.rows(fetched.filterNotNull(), ends, sequences, chosen.distanceMeters, askedAt, hidden, level, table).rows
@@ -337,6 +340,9 @@ class PlaceDirectViewModel(
             // never asked about (a train gone since let a later one in): unasked counts as unchecked.
             val asked = closureIds.toSet()
             val unchecked = closures.failed + result.rows.flatMap { row -> listOf(row.fromId) + row.reaches.map { it.id } }.filterNot { it in asked }
+            val rowsUnvouched = result.rows.any { row ->
+                row.lineId !in statuses || row.fromId in unchecked || unverifiedEnds(row, closures.found, unchecked, now)
+            }
             State.Ready(
                 rows = result.rows.map { row ->
                     // Each direction its trains run in, by that direction's own verdict where TfL scoped
@@ -355,9 +361,10 @@ class PlaceDirectViewModel(
                 },
                 checking = result.pending,
                 // A row whose line's status, or a stop's closures, couldn't be had isn't vouched for either.
-                uncertain = result.unresolved || fresh.size < stops.size || result.rows.any { row ->
-                    row.lineId !in statuses || row.fromId in unchecked || unverifiedEnds(row, closures.found, unchecked, now)
-                },
+                uncertain = result.unresolved || fresh.size < stops.size || rowsUnvouched,
+                // A train no Retry can tell (past its board's calling points, a line TfL has no route for)
+                // leaves it uncertain but not failed (maintainer, 2026-10-07).
+                retryable = routesFailed || fresh.size < stops.size || rowsUnvouched,
             )
         }
         // Checked again as it's written: a change since the check above stands, never this look's rows.
@@ -459,25 +466,32 @@ class PlaceDirectViewModel(
         }
     }
 
-    // Each departing line's route: absent while loading, null when its load failed (DirectTrips.filter).
-    private suspend fun sequencesFor(stops: List<StopArrivals>, hidden: Set<String>): Map<String, LineSequence?> {
+    // Each departing line's route: absent while loading, null when its load failed (DirectTrips.filter);
+    // and whether a load failed in a way a Retry may get past (anything but TfL having no route for it).
+    private suspend fun sequencesFor(stops: List<StopArrivals>, hidden: Set<String>): Pair<Map<String, LineSequence?>, Boolean> {
         val lineIds = stops.flatMap { stop ->
             stop.departures.filterNot { HiddenModes.isHidden(it.mode, it.lineId, hidden) }.map { it.lineId }
         }.distinct()
-        return coroutineScope {
+        val failed = java.util.concurrent.atomic.AtomicBoolean(false)
+        val sequences = coroutineScope {
             lineIds.map { lineId ->
                 async {
                     lineId to try {
                         routes.cached(lineId, "") ?: routes.load(lineId, "")
                     } catch (e: CancellationException) {
                         throw e
+                    } catch (e: TflException.NotFound) {
+                        // TfL has no route for it (Eurostar): no Retry will find one, and the routes say so once.
+                        null
                     } catch (e: Exception) {
                         warn("direct route failed: ${e::class.simpleName} for line $lineId")
+                        failed.set(true)
                         null
                     }
                 }
             }.awaitAll().toMap()
         }
+        return sequences to failed.get()
     }
 
     companion object {
