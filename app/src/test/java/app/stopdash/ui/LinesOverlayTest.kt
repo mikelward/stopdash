@@ -8,6 +8,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -402,5 +404,124 @@ class LinesOverlayTest {
         stop = LineStopRef("490Y", "Nowhere Lane")
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("lineStopMap").assertIsNotEnabled()
+    }
+
+    @Test
+    fun a_row_on_a_stop_s_board_opens_its_route_page_counted_as_a_route_and_back_returns_to_the_stop() {
+        val sent = mutableListOf<app.stopdash.domain.UsageEvent>()
+        app.stopdash.telemetry.UsageEvents.consent = { true }
+        app.stopdash.telemetry.UsageEvents.install { sent += it }
+        try {
+            val line = LineRef("victoria", "Victoria", "tube")
+            val model = LinesViewModel(
+                loadLines = { listOf(line) },
+                loadRecent = { emptyList() },
+                recordOpen = { listOf(it) },
+                lineStatus = { LineStatus(lineId = "victoria", severity = LineStatus.GOOD_SERVICE, description = "Good Service") },
+                io = Dispatchers.Unconfined,
+                compute = Dispatchers.Unconfined,
+                saved = SavedStateHandle(),
+            )
+            // Oxford Circus, a public interchange, with a made-up Victoria line train.
+            val now = java.time.Instant.parse("2026-10-07T09:00:00Z")
+            val board = DeparturesUiState.Loaded(
+                stops = listOf(
+                    app.stopdash.domain.StopArrivals(
+                        "940GZZLUOXC", "Oxford Circus",
+                        listOf(
+                            app.stopdash.domain.Departure(
+                                "victoria", "Victoria", "outbound", "Brixton", "Southbound - Platform 6", now.plusSeconds(180), "tube",
+                            ),
+                        ),
+                        fetchedAt = now,
+                    ),
+                ),
+                fetchedAt = now,
+            )
+            composeRule.setContent {
+                StopDashTheme {
+                    CompositionLocalProvider(LocalWorker provides Dispatchers.Unconfined) {
+                        LinesOverlay(
+                            model, open = line, onOpen = {}, onBack = {},
+                            stop = LineStopRef("940GZZLUOXC", "Oxford Circus"),
+                            departures = { _, _, _ -> StopDepartures(board, now, onRefresh = {}) },
+                        )
+                    }
+                }
+            }
+            composeRule.waitForIdle()
+            // Events compare by what they send, as they reach the sink.
+            val names = { sent.map { it.toString() } }
+            val stopPage = app.stopdash.domain.UsageEvent.ScreenView(app.stopdash.domain.UsageEvent.Screen.LINE_STOP).toString()
+            assertEquals(stopPage, names().last())
+            composeRule.onNodeWithText("Brixton").performClick()
+            composeRule.waitForIdle()
+            // The tap counted as a stop row's, as on the near-me list, and the page as a route.
+            assertTrue(app.stopdash.domain.UsageEvent.Tapped(app.stopdash.domain.UsageEvent.Tap.STOP_ROW).toString() in names())
+            assertEquals(app.stopdash.domain.UsageEvent.ScreenView(app.stopdash.domain.UsageEvent.Screen.ROUTE).toString(), names().last())
+            // Back from the route page: the stop's details, counted again.
+            Espresso.pressBack()
+            composeRule.waitForIdle()
+            assertEquals(stopPage, names().last())
+            composeRule.onNodeWithText("Brixton").assertExists()
+        } finally {
+            app.stopdash.telemetry.UsageEvents.resetForTest()
+        }
+    }
+
+    @Test
+    fun a_route_left_open_closes_when_the_stop_s_board_fails_and_stays_closed_after_try_again() {
+        val line = LineRef("victoria", "Victoria", "tube")
+        val model = LinesViewModel(
+            loadLines = { listOf(line) },
+            loadRecent = { emptyList() },
+            recordOpen = { listOf(it) },
+            lineStatus = { LineStatus(lineId = "victoria", severity = LineStatus.GOOD_SERVICE, description = "Good Service") },
+            io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
+            saved = SavedStateHandle(),
+        )
+        // Oxford Circus, a public interchange, with a made-up Victoria line train.
+        val now = java.time.Instant.parse("2026-10-07T09:00:00Z")
+        val loaded = DeparturesUiState.Loaded(
+            stops = listOf(
+                app.stopdash.domain.StopArrivals(
+                    "940GZZLUOXC", "Oxford Circus",
+                    listOf(
+                        app.stopdash.domain.Departure(
+                            "victoria", "Victoria", "outbound", "Brixton", "Southbound - Platform 6", now.plusSeconds(180), "tube",
+                        ),
+                    ),
+                    fetchedAt = now,
+                ),
+            ),
+            fetchedAt = now,
+        )
+        var state by mutableStateOf<DeparturesUiState>(loaded)
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides Dispatchers.Unconfined) {
+                    LinesOverlay(
+                        model, open = line, onOpen = {}, onBack = {},
+                        stop = LineStopRef("940GZZLUOXC", "Oxford Circus"),
+                        departures = { _, _, _ -> StopDepartures(state, now, onRefresh = {}) },
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Brixton").performClick()
+        composeRule.waitForIdle()
+        // The line's Back, the stop's over it, and the route page's over that.
+        composeRule.onAllNodesWithContentDescription("Back").assertCountEquals(3)
+        // The board's load fails, as a restore's reload can: the route page closes, the stop's error up.
+        state = DeparturesUiState.Error(DeparturesUiState.Error.Kind.NETWORK)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("stopBoardError").assertExists()
+        // Try again brings the board back, not the route page the rider can no longer have been looking at.
+        state = loaded
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Brixton").assertExists()
+        composeRule.onAllNodesWithContentDescription("Back").assertCountEquals(2)
     }
 }

@@ -12,7 +12,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -20,16 +23,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import app.stopdash.R
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.LineRef
+import app.stopdash.domain.LineSequence
+import app.stopdash.domain.TflException
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.RelativeTime
+import app.stopdash.domain.RouteFocus
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.StopGrouping
 import app.stopdash.domain.Staleness
 import java.time.Instant
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 
 /**
  * A stop's live departures as its details page draws them (SPEC *Finding a line*): its [state], the
@@ -55,6 +68,11 @@ internal class StopBoardView(
     val closures: List<DepartureRow> = emptyList(),
     // An empty line part can't be stood behind as "none due": a failed or partial refresh, or a stale stop.
     val emptyUncertain: Boolean = false,
+    // The board's services by their route's key ([detailKey]), so a row's route page finds it again on each
+    // tick with a lookup, never a walk on the main thread; and the state and time they were drawn from.
+    val rowsByKey: Map<String, DepartureRow> = emptyMap(),
+    val source: DeparturesUiState.Loaded? = null,
+    val now: Instant? = null,
 )
 
 /**
@@ -80,14 +98,28 @@ internal fun stopBoardView(
     topology: RouteTopology = RouteTopology.EMPTY,
     // Alerts dismissed anywhere stay dismissed here: they're place-wide and line-wide (Codex on #661).
     dismissed: Set<DismissedAlert> = emptySet(),
+    // The routes of its bus lines with an alert to place: one wholly behind the stop is muted, as on the
+    // near-me list ([DepartureRows.withAlertsBehind]); a line with no route in keeps its alert.
+    alertSequences: Map<String, LineSequence?> = emptyMap(),
 ): StopBoardView {
     // A stop's own notice (closed, moved) comes out first: grouping leaves it to a caller to draw, so it's
     // never dropped from the board (Codex on #661).
-    val rows = DepartureRows.withoutDismissed(DepartureRows.across(state.stops, now, state.lineStatuses), dismissed)
+    val rows = DepartureRows.withAlertsBehind(
+        DepartureRows.withoutDismissed(DepartureRows.across(state.stops, now, state.lineStatuses), dismissed),
+        alertSequences,
+    )
     val (closures, services) = rows.partition { it.stopDisruption != null }
     val (line, others) = services.partition { lineId != null && it.lineId == lineId }
     fun cards(rows: List<DepartureRow>) = StopGrouping.groupByStop(rows).map { stopCard(it, topology) }
-    return StopBoardView(cards(line), cards(others), closures, emptyStateUncertain(state, stopStamps(state.stops), now))
+    return StopBoardView(
+        cards(line),
+        cards(others),
+        closures,
+        emptyStateUncertain(state, stopStamps(state.stops), now),
+        rowsByKey = services.associateBy { it.detailKey() },
+        source = state,
+        now = now,
+    )
 }
 
 /** [departures] as [stopBoardView] splits them, worked out on [LocalWorker]; null until the first is in. */
@@ -95,13 +127,46 @@ internal fun stopBoardView(
 internal fun rememberStopBoard(departures: StopDepartures?, lineId: String?): StopBoardView? {
     val loaded = departures?.state as? DeparturesUiState.Loaded ?: return null
     val topology = LocalRouteTopology.current
+    val routes = LocalRouteStops.current
+    val worker = LocalWorker.current
+    // The routes of its bus lines with an alert to place, asked of the route pages' day-long cache on each
+    // load, so its expiry applies here as everywhere: one request per such line a day, as the near-me list
+    // makes. Until one is in the alert stays on; a reload that fails keeps the route held, a day-old route
+    // beating none, as on the near-me list.
+    var alertSequences by remember { mutableStateOf<Map<String, LineSequence>>(emptyMap()) }
+    // A dismissed alert asks for nothing: its route couldn't change the board.
+    val dismissed = departures.dismissed
+    LaunchedEffect(loaded, routes, dismissed) {
+        val repository = routes ?: return@LaunchedEffect
+        val held = alertSequences
+        val found = withContext(worker) {
+            val wanted = DepartureRows.linesWithAlertsToPlace(loaded.stops, loaded.lineStatuses, departures.now, dismissed)
+            val routesNow = coroutineScope {
+                wanted.map { lineId ->
+                    async {
+                        try {
+                            lineId to (repository.cached(lineId, "") ?: repository.load(lineId, ""))
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: TflException) {
+                            // Logged (sanitized) by the repository; the next load asks again.
+                            held[lineId]?.let { lineId to it }
+                        }
+                    }
+                }.awaitAll().filterNotNull().toMap()
+            }
+            // Compared by identity here, so the board is worked out again only when a route changed.
+            routesNow.takeIf { now -> now.size != held.size || now.any { (id, route) -> held[id] !== route } }
+        }
+        if (found != null) alertSequences = found
+    }
     val slot: MutableState<Worked<Inputs, StopBoardView>?> = remember { mutableStateOf(null) }
     // Keyed by identity ([Inputs]): a new state or dismissal set is a new key at once, never compared field
     // by field on the main thread (Codex on #661). The board up for an earlier tick or fetch of the same
     // line stands in while the next is worked out.
-    val key = Inputs(loaded, lineId, departures.now, topology, departures.dismissed)
+    val key = Inputs(loaded, lineId, departures.now, topology, departures.dismissed, alertSequences)
     return rememberWorked(slot, key, keep = { held, wanted -> held.parts[1] == wanted.parts[1] }) {
-        stopBoardView(loaded, lineId, departures.now, topology, departures.dismissed)
+        stopBoardView(loaded, lineId, departures.now, topology, departures.dismissed, alertSequences)
     }
 }
 
@@ -111,7 +176,13 @@ internal fun rememberStopBoard(departures: StopDepartures?, lineId: String?): St
  * that failed keeps the board up with a line saying so, and a stale card withholds its times
  * ([StopGroupCard]), so nothing old reads as live (SPEC D4).
  */
-internal fun LazyListScope.stopBoard(departures: StopDepartures?, view: StopBoardView?, lineName: String?) {
+internal fun LazyListScope.stopBoard(
+    departures: StopDepartures?,
+    view: StopBoardView?,
+    lineName: String?,
+    // A row's route page, as on a station's page; null leaves the rows inert.
+    onOpenRoute: ((DepartureRow, RouteFocus?) -> Unit)? = null,
+) {
     val state = departures?.state
     when {
         state is DeparturesUiState.Error -> item(key = "boardError") {
@@ -157,7 +228,7 @@ internal fun LazyListScope.stopBoard(departures: StopDepartures?, view: StopBoar
                     }
                 }
             }
-            cards(view.line, "line", departures.now)
+            cards(view.line, "line", departures.now, onOpenRoute)
             if (lineName == null && view.others.isEmpty()) {
                 // No line leading and nothing due: said as the near-me list says it, unless uncertain.
                 item(key = "boardEmpty") {
@@ -183,13 +254,13 @@ internal fun LazyListScope.stopBoard(departures: StopDepartures?, view: StopBoar
                         )
                     }
                 }
-                cards(view.others, "others", departures.now)
+                cards(view.others, "others", departures.now, onOpenRoute)
             }
         }
     }
 }
 
-private fun LazyListScope.cards(cards: List<StopCard>, section: String, now: Instant) {
+private fun LazyListScope.cards(cards: List<StopCard>, section: String, now: Instant, onOpenRoute: ((DepartureRow, RouteFocus?) -> Unit)?) {
     items(cards, key = { card -> "$section|${card.group.key}" }) { card ->
         Column {
             // The list spaces the cards evenly, so no header takes the extra break above it.
@@ -200,7 +271,7 @@ private fun LazyListScope.cards(cards: List<StopCard>, section: String, now: Ins
                 starred = emptySet(),
                 onToggleStar = {},
                 starringAvailable = false,
-                onOpenDetail = null,
+                onOpenDetail = onOpenRoute,
             )
         }
     }
@@ -236,4 +307,49 @@ private fun BoardNote(text: String) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
     )
+}
+
+/**
+ * The route page of a row tapped on a stop's board ([stopBoard]), over the stop's details as it opens over
+ * a station's page: the row found again on each tick by its [key] in the board [view], with the state and
+ * time it was drawn from. Nothing while the board is worked out again (a rotation); the caller closes it
+ * once the row has left the board. Stars and dismissals stay with the near-me list and station pages.
+ */
+@Composable
+internal fun StopRoutePage(
+    view: StopBoardView?,
+    key: String,
+    focus: RouteFocus?,
+    // Its line's page ("View line") open over it: held by the caller, whose usage stats count it.
+    lineOpen: MutableState<Boolean>,
+    onBack: () -> Unit,
+) {
+    val row = view?.rowsByKey?.get(key) ?: return
+    val loaded = view.source ?: return
+    val now = view.now ?: return
+    Dialog(
+        onDismissRequest = onBack,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        // A dialog's window has none of the app's text size nor its pinch (SPEC *Display size*).
+        FontSizePinchWindow {
+            RouteDetailScreen(
+                row = row,
+                isStarred = false,
+                starrable = false,
+                // Per row, as the near-me list's page judges it: its line unchecked, or its stop's closure check.
+                disruptionUnknown = loaded.lineUncheckedFor(row) || row.stopId in loaded.stopsDisruptionUnknown,
+                disruptionChecking = loaded.checkingDisruptionsFor(row),
+                lineUnknown = loaded.lineDoubtedFor(row, now),
+                lineChecking = loaded.checkingLineFor(row),
+                // A stale row's status isn't presented as current (SPEC D4).
+                stale = Staleness.isStale(row.fetchedAt, now),
+                now = now,
+                onToggleStar = {},
+                onBack = onBack,
+                focus = focus,
+                lineOpen = lineOpen,
+            )
+        }
+    }
 }

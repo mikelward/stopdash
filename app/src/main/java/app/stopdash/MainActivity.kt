@@ -1629,13 +1629,8 @@ class MainActivity : ComponentActivity() {
                                         linesQueryReset = false
                                     }
                                 }
-                                ReportScreen(
-                                    when {
-                                        linesStop != null -> UsageEvent.Screen.LINE_STOP
-                                        linesLine != null -> UsageEvent.Screen.LINE
-                                        else -> UsageEvent.Screen.LINES
-                                    },
-                                )
+                                // A stop's details report themselves, with the route page a row opens over them ([LinesOverlay]).
+                                if (linesStop == null) ReportScreen(if (linesLine != null) UsageEvent.Screen.LINE else UsageEvent.Screen.LINES)
                                 // The line's map is drawn from the route pages' day-long cache (SPEC *Line page → Map*).
                                 // And a stop's board groups a branching line's trains by where they go, as a station's does.
                                 val linesWriteFailures = viewModel<WriteFailuresHolder>().failures

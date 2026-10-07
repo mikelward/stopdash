@@ -2623,7 +2623,10 @@ as a station's page is, and asked again each time the details open; until they'r
 loading, a failure says so with Try again, and a refresh that failed keeps the board up with a line
 saying so, while a stale card withholds its times (D4). A stamp over the board gives its age, or says
 its disruption checks are still out ("Checking…") or couldn't be made, so unchecked times never read as
-clean; a closure or moved-stop notice heads the board, as on the near-me list. Its rows open nothing yet. A star in its top bar **adds it as a favorite place** (maintainer, 2026-10-07):
+clean; a closure or moved-stop notice heads the board, and a bus alert wholly behind the stop is muted,
+as on the near-me list. A row opens its **route
+page** over the details, as on a station's page, Back returning to the stop; its stops are inert there
+for now, and it offers no star or dismissal, which stay with the near-me list and station pages. A star in its top bar **adds it as a favorite place** (maintainer, 2026-10-07):
 the favorite-places editor opens over it, filled in as a custom place named for the station at its
 position (the index's, else its stops' center, as a pick from the place search, a lookup that fails
 offering a retry on its row), so the rider can still rename it or pick its icon and days before Save;

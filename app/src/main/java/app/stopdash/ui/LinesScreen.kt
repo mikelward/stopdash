@@ -82,7 +82,12 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
 import app.stopdash.R
+import app.stopdash.domain.DepartureRow
+import app.stopdash.domain.UsageEvent
+import app.stopdash.telemetry.ReportScreen
+import app.stopdash.telemetry.UsageEvents
 import app.stopdash.domain.LineRef
+import app.stopdash.domain.RouteFocus
 
 /**
  * Opens *Lines…* (SPEC *Finding a line*), for the overflows that offer it under From… and To…: the
@@ -229,6 +234,30 @@ internal fun LinesOverlay(
                     // From and To in view (Codex on #664); Back to one opened before finds it as it was left.
                     key(stop.pageKey) {
                         saveable.SaveableStateProvider(stop.pageKey) {
+                            // A row's route page open over the stop, by its route's key, kept with the stop's page so
+                            // Back to this stop, or a rotation, finds it still open.
+                            var routeKey by rememberSaveable { mutableStateOf<String?>(null) }
+                            var routeDestination by rememberSaveable { mutableStateOf<String?>(null) }
+                            var routeBranch by rememberSaveable { mutableStateOf<String?>(null) }
+                            // Its line's page ("View line") open over the route page, kept with the route it's for.
+                            val routeLineOpen = rememberSaveable(routeKey) { mutableStateOf(false) }
+                            // The stop's details, the route page a row opens over them, or its line's page over that.
+                            ReportScreen(
+                                when {
+                                    routeKey == null -> UsageEvent.Screen.LINE_STOP
+                                    routeLineOpen.value -> UsageEvent.Screen.LINE
+                                    else -> UsageEvent.Screen.ROUTE
+                                },
+                            )
+                            val view = rememberStopBoard(board, line.id.takeIf { stop.onLine })
+                            // The row gone from the board (its last train left), or the board failed (a restore whose
+                            // reload couldn't be made): the page closes, rather than reopening if a later refresh or a
+                            // Try again brought the same route back. Kept only while the board is still worked out.
+                            val boardFailed = board?.state is DeparturesUiState.Error
+                            LaunchedEffect(routeKey, view, boardFailed) {
+                                val key = routeKey ?: return@LaunchedEffect
+                                if (boardFailed || (view != null && key !in view.rowsByKey)) routeKey = null
+                            }
                             LineStopPage(
                                 name = stop.name,
                                 distance = stop.distance,
@@ -236,7 +265,13 @@ internal fun LinesOverlay(
                                 departures = board,
                                 // Its board waiting on its links: "Loading departures…" meanwhile, never a blank (Codex on #664).
                                 boardPending = board == null,
-                                view = rememberStopBoard(board, line.id.takeIf { stop.onLine }),
+                                view = view,
+                                onOpenRoute = { row, focus ->
+                                    UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.STOP_ROW))
+                                    routeKey = row.detailKey()
+                                    routeDestination = focus?.destination
+                                    routeBranch = focus?.branch
+                                },
                                 links = links,
                                 // A line's pill opens that line's page in place of this one; Back from it returns
                                 // to the search, as from any line opened there.
@@ -277,6 +312,9 @@ internal fun LinesOverlay(
                                 mapReady = links?.let { it.position ?: stop.position } != null,
                                 onBack = back,
                             )
+                            routeKey?.let { key ->
+                                StopRoutePage(view, key, routeDestination?.let { RouteFocus(it, routeBranch) }, routeLineOpen, onBack = { routeKey = null })
+                            }
                         }
                     }
                 }
@@ -328,6 +366,8 @@ internal fun LineStopPage(
     // isn't known yet, or is known nowhere.
     onShowOnMap: (() -> Unit)? = null,
     mapReady: Boolean = true,
+    // A row's route page, as on a station's page; null leaves the rows inert.
+    onOpenRoute: ((DepartureRow, RouteFocus?) -> Unit)? = null,
 ) {
     BackHandler(onBack = onBack)
     Scaffold(
@@ -395,7 +435,7 @@ internal fun LineStopPage(
                     StationLinks(stringResource(R.string.line_stop_nearby), links.nearby, withDistance = true, onOpenStation, "lineStopNearby", name)
                 }
             }
-            if (departures != null || boardPending) stopBoard(departures, view, lineName)
+            if (departures != null || boardPending) stopBoard(departures, view, lineName, onOpenRoute)
         }
     }
 }
