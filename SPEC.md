@@ -2602,7 +2602,8 @@ far it was from the rider's last fix when tapped ("Oxford Circus (350 m)"; the n
 kept with it so the title never changes under the buttons, with
 **From** and **To**, which do what From… and To… do with this stop picked. From opens the stop's own
 page over Lines…, its Back returning to the stop; To plans a trip there from the stops near the rider,
-closing Lines… for it, and is offered only where To… is (the near-me list has stops to plan from).
+Lines… stepping aside for it with the trip's Back returning to the stop, and is offered only where
+To… is (the near-me list has stops to plan from).
 Under From and To are the **lines through it** as pills, each opening that line's page in place of the
 stop's (under, so the buttons never move as they come in); then the other stations of its interchange (**Same interchange**: the rail station beside
 a tube one) and the stations a short walk from it (**Nearby**, within 800 m, nearest five, with how far),

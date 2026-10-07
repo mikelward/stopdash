@@ -754,7 +754,8 @@ class MainActivity : ComponentActivity() {
                 // stop polling while they're up; back from a station returns to the search.
                 var stationSearchOpen by rememberSaveable { mutableStateOf(false) }
                 // *Lines…* (SPEC *Finding a line*): the line search, and the page of a line picked there.
-                var linesOpen by rememberSaveable { mutableStateOf(false) }
+                // Closed, showing, or stepped aside under the trip a stop's To planned ([LinesPresence]).
+                var linesPresence by rememberSaveable { mutableStateOf(LinesPresence.CLOSED) }
                 // The line open there: kept here, not in the overlay, so a page under Licenses is still
                 // up after Back from them (the overlay leaves composition beneath them).
                 var linesLine by rememberSaveable(stateSaver = LineRefSaver) { mutableStateOf<LineRef?>(null) }
@@ -763,10 +764,10 @@ class MainActivity : ComponentActivity() {
                 // A stop tapped on that line's map, its details up; its From opens the stop's page over
                 // Lines…, whose Back returns here.
                 var linesStop by rememberSaveable(stateSaver = LineStopRefSaver) { mutableStateOf<LineStopRef?>(null) }
-                // Lines… closed, the next opening at the top on the recent lines: from its own Back, a stop's
-                // To, or "use my location" on a stop's page opened over it, which lands on the near-me list.
+                // Lines… closed, the next opening at the top on the recent lines: from its own Back, or
+                // "use my location" on a stop's page opened over it, which lands on the near-me list.
                 val closeLines = { model: LinesViewModel ->
-                    linesOpen = false
+                    linesPresence = linesPresence.closed()
                     linesLine = null
                     // The stop pages' scrolls go with them.
                     linesStop?.pageKeys()?.forEach(linesSaveable::removeState)
@@ -848,6 +849,8 @@ class MainActivity : ComponentActivity() {
                 val hereTo = { ToChoice(picking = herePicking, stopId = hereToId, name = hereToName, place = hereFavorite) }
                 val closeHereTrip = {
                     hereTripOpen = false
+                    // Lines… comes back, at the stop whose To opened the trip.
+                    linesPresence = linesPresence.tripClosed()
                     herePicking = false
                     hereToId = null
                     hereToName = ""
@@ -1212,14 +1215,16 @@ class MainActivity : ComponentActivity() {
                     },
                     LocalOpenLines provides {
                         UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
-                        linesOpen = true
+                        // Hidden under a stop's trip (the location gate's overflow offers it there), it
+                        // shows again where it was left.
+                        linesPresence = linesPresence.opened()
                     },
                     LocalOnTheWayBanner provides onTheWayTrip?.let { trip ->
                         OnTheWayBannerState(trip, onTheWayProgress, onTheWayUpdatedAt, onTheWayAnsweredAt) { onTheWayOpen = true }
                     },
                 ) {
                     NearbyArea(
-                        overlayOpen = onTheWayOpen || licensesOpen || settingsOpen || favoritePlacesOpen || favoriteJourneysOpen || linesOpen || stationSearchOpen || openStationId != null,
+                        overlayOpen = onTheWayOpen || licensesOpen || settingsOpen || favoritePlacesOpen || favoriteJourneysOpen || linesPresence.shown || stationSearchOpen || openStationId != null,
                         // A stop opened from a route page keeps that page under it, for Back.
                         keepBody = openStationId != null && routeStopOpened?.stationId == openStationId,
                         aboveOverlay = {
@@ -1233,7 +1238,7 @@ class MainActivity : ComponentActivity() {
                         },
                         overlayContent = {
                             // Which one shows when several are open ([topOverlay]); each closes via its own Back.
-                            val top = topOverlay(licenses = licensesOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen, settings = settingsOpen, favoriteJourneys = favoriteJourneysOpen, lines = linesOpen,
+                            val top = topOverlay(licenses = licensesOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen, settings = settingsOpen, favoriteJourneys = favoriteJourneysOpen, lines = linesPresence.shown,
                                 // The station flow over Lines… is a stop's From: its page, or the From… search
                                 // a trip from it opens to change the start (Codex on #659). Lines… is offered
                                 // only on the near-me screen, so it never opens above that flow.
@@ -1552,11 +1557,11 @@ class MainActivity : ComponentActivity() {
                                             openStationId = stop.fromId ?: stop.id
                                             openStationName = stop.name
                                         },
-                                        // A trip there from the stops near the rider, as To… plans one; Lines…
-                                        // closes for it, as the trip is the list's own.
+                                        // A trip there from the stops near the rider, as To… plans one. The trip is
+                                        // the list's own, so Lines… steps aside for it, kept under it for its Back.
                                         onTo = if (linesToOrigin?.isNotEmpty() == true) {
                                             { stop ->
-                                                closeLines()
+                                                linesPresence = linesPresence.stepAsideForTrip()
                                                 listStores.clearAll()
                                                 // A station under several ids: its interchange, as From opens.
                                                 hereToId = stop.fromId ?: stop.id
@@ -1586,7 +1591,7 @@ class MainActivity : ComponentActivity() {
                             } else if (top == TopOverlay.STATIONS) {
                                 // A stop's page opened over Lines… (its From): leaving it for near me closes
                                 // Lines… too, while its Back still returns to the stop (Codex on #659).
-                                val linesUnder = if (linesOpen) linesModel() else null
+                                val linesUnder = if (linesPresence.isOpen) linesModel() else null
                                 val leaveLines = { linesUnder?.let(closeLines) }
                                 // Planning the trip on the way again: Start takes its place, rather than opening it.
                                 val replanActions = replanActionsOr(LocalOnTheWay.current, replanning)
@@ -1610,6 +1615,8 @@ class MainActivity : ComponentActivity() {
                                             if (originChange is OriginChange.NearMe) {
                                                 nearMeTripStores.clearAll()
                                                 nearMeToStores.clearAll()
+                                                // A stop's trip gives way to a station's: Lines… under it goes too.
+                                                if (linesPresence == LinesPresence.UNDER_TRIP) leaveLines()
                                                 closeHereTrip()
                                             }
                                             originChange = null
@@ -1642,7 +1649,9 @@ class MainActivity : ComponentActivity() {
                                             // Back to the station it began at keeps the change until that
                                             // station's To… search appears ([onStartReached]); else it ends.
                                             originChange = OriginChange.afterLeaving(change, landing)
-                                            if (OriginChange.closesLines(landing)) leaveLines()
+                                            // Back to a near-me trip left open underneath keeps Lines… under it too.
+                                            val tripKept = change is OriginChange.NearMe && landing is OriginChange.Landing.NearMe
+                                            if (OriginChange.closesLines(landing) && !(linesPresence == LinesPresence.UNDER_TRIP && tripKept)) leaveLines()
                                             when (landing) {
                                                 null -> {
                                                     stationSearchOpen = false
