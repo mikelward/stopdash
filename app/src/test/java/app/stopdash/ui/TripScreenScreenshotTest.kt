@@ -1139,7 +1139,7 @@ class TripScreenScreenshotTest {
 
     @Test
     fun trip_routes_walking_speed() {
-        // The walking speed heads the routes (maintainer, 2026-09-28), the max walk under it
+        // The walking speed heads the routes (maintainer, 2026-09-28), the max walk beside it
         // (2026-09-30); a pick of either is reported to its setting.
         var chosen: WalkingSpeed? = null
         var chosenMaxWalk: MaxWalk? = null
@@ -1164,9 +1164,14 @@ class TripScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Walking speed").assertIsDisplayed()
-        composeRule.onNodeWithText("Max walk").assertIsDisplayed()
-        composeRule.onNodeWithTag("maxWalk").assertContentDescriptionEquals("Max walk, 30 min")
+        // One row of chips (maintainer, 2026-10-07), each announced by its setting's full name.
+        composeRule.onNodeWithTag("walkingSpeed").assertIsDisplayed().assertContentDescriptionEquals("Walking speed, Medium")
+        composeRule.onNodeWithTag("maxWalk").assertIsDisplayed().assertContentDescriptionEquals("Max walk, 30 min")
+        composeRule.onNodeWithTag("stepFree").assertIsDisplayed().assertContentDescriptionEquals("Step-free, Any")
+        val walkTop = composeRule.onNodeWithTag("walkingSpeed").fetchSemanticsNode().boundsInRoot.top
+        listOf("maxWalk", "stepFree").forEach {
+            assertEquals(walkTop, composeRule.onNodeWithTag(it).fetchSemanticsNode().boundsInRoot.top)
+        }
         captureSnapshot("trip-routes-walking-speed.png")
         composeRule.onNodeWithTag("walkingSpeed").performClick()
         composeRule.onNodeWithTag("walkingSpeed-FAST").performClick()

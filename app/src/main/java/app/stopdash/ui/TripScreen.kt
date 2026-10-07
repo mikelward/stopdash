@@ -1564,18 +1564,16 @@ private fun TripContent(
             // 2026-10-04). By the route held open, not only the one found: while a new plan runs none is
             // found, and the choices mustn't flash back above it (Codex, #545).
             if (open == null && openRef == null) {
-                // The walking speed first: a pick plans again.
-                if (onWalkingSpeedChange != null) {
-                    WalkingSpeedPicker(walkingSpeed, onWalkingSpeedChange, enabled = planOptionsLoaded)
-                }
-                // The walk limit sits under it: the two decide together which walks the routes can take.
-                if (onMaxWalkChange != null) {
-                    MaxWalkPicker(maxWalk, onMaxWalkChange, enabled = planOptionsLoaded)
-                }
-                // Step-free under them: it too changes which routes the Planner offers.
-                if (onStepFreeChange != null) {
-                    StepFreePicker(stepFree, onStepFreeChange, enabled = planOptionsLoaded)
-                }
+                // The walking speed, the walk limit and step-free, one row: each pick plans again.
+                TripPlanOptionChips(
+                    walkingSpeed = walkingSpeed,
+                    onWalkingSpeedChange = onWalkingSpeedChange,
+                    maxWalk = maxWalk,
+                    onMaxWalkChange = onMaxWalkChange,
+                    stepFree = stepFree,
+                    onStepFreeChange = onStepFreeChange,
+                    enabled = planOptionsLoaded,
+                )
                 // The kinds of transport the routes may ride, last: chips, a tap each, rather than a menu.
                 if (onTripModesChange != null) {
                     TripModeChips(tripModes, onTripModesChange, enabled = planOptionsLoaded)
