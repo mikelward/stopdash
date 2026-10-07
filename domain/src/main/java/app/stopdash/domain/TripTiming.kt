@@ -419,6 +419,12 @@ object TripTiming {
      * points in central London to nearby stations: in a straight line it covered about 0.64, 0.90
      * and 1.14 m/s at Slow, Average and Fast, which is these over [DETOUR].
      */
+    /**
+     * How far, as the crow flies, a walk of [minutes] at [speed] reaches: [accessWalk] the other way round,
+     * so a stop this far off reads as that many minutes' walk.
+     */
+    fun walkReach(minutes: Int, speed: WalkingSpeed): Double = minutes * 60.0 * metersPerSecond(speed) / DETOUR
+
     internal fun metersPerSecond(speed: WalkingSpeed): Double = when (speed) {
         WalkingSpeed.SLOW -> SLOW_METERS_PER_SECOND
         WalkingSpeed.AVERAGE -> WALK_METERS_PER_SECOND

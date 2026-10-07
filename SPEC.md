@@ -1546,7 +1546,9 @@ routes with stairs.
 
 **Direct to a place** (maintainer, 2026-10-07). A trip to a place (a favorite, or a place or postcode
 picked in *To…*) shows a **Direct** section under its choices and over its routes: each line from the
-trip's origin stops whose route calls at a stop within about ten minutes' walk (800 m) of the place,
+trip's origin stops whose route calls at a stop within the rider's max walk of the place, at their walking
+pace (as far as the Planner lets the routes' own last walk go, so a stop the routes walk on from counts
+here too; maintainer, 2026-10-07; a change to either looks again),
 once, from its nearest stop, with its next three trains ("3 · 8 · 13 min"), nearest stop first; a line
 not running a good service says so under its row ("Jubilee: Minor Delays"), as does a closure at the
 stop it boards at, or at every stop near the place it gets off at; a line whose status, or a stop whose

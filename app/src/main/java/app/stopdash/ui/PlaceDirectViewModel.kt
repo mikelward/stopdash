@@ -14,6 +14,7 @@ import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusBatch
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.NearbyStopsCache
+import app.stopdash.domain.PlaceStops
 import app.stopdash.domain.PlaceDirect
 import app.stopdash.domain.RouteMiss
 import app.stopdash.domain.RouteStopsRepository
@@ -55,7 +56,8 @@ import kotlinx.coroutines.withContext
  * never shown as live (SPEC D4).
  */
 class PlaceDirectViewModel(
-    private val ends: suspend () -> List<DirectTrips.End>,
+    // The place's stops within the given walk of it, in meters ([Inputs.walkMeters]).
+    private val ends: suspend (Int) -> List<DirectTrips.End>,
     private val client: TflClient,
     private val routes: RouteStopsRepository,
     // The stations' step-free access (the bundled table), read once when first needed; null if unreadable.
@@ -123,6 +125,8 @@ class PlaceDirectViewModel(
         val avoided: Set<String> = emptySet(),
         val stepFree: StepFree = StepFree.ANY,
         val tripModes: TripModes = TripModes.DEFAULT,
+        // How far from the place a stop may be, by the rider's max walk and pace ([PlaceStops.walkMeters]).
+        val walkMeters: Int = PlaceStops.WALK_METERS,
         // Whether the rider's stored choices above are read: until then nothing is looked up, so the
         // defaults never stand in for them (rows with stairs, an avoided line), as the routes wait.
         val loaded: Boolean = true,
@@ -131,7 +135,7 @@ class PlaceDirectViewModel(
         // comparison of their contents would be work on the main thread that grows with them.
         fun sameAs(other: Inputs) = origin === other.origin && distanceMeters === other.distanceMeters &&
             hidden === other.hidden && avoided === other.avoided && stepFree == other.stepFree && tripModes === other.tripModes &&
-            loaded == other.loaded
+            walkMeters == other.walkMeters && loaded == other.loaded
     }
 
     @Volatile
@@ -151,8 +155,9 @@ class PlaceDirectViewModel(
         return lifted
     }
 
-    private var placeEnds: List<DirectTrips.End>? = null
-    private var placeEndsAt: Instant? = null
+    // The place's stops as looked up for each walk (meters around it), with when: kept per walk, so going
+    // back to a walk tried before reuses its answer rather than ask TfL again. Only touched in a look.
+    private val placeEnds = HashMap<Int, Pair<List<DirectTrips.End>, Instant>>()
     private var access: StepFreeAccess? = null
 
     // One look at a time, so a look started for a change never lands under an older one's.
@@ -166,7 +171,8 @@ class PlaceDirectViewModel(
         val before = inputs
         if (next.sameAs(before)) return
         val choiceChanged = next.hidden !== before.hidden || next.avoided !== before.avoided ||
-            next.stepFree != before.stepFree || next.tripModes !== before.tripModes || next.loaded != before.loaded
+            next.stepFree != before.stepFree || next.tripModes !== before.tripModes || next.walkMeters != before.walkMeters ||
+            next.loaded != before.loaded
         // With the publish lock, so a look about to publish under the old inputs sees the new ones and
         // stands down, rather than land after this and put its rows back ([publish]).
         synchronized(publishing) {
@@ -269,12 +275,16 @@ class PlaceDirectViewModel(
         }
         // Held no longer than the lookup's own cache would hold them ([NearbyStopsCache.MAX_AGE]): a trip
         // left open past that asks the finder again, which answers from its cache or TfL as it would.
-        val endsAge = placeEndsAt?.let { SteadyClock.age(it, clock()) }
-        val heldEnds = placeEnds?.takeIf { endsAge != null && !endsAge.isNegative && endsAge < NearbyStopsCache.MAX_AGE }
+        // The rider's walk changed since, they're looked up again for the new one.
+        val chosen = inputs
+        val walk = chosen.walkMeters
+        val heldEnds = placeEnds[walk]?.let { (held, at) ->
+            val age = SteadyClock.age(at, clock())
+            held.takeIf { !age.isNegative && age < NearbyStopsCache.MAX_AGE }
+        }
         val ends = heldEnds ?: try {
-            ends().also {
-                placeEnds = it
-                placeEndsAt = SteadyClock.stamp(clock())
+            ends(walk).also {
+                placeEnds[walk] = it to SteadyClock.stamp(clock())
             }
         } catch (e: CancellationException) {
             throw e
@@ -283,7 +293,6 @@ class PlaceDirectViewModel(
             _state.value = State.Failed
             return
         }
-        val chosen = inputs
         val stops = chosen.origin
         // The trip's modes turned off count as hidden here, as they leave the routes.
         val modesOff = ModeGroups.ALL.filterNot(chosen.tripModes::rides).flatMap { it.modes }

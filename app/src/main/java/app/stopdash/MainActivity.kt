@@ -124,6 +124,7 @@ import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.FavoriteShortcuts
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.NearestStops
+import app.stopdash.domain.PlaceStops
 import app.stopdash.domain.PlaceStopsFinder
 import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.BugReport
@@ -3245,7 +3246,7 @@ class MainActivity : ComponentActivity() {
             factory = viewModelFactory {
                 initializer {
                     PlaceDirectViewModel(
-                        ends = { placeStopsFinder.ends(place.coordinate) },
+                        ends = { walkMeters -> placeStopsFinder.ends(place.coordinate, walkMeters) },
                         // Every stop of a station asks for its National Rail board, as the trip's client
                         // does, so each candidate stop has its trains, not only the first to answer.
                         client = departuresClient(appContext, boardAtEveryStop = true),
@@ -3614,7 +3615,10 @@ class MainActivity : ComponentActivity() {
             // What the routes leave out, it leaves out too: hidden and avoided lines, the step-free level
             // and the trip's modes turned off.
             // Built bare, not remembered: remember's keys compare contents, the model compares identities.
-            val inputs = PlaceDirectViewModel.Inputs(origin, distanceMeters, hiddenModes, avoidedLines, stepFree, tripModes, planOptionsLoaded)
+            // Its stops near the place are those within the rider's max walk at their pace, as the routes' own
+            // last walk is held to (maintainer, 2026-10-07).
+            val walkMeters = PlaceStops.walkMeters(maxWalk, walkingSpeed)
+            val inputs = PlaceDirectViewModel.Inputs(origin, distanceMeters, hiddenModes, avoidedLines, stepFree, tripModes, walkMeters, planOptionsLoaded)
             rememberPlaceDirect(owner, place, inputs, lifecycleOwner)
         }
         val directState = direct?.state?.collectAsStateWithLifecycle()?.value
