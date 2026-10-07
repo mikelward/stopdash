@@ -307,13 +307,23 @@ class PlaceDirectViewModel(
         // When asked: what a fetch is stamped with.
         val askedAt = clock()
         val fetched = coroutineScope { stops.map { stop -> async { arrivalsOf(stop, askedAt, pulled) } }.awaitAll() }
-        val (sequences, routesFailed) = sequencesFor(fetched.filterNotNull(), hidden)
+        // Every shown line's status asked for while its route loads, not after: either can take TfL a
+        // couple of seconds, and a row waits on both. A line that turns out to go elsewhere costs only a
+        // place in a batched status request.
+        val departing = fetched.filterNotNull().flatMap { stop ->
+            stop.departures.filterNot { HiddenModes.isHidden(it.mode, it.lineId, hidden) }.map { it.lineId }
+        }.filter { it.isNotBlank() }.distinct()
+        val (sequences, routesFailed) = coroutineScope {
+            val early = async { statusesFor(departing, clock(), pulled) }
+            sequencesFor(fetched.filterNotNull(), hidden).also { early.await() }
+        }
         // The lines the rows would show, so their status is in hand before they do: a delayed or
         // part-suspended line is said on its row, never shown as running normally.
         val rowLines = PlaceDirect.rows(fetched.filterNotNull(), ends, sequences, chosen.distanceMeters, askedAt, hidden, level, table).rows
         // Each cache judged at the time it's read, not when the look began: arrivals and route loads may
-        // have taken a while, and an answer at the edge of its reuse mustn't vouch past it.
-        val held = statusesFor(rowLines.map { it.lineId }, clock(), pulled)
+        // have taken a while, and an answer at the edge of its reuse mustn't vouch past it. Those asked for
+        // above are fresh, so this asks TfL again only for one that wasn't answered then.
+        val held = statusesFor(rowLines.map { it.lineId }, clock(), false)
         // And their stops' closures: where each boards, and the stops near the place it gets off at.
         val closureIds = rowLines.flatMap { row -> listOf(row.fromId) + row.reaches.map { it.id } }.distinct()
         val closuresAt = clock()
