@@ -3350,6 +3350,39 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `a route page restored after a rotation is counted once`() {
+        val events = mutableListOf<app.stopdash.domain.UsageEvent>()
+        app.stopdash.telemetry.UsageEvents.consent = { true }
+        app.stopdash.telemetry.UsageEvents.install { events += it }
+        try {
+            val kingsCross = StopArrivals(
+                "940GZZLUKSX",
+                "King's Cross St. Pancras",
+                listOf(dep("northern", "Northern", "southbound", "Morden", 180, "Southbound - Platform 7")),
+                fetchedAt = now.minusSeconds(60),
+            )
+            val restoration = StateRestorationTester(composeRule)
+            restoration.setContent {
+                StopDashTheme(dynamicColor = false) {
+                    Surface(modifier = Modifier.fillMaxSize()) {
+                        MainScreen(DeparturesUiState.Loaded(listOf(kingsCross), now.minusSeconds(60)), now, {}, stopDistanceMeters = mapOf("940GZZLUKSX" to 300.0))
+                    }
+                }
+            }
+            composeRule.onNodeWithText("Morden", substring = true).performTouchInput { click() }
+            composeRule.waitForIdle()
+            // Rotated: the page comes back once its rows are worked out again, the same visit throughout.
+            restoration.emulateSavedInstanceStateRestore()
+            composeRule.waitForIdle()
+            composeRule.runOnIdle {
+                assertEquals(listOf("home", "route"), events.filter { it.name == "screen_view" }.map { it.params["screen_name"] })
+            }
+        } finally {
+            app.stopdash.telemetry.UsageEvents.resetForTest()
+        }
+    }
+
+    @Test
     fun `tapping a journey card's train opens its route page`() {
         val origin = StopArrivals(
             "940GZZLUVIC",

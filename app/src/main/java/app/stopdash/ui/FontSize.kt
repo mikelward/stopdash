@@ -26,9 +26,12 @@ import androidx.compose.ui.unit.dp
 import app.stopdash.domain.AppSettings
 import app.stopdash.domain.FONT_SCALE_PINCH_SLOP_DP
 import app.stopdash.domain.FontSizeSettings
+import app.stopdash.domain.UsageEvent
 import app.stopdash.domain.clampFontScale
 import app.stopdash.domain.fontScaleAfterZoom
 import app.stopdash.domain.pinchPassedSlop
+import app.stopdash.telemetry.UsageEvents
+import app.stopdash.telemetry.UsageProperties
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -105,26 +108,46 @@ internal object FontSizeSetting {
                         // (SPEC *Privacy* / *Error handling*) — no value, just the failure.
                         Log.w("StopDash.FontSize", "font setting write failed: ${e::class.simpleName}")
                     }
+                    // The usage stats' properties sent again once the write is done with, stored or
+                    // not: they read the size in force ([inForce]), else the stored one.
+                    UsageProperties.refresh()
                 }
             }
         }
         if (collectJob != null) return
         collectJob = scope.launch {
-            appSettings.fontSize().collect { current = it }
+            appSettings.fontSize().collect {
+                current = it
+                loaded = true
+            }
         }
     }
+
+    // Whether the stored size has been read into [current], so it's the rider's own.
+    @Volatile
+    private var loaded = false
+
+    /**
+     * The text size the app is drawn at, once the stored one has been read, else null: a change that
+     * didn't save stays in force here until a restart, so it's what the rider has.
+     */
+    fun inForce(): FontSizeSettings? = if (loaded) current else null
 
     /** The size a drag or a pinch settled on: shown at once, persisted in order in the background. */
     fun setScale(scale: Float) {
         val clamped = clampFontScale(scale)
+        val before = current.scale
         current = current.copy(scale = clamped)
         writes.trySend(Write.Scale(clamped))
+        if (clamped != before) UsageEvents.log(UsageEvent.SettingChanged.textSize(clamped))
     }
 
     /** The "Pinch to resize text" switch was set to [enabled]. */
     fun setPinchEnabled(enabled: Boolean) {
+        val before = current.pinchEnabled
         current = current.copy(pinchEnabled = enabled)
         writes.trySend(Write.Pinch(enabled))
+        if (enabled != before) UsageEvents.log(UsageEvent.SettingChanged.pinchToResize(enabled))
     }
 }
 

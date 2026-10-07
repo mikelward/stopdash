@@ -12,6 +12,7 @@ import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StationIndex
 import app.stopdash.domain.TripLeg
+import app.stopdash.domain.UsageEvent
 import java.time.Instant
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
@@ -129,6 +130,16 @@ object HomeLines {
             else -> chosen + lineId
         }
     }
+
+    /**
+     * A change of the chosen lines from [before] to [after] as usage events
+     * ([UsageEvent.SettingChanged.disruptionLines]), by the lines each covers ([linesOf]): a tap that turns an
+     * older build's network key into its other lines one by one ([toggle]) is the one line taken off. On a
+     * worker only.
+     */
+    @WorkerThread
+    fun lineChanges(before: Set<String>, after: Set<String>): List<UsageEvent.SettingChanged> =
+        UsageEvent.SettingChanged.disruptionLines(linesOf(before).mapTo(HashSet()) { it.id }, linesOf(after).mapTo(HashSet()) { it.id })
 
     /**
      * The favorite [journeys]' line ids as they change, for the screen to ask about a journey just starred at

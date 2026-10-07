@@ -39,6 +39,7 @@ import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
+import app.stopdash.domain.UsageEvent
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.StepFree
@@ -1295,9 +1296,11 @@ class TripViewModelTest {
         warn: (String) -> Unit = {},
         savedState: androidx.lifecycle.SavedStateHandle = androidx.lifecycle.SavedStateHandle(),
         origin: () -> TripOrigin = { TripOrigin.Stop("A") },
+        usage: (UsageEvent) -> Unit = {},
     ) = TripViewModel(
         planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Place(Coordinates(51.5, -0.12), "Home")),
         clock = { now }, plans = TripPlans(), io = dispatcher, warn = warn, savedState = savedState, origin = origin,
+        usage = usage,
     )
 
     @Test
@@ -1387,6 +1390,22 @@ class TripViewModelTest {
         trip.retry()
         advanceUntilIdle()
         assertFalse(trip.state.value.directFailed)
+    }
+
+    @Test
+    fun `a plan whose Direct route can't be asked for again is counted as partial`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG)) }
+        val usage = mutableListOf<UsageEvent>()
+        val trip = placeTrip(planner, usage = { usage += it })
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        planner.failFor = setOf("G")
+        trip.retry()
+        advanceUntilIdle()
+        assertTrue(trip.state.value.directFailed)
+        assertEquals(listOf("routes", "partial"), usage.map { it.params["outcome"] })
     }
 
     @Test
@@ -2585,9 +2604,10 @@ class TripViewModelTest {
     fun `a trip to a place stands when asking once more fails, and says so`() = runTest(dispatcher) {
         val planner = FakePlanner(listOf(changingToPlace)).apply { failFor = setOf("S") }
         val warnings = mutableListOf<String>()
+        val usage = mutableListOf<UsageEvent>()
         val trip = TripViewModel(
             planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Place(Coordinates(51.5, -0.12), "Home")),
-            clock = { now }, plans = TripPlans(), io = dispatcher, warn = { warnings += it },
+            clock = { now }, plans = TripPlans(), io = dispatcher, warn = { warnings += it }, usage = { usage += it },
         )
         trip.refresh()
         advanceUntilIdle()
@@ -2595,6 +2615,8 @@ class TripViewModelTest {
         assertNull(trip.state.value.planError)
         assertFalse(trip.state.value.planIncomplete)
         assertTrue(warnings.contains("trip plan via the fastest route's last stop failed: Offline"))
+        // Counted as a plan that answered in part, to a place.
+        assertEquals(listOf("partial" to "place"), usage.map { it.params["outcome"] to it.params["to"] })
     }
 
     @Test
@@ -3397,6 +3419,71 @@ class TripViewModelTest {
         reopened.refresh()
         advanceUntilIdle()
         assertEquals(1, planner.calls)
+    }
+
+    @Test
+    fun `each plan is counted by how it went, first then again, never by its ends`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route))
+        val usage = mutableListOf<UsageEvent>()
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
+            clock = { now }, plans = TripPlans(), io = dispatcher, usage = { usage += it },
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        planner.failWith = TflException.RateLimited(null)
+        trip.retry()
+        advanceUntilIdle()
+        planner.failWith = null
+        planner.routes = emptyList()
+        trip.retry()
+        advanceUntilIdle()
+        assertEquals(
+            listOf(
+                mapOf("outcome" to "routes", "routes" to "1", "from" to "stop", "to" to "stop", "plan" to "first"),
+                mapOf("outcome" to "rate_limited", "routes" to "0", "from" to "stop", "to" to "stop", "plan" to "again"),
+                mapOf("outcome" to "no_routes", "routes" to "0", "from" to "stop", "to" to "stop", "plan" to "again"),
+            ),
+            usage.map { it.params },
+        )
+        assertTrue(usage.all { it.name == "trip_plan" })
+    }
+
+    @Test
+    fun `a retry after a first plan that failed is counted as a plan again`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route)).apply { failWith = TflException.Offline(null) }
+        val usage = mutableListOf<UsageEvent>()
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
+            clock = { now }, plans = TripPlans(), io = dispatcher, usage = { usage += it },
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        planner.failWith = null
+        trip.retry()
+        advanceUntilIdle()
+        assertEquals(listOf("offline" to "first", "routes" to "again"), usage.map { it.params["outcome"] to it.params["plan"] })
+    }
+
+    @Test
+    fun `a plan the rider changed the options under is counted, and the next as a plan again`() = runTest(dispatcher) {
+        val byBus = TripRoute(listOf(leg("25", "A", "C", 5, 20).copy(mode = "bus")))
+        val planner = FakePlanner(listOf(route, byBus)).apply { delays = mapOf("C" to 1_000L) }
+        val usage = mutableListOf<UsageEvent>()
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
+            clock = { now }, plans = TripPlans(), io = dispatcher, usage = { usage += it },
+        )
+        trip.hiddenModes = setOf("bus")
+        trip.refresh()
+        advanceTimeBy(500)
+        // A faster pace while the first plan is still out: its routes are for the old one.
+        trip.walkingSpeed = WalkingSpeed.FAST
+        advanceUntilIdle()
+        assertEquals(2, planner.calls)
+        assertEquals(listOf("routes" to "first", "routes" to "again"), usage.map { it.params["outcome"] to it.params["plan"] })
+        // Each by the routes it shows, as the plan it was overtaken by is: the bus route is hidden.
+        assertEquals(listOf("1", "1"), usage.map { it.params["routes"] })
     }
 
     @Test

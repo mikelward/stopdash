@@ -182,8 +182,11 @@ import app.stopdash.domain.YourStops
 import app.stopdash.domain.askedAgainWhenEnded
 import app.stopdash.domain.currentPatterns
 import app.stopdash.domain.stopPlace
+import app.stopdash.telemetry.ReportScreen
 import app.stopdash.telemetry.TelemetryConsent
 import app.stopdash.telemetry.UsageEvents
+import app.stopdash.telemetry.UsageProperties
+import app.stopdash.telemetry.openedFrom
 import app.stopdash.ui.HomeLines
 import app.stopdash.ui.ARRIVALS_REUSE
 import app.stopdash.ui.AboutDialog
@@ -488,6 +491,8 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        // Before the extras that say what opened it are taken off.
+        UsageEvents.log(UsageEvent.Opened(openedFrom(intent)))
         takeOpenOnTheWay(intent)
         takeRouteToPlace(intent)
     }
@@ -515,6 +520,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         // Read once: a recreation (rotation) keeps the overlay's own saved state instead.
         if (savedInstanceState == null) {
+            // Before the extras that say what opened it are taken off; a recreation isn't an open.
+            UsageEvents.log(UsageEvent.Opened(openedFrom(intent)))
             takeOpenOnTheWay(intent)
             takeRouteToPlace(intent)
         } else {
@@ -1233,6 +1240,7 @@ class MainActivity : ComponentActivity() {
                                 // only on the near-me screen, so it never opens above that flow.
                                 station = openStationId != null || stationSearchOpen)
                             if (top == TopOverlay.LICENSES) {
+                                ReportScreen(UsageEvent.Screen.LICENSES)
                                 LicensesScreen(onBack = { licensesOpen = false })
                             } else if (top == TopOverlay.ON_THE_WAY) {
                                 val failed by tracker.failed.collectAsStateWithLifecycle()
@@ -1364,6 +1372,7 @@ class MainActivity : ComponentActivity() {
                                         favoritePlacesOpen = false
                                     }
                                 }
+                                ReportScreen(UsageEvent.Screen.FAVORITE_PLACES)
                                 FavoritePlacesScreen(
                                     state = favoritePlacesState,
                                     onBack = {
@@ -1422,6 +1431,7 @@ class MainActivity : ComponentActivity() {
                                 var journeyFromId by rememberSaveable { mutableStateOf<String?>(null) }
                                 var journeyFromName by rememberSaveable { mutableStateOf("") }
                                 val journeyAdding by JourneyAdds.note.collectAsStateWithLifecycle()
+                                ReportScreen(if (journeyPicking) UsageEvent.Screen.SEARCH else UsageEvent.Screen.FAVORITE_JOURNEYS)
                                 if (journeyPicking) {
                                     val appContext = applicationContext
                                     val search: StationSearchViewModel = viewModel(
@@ -1492,6 +1502,13 @@ class MainActivity : ComponentActivity() {
                                 }
                             } else if (top == TopOverlay.LINES) {
                                 val linesModel = linesModel()
+                                ReportScreen(
+                                    when {
+                                        linesStop != null -> UsageEvent.Screen.LINE_STOP
+                                        linesLine != null -> UsageEvent.Screen.LINE
+                                        else -> UsageEvent.Screen.LINES
+                                    },
+                                )
                                 // The line's map is drawn from the route pages' day-long cache (SPEC *Line page → Map*).
                                 // And a stop's board groups a branching line's trains by where they go, as a station's does.
                                 val linesWriteFailures = viewModel<WriteFailuresHolder>().failures
@@ -1673,6 +1690,7 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
                             } else {
+                                ReportScreen(UsageEvent.Screen.SETTINGS)
                                 SettingsScreen(
                                     liveWidgetRefresh = liveWidgetRefresh == true,
                                     liveWidgetRefreshEnabled = liveWidgetRefresh != null,
@@ -1971,6 +1989,7 @@ class MainActivity : ComponentActivity() {
                                     // "No stops nearby" waits on its chips as the list does, on the locating
                                     // placeholder, so it never shows without the row it heads (Codex on #539).
                                     val gatePending = emptyAt != null && chipsPending(savedPlacesState.read, savedPlaces, gatePlacesOrPending)
+                                    ReportScreen(UsageEvent.Screen.HOME)
                                     LocationGate(
                                         state = if (gatePending) NearbyStopsViewModel.State.Locating else state,
                                         now = tickingNow(),
@@ -2057,6 +2076,9 @@ class MainActivity : ComponentActivity() {
         // Re-check on every foreground (covers first launch, since onResume follows onCreate,
         // and a return from the Play listing or the background). Cheap and off the main thread.
         playUpdateChecker.checkForUpdate { available -> updateAvailable.value = available }
+        // The standing choices and setup sent again if opted in: a widget placed or a watch paired since.
+        // Only a hand-off; the reading is the publisher's, off the main thread.
+        UsageProperties.refresh()
     }
 
     /**
@@ -2686,6 +2708,7 @@ class MainActivity : ComponentActivity() {
                 ),
             ) {
                 MainScreen(
+                    usageScreen = if (stationTitle != null) UsageEvent.Screen.STATION else UsageEvent.Screen.HOME,
                     listState = listState,
                     pendingTracker = shownTracker,
                     listWork = shownWork,
@@ -2946,6 +2969,7 @@ class MainActivity : ComponentActivity() {
             val state by search.state.collectAsStateWithLifecycle()
             // Reread the user's own stops each time the search shows: a star may have changed.
             LaunchedEffect(Unit) { search.refreshYours() }
+            ReportScreen(UsageEvent.Screen.SEARCH)
             StationSearchScreen(
                 state = state,
                 onQueryChange = search::onQueryChange,
@@ -3012,6 +3036,7 @@ class MainActivity : ComponentActivity() {
             if (ready == null || center == null) {
                 // No stops yet (or none TfL placed, so nowhere to stand): the station's own page.
                 if (ready == null) {
+                    ReportScreen(UsageEvent.Screen.STATION)
                     StationPlaceholderScreen(
                         title = stationName,
                         state = stops,
@@ -3194,6 +3219,7 @@ class MainActivity : ComponentActivity() {
                 tripStores.clearAll()
                 onDispose {}
             }
+            ReportScreen(UsageEvent.Screen.STATION)
             StationPlaceholderScreen(
                 title = stationName,
                 state = when (val s = state) {
@@ -3452,6 +3478,7 @@ class MainActivity : ComponentActivity() {
         if (picking || (favorite == null && toId == null)) {
             val state by search.state.collectAsStateWithLifecycle()
             LaunchedEffect(Unit) { search.refreshYours() }
+            ReportScreen(UsageEvent.Screen.TRIP_TO)
             StationSearchScreen(
                 state = state,
                 onQueryChange = search::onQueryChange,
@@ -3522,6 +3549,8 @@ class MainActivity : ComponentActivity() {
                 val to by toModel.state.collectAsStateWithLifecycle()
                 val members = (to as? StationStopsViewModel.State.Ready)?.stops
                 if (members == null) {
+                    // The trip, waiting on where it goes.
+                    ReportScreen(UsageEvent.Screen.TRIP)
                     StationPlaceholderScreen(
                         title = title,
                         state = to,
@@ -3575,6 +3604,7 @@ class MainActivity : ComponentActivity() {
                         tripModes = TripModesSetting.changes.value,
                         optionsLoaded = WalkingSpeedSetting.isLoaded.value && MaxWalkSetting.isLoaded.value &&
                             StepFreeSetting.isLoaded.value && TripModesSetting.isLoaded.value && AvoidedLinesSetting.isLoaded.value,
+                        usage = UsageEvents::log,
                     )
                 }
             },
@@ -3883,6 +3913,7 @@ class MainActivity : ComponentActivity() {
         ) {
             val now = tickingNow()
             MainScreen(
+                usageScreen = UsageEvent.Screen.STATION,
                 state = state,
                 now = now,
                 // Each station page has its own model, and so its own list.
@@ -4337,6 +4368,7 @@ internal object JourneyTipSession {
 internal suspend fun persistBugReportOptOut(settings: AppSettings) {
     try {
         settings.setSkipBugReportConsent(true)
+        UsageEvents.settingChanged(UsageEvent.SettingChanged.bugReportConsentSkipped())
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {

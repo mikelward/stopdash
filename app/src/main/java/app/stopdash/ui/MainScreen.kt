@@ -69,6 +69,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -191,6 +192,7 @@ import app.stopdash.domain.routeUntimed
 import app.stopdash.domain.serviceName
 import app.stopdash.domain.stopPlaceKey
 import app.stopdash.domain.takesLineSuffix
+import app.stopdash.telemetry.ReportScreen
 import app.stopdash.telemetry.UsageEvents
 import app.stopdash.ui.theme.LocalStarredBorderColor
 import java.time.Instant
@@ -400,6 +402,9 @@ fun MainScreen(
     // Offers StopDash to a connected watch without it ([WatchInstallCard]), where the telemetry
     // question isn't being asked: one question at a time. Null (no such watch, or dismissed) shows none.
     watchInstall: WatchInstallActions? = null,
+    // The screen this list counts as for usage stats ([ReportScreen]): the near-me list, or a searched
+    // station's page. A row's route page, opened over either, counts as its own.
+    usageScreen: UsageEvent.Screen = UsageEvent.Screen.HOME,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     // A long press's hide offers Undo for a moment, which shows that one item again as ticking its
@@ -1084,8 +1089,22 @@ fun MainScreen(
     // line's full disruption text, and where the maps/nav hand-off will land (`TODO.md`).
     val detailLoaded = detailHit?.second
     val detailNow = detailHit?.third ?: now
+    // The route's line page ("View line") open over it, kept with the route it's for: by its saved key, so
+    // it stays open while a rotation's rows are worked out again.
+    val routeLineOpen = rememberSaveable(detailKey) { mutableStateOf(false) }
+    // For the usage stats: the route's page, its line's page over it, or what's beneath. A page still
+    // open while its rows are worked out again (a rotation, a return to the list) is still that page.
+    val routeOpen = (detailLoaded != null && detailRow != null) || (detailKey != null && !rowsKnown)
+    ReportScreen(
+        when {
+            !routeOpen -> usageScreen
+            routeLineOpen.value -> UsageEvent.Screen.LINE
+            else -> UsageEvent.Screen.ROUTE
+        },
+    )
     if (detailLoaded != null && detailRow != null) {
         RouteDetailScreen(
+            lineOpen = routeLineOpen,
             row = detailRow,
             isStarred = StarredRow.of(detailRow) in starred,
             // Same rule as the list card: only a timed row with starring available is pinnable.
@@ -4702,12 +4721,15 @@ internal fun RouteDetailScreen(
     // (maintainer, 2026-10-06); false when that station is already open beneath this page, which then
     // closes to show it. Null leaves a tap inert.
     onOpenStop: ((RouteStopOpen) -> Boolean)? = null,
+    // Whether its line's page ("View line") is open over it: held by the caller, whose usage stats count
+    // the page shown ([UsageEvent.Screen.LINE]); one of its own otherwise.
+    lineOpen: MutableState<Boolean> = rememberSaveable { mutableStateOf(false) },
 ) {
     BackHandler(onBack = onBack)
     // "View line" in the overflow: the line's own page over this one, with its map (maintainer,
     // 2026-10-06).
-    var lineOpen by rememberSaveable { mutableStateOf(false) }
-    if (lineOpen) RouteLinePage(row, ride, unknown = lineUnknown, checking = lineChecking, onClose = { lineOpen = false })
+    var lineShown by lineOpen
+    if (lineShown) RouteLinePage(row, ride, unknown = lineUnknown, checking = lineChecking, onClose = { lineShown = false })
     val followed = followedDeparture(row, focus, LocalRouteTopology.current)
     var routeStopsRetry by rememberSaveable { mutableIntStateOf(0) }
     // A stale row's soonest prediction may not be the next train any more, so its stop list is
@@ -4861,7 +4883,7 @@ internal fun RouteDetailScreen(
                                 text = { Text(stringResource(R.string.route_detail_view_line)) },
                                 onClick = {
                                     close()
-                                    lineOpen = true
+                                    lineShown = true
                                 },
                             )
                         }

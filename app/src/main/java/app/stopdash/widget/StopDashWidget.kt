@@ -21,6 +21,8 @@ import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.LocalContext
 import androidx.glance.LocalSize
+import androidx.glance.action.ActionParameters
+import androidx.glance.action.actionParametersOf
 import androidx.glance.action.actionStartActivity
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.action.clickable
@@ -91,6 +93,8 @@ import app.stopdash.ui.LineCosts
 import app.stopdash.ui.groupHeaderTitle
 import app.stopdash.ui.PillColors
 import app.stopdash.ui.pillColors
+import app.stopdash.telemetry.EXTRA_OPENED_FROM
+import app.stopdash.telemetry.OPENED_FROM_WIDGET
 import java.time.Duration as JavaDuration
 import java.time.Instant
 import kotlin.time.toJavaDuration
@@ -846,7 +850,7 @@ internal fun WidgetContent(
                 .background(GlanceTheme.colors.background)
                 .padding(12.dp)
                 // The departures open the app; the header above them refreshes (see below).
-                .clickable(actionStartActivity<MainActivity>()),
+                .clickable(actionStartActivity<MainActivity>(openedFromWidget)),
         ) {
             // The stamp reflects the *freshest* stop, so on a partial refresh (one stop fresh,
             // another carried `arrivalsFresh = false` but not yet age-stale) a bare "Updated just
@@ -936,7 +940,7 @@ internal fun WidgetTripContent(model: WidgetTripModel, layout: WidgetTripLayout,
                 .fillMaxSize()
                 .background(GlanceTheme.colors.background)
                 .padding(12.dp)
-                .clickable(actionStartActivity<MainActivity>()),
+                .clickable(actionStartActivity<MainActivity>(openedFromWidget)),
         ) {
             val narrow = LocalSize.current.width < WIDGET_COMPACT_WIDTH
             WidgetHeaderRow(if (narrow) model.stamp.removePrefix("Updated ") else model.stamp, title = "On the way")
@@ -1284,6 +1288,12 @@ private fun WidgetPlanned(alert: PlannedAlert) {
 }
 
 /** The calendar's size: the 13sp countdown's line height, on the 4dp grid. */
+/**
+ * The widget's taps that open the app say so in its intent ([EXTRA_OPENED_FROM]), so the usage stats
+ * can count opens from the widget (SPEC *Privacy*).
+ */
+internal val openedFromWidget = actionParametersOf(ActionParameters.Key<String>(EXTRA_OPENED_FROM) to OPENED_FROM_WIDGET)
+
 private val WIDGET_PLANNED_SIZE = 16.dp
 
 /**

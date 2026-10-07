@@ -379,7 +379,7 @@ class WidgetContentTest {
         onNode(refresh.and(hasAnyDescendant(hasText("StopDash")))).assertExists()
         // The departures aren't under it; they open the app.
         onAllNodes(refresh.and(hasAnyDescendant(hasText("Brixton")))).assertCountEquals(0)
-        onNode(hasStartActivityClickAction<MainActivity>().and(hasAnyDescendant(hasText("Brixton")))).assertExists()
+        onNode(hasStartActivityClickAction<MainActivity>(openedFromWidget).and(hasAnyDescendant(hasText("Brixton")))).assertExists()
     }
 
     @Test
@@ -388,7 +388,7 @@ class WidgetContentTest {
             WidgetContent(WidgetModel(hasData = false, stale = false, uncertain = false, stamp = null, rows = emptyList()), now)
         }
         onAllNodes(hasRunCallbackClickAction<RefreshWidgetAction>()).assertCountEquals(0)
-        onNode(hasStartActivityClickAction<MainActivity>()).assertExists()
+        onNode(hasStartActivityClickAction<MainActivity>(openedFromWidget)).assertExists()
     }
 
     @Test

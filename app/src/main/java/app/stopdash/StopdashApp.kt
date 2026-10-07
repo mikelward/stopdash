@@ -4,6 +4,9 @@ import android.app.Application
 import android.content.Context
 import android.util.Log
 import app.stopdash.data.DataStoreAppSettings
+import app.stopdash.data.DataStoreFavoriteJourneysStore
+import app.stopdash.data.DataStoreFavoritePlacesStore
+import app.stopdash.data.DataStoreStarredRowsStore
 import app.stopdash.data.DeviceSteadyClock
 import app.stopdash.data.DisruptionsRowSetting
 import app.stopdash.data.DistanceUnitsSetting
@@ -27,8 +30,12 @@ import app.stopdash.telemetry.PrefsConsentStore
 import app.stopdash.telemetry.TelemetryConsent
 import app.stopdash.telemetry.TelemetryGate
 import app.stopdash.telemetry.UsageEvents
+import app.stopdash.telemetry.UsageProperties
+import app.stopdash.telemetry.UsagePropertiesPublisher
+import app.stopdash.telemetry.UsageStateReader
 import app.stopdash.telemetry.settleWhenConsentLoads
 import app.stopdash.telemetry.startTelemetry
+import app.stopdash.telemetry.whenConsentLoads
 import app.stopdash.watch.WatchSync
 import app.stopdash.widget.WidgetDismissalRedraw
 import app.stopdash.widget.redrawWidgets
@@ -219,8 +226,29 @@ open class StopdashApp : Application() {
                 StopdashDebugLog.addSink(sink, DebugLog.Destination.OFF_DEVICE)
                 crashlyticsSink = sink
                 settleWhenConsentLoads(sink, TelemetryConsent.state, applicationScope)
-                // Usage events (categories and buckets only) go to Analytics while opted in.
-                firebase?.let { backend -> UsageEvents.install(backend::logEvent) }
+                // Usage events (categories and buckets only) go to Analytics while opted in; those raised
+                // before the stored choice loads are held until it has.
+                firebase?.let { backend ->
+                    UsageEvents.install(backend::logEvent)
+                    whenConsentLoads(TelemetryConsent.state, applicationScope, Dispatchers.Default, UsageEvents::settle)
+                    // And the rider's standing choices and setup, as user properties, read off the main thread.
+                    UsageProperties.install(
+                        UsagePropertiesPublisher(
+                            TelemetryConsent.state,
+                            UsageStateReader(this@StopdashApp)::read,
+                            backend::setUserProperties,
+                            Dispatchers.IO,
+                            warn = { StopdashDebugLog.warning("telemetry: %s", it) },
+                            // The counts change as the rider stars and saves, with the app in front.
+                            changes = listOf(
+                                DataStoreStarredRowsStore.from(this@StopdashApp, warn = ::logStarWarning).starred(),
+                                DataStoreFavoritePlacesStore.from(this@StopdashApp, warn = ::logStarWarning).places(),
+                                DataStoreFavoriteJourneysStore.from(this@StopdashApp, warn = ::logStarWarning).journeys(),
+                            ),
+                        ),
+                        applicationScope,
+                    )
+                }
             },
             startLoad = { backend ->
                 // The stored choice is a small prefs read, but still disk I/O: off the main thread.
@@ -308,3 +336,6 @@ open class StopdashApp : Application() {
         }
     }
 }
+
+/** A starred-store warning, worded as the activity's are. */
+private fun logStarWarning(message: String) = StopdashDebugLog.warning("stars: %s", message)

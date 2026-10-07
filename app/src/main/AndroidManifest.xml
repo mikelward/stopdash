@@ -115,6 +115,11 @@
         <meta-data
             android:name="google_analytics_adid_collection_enabled"
             android:value="false" />
+        <!-- One activity draws every screen, so the app counts each itself (UsageEvent.ScreenView);
+             Analytics' own would name only the activity. -->
+        <meta-data
+            android:name="google_analytics_automatic_screen_reporting_enabled"
+            android:value="false" />
 
         <!-- Republishes the widget's snapshot when a watch gains the app or comes back in reach
              (dev-docs/wear-os.md). -->

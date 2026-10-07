@@ -244,13 +244,29 @@ What it sends:
   your IP address, under a **random app-instance ID** Firebase generates on the device and replaces
   whenever you turn this off. Crash reports carry Crashlytics' own random installation ID, which
   isn't replaced. Neither is your name, your account or your advertising ID.
-- **Which features you use**, counted by kind and in ranges only: the kind of thing you tapped (a
-  journey card, a stop row, a change card, swapping a journey, starring or unstarring, opening
-  search or Settings), opening a farther place (as "bus", "tube" and so on) or your faraway
-  favorites, the location permission you chose (precise, approximate or none), how getting your
-  location went (a fresh fix, the last known one, or none, with its accuracy and how long it took
-  in ranges like "10–25 m" and "1–3 s"), and how many stops of each kind were near you, in ranges
-  (0, 1, 2–3, 4 or more). Never which stop, line, journey or place, nor what you searched for.
+- **Which features you use**, counted by kind and in ranges only: which screen you opened (the
+  stops near you, a trip, Settings and so on) and what opened the app (its icon, the widget, a
+  notification or a shortcut); the kind of thing you tapped (a journey card, a stop row, a change
+  card, swapping a journey, starring or unstarring, opening search or Settings, refreshing the
+  widget), opening a farther place (as "bus", "tube" and so on) or your faraway favorites, the
+  location permission you chose (precise, approximate or none), how getting your location went (a
+  fresh fix, the last known one, or none, with its accuracy and how long it took in ranges like
+  "10–25 m" and "1–3 s"), and how many stops of each kind were near you, in ranges (0, 1, 2–3, 4 or
+  more); for a trip, how planning it went (how many routes, in ranges, or why it failed), whether it
+  started from where you are or a station and went to a station or a place, and the kind of route
+  you opened or started ("Fastest", "Simplest", "Least walking" or another, and how many changes);
+  and each setting you change, with its new value ("Slow", "Step-free to the train", "Buses off"
+  and so on). Never which stop, line, journey or place, nor what you searched for: avoiding,
+  hiding or adding a line counts only that you did. What's counted as the app starts, before it
+  has read your choice back, waits in memory until it has: sent if you're opted in, discarded if
+  you're not.
+- **Your settings and setup**, sent again as they change: your walking speed, longest walk,
+  step-free choice, the kinds of transport you've turned off or hidden, distance units, text size
+  (in ranges) and the other switches in Settings; whether you've added your own TfL or National
+  Rail key (never the key); how many widgets you've placed, whether a paired watch has StopDash (or a connected one doesn't),
+  and how many rows, places and journeys you've starred, in ranges; and whether notifications and
+  location are allowed. These let the usage above be read against them ("how many people who
+  walk slowly plan trips?"), and are reset with the app-instance ID when you turn this off.
 
 What it never sends: your location (coordinates), the stops or stations near you, your starred
 rows or journeys, what you searched for, or your TfL API key. stopdash strips the advertising-ID

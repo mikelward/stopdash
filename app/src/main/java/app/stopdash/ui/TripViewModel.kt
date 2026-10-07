@@ -32,6 +32,7 @@ import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.StationIndex
+import app.stopdash.domain.UsageEvent
 import app.stopdash.domain.stampOf
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.MaxWalk
@@ -150,6 +151,8 @@ class TripViewModel(
     // The bundled station index, for which of the routes' walks are changes on foot ([State.changesOnFoot]):
     // read on [io], as it may read the asset.
     private val stations: () -> StationIndex = { StationIndex.EMPTY },
+    // Usage events, categories and counts only (UsageEvent): how each plan went, never its ends.
+    private val usage: (UsageEvent) -> Unit = {},
 ) : ViewModel() {
     /** Where the next plan starts ([TripOrigin]); set by the screen on every composition. */
     var origin: () -> TripOrigin = origin
@@ -750,6 +753,10 @@ class TripViewModel(
         refresh()
     }
 
+    // Whether this trip has counted a plan ([UsageEvent.TripPlanned]): the next is a plan "again", even
+    // after a first that failed and left no routes.
+    private var planCounted = false
+
     // Where the plan shown was planned from; null until one is (a reused plan carries its own).
     private var plannedFrom: TripOrigin? = plans.origin(fromId, destinations, origin() is TripOrigin.Here, walkingSpeed, maxWalk, stepFree, tripModes)
 
@@ -990,9 +997,13 @@ class TripViewModel(
         // the slowest. A re-plan keeps the last plan until every stop has answered or failed, so
         // routes (and an open one) don't come and go as the answers land.
         val progressive = _state.value.routes == null
+        // For the usage stats: a plan after one already counted, or over a plan kept from before.
+        val planAgain = planCounted || !progressive
         val gathered = mutableListOf<TripRoute>()
         var answered = 0
         var failure: TflException? = null
+        // The extra request to a place via its fastest route's last stop failed: the plan stands, in part.
+        var viaFailed = false
         // The rider's own options, not the defaults, once read: "Planning…" meanwhile.
         if (!optionsLoaded) {
             awaitingOptions = true
@@ -1063,6 +1074,7 @@ class TripViewModel(
                             // The plan stands without it, as it does without either of its own two
                             // requests. The stop isn't logged: it's a way to the rider's place.
                             warn("trip plan via the fastest route's last stop failed: ${e::class.simpleName}")
+                            viaFailed = true
                             return@launch
                         }
                         val fewer = finalStop.fewerRides(answer)
@@ -1083,11 +1095,15 @@ class TripViewModel(
             // is still kept for that walk; the new one is planned next ([start]'s loop).
             if (failed == null) plans.put(fromId, destinations, gathered.toList(), clock(), from, speed, limit, access, modes)
             _state.update { it.copy(planning = false) }
+            // Counted all the same, by the routes it would have shown: the Planner answered it, and the
+            // plan for the new options is one again.
+            countPlan(failed, answered, shownCount(gathered), viaFailed, from, planAgain)
             return
         }
         // Failed only when no stop answered: one that answered with no route is still an answer.
         if (answered == 0 && failed != null) {
             _state.update { it.copy(planning = false, planError = errorKindOf(failed), failures = it.failures + 1) }
+            countPlan(failed, answered, 0, viaFailed, from, planAgain)
             // A Direct route open from elsewhere, or under other choices, can't stand with this plan's walk
             // unknown: let go, said, its Retry the plan's own.
             val asked = PlanContext(from, speed, limit, access, modes)
@@ -1124,6 +1140,7 @@ class TripViewModel(
         if (optionsChangedSince()) {
             if (failed == null) plans.put(fromId, destinations, routes, clock(), from, speed, limit, access, modes)
             _state.update { it.copy(planning = false) }
+            countPlan(failed, answered, shownCount(routes), viaFailed || directFailedNow, from, planAgain)
             return
         }
         // Asked again and not reached: the route on show stays while it was planned from here under these
@@ -1140,6 +1157,7 @@ class TripViewModel(
         val visible = State(routes = routes, destinationStops = _state.value.destinationStops).shownRoutes(hiddenModes).orEmpty()
         val shown = routes.count { route -> route.rides.none { HiddenModes.isHidden(it.mode, it.lineId, hiddenModes) } }
         if (shown > visible.size) warn("journey planner: ${shown - visible.size} of $shown routes pass the destination")
+        countPlan(failed, answered, visible.size, viaFailed || directFailedNow, from, planAgain)
         val at = clock()
         // Only a whole plan is kept for reuse: a partial one is planned again on the next open.
         if (failed == null) plans.put(fromId, destinations, routes, at, from, speed, limit, access, modes)
@@ -1244,6 +1262,31 @@ class TripViewModel(
                 directAwaitingRetry = false
             }
         }
+    }
+
+    /**
+     * Counts a plan for the usage stats ([UsageEvent.TripPlanned]): failed when no request answered,
+     * else by its [routes], in part when any request failed, an [extraFailed] one included (the request
+     * via the fastest route's last stop, or an open Direct route's). Never its ends.
+     */
+    private fun countPlan(failed: TflException?, answered: Int, routes: Int, extraFailed: Boolean, from: TripOrigin, again: Boolean) {
+        planCounted = true
+        val outcome = if (answered == 0 && failed != null) {
+            UsageEvent.PlanOutcome.failed(failed)
+        } else {
+            UsageEvent.PlanOutcome.answered(routes, failed != null || extraFailed)
+        }
+        usage(UsageEvent.TripPlanned(outcome, routes, from, destinations.firstOrNull(), again))
+    }
+
+    /**
+     * How many of [routes] the trip would show ([State.shownRoutes]), for counting a plan the rider changed
+     * the options under as a shown one is counted. Worked out on [compute]: it walks every route.
+     */
+    private suspend fun shownCount(routes: List<TripRoute>): Int {
+        val destinationStops = _state.value.destinationStops
+        val hidden = hiddenModes
+        return withContext(compute) { State(routes = routes, destinationStops = destinationStops).shownRoutes(hidden).orEmpty().size }
     }
 
     private suspend fun refreshLive() {

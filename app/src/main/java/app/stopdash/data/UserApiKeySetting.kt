@@ -8,7 +8,9 @@ import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripModes
+import app.stopdash.domain.UsageEvent
 import app.stopdash.domain.WalkingSpeed
+import app.stopdash.telemetry.UsageEvents
 import app.stopdash.ui.HomeLines
 import kotlin.coroutines.ContinuationInterceptor
 import kotlinx.coroutines.CancellationException
@@ -48,13 +50,19 @@ import kotlinx.coroutines.withTimeoutOrNull
  * never logged and never placed in any other off-device artifact (SPEC *Privacy*, `docs/PRIVACY.md`).
  */
 object UserApiKeySetting {
-    private val holder = UserApiKeyHolder(CoroutineScope(SupervisorJob() + Dispatchers.Default))
+    private val holder = UserApiKeyHolder(
+        CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        changed = { _, after -> UsageEvents.settingChanged(UsageEvent.SettingChanged.tflKey(after != null)) },
+    )
 
     /** The key applied to TfL requests right now, or null when keyless. See [UserApiKeyHolder]. */
     val current: String? get() = holder.current
 
     /** [current] as a flow, so a screen can act when the key changes. */
     val changes: StateFlow<String?> get() = holder.changes
+
+    /** Whether the stored key has been read (or one set since), so [current] is the rider's own. */
+    val isLoaded: StateFlow<Boolean> get() = holder.isLoaded
 
     /**
      * True while the latest change failed to save: it holds in memory but not across a restart, nor
@@ -81,6 +89,8 @@ class UserApiKeyHolder(
     // ([RailApiKeySetting]) handled the same way.
     read: (AppSettings) -> Flow<String?> = AppSettings::userApiKey,
     write: suspend (AppSettings, String?) -> Unit = { settings, key -> settings.setUserApiKey(key) },
+    // A key pasted or cleared, for its usage event: whether one is set now, never the key.
+    @WorkerThread changed: ((before: String?, after: String?) -> Unit)? = null,
 ) : StoredSettingHolder<String?>(
     scope,
     initial = null,
@@ -89,6 +99,7 @@ class UserApiKeyHolder(
     normalize = { key -> key?.trim()?.takeIf(String::isNotEmpty) },
     // The failure class only is logged, never the key itself (SPEC *Privacy*).
     label = "api key",
+    changed = changed,
 )
 
 /**
@@ -103,6 +114,9 @@ open class StoredSettingHolder<T>(
     private val normalize: (T) -> T = { it },
     // Names the setting in a failed-write log line; never its value.
     private val label: String,
+    // A change the user made ([set]), from the value before to the one now, for its usage event: run on
+    // this holder's own worker, never the caller's thread, and only when the value changed.
+    @param:WorkerThread private val changed: ((before: T, after: T) -> Unit)? = null,
 ) {
 
     private var settings: AppSettings = AppSettings.NONE
@@ -236,13 +250,17 @@ open class StoredSettingHolder<T>(
      */
     fun set(value: T) {
         val normalized = normalize(value)
-        synchronized(lock) {
+        val before = synchronized(lock) {
+            val was = current
             userHasSet = true
             current = normalized
+            was
         }
         loadedSignal.complete(Unit)
         _isLoaded.value = true
         writes.trySend(normalized)
+        val report = changed
+        if (report != null && before != normalized) scope.launch(editing) { report(before, normalized) }
     }
 
     // Edits run one at a time, in the order asked: each starts on this serial dispatcher in the order it
@@ -288,6 +306,7 @@ object RailApiKeySetting {
         CoroutineScope(SupervisorJob() + Dispatchers.Default),
         read = AppSettings::railApiKey,
         write = { settings, key -> settings.setRailApiKey(key) },
+        changed = { _, after -> UsageEvents.settingChanged(UsageEvent.SettingChanged.railKey(after != null)) },
     )
 
     /** The key applied to National Rail requests right now, or null. */
@@ -295,6 +314,9 @@ object RailApiKeySetting {
 
     /** [current] as a flow: a departures list refetches when it changes. */
     val changes: StateFlow<String?> get() = holder.changes
+
+    /** Whether the stored key has been read (or one set since), so [current] is the rider's own. */
+    val isLoaded: StateFlow<Boolean> get() = holder.isLoaded
 
     /** Begins reading the stored key into [current]. Idempotent. */
     fun warm(appSettings: AppSettings) = holder.warm(appSettings)
@@ -315,6 +337,7 @@ object HiddenModesSetting {
         read = AppSettings::hiddenModes,
         write = { settings, modes -> settings.setHiddenModes(modes) },
         label = "hidden modes",
+        changed = { before, after -> UsageEvents.settingChanged(UsageEvent.SettingChanged.hiddenModes(before, after)) },
     )
 
     /** The hidden modes right now; empty (everything shows) until [warm] reads the stored set. */
@@ -325,6 +348,9 @@ object HiddenModesSetting {
 
     /** [current] as a flow, for the list and its banner. */
     val changes: StateFlow<Set<String>> get() = holder.changes
+
+    /** Whether the stored set has been read (or one set since), so [current] is the rider's own. */
+    val isLoaded: StateFlow<Boolean> get() = holder.isLoaded
 
     /** Begins reading the stored set into [current]. Idempotent. */
     fun warm(appSettings: AppSettings) = holder.warm(appSettings)
@@ -359,6 +385,7 @@ object WalkingSpeedSetting {
         read = AppSettings::walkingSpeed,
         write = { settings, speed -> settings.setWalkingSpeed(speed) },
         label = "walking speed",
+        changed = { _, after -> UsageEvents.settingChanged(UsageEvent.SettingChanged.walkingSpeed(after)) },
     )
 
     /** [WalkingSpeed] as a flow, for a trip's plans, its dropdown and the Settings row. */
@@ -392,6 +419,7 @@ object MaxWalkSetting {
         read = AppSettings::maxWalk,
         write = { settings, maxWalk -> settings.setMaxWalk(maxWalk) },
         label = "max walk",
+        changed = { _, after -> UsageEvents.settingChanged(UsageEvent.SettingChanged.maxWalk(after)) },
     )
 
     /** [MaxWalk] as a flow, for a trip's plans and its dropdown. */
@@ -425,6 +453,7 @@ object StepFreeSetting {
         read = AppSettings::stepFree,
         write = { settings, stepFree -> settings.setStepFree(stepFree) },
         label = "step-free",
+        changed = { _, after -> UsageEvents.settingChanged(UsageEvent.SettingChanged.stepFree(after)) },
     )
 
     /** [StepFree] as a flow, for a trip's plans and its dropdown. */
@@ -458,6 +487,7 @@ object TripModesSetting {
         read = AppSettings::tripModes,
         write = { settings, modes -> settings.setTripModes(modes) },
         label = "trip modes",
+        changed = { before, after -> UsageEvents.settingChanged(UsageEvent.SettingChanged.tripModes(before, after)) },
     )
 
     /** [TripModes] as a flow, for a trip's plans and its toggles. */
@@ -491,6 +521,7 @@ object AvoidedLinesSetting {
         read = AppSettings::avoidedLines,
         write = { settings, lines -> settings.setAvoidedLines(lines) },
         label = "avoided lines",
+        changed = { before, after -> UsageEvents.settingChanged(UsageEvent.SettingChanged.avoidedLines(before, after)) },
     )
 
     /** The avoided lines as a flow, for a trip's routes, its chips and Settings. */
@@ -525,6 +556,7 @@ object DistanceUnitsSetting {
         read = AppSettings::distanceUnits,
         write = { settings, units -> settings.setDistanceUnits(units) },
         label = "distance units",
+        changed = { _, after -> UsageEvents.settingChanged(UsageEvent.SettingChanged.distanceUnits(after)) },
     )
 
     /** [DistanceUnits] as a flow, for the list's labels and the Settings row. */
@@ -558,6 +590,7 @@ object DisruptionsRowSetting {
         read = AppSettings::showDisruptionsRow,
         write = { settings, shown -> settings.setShowDisruptionsRow(shown) },
         label = "disruptions row",
+        changed = { _, after -> UsageEvents.settingChanged(UsageEvent.SettingChanged.disruptionsRow(after)) },
     )
 
     /** Whether the row is shown, as a flow, for the list and the Settings switch. */
@@ -593,6 +626,7 @@ object SummaryNetworksSetting {
         read = { settings -> settings.summaryNetworks().map { it ?: HomeLines.DEFAULT_NETWORKS } },
         write = { settings, networks -> settings.setSummaryNetworks(networks) },
         label = "summary networks",
+        changed = { before, after -> UsageEvents.settingChanged(HomeLines.lineChanges(before, after)) },
     )
 
     /**

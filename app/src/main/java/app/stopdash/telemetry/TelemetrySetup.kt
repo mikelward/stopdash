@@ -1,6 +1,7 @@
 package app.stopdash.telemetry
 
 import app.stopdash.StopdashDebugLog
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
@@ -71,6 +72,20 @@ internal fun <A, B> acquireBoth(
         throw e
     }
     return a to b
+}
+
+/**
+ * Runs [action] on [dispatcher] once [consent] has loaded, whichever way it went: the usage events held
+ * until then are sent or dropped ([UsageEvents.settle]).
+ */
+internal fun whenConsentLoads(
+    consent: StateFlow<Boolean?>,
+    scope: CoroutineScope,
+    dispatcher: CoroutineDispatcher,
+    action: () -> Unit,
+): Job = scope.launch(dispatcher) {
+    consent.first { it != null }
+    action()
 }
 
 /**
