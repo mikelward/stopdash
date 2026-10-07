@@ -2712,7 +2712,7 @@ Builds on Phase 1's minimal line-status marking.
   - [ ] **A bus stop's letter and direction** ("Stop H, towards Oxford Circus"), from its pole data.
   - [ ] **Open a stop from every line page**: the home screen's lines row and a trip's lines page draw
         the same map, its stations inert there for now.
-  - [ ] **Back from To's trip** lands on the near-me list, not the stop it was planned from.
+  - [x] **Back from To's trip** returns to the stop it was planned from, not the near-me list.
 - [ ] **Coming-up closures on a line's page** (discussed 2026-10-06). TfL's future statuses
       (`/Line/{id}/Status/{from}/to/{to}`) for the next week, each drawn on the map like a closure in
       force: one free request when the page opens, cached for hours, a failure saying so with a retry.
