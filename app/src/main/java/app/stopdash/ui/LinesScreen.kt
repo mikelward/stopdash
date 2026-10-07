@@ -31,6 +31,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
@@ -129,6 +130,8 @@ internal fun LinesOverlay(
     onTo: ((LineStopRef) -> Unit)? = null,
     // Favorite: the stop as a favorite place, at its position where the index has one; null offers none.
     onFavorite: ((LineStopRef, Coordinates?) -> Unit)? = null,
+    // Show on map: the stop at its published position in the phone's maps app; null offers none.
+    onShowOnMap: ((LineStopRef, Coordinates) -> Unit)? = null,
     // The stop's live departures, from a model the caller keeps alive and refreshing while the page is
     // up ([StopDepartures]); null draws none.
     // With it, the lines to declare served there (the line it was opened from, else the station's own), so
@@ -265,6 +268,13 @@ internal fun LinesOverlay(
                                 // Where it is: the index's, else where the map placed it (a bus stop), so no lookup
                                 // is needed for a stop already placed (Codex on #670).
                                 onFavorite = onFavorite?.let { favorite -> { favorite(stop, links?.position ?: stop.position) } },
+                                // On the map at the same position: the index's, else the map's, so it waits on the
+                                // links rather than open the map's point a moment before the index answers (Codex on
+                                // #672). The pin stays put meanwhile, greyed, so the star beside it never moves.
+                                onShowOnMap = onShowOnMap?.let { show ->
+                                    { links?.let { it.position ?: stop.position }?.let { at -> show(stop, at) } }
+                                },
+                                mapReady = links?.let { it.position ?: stop.position } != null,
                                 onBack = back,
                             )
                         }
@@ -314,6 +324,10 @@ internal fun LineStopPage(
     onOpenStation: (NearStation) -> Unit = {},
     // Save it as a favorite place; null offers none. Waits on [actionsReady], for its position.
     onFavorite: (() -> Unit)? = null,
+    // Show it in the phone's maps app; null where none is offered. Greyed until [mapReady]: where it is
+    // isn't known yet, or is known nowhere.
+    onShowOnMap: (() -> Unit)? = null,
+    mapReady: Boolean = true,
 ) {
     BackHandler(onBack = onBack)
     Scaffold(
@@ -329,6 +343,11 @@ internal fun LineStopPage(
                     if (onFavorite != null) {
                         IconButton(onClick = onFavorite, enabled = actionsReady, modifier = Modifier.testTag("lineStopFavorite")) {
                             Icon(StarBorderIcon, contentDescription = stringResource(R.string.line_stop_favorite))
+                        }
+                    }
+                    if (onShowOnMap != null) {
+                        IconButton(onClick = onShowOnMap, enabled = mapReady, modifier = Modifier.testTag("lineStopMap")) {
+                            Icon(Icons.Filled.Place, contentDescription = stringResource(R.string.action_show_on_map))
                         }
                     }
                     AppMenuOverflow()

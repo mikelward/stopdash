@@ -2623,7 +2623,11 @@ clean; a closure or moved-stop notice heads the board, as on the near-me list. I
 the favorite-places editor opens over it, filled in as a custom place named for the station at its
 position (the index's, else its stops' center, as a pick from the place search, a lookup that fails
 offering a retry on its row), so the rider can still rename it or pick its icon and days before Save;
-Save or Cancel returns to the stop. Home and Work are set from Settings, as before. The star waits on the stop's links, which carry its position. Back from a station opened from another's details returns to that one, as it
+Save or Cancel returns to the stop. Home and Work are set from Settings, as before. A pin beside the star **shows it on
+a map** (maintainer, 2026-10-07): the phone's maps app opens on a labeled pin at the stop's published
+position (the index's, else where the line's map placed it), never the rider's fix, as a tap on a
+near-me header's distance does; with no maps app it says so. The pin waits on the stop's links, so the
+index's position wins over the map's, and is greyed for a stop placed by neither. The star waits on the stop's links, which carry its position. Back from a station opened from another's details returns to that one, as it
 was left, and so back through the stations opened (the last ten); Back from the first returns to the line, its map just as it was,
 scrolled and unfolded (after From's station page, the line's page comes back at its top, `TODO.md`).
 Only a line page opened from Lines… opens stops so far (`TODO.md`).
