@@ -132,6 +132,8 @@ class TripViewModelTest {
         // Per destination, where a test plans to several; else [routes] for any.
         var byDestination: Map<String, List<TripRoute>> = emptyMap()
         var failFor: Set<String> = emptySet()
+        // Plans asked for under this step-free level fail.
+        var failStepFree: StepFree? = null
         var delays: Map<String, Long> = emptyMap()
         // Where each call planned from, in order.
         val origins = mutableListOf<TripOrigin>()
@@ -157,6 +159,7 @@ class TripViewModelTest {
             }
             delays[key]?.let { delay(it) }
             failWith?.let { throw it }
+            if (stepFree == failStepFree) throw TflException.Offline(null)
             if (key in failFor) throw TflException.Offline(null)
             return byDestination[key] ?: routes
         }
@@ -164,11 +167,27 @@ class TripViewModelTest {
         val viaAsked = mutableListOf<Pair<TripDestination, String>>()
         // Its answer per via stop; one in [failFor] fails.
         var byVia: Map<String, List<TripRoute>> = emptyMap()
+        // Each via request's origin and step-free level, in order; each waits [viaDelay] first.
+        val viaOrigins = mutableListOf<TripOrigin>()
+        val viaStepFrees = mutableListOf<StepFree>()
+        var viaDelay = 0L
+        var viaDelays: Map<String, Long> = emptyMap()
+        // So many of the next via requests fail.
+        var failViaFirst = 0
         override suspend fun fewestChangesVia(from: TripOrigin, to: TripDestination, via: String, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes): List<TripRoute> {
             calls++
             viaAsked += to to via
+            viaOrigins += from
+            viaStepFrees += stepFree
+            // Answered as things stood when asked, however long it takes to land.
+            val answer = byVia[via].orEmpty()
+            (viaDelays[via] ?: viaDelay).takeIf { it > 0 }?.let { delay(it) }
             if (via in failFor) throw TflException.Offline(null)
-            return byVia[via].orEmpty()
+            if (failViaFirst > 0) {
+                failViaFirst--
+                throw TflException.Offline(null)
+            }
+            return answer
         }
     }
 
@@ -1262,6 +1281,1306 @@ class TripViewModelTest {
         assertTrue(warnings.contains("trip plan via the fastest route's last stop: 1 of 2 routes ride fewer times"))
     }
 
+    // A Direct row's ride as the Planner routes it via its stop G: a walk there, green to S, a walk on.
+    private val viaG = TripRoute(
+        listOf(
+            TripLeg(mode = TripLeg.WALKING, lineId = "", lineName = "", fromId = "", fromName = "", toId = "G", toName = "G", departure = at(0), arrival = at(4)),
+            leg("green", "G", "S", 6, 26),
+            TripLeg(mode = TripLeg.WALKING, lineId = "", lineName = "", fromId = "S", fromName = "S", toId = "", toName = "Home", departure = at(26), arrival = at(32)),
+        ),
+    )
+
+    private fun placeTrip(
+        planner: JourneyPlanner,
+        warn: (String) -> Unit = {},
+        savedState: androidx.lifecycle.SavedStateHandle = androidx.lifecycle.SavedStateHandle(),
+        origin: () -> TripOrigin = { TripOrigin.Stop("A") },
+    ) = TripViewModel(
+        planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Place(Coordinates(51.5, -0.12), "Home")),
+        clock = { now }, plans = TripPlans(), io = dispatcher, warn = warn, savedState = savedState, origin = origin,
+    )
+
+    @Test
+    fun `a Direct route asked while the rider changes a choice is asked again under the new one`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG)) }
+        val trip = placeTrip(planner)
+        trip.refresh()
+        advanceUntilIdle()
+        planner.viaDelay = 1_000
+        trip.openDirect("green", "G")
+        advanceTimeBy(500)
+        // Fully step-free chosen while the first answer is out: that answer isn't used.
+        trip.stepFree = StepFree.FULLY
+        advanceUntilIdle()
+        assertEquals(StepFree.FULLY, planner.viaStepFrees.last { true })
+        assertTrue(planner.viaAsked.count { it.second == "G" } >= 2)
+        assertEquals(routeKey(viaG), trip.openRoute.value)
+    }
+
+    @Test
+    fun `a Direct route is asked for again from where a re-plan starts, never carried over`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG)) }
+        var from: TripOrigin = TripOrigin.Stop("A")
+        val trip = placeTrip(planner, origin = { from })
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        // The rider has moved: the re-plan's own request via G is from there.
+        from = TripOrigin.Here(Coordinates(51.5, -0.13))
+        val asked = planner.viaAsked.count { it.second == "G" }
+        trip.retry()
+        advanceUntilIdle()
+        assertEquals(asked + 1, planner.viaAsked.count { it.second == "G" })
+        assertEquals(from, planner.viaOrigins.last())
+        assertEquals(routeKey(viaG), trip.openRoute.value)
+        // None rides it alone from there: it closes rather than stay from the old start.
+        planner.byVia = emptyMap()
+        trip.retry()
+        advanceUntilIdle()
+        assertFalse(viaG in trip.state.value.routes.orEmpty())
+        assertTrue(trip.state.value.directKeys.isEmpty())
+    }
+
+    @Test
+    fun `a re-plan whose Direct route is asked while a choice changes is planned again under the new one`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG)) }
+        val trip = placeTrip(planner)
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        planner.viaDelay = 1_000
+        trip.retry()
+        advanceTimeBy(500)
+        trip.stepFree = StepFree.FULLY
+        advanceUntilIdle()
+        // The route on show was asked for under Fully, not published from the answer under Any.
+        assertEquals(StepFree.FULLY, planner.viaStepFrees.last())
+        assertEquals(StepFree.FULLY, planner.stepFrees.last())
+        assertEquals(setOf(routeKey(viaG)), trip.state.value.directKeys)
+    }
+
+    @Test
+    fun `a Direct route that can't be asked for again stays when nothing changed, and the trip says so`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG)) }
+        var from: TripOrigin = TripOrigin.Stop("A")
+        val trip = placeTrip(planner, origin = { from })
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        planner.failFor = setOf("G")
+        trip.retry()
+        advanceUntilIdle()
+        assertTrue(trip.state.value.directFailed)
+        assertTrue(viaG in trip.state.value.routes.orEmpty())
+        assertEquals(routeKey(viaG), trip.openRoute.value)
+        // From somewhere else, the old route's walk is wrong: it goes, still said.
+        from = TripOrigin.Here(Coordinates(51.5, -0.13))
+        trip.retry()
+        advanceUntilIdle()
+        assertTrue(trip.state.value.directFailed)
+        assertFalse(viaG in trip.state.value.routes.orEmpty())
+        // Reached again, the notice goes.
+        planner.failFor = emptySet()
+        trip.retry()
+        advanceUntilIdle()
+        assertFalse(trip.state.value.directFailed)
+    }
+
+    @Test
+    fun `a Direct row opened from the plan's own route is asked for via its stop once a re-plan drops it`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace, viaG)).apply { byVia = mapOf("G" to listOf(viaG)) }
+        val trip = placeTrip(planner)
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        assertTrue(trip.state.value.directKeys.isEmpty())
+        // The next plan doesn't offer it: it's asked for via G and stays open.
+        planner.routes = listOf(changingToPlace)
+        trip.retry()
+        advanceUntilIdle()
+        assertTrue(planner.viaAsked.any { it.second == "G" })
+        assertTrue(viaG in trip.state.value.routes.orEmpty())
+        assertEquals(routeKey(viaG), trip.openRoute.value)
+    }
+
+    @Test
+    fun `a Direct route let go after a failed re-ask keeps its notice, and its Retry opens it again`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG)) }
+        var from: TripOrigin = TripOrigin.Stop("A")
+        val trip = placeTrip(planner, origin = { from })
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        // Moved, and the re-ask fails: the route goes, and the trip closes it ([openRouteGone]).
+        from = TripOrigin.Here(Coordinates(51.5, -0.13))
+        planner.failFor = setOf("G")
+        trip.retry()
+        advanceUntilIdle()
+        trip.openRoute.value = null
+        advanceUntilIdle()
+        assertTrue(trip.state.value.directFailed)
+        // Its Retry reaches the Planner: open again, the notice gone.
+        planner.failFor = emptySet()
+        trip.retry()
+        advanceUntilIdle()
+        assertEquals(routeKey(viaG), trip.openRoute.value)
+        assertFalse(trip.state.value.directFailed)
+    }
+
+    @Test
+    fun `a Direct route from the plan itself stays through a failed re-ask when nothing changed`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace, viaG))
+        val trip = placeTrip(planner)
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        // The next plan drops it and the re-ask via G fails: from the same place, under the same choices, it stays.
+        planner.routes = listOf(changingToPlace)
+        planner.failFor = setOf("G")
+        trip.retry()
+        advanceUntilIdle()
+        assertTrue(viaG in trip.state.value.routes.orEmpty())
+        assertEquals(setOf(routeKey(viaG)), trip.state.value.directKeys)
+        assertTrue(trip.state.value.directFailed)
+    }
+
+    @Test
+    fun `a re-plan merges its Direct route in on the worker, not the caller`() = runTest(dispatcher) {
+        // Each walk of the Direct route's legs from inside the merge notes whether the worker ran it.
+        val onWorker = ThreadLocal.withInitial { false }
+        val worker = object : kotlinx.coroutines.CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) = dispatcher.dispatch(context) {
+                onWorker.set(true)
+                try {
+                    block.run()
+                } finally {
+                    onWorker.set(false)
+                }
+            }
+        }
+        val merges = mutableListOf<Boolean>()
+        val watched = object : AbstractList<TripLeg>() {
+            override val size get() = viaG.legs.size
+            override fun get(index: Int): TripLeg {
+                if (Thread.currentThread().stackTrace.any { it.methodName.startsWith("mergedRoutes") }) merges += onWorker.get()
+                return viaG.legs[index]
+            }
+        }
+        val direct = TripRoute(watched)
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(direct)) }
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Place(Coordinates(51.5, -0.12), "Home")),
+            clock = { now }, plans = TripPlans(), io = dispatcher, compute = worker,
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        merges.clear()
+        trip.retry()
+        advanceUntilIdle()
+        assertTrue("$merges", merges.isNotEmpty() && merges.all { it })
+    }
+
+    // Another Direct row's ride, via its stop H: a walk there, blue to S, a walk on.
+    private val viaH = TripRoute(
+        listOf(
+            TripLeg(mode = TripLeg.WALKING, lineId = "", lineName = "", fromId = "", fromName = "", toId = "H", toName = "H", departure = at(0), arrival = at(3)),
+            leg("blue", "H", "S", 5, 24),
+            TripLeg(mode = TripLeg.WALKING, lineId = "", lineName = "", fromId = "S", fromName = "S", toId = "", toName = "Home", departure = at(24), arrival = at(30)),
+        ),
+    )
+
+    @Test
+    fun `a Direct row opened while a re-plan asks for another keeps its own route`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG), "H" to listOf(viaH)) }
+        val trip = placeTrip(planner)
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        // The re-plan's ask for G is slow; meanwhile G is closed and H opened, H answering first.
+        planner.viaDelays = mapOf("G" to 1_000)
+        trip.retry()
+        advanceTimeBy(500)
+        trip.openRoute.value = null
+        trip.openDirect("blue", "H")
+        advanceUntilIdle()
+        assertEquals(routeKey(viaH), trip.openRoute.value)
+        assertTrue(viaH in trip.state.value.routes.orEmpty())
+        assertEquals(setOf(routeKey(viaH)), trip.state.value.directKeys)
+    }
+
+    @Test
+    fun `a route card tapped while a Direct row is planned stays open`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG)) }
+        val trip = placeTrip(planner)
+        trip.refresh()
+        advanceUntilIdle()
+        planner.viaDelay = 1_000
+        trip.openDirect("green", "G")
+        advanceTimeBy(500)
+        trip.openRoute.value = routeKey(changingToPlace)
+        advanceUntilIdle()
+        assertEquals(routeKey(changingToPlace), trip.openRoute.value)
+        assertFalse(viaG in trip.state.value.routes.orEmpty())
+        assertNull(trip.directOpening.value)
+    }
+
+    @Test
+    fun `a Direct route's key is worked out on the worker, opened or planned again`() = runTest(dispatcher) {
+        val onWorker = ThreadLocal.withInitial { false }
+        val worker = object : kotlinx.coroutines.CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) = dispatcher.dispatch(context) {
+                onWorker.set(true)
+                try {
+                    block.run()
+                } finally {
+                    onWorker.set(false)
+                }
+            }
+        }
+        // Each walk of the Direct route's legs for its key, from opening it or a re-plan, notes where it ran.
+        val keyed = mutableListOf<Boolean>()
+        val watched = object : AbstractList<TripLeg>() {
+            override val size get() = viaG.legs.size
+            override fun get(index: Int): TripLeg {
+                val stack = Thread.currentThread().stackTrace
+                if (stack.any { it.methodName.startsWith("routeKey") } && stack.any { c -> listOf("openDirect", "findDirect", "\$plan").any { it in c.className } || c.methodName == "plan" }) {
+                    keyed += onWorker.get()
+                }
+                return viaG.legs[index]
+            }
+        }
+        val direct = TripRoute(watched)
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(direct)) }
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Place(Coordinates(51.5, -0.12), "Home")),
+            clock = { now }, plans = TripPlans(), io = dispatcher, compute = worker,
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        trip.retry()
+        advanceUntilIdle()
+        assertTrue("$keyed", keyed.isNotEmpty() && keyed.all { it })
+    }
+
+    @Test
+    fun `a Direct row's stops are read and saved on the worker, opened or planned again`() = runTest(dispatcher) {
+        val onWorker = ThreadLocal.withInitial { false }
+        val worker = object : kotlinx.coroutines.CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) = dispatcher.dispatch(context) {
+                onWorker.set(true)
+                try {
+                    block.run()
+                } finally {
+                    onWorker.set(false)
+                }
+            }
+        }
+        // Each read of the row's stops near the place, to match the ride or to save it, notes where it ran.
+        val read = mutableListOf<Boolean>()
+        val stops = setOf("S")
+        val ends = object : AbstractSet<String>() {
+            override val size get() = stops.size.also { read += onWorker.get() }
+            override fun contains(element: String) = (element in stops).also { read += onWorker.get() }
+            override fun iterator(): Iterator<String> = stops.iterator().also { read += onWorker.get() }
+        }
+        val savedState = SavedStateHandle()
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG)) }
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Place(Coordinates(51.5, -0.12), "Home")),
+            clock = { now }, plans = TripPlans(), io = dispatcher, compute = worker, savedState = savedState,
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G", ends)
+        advanceUntilIdle()
+        trip.retry()
+        advanceUntilIdle()
+        assertEquals(routeKey(viaG), trip.openRoute.value)
+        assertTrue("$read", read.isNotEmpty() && read.all { it })
+        assertEquals("green\nG\n${routeKey(viaG)}\nS", savedState.get<String>("directRide"))
+    }
+
+    @Test
+    fun `a plan whose choices change as it's published on the worker isn't shown`() = runTest(dispatcher) {
+        // A plan already kept for Fully: a change to it shows that one, with no plan asked for.
+        val home = TripDestination.Place(Coordinates(51.5, -0.12), "Home")
+        val fully = TripRoute(listOf(leg("lift", "A", "S", 4, 20), changingToPlace.legs.last().copy(departure = at(20), arrival = at(26))))
+        val plans = TripPlans().apply { put("A", listOf(home), listOf(fully), now, TripOrigin.Stop("A"), WalkingSpeed.AVERAGE, MaxWalk.DEFAULT, StepFree.FULLY, TripModes.DEFAULT) }
+        lateinit var trip: TripViewModel
+        // The rider picks Fully just as the re-plan's publish walks the Direct route's legs on the worker.
+        var armed = false
+        val watched = object : AbstractList<TripLeg>() {
+            override val size get() = viaG.legs.size
+            override fun get(index: Int): TripLeg {
+                if (armed && Thread.currentThread().stackTrace.any { it.methodName.startsWith("unknownLines") }) {
+                    armed = false
+                    trip.stepFree = StepFree.FULLY
+                }
+                return viaG.legs[index]
+            }
+        }
+        val direct = TripRoute(watched)
+        // Planning again under Fully fails, so whatever stands after is what the change left, or the old publish.
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(direct)); failStepFree = StepFree.FULLY }
+        trip = TripViewModel(planner, FakeClient(mutableMapOf()), "A", listOf(home), clock = { now }, plans = plans, io = dispatcher)
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        armed = true
+        trip.retry()
+        advanceUntilIdle()
+        // Fully's own plan stands, not the routes planned under Any.
+        assertFalse(armed)
+        assertTrue(fully in trip.state.value.routes.orEmpty())
+        assertFalse(changingToPlace in trip.state.value.routes.orEmpty())
+    }
+
+    // viaG's legs, running [onWalk] once when walked from inside [method] (a merge, a check) once armed.
+    private class Tripwire(val legs: List<TripLeg>, val method: String) : AbstractList<TripLeg>() {
+        var onWalk: (() -> Unit)? = null
+        override val size get() = legs.size
+        override fun get(index: Int): TripLeg {
+            val hook = onWalk
+            if (hook != null && Thread.currentThread().stackTrace.any { it.methodName.startsWith(method) }) {
+                onWalk = null
+                hook()
+            }
+            return legs[index]
+        }
+    }
+
+    @Test
+    fun `a choice changed, or a card tapped, while a Direct route is merged in stands`() = runTest(dispatcher) {
+        for (change in listOf("stepFree", "card")) {
+            val wire = Tripwire(viaG.legs, "unknownLines")
+            val direct = TripRoute(wire)
+            val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(direct)) }
+            val trip = placeTrip(planner)
+            trip.refresh()
+            advanceUntilIdle()
+            // Once: the rider changes it the once, whichever walk of the route's legs that lands in.
+            var changed = false
+            wire.onWalk = {
+                if (!changed) {
+                    changed = true
+                    if (change == "stepFree") trip.stepFree = StepFree.FULLY else trip.openRoute.value = routeKey(changingToPlace)
+                }
+            }
+            trip.openDirect("green", "G")
+            advanceUntilIdle()
+            if (change == "stepFree") {
+                // The answer under Any isn't used: it's asked again under Fully, and that one opens.
+                val viaGLevels = planner.viaAsked.indices.filter { planner.viaAsked[it].second == "G" }.map { planner.viaStepFrees[it] }
+                // (The plan under Fully may ask for the open route again too, as any re-plan does: under Fully.)
+                assertEquals(listOf(StepFree.DEFAULT, StepFree.FULLY), viaGLevels.take(2))
+                assertTrue("$viaGLevels", viaGLevels.drop(1).all { it == StepFree.FULLY })
+                assertEquals(routeKey(viaG), trip.openRoute.value)
+            } else {
+                // The card stands, and the Direct route isn't added.
+                assertEquals(routeKey(changingToPlace), trip.openRoute.value)
+                assertTrue(trip.state.value.directKeys.isEmpty())
+            }
+        }
+    }
+
+    @Test
+    fun `a Direct route waiting on its Retry isn't opened again once its line is hidden`() = runTest(dispatcher) {
+        var from: TripOrigin = TripOrigin.Here(Coordinates(51.5, -0.12))
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG)) }
+        val trip = placeTrip(planner, origin = { from })
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        from = TripOrigin.Here(Coordinates(51.509, -0.12))
+        planner.failFor = setOf("G")
+        trip.retry()
+        advanceUntilIdle()
+        trip.openRoute.value = null
+        advanceUntilIdle()
+        assertTrue(trip.state.value.directFailed)
+        // Its line hidden, then the Retry reaches the Planner: nothing opens, and it's let go.
+        trip.hiddenModes = setOf(HiddenModes.lineKey("green", "Green line"))
+        advanceUntilIdle()
+        planner.failFor = emptySet()
+        trip.retry()
+        advanceUntilIdle()
+        assertNull(trip.openRoute.value)
+        assertFalse(routeKey(viaG) in trip.state.value.directKeys)
+    }
+
+    @Test
+    fun `a Direct row whose line is hidden while it's planned opens nothing`() = runTest(dispatcher) {
+        for (during in listOf("request", "merge")) {
+            val wire = Tripwire(viaG.legs, "unknownLines")
+            val direct = TripRoute(wire)
+            val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(direct)) }
+            val trip = placeTrip(planner)
+            trip.refresh()
+            advanceUntilIdle()
+            if (during == "merge") {
+                wire.onWalk = { trip.hiddenModes = setOf("tube") }
+                trip.openDirect("green", "G")
+            } else {
+                planner.viaDelay = 1_000
+                trip.openDirect("green", "G")
+                advanceTimeBy(500)
+                trip.hiddenModes = setOf("tube")
+            }
+            advanceUntilIdle()
+            assertNull(during, trip.openRoute.value)
+            assertTrue(during, trip.state.value.directKeys.isEmpty())
+            assertNull(during, trip.directOpening.value)
+        }
+    }
+
+    @Test
+    fun `a choice changed to one with a plan kept asks for the open Direct route again under it`() = runTest(dispatcher) {
+        val home = TripDestination.Place(Coordinates(51.5, -0.12), "Home")
+        val plans = TripPlans().apply { put("A", listOf(home), listOf(changingToPlace), now, TripOrigin.Stop("A"), WalkingSpeed.AVERAGE, MaxWalk.DEFAULT, StepFree.FULLY, TripModes.DEFAULT) }
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG)) }
+        val trip = TripViewModel(planner, FakeClient(mutableMapOf()), "A", listOf(home), clock = { now }, plans = plans, io = dispatcher)
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        trip.stepFree = StepFree.FULLY
+        advanceUntilIdle()
+        val viaGLevels = planner.viaAsked.indices.filter { planner.viaAsked[it].second == "G" }.map { planner.viaStepFrees[it] }
+        assertEquals(StepFree.FULLY, viaGLevels.last())
+        assertEquals(routeKey(viaG), trip.openRoute.value)
+        assertTrue(viaG in trip.state.value.routes.orEmpty())
+    }
+
+    @Test
+    fun `a Direct row with none under the old choices is asked again under the new ones`() = runTest(dispatcher) {
+        // Under Any nothing rides green alone via G; under Fully, by the time it's asked, one does.
+        val planner = FakePlanner(listOf(changingToPlace))
+        val trip = placeTrip(planner)
+        trip.refresh()
+        advanceUntilIdle()
+        planner.viaDelay = 1_000
+        trip.openDirect("green", "G")
+        advanceTimeBy(500)
+        planner.byVia = mapOf("G" to listOf(viaG))
+        trip.stepFree = StepFree.FULLY
+        advanceUntilIdle()
+        assertEquals(routeKey(viaG), trip.openRoute.value)
+        assertNull(trip.directOpening.value)
+    }
+
+    @Test
+    fun `a Direct request that fails under old choices is asked again under the new ones`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG)) }
+        val trip = placeTrip(planner)
+        trip.refresh()
+        advanceUntilIdle()
+        planner.viaDelay = 1_000
+        planner.failViaFirst = 1
+        trip.openDirect("green", "G")
+        advanceTimeBy(500)
+        trip.stepFree = StepFree.FULLY
+        advanceUntilIdle()
+        assertEquals(routeKey(viaG), trip.openRoute.value)
+        assertNull(trip.directOpening.value)
+    }
+
+    @Test
+    fun `a Direct route from before a move is let go, said, when the plan from the new place fails`() = runTest(dispatcher) {
+        var from: TripOrigin = TripOrigin.Here(Coordinates(51.5, -0.12))
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG)) }
+        val trip = placeTrip(planner, origin = { from })
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        from = TripOrigin.Here(Coordinates(51.509, -0.12))
+        planner.failWith = TflException.Offline(null)
+        trip.retry()
+        advanceUntilIdle()
+        assertNull(trip.openRoute.value)
+        assertFalse(viaG in trip.state.value.routes.orEmpty())
+        assertTrue(trip.state.value.directFailed)
+        // The Retry, once the Planner answers, opens it again from the new place.
+        planner.failWith = null
+        trip.retry()
+        advanceUntilIdle()
+        assertEquals(routeKey(viaG), trip.openRoute.value)
+        assertEquals(from, planner.viaOrigins.last())
+    }
+
+    @Test
+    fun `an older plan that fails leaves a Direct route opened since it started`() = runTest(dispatcher) {
+        var from: TripOrigin = TripOrigin.Here(Coordinates(51.5, -0.12))
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG), "H" to listOf(viaH)) }
+        val trip = placeTrip(planner, origin = { from })
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        // A re-plan from here is slow and will fail; meanwhile the rider moves on and opens H from there.
+        planner.delays = mapOf("Home" to 1_000)
+        planner.failWith = TflException.Offline(null)
+        trip.retry()
+        advanceTimeBy(500)
+        from = TripOrigin.Here(Coordinates(51.509, -0.12))
+        trip.openRoute.value = null
+        trip.openDirect("blue", "H")
+        advanceTimeBy(100)
+        assertEquals(routeKey(viaH), trip.openRoute.value)
+        advanceTimeBy(1_000)
+        // The old plan's failure says nothing about H, opened since from here.
+        assertEquals(routeKey(viaH), trip.openRoute.value)
+        assertTrue(viaH in trip.state.value.routes.orEmpty())
+        assertFalse(trip.state.value.directFailed)
+        planner.failWith = null
+    }
+
+    @Test
+    fun `an older plan that fails leaves the same Direct row opened again since it started`() = runTest(dispatcher) {
+        var from: TripOrigin = TripOrigin.Here(Coordinates(51.5, -0.12))
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG)) }
+        val trip = placeTrip(planner, origin = { from })
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        planner.delays = mapOf("Home" to 1_000)
+        planner.failWith = TflException.Offline(null)
+        trip.retry()
+        advanceTimeBy(500)
+        // Moved on, G closed and opened again from here: the same row, a new opening.
+        from = TripOrigin.Here(Coordinates(51.509, -0.12))
+        trip.openRoute.value = null
+        trip.openDirect("green", "G")
+        advanceTimeBy(1_100)
+        assertEquals(routeKey(viaG), trip.openRoute.value)
+        assertTrue(viaG in trip.state.value.routes.orEmpty())
+        assertFalse(trip.state.value.directFailed)
+        planner.failWith = null
+    }
+
+    @Test
+    fun `a Direct route a re-plan publishes meanwhile stays the plan's own card`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG)) }
+        val trip = placeTrip(planner)
+        trip.refresh()
+        advanceUntilIdle()
+        // A re-plan that brings the route via G lands while the tap's own ask for it is out.
+        planner.routes = listOf(changingToPlace, viaG)
+        planner.viaDelay = 1_000
+        trip.retry()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        assertEquals(routeKey(viaG), trip.openRoute.value)
+        assertTrue(trip.state.value.directKeys.isEmpty())
+        // Closed, the plan's card stays.
+        trip.openRoute.value = null
+        advanceUntilIdle()
+        assertTrue(viaG in trip.state.value.routes.orEmpty())
+    }
+
+    @Test
+    fun `a Direct route from the plan opened while a re-plan asks for another is carried over`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace, viaH)).apply { byVia = mapOf("G" to listOf(viaG)) }
+        val trip = placeTrip(planner)
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        // The next plan lacks H, and its ask for G again is slow; meanwhile H is opened from the plan shown.
+        planner.routes = listOf(changingToPlace)
+        planner.viaDelays = mapOf("G" to 1_000)
+        trip.retry()
+        advanceTimeBy(500)
+        trip.openRoute.value = null
+        trip.openDirect("blue", "H")
+        advanceUntilIdle()
+        assertEquals(routeKey(viaH), trip.openRoute.value)
+        assertTrue(viaH in trip.state.value.routes.orEmpty())
+        assertTrue(routeKey(viaH) in trip.state.value.directKeys)
+    }
+
+    @Test
+    fun `a Direct route from the plan opened while a re-plan that offers it too asks for another stays a card`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace, viaH)).apply { byVia = mapOf("G" to listOf(viaG)) }
+        val trip = placeTrip(planner)
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        // The next plan has H too, and its ask for G again is slow; meanwhile H is opened from the plan shown.
+        planner.viaDelays = mapOf("G" to 1_000)
+        trip.retry()
+        advanceTimeBy(500)
+        trip.openRoute.value = null
+        trip.openDirect("blue", "H")
+        advanceUntilIdle()
+        assertEquals(routeKey(viaH), trip.openRoute.value)
+        assertFalse(routeKey(viaH) in trip.state.value.directKeys)
+        // Closed, its card stays.
+        trip.openRoute.value = null
+        advanceUntilIdle()
+        assertTrue(viaH in trip.state.value.routes.orEmpty())
+    }
+
+    @Test
+    fun `a Direct row tapped after one couldn't be updated clears the notice`() = runTest(dispatcher) {
+        for (planned in listOf(false, true)) {
+            var from: TripOrigin = TripOrigin.Here(Coordinates(51.5, -0.12))
+            val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG), "H" to listOf(viaH)) }
+            val trip = placeTrip(planner, origin = { from })
+            trip.refresh()
+            advanceUntilIdle()
+            trip.openDirect("green", "G")
+            advanceUntilIdle()
+            from = TripOrigin.Here(Coordinates(51.509, -0.12))
+            planner.failFor = setOf("G")
+            if (planned) planner.routes = listOf(changingToPlace, viaH)
+            trip.retry()
+            advanceUntilIdle()
+            trip.openRoute.value = null
+            advanceUntilIdle()
+            assertTrue(trip.state.value.directFailed)
+            // Another row tapped instead of the Retry: open, and nothing said about the old one.
+            trip.openDirect("blue", "H")
+            advanceUntilIdle()
+            assertEquals("$planned", routeKey(viaH), trip.openRoute.value)
+            assertFalse("$planned", trip.state.value.directFailed)
+        }
+    }
+
+    @Test
+    fun `a Direct row tapped while a Retry asks for the one before opens, the older not reopened`() = runTest(dispatcher) {
+        var from: TripOrigin = TripOrigin.Here(Coordinates(51.5, -0.12))
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG), "H" to listOf(viaH)) }
+        val trip = placeTrip(planner, origin = { from })
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        from = TripOrigin.Here(Coordinates(51.509, -0.12))
+        planner.failFor = setOf("G")
+        trip.retry()
+        advanceUntilIdle()
+        trip.openRoute.value = null
+        advanceUntilIdle()
+        assertTrue(trip.state.value.directFailed)
+        // Its Retry asks for G again; H tapped meanwhile is answered after G.
+        planner.failFor = emptySet()
+        planner.viaDelays = mapOf("G" to 500, "H" to 1_000)
+        trip.retry()
+        advanceTimeBy(100)
+        trip.openDirect("blue", "H")
+        advanceUntilIdle()
+        assertEquals(routeKey(viaH), trip.openRoute.value)
+    }
+
+    @Test
+    fun `a Direct row tapped while a Retry asks for the one before says it found none, the older not reopened`() = runTest(dispatcher) {
+        var from: TripOrigin = TripOrigin.Here(Coordinates(51.5, -0.12))
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG), "H" to emptyList()) }
+        val trip = placeTrip(planner, origin = { from })
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        from = TripOrigin.Here(Coordinates(51.509, -0.12))
+        planner.failFor = setOf("G")
+        trip.retry()
+        advanceUntilIdle()
+        trip.openRoute.value = null
+        advanceUntilIdle()
+        // Its Retry asks for G again; H, tapped meanwhile, finds none before G is answered.
+        planner.failFor = emptySet()
+        planner.viaDelays = mapOf("G" to 500, "H" to 100)
+        trip.retry()
+        advanceTimeBy(100)
+        trip.openDirect("blue", "H")
+        advanceUntilIdle()
+        assertNull(trip.openRoute.value)
+        assertEquals(TripViewModel.DirectOpening("blue", "H", failed = true), trip.directOpening.value)
+        // G is let go with its notice: the next plan doesn't ask for it.
+        assertFalse(trip.state.value.directFailed)
+        val asked = planner.viaAsked.count { it.second == "G" }
+        trip.retry()
+        advanceUntilIdle()
+        assertEquals(asked, planner.viaAsked.count { it.second == "G" })
+    }
+
+    @Test
+    fun `a Direct route opened as a plan from elsewhere lands is judged by where that plan walks from`() = runTest(dispatcher) {
+        // The tap's look at the shown plan held on the worker, so another plan can land before it's opened.
+        var holdNext = false
+        var held: Runnable? = null
+        val worker = object : kotlinx.coroutines.CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (holdNext) {
+                    holdNext = false
+                    held = block
+                } else {
+                    dispatcher.dispatch(context, block)
+                }
+            }
+        }
+        // Planned at A; the plan from C, 200 m on, has the same route walking from C.
+        var from: TripOrigin = TripOrigin.Here(Coordinates(51.5, -0.12))
+        val fromC = TripRoute(viaG.legs.mapIndexed { i, leg -> if (i == 0) leg.copy(arrival = at(5)) else leg })
+        val planner = FakePlanner(listOf(changingToPlace, viaG)).apply { delays = mapOf("Home" to 1_000) }
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Place(Coordinates(51.5, -0.12), "Home")),
+            clock = { now }, plans = TripPlans(), io = dispatcher, compute = worker, origin = { from },
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        from = TripOrigin.Here(Coordinates(51.5018, -0.12))
+        planner.routes = listOf(changingToPlace, fromC)
+        trip.retry()
+        advanceTimeBy(500)
+        // Tapped at B, 100 m from each: A's plan has the route; C's lands before it's opened.
+        from = TripOrigin.Here(Coordinates(51.5009, -0.12))
+        holdNext = true
+        trip.openDirect("green", "G")
+        runCurrent()
+        advanceUntilIdle()
+        // Planning from here on fails, so the route opened stands as it was found.
+        planner.failWith = TflException.Offline(null)
+        dispatcher.dispatch(kotlin.coroutines.EmptyCoroutineContext, held!!)
+        advanceUntilIdle()
+        assertEquals(routeKey(fromC), trip.openRoute.value)
+        // Back at A, and the plan from there fails: the walk from C doesn't stand.
+        from = TripOrigin.Here(Coordinates(51.5, -0.12))
+        trip.retry()
+        advanceUntilIdle()
+        assertNull(trip.openRoute.value)
+        assertTrue(trip.state.value.directFailed)
+    }
+
+    @Test
+    fun `a Direct row tapped as a failed re-plan closes the one before still opens`() = runTest(dispatcher) {
+        var from: TripOrigin = TripOrigin.Here(Coordinates(51.5, -0.12))
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG), "H" to listOf(viaH)) }
+        val trip = placeTrip(planner, origin = { from })
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        // Moved, and the re-plan from there fails, closing G, while H, tapped meanwhile, is still asked for.
+        from = TripOrigin.Here(Coordinates(51.509, -0.12))
+        planner.delays = mapOf("Home" to 500)
+        planner.failWith = TflException.Offline(null)
+        planner.viaDelays = mapOf("H" to 1_000)
+        trip.retry()
+        advanceTimeBy(100)
+        trip.openDirect("blue", "H")
+        advanceUntilIdle()
+        assertEquals(routeKey(viaH), trip.openRoute.value)
+    }
+
+    @Test
+    fun `a Direct row tapped as a re-plan finds none for the one before still opens`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG), "H" to listOf(viaH)) }
+        val trip = placeTrip(planner)
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        // The re-plan finds nothing riding green alone from G any more, while H, tapped meanwhile, is asked for.
+        planner.byVia = mapOf("G" to emptyList(), "H" to listOf(viaH))
+        planner.viaDelays = mapOf("H" to 1_000)
+        trip.retry()
+        advanceTimeBy(100)
+        trip.openDirect("blue", "H")
+        advanceTimeBy(500)
+        // The screen closes G, gone from the plan ([openRouteGone]).
+        trip.openRoute.value = null
+        advanceUntilIdle()
+        assertEquals(routeKey(viaH), trip.openRoute.value)
+    }
+
+    @Test
+    fun `a route card opened and closed while a Direct row is planned stands, the row not opened after`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG)); viaDelay = 1_000 }
+        val trip = placeTrip(planner)
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceTimeBy(100)
+        // A card opened, then back to the list, before G's route is found.
+        trip.openRoute.value = routeKey(changingToPlace)
+        trip.openRoute.value = null
+        advanceUntilIdle()
+        assertNull(trip.openRoute.value)
+        assertNull(trip.directOpening.value)
+    }
+
+    @Test
+    fun `a Direct route opened from a new place stands over an older plan's copy published after`() = runTest(dispatcher) {
+        var from: TripOrigin = TripOrigin.Here(Coordinates(51.5, -0.12))
+        // The older plan's copy of H walks from where it was asked: the same key, other times.
+        val fromBefore = TripRoute(viaH.legs.mapIndexed { i, leg -> if (i == 0) leg.copy(arrival = at(5)) else leg })
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG), "H" to listOf(viaH)) }
+        val trip = placeTrip(planner, origin = { from })
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        // A re-plan from here has H, and its ask for G again is slow; meanwhile the rider moves and opens H.
+        planner.routes = listOf(changingToPlace, fromBefore)
+        planner.viaDelays = mapOf("G" to 1_000)
+        trip.retry()
+        advanceTimeBy(100)
+        from = TripOrigin.Here(Coordinates(51.509, -0.12))
+        trip.openDirect("blue", "H")
+        advanceUntilIdle()
+        assertEquals(routeKey(viaH), trip.openRoute.value)
+        assertTrue(viaH in trip.state.value.routes.orEmpty())
+        assertFalse(fromBefore in trip.state.value.routes.orEmpty())
+        assertTrue(routeKey(viaH) in trip.state.value.directKeys)
+    }
+
+    @Test
+    fun `a Direct route asked for from a new place replaces the old plan's copy`() = runTest(dispatcher) {
+        var from: TripOrigin = TripOrigin.Here(Coordinates(51.5, -0.12))
+        // From the new place the walk to G is longer: the same key, other times.
+        val fromHere = TripRoute(viaG.legs.mapIndexed { i, leg -> if (i == 0) leg.copy(arrival = at(9)) else leg })
+        val planner = FakePlanner(listOf(changingToPlace, viaG)).apply { byVia = mapOf("G" to listOf(fromHere)) }
+        val trip = placeTrip(planner, origin = { from })
+        trip.refresh()
+        advanceUntilIdle()
+        from = TripOrigin.Here(Coordinates(51.509, -0.12))
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        assertEquals(routeKey(fromHere), trip.openRoute.value)
+        assertTrue(fromHere in trip.state.value.routes.orEmpty())
+        assertFalse(viaG in trip.state.value.routes.orEmpty())
+    }
+
+    @Test
+    fun `a Direct route taken from the plan is judged by where that plan walks from`() = runTest(dispatcher) {
+        // Planned at A; tapped 100 m on at B, so the plan's own route is used: its walk is from A.
+        var from: TripOrigin = TripOrigin.Here(Coordinates(51.5, -0.12))
+        val planner = FakePlanner(listOf(changingToPlace, viaG))
+        val trip = placeTrip(planner, origin = { from })
+        trip.refresh()
+        advanceUntilIdle()
+        from = TripOrigin.Here(Coordinates(51.5009, -0.12))
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        assertTrue(planner.viaAsked.none { it.second == "G" })
+        // On to C, 100 m from B but 200 m from A: the plan from C drops it and the ask via G fails, so the walk
+        // from A doesn't stand.
+        from = TripOrigin.Here(Coordinates(51.5018, -0.12))
+        planner.routes = listOf(changingToPlace)
+        planner.failFor = setOf("G")
+        trip.retry()
+        advanceUntilIdle()
+        assertTrue(trip.state.value.directFailed)
+        assertFalse(viaG in trip.state.value.routes.orEmpty())
+    }
+
+    @Test
+    fun `a Direct row tapped as a plan without its route is published asks via its stop`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace, viaG)).apply { byVia = mapOf("G" to listOf(viaG)) }
+        val trip = placeTrip(planner)
+        trip.refresh()
+        advanceUntilIdle()
+        // The next plan lacks the route via G; the tap lands as it's published, finding the old plan's.
+        val wire = Tripwire(changingToPlace.legs, "unknownLines")
+        planner.routes = listOf(TripRoute(wire))
+        wire.onWalk = { trip.openDirect("green", "G") }
+        trip.retry()
+        advanceUntilIdle()
+        assertTrue(planner.viaAsked.any { it.second == "G" })
+        assertEquals(routeKey(viaG), trip.openRoute.value)
+        assertTrue(viaG in trip.state.value.routes.orEmpty())
+    }
+
+    @Test
+    fun `a Direct row is asked for again after each choice changed while it's asked`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG)) }
+        val trip = placeTrip(planner)
+        trip.refresh()
+        advanceUntilIdle()
+        planner.viaDelay = 1_000
+        trip.openDirect("green", "G")
+        advanceTimeBy(500)
+        trip.walkingSpeed = WalkingSpeed.FAST
+        advanceTimeBy(1_000)
+        trip.stepFree = StepFree.FULLY
+        advanceUntilIdle()
+        assertEquals(routeKey(viaG), trip.openRoute.value)
+        val viaGLevels = planner.viaAsked.indices.filter { planner.viaAsked[it].second == "G" }.map { planner.viaStepFrees[it] }
+        assertEquals(StepFree.FULLY, viaGLevels.last())
+    }
+
+    @Test
+    fun `a Direct row opens only a ride getting off at one of its stops near the place`() = runTest(dispatcher) {
+        // Green forks after G: one branch to S near the place, the other to T, a longer walk away.
+        val toT = TripRoute(
+            listOf(
+                viaG.legs[0],
+                leg("green", "G", "T", 6, 22),
+                TripLeg(mode = TripLeg.WALKING, lineId = "", lineName = "", fromId = "T", fromName = "T", toId = "", toName = "Home", departure = at(22), arrival = at(40)),
+            ),
+        )
+        // The plan has only the T branch; asked via G, the Planner offers both, T's sooner.
+        val planner = FakePlanner(listOf(changingToPlace, toT)).apply { byVia = mapOf("G" to listOf(toT, viaG)) }
+        val trip = placeTrip(planner)
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G", ends = setOf("S"))
+        advanceUntilIdle()
+        assertTrue(planner.viaAsked.any { it.second == "G" })
+        assertEquals(routeKey(viaG), trip.openRoute.value)
+    }
+
+    @Test
+    fun `a Direct row tapped after the rider moved asks for its route from where they are, not the old plan's`() = runTest(dispatcher) {
+        var from: TripOrigin = TripOrigin.Here(Coordinates(51.5, -0.12))
+        val planner = FakePlanner(listOf(changingToPlace, viaG)).apply { byVia = mapOf("G" to listOf(viaG)) }
+        val trip = placeTrip(planner, origin = { from })
+        trip.refresh()
+        advanceUntilIdle()
+        // About a kilometre on, the plan not yet made again: its route via G walks from the old place.
+        from = TripOrigin.Here(Coordinates(51.509, -0.12))
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        assertTrue(planner.viaAsked.any { it.second == "G" })
+        assertEquals(from, planner.viaOrigins.last())
+    }
+
+    @Test
+    fun `a Direct row opened as a re-plan is published waits for it, and stands`() = runTest(dispatcher) {
+        val wire = Tripwire(viaG.legs, "unknownLines")
+        val direct = TripRoute(wire)
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(direct), "H" to listOf(viaH)) }
+        val trip = placeTrip(planner)
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        // As the re-plan's publish checks G's lines, the rider closes G and opens H.
+        wire.onWalk = {
+            trip.openRoute.value = null
+            trip.openDirect("blue", "H")
+        }
+        trip.retry()
+        advanceUntilIdle()
+        assertEquals(routeKey(viaH), trip.openRoute.value)
+        assertEquals(setOf(routeKey(viaH)), trip.state.value.directKeys)
+        assertFalse(direct in trip.state.value.routes.orEmpty())
+    }
+
+    @Test
+    fun `a Direct route closed stays closed, its notice gone, even while a re-plan asks for it`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG)) }
+        val trip = placeTrip(planner)
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        // A re-ask that fails keeps it, said.
+        planner.failFor = setOf("G")
+        trip.retry()
+        advanceUntilIdle()
+        assertTrue(trip.state.value.directFailed)
+        // Closed: the notice goes with it.
+        trip.openRoute.value = null
+        advanceUntilIdle()
+        assertFalse(trip.state.value.directFailed)
+        // Opened again, then closed while a re-plan's re-ask is out: the answer doesn't bring it back.
+        planner.failFor = emptySet()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        planner.viaDelay = 1_000
+        trip.retry()
+        advanceTimeBy(500)
+        trip.openRoute.value = null
+        advanceUntilIdle()
+        assertFalse(viaG in trip.state.value.routes.orEmpty())
+        assertTrue(trip.state.value.directKeys.isEmpty())
+        val asked = planner.viaAsked.count { it.second == "G" }
+        trip.retry()
+        advanceUntilIdle()
+        assertEquals(asked, planner.viaAsked.count { it.second == "G" })
+    }
+
+    @Test
+    fun `a Direct route let go awaiting its Retry isn't asked for again once the trip is restored`() = runTest(dispatcher) {
+        var from: TripOrigin = TripOrigin.Stop("A")
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG)) }
+        val saved = androidx.lifecycle.SavedStateHandle()
+        val trip = placeTrip(planner, savedState = saved, origin = { from })
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        from = TripOrigin.Here(Coordinates(51.5, -0.13))
+        planner.failFor = setOf("G")
+        trip.retry()
+        advanceUntilIdle()
+        trip.openRoute.value = null
+        advanceUntilIdle()
+        assertTrue(trip.state.value.directFailed)
+        // Restored, as after process death, with nothing on screen for it: it's let go, never asked for.
+        planner.failFor = emptySet()
+        val asked = planner.viaAsked.count { it.second == "G" }
+        val restored = placeTrip(planner, savedState = androidx.lifecycle.SavedStateHandle(saved.keys().associateWith { saved.get<Any>(it) }), origin = { from })
+        restored.refresh()
+        advanceUntilIdle()
+        assertEquals(asked, planner.viaAsked.count { it.second == "G" })
+        assertTrue(restored.state.value.directKeys.isEmpty())
+    }
+
+    @Test
+    fun `a Direct route carried through a plan from elsewhere is asked again once the rider moves from where it was`() = runTest(dispatcher) {
+        // B, C 100 m on, D 100 m further: D is under 150 m from C but 200 m from B.
+        val b = TripOrigin.Here(Coordinates(51.5, -0.12))
+        var from: TripOrigin = b
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG), "H" to listOf(viaH)) }
+        val trip = placeTrip(planner, origin = { from })
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("blue", "H")
+        advanceUntilIdle()
+        // A plan from C asks for H again slowly; meanwhile, back at B, G is opened.
+        from = TripOrigin.Here(Coordinates(51.5009, -0.12))
+        planner.viaDelays = mapOf("H" to 1_000)
+        trip.retry()
+        advanceTimeBy(100)
+        from = b
+        trip.openRoute.value = null
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        assertEquals(routeKey(viaG), trip.openRoute.value)
+        // At D, a new fix: G's walk is from B, so it's planned again from here.
+        from = TripOrigin.Here(Coordinates(51.5018, -0.12))
+        val origins = planner.viaOrigins.size
+        trip.refreshFor(1L)
+        advanceUntilIdle()
+        assertEquals(from, planner.viaOrigins.drop(origins).lastOrNull())
+    }
+
+    @Test
+    fun `a Direct route open when the process died is asked for again once the trip is restored`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG)) }
+        val saved = androidx.lifecycle.SavedStateHandle()
+        val trip = placeTrip(planner, savedState = saved)
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        // A new model over the same saved state, as after process death, with a plan that lacks the route.
+        val restored = placeTrip(planner, savedState = androidx.lifecycle.SavedStateHandle(saved.keys().associateWith { saved.get<Any>(it) }))
+        restored.refresh()
+        advanceUntilIdle()
+        assertTrue(viaG in restored.state.value.routes.orEmpty())
+        assertEquals(routeKey(viaG), restored.openRoute.value)
+    }
+
+    @Test
+    fun `a Direct row tapped while a first plan is still landing opens the route already shown`() = runTest(dispatcher) {
+        // The plan's answer for another of the trip's stops is slow; the place's routes are already shown.
+        val planner = FakePlanner(emptyList()).apply {
+            byDestination = mapOf("Home" to listOf(changingToPlace, viaG), "C" to listOf(route))
+            delays = mapOf("C" to 1_000)
+        }
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Place(Coordinates(51.5, -0.12), "Home"), TripDestination.Stop("C")),
+            clock = { now }, plans = TripPlans(), io = dispatcher,
+        )
+        trip.refresh()
+        advanceTimeBy(100)
+        assertTrue(viaG in trip.state.value.routes.orEmpty())
+        assertTrue(trip.state.value.planning)
+        trip.openDirect("green", "G")
+        advanceTimeBy(100)
+        assertEquals(routeKey(viaG), trip.openRoute.value)
+        assertTrue(planner.viaAsked.none { it.second == "G" })
+        advanceUntilIdle()
+    }
+
+    @Test
+    fun `a Direct route opened while a first plan is still landing stays through its later answers`() = runTest(dispatcher) {
+        // The plan's answer for another of the trip's stops is slow; the place's routes lack G's ride.
+        val planner = FakePlanner(emptyList()).apply {
+            byDestination = mapOf("Home" to listOf(changingToPlace), "C" to listOf(route))
+            delays = mapOf("C" to 1_000)
+            byVia = mapOf("G" to listOf(viaG))
+        }
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Place(Coordinates(51.5, -0.12), "Home"), TripDestination.Stop("C")),
+            clock = { now }, plans = TripPlans(), io = dispatcher,
+        )
+        trip.refresh()
+        advanceTimeBy(100)
+        trip.openDirect("green", "G")
+        advanceTimeBy(100)
+        assertEquals(routeKey(viaG), trip.openRoute.value)
+        // C's answer lands, and the plan's ask for G again fails: G stays, planned from here under these.
+        planner.failFor = setOf("G")
+        advanceTimeBy(1_000)
+        assertTrue(viaG in trip.state.value.routes.orEmpty())
+        advanceUntilIdle()
+        assertEquals(routeKey(viaG), trip.openRoute.value)
+        assertTrue(viaG in trip.state.value.routes.orEmpty())
+    }
+
+    @Test
+    fun `a Direct row opens the plan's own route riding just its line from its stop`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace, viaG))
+        val trip = placeTrip(planner)
+        trip.refresh()
+        advanceUntilIdle()
+        val asked = planner.viaAsked.toList()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        assertEquals(routeKey(viaG), trip.openRoute.value)
+        // Nothing more asked of the Planner, and nothing added.
+        assertEquals(asked, planner.viaAsked)
+        assertTrue(trip.state.value.directKeys.isEmpty())
+        assertNull(trip.directOpening.value)
+    }
+
+    @Test
+    fun `a Direct row the plan has no route for is planned via its stop and opened, never a card`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(changingToPlace, viaG)) }
+        val trip = placeTrip(planner)
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        assertTrue(planner.viaAsked.last() == (TripDestination.Place(Coordinates(51.5, -0.12), "Home") to "G"))
+        // Only the route riding green alone is added, and opened.
+        assertEquals(routeKey(viaG), trip.openRoute.value)
+        assertTrue(viaG in trip.state.value.routes.orEmpty())
+        assertEquals(setOf(routeKey(viaG)), trip.state.value.directKeys)
+        // Closed, it's let go.
+        trip.openRoute.value = null
+        advanceUntilIdle()
+        assertFalse(viaG in trip.state.value.routes.orEmpty())
+        assertTrue(trip.state.value.directKeys.isEmpty())
+    }
+
+    @Test
+    fun `a Direct row's open route stays through a re-plan that doesn't offer it`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG)) }
+        val trip = placeTrip(planner)
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        trip.retry()
+        advanceUntilIdle()
+        assertTrue(viaG in trip.state.value.routes.orEmpty())
+        assertEquals(setOf(routeKey(viaG)), trip.state.value.directKeys)
+        assertEquals(routeKey(viaG), trip.openRoute.value)
+    }
+
+    @Test
+    fun `a Direct row that found none no longer says so once a choice changes`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace))
+        val trip = placeTrip(planner)
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        assertEquals(TripViewModel.DirectOpening("green", "G", failed = true), trip.directOpening.value)
+        trip.stepFree = StepFree.FULLY
+        advanceUntilIdle()
+        assertNull(trip.directOpening.value)
+    }
+
+    @Test
+    fun `a Direct row that found none no longer says so once planned from somewhere else`() = runTest(dispatcher) {
+        var from: TripOrigin = TripOrigin.Here(Coordinates(51.5, -0.12))
+        val planner = FakePlanner(listOf(changingToPlace))
+        val trip = placeTrip(planner, origin = { from })
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        assertEquals(TripViewModel.DirectOpening("green", "G", failed = true), trip.directOpening.value)
+        // Planned again from the same place, it still says so; from somewhere else, it doesn't.
+        trip.retry()
+        advanceUntilIdle()
+        assertEquals(TripViewModel.DirectOpening("green", "G", failed = true), trip.directOpening.value)
+        from = TripOrigin.Here(Coordinates(51.509, -0.12))
+        trip.retry()
+        advanceUntilIdle()
+        assertNull(trip.directOpening.value)
+    }
+
+    @Test
+    fun `a Direct row that finds none while a plan from elsewhere runs still says so`() = runTest(dispatcher) {
+        for (fails in listOf(false, true)) {
+            var from: TripOrigin = TripOrigin.Here(Coordinates(51.5, -0.12))
+            val planner = FakePlanner(listOf(changingToPlace))
+            val trip = placeTrip(planner, origin = { from })
+            trip.refresh()
+            advanceUntilIdle()
+            // A plan from A is slow; meanwhile, at B, G is tapped and finds none.
+            planner.delays = mapOf("Home" to 1_000)
+            if (fails) planner.failWith = TflException.Offline(null)
+            trip.retry()
+            advanceTimeBy(100)
+            from = TripOrigin.Here(Coordinates(51.509, -0.12))
+            trip.openDirect("green", "G")
+            advanceUntilIdle()
+            assertEquals("$fails", TripViewModel.DirectOpening("green", "G", failed = true), trip.directOpening.value)
+        }
+    }
+
+    @Test
+    fun `a Direct row that found none no longer says so once a plan from somewhere else fails`() = runTest(dispatcher) {
+        var from: TripOrigin = TripOrigin.Here(Coordinates(51.5, -0.12))
+        val planner = FakePlanner(listOf(changingToPlace))
+        val trip = placeTrip(planner, origin = { from })
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        from = TripOrigin.Here(Coordinates(51.509, -0.12))
+        planner.failWith = TflException.Offline(null)
+        trip.retry()
+        advanceUntilIdle()
+        assertNull(trip.directOpening.value)
+    }
+
+    @Test
+    fun `a Direct row with no route riding just its line says so and opens nothing`() = runTest(dispatcher) {
+        val warnings = mutableListOf<String>()
+        // Via G the Planner only offers a route that changes.
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(changingToPlace)) }
+        val trip = placeTrip(planner, warn = { warnings += it })
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        assertNull(trip.openRoute.value)
+        assertEquals(TripViewModel.DirectOpening("green", "G", failed = true), trip.directOpening.value)
+        assertTrue(warnings.contains("direct route on green from G: none of 1 planned rides it alone"))
+        // A Planner failure says so too.
+        planner.failFor = setOf("G")
+        trip.openDirect("green", "G")
+        advanceUntilIdle()
+        assertEquals(TripViewModel.DirectOpening("green", "G", failed = true), trip.directOpening.value)
+        assertTrue(warnings.contains("direct route on green from G not planned: Offline"))
+    }
+
     @Test
     fun `a trip to a place stands when asking once more fails, and says so`() = runTest(dispatcher) {
         val planner = FakePlanner(listOf(changingToPlace)).apply { failFor = setOf("S") }
@@ -1526,6 +2845,19 @@ class TripViewModelTest {
         assertTrue("line${TripViewModel.MAX_ROUTES}" in timedLineIds(routes, emptySet(), keep = setOf(routeKey(last))))
         // A key the plan doesn't offer adds nothing.
         assertEquals(TripViewModel.bestOf(routes), TripViewModel.bestOf(routes, keep = "gone"))
+    }
+
+    @Test
+    fun `a Direct row's route never takes one of the soonest few's place`() {
+        // The cap's worth of routes, and a Direct route arriving before them all.
+        val routes = (0 until TripViewModel.MAX_ROUTES).map { i -> TripRoute(listOf(leg("line$i", "A", "C", 5, 10L + i))) }
+        val direct = TripRoute(listOf(leg("green", "G", "C", 2, 6)))
+        val key = routeKey(direct)
+        val timed = TripViewModel.bestOf(routes + direct, keep = key, direct = setOf(key))
+        assertTrue(routes.all { it in timed })
+        assertTrue(direct in timed)
+        // Not kept (closed), it isn't timed at all.
+        assertFalse(direct in TripViewModel.bestOf(routes + direct, direct = setOf(key)))
     }
 
     // The route getting off at C arrives after the detour gets to E: the detour is the quicker way

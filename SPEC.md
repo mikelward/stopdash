@@ -1562,6 +1562,19 @@ its age, and only while the trip is on screen. Within 200 m of the place (where 
 section isn't shown and nothing is looked up. It replaces favorite journeys as the way to see the
 trains that go straight somewhere.
 
+A Direct row tapped opens its ride as a route of the trip (maintainer, 2026-10-07), as a route card
+does: the walk to its stop, that line to the stop near the place, the walk on, timed live and startable
+*On the way*. The plan's own route riding just that line from that stop when it has one; otherwise
+TfL's Journey Planner is asked once for the trip via that stop, under the rider's own choices, and its
+route riding just that line is opened. That route is never a card of its own and is let go once closed;
+while open, each re-plan asks for it again from where and under what that plan is (a rider who has
+moved, or changed a choice, never keeps a walk timed from before), as does the trip restored after the
+app was closed in the background. An answer to choices the rider has since changed is asked again. A
+re-ask that can't reach the Planner says **Couldn't update the Direct route** with a Retry, keeping the
+route on show only while it was planned from the same place under the same choices.
+While it's found the row says **Planning…** where its times go; when none rides that line alone, or the
+Planner can't be reached, **Couldn't plan**, never another route in its place.
+
 **One row of choices** (maintainer, 2026-10-07). Atop a trip's routes the walking speed, max walk
 and step-free level are one row of dropdown chips rather than a full-width row each, so the routes
 start two rows higher: the pace by a walking icon ("Medium"), the limit by a word ("Max 20 min"), the

@@ -23,6 +23,7 @@ import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -81,6 +82,28 @@ class PlaceDirectViewModelTest {
         val row = ready.rows.single()
         assertEquals("TOP", row.row.fromId)
         assertEquals("1 · 5 min", row.times)
+    }
+
+    @Test
+    fun `a row carries the stops near the place its trains reach, for a tap to open its ride`() = runBlocking {
+        val model = model(client { listOf(departure("Bottom", 60)) }, ends = { listOf(DirectTrips.End("BOT", "Bottom", "HUBB")) })
+        model.refresh()
+        val row = (model.state.value as PlaceDirectViewModel.State.Ready).rows.single()
+        assertEquals(setOf("BOT", "HUBB"), row.endIds)
+        assertEquals("BOT,HUBB", row.endKey)
+    }
+
+    @Test
+    fun `a failed tap is said only on the row as it reached when tapped`() = runBlocking {
+        val model = model(client { listOf(departure("Bottom", 60)) }, ends = { listOf(DirectTrips.End("BOT", "Bottom", "HUBB")) })
+        model.refresh()
+        val shown = (model.state.value as PlaceDirectViewModel.State.Ready).rows.single()
+        val failed = TripViewModel.DirectOpening(shown.row.lineId, shown.row.fromId, failed = true, endKey = shown.endKey)
+        assertTrue(directOpeningOf(failed, shown))
+        // Reaching another stop since: it may have a route now, so it doesn't say it failed; still planning, it does.
+        val reachesMore = shown.copy(endKey = "BOT,HUBB,OTHER")
+        assertFalse(directOpeningOf(failed, reachesMore))
+        assertTrue(directOpeningOf(failed.copy(failed = false), reachesMore))
     }
 
     @Test

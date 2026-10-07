@@ -1208,7 +1208,11 @@ class TripScreenScreenshotTest {
         )
     }
 
-    private fun showDirect(direct: PlaceDirectViewModel.State) {
+    private fun showDirect(
+        direct: PlaceDirectViewModel.State,
+        onOpen: ((PlaceDirectViewModel.ShownRow) -> Unit)? = null,
+        opening: androidx.compose.runtime.State<TripViewModel.DirectOpening?> = androidx.compose.runtime.mutableStateOf(null),
+    ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 TripScreen(
@@ -1222,7 +1226,7 @@ class TripScreenScreenshotTest {
                     onWalkingSpeedChange = {},
                     onMaxWalkChange = {},
                     onStepFreeChange = {},
-                    aboveRoutes = { PlaceDirectSection(direct, onRetry = {}) },
+                    aboveRoutes = { PlaceDirectSection(direct, onRetry = {}, onOpen = onOpen, opening = opening.value) },
                 )
             }
         }
@@ -1252,6 +1256,29 @@ class TripScreenScreenshotTest {
         captureSnapshot("trip-place-direct.png")
         composeRule.onNodeWithText("+1 more").performClick()
         composeRule.onNodeWithTag("placeDirect-135").assertExists()
+    }
+
+    @Test
+    fun trip_place_direct_row_opens_its_route() {
+        // A row tapped opens its ride as a route; while it's found the row says so where its times go,
+        // and says so too when none was.
+        val tapped = mutableListOf<PlaceDirectViewModel.ShownRow>()
+        val opening = androidx.compose.runtime.mutableStateOf<TripViewModel.DirectOpening?>(null)
+        showDirect(
+            PlaceDirectViewModel.State.Ready(
+                listOf(directRow("jubilee", "Jubilee", "tube", "Bond Street", 2, 5, 9)),
+                checking = false,
+                uncertain = false,
+            ),
+            onOpen = { tapped += it },
+            opening = opening,
+        )
+        composeRule.onNodeWithTag("placeDirect-jubilee").performClick()
+        assertEquals(listOf("jubilee"), tapped.map { it.row.lineId })
+        opening.value = TripViewModel.DirectOpening("jubilee", "Bond Street")
+        composeRule.onNodeWithTag("placeDirectPlanning-jubilee", useUnmergedTree = true).assertTextEquals("Planning…")
+        opening.value = TripViewModel.DirectOpening("jubilee", "Bond Street", failed = true)
+        composeRule.onNodeWithTag("placeDirectNotPlanned-jubilee", useUnmergedTree = true).assertTextEquals("Couldn't plan")
     }
 
     @Test

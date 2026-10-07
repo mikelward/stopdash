@@ -134,7 +134,10 @@ internal fun tripFrame(
     // ([TripTiming.withoutSlowerChanges]); an open one stays open.
     // The list's cards leave out a route timed only as the one open, past the cap ([TripViewModel.bestOf]):
     // closing it while this frame stands in shows the list it would show (Codex, #529).
-    val listed = TripViewModel.bestOf(state.shownRoutes(excluded).orEmpty()).mapTo(HashSet(), ::routeKey)
+    // Nor a Direct row's route ([TripViewModel.openDirect]): it's there only to be open, and the soonest
+    // few are counted without it, so it never takes a card's place.
+    val listed = TripViewModel.bestOf(state.shownRoutes(excluded).orEmpty(), direct = state.directKeys)
+        .mapTo(HashSet(), ::routeKey)
     // Nor one kept only as the one open, its train through a change not predicted: closed, it's off the
     // list as it would be (Codex, #529).
     val cards = estimates?.let { all -> tripCards(TripTiming.withoutSlowerChanges(all.filter { routeKey(it.route) in listed && it in vouched })) }

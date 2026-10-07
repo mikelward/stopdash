@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.lazy.LazyColumn
@@ -46,7 +47,15 @@ private val DIRECT_EXPANDED_MAX = 200.dp
  * header shows from the first frame so the routes under it don't jump when the rows land.
  */
 @Composable
-internal fun PlaceDirectSection(state: PlaceDirectViewModel.State, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+internal fun PlaceDirectSection(
+    state: PlaceDirectViewModel.State,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+    // A row tapped: its ride opened as a route (maintainer, 2026-10-07), as a card below opens. Null, not tappable.
+    onOpen: ((PlaceDirectViewModel.ShownRow) -> Unit)? = null,
+    // The row being opened, said in place of its times while its route is found, or that none was.
+    opening: TripViewModel.DirectOpening? = null,
+) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     Column(modifier.fillMaxWidth().testTag("placeDirect").padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(
@@ -65,12 +74,12 @@ internal fun PlaceDirectSection(state: PlaceDirectViewModel.State, onRetry: () -
                     // the rows in view are composed, however many lines go there.
                     if (expanded) {
                         LazyColumn(Modifier.heightIn(max = DIRECT_EXPANDED_MAX).testTag("placeDirectRows")) {
-                            items(state.rows, key = { it.row.lineId }) { DirectRow(it) }
+                            items(state.rows, key = { it.row.lineId }) { DirectRow(it, onOpen, opening) }
                         }
                     } else {
                         Column(Modifier.testTag("placeDirectRows")) {
                             // At most [DIRECT_ROWS], by index: nothing that grows with the answer.
-                            for (i in 0 until minOf(DIRECT_ROWS, state.rows.size)) DirectRow(state.rows[i])
+                            for (i in 0 until minOf(DIRECT_ROWS, state.rows.size)) DirectRow(state.rows[i], onOpen, opening)
                         }
                     }
                     val more = if (expanded) 0 else state.rows.size - minOf(DIRECT_ROWS, state.rows.size)
@@ -90,10 +99,20 @@ internal fun PlaceDirectSection(state: PlaceDirectViewModel.State, onRetry: () -
     }
 }
 
+/**
+ * Whether [opening] is [shown]'s: its line and stop, and, once failed, the stops near the place it reached when tapped.
+ * A row that reaches others since (a branch's trains now listed) may have a route: it doesn't say it failed.
+ */
+internal fun directOpeningOf(opening: TripViewModel.DirectOpening, shown: PlaceDirectViewModel.ShownRow): Boolean =
+    opening.lineId == shown.row.lineId && opening.fromId == shown.row.fromId && (!opening.failed || opening.endKey == shown.endKey)
+
 @Composable
-private fun DirectRow(shown: PlaceDirectViewModel.ShownRow) {
+private fun DirectRow(shown: PlaceDirectViewModel.ShownRow, onOpen: ((PlaceDirectViewModel.ShownRow) -> Unit)?, opening: TripViewModel.DirectOpening?) {
     val row = shown.row
-    Row(Modifier.fillMaxWidth().testTag("placeDirect-${row.lineId}"), verticalAlignment = Alignment.Top) {
+    val tap = onOpen?.let { open -> Modifier.clickable(onClickLabel = stringResource(R.string.trip_direct_open)) { open(shown) } } ?: Modifier
+    // This row's route being found, or not found: said where its times go, so nothing else moves.
+    val mine = opening?.takeIf { directOpeningOf(it, shown) }
+    Row(Modifier.fillMaxWidth().then(tap).testTag("placeDirect-${row.lineId}"), verticalAlignment = Alignment.Top) {
         Box(Modifier.heightIn(min = 40.dp), contentAlignment = Alignment.Center) {
             LinePill(row.lineName, row.lineId, row.mode, Modifier.widthIn(min = 56.dp))
         }
@@ -126,7 +145,21 @@ private fun DirectRow(shown: PlaceDirectViewModel.ShownRow) {
         }
         Spacer(Modifier.width(8.dp))
         Box(Modifier.heightIn(min = 40.dp), contentAlignment = Alignment.CenterEnd) {
-            Text(shown.times, style = MaterialTheme.typography.bodyLarge)
+            when {
+                mine == null -> Text(shown.times, style = MaterialTheme.typography.bodyLarge)
+                mine.failed -> Text(
+                    stringResource(R.string.trip_direct_not_planned),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.testTag("placeDirectNotPlanned-${row.lineId}"),
+                )
+                else -> Text(
+                    stringResource(R.string.trip_planning),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag("placeDirectPlanning-${row.lineId}"),
+                )
+            }
         }
     }
 }

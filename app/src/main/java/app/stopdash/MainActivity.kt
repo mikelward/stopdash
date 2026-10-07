@@ -3655,7 +3655,17 @@ class MainActivity : ComponentActivity() {
             onWithheld = trip::noteWithheld,
             onListShown = trip::noteListShown,
             aboveRoutes = if (direct != null && directState != null) {
-                { PlaceDirectSection(directState, direct::retry) }
+                {
+                    // A row opens its ride as a route of this trip ([TripViewModel.openDirect]).
+                    PlaceDirectSection(
+                        directState,
+                        direct::retry,
+                        // Only a ride getting off at one of the stops near the place its trains reach ([ShownRow.endIds],
+                        // worked out with the look: the tap only reads them).
+                        onOpen = { shown -> trip.openDirect(shown.row.lineId, shown.row.fromId, shown.endIds, shown.endKey) },
+                        opening = trip.directOpening.collectAsStateWithLifecycle().value,
+                    )
+                }
             } else {
                 null
             },
