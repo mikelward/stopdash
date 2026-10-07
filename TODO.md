@@ -2680,7 +2680,8 @@ Builds on Phase 1's minimal line-status marking.
   - [x] **The lines that serve it**, as pills, each opening that line's page, and its interchange's other
         stations and the stations nearby, each opening its details (maintainer, 2026-10-07), from the
         bundled index.
-    - [ ] Back from a station opened from another's details returns to the line, not the station before it.
+    - [x] Back from a station opened from another's details returns to the station before it, as it was left
+          (the last ten kept), and from the first to the line.
     - [ ] **A station under several ids in no interchange opens them all** (Codex on #664): Weybridge is two
           records, one place, no hub. Its details' board asks for both, but From and To open one id, as
           the station search does (it folds the pair into one match). The station page and trip planning

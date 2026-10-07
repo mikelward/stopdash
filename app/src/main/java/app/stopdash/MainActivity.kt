@@ -746,7 +746,7 @@ class MainActivity : ComponentActivity() {
                 // The line open there: kept here, not in the overlay, so a page under Licenses is still
                 // up after Back from them (the overlay leaves composition beneath them).
                 var linesLine by rememberSaveable(stateSaver = LineRefSaver) { mutableStateOf<LineRef?>(null) }
-                // And the search's scroll, for the same reason.
+                // And the search's scroll, and each open stop page's, for the same reason.
                 val linesSaveable = rememberSaveableStateHolder()
                 // A stop tapped on that line's map, its details up; its From opens the stop's page over
                 // Lines…, whose Back returns here.
@@ -756,6 +756,8 @@ class MainActivity : ComponentActivity() {
                 val closeLines = { model: LinesViewModel ->
                     linesOpen = false
                     linesLine = null
+                    // The stop pages' scrolls go with them.
+                    linesStop?.pageKeys()?.forEach(linesSaveable::removeState)
                     linesStop = null
                     linesSaveable.removeState(LinesViewModel.SEARCH_STATE_KEY)
                     model.setQuery("")
