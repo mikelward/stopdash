@@ -1518,6 +1518,27 @@ buggy that Station suits them too. A change plans the trip again at once, as a w
 (above) takes in the step-free level too, so a rider who needs step-free routes is never first shown
 routes with stairs.
 
+**Direct to a place** (maintainer, 2026-10-07). A trip to a place (a favorite, or a place or postcode
+picked in *To…*) shows a **Direct** section under its choices and over its routes: each line from the
+trip's origin stops whose route calls at a stop within about ten minutes' walk (800 m) of the place,
+once, from its nearest stop, with its next three trains ("3 · 8 · 13 min"), nearest stop first; a line
+not running a good service says so under its row ("Jubilee: Minor Delays"), as does a closure at the
+stop it boards at, or at every stop near the place it gets off at; a line whose status, or a stop whose
+closures, couldn't be had counts as unchecked. With a
+step-free level chosen (*Step-free*), a line shows only where the stop it leaves from and a stop near
+the place both meet it, by the bundled step-free table (a bus always does); a station the table
+doesn't describe is left out and the section says it couldn't check every line. An avoided or
+hidden line, or a mode the trip's chips turned off, never shows; a change to any of them, a new
+nearby set, or a pull looks again at once. Three
+rows show, then "+N more". A line is judged by its route as a trip's leg is, so a departure whose route
+isn't known yet is left out and flagged rather than guessed; with none it says **None**, while routes
+load **Checking…**, and when the place's stops or every origin stop's arrivals couldn't be had,
+**Couldn't check** with a Retry. The place's stops are one TfL `/StopPoint` lookup by its coordinate
+(cached a day, apart from the rider's own areas); arrivals come from the shared cache, fetched only past
+its age, and only while the trip is on screen. Within 200 m of the place (where its chip hides) the
+section isn't shown and nothing is looked up. It replaces favorite journeys as the way to see the
+trains that go straight somewhere.
+
 **One row of choices** (maintainer, 2026-10-07). Atop a trip's routes the walking speed, max walk
 and step-free level are one row of dropdown chips rather than a full-width row each, so the routes
 start two rows higher: the pace by a walking icon ("Medium"), the limit by a word ("Max 20 min"), the

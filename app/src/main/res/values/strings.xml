@@ -385,6 +385,13 @@
     <string name="trip_label_separator">" · "</string>
     <string name="trip_label_other">Other</string>
     <string name="trip_no_routes">No routes found</string>
+    <!-- A trip to a place: the lines from the rider's stops that go straight there, over the routes. -->
+    <string name="trip_direct_title">Direct</string>
+    <string name="trip_direct_checking">Checking…</string>
+    <string name="trip_direct_none">None</string>
+    <string name="trip_direct_failed">Couldn\'t check</string>
+    <string name="trip_direct_more">+%1$d more</string>
+    <string name="trip_direct_partial">Couldn\'t check every line</string>
     <!-- Atop a trip's routes, before a chip per line the rider avoids (maintainer, 2026-10-01). -->
     <string name="trip_avoiding">Avoiding</string>
     <!-- Screen-reader label for one of those chips, which a tap stops avoiding; the argument names the line. -->

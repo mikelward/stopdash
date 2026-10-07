@@ -942,6 +942,9 @@ internal fun TripScreen(
     // One line for the debug log when the list first shows: how long it took and what it last waited
     // for ([RevealLog]), so a slow trip page says where the time went.
     onListShown: (String) -> Unit = {},
+    // Drawn under the choices, above the routes, while no route is open: a trip to a place's *Direct*
+    // section ([PlaceDirectSection]). Null draws nothing.
+    aboveRoutes: (@Composable () -> Unit)? = null,
 ) {
     val statuses = rememberStatusesAsOf(state.statuses, state.statusesSortedOn, now)
     val state = remember(state, statuses) { state.copy(statuses = statuses) }
@@ -981,6 +984,7 @@ internal fun TripScreen(
             avoided = TripAvoided(avoidedLines, onAvoidLine, onStopAvoiding, avoidedLinesWriteFailed, onAvoidedLinesWriteFailureShown),
             tripKey = journey,
             onListShown = onListShown,
+            aboveRoutes = aboveRoutes,
         )
     }
 }
@@ -1109,6 +1113,7 @@ private fun TripContent(
     avoided: TripAvoided = TripAvoided(),
     tripKey: Any? = null,
     onListShown: (String) -> Unit = {},
+    aboveRoutes: (@Composable () -> Unit)? = null,
 ) {
     // What the routes leave out: the hidden modes and lines, and the lines avoided ([AvoidedLines]).
     // Only the hidden ones are the "hidden" banner's: an avoided line is said by its own chip.
@@ -1580,6 +1585,8 @@ private fun TripContent(
                 }
                 // The lines avoided, under the modes: each a chip a tap stops avoiding.
                 avoided.onStopAvoiding?.let { AvoidedLineChips(avoided.lines, it) }
+                // A place's direct trains, under every choice: they don't depend on them.
+                aboveRoutes?.invoke()
             }
             TripBanners(framing?.failed.orEmpty(), locationBanner, onRelocate, hiddenModes, onShowAllModes)
             // Hold still (SPEC *Engineering quality bar*): the list appears once, after its plan, its live

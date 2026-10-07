@@ -134,7 +134,10 @@ its bus stops, each request carrying the same start. A trip **to a saved favorit
 **coordinate** as the destination — the Planner walks the last leg to it — while the favorite's name
 and id stay on your device. To a favorite, or a place or postcode picked in *To…*, when the fastest
 route there changes, the Planner is asked once more between the same ends, via the stop that route
-gets off at, to find one ride the whole way. Your location and a favorite's coordinate are the same **Location** data
+gets off at, to find one ride the whole way. A trip to a place (a favorite, or a place or postcode
+picked in *To…*) also asks TfL once for the **stops near that place's coordinate**, to list the trains
+from your stops that go straight there; it isn't asked when you're already within 200 m of the place.
+Your location and a favorite's coordinate are the same **Location** data
 the app already shares with TfL, so they add no Play Data Safety category. The Planner is asked when a trip opens, again when you've moved on from where it was planned, about every 15 minutes while it stays on screen (every 5 while a route's arrival can't be told without a fresh plan), and
 when you tap *Try again*; while a trip is on screen, the departures at each stop where a route
 boards are fetched from TfL like any other stop's, along with its lines' status. The plan is held
@@ -198,7 +201,8 @@ near where you last used it, stopdash keeps the **positions of its last few near
 (up to four places) and the stops found around each, for up to a day, in the app's cache
 directory. Android never includes that directory in a backup or device transfer, it is never
 logged or sent anywhere, and clearing the app's cache removes it; an entry older than a day is
-deleted the next time the app looks up nearby stops.
+deleted the next time the app looks up nearby stops. The stops found near the places your trips go
+to are kept the same way, in a file of their own (up to four places, for up to a day).
 
 The **routes and stop areas the app fetched** (a line's stops, and the stops grouped with a
 journey's starting stop) are kept the same way, for up to a day, so reopening a route doesn't ask
