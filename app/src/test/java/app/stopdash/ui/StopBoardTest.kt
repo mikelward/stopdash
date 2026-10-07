@@ -4,10 +4,13 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.junit4.createComposeRule
 import app.stopdash.domain.Departure
+import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.StopArrivals
 import java.time.Instant
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -214,6 +217,184 @@ class StopBoardTest {
         } finally {
             executor.shutdown()
         }
+    }
+
+    @Test
+    fun the_board_keeps_its_services_by_route_so_a_route_page_finds_its_row_again() {
+        val view = stopBoardView(loaded(board), "victoria", now)
+        assertEquals(4, view.rowsByKey.size)
+        view.rowsByKey.forEach { (key, row) -> assertEquals(key, row.detailKey()) }
+        assertEquals(setOf("victoria", "central", "bakerloo"), view.rowsByKey.values.map { it.lineId }.toSet())
+    }
+
+    @Test
+    fun a_bus_alert_wholly_behind_the_stop_is_muted_on_its_board_and_route_page_as_on_the_near_me_list() {
+        // A made-up bus route north from Bank, and a diversion in TfL's words on a stretch at its south end.
+        val route = app.stopdash.domain.LineSequence(
+            listOf(app.stopdash.domain.LineRoute("Bank - North End", listOf("b1", "b2", "b3", "b4", "b5"), "inbound")),
+            mapOf("b1" to "Bank / King William Street", "b2" to "Example Street", "b3" to "Moorgate", "b4" to "Alpha Road", "b5" to "North End"),
+        )
+        val diversion = app.stopdash.domain.LineStatus(
+            "99", 5, "Diversion",
+            "Buses are not serving stops between 'Bank Station/King William Street' and 'Moorgate Station'.",
+            soleAlert = true,
+        )
+        val state = DeparturesUiState.Loaded(
+            stops = listOf(
+                StopArrivals("b4", "Alpha Road", listOf(Departure("99", "99", "inbound", "North End", "", now.plusSeconds(120), "bus")), fetchedAt = now),
+            ),
+            fetchedAt = now,
+            lineStatuses = mapOf("99" to diversion),
+        )
+        // Past the stretch: the row the route page opens on keeps the alert to show muted, unflagged.
+        val placed = stopBoardView(state, "99", now, alertSequences = mapOf("99" to route)).rowsByKey.values.single()
+        assertEquals(null, placed.status)
+        assertEquals(diversion, placed.statusBehind)
+        // With no route in, the alert stays on.
+        assertEquals(diversion, stopBoardView(state, "99", now).rowsByKey.values.single().status)
+        // The board asks for the line's route itself, through the route pages' cache, and mutes the alert once it's in.
+        val repository = app.stopdash.domain.RouteStopsRepository(
+            object : app.stopdash.domain.RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String) = route
+            },
+            io = kotlinx.coroutines.Dispatchers.Unconfined,
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+        var view: StopBoardView? = null
+        composeRule.setContent {
+            CompositionLocalProvider(
+                LocalWorker provides kotlinx.coroutines.Dispatchers.Unconfined,
+                LocalRouteStops provides repository,
+            ) {
+                view = rememberStopBoard(StopDepartures(state, now, onRefresh = {}), "99")
+            }
+        }
+        composeRule.waitUntil(5_000) { view?.rowsByKey?.values?.singleOrNull()?.statusBehind != null }
+        assertEquals(null, view!!.rowsByKey.values.single().status)
+    }
+
+    @Test
+    fun a_route_held_past_the_cache_s_day_is_asked_for_again() {
+        val route = app.stopdash.domain.LineSequence(
+            listOf(app.stopdash.domain.LineRoute("Bank - North End", listOf("b1", "b2", "b3", "b4", "b5"), "inbound")),
+            mapOf("b1" to "Bank / King William Street", "b2" to "Example Street", "b3" to "Moorgate", "b4" to "Alpha Road", "b5" to "North End"),
+        )
+        val diversion = app.stopdash.domain.LineStatus(
+            "99", 5, "Diversion",
+            "Buses are not serving stops between 'Bank Station/King William Street' and 'Moorgate Station'.",
+            soleAlert = true,
+        )
+        fun board(at: Instant) = DeparturesUiState.Loaded(
+            stops = listOf(
+                StopArrivals("b4", "Alpha Road", listOf(Departure("99", "99", "inbound", "North End", "", at.plusSeconds(120), "bus")), fetchedAt = at),
+            ),
+            fetchedAt = at,
+            lineStatuses = mapOf("99" to diversion),
+        )
+        var clock = now
+        var asked = 0
+        val repository = app.stopdash.domain.RouteStopsRepository(
+            object : app.stopdash.domain.RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): app.stopdash.domain.LineSequence {
+                    asked++
+                    return route
+                }
+            },
+            clock = { clock },
+            io = kotlinx.coroutines.Dispatchers.Unconfined,
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+        var departures by androidx.compose.runtime.mutableStateOf(StopDepartures(board(now), now, onRefresh = {}))
+        var view: StopBoardView? = null
+        composeRule.setContent {
+            CompositionLocalProvider(
+                LocalWorker provides kotlinx.coroutines.Dispatchers.Unconfined,
+                LocalRouteStops provides repository,
+            ) {
+                view = rememberStopBoard(departures, "99")
+            }
+        }
+        composeRule.waitUntil(5_000) { view?.rowsByKey?.values?.singleOrNull()?.statusBehind != null }
+        val first = asked
+        assertTrue(first > 0)
+        // A refresh within the day asks the cache, not TfL.
+        departures = StopDepartures(board(now.plusSeconds(60)), now.plusSeconds(60), onRefresh = {})
+        composeRule.waitForIdle()
+        assertEquals(first, asked)
+        // The details still up a day and more later: the next refresh asks for the route again.
+        clock = now.plus(java.time.Duration.ofHours(25))
+        departures = StopDepartures(board(clock), clock, onRefresh = {})
+        composeRule.waitForIdle()
+        assertTrue(asked > first)
+    }
+
+    @Test
+    fun a_dismissed_bus_alert_asks_for_no_route() {
+        val diversion = app.stopdash.domain.LineStatus(
+            "99", 5, "Diversion",
+            "Buses are not serving stops between 'Bank Station/King William Street' and 'Moorgate Station'.",
+            soleAlert = true,
+        )
+        val state = DeparturesUiState.Loaded(
+            stops = listOf(
+                StopArrivals("b4", "Alpha Road", listOf(Departure("99", "99", "inbound", "North End", "", now.plusSeconds(120), "bus")), fetchedAt = now),
+            ),
+            fetchedAt = now,
+            lineStatuses = mapOf("99" to diversion),
+        )
+        // The rider dismissed it already: its route couldn't change the board, so none is asked for.
+        val dismissed = setOfNotNull(app.stopdash.domain.DismissedAlert.of(DepartureRows.across(state.stops, now, state.lineStatuses).single()))
+        assertEquals(1, dismissed.size)
+        var asked = 0
+        val repository = app.stopdash.domain.RouteStopsRepository(
+            object : app.stopdash.domain.RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): app.stopdash.domain.LineSequence {
+                    asked++
+                    error("not asked for")
+                }
+            },
+            io = kotlinx.coroutines.Dispatchers.Unconfined,
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+        var view: StopBoardView? = null
+        composeRule.setContent {
+            CompositionLocalProvider(
+                LocalWorker provides kotlinx.coroutines.Dispatchers.Unconfined,
+                LocalRouteStops provides repository,
+            ) {
+                view = rememberStopBoard(StopDepartures(state, now, onRefresh = {}, dismissed = dismissed), "99")
+            }
+        }
+        composeRule.waitUntil(5_000) { view != null }
+        composeRule.waitForIdle()
+        assertEquals(0, asked)
+    }
+
+    @Test
+    fun a_row_tapped_on_the_board_opens_its_route_page_and_back_returns_to_the_stop() {
+        val state = loaded(board)
+        var opened: Pair<String, String?>? = null
+        var routeKey by androidx.compose.runtime.mutableStateOf<String?>(null)
+        composeRule.setContent {
+            CompositionLocalProvider(LocalWorker provides kotlinx.coroutines.Dispatchers.Unconfined) {
+                val departures = StopDepartures(state, now, onRefresh = {})
+                val view = rememberStopBoard(departures, "victoria")
+                androidx.compose.foundation.lazy.LazyColumn {
+                    stopBoard(departures, view, "Victoria") { row, focus ->
+                        opened = row.lineId to focus?.destination
+                        routeKey = row.detailKey()
+                    }
+                }
+                routeKey?.let { key -> StopRoutePage(view, key, null, androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }, onBack = { routeKey = null }) }
+            }
+        }
+        composeRule.onNodeWithText("Brixton").performClick()
+        composeRule.waitForIdle()
+        assertEquals("victoria" to "Brixton", opened)
+        // The route page is up over the board; its Back closes it, back to the stop.
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        composeRule.waitForIdle()
+        assertEquals(null, routeKey)
     }
 
     /** [items], noting the thread of each pass over it in [reads]. */

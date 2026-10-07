@@ -2705,7 +2705,8 @@ Builds on Phase 1's minimal line-status marking.
         scroll alone can't hold it; it needs the station flow layered over Lines… or the laid map kept.
   - [x] **Its departures board** (maintainer, 2026-10-07): the line it was opened from first, then the
         stop's other services under "Also here".
-    - [ ] A row opens its route page, as on a station's page.
+    - [x] A row opens its route page, as on a station's page.
+      - [ ] Its stop list's stations open their own page there too, and its star and dismiss work there.
   - [x] **The lines that serve it**, as pills, each opening that line's page, and its interchange's other
         stations and the stations nearby, each opening its details (maintainer, 2026-10-07), from the
         bundled index.
