@@ -1993,6 +1993,50 @@ private fun sameLevels(held: Inputs, wanted: Inputs, cleared: LiftsCleared?): Bo
 /** Lifts out [to] after an answer that only brought some of [from] back into service. */
 internal class LiftsCleared(val from: Set<String>, val to: Set<String>)
 
+/** The lift outages a screen draws from ([rememberLiftsOut]): TfL's lift ids out, and, where the last
+ *  change only brought lifts back, which ([LiftsCleared]), so marks can come back without a gap. */
+internal class HeldLiftsOut(val ids: Set<String>, val cleared: LiftsCleared?)
+
+/**
+ * TfL's lift outages for a screen showing a station only a lift makes step-free ([byLift]), from
+ * [LocalLiftsOut]: TfL's last answer at once, held in memory, so a page opened (or turned) while a lift
+ * is out never shows its mark, even before the fresh ask returns; then asked again when that answer
+ * ages out (it may be another screen's, from minutes ago) while the screen is in the foreground, so a
+ * mark comes off while a lift its route needs is out and comes back with it. An answer stands until
+ * the next replaces it: it only ever takes marks off, so holding it through its refresh errs toward
+ * "not step-free". Nothing is asked where [byLift] is false or no cache is provided.
+ */
+@Composable
+internal fun rememberLiftsOut(byLift: Boolean): HeldLiftsOut {
+    val liftOutages = LocalLiftsOut.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var liftsOut by remember(liftOutages) { mutableStateOf(liftOutages?.known.orEmpty()) }
+    var liftsCleared by remember(liftOutages) { mutableStateOf<LiftsCleared?>(null) }
+    val liftWorker = LocalWorker.current
+    LaunchedEffect(liftOutages, byLift, lifecycleOwner, liftWorker) {
+        if (!byLift || liftOutages == null) return@LaunchedEffect
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                val answer = liftOutages.current()
+                // The same outages keep the same set, so the marks aren't worked out again (and
+                // hidden meanwhile) on every ask; compared on the worker, never here.
+                val held = liftsOut
+                val (changed, onlyCleared) = withContext(liftWorker) {
+                    val changed = answer.ids != held
+                    changed to (changed && held.containsAll(answer.ids))
+                }
+                if (changed) {
+                    liftsCleared = if (onlyCleared) LiftsCleared(held, answer.ids) else null
+                    liftsOut = answer.ids
+                }
+                // At least a second apart, whatever an answer says, so nothing can spin.
+                delay(answer.askAgainIn.toMillis().coerceAtLeast(1_000))
+            }
+        }
+    }
+    return HeldLiftsOut(liftsOut, liftsCleared)
+}
+
 /**
  * The last route pages' answers by their exact inputs, so a page reopened finds its own, however many
  * others were opened since, up to [MAX_ENTRIES] (Codex on #555). A lookup hashes a key of a few parts,
@@ -5115,37 +5159,10 @@ internal fun RouteDetailScreen(
             // it, without reopening the page. An answer stands until the next replaces it: it only
             // ever takes marks off, so holding it through its refresh errs toward "not step-free".
             val stepFreeTable = LocalStepFree.current
-            val liftOutages = LocalLiftsOut.current
-            val lifecycleOwner = LocalLifecycleOwner.current
             val listed = (stops as? RouteStopsUi.Loaded)?.stops.orEmpty()
             val byLift = rememberLiftDependent(stepFreeTable, listed)
-            // The first frame draws from TfL's last answer, held in memory, so a page opened (or
-            // turned) while a lift is out never shows its mark, even before the fresh ask returns.
-            var liftsOut by remember(liftOutages) { mutableStateOf(liftOutages?.known.orEmpty()) }
-            var liftsCleared by remember(liftOutages) { mutableStateOf<LiftsCleared?>(null) }
-            val liftWorker = LocalWorker.current
-            LaunchedEffect(liftOutages, byLift, lifecycleOwner, liftWorker) {
-                if (!byLift || liftOutages == null) return@LaunchedEffect
-                lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                    while (true) {
-                        val answer = liftOutages.current()
-                        // The same outages keep the same set, so the marks aren't worked out again (and
-                        // hidden meanwhile) on every ask; compared on the worker, never here.
-                        val held = liftsOut
-                        val (changed, onlyCleared) = withContext(liftWorker) {
-                            val changed = answer.ids != held
-                            changed to (changed && held.containsAll(answer.ids))
-                        }
-                        if (changed) {
-                            liftsCleared = if (onlyCleared) LiftsCleared(held, answer.ids) else null
-                            liftsOut = answer.ids
-                        }
-                        // At least a second apart, whatever an answer says, so nothing can spin.
-                        delay(answer.askAgainIn.toMillis().coerceAtLeast(1_000))
-                    }
-                }
-            }
-            val stepFree = rememberStepFreeLevels(stepFreeTable, liftsOut, listed, row.lineId, rowMode, liftsCleared)
+            val lifts = rememberLiftsOut(byLift)
+            val stepFree = rememberStepFreeLevels(stepFreeTable, lifts.ids, listed, row.lineId, rowMode, lifts.cleared)
             // No saved journeys (a trip's route page, say) and no star still shown from before the last was
             // taken off: there's nothing to wait for, nor any star a tap could take off (Codex on #555).
             val noJourneysHere = journeys.isEmpty() && journeysHere.here.byJourney.isEmpty()
