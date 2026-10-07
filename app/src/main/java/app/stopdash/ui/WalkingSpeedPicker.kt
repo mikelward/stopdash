@@ -35,9 +35,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.AvoidedLines
@@ -96,11 +93,11 @@ internal fun stepFreeLabel(stepFree: StepFree): String = stringResource(
 
 /**
  * The line under each [StepFree] level in its menu, saying what it's for (Codex, #408): the bare
- * names don't tell a rider with a suitcase or a buggy that Station suits them. Any needs none.
+ * names don't tell a rider with a suitcase or a buggy that Station suits them, nor that Any means stairs.
  */
 @Composable
 internal fun stepFreeDetail(stepFree: StepFree): String? = when (stepFree) {
-    StepFree.ANY -> null
+    StepFree.ANY -> stringResource(R.string.step_free_any_detail)
     StepFree.STATION -> stringResource(R.string.step_free_station_detail)
     StepFree.FULLY -> stringResource(R.string.step_free_fully_detail)
 }
@@ -341,29 +338,24 @@ private fun <T : Enum<T>> PickerChip(
 ) {
     var expanded by remember { mutableStateOf(false) }
     val current = if (enabled) label(selected) else "–"
-    val accent = MaterialTheme.colorScheme.primary
+    // Plain text color, not the accent: a choice, not an alert or a link (maintainer, 2026-10-07).
+    val ink = MaterialTheme.colorScheme.onSurface
     Box {
         AssistChip(
             onClick = { expanded = true },
             enabled = enabled,
             label = {
                 Text(
-                    buildAnnotatedString {
-                        prefix?.let {
-                            withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurface)) { append(it) }
-                            append(" ")
-                        }
-                        append(current)
-                    },
+                    prefix?.let { "$it $current" } ?: current,
                     maxLines = 1,
                 )
             },
             leadingIcon = leading,
             trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null, Modifier.size(AssistChipDefaults.IconSize)) },
             colors = AssistChipDefaults.assistChipColors(
-                labelColor = accent,
+                labelColor = ink,
                 leadingIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                trailingIconContentColor = accent,
+                trailingIconContentColor = ink,
             ),
             modifier = Modifier.testTag(tag).semantics { contentDescription = "$title, $current" },
         )

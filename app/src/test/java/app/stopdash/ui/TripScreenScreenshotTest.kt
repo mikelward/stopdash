@@ -1186,11 +1186,11 @@ class TripScreenScreenshotTest {
         composeRule.onNodeWithText("60 min").assertIsDisplayed()
         composeRule.onNodeWithTag("maxWalk-SIXTY").performClick()
         assertEquals(MaxWalk.SIXTY, chosenMaxWalk)
-        // Step-free under them: the maintainer's three levels, by their names, each but Any saying
-        // what it's for, so a rider with luggage sees Station suits them too.
+        // Step-free under them: the maintainer's three levels, by their names, each saying
+        // what it's for, so a rider with luggage sees Station suits them too, and Any means stairs.
         composeRule.onNodeWithTag("stepFree").assertContentDescriptionEquals("Step-free, Any").performClick()
         StepFree.entries.forEach { composeRule.onNodeWithTag("stepFree-${it.name}").assertExists() }
-        composeRule.onNodeWithTag("stepFree-ANY").assertTextEquals("Any")
+        composeRule.onNodeWithTag("stepFree-ANY").assertTextEquals("Any", "Stairs are OK")
         composeRule.onNodeWithTag("stepFree-STATION")
             .assertTextEquals("Station", "Street to platform, for luggage or a buggy")
         composeRule.onNodeWithTag("stepFree-FULLY").assertTextEquals("Fully", "Onto the train too, for a wheelchair")
