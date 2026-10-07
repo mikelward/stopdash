@@ -305,7 +305,8 @@ class LineMap internal constructor(
          * The routes are taken one way (TfL's outbound, else each kept once whichever way TfL runs it),
          * turned so the line reads north to south where TfL gives positions, as a map would. Where the
          * other way calls at stops of its own (a bus's poles across the road, a one-way street), it's
-         * drawn too, each of its stops as the outbound stop in the same stop area where there is one;
+         * drawn too, each of its stops as the outbound stop in the same stop area, interchange, or of its
+         * name close by where there is one, and run through the outbound stops it passes without calling;
          * where that can't be laid out, or would draw a station twice that the outbound routes draw once
          * (the way back calling in another order), the outbound routes alone are. A station two branches call at without
          * meeting there (TfL lists both under one stop, as the Northern line's two Euston platforms) is
@@ -343,6 +344,19 @@ class LineMap internal constructor(
             nearby: Set<String>,
         ): LineMap? {
             fun same(id: String) = way.same[id] ?: id
+            // A section's stops as the map has them: the way back's poles as the outbound stops, and a hop
+            // the map draws through stops the way back passes ([OneWay.through]) given those stops, so a
+            // closure shutting that hop shuts the track it's drawn on (Codex, #663).
+            fun drawn(section: List<String>): List<String> {
+                val stops = section.map { same(it) }
+                if (stops.isEmpty()) return stops
+                val out = arrayListOf(stops.first())
+                for ((a, b) in stops.zipWithNext()) {
+                    out += way.through[a to b] ?: way.through[b to a]?.asReversed().orEmpty()
+                    out += b
+                }
+                return out
+            }
             val routes = northUp(way.routes, sequence)
             if (routes.isEmpty()) return null
             val nodeRoutes = splitStations(routes)
@@ -350,7 +364,7 @@ class LineMap internal constructor(
             val remaining = graph.remaining() ?: return null
 
             // Each closed track the way round trains can't run it.
-            val closed = closures.flatMapTo(HashSet()) { section -> section.zipWithNext { a, b -> "${same(a)}>${same(b)}" } }
+            val closed = closures.flatMapTo(HashSet()) { section -> drawn(section).zipWithNext { a, b -> "$a>$b" } }
             fun named(text: String?): Set<String> = if (text.isNullOrBlank()) {
                 emptySet()
             } else {
@@ -415,7 +429,7 @@ class LineMap internal constructor(
             // (Codex, #606).
             val tracks = graph.nodes.flatMapTo(HashSet()) { node -> graph.nextOf(node).map { "${base(node)}>${base(it)}" } }
             fun landed(closure: PartClosure) = closure.sections.any { section ->
-                section.zipWithNext().any { (a, b) -> "${same(a)}>${same(b)}" in tracks || "${same(b)}>${same(a)}" in tracks }
+                drawn(section).zipWithNext().any { (a, b) -> "$a>$b" in tracks || "$b>$a" in tracks }
             }
             val byWords = placed.filterNot { landed(it) }.map { named(it.fullText) }
             val marked = named(alertText) + byWords.flatten()
@@ -497,8 +511,15 @@ class LineMap internal constructor(
         private fun shown(status: LineStatus?, placed: List<PartClosure>): String? =
             status?.takeIf { it.disrupted }?.fullText?.takeIf { text -> placed.none { it.fullText == text } }
 
-        /** The line's [routes] all one way, and the stops of the other way taken as an outbound stop ([same]). */
-        private class OneWay(val routes: List<List<String>>, val same: Map<String, String>)
+        /**
+         * The line's [routes] all one way, and the stops of the other way taken as an outbound stop ([same]);
+         * [through] each hop of the way back that runs past outbound stops, with those stops in order.
+         */
+        private class OneWay(
+            val routes: List<List<String>>,
+            val same: Map<String, String>,
+            val through: Map<Pair<String, String>, List<String>> = emptyMap(),
+        )
 
         // The routes one way: TfL's outbound, which runs each pattern once; failing that (a sequence
         // kept before directions were), every route, each kept once whichever way it's listed. With
@@ -519,11 +540,12 @@ class LineMap internal constructor(
             val byArea = HashMap<String, String>()
             for (route in outbound) for (id in route) sequence.stopAreas[id]?.takeIf { it.isNotBlank() }?.let { byArea.putIfAbsent(it, id) }
             val same = HashMap<String, String>()
+            val through = HashMap<Pair<String, String>, List<String>>()
             val inbound = routes.filter { it.direction == "inbound" }.map { it.stopIds }.filter { it.size >= 2 }
             for (route in inbound) {
                 for (id in route) {
                     if (id in onOutbound) continue
-                    sequence.stopAreas[id]?.let { byArea[it] }?.let { same[id] = it }
+                    (sequence.stopAreas[id]?.let { byArea[it] } ?: across(id, onOutbound, sequence))?.let { same[id] = it }
                 }
                 // Turned to run the outbound way, a stop taken as one already just before it dropped.
                 val turned = ArrayList<String>(route.size)
@@ -531,12 +553,83 @@ class LineMap internal constructor(
                     val stop = same[id] ?: id
                     if (turned.lastOrNull() != stop) turned += stop
                 }
+                // Where it runs past outbound stops without calling (a one-way street), drawn through them:
+                // the same street, not a fork with no stop of its own.
+                val passed = passedThrough(turned, outbound)
                 // Only where it meets the outbound way: one sharing no stop with it (no stop areas to tell
                 // the poles apart by) would draw the line twice, side by side. Its stops are still taken as
                 // the outbound ones without it, for a closure or the rider's stop named by its poles.
+                // What it passes is kept whether or not it's drawn: its closures shut the street it runs
+                // along, drawn by the outbound way where it is alone (Codex, #663).
+                through += passed
                 if (otherWay && turned.size >= 2 && turned.any { it in onOutbound }) kept += turned
             }
-            return OneWay(kept.toList(), same)
+            return OneWay(kept.toList(), same, through)
+        }
+
+        /** How near a stop of the way back must be to an outbound stop of its name to be taken as it. */
+        private const val ACROSS_METERS = 400.0
+
+        // The outbound stop the way back's [id] is the same place as, where TfL gives the two no stop area
+        // in common: the one in its interchange ([LineSequence.stopHubs]), else one of its name within
+        // [ACROSS_METERS] (a stand round the corner from the station, a pole across a wide road). Either
+        // way of its own name; the nearest where several are; none by name alone where positions aren't
+        // known, so two stops that may be miles apart are never joined.
+        private fun across(id: String, onOutbound: Set<String>, sequence: LineSequence): String? {
+            val at = sequence.stopPositions[id]
+            fun meters(other: String): Double? {
+                val there = sequence.stopPositions[other] ?: return null
+                return at?.let { NearestStops.distanceMeters(it.first, it.second, there.first, there.second) }
+            }
+            val hub = sequence.stopHubs[id]?.takeIf { it.isNotBlank() }
+            if (hub != null) {
+                // Only one of its own name: two of the interchange's stops named apart (King's Cross and St
+                // Pancras) are two places, and the row keeps the name alerts call it by (Codex, #663). The
+                // nearest where several share it and every distance is known, else none rather than a guess.
+                val named = onOutbound.filter { sequence.stopHubs[it] == hub && sameStopName(sequence.stopNames[id], sequence.stopNames[it]) }
+                val distances = named.map { meters(it) }
+                when {
+                    named.size == 1 -> return named.single()
+                    named.isNotEmpty() && distances.none { it == null } ->
+                        return named.zip(distances).minWithOrNull(compareBy<Pair<String, Double?>> { it.second!! }.thenBy { it.first })!!.first
+                    named.isNotEmpty() -> return null
+                }
+            }
+            at ?: return null
+            val name = sequence.stopNames[id]
+            return onOutbound.mapNotNull { other -> meters(other)?.let { other to it } }
+                .filter { (other, meters) -> meters <= ACROSS_METERS && sameStopName(name, sequence.stopNames[other]) }
+                .minWithOrNull(compareBy<Pair<String, Double>> { it.second }.thenBy { it.first })?.first
+        }
+
+        // [turned] with each hop between two outbound stops that no outbound route runs, but the outbound
+        // routes run with the same stops between, given those stops: the way back passing them by on the
+        // same street. Left as it is where those stops are elsewhere on [turned] already, so no station is
+        // drawn twice. Each hop so drawn, with the stops given it.
+        private fun passedThrough(turned: MutableList<String>, outbound: List<List<String>>): Map<Pair<String, String>, List<String>> {
+            val passed = HashMap<Pair<String, String>, List<String>>()
+            val hops = outbound.flatMapTo(HashSet()) { it.zipWithNext() }
+            var i = 0
+            while (i < turned.size - 1) {
+                val from = turned[i]
+                val to = turned[i + 1]
+                if (from to to !in hops) {
+                    // Only where every outbound route between the two passes the same stops: with two
+                    // branches between them, which one the way back runs isn't known (Codex, #663).
+                    val between = outbound.mapNotNullTo(HashSet()) { route ->
+                        val a = route.indexOf(from)
+                        val b = route.indexOf(to)
+                        if (a >= 0 && b > a + 1) route.subList(a + 1, b).toList() else null
+                    }.singleOrNull()
+                    if (between != null && between.none { it in turned }) {
+                        turned.addAll(i + 1, between)
+                        passed[from to to] = between.toList()
+                        i += between.size
+                    }
+                }
+                i++
+            }
+            return passed
         }
 
         // Turned so the line's starts lie north of its ends where TfL gives their positions: a line read

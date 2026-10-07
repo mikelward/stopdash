@@ -2627,7 +2627,11 @@ diagrams draw a branching line. It's laid out from the line's TfL routes, never 
 the line, so whatever TfL runs is what's drawn, a new station or branch included, and it reads north
 to south where TfL gives stations' positions. A bus calls at a different pole each way (across the
 road, or round a one-way street): the way back is drawn too where it runs elsewhere, each of its
-poles taken as the stop across the road where TfL puts both in one stop area, but never so as to draw
+poles taken as the stop across the road where TfL puts both in one stop area, or names both alike
+in one interchange or a short walk apart, so one place is one row, never a fork; two of an
+interchange's stops named apart stay two places, each named as alerts name it. Where the
+way back only passes a stop without calling (a one-way street), it's drawn through that stop rather
+than round it: a fork appears only where the way back calls somewhere of its own. Never so as to draw
 a stop twice. A station two branches call at without meeting there
 is drawn once on each (Euston on the Northern line's two trunks; Edgware Road where the Circle comes
 round again before running on to Hammersmith), since no train goes from one to the other there and a
