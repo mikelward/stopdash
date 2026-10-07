@@ -185,7 +185,16 @@ internal fun LinesOverlay(
         ) {
             OneLinePage(row, line.id, line.name, line.mode, onClose = { onOpen(null) })
         }
+        // Each stop page's own saved state (its scroll), by [LineStopRef.pageKey], in the caller's [saveable]
+        // so it outlives this overlay leaving composition under From, Settings or Licenses (Codex on #667):
+        // Back to a station opened before returns it as it was left, not at its top.
         if (stop != null) {
+            // Back to the station this one was opened from, else to the line; the page left forgets its scroll,
+            // so opening it again starts at its top.
+            val back = {
+                saveable.removeState(stop.pageKey)
+                onStop(stop.previous)
+            }
             // Its lines and the stations beside it, from the bundled index, worked out off the main thread.
             LaunchedEffect(stop.id) { viewModel.stopLinks(stop.id) }
             val heldLinks by viewModel.links.collectAsStateWithLifecycle()
@@ -196,7 +205,8 @@ internal fun LinesOverlay(
             // once, at the tap, and is kept with the stop as its label, so the title is whole from the first
             // frame and never changes under From and To (Codex on #659).
             Dialog(
-                onDismissRequest = { onStop(null) },
+                // Back steps to the station this one was opened from, if any, else to the line.
+                onDismissRequest = back,
                 properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
             ) {
                 // A dialog's window has none of the app's text size nor its pinch (SPEC *Display size*): both
@@ -209,36 +219,42 @@ internal fun LinesOverlay(
                     // which part leads. A stop the index doesn't hold (a bus stop) declares that line alone.
                     val board = links?.let { departures(stop, if (it.lines.isEmpty() && stop.onLine) listOf(line) else it.lines, it.ownIds) }
                     // A fresh page per stop: a station opened from another's chips starts at its top, its title and
-                    // From and To in view, not at the scroll the last one was left at (Codex on #664).
-                    key(stop.id) {
-                        LineStopPage(
-                            name = stop.name,
-                            distance = stop.distance,
-                            lineName = line.name.takeIf { stop.onLine },
-                            departures = board,
-                            // Its board waiting on its links: "Loading departures…" meanwhile, never a blank (Codex on #664).
-                            boardPending = board == null,
-                            view = rememberStopBoard(board, line.id.takeIf { stop.onLine }),
-                            links = links,
-                            // A line's pill opens that line's page in place of this one; Back from it returns
-                            // to the search, as from any line opened there.
-                            onOpenLine = { picked ->
-                                onStop(null)
-                                if (picked.id != line.id) onOpen(picked)
-                            },
-                            // A station beside this one opens its details in their place.
-                            onOpenStation = { station ->
-                                onStop(
-                                    LineStopRef(station.id, station.name, distanceTo(station.position), onLine = line.id in station.lineIds),
-                                )
-                            },
-                            // A station under several ids opens its interchange ([StopLinks.openId]): From and To wait
-                            // for the links, so a tap during the lookup can't open one id alone (Codex on #664).
-                            actionsReady = links != null,
-                            onFrom = { onFrom(stop.copy(fromId = links?.openId)) },
-                            onTo = onTo?.let { to -> { to(stop.copy(fromId = links?.openId)) } },
-                            onBack = { onStop(null) },
-                        )
+                    // From and To in view (Codex on #664); Back to one opened before finds it as it was left.
+                    key(stop.pageKey) {
+                        saveable.SaveableStateProvider(stop.pageKey) {
+                            LineStopPage(
+                                name = stop.name,
+                                distance = stop.distance,
+                                lineName = line.name.takeIf { stop.onLine },
+                                departures = board,
+                                // Its board waiting on its links: "Loading departures…" meanwhile, never a blank (Codex on #664).
+                                boardPending = board == null,
+                                view = rememberStopBoard(board, line.id.takeIf { stop.onLine }),
+                                links = links,
+                                // A line's pill opens that line's page in place of this one; Back from it returns
+                                // to the search, as from any line opened there.
+                                onOpenLine = { picked ->
+                                    stop.pageKeys().forEach(saveable::removeState)
+                                    onStop(null)
+                                    if (picked.id != line.id) onOpen(picked)
+                                },
+                                // A station beside this one opens its details in their place, Back returning here.
+                                onOpenStation = { station ->
+                                    // The station the trail lets go of forgets its scroll too (Codex on #667).
+                                    stop.evictedByOpening()?.let(saveable::removeState)
+                                    onStop(
+                                        LineStopRef(station.id, station.name, distanceTo(station.position), onLine = line.id in station.lineIds)
+                                            .openedFrom(stop),
+                                    )
+                                },
+                                // A station under several ids opens its interchange ([StopLinks.openId]): From and To wait
+                                // for the links, so a tap during the lookup can't open one id alone (Codex on #664).
+                                actionsReady = links != null,
+                                onFrom = { onFrom(stop.copy(fromId = links?.openId)) },
+                                onTo = onTo?.let { to -> { to(stop.copy(fromId = links?.openId)) } },
+                                onBack = back,
+                            )
+                        }
                     }
                 }
             }
@@ -566,15 +582,67 @@ data class LineStopRef(
     val onLine: Boolean = true,
     // What From and To open, where not [id] ([StopLinks.openId]): set as they're tapped, never saved.
     val fromId: String? = null,
-)
+    // The station whose details opened this one, which Back returns to; null opened from the line's map.
+    val previous: LineStopRef? = null,
+    // How many stations were opened before this one, counting those [previous] no longer keeps: set once,
+    // as it opens, so its [pageKey] holds as older stations drop off the trail (Codex on #667).
+    val depth: Int = 0,
+) {
+    /**
+     * This stop opened from [from]'s details, so Back returns there. The trail keeps the last
+     * [MAX_TRAIL] stops before this one: a rider hopping station to station a long way still gets back
+     * through the recent ones, and the saved state stays small.
+     */
+    fun openedFrom(from: LineStopRef): LineStopRef = copy(previous = from.trimmed(MAX_TRAIL - 1), depth = from.depth + 1)
 
+    /** The key its page's saved state is kept under: its place in the trail, which trimming never moves. */
+    val pageKey: String
+        get() = "lineStop:$depth:$id"
+
+    /**
+     * The page key of the station the trail lets go of when a station is opened from this one: the
+     * one [MAX_TRAIL] back, which [openedFrom] trims off; null while the trail is shorter.
+     */
+    fun evictedByOpening(): String? {
+        var at: LineStopRef = this
+        repeat(MAX_TRAIL - 1) { at = at.previous ?: return null }
+        return at.previous?.pageKey
+    }
+
+    /** This page's key and those of the stations kept before it. */
+    fun pageKeys(): List<String> = generateSequence(this) { it.previous }.map { it.pageKey }.toList()
+
+    private fun trimmed(keep: Int): LineStopRef =
+        copy(fromId = null, previous = if (keep <= 0) null else previous?.trimmed(keep - 1))
+
+    companion object {
+        /** How many stations before this one Back steps through. */
+        const val MAX_TRAIL = 10
+    }
+}
+
+// Saved as five strings a stop, this one first, then the station it was opened from, and so on back.
 internal val LineStopRefSaver: Saver<LineStopRef?, ArrayList<String>> = Saver(
-    save = { stop -> stop?.let { arrayListOf(it.id, it.name, it.distance.orEmpty(), if (it.onLine) "1" else "0") } },
+    save = { stop ->
+        stop?.let {
+            val out = ArrayList<String>()
+            var at: LineStopRef? = it
+            while (at != null) {
+                out += listOf(at.id, at.name, at.distance.orEmpty(), if (at.onLine) "1" else "0", at.depth.toString())
+                at = at.previous
+            }
+            out
+        }
+    },
     restore = { saved ->
-        when (saved.size) {
-            3 -> LineStopRef(saved[0], saved[1], saved[2].ifEmpty { null })
-            4 -> LineStopRef(saved[0], saved[1], saved[2].ifEmpty { null }, onLine = saved[3] != "0")
-            else -> null
+        when {
+            // Saves from before onLine, and from before the trail.
+            saved.size == 3 -> LineStopRef(saved[0], saved[1], saved[2].ifEmpty { null })
+            saved.size == 4 -> LineStopRef(saved[0], saved[1], saved[2].ifEmpty { null }, onLine = saved[3] != "0")
+            saved.isEmpty() || saved.size % 5 != 0 -> null
+            else -> saved.chunked(5).foldRight(null as LineStopRef?) { (id, name, distance, onLine, depth), before ->
+                LineStopRef(id, name, distance.ifEmpty { null }, onLine = onLine != "0", previous = before, depth = depth.toIntOrNull() ?: 0)
+            }
         }
     },
 )

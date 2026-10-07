@@ -31,6 +31,7 @@ import app.stopdash.domain.LineStatus
 import app.stopdash.ui.theme.StopDashTheme
 import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertEquals
+import androidx.test.espresso.Espresso
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -245,5 +246,68 @@ class LinesOverlayTest {
         assertEquals(stop, LineStopRefSaver.restore(saved))
         // A save from before onLine still restores, on the line.
         assertEquals(LineStopRef("940GZZLUEUS", "Euston", null), LineStopRefSaver.restore(arrayListOf("940GZZLUEUS", "Euston", "")))
+    }
+
+    @Test
+    fun a_station_opened_from_another_keeps_the_way_back_across_a_restore() {
+        val kx = LineStopRef("940GZZLUKSX", "King's Cross St. Pancras", "350 m")
+        val euston = LineStopRef("940GZZLUEUS", "Euston", "0.7 km", onLine = false).openedFrom(kx.copy(fromId = "HUBKGX"))
+        // The station it came from rides along, without what From and To were last set to open.
+        assertEquals(kx, euston.previous)
+        val saved = with(LineStopRefSaver) { androidx.compose.runtime.saveable.SaverScope { true }.save(euston) }!!
+        assertEquals(euston, LineStopRefSaver.restore(saved))
+        assertEquals(listOf("lineStop:1:940GZZLUEUS", "lineStop:0:940GZZLUKSX"), euston.pageKeys())
+    }
+
+    @Test
+    fun the_way_back_keeps_only_the_recent_stations() {
+        var at = LineStopRef("0", "Station 0")
+        for (n in 1..25) at = LineStopRef("$n", "Station $n").openedFrom(at)
+        var steps = 0
+        var back = at.previous
+        while (back != null) {
+            steps++
+            back = back.previous
+        }
+        assertEquals(LineStopRef.MAX_TRAIL, steps)
+        assertEquals("24", at.previous?.id)
+        // Each page's key holds as older stations drop off, so Back still finds its scroll (Codex on #667).
+        assertEquals("lineStop:24:24", at.previous?.pageKey)
+        // The station the trail lets go of next is named, so its saved scroll goes with it (Codex on #667).
+        assertEquals("lineStop:15:15", at.evictedByOpening())
+        assertEquals(null, LineStopRef("1", "One").openedFrom(LineStopRef("0", "Zero")).evictedByOpening())
+    }
+
+    @Test
+    fun back_from_a_station_opened_from_another_returns_to_that_one() {
+        val line = LineRef("victoria", "Victoria", "tube")
+        val model = LinesViewModel(
+            loadLines = { listOf(line) },
+            loadRecent = { emptyList() },
+            recordOpen = { listOf(it) },
+            lineStatus = { LineStatus(lineId = "victoria", severity = LineStatus.GOOD_SERVICE, description = "Good Service") },
+            io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
+            saved = SavedStateHandle(),
+        )
+        val kx = LineStopRef("940GZZLUKSX", "King's Cross St. Pancras")
+        var stop by mutableStateOf<LineStopRef?>(LineStopRef("940GZZLUEUS", "Euston", onLine = false).openedFrom(kx))
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides Dispatchers.Unconfined) {
+                    LinesOverlay(model, open = line, onOpen = {}, onBack = {}, stop = stop, onStop = { stop = it })
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("lineStopTitle").assertTextContains("Euston", substring = true)
+        Espresso.pressBack()
+        composeRule.waitForIdle()
+        assertEquals(kx, stop)
+        composeRule.onNodeWithTag("lineStopTitle").assertTextContains("King's Cross", substring = true)
+        // And from the first station, back to the line.
+        Espresso.pressBack()
+        composeRule.waitForIdle()
+        assertEquals(null, stop)
     }
 }
