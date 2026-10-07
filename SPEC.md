@@ -2632,7 +2632,9 @@ in one interchange or a short walk apart, so one place is one row, never a fork;
 interchange's stops named apart stay two places, each named as alerts name it. Where the
 way back only passes a stop without calling (a one-way street), it's drawn through that stop rather
 than round it: a fork appears only where the way back calls somewhere of its own. Never so as to draw
-a stop twice. A station two branches call at without meeting there
+a stop twice. A track the bus runs one way only (round a one-way street, or to a stand the way back
+doesn't start from) carries an arrowhead the way it runs, said to a screen reader too; where the way back can't be drawn, or isn't
+known, no arrows, since which way the tracks run can't be told. A station two branches call at without meeting there
 is drawn once on each (Euston on the Northern line's two trunks; Edgware Road where the Circle comes
 round again before running on to Hammersmith), since no train goes from one to the other there and a
 curve between them would say one does. A line whose routes can't be read top to bottom (a loop with
