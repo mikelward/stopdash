@@ -77,6 +77,21 @@ data class TflAdditionalPropertyDto(
 private fun TflStopPointDto.additionalProperty(key: String): String =
     additionalProperties.firstOrNull { it.key.equals(key, ignoreCase = true) }?.value.orEmpty()
 
+/**
+ * The fare zone ("1", "2/3") of [stopId] in the stop point TfL answered `/StopPoint/{stopId}` with: the
+ * asked station's own `Zone`, else, where it has none, the record's own (the interchange TfL answers for
+ * one of its stations), else blank (a bus stop). TfL's "NA" is an answer, not a gap: no zone, never the
+ * interchange's in its place. St Pancras's high-speed station carries it inside King's Cross St.
+ * Pancras, zone 1, as zone fares don't run there (Codex on #676).
+ */
+fun TflStopPointDto.fareZone(stopId: String): String {
+    val zone = find(stopId)?.zoneProperty() ?: zoneProperty() ?: return ""
+    return if (zone.equals("NA", ignoreCase = true)) "" else zone
+}
+
+// The record's own `Zone` as TfL gave it ("NA" included), or null where it has none.
+private fun TflStopPointDto.zoneProperty(): String? = additionalProperty("Zone").trim().ifEmpty { null }
+
 /** The pole's compass bearing ("E", "SW") from TfL's `CompassPoint` property, else blank. */
 fun TflStopPointDto.compassBearing(): String = additionalProperty("CompassPoint")
 

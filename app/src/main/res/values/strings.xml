@@ -370,6 +370,8 @@
     <!-- A stop's details: its name and how far it is, "Oxford Circus (350 m)". -->
     <string name="line_stop_title_distance">%1$s (%2$s)</string>
     <!-- A stop's details: leave from this stop, as From… does. -->
+    <!-- A station's fare zone on its details, under From and To: "Zone 1", "Zone 2/3". -->
+    <string name="line_stop_zone">Zone %1$s</string>
     <string name="line_stop_from">From</string>
     <!-- A stop's details: go to this stop, as To… does. -->
     <string name="line_stop_to">To</string>

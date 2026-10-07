@@ -20,6 +20,7 @@ import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StationPlaces
 import app.stopdash.domain.StopAreaSource
+import app.stopdash.domain.StopZoneSource
 import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.StopFinder
 import app.stopdash.domain.StopLocation
@@ -124,7 +125,7 @@ class KtorTflClient(
     // line) and mapping a plan (which reads the bundled station index) froze the screen for seconds
     // when it ran on a caller's main thread, as a screen's own loads do. A test swaps in its own.
     private val decodeDispatcher: CoroutineDispatcher = Dispatchers.Default,
-) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, JourneyPlanner, PostcodeResolver, PlaceSearch, VehicleSource,
+) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, StopZoneSource, JourneyPlanner, PostcodeResolver, PlaceSearch, VehicleSource,
     LiftOutageSource, TimetableSource {
     override suspend fun journeys(
         from: TripOrigin,
@@ -520,6 +521,13 @@ class KtorTflClient(
             }.body<TflStopPointDto>()
             // The area's leaf stop points (its poles), each with its letter and lines.
             dto.leaves().mapNotNull { it.toStopLocationOrNull() }
+        }
+
+    override suspend fun stopZone(stopId: String): String =
+        tflRequest { key ->
+            httpClient.get("$baseUrl/StopPoint/$stopId") {
+                applyAppKey(key)
+            }.body<TflStopPointDto>().fareZone(stopId)
         }
 
     /**

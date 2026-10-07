@@ -215,16 +215,23 @@ internal fun LinesOverlay(
             }
             // Its lines and the stations beside it, from the bundled index, worked out off the main thread.
             LaunchedEffect(stop.id) { viewModel.stopLinks(stop.id) }
-            // A bus stop's letter and the way its buses go, from its stop area's poles (one cached request).
+            // Under From and To: a bus stop's letter and the way its buses go, from its stop area's poles,
+            // else a station's fare zone, each one cached request. A bus stop asks for no zone (it has
+            // none), a station for no poles (it has no letters), and a pier or cable car station for
+            // neither (Codex on #676).
             val routes = LocalRouteStops.current
             val worker = LocalWorker.current
             var pole by remember(stop.id) { mutableStateOf<StopQualifier?>(null) }
+            var zone by remember(stop.id) { mutableStateOf<String?>(null) }
             LaunchedEffect(stop.id, routes) {
                 val repository = routes ?: return@LaunchedEffect
-                // A bus stop only: a station's area has no letters, and asking for its poles would spend a
-                // request on a qualifier it never shows.
-                if (!line.mode.equals("bus", ignoreCase = true)) return@LaunchedEffect
-                pole = withContext(worker) { stopPole(repository, line.id, stop.id) }
+                // By the stop's own modes, not the line's: a station opened from another's details can be
+                // of another mode (a tube station beside a pier) (Codex on #676).
+                when (stopCue(stop.modes, line.mode)) {
+                    StopCue.POLE -> pole = withContext(worker) { stopPole(repository, line.id, stop.id) }
+                    StopCue.ZONE -> zone = withContext(worker) { stopZone(repository, stop.id) }
+                    StopCue.NONE -> Unit
+                }
             }
             val heldLinks by viewModel.links.collectAsStateWithLifecycle()
             val links = heldLinks?.takeIf { it.stopId == stop.id }?.links
@@ -284,7 +291,8 @@ internal fun LinesOverlay(
                                 boardPending = board == null,
                                 view = view,
                                 pole = pole,
-                                poleSlot = line.mode.equals("bus", ignoreCase = true),
+                                zone = zone,
+                                cueSlot = true,
                                 onOpenRoute = { row, focus ->
                                     UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.STOP_ROW))
                                     routeKey = row.detailKey()
@@ -310,6 +318,7 @@ internal fun LinesOverlay(
                                             distanceTo(station.position),
                                             onLine = line.id in station.lineIds,
                                             position = station.position,
+                                            modes = station.modes,
                                         )
                                             .openedFrom(stop),
                                     )
@@ -390,11 +399,14 @@ internal fun LineStopPage(
     // A bus stop's letter and the way its buses go ("Stop H, towards Oxford Circus"), from its pole's
     // data; null for a station, or while it's looked up.
     pole: StopQualifier? = null,
-    // A bus stop's line is kept for [pole] from the first frame, blank while it's looked up (or if the
-    // lookup finds none), so what's under it never moves when it comes in.
-    poleSlot: Boolean = false,
+    // A station's fare zone ("1", "2/3"); null for a bus stop, or while it's looked up.
+    zone: String? = null,
+    // The line under From and To is kept for [pole] or [zone] from the first frame, blank while it's
+    // looked up (or if the lookup finds none), so what's under it never moves when it comes in.
+    cueSlot: Boolean = false,
 ) {
     BackHandler(onBack = onBack)
+    val zoneCue = zone?.takeIf { it.isNotBlank() }?.let { stringResource(R.string.line_stop_zone, it) }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -448,18 +460,23 @@ internal fun LineStopPage(
             // Under From and To, as it comes in after them, so they never move; its line held from the first
             // frame, so nothing under it moves either (Codex on #675). Held with a no-break space, as an empty
             // Text is shorter than a line of text.
-            val cue = groupHeaderSpoken(pole)
-            if (poleSlot || cue != null) {
-                item(key = "pole") {
-                    Box(Modifier.testTag("lineStopPoleSlot")) {
+            val poleCue = groupHeaderSpoken(pole)?.replaceFirstChar { it.uppercase() }
+            val cue = poleCue ?: zoneCue
+            if (cueSlot || cue != null) {
+                item(key = "cue") {
+                    Box(Modifier.testTag("lineStopCueSlot")) {
                         Text(
-                            cue?.replaceFirstChar { it.uppercase() } ?: "\u00A0",
+                            cue ?: "\u00A0",
                             style = MaterialTheme.typography.titleMedium,
                             // One line, as held: a long "towards" on a narrow screen or a large font is
                             // cut short rather than growing into what's under it (Codex on #675).
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = if (cue != null) Modifier.testTag("lineStopPole") else Modifier,
+                            modifier = when {
+                                poleCue != null -> Modifier.testTag("lineStopPole")
+                                zoneCue != null -> Modifier.testTag("lineStopZone")
+                                else -> Modifier
+                            },
                         )
                     }
                 }
@@ -714,6 +731,9 @@ data class LineStopRef(
     val depth: Int = 0,
     // Where it is, as the map or the index placed it when it was opened; null where neither did.
     val position: Coordinates? = null,
+    // Its own modes, where it was opened from another's details (the index's); empty for a stop on the
+    // line's map, which is of the line's mode. Picks what's looked up for it ([stopCue]).
+    val modes: List<String> = emptyList(),
 ) {
     /**
      * This stop opened from [from]'s details, so Back returns there. The trail keeps the last
@@ -748,18 +768,20 @@ data class LineStopRef(
     }
 }
 
-// Saved as "v2", then seven strings a stop, this one first, then the station it was opened from, and so on
-// back: its id, name, distance, whether it's on the line, its depth, and its position (blank where none).
-// Saves from before (#667's five a stop, and a single stop's three or four) still restore.
+// Saved as "v3", then eight strings a stop, this one first, then the station it was opened from, and so on
+// back: its id, name, distance, whether it's on the line, its depth, its position (blank where none), and
+// its modes (comma-joined, blank for the line's). Saves from before (v2's seven a stop, #667's five, and a
+// single stop's three or four) still restore.
 internal val LineStopRefSaver: Saver<LineStopRef?, ArrayList<String>> = Saver(
     save = { stop ->
         stop?.let {
-            val out = arrayListOf(LINE_STOP_SAVE_V2)
+            val out = arrayListOf(LINE_STOP_SAVE_V3)
             var at: LineStopRef? = it
             while (at != null) {
                 out += listOf(
                     at.id, at.name, at.distance.orEmpty(), if (at.onLine) "1" else "0", at.depth.toString(),
                     at.position?.latitude?.toString().orEmpty(), at.position?.longitude?.toString().orEmpty(),
+                    at.modes.joinToString(","),
                 )
                 at = at.previous
             }
@@ -767,19 +789,22 @@ internal val LineStopRefSaver: Saver<LineStopRef?, ArrayList<String>> = Saver(
         }
     },
     restore = { saved ->
+        val version = saved.firstOrNull()
         when {
-            saved.firstOrNull() == LINE_STOP_SAVE_V2 -> {
+            version == LINE_STOP_SAVE_V3 || version == LINE_STOP_SAVE_V2 -> {
+                val size = if (version == LINE_STOP_SAVE_V3) 8 else 7
                 val fields = saved.drop(1)
-                if (fields.isEmpty() || fields.size % 7 != 0) {
+                if (fields.isEmpty() || fields.size % size != 0) {
                     null
                 } else {
-                    fields.chunked(7).foldRight(null as LineStopRef?) { stop, before ->
+                    fields.chunked(size).foldRight(null as LineStopRef?) { stop, before ->
                         val lat = stop[5].toDoubleOrNull()
                         val lon = stop[6].toDoubleOrNull()
                         LineStopRef(
                             stop[0], stop[1], stop[2].ifEmpty { null }, onLine = stop[3] != "0", previous = before,
                             depth = stop[4].toIntOrNull() ?: 0,
                             position = if (lat != null && lon != null) Coordinates(lat, lon) else null,
+                            modes = stop.getOrNull(7)?.split(',')?.filter { it.isNotEmpty() }.orEmpty(),
                         )
                     }
                 }
@@ -796,6 +821,7 @@ internal val LineStopRefSaver: Saver<LineStopRef?, ArrayList<String>> = Saver(
 )
 
 private const val LINE_STOP_SAVE_V2 = "v2"
+private const val LINE_STOP_SAVE_V3 = "v3"
 
 /** A stop to add as a favorite place, saved as its id, name and position (blank where it has none). */
 internal val StationMatchSaver: Saver<StationMatch?, ArrayList<String>> = Saver(
@@ -835,5 +861,41 @@ internal suspend fun stopPole(repository: RouteStopsRepository, lineId: String, 
         pole.towards.isNotBlank() -> StopQualifier.Towards(pole.towards)
         pole.bearing.isNotBlank() -> StopQualifier.BusBearing(pole.bearing)
         else -> null
+    }
+}
+
+/**
+ * A station's fare zone ("1", "2/3"), from its own TfL record, through the route pages' repository (one
+ * request a station a day, kept in memory). Null where the lookup failed (logged by the repository), as
+ * the stop's details are whole without it; blank where TfL gives none.
+ */
+@WorkerThread
+internal suspend fun stopZone(repository: RouteStopsRepository, stopId: String): String? =
+    try {
+        repository.loadZone(stopId)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: TflException) {
+        null
+    }
+
+/** The modes whose stations TfL gives a fare zone, the ones a stop's details ask it for: no river bus pier
+ *  or cable car station has one (Codex on #676). */
+internal val ZONED_MODES = setOf("tube", "dlr", "overground", "elizabeth-line", "tram", "national-rail")
+
+/** What a stop's details look up for the line under From and To. */
+internal enum class StopCue { POLE, ZONE, NONE }
+
+/**
+ * Which cue a stop's details look up, by the stop's own [modes] (a station opened from another's), else
+ * the [lineMode] of the line whose map it was opened from: a zone for a station on any zoned mode, a
+ * pole for a bus stop, nothing for a pier or cable car station.
+ */
+internal fun stopCue(modes: List<String>, lineMode: String): StopCue {
+    val own = modes.ifEmpty { listOf(lineMode) }.map { it.lowercase() }
+    return when {
+        own.any { it in ZONED_MODES } -> StopCue.ZONE
+        "bus" in own -> StopCue.POLE
+        else -> StopCue.NONE
     }
 }

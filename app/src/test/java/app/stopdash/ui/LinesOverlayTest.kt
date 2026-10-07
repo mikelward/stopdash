@@ -39,6 +39,7 @@ import org.junit.Assert.assertTrue
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import kotlinx.coroutines.asCoroutineDispatcher
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.assertTextEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -252,6 +253,30 @@ class LinesOverlayTest {
         assertEquals(stop, LineStopRefSaver.restore(saved))
         // A save from before onLine still restores, on the line.
         assertEquals(LineStopRef("940GZZLUEUS", "Euston", null), LineStopRefSaver.restore(arrayListOf("940GZZLUEUS", "Euston", "")))
+    }
+
+    @Test
+    fun a_stop_s_cue_follows_its_own_modes_not_the_line_s() {
+        // A stop on the line's map is of the line's mode.
+        assertEquals(StopCue.POLE, stopCue(emptyList(), "bus"))
+        assertEquals(StopCue.ZONE, stopCue(emptyList(), "tube"))
+        assertEquals(StopCue.NONE, stopCue(emptyList(), "river-bus"))
+        // A station opened from another's details is of its own modes (Codex on #676): a tube station
+        // beside a pier gets its zone, a pier beside a tube station gets nothing.
+        assertEquals(StopCue.ZONE, stopCue(listOf("tube", "national-rail"), "river-bus"))
+        assertEquals(StopCue.NONE, stopCue(listOf("river-bus"), "tube"))
+        assertEquals(StopCue.NONE, stopCue(listOf("cable-car"), "dlr"))
+    }
+
+    @Test
+    fun a_station_s_modes_survive_a_restore() {
+        val pier = LineStopRef("930GWMP", "Westminster Pier", "50 m")
+        val tube = LineStopRef("940GZZLUWSM", "Westminster", "0.1 km", onLine = false, modes = listOf("tube")).openedFrom(pier)
+        val saved = with(LineStopRefSaver) { androidx.compose.runtime.saveable.SaverScope { true }.save(tube) }!!
+        assertEquals(tube, LineStopRefSaver.restore(saved))
+        // A v2 save, from before modes, restores with none: the line's mode stands in.
+        val v2 = arrayListOf("v2", "940GZZLUWSM", "Westminster", "0.1 km", "0", "0", "", "")
+        assertEquals(LineStopRef("940GZZLUWSM", "Westminster", "0.1 km", onLine = false), LineStopRefSaver.restore(v2))
     }
 
     @Test
@@ -583,8 +608,9 @@ class LinesOverlayTest {
     private fun poleRepository(
         poles: List<app.stopdash.domain.StopLocation>,
         asked: MutableList<String> = mutableListOf(),
+        zones: MutableList<String> = mutableListOf(),
     ) = RouteStopsRepository(
-        object : RouteSequenceSource, app.stopdash.domain.StopAreaSource {
+        object : RouteSequenceSource, app.stopdash.domain.StopAreaSource, app.stopdash.domain.StopZoneSource {
             override suspend fun routeSequence(lineId: String, direction: String) = LineSequence(
                 listOf(app.stopdash.domain.LineRoute("North End - South End", listOf("490X"), "inbound")),
                 mapOf("490X" to "Somewhere Road"),
@@ -593,6 +619,10 @@ class LinesOverlayTest {
             override suspend fun stopAreaPoles(areaId: String): List<app.stopdash.domain.StopLocation> {
                 synchronized(asked) { asked += Thread.currentThread().name }
                 return poles
+            }
+            override suspend fun stopZone(stopId: String): String {
+                synchronized(zones) { zones += Thread.currentThread().name }
+                return "1"
             }
         },
         io = Dispatchers.Unconfined,
@@ -603,6 +633,7 @@ class LinesOverlayTest {
         repository: RouteStopsRepository,
         line: LineRef = LineRef("299", "299", "bus"),
         worker: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.Unconfined,
+        stop: LineStopRef = LineStopRef("490X", "Somewhere Road"),
     ) {
         val model = LinesViewModel(
             loadLines = { listOf(line) },
@@ -619,7 +650,7 @@ class LinesOverlayTest {
                     LocalWorker provides worker,
                     LocalRouteStops provides repository,
                 ) {
-                    LinesOverlay(model, open = line, onOpen = {}, onBack = {}, stop = LineStopRef("490X", "Somewhere Road"))
+                    LinesOverlay(model, open = line, onOpen = {}, onBack = {}, stop = stop)
                 }
             }
         }
@@ -668,20 +699,72 @@ class LinesOverlayTest {
     }
 
     @Test
-    fun a_station_s_details_ask_for_no_poles() {
-        val asked = mutableListOf<String>()
-        // A tube line's route places its stations in areas too; a station shows no letter, so none is asked.
+    fun a_station_s_details_show_its_fare_zone_and_ask_for_no_poles() {
+        val worker = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+            .asCoroutineDispatcher()
+        try {
+            val poles = mutableListOf<String>()
+            val zones = mutableListOf<String>()
+            showStop(
+                poleRepository(emptyList(), poles, zones),
+                line = LineRef("victoria", "Victoria", "tube"),
+                worker = worker,
+                stop = LineStopRef("940GZZLUOXC", "Oxford Circus"),
+            )
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodesWithTag("lineStopZone").fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithTag("lineStopZone").assertTextEquals("Zone 1")
+            composeRule.onNodeWithTag("lineStopPole").assertDoesNotExist()
+            // A station has no letters, so its poles aren't asked for; its zone is, on the worker.
+            assertTrue("poles asked on $poles", poles.isEmpty())
+            assertTrue("zone asked on $zones", zones.size == 1 && zones.all { it.startsWith("test-worker") })
+        } finally {
+            worker.close()
+        }
+    }
+
+    @Test
+    fun a_pier_asks_for_no_fare_zone() {
+        val zones = mutableListOf<String>()
+        val poles = mutableListOf<String>()
+        showStop(
+            poleRepository(emptyList(), poles, zones),
+            line = LineRef("rb1", "RB1", "river-bus"),
+            stop = LineStopRef("930GWMP", "Westminster Pier"),
+        )
+        composeRule.onNodeWithTag("lineStopZone").assertDoesNotExist()
+        assertTrue("zone asked on $zones", zones.isEmpty())
+        assertTrue("poles asked on $poles", poles.isEmpty())
+    }
+
+    @Test
+    fun a_tube_station_opened_beside_a_pier_shows_its_zone() {
+        val zones = mutableListOf<String>()
+        showStop(
+            poleRepository(emptyList(), zones = zones),
+            line = LineRef("rb1", "RB1", "river-bus"),
+            stop = LineStopRef("940GZZLUWSM", "Westminster", onLine = false, modes = listOf("tube")),
+        )
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("lineStopZone").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("lineStopZone").assertTextEquals("Zone 1")
+        assertEquals(1, zones.size)
+    }
+
+    @Test
+    fun a_bus_stop_asks_for_no_fare_zone() {
+        val zones = mutableListOf<String>()
         showStop(
             poleRepository(
                 listOf(app.stopdash.domain.StopLocation("490X", "Somewhere Road", 51.5, -0.12, stopLetter = "H")),
-                asked,
+                zones = zones,
             ),
-            line = LineRef("victoria", "Victoria", "tube"),
         )
-        composeRule.onNodeWithTag("lineStopPole").assertDoesNotExist()
-        // No line held for a letter a station never shows.
-        composeRule.onNodeWithTag("lineStopPoleSlot").assertDoesNotExist()
-        assertTrue("asked on $asked", asked.isEmpty())
+        composeRule.onNodeWithTag("lineStopPole").assertTextContains("Stop H", substring = true)
+        composeRule.onNodeWithTag("lineStopZone").assertDoesNotExist()
+        assertTrue("zone asked on $zones", zones.isEmpty())
     }
 
     @Test
@@ -705,7 +788,7 @@ class LinesOverlayTest {
         showStop(repository)
         // Still being looked up: no letter yet, but its line is already there.
         composeRule.onNodeWithTag("lineStopPole").assertDoesNotExist()
-        composeRule.onNodeWithTag("lineStopPoleSlot").assertExists()
+        composeRule.onNodeWithTag("lineStopCueSlot").assertExists()
         release.complete(Unit)
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("lineStopPole").assertTextContains("Stop H", substring = true)
@@ -720,7 +803,7 @@ class LinesOverlayTest {
             StopDashTheme {
                 LineStopPage(
                     name = "Somewhere Road", distance = null, onFrom = {}, onTo = {}, onBack = {},
-                    boardPending = true, pole = pole, poleSlot = true,
+                    boardPending = true, pole = pole, cueSlot = true,
                 )
             }
         }
