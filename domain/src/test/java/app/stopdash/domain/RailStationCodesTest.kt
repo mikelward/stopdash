@@ -20,4 +20,11 @@ class RailStationCodesTest {
         assertNull(codes.stopIdFor("XXX"))
         assertNull(RailStationCodes.EMPTY.stopIdFor("SAC"))
     }
+
+    @Test
+    fun `a station code finds every one of its stops for a train calling there`() {
+        assertEquals(setOf("910GSTPADOM", "910GSTPX", "910GSTPXBOX"), codes.stopIdsFor("stp"))
+        assertEquals(setOf("910GSTALBCY"), codes.stopIdsFor("SAC"))
+        assertEquals(emptySet<String>(), codes.stopIdsFor("XXX"))
+    }
 }

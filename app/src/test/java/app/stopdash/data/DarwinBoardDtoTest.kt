@@ -1,5 +1,6 @@
 package app.stopdash.data
 
+import app.stopdash.domain.CallingPortion
 import java.time.Instant
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -13,6 +14,77 @@ class DarwinBoardDtoTest {
     private fun board() = json.decodeFromString<DarwinBoardDto>(
         checkNotNull(javaClass.getResource("/fixtures/darwin_board_example.json")).readText(),
     )
+
+    @Test
+    fun `a board with details gives each train its calling points and service id`() {
+        fun point(crs: String, canceled: Boolean = false) = DarwinCallingPointDto(crs, crs, canceled)
+        val example = board()
+        val details = example.copy(
+            trainServices = listOf(
+                // Guildford's: Clapham Junction (both of its stops), Woking skipped today, then Guildford.
+                example.trainServices!![0].copy(
+                    subsequentCallingPoints = listOf(DarwinCallingPointsDto(listOf(point("CLJ"), point("WOK", canceled = true), point("GLD")))),
+                ),
+                // Reading's, with a stop no TfL id names.
+                example.trainServices[1].copy(subsequentCallingPoints = listOf(DarwinCallingPointsDto(listOf(point("CLJ"), point("XXX"))))),
+            ),
+        )
+        val ids = mapOf("CLJ" to setOf("910GCLPHMJC", "910GCLPHMJW"), "WOK" to setOf("910GWOKING"), "GLD" to setOf("910GGUILDFD"))
+        val departures = details.toBoard(stopIdsFor = { ids[it].orEmpty() }).departures
+        assertEquals(listOf(CallingPortion(setOf("910GCLPHMJC", "910GCLPHMJW", "910GGUILDFD"), complete = true)), departures[0].callingAt)
+        assertEquals(listOf(CallingPortion(setOf("910GCLPHMJC", "910GCLPHMJW"), complete = false)), departures[1].callingAt)
+        assertEquals(listOf("1", "2"), departures.map { it.railServiceId })
+        // A board asked for without details has none, but still its service ids to pair by.
+        val plain = example.toBoard().departures
+        assertTrue(plain.all { it.callingAt == null })
+        assertEquals("1", plain[0].railServiceId)
+    }
+
+    @Test
+    fun `a portion that won't run today is no way to reach its stops`() {
+        fun point(crs: String) = DarwinCallingPointDto(crs, crs)
+        val ids = mapOf("WOK" to setOf("910GWOKING"), "GLD" to setOf("910GGUILDFD"), "BSK" to setOf("910GBSNGSTK"))
+        val portions = callingPortions(
+            listOf(
+                DarwinCallingPointsDto(listOf(point("WOK"), point("GLD"))),
+                DarwinCallingPointsDto(listOf(point("BSK")), assocIsCancelled = true),
+            ),
+        ) { ids[it].orEmpty() }
+        assertEquals(listOf(CallingPortion(setOf("910GWOKING", "910GGUILDFD"), complete = true)), portions)
+        // No portion that can be ridden: it reaches none of its stops, a sure miss, never left to the route.
+        val none = callingPortions(
+            listOf(
+                DarwinCallingPointsDto(listOf(point("BSK")), assocIsCancelled = true),
+                DarwinCallingPointsDto(listOf(point("WOK")), serviceChangeRequired = true),
+            ),
+        ) { ids[it].orEmpty() }
+        assertEquals(listOf(CallingPortion(emptySet(), complete = true)), none)
+        assertEquals(false, app.stopdash.domain.DirectTrips.calling(none, setOf("910GBSNGSTK")))
+        // No calling points at all is still no answer.
+        assertEquals(emptyList<CallingPortion>(), callingPortions(emptyList()) { ids[it].orEmpty() })
+    }
+
+    @Test
+    fun `a portion reached only by changing service is no way to reach its stops`() {
+        fun point(crs: String) = DarwinCallingPointDto(crs, crs)
+        val ids = mapOf("WOK" to setOf("910GWOKING"), "BSK" to setOf("910GBSNGSTK"))
+        val portions = callingPortions(
+            listOf(
+                DarwinCallingPointsDto(listOf(point("WOK"))),
+                DarwinCallingPointsDto(listOf(point("BSK")), serviceChangeRequired = true),
+            ),
+        ) { ids[it].orEmpty() }
+        assertEquals(listOf(CallingPortion(setOf("910GWOKING"), complete = true)), portions)
+    }
+
+    @Test
+    fun `a board read from Darwin's JSON keeps the portion flags`() {
+        val list = json.decodeFromString(
+            DarwinCallingPointsDto.serializer(),
+            """{"callingPoint":[{"crs":"BSK"}],"serviceChangeRequired":true,"assocIsCancelled":false}""",
+        )
+        assertEquals(false, list.rideable)
+    }
 
     @Test
     fun `a board's departures carry their expected times, platforms and operators`() {

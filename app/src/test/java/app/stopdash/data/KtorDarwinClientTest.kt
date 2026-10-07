@@ -1,5 +1,7 @@
 package app.stopdash.data
 
+import app.stopdash.domain.CallingPortion
+import app.stopdash.domain.TflException
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -13,6 +15,7 @@ import java.util.concurrent.Executors
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -45,5 +48,43 @@ class KtorDarwinClientTest {
         } finally {
             caller.shutdown()
         }
+    }
+
+    @Test
+    fun `the board with details is asked for on its own, ten trains long`() {
+        val example = json.decodeFromString<DarwinBoardDto>(
+            checkNotNull(javaClass.getResource("/fixtures/darwin_board_example.json")).readText(),
+        )
+        val details = example.copy(
+            trainServices = listOf(
+                example.trainServices!![0].copy(
+                    subsequentCallingPoints = listOf(DarwinCallingPointsDto(listOf(DarwinCallingPointDto("Guildford", "GLD")))),
+                ),
+            ),
+        )
+        var fail = false
+        val asked = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            asked += request.url.encodedPath.split('/').dropLast(1).last() + " " + request.url.parameters["numRows"]
+            if (fail) return@MockEngine respond("", HttpStatusCode.InternalServerError)
+            respond(ByteReadChannel(json.encodeToString(DarwinBoardDto.serializer(), details)), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(json) }
+        }
+        val client = KtorDarwinClient(
+            http, apiKey = { "EXAMPLE" }, baseUrl = "https://darwin.example",
+            stopIdsFor = { if (it == "GLD") setOf("910GGUILDFD") else emptySet() },
+        )
+        val board = checkNotNull(runBlocking { client.boardWithDetails("WAT") })
+        assertEquals(listOf("GetDepBoardWithDetails 10"), asked)
+        assertEquals(listOf(CallingPortion(setOf("910GGUILDFD"), complete = true)), board.departures[0].callingAt)
+        // A failure is reported as a board's is, for the caller to log and stand without.
+        fail = true
+        assertTrue(runCatching { runBlocking { client.boardWithDetails("WAT") } }.exceptionOrNull() is TflException)
+        // No key, nothing asked.
+        val keyless = KtorDarwinClient(http, apiKey = { null }, baseUrl = "https://darwin.example")
+        assertEquals(null, runBlocking { keyless.boardWithDetails("WAT") })
     }
 }

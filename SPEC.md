@@ -2977,7 +2977,18 @@ surface.)
   that table (rebuilt weekly with the station list) and the two join exactly, never by name.
   Where TfL lists one station under two National Rail ids, a list shows its board under one of
   them, the first whose own TfL fetch works, which keeps it while it keeps asking; a trip times a
-  train from the board whichever of them it boards at. A board is kept with the stops' arrivals
+  train from the board whichever of them it boards at. A trip also asks for each station's board
+  with its trains' calling points (Darwin's `GetDepBoardWithDetails`, in the same product, so the
+  same key; maintainer, 2026-10-07): a train's own stops say whether it calls where the rider gets
+  off, which its line's routes can't when one runs fast and the next all stations (a London
+  terminus's trains, read off the routes, mostly came out "Couldn't check"). That board lists only
+  the next 10 trains, so the plain one still gives the times, and a train past it is judged on its
+  line's routes as before; a train that divides is judged on its stops only where every portion
+  agrees. Only a trip asks for it, not the lists, the widget or the watch: one more free request per
+  station a trip boards at, each refresh, carrying the same code and key. The plain board stays the one
+  every screen shares; the one with details is kept beside it, and a train's stops are worked out off the
+  screen as its other checks are. If it fails, the trip says so
+  in the debug log and judges every train on its routes. A board is kept with the stops' arrivals
   (*Freshness → Shared arrivals*), so it's fetched once for every screen until it's 50 s old, and
   screens asking at the same moment share that one request. A stop's arrivals are as old as their
   oldest part, so a board read from the cache keeps its own age. A
@@ -3009,7 +3020,8 @@ surface.)
   a garbled answer) leaves the station's TfL departures in place, its National Rail lines' status rows saying
   "No data", and is logged; it never fails the stop or blanks the list. **Cost:
   £0**, at most one request per rail station per refresh against the user's own key's limit,
-  shared by every screen.
+  shared by every screen; an open trip adds one more for that station's calling points, so two at most
+  there. A failed calling-points request leaves the plain board standing.
   **Play Data Safety:** no new data type — a request carries only a public station code and the
   user's own key for that service, sent at their request; `docs/PRIVACY.md` names National Rail as
   a recipient, and the Data Safety form and privacy-policy link are re-checked before the release

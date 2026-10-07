@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
@@ -20,6 +21,30 @@ interface RailBoardSource {
 
     /** [crs]'s whole board: its trains with a time, and those it lists with none ([RailBoard.untimed]). */
     suspend fun board(crs: String): RailBoard = RailBoard(departures(crs))
+
+    /**
+     * [crs]'s next few trains with their stops after this one ([Departure.callingAt]) and their
+     * service ids ([Departure.railServiceId]), which pair them with [board]'s: for a trip, which must
+     * tell a fast train from a stopping one. Null when this source has none to give.
+     */
+    suspend fun boardWithDetails(crs: String): RailBoard? = null
+}
+
+/**
+ * Where one portion of a National Rail train stops after its board's station, as TfL stop ids
+ * ([RailStationCodes.stopIdsFor]); [complete] when every one of them had an id, so a station missing
+ * from [stops] is one it doesn't stop at, not one that couldn't be named.
+ */
+data class CallingPortion(val stops: Set<String>, val complete: Boolean) {
+    // Worked out once, where the portion is built (off the main thread): a train is a map key on the trip
+    // page's render path ([app.stopdash.domain.Departure]'s hash takes in its portions), and a set's own
+    // hash walks every stop each time it's asked (Codex, #650). Equal portions still hash alike.
+    private val hash = 31 * stops.hashCode() + complete.hashCode()
+
+    override fun hashCode(): Int = hash
+
+    override fun equals(other: Any?): Boolean =
+        this === other || other is CallingPortion && hash == other.hash && complete == other.complete && stops == other.stops
 }
 
 /**
@@ -91,6 +116,15 @@ class RailStationCodes(private val codes: Map<String, String>) {
      */
     fun stopIdFor(crs: String): String? = tiplocs[crs.uppercase()]?.let { TFL_RAIL_PREFIX + it }
 
+    // Each code's TIPLOCs, all of them: built with the table, as [tiplocs] is.
+    private val allTiplocs: Map<String, Set<String>> = codes.entries.groupBy({ it.value }, { it.key }).mapValues { it.value.toSet() }
+
+    /**
+     * Every TfL stop id of the station with [crs]: a train calling there calls at each of them (St
+     * Pancras's three are one station to the train). Empty when no station has it.
+     */
+    fun stopIdsFor(crs: String): Set<String> = allTiplocs[crs.uppercase()].orEmpty().mapTo(HashSet()) { TFL_RAIL_PREFIX + it }
+
     companion object {
         private const val TFL_RAIL_PREFIX = "910G"
         val EMPTY = RailStationCodes(emptyMap())
@@ -127,6 +161,8 @@ class RailAwareTflClient(
     // Null keeps nothing between requests (tests, an unwired client).
     private val boards: ArrivalsCache? = null,
     private val clock: () -> Instant = Instant::now,
+    // A trip asks for each train's stopping pattern too ([RailBoardSource.boardWithDetails]).
+    private val callingPoints: Boolean = false,
 ) : TflClient by tfl {
     // Each station code's owner: the one stop its board is fetched for and shown under, and when it
     // last asked. Two TfL stops can share a code (St Pancras's two National Rail ids, side by side in
@@ -261,20 +297,39 @@ class RailAwareTflClient(
         }
     }
 
-    /** [crs]'s board, kept or asked for, with when it was fetched; null when it failed (logged). */
-    private suspend fun fetchBoard(crs: String, stopId: String): ArrivalsCache.Entry? {
-        suspend fun request(): RailBoard? =
+    /**
+     * [crs]'s board, kept or asked for, with when it was fetched; null when it failed (logged). A trip's
+     * ([callingPoints]) also has its trains' calling points, from the board with details asked for
+     * beside it and kept apart: the plain board stays the one every screen shares (Codex, #650). That
+     * one failing is logged, and the plain board stands.
+     */
+    private suspend fun fetchBoard(crs: String, stopId: String): ArrivalsCache.Entry? = coroutineScope {
+        val details = if (callingPoints) async { fetchOne(crs, stopId, DETAILS_KEY, "calling points") { rail.boardWithDetails(crs) } } else null
+        val plain = fetchOne(crs, stopId, BOARD_KEY, "board") { rail.board(crs) }
+        val withDetails = details?.await()
+        val calling = withDetails?.departures.orEmpty()
+        if (plain == null || withDetails == null || calling.isEmpty()) {
+            plain
+        } else {
+            // As old as its older half: calling points kept from before stand for no fresher a board (Codex, #650).
+            plain.copy(departures = withCallingPoints(plain.departures, calling), fetchedAt = minOf(plain.fetchedAt, withDetails.fetchedAt))
+        }
+    }
+
+    // One of [crs]'s boards from [request], kept under [key] and asked for once however many screens and
+    // stops ask at the same time; null when it failed (logged as its [what]).
+    private suspend fun fetchOne(crs: String, stopId: String, key: String, what: String, request: suspend () -> RailBoard?): ArrivalsCache.Entry? {
+        suspend fun asked(): RailBoard? =
             try {
-                rail.board(crs)
+                request()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TflException) {
-                warn("national rail board failed for stop $stopId: ${e.message}")
+                warn("national rail $what failed for stop $stopId: ${e.message}")
                 null
             }
-        val cache = boards ?: return request()?.let { ArrivalsCache.Entry(it.departures, SteadyClock.stamp(clock()), untimed = it.untimed) }
-        // Kept, and asked for once however many screens and stops ask at the same time.
-        return cache.fetchBoardOnce(BOARD_KEY + crs, clock(), BOARD_SOURCE) { request() }
+        val cache = boards ?: return asked()?.let { ArrivalsCache.Entry(it.departures, SteadyClock.stamp(clock()), untimed = it.untimed) }
+        return cache.fetchBoardOnce(key + crs, clock(), BOARD_SOURCE) { asked() }
     }
 
     private suspend fun takeHandoff(crs: String): ArrivalsCache.Entry? = ownersLock.withLock {
@@ -310,10 +365,22 @@ class RailAwareTflClient(
 
         // A board's key in [boards], beside the stops' ids: no stop id has a colon.
         private const val BOARD_KEY = "national-rail:"
+        private const val DETAILS_KEY = "national-rail-details:"
 
         // What a kept board was fetched from: a board, whatever key asked for it.
         private val BOARD_SOURCE = Any()
     }
+}
+
+/**
+ * [plain]'s trains with the calling points of the same services on [details], the same station's board
+ * with them ([RailBoardSource.boardWithDetails]), paired by Darwin's service id. A train [details]
+ * doesn't list (it lists fewer) keeps none.
+ */
+@WorkerThread
+fun withCallingPoints(plain: List<Departure>, details: List<Departure>): List<Departure> {
+    val calling = details.mapNotNull { train -> train.callingAt?.let { train.railServiceId.ifBlank { null }?.to(it) } }.toMap()
+    return plain.map { train -> calling[train.railServiceId.ifBlank { null }]?.let { train.copy(callingAt = it) } ?: train }
 }
 
 /** TfL's mode id for National Rail lines, which a Darwin departure carries too. */

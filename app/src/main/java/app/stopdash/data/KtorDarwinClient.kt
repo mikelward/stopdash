@@ -40,19 +40,40 @@ class KtorDarwinClient(
     // TfL's stop id for a station code (RailStationCodes.stopIdFor), read where the board is: a
     // train's terminus by id, for its stop list. Null for none, as in a test.
     private val stopIdFor: (String) -> String? = { null },
+    // Every TfL stop id of a station code (RailStationCodes.stopIdsFor): a train's calling points.
+    private val stopIdsFor: (String) -> Set<String> = { emptySet() },
 ) : RailBoardSource {
     override val available: Boolean get() = !apiKey().isNullOrBlank()
 
     override suspend fun departures(crs: String): List<Departure> = board(crs).departures
 
     override suspend fun board(crs: String): RailBoard {
-        val key = apiKey()?.trim()?.ifBlank { null } ?: return RailBoard(emptyList())
+        val key = key() ?: return RailBoard(emptyList())
+        return fetch(key, BOARD, crs, ROWS) { it.toBoard(stopIdFor, stopIdsFor, warn) }
+    }
+
+    /**
+     * [crs]'s board asked for with its trains' calling points (`GetDepBoardWithDetails`), which lists
+     * fewer ([DETAIL_ROWS]): each train's stops after this one ([Departure.callingAt]), paired with
+     * the plain [board]'s trains by service id. Failures as [board]'s.
+     */
+    override suspend fun boardWithDetails(crs: String): RailBoard? {
+        val key = key() ?: return null
+        return fetch(key, DETAILS, crs, DETAIL_ROWS) { it.toBoard(stopIdFor, stopIdsFor, warn) }
+    }
+
+    private fun key(): String? = apiKey()?.trim()?.ifBlank { null }
+
+    // [crs]'s board from [operation], [rows] long, read by [read]; failures as [TflException]s.
+    private suspend fun <T> fetch(key: String, operation: String, crs: String, rows: Int, read: (DarwinBoardDto) -> T): T {
         return try {
             withContext(decodeDispatcher) {
-                httpClient.get("$baseUrl/GetDepartureBoard/$crs") {
-                    header("x-apikey", key)
-                    parameter("numRows", ROWS)
-                }.body<DarwinBoardDto>().toBoard(stopIdFor, warn)
+                read(
+                    httpClient.get("$baseUrl/$operation/$crs") {
+                        header("x-apikey", key)
+                        parameter("numRows", rows)
+                    }.body<DarwinBoardDto>(),
+                )
             }
         } catch (e: CancellationException) {
             throw e
@@ -80,5 +101,11 @@ class KtorDarwinClient(
 
         /** How many departures to ask for: about the next hour at a busy London terminus. */
         const val ROWS = 20
+
+        /** How many a board with calling points lists: Darwin's most for one with details. */
+        const val DETAIL_ROWS = 10
+
+        private const val BOARD = "GetDepartureBoard"
+        private const val DETAILS = "GetDepBoardWithDetails"
     }
 }
