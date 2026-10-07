@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +13,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.InputChip
@@ -28,9 +31,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.AvoidedLines
@@ -51,43 +58,18 @@ internal fun walkingSpeedLabel(speed: WalkingSpeed): String = stringResource(
 )
 
 /**
- * The walking speed atop a trip's routes (maintainer, 2026-09-28): "Walking speed" and the current
- * pace, which opens a menu of the three. The same setting as Settings' row, so a pick here holds
- * for later trips too; the trip plans again at the new pace ([TripViewModel.walkingSpeed]).
- */
-@Composable
-internal fun WalkingSpeedPicker(
-    speed: WalkingSpeed,
-    onChange: (WalkingSpeed) -> Unit,
-    modifier: Modifier = Modifier,
-    // False until the stored choice is read: shows no pace and opens nothing, as [MaxWalkPicker].
-    enabled: Boolean = true,
-) {
-    PickerRow(
-        title = stringResource(R.string.walking_speed_title),
-        tag = "walkingSpeed",
-        selected = speed,
-        options = WalkingSpeed.entries,
-        label = { walkingSpeedLabel(it) },
-        onChange = onChange,
-        modifier = modifier,
-        enabled = enabled,
-    )
-}
-
-/**
  * The longest walk a trip's routes may take, under the walking speed (maintainer, 2026-09-30): "Max
- * walk" and the current limit, which opens a menu of them. Atop a trip's routes, where a pick plans
- * again under the new limit ([TripViewModel.maxWalk]), and in Settings, tagged [tag] there; the same
- * setting either way. Until the stored choice is read ([enabled] false) it shows no limit and opens
- * nothing, so the default can't pass for the rider's choice.
+ * walk" and the current limit, which opens a menu of them. In Settings, tagged [tag]; atop a trip's
+ * routes it's a chip of [TripPlanOptionChips], the same setting either way. Until the stored choice is
+ * read ([enabled] false) it shows no limit and opens nothing, so the default can't pass for the
+ * rider's choice.
  */
 @Composable
 internal fun MaxWalkPicker(
     maxWalk: MaxWalk,
     onChange: (MaxWalk) -> Unit,
     modifier: Modifier = Modifier,
-    tag: String = "maxWalk",
+    tag: String,
     enabled: Boolean = true,
 ) {
     PickerRow(
@@ -125,16 +107,16 @@ internal fun stepFreeDetail(stepFree: StepFree): String? = when (stepFree) {
 
 /**
  * How step-free a trip's routes must be (maintainer, 2026-09-30): "Step-free" and Any, Station (to the
- * platform) or Fully (to the train as well). Atop a trip's routes, where a pick plans again
- * ([TripViewModel.stepFree]), and in Settings, tagged [tag] there; the same setting either way.
- * Until the stored choice is read ([enabled] false) it shows none and opens nothing.
+ * platform) or Fully (to the train as well). In Settings, tagged [tag]; atop a trip's routes it's a
+ * chip of [TripPlanOptionChips], the same setting either way. Until the stored choice is read
+ * ([enabled] false) it shows none and opens nothing.
  */
 @Composable
 internal fun StepFreePicker(
     stepFree: StepFree,
     onChange: (StepFree) -> Unit,
     modifier: Modifier = Modifier,
-    tag: String = "stepFree",
+    tag: String,
     enabled: Boolean = true,
 ) {
     PickerRow(
@@ -229,7 +211,7 @@ internal fun TripModeChips(
 }
 
 /**
- * A setting atop a trip's routes: its [title], and the [selected] option opening a menu of [options],
+ * A setting in Settings: its [title], and the [selected] option opening a menu of [options],
  * each shown by its [label] over its [detail], if it has one.
  */
 @Composable
@@ -261,30 +243,167 @@ private fun <T : Enum<T>> PickerRow(
                 Text(current)
                 Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
             }
-            // Styled as every StopDash menu is, the overflow menu's included (maintainer, 2026-10-03).
-            StopDashMenu(expanded = expanded && enabled, onDismissRequest = { expanded = false }) {
-                options.forEach { option ->
-                    DropdownMenuItem(
-                        text = {
-                            Column {
-                                Text(label(option))
-                                detail(option)?.let {
-                                    Text(
-                                        it,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                        },
-                        onClick = {
-                            expanded = false
-                            onChange(option)
-                        },
-                        modifier = Modifier.testTag("$tag-${option.name}"),
-                    )
-                }
-            }
+            PickerMenu(expanded && enabled, { expanded = false }, tag, options, label, detail, onChange)
+        }
+    }
+}
+
+/**
+ * The walking speed, max walk and step-free atop a trip's routes, as one row of dropdown chips
+ * (maintainer, 2026-10-07) rather than a row each, so the routes start two rows higher. Each chip
+ * shows its pick by an icon or a short word, as tagged and announced as Settings' full rows ("Walking
+ * speed, Medium"); a setting whose callback is null is left out. The row scrolls sideways when the
+ * chips don't fit. Until the stored choices are read ([enabled] false) none shows a pick or opens.
+ */
+@Composable
+internal fun TripPlanOptionChips(
+    walkingSpeed: WalkingSpeed,
+    onWalkingSpeedChange: ((WalkingSpeed) -> Unit)?,
+    maxWalk: MaxWalk,
+    onMaxWalkChange: ((MaxWalk) -> Unit)?,
+    stepFree: StepFree,
+    onStepFreeChange: ((StepFree) -> Unit)?,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    if (onWalkingSpeedChange == null && onMaxWalkChange == null && onStepFreeChange == null) return
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("tripPlanOptions")
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (onWalkingSpeedChange != null) {
+            PickerChip(
+                title = stringResource(R.string.walking_speed_title),
+                tag = "walkingSpeed",
+                selected = walkingSpeed,
+                options = WalkingSpeed.entries,
+                label = { walkingSpeedLabel(it) },
+                onChange = onWalkingSpeedChange,
+                enabled = enabled,
+                leading = { ChipIcon(R.drawable.ic_walk) },
+            )
+        }
+        if (onMaxWalkChange != null) {
+            PickerChip(
+                title = stringResource(R.string.max_walk_title),
+                tag = "maxWalk",
+                selected = maxWalk,
+                options = MaxWalk.entries,
+                label = { stringResource(R.string.max_walk_minutes, it.minutes) },
+                onChange = onMaxWalkChange,
+                enabled = enabled,
+                // "Max 20 min": the word says it's a limit where a walking icon alone would read as the walk.
+                prefix = stringResource(R.string.max_walk_chip_prefix),
+            )
+        }
+        if (onStepFreeChange != null) {
+            PickerChip(
+                title = stringResource(R.string.step_free_title),
+                tag = "stepFree",
+                selected = stepFree,
+                options = StepFree.entries,
+                label = { stepFreeLabel(it) },
+                detail = { stepFreeDetail(it) },
+                onChange = onStepFreeChange,
+                enabled = enabled,
+                leading = { ChipIcon(R.drawable.ic_step_free) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChipIcon(@DrawableRes icon: Int) {
+    Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(AssistChipDefaults.IconSize))
+}
+
+/**
+ * One of [TripPlanOptionChips]: the [selected] option, after its [leading] icon or [prefix] word,
+ * opening the same menu as [PickerRow]; announced by its [title] and pick.
+ */
+@Composable
+private fun <T : Enum<T>> PickerChip(
+    title: String,
+    tag: String,
+    selected: T,
+    options: List<T>,
+    label: @Composable (T) -> String,
+    onChange: (T) -> Unit,
+    enabled: Boolean,
+    detail: @Composable (T) -> String? = { null },
+    leading: (@Composable () -> Unit)? = null,
+    prefix: String? = null,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val current = if (enabled) label(selected) else "–"
+    val accent = MaterialTheme.colorScheme.primary
+    Box {
+        AssistChip(
+            onClick = { expanded = true },
+            enabled = enabled,
+            label = {
+                Text(
+                    buildAnnotatedString {
+                        prefix?.let {
+                            withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurface)) { append(it) }
+                            append(" ")
+                        }
+                        append(current)
+                    },
+                    maxLines = 1,
+                )
+            },
+            leadingIcon = leading,
+            trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null, Modifier.size(AssistChipDefaults.IconSize)) },
+            colors = AssistChipDefaults.assistChipColors(
+                labelColor = accent,
+                leadingIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                trailingIconContentColor = accent,
+            ),
+            modifier = Modifier.testTag(tag).semantics { contentDescription = "$title, $current" },
+        )
+        PickerMenu(expanded && enabled, { expanded = false }, tag, options, label, detail, onChange)
+    }
+}
+
+/** A picker's menu: each of [options] by its [label] over its [detail], tagged `"$tag-NAME"`. */
+@Composable
+private fun <T : Enum<T>> PickerMenu(
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    tag: String,
+    options: List<T>,
+    label: @Composable (T) -> String,
+    detail: @Composable (T) -> String?,
+    onChange: (T) -> Unit,
+) {
+    // Styled as every StopDash menu is, the overflow menu's included (maintainer, 2026-10-03).
+    StopDashMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        options.forEach { option ->
+            DropdownMenuItem(
+                text = {
+                    Column {
+                        Text(label(option))
+                        detail(option)?.let {
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                },
+                onClick = {
+                    onDismiss()
+                    onChange(option)
+                },
+                modifier = Modifier.testTag("$tag-${option.name}"),
+            )
         }
     }
 }

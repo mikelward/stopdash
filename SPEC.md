@@ -1488,16 +1488,16 @@ Planner and arrivals requests go through the same rate limiter as every TfL requ
 walk from where the rider is included, so it never offers a longer walk than they chose beside the
 rides: 10, 15, 20, 30, 45 or 60 minutes, **20 by default** (maintainer, 2026-10-03; 30 from 2026-09-30). It was a fixed
 15, timed like every walk at the rider's pace, so a walk to a station that beat every ride (21 minutes
-at the average pace) was never offered (maintainer's report, 2026-09-30). It is one setting, chosen in Settings (under the walking speed) or from a dropdown under the walking
+at the average pace) was never offered (maintainer's report, 2026-09-30). It is one setting, chosen in Settings (under the walking speed) or from a chip beside the walking
 speed atop a trip's routes (maintainer, 2026-09-30), and a change plans the trip again at once, as a
 speed change does; plans are kept per limit. Every plan, whatever asks for it, waits for the walking
-speed and max walk (and step-free level, below) to be read from storage, and the trip's dropdowns open nothing until then, so no
+speed and max walk (and step-free level, below) to be read from storage, and the trip's chips open nothing until then, so no
 route is planned under the defaults in place of the rider's own choice; a read that never lands delays
 a plan by two seconds at most, then it plans with the defaults and plans again once the read lands. Every
 walk is timed at the rider's **walking speed** — Slow, Medium or Fast (the Planner's `walkingSpeed`;
 Medium is its average and the default) — so a brisk walker isn't shown a ten-minute walk they do in
 six, nor told a train is out of reach that isn't (maintainer, 2026-09-28). It is one setting, chosen
-in Settings or from a dropdown atop a trip's routes, and a change there plans the trip again at once,
+in Settings or from a chip atop a trip's routes, and a change there plans the trip again at once,
 since every walk and the connections after it were timed at the old pace. An opened route shows none
 of the trip's choices (walking speed, max walk, step-free, modes, avoided lines): it is the route
 chosen, so its page is its own legs (maintainer, 2026-10-04). Plans are kept per pace.
@@ -1511,14 +1511,20 @@ Planner's `accessibilityPreference`: **Any** (no requirement, the default; nothi
 (step-free from the street to the platform, maybe a step or gap onto the train: what a suitcase or a
 buggy needs) or **Fully** (step-free onto the train as well: what a wheelchair needs). The Planner
 then plans with lifts, ramps and level walkways in place of stairs and escalators. It is one
-setting, chosen in Settings or from a dropdown under the max walk atop a trip's routes, labeled
-**Step-free: Any / Station / Fully** (the maintainer's names). In its menu, Station and Fully each
+setting, chosen in Settings, labeled **Step-free: Any / Station / Fully** (the maintainer's names), or
+from a chip beside the max walk atop a trip's routes. In its menu, Station and Fully each
 carry a line saying what they're for, since the bare names don't tell a rider with a suitcase or a
 buggy that Station suits them too. A change plans the trip again at once, as a walk change does; plans are kept per level. A plan's wait for the settings to be read
 (above) takes in the step-free level too, so a rider who needs step-free routes is never first shown
 routes with stairs.
 
-**Modes.** A row of chips under the step-free dropdown says which kinds of transport a trip may
+**One row of choices** (maintainer, 2026-10-07). Atop a trip's routes the walking speed, max walk
+and step-free level are one row of dropdown chips rather than a full-width row each, so the routes
+start two rows higher: the pace by a walking icon ("Medium"), the limit by a word ("Max 20 min"), the
+level by the step-free icon ("Any"). Each is announced by its full name ("Walking speed, Medium") and
+opens the same menu as its Settings row; the row scrolls sideways when it doesn't fit.
+
+**Modes.** A row of chips under the walk choices says which kinds of transport a trip may
 ride: one per group the list already hides modes by, under the same names
 (**Tube & DLR**, **Train**, **Bus**, **Tram**, **Boat**, **Coach**), selected while the trip rides it.
 A tap turns a group off or on and plans again at once, as the options above do; plans are kept per

@@ -652,6 +652,8 @@
     <!-- The longest walk a trip's routes may take: the dropdown atop a trip's routes. -->
     <string name="max_walk_title">Max walk</string>
     <string name="max_walk_minutes">%1$d min</string>
+    <!-- Before the limit on the trip's max-walk chip: "Max 20 min". -->
+    <string name="max_walk_chip_prefix">Max</string>
     <string name="max_walk_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
     <!-- How step-free a trip's routes must be: the dropdown atop a trip's routes and in Settings.
          Station: step-free from the street to the platform; Fully: to the train as well. -->
