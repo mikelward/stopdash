@@ -886,6 +886,8 @@
         <item quantity="one">%1$d stop · next %2$s</item>
         <item quantity="other">%1$d stops · next %2$s</item>
     </plurals>
+    <!-- On the trip card after a ride's stops left ("2 stops"), drawn beside it: %1$s the next stop. -->
+    <string name="on_the_way_next_tail">· next %1$s</string>
     <!-- As on_the_way_stops, with the next stop's name not known. -->
     <plurals name="on_the_way_stops_left">
         <item quantity="one">%1$d stop</item>

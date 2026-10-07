@@ -2163,4 +2163,14 @@ class OnTheWayTest {
         // A ride with no stops planned has none to count, not "stop 1 of 0".
         assertEquals("on the way: seen along the ride, stops not counted, fix accuracy 30 m", OnTheWay.seenAlongNote(onBoard, long.copy(path = emptyList()), OnTheWay.Along(0, atStop = false), 30f))
     }
+
+    @Test
+    fun a_rides_next_stop_comes_abbreviated_with_it() {
+        // Shortened where the progress is built, so the card only reads it; a copy to another stop shortens that one.
+        val riding = TripProgress.Riding(long, "Tottenham Court Road", 2, null, false)
+        assertEquals("Tottenham Court Rd", riding.nextStopShort)
+        assertEquals("U. Taxi Rd", riding.copy(nextStop = "Upper Taxi Road").nextStopShort)
+        assertEquals(null, riding.copy(nextStop = null).nextStopShort)
+        assertEquals(null, riding.copy(nextStop = "").nextStopShort)
+    }
 }
