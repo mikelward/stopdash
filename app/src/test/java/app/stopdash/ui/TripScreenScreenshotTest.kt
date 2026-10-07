@@ -4311,6 +4311,23 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun line_page_one_way_tracks() {
+        // A made-up bus whose way back starts from a stand of its own, Xray, joining the outbound way at
+        // Gamma: the track on to Delta and the stand's own each carry an arrow the way buses run them.
+        val names = mapOf("A1" to "Alpha", "A2" to "Alpha", "B1" to "Beta", "B2" to "Beta", "C1" to "Gamma", "C2" to "Gamma", "D1" to "Delta", "X2" to "Xray")
+        val bus = LineSequence(
+            routes = listOf(LineRoute("", listOf("A1", "B1", "C1", "D1"), "outbound"), LineRoute("", listOf("X2", "C2", "B2", "A2"), "inbound")),
+            stopNames = names,
+            stopAreas = names.keys.associateWith { it.take(1).lowercase() },
+        )
+        showLinePage(TripLine(leg("bus", "b", "B", "" to "", "" to "", 0, 10, 2), LineStatus("b", 10, "Good Service")), bus, shown = "Xray")
+        // The arrows said as well as drawn (Codex, #665).
+        lineMapRow("Xray").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "One way, up the map"))
+        lineMapRow("Delta").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "One way, down the map"))
+        captureSnapshot("line-page-one-way.png")
+    }
+
+    @Test
     @Config(qualifiers = "en-rGB-w411dp-h914dp-night-420dpi")
     fun line_page_part_suspended() {
         showLinePage(TripLine(northernLeg(), northernPartSuspended), northernLine, shown = "1 station \u26D4", starred = setOf("940GZZLUKSX"))

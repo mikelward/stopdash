@@ -114,8 +114,10 @@ class LineMapTest {
     @Test
     fun `the trunks meet at Kennington on a curve, and part again for Battersea`() {
         val kennington = LineMap.of(northern())!!.row("Kennington")
-        assertEquals(setOf(LineMap.Rail(0, 0), LineMap.Rail(1, 0)), kennington.top.toSet())
-        assertEquals(setOf(LineMap.Rail(0, 0), LineMap.Rail(0, 1)), kennington.bottom.toSet())
+        assertEquals(setOf(0 to 0, 1 to 0), kennington.top.mapTo(HashSet()) { it.from to it.to })
+        assertEquals(setOf(0 to 0, 0 to 1), kennington.bottom.mapTo(HashSet()) { it.from to it.to })
+        // Run both ways, as every tube track is: no arrows.
+        assertTrue(LineMap.of(northern())!!.rows.none { row -> (row.top + row.bottom).any { it.oneWay } })
     }
 
     @Test
@@ -364,6 +366,33 @@ class LineMapTest {
         // One with a stop of its own between still forks there.
         val elsewhere = LineMap.of(spread(listOf("D2", "C2", "X2", "A2")))!!
         assertEquals(2, elsewhere.columns)
+    }
+
+    @Test
+    fun `a track the bus runs one way only is marked so, the way it runs`() {
+        // Its way back starts from a stand of its own (Xray), joining the outbound way at Gamma: the stretch
+        // on to Delta is run going down the map only, the stand's going up only, the rest both ways.
+        val map = LineMap.of(spread(listOf("X2", "C2", "B2", "A2")))!!
+        val delta = map.row("Delta").top.single { it.arrives }
+        assertTrue(delta.oneWay && delta.runsDown && delta.arrives)
+        val xray = map.row("Xray").top.single { it.arrives }
+        assertTrue(xray.oneWay && xray.runsUp && xray.arrives)
+        assertTrue((map.row("Beta").top + map.row("Gamma").top).none { it.oneWay })
+        // Folded, the run that holds the row a one-way track ends at carries its arrow (Codex, #665): here
+        // the way back starts at Beta, so the track from Alpha to Beta runs down the map only.
+        val folded = LineMap.of(spread(listOf("D2", "C2", "B2")))!!.folded(emptySet()).filterIsInstance<LineMap.Item.Fold>()
+        assertTrue(folded.any { fold -> fold.oneWayDown && !fold.oneWayUp && fold.rails.any { it.oneWayDown } })
+        // A row reached by one-way tracks each way says both (Codex, #665): the way back runs from Delta by
+        // Xray to Alpha, so Delta's track from Gamma runs down the map only and its track from Xray up it.
+        val loop = LineMap.of(spread(listOf("D2", "X2", "A2")))!!
+        assertTrue(loop.row("Delta").oneWayDown && loop.row("Delta").oneWayUp)
+        assertTrue(loop.row("Beta").oneWayDown && !loop.row("Beta").oneWayUp)
+        // Passing a stop without calling still runs its street both ways.
+        assertTrue(LineMap.of(spread(listOf("D2", "B2", "A2")))!!.rows.none { row -> (row.top + row.bottom).any { it.oneWay } })
+        // A way back the map can't draw, or none known: which way buses run a track isn't known, so no arrows.
+        assertTrue(LineMap.of(bus(listOf("D2", "B2", "C2", "A2")))!!.rows.none { row -> (row.top + row.bottom).any { it.oneWay } })
+        val outboundOnly = spread(listOf("D2", "C2", "B2", "A2")).let { it.copy(routes = it.routes.filter { r -> r.direction == "outbound" }) }
+        assertTrue(LineMap.of(outboundOnly)!!.rows.none { row -> (row.top + row.bottom).any { it.oneWay } })
     }
 
     @Test
