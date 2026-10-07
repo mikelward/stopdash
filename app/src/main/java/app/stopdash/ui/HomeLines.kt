@@ -2,6 +2,7 @@ package app.stopdash.ui
 
 import androidx.annotation.WorkerThread
 import app.stopdash.domain.DismissedAlert
+import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.LineMap
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
@@ -9,10 +10,12 @@ import app.stopdash.domain.NearbySelection
 import app.stopdash.domain.NearestByLine
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.StarredRow
+import app.stopdash.domain.StationIndex
 import app.stopdash.domain.TripLeg
 import java.time.Instant
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 
@@ -135,6 +138,59 @@ object HomeLines {
     fun journeyLineIds(journeys: Flow<List<FavoriteJourney>?>, compute: CoroutineDispatcher): Flow<Set<String>> =
         journeys.map { list -> list.orEmpty().mapNotNullTo(HashSet()) { it.lineId.takeIf(String::isNotBlank) } }.flowOn(compute)
 
+    /**
+     * The lines near the favorite places ([placeLines]): [lines], and [unread] while they can't be named, the
+     * places never read (a newer build's file, or a read outage the store retries) or the bundled station index
+     * missing, so the row says it couldn't check rather than reading as if there were no places (Codex, #657).
+     */
+    class PlaceLines(val lines: List<LineRef>, val unread: Boolean = false) {
+        companion object {
+            /** No favorite places. */
+            val NONE = PlaceLines(emptyList())
+        }
+    }
+
+    /**
+     * The lines of every station within walking reach ([NEARBY_METERS]) of a favorite place, as the [places]
+     * change, for the row to cover wherever the rider is (maintainer, 2026-10-07): stations only, from the
+     * bundled [index], so it costs no request. Worked out on [compute], never the collector's thread. While the
+     * places can't be read the last lines stand rather than vanishing, so a place's line is never dropped
+     * unasked (Codex, #657); before any were read, none, marked [PlaceLines.unread]. A discarded file means the
+     * places are gone: none.
+     */
+    fun placeLines(
+        places: Flow<FavoritePlacesSet>,
+        index: () -> StationIndex,
+        compute: CoroutineDispatcher,
+        warn: (String) -> Unit = {},
+    ): Flow<PlaceLines> = flow {
+        var last: PlaceLines? = null
+        places.collect { set ->
+            val lines = when (set) {
+                is FavoritePlacesSet.Loaded -> if (set.places.isEmpty()) {
+                    PlaceLines.NONE
+                } else {
+                    val stations = index()
+                    // No bundled index to read (missing, corrupt, a newer format: [StationIndex.EMPTY]) names no line
+                    // near any place: unread, not "no lines there" (Codex, #657).
+                    if (stations.stations.isEmpty()) {
+                        warn("disruptions row: no station index, the favorite places' lines can't be named")
+                        PlaceLines(emptyList(), unread = true)
+                    } else {
+                        PlaceLines(stations.linesNear(set.places.map { it.coordinate }, NEARBY_METERS))
+                    }
+                }
+                FavoritePlacesSet.Discarded -> PlaceLines(emptyList())
+                FavoritePlacesSet.Unavailable -> {
+                    warn("disruptions row: favorite places unavailable, keeping their last lines")
+                    last ?: PlaceLines(emptyList(), unread = true)
+                }
+            }
+            last = lines
+            emit(lines)
+        }
+    }.flowOn(compute)
+
     /** Their ids, for the list's status request to ask about. On a worker only. */
     @WorkerThread
     fun idsOf(networks: Set<String>): Set<String> = linesOf(networks).mapTo(LinkedHashSet()) { it.id }
@@ -228,6 +284,12 @@ object HomeLines {
         // Each line's stop nearest the rider within reach by the nearby stops' own data, both tiers, a
         // stop whose times aren't fetched included ([NearbyStopsViewModel.State.Ready.nearestStopByLine]).
         nearestStops: Map<String, String> = emptyMap(),
+        // The lines of the stations near each favorite place (maintainer, 2026-10-07), asked about with the
+        // always-covered lines and ranked as the rider's own.
+        placeLines: List<LineRef> = emptyList(),
+        // The favorite places never read ([PlaceLines.unread]): their lines can't be named, so the row says
+        // "Unknown" rather than leaving them unsaid.
+        placesUnread: Boolean = false,
     ): TripRow {
         val alwaysLines = linesOf(networks)
         val refs = LinkedHashMap<String, LineRef>()
@@ -275,7 +337,11 @@ object HomeLines {
             stop.lines.forEach { if (wanted(it.id)) refs.putIfAbsent(it.id, it) }
         }
         journeys.forEach { if (it.lineId.isNotBlank()) refs.putIfAbsent(it.lineId, it.line) }
-        val alwaysIds = alwaysLines.mapTo(HashSet()) { it.id }.apply { journeys.forEach { if (it.lineId.isNotBlank()) add(it.lineId) } }
+        placeLines.forEach { refs.putIfAbsent(it.id, it) }
+        val alwaysIds = alwaysLines.mapTo(HashSet()) { it.id }.apply {
+            journeys.forEach { if (it.lineId.isNotBlank()) add(it.lineId) }
+            placeLines.forEach { add(it.id) }
+        }
         // Each line's stop nearest the rider within reach, which its map keeps on the page.
         val nearest = NearestByLine.merged(loaded?.stops.orEmpty(), nearestStops, distances)
         val listChecked = loaded?.determinedLineIds.orEmpty()
@@ -330,6 +396,7 @@ object HomeLines {
         val mine = HashSet<String>(nearby)
         mine += starredHere
         mine += journeyLines
+        placeLines.forEach { mine += it.id }
         val every = refs.values.map { ref ->
             val id = ref.id
             val was = raw[id]
@@ -362,7 +429,7 @@ object HomeLines {
         return TripRow(
             checking = checking.isNotEmpty(),
             lines = disrupted,
-            unknown = unknown.isNotEmpty() || listUnknown,
+            unknown = unknown.isNotEmpty() || listUnknown || placesUnread,
             unknownLines = unknown,
             unknownStops = unknownStops,
             every = every,

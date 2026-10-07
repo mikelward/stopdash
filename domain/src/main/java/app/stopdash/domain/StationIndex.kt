@@ -1,5 +1,7 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
+
 /**
  * One station or interchange in the bundled index (SPEC *Finding stops → Find a station*): its
  * TfL [id], cleaned [name], the [modes] it serves, and the interchange it belongs to ([hubId],
@@ -56,6 +58,27 @@ class StationIndex(
             )
             .take(limit)
             .map { (station, _) -> StationMatch(station.id, station.name, station.modes) }
+    }
+
+    /**
+     * Every line of the stations within [meters] of any of [places], by id, each once with its mode and name
+     * ([lineNames], else its id): the lines a rider at one of them can take with no bus (the index holds no
+     * bus stops). A station with no position never counts. In the stations' order. Walks every station for
+     * every place: on a worker only.
+     */
+    @WorkerThread
+    fun linesNear(places: Collection<Coordinates>, meters: Int): List<LineRef> {
+        if (places.isEmpty()) return emptyList()
+        val lines = LinkedHashMap<String, LineRef>()
+        for (station in stations) {
+            val lat = station.latitude ?: continue
+            val lon = station.longitude ?: continue
+            if (places.none { NearestStops.distanceMeters(it.latitude, it.longitude, lat, lon) <= meters }) continue
+            for ((mode, ids) in station.lines) {
+                ids.forEach { id -> if (id.isNotBlank()) lines.getOrPut(id) { LineRef(id, lineNames[id] ?: id, mode) } }
+            }
+        }
+        return lines.values.toList()
     }
 
     /**

@@ -308,6 +308,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -715,6 +716,9 @@ class MainActivity : ComponentActivity() {
                 var settingsOpen by rememberSaveable { mutableStateOf(false) }
                 // Settings opened for the disruptions summary (the lines page's menu): it opens on that page.
                 var settingsOnDisruptions by rememberSaveable { mutableStateOf(false) }
+                // Settings closed any way (Back, or a route away from a place opened from the summary page): the
+                // next opening starts at its top, not on that page (Codex, #657).
+                LaunchedEffect(settingsOpen) { if (!settingsOpen) settingsOnDisruptions = false }
                 // The location gate's About dialog, hosted here rather than in the gate: a lookup that
                 // finishes while it's open replaces the gate, and would close it under the reader (Codex, #470).
                 var gateAboutOpen by rememberSaveable { mutableStateOf(false) }
@@ -1696,6 +1700,10 @@ class MainActivity : ComponentActivity() {
                                     onDismissAvoidedError = AvoidedLinesSetting::writeFailureShown,
                                     startOnDisruptions = settingsOnDisruptions,
                                     onDisruptionsClosed = { settingsOnDisruptions = false },
+                                    onOpenFavoritePlacesFromDisruptions = {
+                                        settingsOnDisruptions = true
+                                        favoritePlacesOpen = true
+                                    },
                                     onBack = {
                                         settingsOpen = false
                                         settingsOnDisruptions = false
@@ -2301,8 +2309,15 @@ class MainActivity : ComponentActivity() {
                             // The networks the disruptions row always covers, asked about with the list's own lines.
                             // None while the row is off: nothing shows them, so they're not asked about (Codex, #592).
                             alwaysNetworks = { if (DisruptionsRowSetting.loaded()) SummaryNetworksSetting.loaded() else emptySet() },
-                            // The favorites' lines, covered wherever their stop is; none while the row is off.
-                            favoriteLines = { if (DisruptionsRowSetting.loaded()) favoriteLineIds(appContext) else emptySet() },
+                            // The favorites' lines, covered wherever their stop is, and the lines of the stations near each
+                            // favorite place (maintainer, 2026-10-07); none while the row is off.
+                            favoriteLines = {
+                                if (DisruptionsRowSetting.loaded()) {
+                                    favoriteLineIds(appContext) + placeLinesOf(appContext).filterNotNull().first().lines.map { it.id }
+                                } else {
+                                    emptySet()
+                                }
+                            },
                             lineStatusReuse = LINE_STATUS_REUSE,
                             // Stops past the walking reach refresh every other minute on the timer.
                             stopDistanceMeters = ready.distanceMeters,
@@ -2331,9 +2346,14 @@ class MainActivity : ComponentActivity() {
                     DataStoreFavoriteJourneysStore.from(appContext, warn = ::logStarWarning).journeys(),
                     Workers.compute,
                 )
-                combine(DisruptionsRowSetting.changes, SummaryNetworksSetting.changes, journeyLines) { on, networks, lines -> Triple(on, networks, lines) }
+                // A favorite place added or moved brings its stations' lines in at once too.
+                combine(DisruptionsRowSetting.changes, SummaryNetworksSetting.changes, journeyLines, placeLinesOf(appContext).filterNotNull()) { on, networks, lines, near ->
+                    listOf(on, networks, lines, near.lines)
+                }
                     .distinctUntilChanged()
-                    .collect { (on, _, _) -> if (on) viewModel.checkAlways() }
+                    // Combined and compared on the worker: the lists grow with the rider's favorites (Codex, #657).
+                    .flowOn(Workers.compute)
+                    .collect { (on, _, _, _) -> if (on == true) viewModel.checkAlways() }
             }
             // A relocate holds the indicator on for the whole fresh fix, not just the departures
             // fetch that follows a same-set confirmation.
@@ -2656,6 +2676,8 @@ class MainActivity : ComponentActivity() {
                     stopDistanceMeters = ready.distanceMeters + fartherDistanceMeters,
                     nearestStops = ready.nearestStopByLine,
                     journeys = shownJourneys,
+                    // Null until worked out: the row holds meanwhile.
+                    placeLines = placeLinesOf(applicationContext).collectAsStateWithLifecycle().value,
                     farJourneyMeters = farJourneyMeters,
                     nearbyKey = stopsKey,
                     farReveal = shownFarReveal,
@@ -4872,6 +4894,26 @@ internal fun savedPlacesOf(set: FavoritePlacesSet): List<FavoritePlace>? = when 
     FavoritePlacesSet.Discarded -> emptyList()
     FavoritePlacesSet.Unavailable -> null
 }
+
+/**
+ * The lines near the favorite places as they change ([HomeLines.placeLines]), from the stored places: one
+ * process-wide source, so the refresh, the row and the check on a change all read the same lines, the last
+ * standing for each while the places can't be read (Codex, #657). Null until first worked out.
+ */
+private fun placeLinesOf(context: Context): StateFlow<HomeLines.PlaceLines?> =
+    sharedPlaceLines ?: synchronized(PlaceLinesLock) {
+        sharedPlaceLines ?: HomeLines.placeLines(
+            DataStoreFavoritePlacesStore.from(context.applicationContext, warn = ::logStarWarning).places(),
+            index = { StationIndexStore.load(context.applicationContext) },
+            compute = Workers.compute,
+            warn = ::logStarWarning,
+        ).stateIn(CoroutineScope(SupervisorJob() + Workers.compute), SharingStarted.Eagerly, null).also { sharedPlaceLines = it }
+    }
+
+private object PlaceLinesLock
+
+@Volatile
+private var sharedPlaceLines: StateFlow<HomeLines.PlaceLines?>? = null
 
 private suspend fun loadFavoritePlaces(context: Context): List<FavoritePlace>? =
     try {

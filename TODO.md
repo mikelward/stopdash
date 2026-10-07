@@ -2623,12 +2623,16 @@ Builds on Phase 1's minimal line-status marking.
         any worker hop. Every screen that takes a collection does this, so it is an app-wide design
         question, not one picker's: wrap stored snapshots in identity holders at the source, or accept it
         for small settings sets. The picker's own holds and keys compare by identity.
-  - [ ] **Point to favorite places** on the picker (maintainer, 2026-10-07): its line reads "Favorite
-        places and lines near you are always included", with a **Favorite places** button, landing with
-        the place-lines item below, which makes it true.
-  - [ ] **Cover the lines near favorite places** (maintainer, 2026-10-06): resolve each place's stops
-        within walking reach once on save (and now and then after), their lines joining the rider's own;
-        maybe their stations' closures too.
+  - [x] **Point to favorite places** on the picker (maintainer, 2026-10-07): its line reads "Favorite
+        places and lines near you are always included", with a **Favorite places** button.
+  - [x] **Cover the lines near favorite places** (maintainer, 2026-10-06): every line of each station
+        within walking reach of a place joins the rider's own, from the bundled station index (no
+        request), recomputed as the places change (maintainer, 2026-10-07: stations only to start).
+  - [ ] **Include buses near favorite places** (maintainer, 2026-10-07: a setting, off by default): a
+        switch on the Disruptions summary page adding the bus routes at each place's stops within walking
+        reach, from TfL's stops-near-a-point lookup (one cached request per place, shared with the place
+        chips).
+  - [ ] **Maybe the closures of the stations near favorite places** too (maintainer, 2026-10-06).
   - [ ] **Name the walking reach's closed stops on the row**, as a trip's row names its closed stops.
   - [x] **Fold the list's "couldn't check for disruptions" banner into the row** (maintainer,
         2026-10-05): where the row shows, its "Unknown" says what the banner did, naming what it can.

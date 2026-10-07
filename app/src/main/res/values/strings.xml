@@ -544,7 +544,7 @@
     <string name="settings_disruptions_row_description">Show alerts and delays on the home screen</string>
     <!-- Under the Disruptions summary switch: the networks it always covers, one chip each. -->
     <string name="settings_summary_networks_title">Always include</string>
-    <string name="settings_summary_networks_summary">Lines near you are always included</string>
+    <string name="settings_summary_networks_summary">Favorite places and lines near you are always included</string>
     <!-- The header over the networks of one line each (Elizabeth line, DLR, Tram). -->
     <string name="settings_summary_other">Other</string>
     <string name="network_tube">Tube</string>
