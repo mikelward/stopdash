@@ -1234,6 +1234,8 @@ fun MainScreen(
                                     },
                                 )
                             }
+                            // Lines…: find a line by name or number and open its page (SPEC *Finding a line*).
+                            LinesMenuItem(close)
                             // One checkbox per mode nearby (SPEC *Finding stops → Hiding a mode*):
                             // ticked is shown. The menu stays open, so several can be toggled.
                             if (onSetModeGroupShown != null) {

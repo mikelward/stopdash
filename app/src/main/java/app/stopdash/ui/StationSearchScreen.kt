@@ -425,7 +425,7 @@ private fun YourStopsList(
 
 /** A section heading over one group of the pre-query list ("Places", "Recent", "Starred"). */
 @Composable
-private fun SectionHeading(text: String) {
+internal fun SectionHeading(text: String) {
     Text(
         text,
         style = MaterialTheme.typography.titleSmall,
@@ -551,7 +551,7 @@ private fun MatchRow(match: StationMatch, onClick: () -> Unit) {
 }
 
 @Composable
-private fun Message(text: String) {
+internal fun Message(text: String) {
     Text(
         text,
         modifier = Modifier.fillMaxWidth().padding(16.dp),

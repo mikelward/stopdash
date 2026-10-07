@@ -349,6 +349,16 @@
     <!-- A searched station's app-bar action: pick a destination, then keep only the departures that
          go there (SPEC *Finding stops → From… To…*). -->
     <string name="menu_to">To…</string>
+    <!-- Overflow item under From… and To… that opens the line search (SPEC Finding a line). -->
+    <string name="menu_lines">Lines…</string>
+    <!-- Placeholder in the line search field. -->
+    <string name="lines_search_hint">Line or route number</string>
+    <!-- Shown in the line search before anything is typed, when no line has been opened yet. -->
+    <string name="lines_search_prompt">Type a line name or route number</string>
+    <!-- The line search found nothing for what was typed. -->
+    <string name="lines_search_no_matches">No lines match</string>
+    <!-- TfL's list of lines couldn't be loaded and none was kept from before; a Retry follows. -->
+    <string name="lines_search_failed">Couldn\'t load the lines</string>
     <!-- Placeholder in the destination search opened by "To…", beside its "To" label; it finds
          geocoded places too. -->
     <string name="station_search_to_hint">Station, stop or place</string>

@@ -4,6 +4,7 @@ import app.stopdash.domain.PostcodeResolution
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TflRateLimiter
 import io.ktor.client.HttpClient
+import app.stopdash.domain.LineRef
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.plugins.HttpTimeout
@@ -374,6 +375,22 @@ class KtorTflClientTest {
         assertEquals("EXAMPLE", checkNotNull(captured).url.parameters["app_key"])
     }
 
+    @Test
+    fun `the line list asks for the modes named and keeps each line's id, name and mode`() = runTest {
+        var captured: HttpRequestData? = null
+        val client = client(
+            """[{"id": "299", "name": "299", "modeName": "bus", "serviceTypes": []},
+               {"id": "victoria", "name": "Victoria", "modeName": "tube"},
+               {"id": "", "name": "Unnamed", "modeName": "bus"},
+               {"id": "299", "name": "299", "modeName": "bus"}]""",
+            capture = { captured = it },
+        )
+        val lines = client.lines(listOf("tube", "bus"))
+        assertEquals("/Line/Mode/tube,bus", checkNotNull(captured).url.encodedPath)
+        // A line with no id is left out, and one TfL lists twice is kept once.
+        assertEquals(listOf(LineRef("299", "299", "bus"), LineRef("victoria", "Victoria", "tube")), lines)
+    }
+
     private fun client(
         body: String,
         status: HttpStatusCode = HttpStatusCode.OK,
@@ -397,6 +414,32 @@ class KtorTflClientTest {
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
         return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, appKey = { appKey }, warn = warn, keyAnswered = keyAnswered)
+    }
+
+    @Test
+    fun `a line page's status is asked in detail and places its closure at once`() = runTest {
+        var captured: HttpRequestData? = null
+        val body = """
+            [{"id": "bus1", "name": "1", "lineStatuses": [
+              {"statusSeverity": 3, "statusSeverityDescription": "Part Suspended", "reason": "No service between A and B.",
+               "disruption": {"affectedRoutes": [{"direction": "outbound", "routeSectionNaptanEntrySequence": [
+                 {"stopPoint": {"naptanId": "A"}}, {"stopPoint": {"naptanId": "B"}}, {"stopPoint": {"naptanId": "C"}}]}],
+                 "affectedStops": [{"naptanId": "A"}, {"naptanId": "B"}]}}
+            ]}]
+        """.trimIndent()
+        val status = checkNotNull(client(body, capture = { captured = it }).lineStatusInDetail("bus1"))
+        val request = checkNotNull(captured)
+        assertEquals("/Line/bus1/Status", request.url.encodedPath)
+        assertEquals("true", request.url.parameters["detail"])
+        // Placed from this one answer: the map can draw A–B closed without a second request.
+        assertEquals(listOf(listOf("A", "B")), status.closures.flatMap { it.sections })
+        assertEquals("Part Suspended", status.forDirection("outbound").description)
+        assertFalse(status.awaitingDirections)
+    }
+
+    @Test
+    fun `a line page's status is null when TfL gives the line none`() = runTest {
+        assertNull(client("""[{"id": "bus1", "name": "1", "lineStatuses": []}]""").lineStatusInDetail("bus1"))
     }
 
     @Test

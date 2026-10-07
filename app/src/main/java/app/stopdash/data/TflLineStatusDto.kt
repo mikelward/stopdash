@@ -279,3 +279,11 @@ private fun ResolvedDisruption.toLineStatus(lineId: String): LineStatus =
     )
 
 private const val GOOD_SERVICE_LABEL = "Good Service"
+
+/** One line from TfL's `/Line/Mode/{modes}` answer: only what *Lines…* lists it by. */
+@Serializable
+data class TflModeLineDto(
+    val id: String = "",
+    val name: String = "",
+    val modeName: String = "",
+)

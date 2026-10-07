@@ -2644,6 +2644,13 @@ Builds on Phase 1's minimal line-status marking.
       to, or with good service to the line's ends and junctions; the rider's starred and trip stops
       never fold. Tested on the real Northern line and recorded Northern, District and Circle
       sequences.
+- [x] **Lines…: find any line and open its page** (maintainer, 2026-10-07; SPEC *Finding a line*).
+      In the overflow under From… and To…: TfL's lines (`/Line/Mode`, kept a day, `LineCatalog`)
+      searched on the device (`LineSearch`), the recently opened lines before anything is typed
+      (`RecentLines`), a pick opening the line page with its status asked as it opens. Needs a device
+      check of the search and the page.
+- [ ] **What a tap on a stop does on a line page opened from Lines…** (maintainer, 2026-10-07: favorite
+      it, start a trip from there, or something else; to decide next).
 - [ ] **Coming-up closures on a line's page** (discussed 2026-10-06). TfL's future statuses
       (`/Line/{id}/Status/{from}/to/{to}`) for the next week, each drawn on the map like a closure in
       force: one free request when the page opens, cached for hours, a failure saying so with a retry.
