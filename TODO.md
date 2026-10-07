@@ -2681,6 +2681,10 @@ Builds on Phase 1's minimal line-status marking.
         stations and the stations nearby, each opening its details (maintainer, 2026-10-07), from the
         bundled index.
     - [ ] Back from a station opened from another's details returns to the line, not the station before it.
+    - [ ] **A station under several ids in no interchange opens them all** (Codex on #664): Weybridge is two
+          records, one place, no hub. Its details' board asks for both, but From and To open one id, as
+          the station search does (it folds the pair into one match). The station page and trip planning
+          would need to take several ids; an interchange's (St Pancras) already open its hub.
   - [ ] **Favorite it**: star the stop from its details, as a long press does on a route page's list.
   - [ ] **Show it on a map / walk there**: hand its position to the phone's maps app.
   - [ ] **A bus stop's letter and direction** ("Stop H, towards Oxford Circus"), from its pole data.
