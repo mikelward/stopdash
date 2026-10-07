@@ -9,6 +9,9 @@ import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineSearch
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.Workers
+import app.stopdash.domain.StationIndex
+import app.stopdash.domain.StopLinks
+import app.stopdash.domain.linksOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -55,6 +58,9 @@ internal class LinesViewModel(
     // The typed query, kept over process death so the search comes back as it was, searched again once
     // the list is in (as the station search's is).
     private val saved: SavedStateHandle,
+    // The bundled station index ([app.stopdash.data.StationIndexStore]), for a stop's lines and the
+    // stations beside it (SPEC *Finding a line*); blocking, run on [io].
+    private val loadIndex: () -> StationIndex = { StationIndex.EMPTY },
 ) : ViewModel() {
     /**
      * What the search shows. Compared by identity, never as a data class: the state flow compares each
@@ -93,6 +99,13 @@ internal class LinesViewModel(
     val check: StateFlow<Check?> = _check.asStateFlow()
 
     private val _dismissed = MutableStateFlow<Set<DismissedAlert>>(emptySet())
+
+    /** A stop's links ([linksOf]) and the stop they're for; null until the first is worked out. */
+    class Links(val stopId: String, val links: StopLinks)
+
+    private val _links = MutableStateFlow<Links?>(null)
+    val links: StateFlow<Links?> = _links.asStateFlow()
+    private var linksJob: Job? = null
     private val _dismissWriteFailed = MutableStateFlow(false)
 
     /** Whether a dismiss here couldn't be written, for the page to say so. */
@@ -147,6 +160,36 @@ internal class LinesViewModel(
     fun retry() {
         if (_state.value.catalog is Catalog.Failed) fetchCatalog()
     }
+
+    /**
+     * The details of the stop [stopId] came up: its lines and the stations beside it are worked out from
+     * the bundled index, off the main thread. Already up for it, they're left be. A stop the index doesn't
+     * hold, or an index that couldn't be read, links nowhere ([StopLinks.NONE]): the page shows none.
+     */
+    fun stopLinks(stopId: String) {
+        if (linksJob?.isActive == true && linksFor == stopId) return
+        // Any lookup for another stop is dropped first, so it can't land over this one's (Codex on #664).
+        linksJob?.cancel()
+        if (_links.value?.stopId == stopId) {
+            linksFor = stopId
+            return
+        }
+        linksFor = stopId
+        linksJob = viewModelScope.launch {
+            val links = try {
+                val index = withContext(io) { loadIndex() }
+                withContext(compute) { index.linksOf(stopId) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                warn("stop links failed for $stopId: ${e::class.simpleName}")
+                StopLinks.NONE
+            }
+            _links.value = Links(stopId, links)
+        }
+    }
+
+    private var linksFor: String? = null
 
     /** [line] was opened: it's remembered as the newest recent line. Its status is asked by [check]. */
     fun open(line: LineRef) {

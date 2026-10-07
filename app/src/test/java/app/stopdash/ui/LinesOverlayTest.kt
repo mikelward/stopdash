@@ -237,4 +237,13 @@ class LinesOverlayTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Euston").assertIsDisplayed()
     }
+
+    @Test
+    fun a_station_opened_off_the_line_survives_a_restore() {
+        val stop = LineStopRef("910GSTPX", "London St Pancras International", "350 m", onLine = false)
+        val saved = with(LineStopRefSaver) { androidx.compose.runtime.saveable.SaverScope { true }.save(stop) }!!
+        assertEquals(stop, LineStopRefSaver.restore(saved))
+        // A save from before onLine still restores, on the line.
+        assertEquals(LineStopRef("940GZZLUEUS", "Euston", null), LineStopRefSaver.restore(arrayListOf("940GZZLUEUS", "Euston", "")))
+    }
 }

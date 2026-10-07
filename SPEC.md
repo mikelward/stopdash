@@ -2592,6 +2592,13 @@ kept with it so the title never changes under the buttons, with
 **From** and **To**, which do what From… and To… do with this stop picked. From opens the stop's own
 page over Lines…, its Back returning to the stop; To plans a trip there from the stops near the rider,
 closing Lines… for it, and is offered only where To… is (the near-me list has stops to plan from).
+Under From and To are the **lines through it** as pills, each opening that line's page in place of the
+stop's (under, so the buttons never move as they come in); then the other stations of its interchange (**Same interchange**: the rail station beside
+a tube one) and the stations a short walk from it (**Nearby**, within 800 m, nearest five, with how far),
+each opening that station's details in place of these (maintainer, 2026-10-07). All three come from the
+bundled station index, with no request, so a bus stop, which it doesn't hold, shows none. A station
+opened that way that the line doesn't call at has no line to lead its board: every service is shown,
+none first, and "No departures" with nothing due.
 Under them is the stop's **board** (maintainer, 2026-10-07): the line it was opened from first, by
 platform or pole as the near-me list draws them, then the stop's other services under **"Also here"**,
 so a rider who came for the line sees it before anything else. A line with nothing due says so ("No

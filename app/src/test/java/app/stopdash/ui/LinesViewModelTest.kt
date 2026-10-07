@@ -91,7 +91,64 @@ class LinesViewModelTest {
         reuse = java.time.Duration.ofSeconds(90),
         dismissedStore = store,
         saved = saved,
+        loadIndex = { indexLoads++; index() },
     )
+
+    private var indexLoads = 0
+    private var index: () -> app.stopdash.domain.StationIndex = {
+        app.stopdash.domain.StationIndex(
+            listOf(
+                app.stopdash.domain.IndexedStation(
+                    "940GZZLUOXC", "Oxford Circus Underground Station", listOf("tube"), "", 51.51522, -0.1419,
+                    mapOf("tube" to listOf("bakerloo", "central", "victoria")),
+                ),
+            ),
+            lineNames = mapOf("victoria" to "Victoria"),
+        )
+    }
+
+    @Test
+    fun a_stop_s_links_are_worked_out_off_the_main_thread_once() {
+        val model = vm()
+        idle()
+        model.stopLinks("940GZZLUOXC")
+        idle()
+        // The index read on I/O; the links held on compute, so none are up yet.
+        assertEquals(1, indexLoads)
+        assertNull(model.links.value)
+        releaseCompute()
+        val links = model.links.value!!
+        assertEquals("940GZZLUOXC", links.stopId)
+        assertEquals(listOf("bakerloo", "central", "victoria"), links.links.lines.map { it.id })
+        // The same stop again: left be.
+        model.stopLinks("940GZZLUOXC")
+        releaseCompute()
+        assertEquals(1, indexLoads)
+    }
+
+    @Test
+    fun reopening_a_stop_with_links_up_drops_a_lookup_for_another() {
+        // Links for B up, a lookup for A under way, B opened again: A's mustn't land over B's (Codex on #664).
+        val model = vm()
+        idle()
+        model.stopLinks("940GZZLUOXC")
+        releaseCompute()
+        model.stopLinks("940GZZLUKSX")
+        idle()
+        model.stopLinks("940GZZLUOXC")
+        releaseCompute()
+        assertEquals("940GZZLUOXC", model.links.value!!.stopId)
+    }
+
+    @Test
+    fun an_index_that_cannot_be_read_links_nowhere() {
+        index = { throw IOException("unreadable") }
+        val model = vm()
+        idle()
+        model.stopLinks("940GZZLUOXC")
+        releaseCompute()
+        assertTrue(model.links.value!!.links.isEmpty)
+    }
 
     @Test
     fun the_recent_lines_are_read_before_anything_is_typed() {

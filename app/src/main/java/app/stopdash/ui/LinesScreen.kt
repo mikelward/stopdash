@@ -1,6 +1,12 @@
 package app.stopdash.ui
 
 import app.stopdash.domain.StopDistance
+import app.stopdash.domain.StopLinks
+import app.stopdash.domain.NearStation
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.minimumInteractiveComponentSize
 import app.stopdash.domain.NearestStops
 import app.stopdash.domain.Coordinates
 import androidx.compose.runtime.Immutable
@@ -43,6 +49,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableIntStateOf
@@ -121,8 +128,10 @@ internal fun LinesOverlay(
     onTo: ((LineStopRef) -> Unit)? = null,
     // The stop's live departures, from a model the caller keeps alive and refreshing while the page is
     // up ([StopDepartures]); null draws none.
-    // The line it was opened from goes with it, so its status is asked for even with nothing due there.
-    departures: @Composable (LineStopRef, LineRef) -> StopDepartures? = { _, _ -> null },
+    // With it, the lines to declare served there (the line it was opened from, else the station's own), so
+    // a suspended one's status is asked for even with nothing due there.
+    // And the stop's other ids ([StopLinks.ownIds]), asked for too.
+    departures: @Composable (LineStopRef, List<LineRef>, List<String>) -> StopDepartures? = { _, _, _ -> null },
 ) {
     // Each time the overlay comes up: TfL's list is asked for again if its day is up, or after a failure.
     LaunchedEffect(Unit) { viewModel.reopened() }
@@ -160,21 +169,27 @@ internal fun LinesOverlay(
         val pagesOpen = remember { mutableIntStateOf(0) }
         val dismissal = LineAlertDismissal(viewModel::dismiss, dismissFailed, viewModel::dismissWriteFailureShown, pagesOpen)
         val system = LocalDistanceSystem.current
+        // How far [position] is from the rider's last fix, as a label; null with either unknown.
+        fun distanceTo(position: Coordinates?): String? =
+            if (position == null || here == null || system == null) {
+                null
+            } else {
+                StopDistance.label(NearestStops.distanceMeters(here.latitude, here.longitude, position.latitude, position.longitude), system)
+            }
         CompositionLocalProvider(
             LocalDismissLineAlert provides dismissal,
             // A station tapped on the map opens its details (SPEC *Finding a line*).
             LocalOpenLineMapStop provides { id, name, position ->
-                val distance = if (position == null || here == null || system == null) {
-                    null
-                } else {
-                    StopDistance.label(NearestStops.distanceMeters(here.latitude, here.longitude, position.first, position.second), system)
-                }
-                onStop(LineStopRef(id, name, distance))
+                onStop(LineStopRef(id, name, distanceTo(position?.let { Coordinates(it.first, it.second) })))
             },
         ) {
             OneLinePage(row, line.id, line.name, line.mode, onClose = { onOpen(null) })
         }
         if (stop != null) {
+            // Its lines and the stations beside it, from the bundled index, worked out off the main thread.
+            LaunchedEffect(stop.id) { viewModel.stopLinks(stop.id) }
+            val heldLinks by viewModel.links.collectAsStateWithLifecycle()
+            val links = heldLinks?.takeIf { it.stopId == stop.id }?.links
             // A stop's details are a window of their own over the line's page (itself one, [TripLinesPage]),
             // which stays up beneath them with its place, its folds and its work, so Back returns to its map
             // just as it was, the station just opened in view (Codex on #659). Its distance was worked out
@@ -187,17 +202,44 @@ internal fun LinesOverlay(
                 // A dialog's window has none of the app's text size nor its pinch (SPEC *Display size*): both
                 // applied again here (Codex on #659).
                 FontSizePinchWindow {
-                    val board = departures(stop, line)
-                    LineStopPage(
-                        name = stop.name,
-                        distance = stop.distance,
-                        lineName = line.name,
-                        departures = board,
-                        view = rememberStopBoard(board, line.id),
-                        onFrom = { onFrom(stop) },
-                        onTo = onTo?.let { to -> { to(stop) } },
-                        onBack = { onStop(null) },
-                    )
+                    // Every board waits on the stop's links (the bundled index, quick), "Loading departures…"
+                    // meanwhile: the links sit above it, so a board up first (a stop's kept model, opened again)
+                    // would be pushed down as they came in. Every line through it is declared, so a suspended one
+                    // with nothing due shows its status (Codex on #664); the line it was opened from only decides
+                    // which part leads. A stop the index doesn't hold (a bus stop) declares that line alone.
+                    val board = links?.let { departures(stop, if (it.lines.isEmpty() && stop.onLine) listOf(line) else it.lines, it.ownIds) }
+                    // A fresh page per stop: a station opened from another's chips starts at its top, its title and
+                    // From and To in view, not at the scroll the last one was left at (Codex on #664).
+                    key(stop.id) {
+                        LineStopPage(
+                            name = stop.name,
+                            distance = stop.distance,
+                            lineName = line.name.takeIf { stop.onLine },
+                            departures = board,
+                            // Its board waiting on its links: "Loading departures…" meanwhile, never a blank (Codex on #664).
+                            boardPending = board == null,
+                            view = rememberStopBoard(board, line.id.takeIf { stop.onLine }),
+                            links = links,
+                            // A line's pill opens that line's page in place of this one; Back from it returns
+                            // to the search, as from any line opened there.
+                            onOpenLine = { picked ->
+                                onStop(null)
+                                if (picked.id != line.id) onOpen(picked)
+                            },
+                            // A station beside this one opens its details in their place.
+                            onOpenStation = { station ->
+                                onStop(
+                                    LineStopRef(station.id, station.name, distanceTo(station.position), onLine = line.id in station.lineIds),
+                                )
+                            },
+                            // A station under several ids opens its interchange ([StopLinks.openId]): From and To wait
+                            // for the links, so a tap during the lookup can't open one id alone (Codex on #664).
+                            actionsReady = links != null,
+                            onFrom = { onFrom(stop.copy(fromId = links?.openId)) },
+                            onTo = onTo?.let { to -> { to(stop.copy(fromId = links?.openId)) } },
+                            onBack = { onStop(null) },
+                        )
+                    }
                 }
             }
         }
@@ -228,9 +270,19 @@ internal fun LineStopPage(
     onTo: (() -> Unit)?,
     onBack: () -> Unit,
     // The line it was opened from, whose departures lead its board, then the rest ([stopBoard]).
-    lineName: String = "",
+    // Null where that line doesn't call here (a station opened from another's details): the board then
+    // shows every service, none leading.
+    lineName: String? = "",
     departures: StopDepartures? = null,
     view: StopBoardView? = null,
+    // A board to come, not yet started: drawn as loading until [departures] is in.
+    boardPending: Boolean = false,
+    // Whether From and To can be tapped yet: false while what they open is still being worked out.
+    actionsReady: Boolean = true,
+    // The lines through it and the stations beside it ([linksOf]); null while they're worked out.
+    links: StopLinks? = null,
+    onOpenLine: (LineRef) -> Unit = {},
+    onOpenStation: (NearStation) -> Unit = {},
 ) {
     BackHandler(onBack = onBack)
     Scaffold(
@@ -267,11 +319,88 @@ internal fun LineStopPage(
             }
             item(key = "actions") {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onFrom) { Text(stringResource(R.string.line_stop_from)) }
-                    if (onTo != null) Button(onClick = onTo) { Text(stringResource(R.string.line_stop_to)) }
+                    Button(onClick = onFrom, enabled = actionsReady) { Text(stringResource(R.string.line_stop_from)) }
+                    if (onTo != null) Button(onClick = onTo, enabled = actionsReady) { Text(stringResource(R.string.line_stop_to)) }
                 }
             }
-            if (departures != null) stopBoard(departures, view, lineName)
+            // The links come in after the first frame: under From and To, so those never move as they arrive
+            // (Codex on #664). From the bundled index, they're in long before the board's arrivals.
+            if (links != null && links.lines.isNotEmpty()) {
+                item(key = "lines") { StopLines(links.lines, onOpenLine) }
+            }
+            if (links != null && links.sameHub.isNotEmpty()) {
+                item(key = "sameHub") {
+                    StationLinks(stringResource(R.string.line_stop_same_hub), links.sameHub, withDistance = false, onOpenStation, "lineStopSameHub", name)
+                }
+            }
+            if (links != null && links.nearby.isNotEmpty()) {
+                item(key = "nearby") {
+                    StationLinks(stringResource(R.string.line_stop_nearby), links.nearby, withDistance = true, onOpenStation, "lineStopNearby", name)
+                }
+            }
+            if (departures != null || boardPending) stopBoard(departures, view, lineName)
+        }
+    }
+}
+
+/** The lines through a stop, each a pill opening that line's page, wrapped onto as many rows as they need. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun StopLines(lines: List<LineRef>, onOpenLine: (LineRef) -> Unit) {
+    // Each pill sits in a 48 dp touch target, which spaces the rows already.
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.testTag("lineStopLines"),
+    ) {
+        lines.forEach { line ->
+            val label = stringResource(R.string.line_stop_open_line, line.name)
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .minimumInteractiveComponentSize()
+                    .clickable(onClickLabel = label) { onOpenLine(line) }
+                    .testTag("lineStopLine:${line.id}"),
+            ) {
+                LinePill(line.name, line.id, line.mode)
+            }
+        }
+    }
+}
+
+/**
+ * The stations a stop's details link to under [title]: its interchange's others, or those a short walk
+ * away with how far ([withDistance]), each a chip opening its details.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun StationLinks(
+    title: String,
+    stations: List<NearStation>,
+    withDistance: Boolean,
+    onOpen: (NearStation) -> Unit,
+    tag: String,
+    // The stop's own name: a station named the same takes its mode after it ("Balham (National Rail)").
+    ownName: String,
+) {
+    val system = LocalDistanceSystem.current
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.testTag(tag)) {
+        Text(title, style = MaterialTheme.typography.titleMedium)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            stations.forEach { station ->
+                val meters = station.meters
+                val mode = station.modes.firstOrNull()
+                val named = if (station.name == ownName && mode != null) {
+                    stringResource(R.string.line_stop_title_distance, station.name, modeName(mode))
+                } else {
+                    station.name
+                }
+                val text = if (withDistance && meters != null && system != null) {
+                    stringResource(R.string.line_stop_title_distance, named, StopDistance.label(meters, system))
+                } else {
+                    named
+                }
+                SuggestionChip(onClick = { onOpen(station) }, label = { Text(text) })
+            }
         }
     }
 }
@@ -428,11 +557,26 @@ private fun LineRow(line: LineRef, onClick: () -> Unit) {
  * rider's last fix when tapped, as its label ("350 m"; null with no fix, or no published position).
  */
 @Immutable
-data class LineStopRef(val id: String, val name: String, val distance: String? = null)
+data class LineStopRef(
+    val id: String,
+    val name: String,
+    val distance: String? = null,
+    // Whether the line the page was opened from calls here: a stop on its map does; a station opened from
+    // another's details may not, and then its board leads with no line (SPEC *Finding a line*).
+    val onLine: Boolean = true,
+    // What From and To open, where not [id] ([StopLinks.openId]): set as they're tapped, never saved.
+    val fromId: String? = null,
+)
 
 internal val LineStopRefSaver: Saver<LineStopRef?, ArrayList<String>> = Saver(
-    save = { stop -> stop?.let { arrayListOf(it.id, it.name, it.distance.orEmpty()) } },
-    restore = { saved -> if (saved.size == 3) LineStopRef(saved[0], saved[1], saved[2].ifEmpty { null }) else null },
+    save = { stop -> stop?.let { arrayListOf(it.id, it.name, it.distance.orEmpty(), if (it.onLine) "1" else "0") } },
+    restore = { saved ->
+        when (saved.size) {
+            3 -> LineStopRef(saved[0], saved[1], saved[2].ifEmpty { null })
+            4 -> LineStopRef(saved[0], saved[1], saved[2].ifEmpty { null }, onLine = saved[3] != "0")
+            else -> null
+        }
+    },
 )
 
 internal val LineRefSaver: Saver<LineRef?, ArrayList<String>> = Saver(

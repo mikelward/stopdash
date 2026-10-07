@@ -372,6 +372,10 @@
     <!-- A stop's details: the line it was opened from has nothing due there, "No Northern departures". -->
     <string name="stop_board_line_empty">No %1$s departures</string>
     <!-- A stop's details: heads the stop's other services, after the line it was opened from. -->
+    <string name="line_stop_same_hub">Same interchange</string>
+    <string name="line_stop_nearby">Nearby</string>
+    <string name="line_stop_open_line">Open %1$s</string>
+    <string name="stop_board_empty">No departures</string>
     <string name="stop_board_also_here">Also here</string>
     <!-- Placeholder in the destination search opened by "To…", beside its "To" label; it finds
          geocoded places too. -->

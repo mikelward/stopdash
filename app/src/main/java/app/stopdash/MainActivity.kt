@@ -83,6 +83,7 @@ import app.stopdash.ui.LineRefSaver
 import app.stopdash.ui.LineStopRefSaver
 import app.stopdash.ui.StopDepartures
 import app.stopdash.ui.LineStopRef
+import app.stopdash.ui.lineStopRefs
 import app.stopdash.data.FileRecentLinesStore
 import app.stopdash.data.FileLineCatalogStore
 import app.stopdash.data.LineCatalog
@@ -1501,7 +1502,8 @@ class MainActivity : ComponentActivity() {
                                             UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
                                             originChange = null
                                             stationTo = ToChoice.NONE
-                                            openStationId = stop.id
+                                            // A station under several ids opens its interchange, as a search for it does.
+                                            openStationId = stop.fromId ?: stop.id
                                             openStationName = stop.name
                                         },
                                         // A trip there from the stops near the rider, as To… plans one; Lines…
@@ -1510,7 +1512,8 @@ class MainActivity : ComponentActivity() {
                                             { stop ->
                                                 closeLines()
                                                 listStores.clearAll()
-                                                hereToId = stop.id
+                                                // A station under several ids: its interchange, as From opens.
+                                                hereToId = stop.fromId ?: stop.id
                                                 hereToName = stop.name
                                                 hereFavorite = null
                                                 herePicking = false
@@ -1523,7 +1526,7 @@ class MainActivity : ComponentActivity() {
                                         // the recent lines, not where this one was.
                                         onBack = closeLines,
                                         // A stop's live departures, kept and refreshed while its page is up.
-                                        departures = { stop, line -> lineStopDepartures(stop, line, linesWriteFailures) },
+                                        departures = { stop, served, ids -> lineStopDepartures(stop, served, ids, linesWriteFailures) },
                                     )
                                 }
                             } else if (top == TopOverlay.STATIONS) {
@@ -3757,17 +3760,23 @@ class MainActivity : ComponentActivity() {
      * as a station's page is, and counting down from a ticking clock.
      */
     @Composable
-    private fun lineStopDepartures(stop: LineStopRef, line: LineRef, writeFailures: WriteFailures): StopDepartures {
+    private fun lineStopDepartures(stop: LineStopRef, served: List<LineRef>, otherIds: List<String>, writeFailures: WriteFailures): StopDepartures {
         val appContext = applicationContext
         val stores: NearbyDeparturesStores = viewModel(key = "line-stop-stores")
-        val owner = stores.ownerFor("${stop.id}|${line.id}", this)
+        // One model per stop and the line it leads with: [served] is the stop's own lines either way, the same
+        // each time it's opened. No walk of [served] here (Codex on #664).
+        val owner = stores.ownerFor(if (stop.onLine) "${stop.id}|${served.firstOrNull()?.id.orEmpty()}" else "${stop.id}|own", this)
         val viewModel: MainViewModel = viewModel(
             viewModelStoreOwner = owner,
             factory = viewModelFactory {
-                // The line it was opened from is declared as served there, so its status is asked for even
-                // when it has nothing due (a suspension): the board then shows why, not just "No departures"
-                // (Codex on #661).
-                initializer { searchedDeparturesModel(appContext, listOf(StopRef(stop.id, stop.name, lines = listOf(line))), writeFailures) }
+                // The lines served there ([served]: the line it was opened from, else the station's own) are
+                // declared, so a suspended one's status is asked for even when it has nothing due: the board then
+                // shows why, not just "No departures" (Codex on #661, #664).
+                // A station TfL lists under several ids asks for all of them, as one place (Codex on #664).
+                initializer {
+                    val stops = lineStopRefs(stop.id, stop.name, served, otherIds)
+                    searchedDeparturesModel(appContext, stops, writeFailures)
+                }
             },
         )
         val state by viewModel.state.collectAsStateWithLifecycle()
@@ -4001,6 +4010,7 @@ class MainActivity : ComponentActivity() {
                 warn = ::logDepartureWarning,
                 dismissedStore = DataStoreDismissedAlertsStore.from(context, warn = ::logDepartureWarning),
                 saved = saved,
+                loadIndex = { StationIndexStore.load(context.applicationContext) },
             )
         }
 

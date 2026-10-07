@@ -7,6 +7,10 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -170,6 +174,80 @@ class LineSearchScreenshotTest {
         composeRule.onNodeWithText("Brixton").assertIsDisplayed()
         composeRule.onNodeWithText("Also here").assertExists()
         captureSnapshot("line-stop-departures.png")
+    }
+
+    @Test
+    fun line_stop_links() {
+        // King's Cross St. Pancras tube station, a public interchange: its lines as pills, the interchange's
+        // rail stations, and Euston a short walk away, each opening what it names.
+        val links = app.stopdash.domain.StopLinks(
+            lines = listOf(
+                app.stopdash.domain.LineRef("circle", "Circle", "tube"),
+                app.stopdash.domain.LineRef("hammersmith-city", "Hammersmith & City", "tube"),
+                app.stopdash.domain.LineRef("metropolitan", "Metropolitan", "tube"),
+                app.stopdash.domain.LineRef("northern", "Northern", "tube"),
+                app.stopdash.domain.LineRef("piccadilly", "Piccadilly", "tube"),
+                app.stopdash.domain.LineRef("victoria", "Victoria", "tube"),
+            ),
+            sameHub = listOf(
+                app.stopdash.domain.NearStation("910GKNGX", "London King's Cross", 20.0),
+                app.stopdash.domain.NearStation("910GSTPX", "London St Pancras International", 300.0),
+            ),
+            nearby = listOf(app.stopdash.domain.NearStation("940GZZLUEUS", "Euston", 720.0, setOf("northern", "victoria"))),
+        )
+        val lines = mutableListOf<String>()
+        val stations = mutableListOf<String>()
+        composeRule.setContent {
+            StopDashTheme {
+                LineStopPage(
+                    name = "King's Cross St. Pancras",
+                    distance = "350 m",
+                    onFrom = {},
+                    onTo = {},
+                    onBack = {},
+                    lineName = "Victoria",
+                    links = links,
+                    onOpenLine = { lines += it.id },
+                    onOpenStation = { stations += it.id },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        captureSnapshot("line-stop-links.png")
+        composeRule.onNodeWithText("Same interchange").assertIsDisplayed()
+        composeRule.onNodeWithTag("lineStopLine:northern").performClick()
+        composeRule.onNodeWithTag("lineStopPage").performScrollToNode(hasText("Euston (0.7 km)"))
+        composeRule.onNodeWithText("Euston (0.7 km)").performClick()
+        composeRule.onNodeWithText("London King's Cross").performClick()
+        assertEquals(listOf("northern"), lines)
+        assertEquals(listOf("940GZZLUEUS", "910GKNGX"), stations)
+    }
+
+    @Test
+    fun a_board_still_to_start_says_it_is_loading() {
+        // A station opened off the line waits on its own lines before its board starts (Codex on #664).
+        composeRule.setContent {
+            StopDashTheme {
+                LineStopPage(name = "Euston", distance = null, onFrom = {}, onTo = null, onBack = {}, lineName = null, boardPending = true)
+            }
+        }
+        composeRule.onNodeWithText("Loading departures…").assertIsDisplayed()
+    }
+
+    @Test
+    fun from_and_to_wait_for_what_they_open() {
+        // Until the links are in, From and To can't open one of a station's ids alone (Codex on #664).
+        var ready by androidx.compose.runtime.mutableStateOf(false)
+        composeRule.setContent {
+            StopDashTheme {
+                LineStopPage(name = "St Pancras International", distance = null, onFrom = {}, onTo = {}, onBack = {}, actionsReady = ready)
+            }
+        }
+        composeRule.onNodeWithText("From").assertIsNotEnabled()
+        composeRule.onNodeWithText("To").assertIsNotEnabled()
+        ready = true
+        composeRule.onNodeWithText("From").assertIsEnabled()
+        composeRule.onNodeWithText("To").assertIsEnabled()
     }
 
     @Test
