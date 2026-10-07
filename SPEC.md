@@ -2618,6 +2618,15 @@ asks for no poles, a bus stop for no zone, and a river bus pier or cable car sta
 zone) for neither: each by its own mode, not the line's, as a station opened from another's details can
 be of another (a tube station beside a pier). A stop the lookup couldn't place, or one TfL gives no zone
 (outside the zones, or "NA" where zone fares don't run), keeps the blank line.
+Under its zone a station says how **step-free** it is ("Step-free to the train", "Step-free to the
+platform", "Not step-free"), from TfL's bundled step-free table: for the line it was opened from, else
+the level every line through it meets, blank where the table leaves any of those lines undescribed
+(unknown, never a guess), across every id TfL lists the station under (St Pancras's entry is under its
+high-speed id), each id answering only for the lines the index says it serves, and a line unknown
+where any id serving it is undescribed. Where only a lift makes those lines step-free, TfL's lift outages are watched
+as the route page watches them (no new request), and while a lift it needs is out it says "Not
+step-free: a lift is out". That line too is held from the first frame for a station, blank where the
+table says nothing; a bus stop holds none.
 Under From and To are the **lines through it** as pills, each opening that line's page in place of the
 stop's (under, so the buttons never move as they come in); then the other stations of its interchange (**Same interchange**: the rail station beside
 a tube one) and the stations a short walk from it (**Nearby**, within 800 m, nearest five, with how far),

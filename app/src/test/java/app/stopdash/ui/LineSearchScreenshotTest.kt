@@ -130,6 +130,30 @@ class LineSearchScreenshotTest {
     }
 
     @Test
+    fun line_stop_access() {
+        // Oxford Circus, a public interchange, with its zone and its step-free line: a lift it needs is out,
+        // the longest of that line's labels.
+        composeRule.setContent {
+            StopDashTheme {
+                LineStopPage(
+                    name = "Oxford Circus",
+                    distance = "350 m",
+                    onFrom = {},
+                    onTo = {},
+                    onBack = {},
+                    zone = "1",
+                    cueSlot = true,
+                    access = app.stopdash.domain.StopAccess(app.stopdash.domain.StepFreeLevel.NONE, liftOut = true, byLift = true),
+                    accessSlot = true,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Not step-free: a lift is out").assertIsDisplayed()
+        captureSnapshot("line-stop-access.png")
+    }
+
+    @Test
     fun line_stop_departures() {
         // Oxford Circus, a public interchange, opened from the Victoria line, with made-up times: the
         // Victoria line's platforms first, then the Central and Bakerloo lines under "Also here".

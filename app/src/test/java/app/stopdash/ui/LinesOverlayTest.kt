@@ -256,25 +256,19 @@ class LinesOverlayTest {
     }
 
     @Test
-    fun a_stop_s_cue_follows_its_own_modes_not_the_line_s() {
-        // A stop on the line's map is of the line's mode.
-        assertEquals(StopCue.POLE, stopCue(emptyList(), "bus"))
-        assertEquals(StopCue.ZONE, stopCue(emptyList(), "tube"))
-        assertEquals(StopCue.NONE, stopCue(emptyList(), "river-bus"))
-        // A station opened from another's details is of its own modes (Codex on #676): a tube station
-        // beside a pier gets its zone, a pier beside a tube station gets nothing.
-        assertEquals(StopCue.ZONE, stopCue(listOf("tube", "national-rail"), "river-bus"))
-        assertEquals(StopCue.NONE, stopCue(listOf("river-bus"), "tube"))
-        assertEquals(StopCue.NONE, stopCue(listOf("cable-car"), "dlr"))
-    }
-
-    @Test
-    fun a_station_s_modes_survive_a_restore() {
+    fun a_station_s_cue_survives_a_restore() {
         val pier = LineStopRef("930GWMP", "Westminster Pier", "50 m")
-        val tube = LineStopRef("940GZZLUWSM", "Westminster", "0.1 km", onLine = false, modes = listOf("tube")).openedFrom(pier)
+        val tube = LineStopRef("940GZZLUWSM", "Westminster", "0.1 km", onLine = false, cue = app.stopdash.domain.StopCue.ZONE).openedFrom(pier)
         val saved = with(LineStopRefSaver) { androidx.compose.runtime.saveable.SaverScope { true }.save(tube) }!!
         assertEquals(tube, LineStopRefSaver.restore(saved))
-        // A v2 save, from before modes, restores with none: the line's mode stands in.
+        // A v3 save, which kept modes there, restores with the cue they give (Codex on #678); blank, none.
+        val v3 = arrayListOf("v3", "940GZZLUWSM", "Westminster", "0.1 km", "0", "0", "", "", "tube,national-rail")
+        assertEquals(LineStopRef("940GZZLUWSM", "Westminster", "0.1 km", onLine = false, cue = app.stopdash.domain.StopCue.ZONE), LineStopRefSaver.restore(v3))
+        val v3Pier = arrayListOf("v3", "930GWMP", "Westminster Pier", "", "0", "0", "", "", "river-bus")
+        assertEquals(app.stopdash.domain.StopCue.NONE, LineStopRefSaver.restore(v3Pier)?.cue)
+        val v3Line = arrayListOf("v3", "940GZZLUOXC", "Oxford Circus", "", "1", "0", "", "", "")
+        assertEquals(null, LineStopRefSaver.restore(v3Line)?.cue)
+        // A v2 save, from before cues, restores with none: the line's mode stands in.
         val v2 = arrayListOf("v2", "940GZZLUWSM", "Westminster", "0.1 km", "0", "0", "", "")
         assertEquals(LineStopRef("940GZZLUWSM", "Westminster", "0.1 km", onLine = false), LineStopRefSaver.restore(v2))
     }
@@ -716,6 +710,8 @@ class LinesOverlayTest {
             }
             composeRule.onNodeWithTag("lineStopZone").assertTextEquals("Zone 1")
             composeRule.onNodeWithTag("lineStopPole").assertDoesNotExist()
+            // Its step-free line is held, blank where no table says how step-free it is.
+            composeRule.onNodeWithTag("lineStopAccessSlot").assertExists()
             // A station has no letters, so its poles aren't asked for; its zone is, on the worker.
             assertTrue("poles asked on $poles", poles.isEmpty())
             assertTrue("zone asked on $zones", zones.size == 1 && zones.all { it.startsWith("test-worker") })
@@ -744,13 +740,51 @@ class LinesOverlayTest {
         showStop(
             poleRepository(emptyList(), zones = zones),
             line = LineRef("rb1", "RB1", "river-bus"),
-            stop = LineStopRef("940GZZLUWSM", "Westminster", onLine = false, modes = listOf("tube")),
+            stop = LineStopRef("940GZZLUWSM", "Westminster", onLine = false, cue = app.stopdash.domain.StopCue.ZONE),
         )
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onAllNodesWithTag("lineStopZone").fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithTag("lineStopZone").assertTextEquals("Zone 1")
         assertEquals(1, zones.size)
+    }
+
+    @Test
+    fun a_station_s_details_say_how_step_free_it_is() {
+        val table = app.stopdash.domain.StepFreeAccess(
+            mapOf("940GZZLUOXC" to mapOf("victoria" to listOf(app.stopdash.domain.StepFreePlatform(app.stopdash.domain.StepFreeLevel.NONE, "1")))),
+        )
+        val line = LineRef("victoria", "Victoria", "tube")
+        val model = LinesViewModel(
+            loadLines = { listOf(line) },
+            loadRecent = { emptyList() },
+            recordOpen = { listOf(it) },
+            lineStatus = { LineStatus(lineId = line.id, severity = LineStatus.GOOD_SERVICE, description = "Good Service") },
+            io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
+            saved = SavedStateHandle(),
+        )
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(
+                    LocalWorker provides Dispatchers.Unconfined,
+                    LocalRouteStops provides poleRepository(emptyList()),
+                    LocalStepFree provides table,
+                ) {
+                    LinesOverlay(model, open = line, onOpen = {}, onBack = {}, stop = LineStopRef("940GZZLUOXC", "Oxford Circus"))
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("lineStopAccess").assertTextEquals("Not step-free")
+    }
+
+    @Test
+    fun a_bus_stop_holds_no_line_for_step_free_access() {
+        showStop(
+            poleRepository(listOf(app.stopdash.domain.StopLocation("490X", "Somewhere Road", 51.5, -0.12, stopLetter = "H"))),
+        )
+        composeRule.onNodeWithTag("lineStopAccessSlot").assertDoesNotExist()
     }
 
     @Test

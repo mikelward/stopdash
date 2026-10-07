@@ -372,6 +372,10 @@
     <!-- A stop's details: leave from this stop, as From… does. -->
     <!-- A station's fare zone on its details, under From and To: "Zone 1", "Zone 2/3". -->
     <string name="line_stop_zone">Zone %1$s</string>
+    <!-- A station's details, under its zone, where TfL's step-free route doesn't reach the platform. -->
+    <string name="line_stop_not_step_free">Not step-free</string>
+    <!-- …and where it would, but a lift it needs is out of service now. -->
+    <string name="line_stop_step_free_lift_out">Not step-free: a lift is out</string>
     <string name="line_stop_from">From</string>
     <!-- A stop's details: go to this stop, as To… does. -->
     <string name="line_stop_to">To</string>

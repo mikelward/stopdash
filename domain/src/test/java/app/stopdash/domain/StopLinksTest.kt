@@ -62,6 +62,9 @@ class StopLinksTest {
         // Opened, its board asks for the other id too, and From and To open the interchange.
         assertEquals(listOf("910GSTPADOM"), index.linksOf("910GSTPX").ownIds)
         assertEquals("HUBKGX", index.linksOf("910GSTPX").openId)
+        // And keeps each id's own lines, so access read under one never answers for the other's (Codex on #678).
+        assertEquals(mapOf("910GSTPX" to setOf("thameslink", "southeastern"), "910GSTPADOM" to setOf("southeastern")), index.linksOf("910GSTPX").linesById)
+        assertEquals(emptyMap<String, Set<String>>(), index.linksOf("HUBKGX").linesById)
         // A station under one id opens itself.
         assertEquals(null, index.linksOf("910GKNGX").openId)
         // Opened, either id's page counts the other as itself: not a "same interchange" chip, its lines its own.
