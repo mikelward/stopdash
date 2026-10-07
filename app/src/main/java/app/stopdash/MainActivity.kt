@@ -127,6 +127,7 @@ import app.stopdash.domain.FixedLocation
 import app.stopdash.domain.HubInfoCache
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.Journeys
+import app.stopdash.domain.LauncherShortcuts
 import app.stopdash.domain.LiftOutages
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.MoveFollow
@@ -377,6 +378,9 @@ class MainActivity : ComponentActivity() {
     // and clears the ask.
     private val openOnTheWay = MutableStateFlow(false)
 
+    // A launcher shortcut's place (SPEC *Launcher shortcuts*): its saved id, until the trip there opens.
+    private val routeToPlaceAsked = MutableStateFlow<String?>(null)
+
     // The nearby-stops lookup, shared by the near-me gate and a searched station's page (From…).
     // Reuses a recent lookup made close by (in memory, process-wide), so reopening the app near
     // where it was last used skips a request and a round trip.
@@ -464,6 +468,18 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         takeOpenOnTheWay(intent)
+        takeRouteToPlace(intent)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        // Its extra is already off the intent, so a recreation would otherwise drop the tap.
+        routeToPlaceAsked.value?.let { outState.putString(PENDING_PLACE_ID, it) }
+    }
+
+    // Takes a launcher shortcut's place off [intent], so it's routed to once.
+    private fun takeRouteToPlace(intent: Intent?) {
+        PlaceShortcuts.takePlaceId(intent)?.let { routeToPlaceAsked.value = it }
     }
 
     // Takes the alert's "open the trip" ask off [intent], so it's acted on once.
@@ -477,7 +493,23 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         // Read once: a recreation (rotation) keeps the overlay's own saved state instead.
-        if (savedInstanceState == null) takeOpenOnTheWay(intent)
+        if (savedInstanceState == null) {
+            takeOpenOnTheWay(intent)
+            takeRouteToPlace(intent)
+        } else {
+            // A shortcut's trip still waiting on the places when the screen was recreated (a rotation).
+            routeToPlaceAsked.value = savedInstanceState.getString(PENDING_PLACE_ID)
+        }
+        // The launcher's long-press shortcuts follow the saved places (SPEC *Launcher shortcuts*):
+        // published off the main thread on each change. A place list that can't be read leaves the
+        // shortcuts as they were rather than clearing them; a discarded one clears them.
+        lifecycleScope.launch {
+            val removed = getString(R.string.place_shortcut_removed)
+            DataStoreFavoritePlacesStore.from(applicationContext, warn = ::logStarWarning).places().collect { set ->
+                val places = savedPlacesOf(set) ?: return@collect
+                PlaceShortcuts.publish(applicationContext, places, removed, warn = ::logStarWarning)
+            }
+        }
         // Warm the chosen text size into memory (off the main thread) so the first frame is sized
         // from the user's setting rather than the default, then resized a beat later (SPEC *Display
         // size*). Idempotent and shares the process-singleton DataStore instance the settings
@@ -949,6 +981,24 @@ class MainActivity : ComponentActivity() {
                         onTheWayOpen = true
                         openOnTheWay.value = false
                     }
+                }
+                // A launcher shortcut tapped (SPEC *Launcher shortcuts*): once the places are read, the
+                // trip to it opens over the near-me list, as its chip would. Nothing is on top to close:
+                // the shortcut clears the task, so this screen starts afresh (PlaceShortcuts.info). A
+                // place since removed, or places that can't be read, say so.
+                val routeToPlaceId by routeToPlaceAsked.collectAsStateWithLifecycle()
+                LaunchedEffect(routeToPlaceId) {
+                    val placeId = routeToPlaceId ?: return@LaunchedEffect
+                    val places = savedPlacesModel.state.first { it.read }.places
+                    val place = places?.let { withContext(Dispatchers.Default) { LauncherShortcuts.find(it, placeId) } }
+                    routeToPlaceAsked.value = null
+                    if (place == null) {
+                        val message = if (places == null) R.string.place_shortcut_unreadable else R.string.place_shortcut_removed
+                        Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
+                        return@LaunchedEffect
+                    }
+                    routeToPlace(TripDestination.Place(place.coordinate, favoriteRouteName(place)))
+                    PlaceShortcuts.reportUsed(applicationContext, placeId, warn = ::logStarWarning)
                 }
                 // Whether "get off soon" can alert, checked again on every return (the user may have
                 // changed it in Settings); asked for on Start, the one time an alert is wanted.
@@ -3585,6 +3635,9 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
+        // A launcher shortcut's place still to route to, kept across a recreation.
+        private const val PENDING_PLACE_ID = "pending_shortcut_place_id"
+
         // FINE first so the runtime dialog leads with precise; COARSE alongside so the dialog
         // offers the approximate choice and an approximate grant still finds stops.
         private val locationPermissions = arrayOf(

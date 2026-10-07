@@ -601,6 +601,10 @@
     <string name="place_icon_theater">Theater</string>
     <string name="place_icon_beach">Beach</string>
     <string name="place_icon_heart">Heart</string>
+    <!-- A launcher shortcut to a favorite place tapped after the place was removed (SPEC Launcher shortcuts). -->
+    <string name="place_shortcut_removed">Place no longer saved</string>
+    <!-- A launcher shortcut tapped while the saved places can't be read. -->
+    <string name="place_shortcut_unreadable">Couldn\'t read your places</string>
     <string name="favorite_place_cancel">Cancel</string>
     <string name="favorite_place_edit">Edit</string>
     <!-- Content description for a place row\'s edit action; %1$s is the label. -->
