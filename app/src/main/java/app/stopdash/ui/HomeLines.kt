@@ -91,6 +91,49 @@ object HomeLines {
     @WorkerThread
     fun idsOf(networks: Set<String>): Set<String> = linesOf(networks).mapTo(LinkedHashSet()) { it.id }
 
+    /**
+     * The last tie-break, after severity and the rider's own (maintainer, 2026-10-07): by name, ignoring
+     * case, a run of digits by its number, so the 43 goes before the 134 and both before the Bakerloo. A
+     * line with no name goes by its id.
+     */
+    private val byName: Comparator<TripLine> = Comparator { a, b ->
+        compareNatural(a.leg.lineName.ifBlank { a.leg.lineId }, b.leg.lineName.ifBlank { b.leg.lineId })
+    }
+
+    // [a] against [b], run by run: digits as numbers (longer runs past leading zeros are bigger), the rest
+    // as text ignoring case; then plain text, so the order is total.
+    internal fun compareNatural(a: String, b: String): Int {
+        var i = 0
+        var j = 0
+        while (i < a.length && j < b.length) {
+            val ca = a[i]
+            val cb = b[j]
+            if (ca.isDigit() && cb.isDigit()) {
+                val ei = a.indexOfFirst(i) { !it.isDigit() }
+                val ej = b.indexOfFirst(j) { !it.isDigit() }
+                val na = a.substring(i, ei).trimStart('0')
+                val nb = b.substring(j, ej).trimStart('0')
+                val byNumber = if (na.length != nb.length) na.length.compareTo(nb.length) else na.compareTo(nb)
+                if (byNumber != 0) return byNumber
+                i = ei
+                j = ej
+            } else {
+                val byChar = ca.lowercaseChar().compareTo(cb.lowercaseChar())
+                if (byChar != 0) return byChar
+                i++
+                j++
+            }
+        }
+        return (a.length - i).compareTo(b.length - j).takeIf { it != 0 } ?: a.compareTo(b)
+    }
+
+    // The index of the first character from [from] matching [predicate], else the length.
+    private inline fun String.indexOfFirst(from: Int, predicate: (Char) -> Boolean): Int {
+        var k = from
+        while (k < length && !predicate(this[k])) k++
+        return k
+    }
+
     /** How near a stop counts: the near-me list's walking reach (maintainer, 2026-10-05). */
     const val NEARBY_METERS: Int = NearbySelection.EAGER_RADIUS_METERS
 
@@ -262,10 +305,11 @@ object HomeLines {
             )
         // The page: worst first as a trip's orders them, then, as bad as each other, the rider's own lines
         // ahead of a network's far away (maintainer, 2026-10-05).
-        }.sortedWith(tripLineOrder.thenBy { it.leg.lineId !in mine })
-        // The pills: the rider's own lines first whatever their severity, worst first within each, so "+N"
-        // takes the far ones first (maintainer, 2026-10-05); a dismissed one is never a pill.
-        val disrupted = every.filter { it.disrupted && !it.dismissed }.sortedBy { it.leg.lineId !in mine }.map { it.leg }
+        }.sortedWith(tripLineOrder.thenBy<TripLine> { it.leg.lineId !in mine }.then(byName))
+        // The pills: in the page's order, worst first, the rider's own ahead of the rest when as bad, so "+N"
+        // takes the mildest first (maintainer, 2026-10-07: a far suspension outranks a near minor delay); a
+        // dismissed one is never a pill.
+        val disrupted = every.filter { it.disrupted && !it.dismissed }.map { it.leg }
         val unknown = every.filter { it.unknown }.map { it.leg }
         return TripRow(
             checking = checking.isNotEmpty(),

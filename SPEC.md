@@ -2209,10 +2209,11 @@ quality bar*). So stopdash surfaces, for watched stops and their lines:
 **The home screen has a disruptions row** (maintainer, 2026-10-05) under the favorite places' chips,
 so Home and the favorites keep the top, scrolling with the list as they do: the trip's row ("Disruptions:", each disrupted line's pill, then "Checking…",
 "Unknown:" with what couldn't be checked, or "None"), always one line high, the pills that don't fit
-counted as "+N", with no chevron. The pills put the rider's own lines first, whatever their
-severity: those near them and those of their starred rows and journeys, worst first within each group,
-so "+N" takes the far ones first; a dismissed line is never a pill. Its page goes worst first, the
-rider's own ahead of the rest when as bad (maintainer, 2026-10-05). It covers the rider's own lines (maintainer, 2026-10-06: a whole network only by choice) — each line of their favorite journeys wherever its stop, asked about in the list's same line-status request whatever the stops' departures did, so a far journey not yet fetched is judged too, and each starred row's line while its stop is in the list, since a star ranks only there (Codex, #640) — every line of the networks the rider chose (below; none by default) and each line with a departure from a stop within the walking
+counted as "+N", with no chevron. The pills go worst first, the rider's own lines (those near them and those of their starred rows
+and journeys) ahead of the rest when as bad, then by name, a route by its number (the 43 before the 134),
+so "+N" takes the mildest first (maintainer, 2026-10-07:
+it put the rider's own first whatever their severity, a far suspension behind a near minor delay); a
+dismissed line is never a pill. Its page goes in the same order (maintainer, 2026-10-05). It covers the rider's own lines (maintainer, 2026-10-06: a whole network only by choice) — each line of their favorite journeys wherever its stop, asked about in the list's same line-status request whatever the stops' departures did, so a far journey not yet fetched is judged too, and each starred row's line while its stop is in the list, since a star ranks only there (Codex, #640) — every line of the networks the rider chose (below; none by default) and each line with a departure from a stop within the walking
 reach (500 m, the near-me list's eager radius); on the watched list, which has no distances, every
 watched stop's lines. A line the list shows goes by the list's own check; the chosen networks' other lines are
 asked in the list's same line-status request and share its reuse window, so the row costs no request
