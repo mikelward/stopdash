@@ -1705,7 +1705,10 @@ that ships it.
 
 *In progress* (maintainer, 2026-09-26; mocked the same day). An open trip route has a **Start**
 button; the trip is then **on the way** until the rider arrives or taps **End trip**, and follows
-them there:
+them there. Once it has arrived, its **Done** (or Back) closes the trip options it was started from
+too, the near-me trip or a station's, and Lines… they were opened from, landing on the near-me
+list: the trip is done with (maintainer, 2026-10-07). A screen it was opened over from its notification (Settings, say) is left
+as it was.
 
 - **"Train" means whatever the leg rides.** The step names what the rider is looking for by its
   mode (maintainer, 2026-09-28): "Finding your bus…" / "Can't find your bus", and the same for a

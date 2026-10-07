@@ -28,6 +28,8 @@ class NearbyAreaTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
+    private var generation by mutableStateOf(0)
+
     private fun showWith(keepBody: Boolean): (Boolean) -> Unit {
         var overlayOpen by mutableStateOf(false)
         composeRule.setContent {
@@ -41,6 +43,7 @@ class NearbyAreaTest {
                     Text(if (routeOpen) "Route page" else "List", Modifier.clickable { routeOpen = true })
                 },
                 keepBody = keepBody,
+                bodyGeneration = generation,
             )
         }
         composeRule.onNodeWithText("List").performClick()
@@ -62,6 +65,17 @@ class NearbyAreaTest {
         val setOverlay = showWith(keepBody = false)
         setOverlay(true)
         composeRule.waitForIdle()
+        setOverlay(false)
+        composeRule.onNodeWithText("List").assertIsDisplayed()
+    }
+
+    @Test
+    fun `an arrived trip's Done lands on the list, even over a kept route page`() {
+        val setOverlay = showWith(keepBody = true)
+        setOverlay(true)
+        composeRule.waitForIdle()
+        // Done: the station and the trip close together, the main view's state dropped with them.
+        generation++
         setOverlay(false)
         composeRule.onNodeWithText("List").assertIsDisplayed()
     }
