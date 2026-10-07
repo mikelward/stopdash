@@ -508,6 +508,32 @@ class RouteStopsTest {
     }
 
     @Test
+    fun `a line TfL has no route for isn't asked for again until the hold runs out, a failure that may pass is`() = runTest {
+        val calls = mutableListOf<String>()
+        var now = Instant.parse("2026-10-07T12:00:00Z")
+        val repository = RouteStopsRepository(
+            source = object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                    calls += "$lineId/$direction"
+                    throw if (lineId == "eurostar") TflException.NotFound(null) else TflException.Offline(null)
+                }
+            },
+            clock = { now },
+            compute = StandardTestDispatcher(testScheduler),
+        )
+        repeat(2) {
+            assertTrue(runCatching { repository.load("eurostar", "") }.exceptionOrNull() is TflException.NotFound)
+            assertTrue(runCatching { repository.load("14", "") }.exceptionOrNull() is TflException.Offline)
+        }
+        assertEquals(listOf("eurostar/inbound", "eurostar/outbound"), calls.filter { it.startsWith("eurostar") })
+        assertEquals(4, calls.count { it.startsWith("14/") })
+        // A day on, TfL is asked again.
+        now = now.plus(RouteStopsRepository.MAX_AGE)
+        runCatching { repository.load("eurostar", "") }
+        assertEquals(4, calls.count { it.startsWith("eurostar") })
+    }
+
+    @Test
     fun `two loads of one line at once share its requests`() = runTest {
         val calls = mutableListOf<String>()
         val gate = CompletableDeferred<Unit>()
@@ -600,6 +626,27 @@ class RouteStopsTest {
             calls += areaId
             return poles
         }
+    }
+
+    @Test
+    fun `a line TfL has no route for is remembered by the next process too`() = runTest {
+        val store = MemoryStore()
+        val now = Instant.parse("2026-10-07T12:00:00Z")
+        val calls = mutableListOf<String>()
+        val source = object : RouteSequenceSource {
+            override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                calls += "$lineId/$direction"
+                throw TflException.NotFound(null)
+            }
+        }
+        val io = StandardTestDispatcher(testScheduler)
+        val before = RouteStopsRepository(source, store = store, clock = { now }, io = io, compute = StandardTestDispatcher(testScheduler))
+        runCatching { before.load("eurostar", "") }
+        assertEquals(2, calls.size)
+        // A new process over the same store: it isn't asked for again.
+        val after = RouteStopsRepository(source, store = store, clock = { now.plus(Duration.ofHours(23)) }, io = io, compute = StandardTestDispatcher(testScheduler))
+        assertTrue(runCatching { after.load("eurostar", "") }.exceptionOrNull() is TflException.NotFound)
+        assertEquals(2, calls.size)
     }
 
     @Test

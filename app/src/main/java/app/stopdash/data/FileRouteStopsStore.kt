@@ -39,6 +39,7 @@ internal class FileRouteStopsStore(
                 persisted.poles.associate { area ->
                     area.areaId to RouteStopsStore.Timed(Instant.parse(area.at), area.stops.map { it.toStop() })
                 },
+                persisted.unknown.associate { it.key to Instant.parse(it.at) },
             )
         } catch (e: IOException) {
             discard("unreadable", e)
@@ -66,6 +67,7 @@ internal class FileRouteStopsStore(
                 contents.poles.map { (areaId, entry) ->
                     RouteCacheAreaPoles(areaId, entry.at.toString(), entry.value.map { it.toPersisted() })
                 },
+                contents.unknown.map { (key, at) -> RouteCacheUnknown(key, at.toString()) },
             )
             // Its directory is named, not checked, when the store is built ([AppDirs]), so made here.
             tmp.parentFile?.mkdirs()
@@ -91,7 +93,13 @@ private data class PersistedRouteStops(
     val version: Int = 0,
     val sequences: List<RouteCacheSequence> = emptyList(),
     val poles: List<RouteCacheAreaPoles> = emptyList(),
+    // Absent from a file an older build wrote, which reads as none: no version change needed.
+    val unknown: List<RouteCacheUnknown> = emptyList(),
 )
+
+// A line+direction TfL has no route for, and when it said so.
+@Serializable
+private data class RouteCacheUnknown(val key: String, val at: String)
 
 @Serializable
 private data class RouteCacheSequence(

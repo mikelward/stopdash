@@ -604,6 +604,8 @@ interface RouteStopsStore {
     data class Contents(
         val sequences: Map<String, Timed<LineSequence>> = emptyMap(),
         val poles: Map<String, Timed<List<StopLocation>>> = emptyMap(),
+        // Each line+direction TfL said it has no route for, with when ([RouteStopsRepository]).
+        val unknown: Map<String, Instant> = emptyMap(),
     )
 
     companion object {
@@ -665,6 +667,12 @@ class RouteStopsRepository(
     private val fetchSlots = Semaphore(MAX_CONCURRENT_FETCHES)
     // Each line+direction's fetch under way, for a second caller to join ([shared]).
     private val inFlight = ConcurrentHashMap<String, Deferred<Result<LineSequence>>>()
+    // Each line+direction TfL has no route for (a 404: Eurostar, say), with when it said so: not asked
+    // again for [maxAge], so a screen that keeps looking never waits on a request that can't answer.
+    // Kept through [store] as the routes are, so a process started again doesn't ask either.
+    private val unknown = ConcurrentHashMap<String, Instant>()
+    // Whether [unknown] gained an entry since it was last saved.
+    private val unknownChanged = java.util.concurrent.atomic.AtomicBoolean(false)
     // Nothing to read from a store that keeps nothing, so no IO hop (a test's store is NONE).
     @Volatile private var storeRead = store === RouteStopsStore.NONE
 
@@ -689,13 +697,15 @@ class RouteStopsRepository(
             val now = clock()
             contents.sequences.forEach { (key, entry) -> if (fresh(entry, now)) cache.putIfAbsent(key, entry) }
             contents.poles.forEach { (key, entry) -> if (fresh(entry, now)) areaCache.putIfAbsent(key, entry) }
+            contents.unknown.forEach { (key, at) -> if (fresh(RouteStopsStore.Timed(at, Unit), now)) unknown.putIfAbsent(key, at) }
             storeRead = true
             // Every line held, merged now, so [cached] answers a first frame for it.
             cache.keys.map { it.substringBefore('/') }.distinct().forEach { lineId ->
                 (RouteStops.directionsFor("") + "").forEach { direction -> merge(lineId, direction) }
             }
-            val expired = contents.sequences.size + contents.poles.size -
-                contents.sequences.values.count { fresh(it, now) } - contents.poles.values.count { fresh(it, now) }
+            val expired = contents.sequences.size + contents.poles.size + contents.unknown.size -
+                contents.sequences.values.count { fresh(it, now) } - contents.poles.values.count { fresh(it, now) } -
+                contents.unknown.values.count { fresh(RouteStopsStore.Timed(it, Unit), now) }
             if (expired > 0) saveLocked()
         }
     }
@@ -721,7 +731,8 @@ class RouteStopsRepository(
         // A merge outlives no entry it came from, so an expired line's routes leave memory too.
         merged.values.removeIf { !it.heldIn(cache) }
         areaCache.entries.removeIf { !fresh(it.value, now) }
-        val contents = RouteStopsStore.Contents(cache.toMap(), areaCache.toMap())
+        unknown.entries.removeIf { !fresh(RouteStopsStore.Timed(it.value, Unit), now) }
+        val contents = RouteStopsStore.Contents(cache.toMap(), areaCache.toMap(), unknown.toMap())
         withContext(io) { store.save(contents) }
     }
 
@@ -834,8 +845,8 @@ class RouteStopsRepository(
         val parts = coroutineScope {
             RouteStops.directionsFor(direction).map { dir -> async { shared(lineId, dir) } }.awaitAll()
         }
-        // A direction fetched while the other failed is still kept.
-        if (parts.any { it.getOrNull()?.second == true }) save()
+        // A direction fetched while the other failed is still kept, as is one TfL has no route for.
+        if (parts.any { it.getOrNull()?.second == true } or unknownChanged.getAndSet(false)) save()
         parts.firstNotNullOfOrNull { it.exceptionOrNull() }?.let { throw it }
         merge(lineId, direction) ?: parts.map { it.getOrThrow().first }.reduce(LineSequence::plus)
             .withStations(stationsByHub.orEmpty())
@@ -863,6 +874,11 @@ class RouteStopsRepository(
         val key = "$lineId/$dir"
         while (true) {
             cache.freshValue(key)?.let { return Result.success(it to false) }
+            unknown[key]?.let { at ->
+                val age = Duration.between(at, clock())
+                if (!age.isNegative && age < maxAge) return Result.failure(TflException.NotFound(null))
+                unknown.remove(key, at)
+            }
             val mine = async(start = CoroutineStart.LAZY) { fetch(lineId, dir) }
             val joined = inFlight.putIfAbsent(key, mine)
             if (joined != null) {
@@ -899,6 +915,11 @@ class RouteStopsRepository(
             throw e
         } catch (e: TflException) {
             warn("route sequence fetch failed for line $lineId $dir after ${Duration.between(started, clock()).toMillis()} ms: ${e::class.simpleName}")
+            if (e is TflException.NotFound) {
+                unknown["$lineId/$dir"] = clock()
+                unknownChanged.set(true)
+                warn("route sequence: TfL has no route for line $lineId $dir; not asked again")
+            }
             Result.failure(e)
         }
     }
