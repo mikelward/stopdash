@@ -1371,6 +1371,29 @@ class TripViewModelTest {
         assertEquals(2, planner.calls)
     }
 
+    // A return to the app re-locates before the trip refreshes: a withheld arrival seen meanwhile waits
+    // for the re-pick rather than plan from the fix being replaced, so the list doesn't change once for
+    // the old fix and again for the new one. Once the re-locate lands, the next one plans again.
+    @Test
+    fun `a withheld arrival waits for a re-locate in flight before planning again`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route))
+        val trip = TripViewModel(planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")), clock = { now }, plans = TripPlans(), io = dispatcher)
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(1, planner.calls)
+        val why = TripTiming.Withheld(1, "bus", "9", TripTiming.Reason.NO_LIVE, 0, null, null, Duration.ofMinutes(11))
+        var relocating = true
+        trip.relocating = { relocating }
+        now = now.plus(TripViewModel.REPLAN_WITHHELD).plus(Duration.ofMinutes(4))
+        trip.noteWithheld(mapOf("r" to why))
+        advanceUntilIdle()
+        assertEquals(1, planner.calls)
+        relocating = false
+        trip.noteWithheld(mapOf("r" to why))
+        advanceUntilIdle()
+        assertEquals(2, planner.calls)
+    }
+
     // A bus pole planned to keeps its stop area as its stop: the planning target doesn't make it a
     // stop of its own, apart from the sibling pole across the road.
     @Test
