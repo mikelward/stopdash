@@ -18,6 +18,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.StationMatch
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Assert.assertEquals
@@ -186,6 +187,63 @@ class FavoriteJourneysScreenshotTest {
         composeRule.onNodeWithText("Can't read your favourite journeys.").assertIsDisplayed()
         composeRule.onNodeWithTag("retryJourneys").performClick()
         assertEquals(1, retries)
+    }
+
+    @Test
+    fun a_pair_with_no_direct_line_says_so_until_dismissed() {
+        var dismissed = 0
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                FavoriteJourneysScreen(
+                    state = FavoriteJourneysUi(listOf(victoriaLine), adding = JourneyAddNote.NoDirectLine("King's Cross St. Pancras", "Canada Water")),
+                    onBack = {},
+                    onRemove = {},
+                    onDismissAddNote = { dismissed++ },
+                )
+            }
+        }
+        composeRule.onNodeWithText("No direct line from King's Cross St. Pancras to Canada Water").assertIsDisplayed()
+        captureSnapshot("favorite-journeys-no-direct-line.png")
+        composeRule.onNodeWithTag("dismissJourneyAddNote").performClick()
+        assertEquals(1, dismissed)
+    }
+
+    @Test
+    fun a_pair_being_added_says_so_with_nothing_to_dismiss() {
+        show(FavoriteJourneysUi(emptyList(), adding = JourneyAddNote.Adding("Euston", "Waterloo")))
+        composeRule.onNodeWithText("Adding Euston ➔ Waterloo…").assertIsDisplayed()
+        composeRule.onNodeWithTag("dismissJourneyAddNote").assertDoesNotExist()
+    }
+
+    @Test
+    fun picking_a_pair_asks_from_then_to_with_the_start_in_the_from_row() {
+        var from by mutableStateOf<StationMatch?>(null)
+        var picked: Pair<StationMatch, StationMatch>? = null
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                FavoriteJourneyPicker(
+                    state = StationSearchViewModel.State(yoursRead = true),
+                    from = from,
+                    onQueryChange = {},
+                    onRetry = {},
+                    onPickFrom = { from = it },
+                    onPickTo = { a, b -> picked = a to b },
+                    onChangeFrom = { from = null },
+                    onBack = {},
+                    autoFocus = false,
+                )
+            }
+        }
+        composeRule.onNodeWithText("From station or stop").assertIsDisplayed()
+        from = StationMatch("940GZZLUEUS", "Euston")
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Euston").assertIsDisplayed()
+        captureSnapshot("favorite-journeys-pick-to.png")
+        // Back from To drops back to picking From.
+        composeRule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("From station or stop").assertIsDisplayed()
+        assertEquals(null, picked)
     }
 
     @Test

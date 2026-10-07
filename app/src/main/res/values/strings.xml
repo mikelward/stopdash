@@ -494,12 +494,26 @@
     <string name="settings_favorite_journeys_summary">See, add and remove them</string>
     <string name="favorite_journeys_title">Favorite journeys</string>
     <string name="favorite_journeys_loading">Loading…</string>
-    <string name="favorite_journeys_empty">None yet. Tap Add, pick a station and a line, then the stop you get off at.</string>
+    <string name="favorite_journeys_empty">None yet. Tap Add and pick the two stations.</string>
     <string name="favorite_journeys_add">Add</string>
     <!-- A failed read or a file from a newer StopDash; Retry reads it again. -->
     <string name="favorite_journeys_unavailable">Can\'t read your favorite journeys.</string>
     <string name="favorite_journeys_retry">Retry</string>
     <string name="favorite_journeys_write_failed">Couldn\'t remove that journey</string>
+    <!-- Adding a favorite journey from Settings: the station search's placeholder while picking where it starts. -->
+    <string name="journey_pick_from_hint">From station or stop</string>
+    <!-- Under Favorite journeys' title while a picked pair is looked up and saved. %1$s and %2$s are its two stations. -->
+    <string name="favorite_journeys_adding">Adding %1$s ➔ %2$s…</string>
+    <!-- The picked pair was already saved. -->
+    <string name="favorite_journeys_add_already">%1$s ➔ %2$s is already a favorite</string>
+    <!-- No line serves both picked stations: a journey with a change isn't supported yet. -->
+    <string name="favorite_journeys_add_no_line">No direct line from %1$s to %2$s</string>
+    <!-- The same station picked for both ends. -->
+    <string name="favorite_journeys_add_same">Pick two different stations</string>
+    <!-- Looking up the picked stations failed. %3$s is why, as the partial-refresh banner says it ("offline"). -->
+    <string name="favorite_journeys_add_failed">Couldn\'t add %1$s ➔ %2$s: %3$s</string>
+    <!-- Saving the picked pair failed (a disk error). -->
+    <string name="favorite_journeys_add_not_saved">Couldn\'t save %1$s ➔ %2$s</string>
     <string name="favorite_journey_remove">Remove</string>
     <!-- Content description for a favorite journey's Remove button; %1$s and %2$s are its two stops. -->
     <string name="favorite_journey_remove_description">Remove %1$s to %2$s</string>

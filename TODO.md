@@ -2126,9 +2126,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         file keeps its `starred-journeys.json` name.
   - [x] **Add a favorite journey from Settings** (maintainer, 2026-10-06): Add opens the station
         search; a line's route page, then a stop's page, saves it. One line between two stops (v1).
-    - [ ] **Two arbitrary stops** (asked 2026-10-06, deferred): pick From and To in the search, then
-          find a line at From whose route reaches To (the card's same cached route lookups), saying
-          "No direct route" when none does. A pair needing a change waits on *Trips with a change*.
+    - [x] **Two arbitrary stops** (maintainer, 2026-10-07): Add picks From, then To with From in its
+          row, and saves the pair on a line both stations serve, saying "No direct line" when none does.
+      - [ ] **Check the line's route reaches To from From**: a line both serve can still need a change
+            (two Northern branches); the card then shows its change at the fork. Use the card's cached
+            route lookups to say so at Add.
   - [ ] **Rename a starred journey** — needs a label in the stored file (a schema version bump, so
         an older build can't drop it on its next write).
   - [ ] **Converge "journey" and "trip"** (maintainer, 2026-10-05: "longer term we'll need to

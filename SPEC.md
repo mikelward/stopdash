@@ -1078,10 +1078,13 @@ there") until the user dismisses it (maintainer, 2026-09-24); the dismissal is k
 settings. **Settings lists the favorite journeys** (maintainer, 2026-10-05), third, under the
 disruptions switch: each by its two stops and line, with **Remove**, so one starred by mistake can be
 found and dropped without riding past its card; Remove only ever removes the favorite. Its **Add**
-(maintainer, 2026-10-06) opens the station search over the main view: the rider picks where they
-board, taps a line's departures for its route page, then taps the stop they get off at and its
-**Favorite**. One line between two stops, as a long press makes; picking two arbitrary stops (a
-journey with no single line, or a change) waits on *Trips with a change*. Favorite journeys are
+(maintainer, 2026-10-07) picks the journey's two stations over the list: the station search asks
+where it starts, then, with that standing in its From row, where it ends; the From row changes the
+start, and Back from the end drops back to it. The pair is saved on a line both stations serve (rail
+before bus), as a long press saves one, and the list says what it's doing ("Adding Euston ➔
+Waterloo…") and why a pair wasn't added: no line serves both ("No direct line from … to …"; a
+journey with a change waits on *Trips with a change*), the same station twice, already a favorite, or
+the lookup or the save failed. It costs one stop lookup per station picked, as opening a station does. Favorite journeys are
 kept on the device with the rest of the user's config and never logged (*Privacy*).
 
 ### Trips with a change

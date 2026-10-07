@@ -221,7 +221,10 @@ import app.stopdash.ui.RideLineChecks
 import app.stopdash.ui.RouteDisruptionChecks
 import app.stopdash.ui.SettingsScreen
 import app.stopdash.ui.FavoriteJourneysUi
+import app.stopdash.ui.FavoriteJourneyPicker
 import app.stopdash.ui.FavoriteJourneysScreen
+import app.stopdash.ui.JourneyAdds
+import app.stopdash.ui.addFavoriteJourneyPair
 import app.stopdash.ui.removeFavoriteJourney
 import app.stopdash.ui.LocalOpenRouteStop
 import app.stopdash.ui.LocalStationJourney
@@ -1337,30 +1340,80 @@ class MainActivity : ComponentActivity() {
                                 // rotation still lands (Codex on #589).
                                 val overlayScope = rememberCoroutineScope()
                                 val removeScope = (application as? StopdashApp)?.applicationScope ?: overlayScope
-                                FavoriteJourneysScreen(
-                                    state = FavoriteJourneysUi(read?.journeys, loaded = read != null, writeFailed = journeyRemoveFailed),
-                                    onBack = { favoriteJourneysOpen = false },
-                                    // The station search, over the main view: Settings and this list close,
-                                    // as the search ranks under them ([topOverlay]).
-                                    // A station open under Settings closes too, so the search shows, not it
-                                    // (Codex on #631).
-                                    onAdd = {
-                                        favoriteJourneysOpen = false
-                                        settingsOpen = false
-                                        originChange = null
-                                        openStationId = null
-                                        openStationName = ""
-                                        stationTo = ToChoice.NONE
-                                        stationSearchOpen = true
-                                    },
-                                    onRemove = { journey ->
-                                        JourneyRemovals.attempt(removeScope, warn = ::logStarWarning) {
-                                            removeFavoriteJourney(journey, journeyStore, WidgetSnapshotStore(applicationContext), warn = ::logStarWarning)
-                                        }
-                                    },
-                                    onDismissWriteError = { JourneyRemovals.failed.value = false },
-                                    onRetry = { journeysAttempt++ },
-                                )
+                                // Add picks two stations over this list, From then To (maintainer, 2026-10-07);
+                                // the start picked is kept over a rotation, by its id and name alone.
+                                var journeyPicking by rememberSaveable { mutableStateOf(false) }
+                                var journeyFromId by rememberSaveable { mutableStateOf<String?>(null) }
+                                var journeyFromName by rememberSaveable { mutableStateOf("") }
+                                val journeyAdding by JourneyAdds.note.collectAsStateWithLifecycle()
+                                if (journeyPicking) {
+                                    val appContext = applicationContext
+                                    val search: StationSearchViewModel = viewModel(
+                                        key = "journey-search",
+                                        factory = viewModelFactory {
+                                            initializer {
+                                                // From…'s recent stops listed to pick from, though a pick here isn't
+                                                // recorded as one: it opened no station.
+                                                val recents = recentSearches(appContext).store(RecentSearches.Kind.FROM)
+                                                StationSearchViewModel(
+                                                    stationFinder,
+                                                    createSavedStateHandle(),
+                                                    loadIndex = { StationIndexStore.load(appContext) },
+                                                    loadYours = { loadYourStops(appContext, recents) },
+                                                    warn = ::logDepartureWarning,
+                                                )
+                                            }
+                                        },
+                                    )
+                                    val searchState by search.state.collectAsStateWithLifecycle()
+                                    LaunchedEffect(Unit) { search.refreshYours() }
+                                    val closePicker = {
+                                        search.clear()
+                                        journeyPicking = false
+                                        journeyFromId = null
+                                        journeyFromName = ""
+                                    }
+                                    FavoriteJourneyPicker(
+                                        state = searchState,
+                                        from = journeyFromId?.let { StationMatch(it, journeyFromName) },
+                                        onQueryChange = search::onQueryChange,
+                                        onRetry = search::retry,
+                                        onPickFrom = { match ->
+                                            search.clear()
+                                            journeyFromId = match.id
+                                            journeyFromName = match.name
+                                        },
+                                        onPickTo = { from, to ->
+                                            closePicker()
+                                            JourneyAdds.attempt(removeScope, from, to) {
+                                                addFavoriteJourneyPair(from, to, stationFinder, journeyStore, warn = ::logStarWarning)
+                                            }
+                                        },
+                                        onChangeFrom = {
+                                            search.clear()
+                                            journeyFromId = null
+                                            journeyFromName = ""
+                                        },
+                                        onBack = closePicker,
+                                    )
+                                } else {
+                                    FavoriteJourneysScreen(
+                                        state = FavoriteJourneysUi(read?.journeys, loaded = read != null, writeFailed = journeyRemoveFailed, adding = journeyAdding),
+                                        onBack = { favoriteJourneysOpen = false },
+                                        onAdd = {
+                                            JourneyAdds.dismiss()
+                                            journeyPicking = true
+                                        },
+                                        onDismissAddNote = JourneyAdds::dismiss,
+                                        onRemove = { journey ->
+                                            JourneyRemovals.attempt(removeScope, warn = ::logStarWarning) {
+                                                removeFavoriteJourney(journey, journeyStore, WidgetSnapshotStore(applicationContext), warn = ::logStarWarning)
+                                            }
+                                        },
+                                        onDismissWriteError = { JourneyRemovals.failed.value = false },
+                                        onRetry = { journeysAttempt++ },
+                                    )
+                                }
                             } else if (top == TopOverlay.STATIONS) {
                                 // Planning the trip on the way again: Start takes its place, rather than opening it.
                                 val replanActions = replanActionsOr(LocalOnTheWay.current, replanning)

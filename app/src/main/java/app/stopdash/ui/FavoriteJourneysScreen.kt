@@ -31,9 +31,19 @@ import app.stopdash.R
 import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.FavoriteJourneysStore
+import app.stopdash.domain.JourneyPair
+import app.stopdash.domain.StationFinder
+import app.stopdash.domain.StationMatch
+import app.stopdash.domain.TflException
 import app.stopdash.domain.WidgetJourneysReport
 import kotlinx.coroutines.CancellationException
+import java.io.IOException
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
@@ -48,7 +58,29 @@ data class FavoriteJourneysUi(
     val journeys: List<FavoriteJourney>? = emptyList(),
     val loaded: Boolean = true,
     val writeFailed: Boolean = false,
+    // A pair picked to add, as it stands (null when none is under way or left to say).
+    val adding: JourneyAddNote? = null,
 )
+
+/**
+ * A pair the rider picked to add ([FavoriteJourneyPicker]), named by its two stations as picked: being
+ * looked up and saved, or why it wasn't added. Gone once it's saved, the list then showing it.
+ */
+sealed interface JourneyAddNote {
+    val from: String
+    val to: String
+
+    data class Adding(override val from: String, override val to: String) : JourneyAddNote
+    data class AlreadySaved(override val from: String, override val to: String) : JourneyAddNote
+    data class NoDirectLine(override val from: String, override val to: String) : JourneyAddNote
+    data class SameStation(override val from: String, override val to: String) : JourneyAddNote
+
+    /** Looking the stations up failed, for [kind]. */
+    data class LookupFailed(override val from: String, override val to: String, val kind: DeparturesUiState.Error.Kind) : JourneyAddNote
+
+    /** Saving it failed (a disk error). */
+    data class NotSaved(override val from: String, override val to: String) : JourneyAddNote
+}
 
 /**
  * Settings' Remove: unstars [journey] in [journeys], then drops its pins from the widget's stored
@@ -84,6 +116,73 @@ internal suspend fun removeFavoriteJourney(
 }
 
 /**
+ * Adds the journey between two stations the rider picked, [from] then [to] ([FavoriteJourneyPicker]):
+ * the stops under each looked up ([StationFinder.stationStops]), a line both serve picked
+ * ([JourneyPair]), and the journey saved unless it already is. Null once saved; else why it wasn't,
+ * said on the list. Off the main thread, the hop first (AGENTS.md *Main thread*).
+ */
+internal suspend fun addFavoriteJourneyPair(
+    from: StationMatch,
+    to: StationMatch,
+    finder: StationFinder,
+    journeys: FavoriteJourneysStore,
+    warn: (String) -> Unit = {},
+    worker: CoroutineDispatcher = Dispatchers.Default,
+): JourneyAddNote? = withContext(worker) {
+    val result = try {
+        JourneyPair.resolve(from.name, finder.stationStops(from.id), to.name, finder.stationStops(to.id))
+    } catch (e: TflException) {
+        // Logged without the stations (SPEC *Privacy*).
+        warn("favorite journey add lookup failed: ${e::class.simpleName}")
+        return@withContext JourneyAddNote.LookupFailed(from.name, to.name, errorKindOf(e))
+    }
+    when (result) {
+        JourneyPair.Result.SameStation -> JourneyAddNote.SameStation(from.name, to.name)
+        JourneyPair.Result.NoDirectLine -> JourneyAddNote.NoDirectLine(from.name, to.name)
+        is JourneyPair.Result.Found -> {
+            val journey = result.journey
+            try {
+                // Unreadable (a newer StopDash's file): the store keeps that file rather than write over
+                // it, so the journey wouldn't be saved; said, never passed off as added.
+                val saved = journeys.journeys().first() ?: return@withContext JourneyAddNote.NotSaved(from.name, to.name)
+                if (saved.any { it.key == journey.key }) {
+                    return@withContext JourneyAddNote.AlreadySaved(from.name, to.name)
+                }
+                journeys.add(journey)
+                null
+            } catch (e: IOException) {
+                warn("favorite journey add not saved: ${e::class.simpleName}")
+                JourneyAddNote.NotSaved(from.name, to.name)
+            }
+        }
+    }
+}
+
+/**
+ * What became of the last pair picked to add, held for the process so it lands whatever the rider does
+ * meanwhile (Back, a rotation), as [removeFavoriteJourney]'s failure is. Only the latest attempt's
+ * outcome is said.
+ */
+internal object JourneyAdds {
+    val note = MutableStateFlow<JourneyAddNote?>(null)
+    private val latest = AtomicLong()
+
+    fun attempt(scope: CoroutineScope, from: StationMatch, to: StationMatch, add: suspend () -> JourneyAddNote?): Job {
+        val mine = latest.incrementAndGet()
+        note.value = JourneyAddNote.Adding(from.name, to.name)
+        return scope.launch {
+            val outcome = add()
+            if (latest.get() == mine) note.value = outcome
+        }
+    }
+
+    fun dismiss() {
+        latest.incrementAndGet()
+        note.value = null
+    }
+}
+
+/**
  * The favorite journeys, reached from Settings and hosted as an activity-level overlay like
  * [FavoritePlacesScreen], so its own Back closes it (maintainer, 2026-10-05: a journey starred by
  * mistake had no place to be seen and removed but its own card). Each row names the journey and its
@@ -104,6 +203,7 @@ fun FavoriteJourneysScreen(
     // Starts adding one: the station search, then a line's route page, where a tapped stop's page
     // offers the journey there (maintainer, 2026-10-06). Null shows no Add.
     onAdd: (() -> Unit)? = null,
+    onDismissAddNote: () -> Unit = {},
 ) {
     BackHandler(onBack = onBack)
     Surface(modifier = Modifier.fillMaxSize()) {
@@ -146,6 +246,7 @@ fun FavoriteJourneysScreen(
                     }
                 }
             }
+            state.adding?.let { AddNoteRow(it, onDismissAddNote) }
             // Lazy, so only the rows on screen are composed however many journeys are starred (Codex on #589).
             val listState = rememberLazyListState()
             val journeys = state.journeys
@@ -176,6 +277,37 @@ fun FavoriteJourneysScreen(
                         JourneyRow(journey, onRemove = { onRemove(journey) })
                     }
                 }
+            }
+        }
+    }
+}
+
+// What became of a pair picked to add, outside the scroll like a failed removal, with Dismiss once settled.
+@Composable
+private fun AddNoteRow(note: JourneyAddNote, onDismiss: () -> Unit) {
+    val text = when (note) {
+        is JourneyAddNote.Adding -> stringResource(R.string.favorite_journeys_adding, note.from, note.to)
+        is JourneyAddNote.AlreadySaved -> stringResource(R.string.favorite_journeys_add_already, note.from, note.to)
+        is JourneyAddNote.NoDirectLine -> stringResource(R.string.favorite_journeys_add_no_line, note.from, note.to)
+        is JourneyAddNote.SameStation -> stringResource(R.string.favorite_journeys_add_same)
+        is JourneyAddNote.LookupFailed -> stringResource(R.string.favorite_journeys_add_failed, note.from, note.to, stringResource(partialReason(note.kind)))
+        is JourneyAddNote.NotSaved -> stringResource(R.string.favorite_journeys_add_not_saved, note.from, note.to)
+    }
+    val error = note is JourneyAddNote.LookupFailed || note is JourneyAddNote.NotSaved
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).testTag("journeyAddNote"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        if (note !is JourneyAddNote.Adding) {
+            Spacer(modifier = Modifier.width(16.dp))
+            TextButton(onClick = onDismiss, modifier = Modifier.testTag("dismissJourneyAddNote")) {
+                Text(stringResource(R.string.action_dismiss))
             }
         }
     }
