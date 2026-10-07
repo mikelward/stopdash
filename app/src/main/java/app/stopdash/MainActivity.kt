@@ -3764,7 +3764,8 @@ class MainActivity : ComponentActivity() {
         // Every screen's arrivals land in the shared cache, so each shows what the others just
         // fetched (SPEC *Freshness → Shared arrivals*), each station's National Rail board with
         // them. A trip gets the board at every stop it boards at ([boardAtEveryStop]); a list shows
-        // it under one stop of a station.
+        // it under one stop of a station, and each train's calling points with it (one more request
+        // per station: a fast train and a stopping one look alike on its line's routes).
         private fun departuresClient(context: Context, boardAtEveryStop: Boolean = false): TflClient = CachingTflClient(RailAwareTflClient(
             tfl = KtorTflClient(
                 httpClient,
@@ -3783,11 +3784,14 @@ class MainActivity : ComponentActivity() {
                 apiKey = { RailApiKeySetting.current },
                 warn = ::logDepartureWarning,
                 stopIdFor = { RailStationCodesStore.load(context.applicationContext).stopIdFor(it) },
+                stopIdsFor = { RailStationCodesStore.load(context.applicationContext).stopIdsFor(it) },
             ),
             codes = { RailStationCodesStore.load(context.applicationContext) },
             warn = ::logDepartureWarning,
             boardAtEveryStop = boardAtEveryStop,
             boards = ArrivalsCache.SHARED,
+            // A trip's boards carry each train's stopping pattern: which it calls at decides its legs.
+            callingPoints = boardAtEveryStop,
         ))
 
         // "Find a station": the name search and a station's stop lookup, both on demand from the

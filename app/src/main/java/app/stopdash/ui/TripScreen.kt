@@ -417,9 +417,11 @@ internal fun warmVerdicts(
     TripVerdicts.makeRoom(legs, active)
     var warmed = false
     for (leg in legs) {
-        val route = sequences[leg.lineId] ?: continue
         val trains = state.live[leg.fromId]?.departures?.filter { it.lineId == leg.lineId }.orEmpty()
         if (!active()) return false
+        // Trains' own calling points need no route (Codex, #650).
+        if (TripVerdicts.warmStops(leg, trains)) warmed = true
+        val route = sequences[leg.lineId] ?: continue
         if (TripVerdicts.warm(leg, route, trains, active)) warmed = true
     }
     return warmed
@@ -431,9 +433,15 @@ private class JudgedRoutes(routes: Map<String, LineSequence?>) : Map<String, Lin
 
 // A leg's upcoming trains judged on its line's route ([legFilter]): the [result] as [DirectTrips.filter]
 // gives it, and of the trains it keeps, those [leaving] along the leg ([leavesAlongLeg]); [unclear] are
-// the trains whose path couldn't be followed (every one, with no route to follow), which made it
-// [DirectTrips.Result.unresolved].
-private class LegJudgement(val result: DirectTrips.Result, val leaving: List<Departure>, val unclear: List<Departure> = emptyList())
+// the trains whose path couldn't be followed (every one its own stops don't settle, with no route to
+// follow), which made it [DirectTrips.Result.unresolved]. [byStops] when every train was settled by its
+// own calling points, with no route needed.
+private class LegJudgement(
+    val result: DirectTrips.Result,
+    val leaving: List<Departure>,
+    val unclear: List<Departure> = emptyList(),
+    val byStops: Boolean = false,
+)
 
 private val CHECKING = LegJudgement(DirectTrips.Result(emptyList(), pending = true, unresolved = false), emptyList())
 
@@ -455,10 +463,24 @@ private fun legFilter(
         val miss = RouteMiss(leg.lineId, leg.fromId, RouteStops.Resolution.NoLine, leg.headings.firstOrNull().orEmpty())
         return LegJudgement(DirectTrips.Result(emptyList(), pending = false, unresolved = true, misses = setOf(miss)), emptyList(), line)
     }
+    // A train its own calling points settle ([DirectTrips.settledByStops]) needs no route: only the rest
+    // wait on it, or fall back on it, and a failed route never costs the settled ones (Codex, #650). Read
+    // as worked out on the worker ([TripVerdicts.byStops]). Not known to leave the other way, so a
+    // settled train that calls there is kept.
+    val settled = line.map { train -> TripVerdicts.byStops(leg, train).also { if (it == TripVerdicts.ByStops.UNJUDGED) return CHECKING } }
+    val settledKept = line.filterIndexed { index, _ -> settled[index] == TripVerdicts.ByStops.REACHES }
+    fun stopsOf(trains: List<Departure>) = if (trains.isEmpty()) emptyList() else listOf(StopArrivals(leg.fromId, leg.fromName, trains, stop.fetchedAt))
+    if (settled.none { it == TripVerdicts.ByStops.OPEN }) {
+        return LegJudgement(DirectTrips.Result(stopsOf(settledKept), pending = false, unresolved = false), settledKept, byStops = true)
+    }
     if (leg.lineId !in sequences) return CHECKING
-    // A failed route can't tell: logged by its fetch.
-    // Every train is unclear, so only one the rider could catch leaves the line unchecked (Codex, #649).
-    val route = sequences[leg.lineId] ?: return LegJudgement(DirectTrips.Result(emptyList(), pending = false, unresolved = true), emptyList(), line)
+    // A failed route can't tell the rest: logged by its fetch. Each of them is unclear, so only one the
+    // rider could catch leaves the line unchecked (Codex, #649).
+    val route = sequences[leg.lineId] ?: return LegJudgement(
+        DirectTrips.Result(stopsOf(settledKept), pending = false, unresolved = true),
+        settledKept,
+        line.filterIndexed { index, _ -> settled[index] == TripVerdicts.ByStops.OPEN },
+    )
     val judged = line.map { train -> train to (TripVerdicts.get(leg, route, train) ?: return CHECKING) }
     val unclear = ArrayList<Departure>()
     val misses = LinkedHashSet<RouteMiss>()
@@ -476,17 +498,22 @@ private fun legFilter(
     val stops = if (kept.isEmpty()) emptyList() else listOf(StopArrivals(leg.fromId, leg.fromName, kept.map { it.first }, stop.fetchedAt))
     return LegJudgement(
         DirectTrips.Result(stops, pending = false, unresolved = unclear.isNotEmpty(), misses = misses),
-        kept.filter { (_, verdict) -> verdict.leaves != false }.map { it.first },
+        // A train its own stops take there leaves along the leg whatever the route's paths say: an
+        // express skipping the Planner path's next stop still gets there (Codex, #650).
+        judged.filterIndexed { index, (_, verdict) ->
+            verdict.reach == DirectTrips.Verdict.Reaches && (verdict.leaves != false || settled[index] == TripVerdicts.ByStops.REACHES)
+        }.map { it.first },
         unclear,
     )
 }
 
 /**
- * Whether [leg]'s line's trains at its boarding stop are judged on its route: its route loaded (or
- * failed) and each upcoming train worked out ([TripVerdicts]). Until then the leg reads as loading.
+ * Whether [leg]'s line's trains at its boarding stop are judged: each upcoming train settled by its own
+ * calling points, or its route loaded (or failed) and the rest worked out ([TripVerdicts]). Until then
+ * the leg reads as loading.
  */
 private fun legChecked(leg: TripLeg, stop: TripViewModel.StopLive, now: Instant, sequences: Map<String, LineSequence?>): Boolean =
-    leg.lineId in sequences && legFilter(leg, stop, now, sequences) !== CHECKING
+    legFilter(leg, stop, now, sequences).let { it !== CHECKING && (leg.lineId in sequences || it?.byStops == true) }
 
 /**
  * While [leg]'s line's route is still loading (absent from [sequences]), or its trains are still

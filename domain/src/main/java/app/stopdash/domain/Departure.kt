@@ -45,6 +45,14 @@ import java.time.Instant
  * its stop list can tell apart two ways to one terminus (round a loop either way) where nothing else
  * on the board does ([RouteStops.resolve]). Kept apart from [branch]: it narrows a route, it isn't
  * shown. Blank where the board names none, and on every TfL departure.
+ *
+ * [callingAt] is where a National Rail train stops after this one, from a board with its calling
+ * points (a trip's, [RailBoardSource.boardWithDetails]): one [CallingPortion] per portion it
+ * divides into. Its stopping pattern, which its line's route can't tell (fast or all stations), so a
+ * trip judges it on this first ([DirectTrips.judge]). Null where none was asked for or given.
+ *
+ * [railServiceId] is Darwin's id for a National Rail service, which pairs a train across two boards
+ * of the same station (the plain one and the one with calling points). Blank on every TfL departure.
  */
 data class Departure(
     val lineId: String,
@@ -58,4 +66,6 @@ data class Departure(
     val destinationId: String = "",
     val vehicleId: String = "",
     val via: String = "",
+    val callingAt: List<CallingPortion>? = null,
+    val railServiceId: String = "",
 )

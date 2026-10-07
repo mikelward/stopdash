@@ -1,5 +1,6 @@
 package app.stopdash.data
 
+import app.stopdash.domain.CallingPortion
 import app.stopdash.domain.Departure
 import app.stopdash.domain.NATIONAL_RAIL_MODE
 import app.stopdash.domain.RailBoard
@@ -39,6 +40,31 @@ data class DarwinServiceDto(
     val operatorCode: String? = null,
     val isCancelled: Boolean = false,
     val destination: List<DarwinLocationDto>? = null,
+    // Darwin's id for the service, which pairs it across two boards of the same station.
+    val serviceID: String? = null,
+    // Its stops after this station, one list per portion it divides into: only on a board asked for
+    // with details (`GetDepBoardWithDetails`).
+    val subsequentCallingPoints: List<DarwinCallingPointsDto>? = null,
+)
+
+@Serializable
+data class DarwinCallingPointsDto(
+    val callingPoint: List<DarwinCallingPointDto>? = null,
+    // A portion it divides into that won't run today: its stops can't be reached on this train.
+    val assocIsCancelled: Boolean = false,
+    // A portion reached only by changing to another service: not stops this train makes.
+    val serviceChangeRequired: Boolean = false,
+) {
+    /** Whether a rider who boards this train can stay on it to these stops. */
+    val rideable: Boolean get() = !assocIsCancelled && !serviceChangeRequired
+}
+
+@Serializable
+data class DarwinCallingPointDto(
+    val locationName: String? = null,
+    val crs: String? = null,
+    // A stop it won't make today: not one it calls at.
+    val isCancelled: Boolean = false,
 )
 
 @Serializable
@@ -53,7 +79,7 @@ private val UK = ZoneId.of("Europe/London")
 
 /** The board's trains with a time ([toBoard]'s departures). */
 fun DarwinBoardDto.toDepartures(stopIdFor: (String) -> String? = { null }, warn: (String) -> Unit = {}): List<Departure> =
-    toBoard(stopIdFor, warn).departures
+    toBoard(stopIdFor, warn = warn).departures
 
 /**
  * The board as stopdash shows it (SPEC principle 1): each train with an expected time, as an absolute
@@ -67,7 +93,12 @@ fun DarwinBoardDto.toDepartures(stopIdFor: (String) -> String? = { null }, warn:
  * out and reported too. A train's terminus gets TfL's id for it from its code ([stopIdFor]), so its
  * stop list matches it however the board spells the name ([Departure.destinationId]).
  */
-fun DarwinBoardDto.toBoard(stopIdFor: (String) -> String? = { null }, warn: (String) -> Unit = {}): RailBoard {
+fun DarwinBoardDto.toBoard(
+    stopIdFor: (String) -> String? = { null },
+    // Every TfL stop id of a station code (RailStationCodes.stopIdsFor), for a train's calling points.
+    stopIdsFor: (String) -> Set<String> = { emptySet() },
+    warn: (String) -> Unit = {},
+): RailBoard {
     val services = trainServices.orEmpty()
     if (services.isEmpty()) return RailBoard(emptyList())
     // A board with trains but no readable time it was made at can't date them: a failure (the
@@ -109,6 +140,8 @@ fun DarwinBoardDto.toBoard(stopIdFor: (String) -> String? = { null }, warn: (Str
             mode = NATIONAL_RAIL_MODE,
             destinationId = destinationId,
             via = via,
+            callingAt = service.subsequentCallingPoints?.let { callingPortions(it, stopIdsFor) },
+            railServiceId = service.serviceID?.trim().orEmpty(),
         )
         if (canceled || etd == "Delayed") {
             // Placed by its schedule, never counted down.
@@ -164,3 +197,21 @@ private fun parseClock(text: String): LocalTime? =
     } catch (e: DateTimeParseException) {
         null
     }
+
+/**
+ * A train's [lists] of calling points as [CallingPortion]s: each portion's stops by every TfL id of
+ * their station, less those it won't make; complete when every stop had one. Only portions the
+ * rider can stay aboard for count ([DarwinCallingPointsDto.rideable]): one that won't run today, or
+ * one reached by changing service, can't be boarded, so it's left out rather than counted as a way to
+ * reach its stops. A train with no rideable portion at all reaches none of them: one complete portion
+ * calling nowhere, a sure "misses", never no answer the route would then fill in.
+ */
+internal fun callingPortions(lists: List<DarwinCallingPointsDto>, stopIdsFor: (String) -> Set<String>): List<CallingPortion> {
+    val rideable = lists.filter { it.rideable }
+    if (rideable.isEmpty()) return if (lists.isEmpty()) emptyList() else listOf(CallingPortion(emptySet(), complete = true))
+    return rideable.map { list ->
+        val points = list.callingPoint.orEmpty().filterNot { it.isCancelled }
+        val ids = points.map { point -> point.crs?.trim()?.ifBlank { null }?.let(stopIdsFor).orEmpty() }
+        CallingPortion(ids.flatten().toSet(), complete = ids.none { it.isEmpty() })
+    }
+}

@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import app.stopdash.domain.CallingPortion
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DirectTrips
 import app.stopdash.domain.LineRoute
@@ -41,6 +42,20 @@ class TripVerdictsTest {
         lineId = "blue", lineName = "Blue", direction = "outbound", destination = destination, platform = null,
         expectedArrival = now.plus(Duration.ofMinutes(inMinutes)), mode = "tube",
     )
+
+    @Test
+    fun `a train's own calling points are judged only once warmed, with no route needed`() {
+        val stopping = train("Dale", 3).copy(callingAt = listOf(CallingPortion(setOf("Beck", "Cole", "Dale"), complete = true)))
+        val fast = train("Dale", 5).copy(callingAt = listOf(CallingPortion(setOf("Dale"), complete = true)))
+        // Read as the page renders: nothing worked out there.
+        assertEquals(TripVerdicts.ByStops.UNJUDGED, TripVerdicts.byStops(leg, stopping))
+        assertEquals(TripVerdicts.ByStops.OPEN, TripVerdicts.byStops(leg, train("Dale", 7)))
+        assertTrue(TripVerdicts.warmStops(leg, listOf(stopping, fast, train("Dale", 7))))
+        assertEquals(TripVerdicts.ByStops.REACHES, TripVerdicts.byStops(leg, stopping))
+        assertEquals(TripVerdicts.ByStops.MISSES, TripVerdicts.byStops(leg, fast))
+        // The same service predicted later: already judged.
+        assertFalse(TripVerdicts.warmStops(leg, listOf(stopping.copy(expectedArrival = now.plus(Duration.ofMinutes(2))))))
+    }
 
     @Test
     fun `a train is judged only once warmed, and its verdict holds for later predictions of the service`() {

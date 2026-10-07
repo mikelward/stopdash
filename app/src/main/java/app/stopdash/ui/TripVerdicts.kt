@@ -41,6 +41,49 @@ internal object TripVerdicts {
 
     private val tables = ConcurrentHashMap<LegKey, Table>()
 
+    /** A train's own calling points' answer for a leg ([DirectTrips.settledByStops]), as [byStops] reads it. */
+    enum class ByStops { REACHES, MISSES, OPEN, UNJUDGED }
+
+    // Each train's [ByStops] answer per stop it would get off at, worked out on the worker ([warmStops]):
+    // the scan over its portions' stops grows with the board, so never on the main thread.
+    private val stops = ConcurrentHashMap<Pair<String, Departure>, ByStops>()
+
+    /**
+     * Whether [train]'s own calling points settle [leg] ([DirectTrips.settledByStops]), as worked out
+     * ([warmStops]): [ByStops.OPEN] for a train with none, [ByStops.UNJUDGED] while one with some
+     * hasn't been. A lookup only.
+     */
+    fun byStops(leg: TripLeg, train: Departure): ByStops {
+        if (train.callingAt == null) return ByStops.OPEN
+        stops[leg.toId to train.service()]?.let { return it }
+        return onStopsMiss?.invoke(leg, train) ?: ByStops.UNJUDGED
+    }
+
+    /** Works out [byStops] for each of [trains] on [leg] not yet judged; true when any was. On a worker only. */
+    @WorkerThread
+    fun warmStops(leg: TripLeg, trains: List<Departure>): Boolean {
+        if (stops.size > MAX_STOPS) stops.clear()
+        var warmed = false
+        for (train in trains) {
+            if (train.callingAt == null) continue
+            if (stops.putIfAbsent(leg.toId to train.service(), judgeStops(leg, train)) == null) warmed = true
+        }
+        return warmed
+    }
+
+    /** Answers [byStops] in place when it hasn't been warmed: for tests calling the trip page's helpers directly, as [onMiss]. */
+    @VisibleForTesting
+    @Volatile
+    var onStopsMiss: ((TripLeg, Departure) -> ByStops)? = null
+
+    /** [train]'s [byStops] answer on [leg], worked out in place. On a worker only. */
+    @WorkerThread
+    fun judgeStops(leg: TripLeg, train: Departure): ByStops = when (DirectTrips.settledByStops(train, setOf(leg.toId))) {
+        true -> ByStops.REACHES
+        false -> ByStops.MISSES
+        null -> ByStops.OPEN
+    }
+
     /** Judges a train in place when it hasn't been warmed: for tests calling the trip page's helpers directly. */
     @VisibleForTesting
     @Volatile
@@ -108,4 +151,7 @@ internal object TripVerdicts {
     // More legs than a plan's routes and their other lines ever hold: past it, all are judged afresh.
     @VisibleForTesting
     const val MAX_LEGS = 256
+
+    // More trains' stop answers than a plan's boards ever hold: past it, all are judged afresh.
+    private const val MAX_STOPS = 4096
 }

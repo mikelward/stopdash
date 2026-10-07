@@ -27,10 +27,12 @@ class TripThroughRoutesTest {
     // The trip page's helpers are called directly here, with no worker to judge trains ahead: judged in place.
     @Before fun judgeInPlace() {
         TripVerdicts.onMiss = TripVerdicts::compute
+        TripVerdicts.onStopsMiss = TripVerdicts::judgeStops
     }
 
     @After fun stopJudgingInPlace() {
         TripVerdicts.onMiss = null
+        TripVerdicts.onStopsMiss = null
     }
 
     private fun at(minutes: Long): Instant = now.plus(Duration.ofMinutes(minutes))

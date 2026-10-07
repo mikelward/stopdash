@@ -124,6 +124,8 @@ object DirectTrips {
         val lineId = departure.lineId
         return when {
             HiddenModes.isHidden(departure.mode, lineId, hidden) -> Judged(kept = false)
+            // Its own calling points settle it with no route needed, loading or failed (Codex, #650).
+            settledByStops(departure, destinationIds) != null -> Judged(kept = settledByStops(departure, destinationIds) == true)
             // No line to follow: it may well call there, so never a silent "no".
             lineId.isBlank() -> Judged(kept = false, unresolved = true, miss = RouteMiss(lineId, stopId, RouteStops.Resolution.NoLine, departure.destination))
             lineId !in sequences -> Judged(kept = false, pending = true)
@@ -133,6 +135,33 @@ object DirectTrips {
                 is Verdict.Unknown -> Judged(kept = false, unresolved = true, miss = verdict.miss)
             }
         }
+    }
+
+    /**
+     * Whether [departure] calls at one of [destinationIds] by its own calling points
+     * ([Departure.callingAt], [calling]); null when they don't settle it and its line's routes must.
+     * Every judgement asks this first, before needing a route at all.
+     */
+    @WorkerThread
+    fun settledByStops(departure: Departure, destinationIds: Set<String>): Boolean? =
+        departure.callingAt?.let { calling(it, destinationIds) }
+
+    /**
+     * Whether a train stopping at [portions] after boarding calls at one of [destinationIds]: true
+     * when every portion does, false when none does and each names every stop, null otherwise (no
+     * portions, a stop that couldn't be named, or portions that part before it).
+     */
+    @WorkerThread
+    fun calling(portions: List<CallingPortion>, destinationIds: Set<String>): Boolean? {
+        if (portions.isEmpty()) return null
+        val answers = portions.mapTo(HashSet()) { portion ->
+            when {
+                portion.stops.any { it in destinationIds } -> true
+                portion.complete -> false
+                else -> null
+            }
+        }
+        return answers.singleOrNull()
     }
 
     /** A departure judged on its line's route ([judge]). */
@@ -170,6 +199,9 @@ object DirectTrips {
      */
     @WorkerThread
     fun judge(departure: Departure, stopId: String, route: LineSequence?, destinationIds: Set<String>): Verdict {
+        // Where the train itself says it stops ([Departure.callingAt]) outranks its line's routes,
+        // which can't tell a fast train from a stopping one.
+        settledByStops(departure, destinationIds)?.let { return if (it) Verdict.Reaches else Verdict.Misses }
         val lineId = departure.lineId
         val bus = departure.mode.equals("bus", ignoreCase = true)
         val bound = RouteStops.boundOf(departure.platform)

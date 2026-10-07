@@ -71,6 +71,67 @@ class RailAwareTflClientTest {
     }
 
     @Test
+    fun `a trip's board carries calling points, sharing the plain board with a list's`() = runTest {
+        val calling = listOf(CallingPortion(setOf("910GFAR"), complete = true))
+        fun train(service: String, inSeconds: Long, callingAt: List<CallingPortion>? = null) =
+            Departure("great-example", "Great Example", "", "Far", null, now.plusSeconds(inSeconds), "national-rail", callingAt = callingAt, railServiceId = service)
+        val asked = mutableListOf<String>()
+        var detailsFail = false
+        val board = object : RailBoardSource {
+            override val available = true
+            override suspend fun departures(crs: String) = error("the whole board is asked for")
+            override suspend fun board(crs: String): RailBoard {
+                asked += "plain"
+                return RailBoard(listOf(train("1", 300), train("2", 600)))
+            }
+            override suspend fun boardWithDetails(crs: String): RailBoard {
+                asked += "details"
+                if (detailsFail) throw TflException.Unreachable("HTTP 500", null)
+                // Fewer trains: only the first.
+                return RailBoard(listOf(train("1", 300, calling)))
+            }
+        }
+        val warned = mutableListOf<String>()
+        val boards = ArrivalsCache()
+        val list = RailAwareTflClient(tfl, board, { codes }, boards = boards, clock = { now })
+        val trip = RailAwareTflClient(tfl, board, { codes }, warn = { warned += it }, boardAtEveryStop = true, boards = boards, clock = { now }, callingPoints = true)
+        list.arrivals("910GEXAMPLE")
+        // The list's plain board serves the trip too: only the details are asked for (Codex, #650).
+        val rail = trip.arrivals("910GEXAMPLE").filter { it.mode == "national-rail" }
+        assertEquals(listOf(calling, null), rail.map { it.callingAt })
+        assertEquals(listOf("plain", "details"), asked)
+        // Both kept.
+        trip.arrivals("910GEXAMPLE")
+        assertEquals(listOf("plain", "details"), asked)
+        // A plain board fetched afresh beside calling points kept from earlier: the stop is as old as
+        // the calling points (Codex, #650). The list's board from [now] has expired by then; the trip's
+        // calling points, from 30 s later, haven't.
+        boards.clear()
+        var at = now
+        val stamped = RailAwareTflClient(tfl, board, { codes }, boardAtEveryStop = true, boards = boards, clock = { at }, callingPoints = true)
+        list.arrivals("910GEXAMPLE")
+        at = now.plusSeconds(30)
+        stamped.arrivals("910GEXAMPLE")
+        at = now.plusSeconds(55)
+        stamped.arrivals("910GEXAMPLE")
+        assertEquals(now.plusSeconds(30), stamped.fetchedAt("910GEXAMPLE"))
+        // The details failing leaves the plain board, said so in the log.
+        boards.clear()
+        detailsFail = true
+        assertTrue(trip.arrivals("910GEXAMPLE").filter { it.mode == "national-rail" }.all { it.callingAt == null })
+        assertTrue(warned.any { it.startsWith("national rail calling points failed for stop 910GEXAMPLE") })
+    }
+
+    @Test
+    fun `calling points pair with the plain board's trains by service`() {
+        val calling = listOf(CallingPortion(setOf("910GFAR"), complete = true))
+        fun train(service: String, callingAt: List<CallingPortion>? = null) =
+            Departure("great-example", "Great Example", "", "Far", null, now, "national-rail", callingAt = callingAt, railServiceId = service)
+        val merged = withCallingPoints(listOf(train("1"), train("2"), train("")), listOf(train("2", calling), train("", calling)))
+        assertEquals(listOf(null, calling, null), merged.map { it.callingAt })
+    }
+
+    @Test
     fun `a rail station's National Rail departures join TfL's`() = runTest {
         val board = Board()
         val client = RailAwareTflClient(tfl, board, { codes })

@@ -37,6 +37,45 @@ class DirectTripsTest {
     private fun station(id: String, name: String, hubId: String = "") = DirectTrips.End(id, name, hubId)
 
     @Test
+    fun `a train's own calling points outrank its line's routes`() {
+        fun calls(vararg portions: CallingPortion) = departure("Bottom B", 60).copy(callingAt = portions.toList())
+        fun judge(train: Departure, to: String) = DirectTrips.judge(train, "TOP", rail, setOf(to))
+        // Every way to Bottom B passes Mid, but this one runs fast through it.
+        assertEquals(DirectTrips.Verdict.Misses, judge(calls(CallingPortion(setOf("SIDE", "BOTB"), complete = true)), "MID"))
+        // And with it there, it reaches it.
+        assertEquals(DirectTrips.Verdict.Reaches, judge(calls(CallingPortion(setOf("MID", "SIDE", "BOTB"), complete = true)), "MID"))
+        // A stop it couldn't name might be Mid: the routes decide, as before.
+        assertEquals(DirectTrips.Verdict.Reaches, judge(calls(CallingPortion(setOf("SIDE", "BOTB"), complete = false)), "MID"))
+        // Portions parting before Bottom B: one calls there, one doesn't, so the routes decide.
+        assertEquals(
+            DirectTrips.Verdict.Reaches,
+            judge(calls(CallingPortion(setOf("MID", "SIDE", "BOTB"), complete = true), CallingPortion(setOf("MID", "BOTA"), complete = true)), "BOTB"),
+        )
+        // A train the routes can't follow is still judged on its own calling points.
+        val nowhere = departure("Nowhere", 60).copy(callingAt = listOf(CallingPortion(setOf("MID", "SIDE"), complete = true)))
+        assertEquals(DirectTrips.Verdict.Reaches, judge(nowhere, "SIDE"))
+        assertEquals(DirectTrips.Verdict.Misses, judge(nowhere, "BOTA"))
+        assertTrue(judge(departure("Nowhere", 60), "SIDE") is DirectTrips.Verdict.Unknown)
+    }
+
+    @Test
+    fun `a train its own calling points settle needs no route`() {
+        val stopping = departure("Bottom B", 60).copy(callingAt = listOf(CallingPortion(setOf("MID", "SIDE", "BOTB"), complete = true)))
+        val fast = departure("Bottom B", 120).copy(callingAt = listOf(CallingPortion(setOf("BOTB"), complete = true)))
+        val unsettled = departure("Bottom B", 180)
+        val top = stop("TOP", "Top", stopping, fast, unsettled)
+        // The route still loading, or failed: the settled trains stand, only the other waits or goes unchecked.
+        for (sequences in listOf(emptyMap(), mapOf<String, LineSequence?>("rail" to null))) {
+            val result = DirectTrips.filter(listOf(top), listOf(station("MID", "Mid")), sequences)
+            assertEquals(listOf(stopping), result.stops.single().departures)
+            assertTrue(result.pending || result.unresolved)
+        }
+        val settledOnly = DirectTrips.filter(listOf(stop("TOP", "Top", stopping, fast)), listOf(station("MID", "Mid")), emptyMap())
+        assertEquals(listOf(stopping), settledOnly.stops.single().departures)
+        assertFalse(settledOnly.pending || settledOnly.unresolved)
+    }
+
+    @Test
     fun `keeps only departures whose path reaches the destination`() {
         val top = stop("TOP", "Top", departure("Bottom A", 60), departure("Bottom B", 120), departure("Bottom A", 300))
         val result = DirectTrips.filter(listOf(top), listOf(station("BOTA", "Bottom A")), mapOf("rail" to rail))

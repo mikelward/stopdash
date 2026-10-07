@@ -8,7 +8,9 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import app.stopdash.R
 import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.Coordinates
+import app.stopdash.domain.CallingPortion
 import app.stopdash.domain.Departure
+import app.stopdash.domain.DirectTrips
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.DismissedAlert
@@ -85,6 +87,7 @@ class TripViewModelTest {
     @Before fun setUp() {
         Dispatchers.setMain(dispatcher)
         TripVerdicts.onMiss = TripVerdicts::compute
+        TripVerdicts.onStopsMiss = TripVerdicts::judgeStops
         // The trip's work that grows with its stops runs here too ([Workers.compute]), in virtual time.
         Workers.compute = dispatcher
     }
@@ -92,6 +95,7 @@ class TripViewModelTest {
     @After fun tearDown() {
         Dispatchers.resetMain()
         TripVerdicts.onMiss = null
+        TripVerdicts.onStopsMiss = null
         Workers.compute = Dispatchers.Default
     }
 
@@ -3346,6 +3350,43 @@ class TripViewModelTest {
         assertEquals("C", legRowFor(rows, northbound)?.destination)
         assertEquals("D", legRowFor(rows, null)?.destination)
         assertNull(legRowFor(emptyList(), northbound))
+    }
+
+    @Test
+    fun `trains whose own calling points settle it need no route`() {
+        fun calls(destination: String, inMinutes: Long, vararg stops: String) =
+            train("blue", destination, inMinutes).copy(callingAt = listOf(CallingPortion(stops.toSet(), complete = true)))
+        val fast = calls("Nowhere", 20, "D")
+        val stopping = calls("Nowhere", 25, "C", "D")
+        val state = TripViewModel.State(routes = listOf(route), live = mapOf("B" to TripViewModel.StopLive(listOf(fast, stopping), now)))
+        val leg = route.legs[1]
+        // Loading or failed, the route isn't needed: the train calling at C is the one.
+        for (sequences in listOf(emptyMap(), mapOf("blue" to null))) {
+            assertEquals(listOf(stopping), legTrains(state, leg, now, sequences))
+            assertNull(tripCheckState(state, checkNotNull(tripEstimates(state, now, Duration.ZERO, sequences)), now, sequences))
+        }
+        // One they don't settle (no calling points given for it) still waits on the route...
+        val unsettled = state.copy(live = mapOf("B" to TripViewModel.StopLive(listOf(train("blue", "Nowhere", 22), stopping), now)))
+        assertEquals(TripMessage.CHECKING, tripCheckState(unsettled, checkNotNull(tripEstimates(unsettled, now, Duration.ZERO, emptyMap())), now, emptyMap()))
+        // ...and with the route failed, it alone goes unchecked, leaving before the settled one that
+        // still times the leg.
+        val failed = mapOf("blue" to null)
+        assertEquals(listOf(stopping), legTrains(unsettled, leg, now, failed))
+        assertEquals(TripMessage.INCOMPLETE, tripCheckState(unsettled, checkNotNull(tripEstimates(unsettled, now, Duration.ZERO, failed)), now, failed))
+        // Leaving after it, it can't be the one the rider catches (#649).
+        val later = state.copy(live = mapOf("B" to TripViewModel.StopLive(listOf(stopping, train("blue", "Nowhere", 30)), now)))
+        assertNull(tripCheckState(later, checkNotNull(tripEstimates(later, now, Duration.ZERO, failed)), now, failed))
+    }
+
+    @Test
+    fun `a train its own stops take there is kept whichever way the route says it leaves`() {
+        // The route reads every train as getting there but leaving off the Planner's path (an express
+        // skipping its next stop); a train without calling points sends the leg through the route.
+        TripVerdicts.onMiss = { _, _, _ -> TripVerdicts.Verdict(DirectTrips.Verdict.Reaches, leaves = false) }
+        val express = train("blue", "C", 20).copy(callingAt = listOf(CallingPortion(setOf("C"), complete = true)))
+        val unsettled = train("blue", "C", 25)
+        val state = TripViewModel.State(routes = listOf(route), live = mapOf("B" to TripViewModel.StopLive(listOf(express, unsettled), now)))
+        assertEquals(listOf(express), legTrains(state, route.legs[1], now, mapOf("blue" to blue)))
     }
 
     @Test
