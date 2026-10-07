@@ -1,5 +1,6 @@
 package app.stopdash.data
 
+import androidx.annotation.WorkerThread
 import app.stopdash.domain.AppSettings
 import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.DistanceUnits
@@ -9,8 +10,10 @@ import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripModes
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.ui.HomeLines
+import kotlin.coroutines.ContinuationInterceptor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -22,6 +25,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -237,6 +243,32 @@ open class StoredSettingHolder<T>(
         loadedSignal.complete(Unit)
         _isLoaded.value = true
         writes.trySend(normalized)
+    }
+
+    // Edits run one at a time, in the order asked: each starts on this serial dispatcher in the order it
+    // was launched, and takes the (fair) lock before its first suspension, so a later one never
+    // overtakes it while it waits for the stored value.
+    private val editing: CoroutineDispatcher =
+        ((scope.coroutineContext[ContinuationInterceptor] as? CoroutineDispatcher) ?: Dispatchers.Default).limitedParallelism(1)
+    private val edits = Mutex()
+
+    /**
+     * Changes the value by [edit], applied to the value in force when its turn comes, after any
+     * edit asked for earlier, then persisted as [set] does. It runs on this holder's own scope: off
+     * the caller's thread (AGENTS.md *Main thread: read and dispatch only*), and through to the end
+     * even when the screen that asked has gone, so a tap made just before Back still counts (Codex,
+     * #642). It waits for the stored value first, so an edit is never made to [initial] standing in
+     * for it.
+     */
+    fun update(@WorkerThread edit: (T) -> T) {
+        scope.launch(editing) {
+            edits.withLock {
+                loaded()
+                // Already on [editing]; the hop names where [edit] runs, as lint's WorkerThreadCall reads
+                // it, which it can't see through `withLock`.
+                set(withContext(editing) { edit(current) })
+            }
+        }
     }
 
     private companion object {
@@ -563,7 +595,10 @@ object SummaryNetworksSetting {
         label = "summary networks",
     )
 
-    /** The chosen networks' keys, for the row, the list's status request and the Settings chips. */
+    /**
+     * The chosen lines' ids (and a network's key an older build stored, for all its lines), for the
+     * row, the list's status request and the Settings chips.
+     */
     val changes: StateFlow<Set<String>> get() = holder.changes
 
     /** Begins reading the stored choice. Idempotent. */
@@ -577,6 +612,13 @@ object SummaryNetworksSetting {
 
     /** The rider chose [networks]: applied at once, persisted in order. */
     fun set(networks: Set<String>) = holder.set(networks)
+
+    /**
+     * The rider tapped the line [lineId] on the summary's page: turned the other way
+     * ([HomeLines.toggle]) on the latest choice, after any tap before it, off the main thread and
+     * whether or not the page is still open ([StoredSettingHolder.update]).
+     */
+    fun toggle(lineId: String) = holder.update { chosen -> HomeLines.toggle(chosen, lineId) }
 
     /** True while the latest choice failed to save; Settings says so. */
     val writeFailed: StateFlow<Boolean> get() = holder.writeFailed

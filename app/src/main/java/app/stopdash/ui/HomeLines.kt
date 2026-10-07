@@ -75,9 +75,57 @@ object HomeLines {
 
     val TUBE_IDS: Set<String> = TUBE.mapTo(LinkedHashSet()) { it.id }
 
-    /** Every line of the [networks] (by key), in the row's order. Walks every network: on a worker only. */
+    /**
+     * Every line the [chosen] cover, in the row's order: a network's every line by its key, and a line
+     * picked on its own by its id (maintainer, 2026-10-06). One setting holds both: the single-line
+     * networks' keys are their lines' ids, and a build that doesn't know line picks reads only the
+     * network keys. Walks every network: on a worker only.
+     */
     @WorkerThread
-    fun linesOf(networks: Set<String>): List<LineRef> = Network.of(networks).flatMap { it.lines }
+    fun linesOf(chosen: Set<String>): List<LineRef> =
+        Network.entries.flatMap { network -> if (network.key in chosen) network.lines else network.lines.filter { it.id in chosen } }
+
+    /**
+     * The Disruptions summary page's chips, under their headers (maintainer, 2026-10-07): the Tube's and
+     * the Overground's lines under the network's name, then the single-line networks' under "Other"
+     * (a null network). Fixed, and built from the networks' own lists without walking them, so the page
+     * draws every chip where it will stay on its first frame; only which ones show selected is worked out
+     * ([covered]).
+     */
+    val PICKER: List<Pair<Network?, List<LineRef>>> = listOf(
+        Network.TUBE to Network.TUBE.lines,
+        Network.OVERGROUND to Network.OVERGROUND.lines,
+        null to listOf(Network.ELIZABETH.lines[0], Network.DLR.lines[0], Network.TRAM.lines[0]),
+    )
+
+    /**
+     * Which of [PICKER]'s chips show selected for what's [chosen], group by group in its order: a line
+     * covered by its network's key (an older build's choice) or picked on its own (maintainer,
+     * 2026-10-06). No chip picks a whole network (2026-10-07: the row leans on the lines near the rider
+     * and their favorites'). On a worker only (AGENTS.md *Main thread: read and dispatch only*).
+     */
+    @WorkerThread
+    fun covered(chosen: Set<String>): List<List<Boolean>> = PICKER.map { (network, lines) ->
+        // A single-line network's key is its line's id, so "Other" needs only the ids.
+        lines.map { line -> line.id in chosen || (network != null && network.key in chosen) }
+    }
+
+    /**
+     * [chosen] with the line [lineId] turned the other way: off if covered, by its network's key or on its
+     * own, else on. Off under its network leaves the network's other lines picked one by one, its own id
+     * dropped too, should the choice hold the network and it both (Codex, #642). An id no network has is
+     * left as it was. On a worker only.
+     */
+    @WorkerThread
+    fun toggle(chosen: Set<String>, lineId: String): Set<String> {
+        val network = Network.entries.firstOrNull { network -> network.lines.any { it.id == lineId } } ?: return chosen
+        val ids = network.lines.map { it.id }
+        return when {
+            network.key in chosen -> chosen - network.key - ids.toSet() + (ids - lineId)
+            lineId in chosen -> chosen - lineId
+            else -> chosen + lineId
+        }
+    }
 
     /**
      * The favorite [journeys]' line ids as they change, for the screen to ask about a journey just starred at

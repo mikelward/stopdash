@@ -2224,11 +2224,11 @@ counted as "+N", with no chevron. The pills go worst first, the rider's own line
 and journeys) ahead of the rest when as bad, then by name, a route by its number (the 43 before the 134),
 so "+N" takes the mildest first (maintainer, 2026-10-07:
 it put the rider's own first whatever their severity, a far suspension behind a near minor delay); a
-dismissed line is never a pill. Its page goes in the same order (maintainer, 2026-10-05). It covers the rider's own lines (maintainer, 2026-10-06: a whole network only by choice) — each line of their favorite journeys wherever its stop, asked about in the list's same line-status request whatever the stops' departures did, so a far journey not yet fetched is judged too, and each starred row's line while its stop is in the list, since a star ranks only there (Codex, #640) — every line of the networks the rider chose (below; none by default) and each line with a departure from a stop within the walking
+dismissed line is never a pill. Its page goes in the same order (maintainer, 2026-10-05). It covers the rider's own lines (maintainer, 2026-10-06: any other line only by choice) — each line of their favorite journeys wherever its stop, asked about in the list's same line-status request whatever the stops' departures did, so a far journey not yet fetched is judged too, and each starred row's line while its stop is in the list, since a star ranks only there (Codex, #640) — every line the rider chose (below; none by default) and each line with a departure from a stop within the walking
 reach (500 m, the near-me list's eager radius); on the watched list, which has no distances, every
-watched stop's lines. A line the list shows goes by the list's own check; the chosen networks' other lines are
+watched stop's lines. A line the list shows goes by the list's own check; the other chosen lines are
 asked in the list's same line-status request and share its reuse window, so the row costs no request
-of its own. A line with no current check is never called a good service; a chosen network's line whose last check
+of its own. A line with no current check is never called a good service; a chosen line whose last check
 has aged out while a refresh is under way (back from the background, say) reads "Checking…", not
 "couldn't check", until that refresh answers (maintainer, 2026-10-05). A tap opens the trip's lines
 page for those lines (*Trips with a change*), where one no longer near since it opened says so.
@@ -2242,14 +2242,14 @@ and opens its own page, since its settings control only the row (maintainer, 202
 covers is set and seen there. The lines page's menu opens Settings on that page too, its Back going up
 to Settings. There a **Show on home screen** switch turns the row off (on by default;
 the banner comes back with it off); the row waits for the stored choice, so one turned off never
-flashes up. Under it, **Always include** picks the networks
-covered whatever's near (maintainer, 2026-10-05): Tube, Overground, Elizabeth line,
-DLR and Tram, none on by default (maintainer, 2026-10-06: every one was, which filled the row with lines far from the rider's own) (their 20 lines ride the list's one status request, splitting it
+flashes up. Under it, **Always include** picks the lines
+covered whatever's near (maintainer, 2026-10-05; lines one by one 2026-10-06): a chip per line, the Tube's and Overground's each under the network's name, then Elizabeth line,
+DLR and Tram under **Other**; no chip picks a whole network (maintainer, 2026-10-07: the row leans on the lines near the rider and their favorites', so nobody should need every line), and one turned off under a network an older build chose leaves the rest picked; none on by default (maintainer, 2026-10-06: every one was, which filled the row with lines far from the rider's own) (the chosen lines ride the list's one status request, splitting it
 only when many nearby lines push it past TfL's length limit); the lines near the rider are always included, a choice of none leaving them alone. A
-network chosen with no current check of its lines reads "Checking…" while it's asked about, at once
+line chosen with no current check reads "Checking…" while it's asked about, at once
 on the choice (or on turning the row on), not at the next refresh: one line-status request at most,
 current verdicts reused (maintainer, 2026-10-05); never a verdict it can't stand behind; one chosen again before any refresh since may show the
-check it still has. With the row off, the chosen networks aren't
+check it still has. With the row off, the chosen lines aren't
 asked about at all.
 
 A disrupted line is always kept flagged — its countdowns are never shown as verified-clean

@@ -2583,8 +2583,9 @@ Builds on Phase 1's minimal line-status marking.
 - [x] **The home screen has a one-line disruptions row** (maintainer, 2026-10-05): every tube
       line, and every line with a departure from a stop within the walking reach (500 m), under the
       favorite places' chips; "+N" for what doesn't fit, a tap opening the lines page (`HomeLines`, `HomeDisruptionsRow`).
-  - [x] **Choose the networks the row always covers** (maintainer, 2026-10-05): "Always include" in
-        Settings: Tube, Overground, Elizabeth line, DLR and Tram (all on by default until 2026-10-06, now none); nearby lines always.
+  - [x] **Choose what the row always covers** (maintainer, 2026-10-05): "Always include" in Settings,
+        first by network, every one on by default; since 2026-10-06 none by default, and since 2026-10-07
+        line by line (below); nearby lines always.
   - [x] **A switch to turn the row off**: "Disruptions summary", second in Settings (maintainer,
         2026-10-05: narrower than "Show disruptions").
   - [x] **What's dismissed stays off the row and goes down the page** (maintainer, 2026-10-05): off the
@@ -2600,8 +2601,16 @@ Builds on Phase 1's minimal line-status marking.
         up and Back ever differ (a page opened from the lines page going up to Settings).
   - [x] **The row is the rider's own lines** (maintainer, 2026-10-06): no network by default; their
         favorite journeys' lines covered wherever their stop is, starred rows' while in the list.
-  - [ ] **Pick individual lines too** (maintainer, 2026-10-06), alongside the network chips: grouped by
-        network, each line a toggle with an "All" per group, and a hint to add favorite places instead.
+  - [x] **Pick individual lines** (maintainer, 2026-10-06): a chip per line, grouped under Tube,
+        Overground and Other; no chip picks a whole network (2026-10-07: the row leans on the rider's own).
+  - [ ] **Compose compares a collection parameter by contents** (Codex, #642): passing a new `Set`
+        or `List` to a composable makes Compose's own skipping check walk it on the main thread, before
+        any worker hop. Every screen that takes a collection does this, so it is an app-wide design
+        question, not one picker's: wrap stored snapshots in identity holders at the source, or accept it
+        for small settings sets. The picker's own holds and keys compare by identity.
+  - [ ] **Point to favorite places** on the picker (maintainer, 2026-10-07): its line reads "Favorite
+        places and lines near you are always included", with a **Favorite places** button, landing with
+        the place-lines item below, which makes it true.
   - [ ] **Cover the lines near favorite places** (maintainer, 2026-10-06): resolve each place's stops
         within walking reach once on save (and now and then after), their lines joining the rider's own;
         maybe their stations' closures too.

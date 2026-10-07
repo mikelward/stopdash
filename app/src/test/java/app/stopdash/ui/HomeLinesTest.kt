@@ -447,6 +447,52 @@ class HomeLinesTest {
     }
 
     @Test
+    fun `a line picked on its own is covered, with whole networks, in the row's order`() {
+        assertEquals(listOf("victoria", "liberty", "dlr"), HomeLines.linesOf(setOf("dlr", "liberty", "victoria")).map { it.id })
+        // A network's key covers every one of its lines; a line of it picked as well isn't listed twice.
+        val ids = HomeLines.linesOf(setOf("tube", "victoria", "elizabeth")).map { it.id }
+        assertEquals(HomeLines.TUBE.map { it.id } + "elizabeth", ids)
+        // An id no network has is left out.
+        assertEquals(emptyList<LineRef>(), HomeLines.linesOf(setOf("73")))
+    }
+
+    @Test
+    fun `the summary page's chips pick lines one by one, grouped, none a whole network`() {
+        // The Tube and the Overground under their names, the single-line networks together under Other,
+        // every line once.
+        assertEquals(listOf(HomeLines.Network.TUBE, HomeLines.Network.OVERGROUND, null), HomeLines.PICKER.map { it.first })
+        assertEquals(listOf("elizabeth", "dlr", "tram"), HomeLines.PICKER.last().second.map { it.id })
+        assertEquals(HomeLines.Network.entries.flatMap { it.lines }.toSet(), HomeLines.PICKER.flatMap { it.second }.toSet())
+        assertEquals(HomeLines.PICKER.sumOf { it.second.size }, HomeLines.PICKER.flatMap { it.second }.toSet().size)
+        fun shown(chosen: Set<String>, id: String): Boolean {
+            val covered = HomeLines.covered(chosen)
+            HomeLines.PICKER.forEachIndexed { g, (_, lines) -> lines.forEachIndexed { i, line -> if (line.id == id) return covered[g][i] } }
+            error("no chip for $id")
+        }
+        val tube = HomeLines.TUBE.map { it.id }
+        // Nothing chosen: every chip off; a line picks itself, a single-line network's too.
+        assertTrue(HomeLines.covered(emptySet()).flatten().none { it })
+        assertEquals(setOf("victoria"), HomeLines.toggle(emptySet(), "victoria"))
+        assertEquals(setOf("dlr"), HomeLines.toggle(emptySet(), "dlr"))
+        // A line picked: on, its neighbors not; off again on a tap.
+        assertTrue(shown(setOf("victoria"), "victoria"))
+        assertFalse(shown(setOf("victoria"), "central"))
+        assertEquals(emptySet<String>(), HomeLines.toggle(setOf("victoria"), "victoria"))
+        // Every line picked one by one stays that way: no chip folds them into the network.
+        assertEquals(tube.toSet(), HomeLines.toggle((tube - "victoria").toSet(), "victoria"))
+        // A network an older build chose: every line on; one turned off leaves the others, one by one.
+        assertTrue(shown(setOf("tube"), "central"))
+        assertTrue(shown(setOf("dlr"), "dlr"))
+        assertEquals((tube - "central").toSet(), HomeLines.toggle(setOf("tube"), "central"))
+        // The network and one of its lines both held: that line still turns off (Codex, #642).
+        assertEquals((tube - "central").toSet(), HomeLines.toggle(setOf("tube", "central"), "central"))
+        assertEquals(emptySet<String>(), HomeLines.toggle(setOf("dlr"), "dlr"))
+        // Another network's choice is left alone throughout; an id no network has changes nothing.
+        assertEquals(setOf("dlr", "victoria"), HomeLines.toggle(setOf("dlr"), "victoria"))
+        assertEquals(setOf("dlr"), HomeLines.toggle(setOf("dlr"), "73"))
+    }
+
+    @Test
     fun `the tube is listed by name`() {
         assertEquals(LineRef("hammersmith-city", "Hammersmith & City", "tube"), HomeLines.TUBE.single { it.id == "hammersmith-city" })
     }

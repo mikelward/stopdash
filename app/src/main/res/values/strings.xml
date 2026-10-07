@@ -506,6 +506,8 @@
     <!-- Under the Disruptions summary switch: the networks it always covers, one chip each. -->
     <string name="settings_summary_networks_title">Always include</string>
     <string name="settings_summary_networks_summary">Lines near you are always included</string>
+    <!-- The header over the networks of one line each (Elizabeth line, DLR, Tram). -->
+    <string name="settings_summary_other">Other</string>
     <string name="network_tube">Tube</string>
     <string name="network_overground">Overground</string>
     <string name="network_elizabeth">Elizabeth line</string>
