@@ -20,6 +20,7 @@ import java.time.Instant
 import java.util.concurrent.Executors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -204,6 +205,40 @@ class PlaceDirectViewModelTest {
         assertTrue(ready.rows.isEmpty())
         assertTrue(ready.uncertain)
         assertFalse(ready.retryable)
+    }
+
+    @Test
+    fun `a line's status is asked for while its route loads, not after`() = runBlocking {
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val asked = mutableListOf<Collection<String>>()
+        val slow = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                    gate.await()
+                    return rail
+                }
+            },
+            clock = { now },
+        )
+        val model = PlaceDirectViewModel(
+            ends = { listOf(DirectTrips.End("BOT", "Bottom")) },
+            client = client(statuses = { ids -> asked += ids; ids.map { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") } }) {
+                listOf(departure("Bottom", 60))
+            },
+            routes = slow,
+            arrivals = ArrivalsCache(),
+            clock = { now },
+            io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
+        ).apply { setOrigin(listOf(StopRef("TOP", "Top"))) }
+        val look = kotlinx.coroutines.GlobalScope.launch(Dispatchers.Unconfined) { model.refresh() }
+        // The route is still loading, and the status is already asked for.
+        assertEquals(listOf<Collection<String>>(listOf("rail")), asked.map { it.toList() })
+        gate.complete(Unit)
+        look.join()
+        assertEquals(1, (model.state.value as PlaceDirectViewModel.State.Ready).rows.size)
+        // And not asked again for the row once the route says it goes there.
+        assertEquals(1, asked.size)
     }
 
     @Test
