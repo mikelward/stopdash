@@ -131,7 +131,8 @@ sealed interface TripProgress {
      * the stops are counted from where the rider was seen ([OnTheWay.ridingUnmatched]), not from any
      * answer of TfL's: they don't go stale with one.
      */
-    data class Riding(
+    // Built off the main thread, as it shortens [nextStop] ([nextStopShort]): lint holds composition to that.
+    data class Riding @WorkerThread constructor(
         val leg: TripLeg,
         val nextStop: String?,
         val stopsLeft: Int?,
@@ -139,7 +140,13 @@ sealed interface TripProgress {
         val getOffSoon: Boolean,
         val seen: Boolean = true,
         val byPosition: Boolean = false,
-    ) : TripProgress
+    ) : TripProgress {
+        /**
+         * [nextStop] with its common words shortened ([DestinationAbbreviations]), worked out here, where the
+         * progress is built off the main thread, so the card only reads it (maintainer, 2026-10-07).
+         */
+        val nextStopShort: String? = nextStop?.takeIf { it.isNotBlank() }?.let(DestinationAbbreviations::abbreviate)
+    }
 
     /**
      * Changing onto [leg], a ride straight after another, until about [until]: the change time the

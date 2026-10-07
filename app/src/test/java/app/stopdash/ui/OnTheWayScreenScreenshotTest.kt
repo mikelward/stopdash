@@ -14,6 +14,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -53,6 +54,7 @@ import java.time.Duration
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -1081,14 +1083,93 @@ class OnTheWayScreenScreenshotTest {
     fun on_the_way_claims_no_time_left_beyond_the_predictions() {
         // The stop beyond TfL's predictions: its stops counted from the plan, no time claimed.
         show(trip.copy(boarded = true), TripProgress.Riding(mildmay, "Hackney Central", 4, null, getOffSoon = false))
-        composeRule.onNodeWithText("4 stops · next Hackney Central").assertIsDisplayed()
+        // The count beside its next stop, abbreviated, as when timed (Codex, #655).
+        onCard("4 stops").assertIsDisplayed()
+        composeRule.onNodeWithTag("onTheWayNextStop", useUnmergedTree = true).assertTextEquals("· next Hackney C.")
+    }
+
+    @Test
+    fun stops_counted_from_where_the_rider_was_seen_keep_their_row_when_an_answer_goes_stale() {
+        // Not from TfL, so a refresh failing doesn't touch them: the same split row (Codex, #655).
+        show(
+            trip.copy(boarded = true, onBoardSeen = true),
+            TripProgress.Riding(mildmay, "Hackney Central", 4, null, getOffSoon = false, seen = true, byPosition = true),
+            current = false,
+        )
+        onCard("4 stops").assertIsDisplayed()
+        composeRule.onNodeWithTag("onTheWayNextStop", useUnmergedTree = true).assertTextEquals("· next Hackney C.")
+    }
+
+    @Test
+    fun the_cards_next_stop_is_left_out_rather_than_a_bare_ellipsis() {
+        // So narrow not even its first letter fits beside the count and the time: the count alone, never "· …".
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.width(androidx.compose.ui.unit.Dp(200f))) {
+                    NextStep(null, null, TripProgress.Riding(mildmay, "Hackney Central", 12, at(25), getOffSoon = false), now, current = true, titleForms = listOf("Ride to Stratford"))
+                }
+            }
+        }
+        composeRule.onNodeWithText("12 stops", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("onTheWayNextStop", useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun an_uncounted_rides_next_stop_stays_however_narrow() {
+        // No count to fall back on: the next stop is all the row has, so it stays, cut (Codex, #655).
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.width(androidx.compose.ui.unit.Dp(160f))) {
+                    NextStep(null, null, TripProgress.Riding(mildmay, "Hackney Central", null, at(25), getOffSoon = false), now, current = true, titleForms = listOf("Ride to Stratford"))
+                }
+            }
+        }
+        composeRule.onNodeWithTag("onTheWayNextStop", useUnmergedTree = true)
+            .assertExists()
+            .assertContentDescriptionEquals("Next: Hackney Central")
+    }
+
+    @Test
+    fun the_cards_next_stop_is_abbreviated_and_read_in_full() {
+        // Beside the count, the next stop with its common words shortened, so more of it fits; a screen
+        // reader hears it as named (maintainer, 2026-10-07).
+        show(trip.copy(boarded = true, onBoardSeen = true), TripProgress.Riding(mildmay, "Tottenham Court Road", 2, at(5), getOffSoon = false))
+        onCard("2 stops").assertIsDisplayed()
+        composeRule.onNodeWithTag("onTheWayNextStop", useUnmergedTree = true)
+            .assertTextEquals("· next Tottenham Court Rd")
+            .assertContentDescriptionEquals("· next Tottenham Court Road")
+        // The stop where they get off is next: "Next stop" alone, nothing beside it; nor one not named.
+        val resources = composeRule.activity.resources
+        assertNull(rideStopsSplit(resources, TripProgress.Riding(mildmay, "Stratford", 1, at(1), getOffSoon = true)))
+        assertNull(rideStopsSplit(resources, TripProgress.Riding(mildmay, null, 4, at(16), getOffSoon = false)))
+    }
+
+    @Test
+    fun the_cards_count_holds_while_its_next_stop_is_cut() {
+        // Too narrow for the next stop: the count and the time stay whole, the stop is cut with "…".
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.width(androidx.compose.ui.unit.Dp(320f))) {
+                    // A synthetic place, long enough to need cutting even abbreviated.
+                    NextStep(null, null, TripProgress.Riding(mildmay, "Upper Taxi Road Interchange", 12, at(25), getOffSoon = false), now, current = true, titleForms = listOf("Ride to Stratford"))
+                }
+            }
+        }
+        composeRule.onNodeWithText("12 stops", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithText("25 min · ${CLOCK.format(at(25).atZone(LONDON))}", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("onTheWayNextStop", useUnmergedTree = true)
+            .assertTextEquals("· next U. Taxi Rd Interchange")
+            .assertContentDescriptionEquals("· next Upper Taxi Road Interchange")
     }
 
     @Test
     fun on_the_way_stops_left_unknown_names_the_next_stop() {
         // A bus beyond its predictions: on it, its stops left not counted.
         show(trip.copy(boarded = true, onBoardSeen = true), TripProgress.Riding(mildmay, "Hackney Central", null, null, getOffSoon = false))
-        composeRule.onNodeWithText("Next: Hackney Central").assertIsDisplayed()
+        // Abbreviated, as beside a count, and read in full (Codex, #655).
+        composeRule.onNodeWithTag("onTheWayNextStop", useUnmergedTree = true)
+            .assertTextEquals("Next: Hackney C.")
+            .assertContentDescriptionEquals("Next: Hackney Central")
     }
 
     @Test

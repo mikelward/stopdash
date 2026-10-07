@@ -1839,12 +1839,16 @@ them there:
 - **The card at the top** leads with the whole trip, then the step at hand, with no labels
   (maintainer, 2026-10-03): where the trip goes ("To Canary Wharf") with, at the end of its row, how
   long is left and when it gets there; then the step ("Walk to Stratford"), the one large line, so it
-  reads first, over a row with a ride's stops left ("4 stops", "Next stop") and, at its end, how long
+  reads first, over a row with a ride's stops left and the next stop ("4 stops · next Euston",
+  "Next stop") and, at its end, how long
   until the step's done and when ("16 min · 08:18"), the minutes first. Where the step's time isn't
   known, its own words stay ("Finding your train…", "Updating…"); from an answer that no longer
   stands, its time stays beside "Checking…" in place of the stops. A time is
   never squeezed or cut: where a row's text and time don't both fit (a narrow window, large text),
-  the text yields (the time keeps its one line wherever it fits beside the text's last stub), its places shortened as a board's are ("Upper Taxi Road" → "U. Taxi Rd", then
+  the text yields (the time keeps its one line wherever it fits beside the text's last stub); a
+  ride's next stop always shows with its common words shortened ("next Tottenham Court Rd"), so
+  more of it fits, and is cut with "…" where it still doesn't, the count beside it held still
+  (maintainer, 2026-10-07); its places shortened as a board's are ("Upper Taxi Road" → "U. Taxi Rd", then
   the shortest form) and cut with a single "…" only as a last resort. The step shortens its places'
   common words to stay on one line, and wraps to a second only if even that doesn't fit (then its
   shortest form, then "…"), since a line that wraps reads slower (maintainer, 2026-10-03); the words around a place ("Walk to", "Board … at") and a
