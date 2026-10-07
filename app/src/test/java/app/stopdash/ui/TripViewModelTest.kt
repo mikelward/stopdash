@@ -3337,6 +3337,70 @@ class TripViewModelTest {
         assertEquals(setOf(RouteMiss("blue", "B", RouteStops.Resolution.NoMatch, "Nowhere")), tripMisses(state, estimates, now, sequences))
     }
 
+    @Test
+    fun `a train whose path won't resolve leaves nothing unchecked once a train known to get there leaves first`() {
+        val sequences = mapOf("blue" to blue)
+        fun check(vararg trains: Departure): Pair<TripMessage?, Set<RouteMiss>> {
+            val state = TripViewModel.State(routes = listOf(route), live = mapOf("B" to TripViewModel.StopLive(trains.toList(), now)))
+            val estimates = checkNotNull(tripEstimates(state, now, Duration.ZERO, sequences))
+            return tripCheckState(state, estimates, now, sequences) to tripMisses(state, estimates, now, sequences)
+        }
+        val miss = setOf(RouteMiss("blue", "B", RouteStops.Resolution.NoMatch, "Nowhere"))
+        // The route is timed from the train to C: the one after it can't change that, though the log still names it.
+        assertEquals(null to miss, check(train("blue", "C", 20), train("blue", "Nowhere", 30)))
+        // Gone before the rider reaches B (after the first leg, at about 15 minutes): it can't be caught.
+        assertEquals(null to miss, check(train("blue", "Nowhere", 10), train("blue", "C", 20)))
+        // Leaving first, it might be the one to catch.
+        assertEquals(TripMessage.INCOMPLETE to miss, check(train("blue", "Nowhere", 18), train("blue", "C", 20)))
+        // And leaving with the one the route is timed from, it might be too.
+        assertEquals(TripMessage.INCOMPLETE to miss, check(train("blue", "C", 20), train("blue", "Nowhere", 20)))
+    }
+
+    @Test
+    fun `a train whose path won't resolve leaving during the walk to the first stop leaves nothing unchecked`() {
+        val sequences = mapOf("blue" to blue)
+        val direct = TripRoute(listOf(leg("blue", "B", "C", 20, 30)))
+        val state = TripViewModel.State(
+            routes = listOf(direct),
+            live = mapOf("B" to TripViewModel.StopLive(listOf(train("blue", "Nowhere", 5), train("blue", "C", 20)), now)),
+        )
+        fun check(access: Duration) = tripCheckState(state, checkNotNull(tripEstimates(state, now, access, sequences)), now, sequences)
+        // Walking ten minutes to B, the rider misses it.
+        assertNull(check(Duration.ofMinutes(10)))
+        // Already there, they might catch it.
+        assertEquals(TripMessage.INCOMPLETE, check(Duration.ZERO))
+    }
+
+    @Test
+    fun `another line two routes' rides share is checked in either route's window`() {
+        // Pink runs B to C beside both routes' rides, and its route failed: none of its trains can be followed.
+        val blueRide = leg("blue", "B", "C", 20, 30)
+        val greenRide = leg("green", "B", "C", 18, 28)
+        val pink = leg("pink", "B", "C", 18, 28)
+        val viaRed = TripRoute(listOf(leg("red", "A", "B", 5, 15), blueRide))
+        val direct = TripRoute(listOf(greenRide))
+        val lines = mapOf(blueRide to RideLines(listOf(blueRide, pink), emptyList()), greenRide to RideLines(listOf(greenRide, pink), emptyList()))
+        val sequences = mapOf("blue" to blue, "pink" to null)
+        fun good(id: String) = LineStatus(id, LineStatus.GOOD_SERVICE, "Good Service")
+        fun check(vararg routes: TripRoute, pinkStatus: LineStatus = good("pink")): TripMessage? {
+            val state = TripViewModel.State(
+                routes = routes.toList(),
+                live = mapOf("B" to TripViewModel.StopLive(listOf(train("pink", "C", 3), train("blue", "C", 20)), now)),
+                statuses = listOf("red", "blue", "green").associateWith(::good) + ("pink" to pinkStatus),
+                // B and C checked open, as a line's own stops must be for it to count.
+                closures = mapOf("B" to emptyList(), "C" to emptyList()),
+            )
+            return tripCheckState(state, checkNotNull(tripEstimates(state, now, Duration.ZERO, sequences)), now, sequences, lines)
+        }
+        // Via red, the rider reaches B at 15, long after the pink train has gone.
+        assertNull(check(viaRed))
+        // Going straight there they could catch it, whichever route comes first.
+        assertEquals(TripMessage.INCOMPLETE, check(viaRed, direct))
+        assertEquals(TripMessage.INCOMPLETE, check(direct, viaRed))
+        // Unless pink is suspended: none of its trains is a way to go, as the cards hold (Codex, #649).
+        assertNull(check(direct, viaRed, pinkStatus = LineStatus("pink", 20, "Service Closed")))
+    }
+
     // A line forking after B: on to C, or to D.
     private val blue = LineSequence(
         routes = listOf(

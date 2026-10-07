@@ -53,6 +53,9 @@ object TripTiming {
         val slack: Duration? = Duration.ZERO,
         // Why [arrival] is withheld, for the debug log (null unless [basis] is UNKNOWN).
         val withheld: Withheld? = null,
+        // The walk to the first stop the route was timed with: the rider is ready for its first leg
+        // only after it ([readyAt]).
+        val access: Duration = Duration.ZERO,
     ) {
         /** Door-to-door time from now, or null when the arrival is withheld. */
         val duration: Duration? get() = arrival?.let { Duration.between(start, it) }
@@ -239,7 +242,7 @@ object TripTiming {
             // The last leg's change time isn't part of the arrival.
             late?.minus(route.legs.lastOrNull()?.changeAfter ?: Duration.ZERO)?.let { Duration.between(arrival, it).coerceAtLeast(Duration.ZERO) }
         }
-        return Estimate(route, basis, arrival, legs, blocked, now, unchecked, slack, withheld.takeIf { basis == Basis.UNKNOWN })
+        return Estimate(route, basis, arrival, legs, blocked, now, unchecked, slack, withheld.takeIf { basis == Basis.UNKNOWN }, access)
     }
 
     // One leg timed by [estimate]: its [timing], the [basis] behind it, and whether it boards a

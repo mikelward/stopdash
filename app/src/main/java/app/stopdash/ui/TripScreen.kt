@@ -430,8 +430,10 @@ internal fun warmVerdicts(
 private class JudgedRoutes(routes: Map<String, LineSequence?>) : Map<String, LineSequence?> by routes
 
 // A leg's upcoming trains judged on its line's route ([legFilter]): the [result] as [DirectTrips.filter]
-// gives it, and of the trains it keeps, those [leaving] along the leg ([leavesAlongLeg]).
-private class LegJudgement(val result: DirectTrips.Result, val leaving: List<Departure>)
+// gives it, and of the trains it keeps, those [leaving] along the leg ([leavesAlongLeg]); [unclear] are
+// the trains whose path couldn't be followed (every one, with no route to follow), which made it
+// [DirectTrips.Result.unresolved].
+private class LegJudgement(val result: DirectTrips.Result, val leaving: List<Departure>, val unclear: List<Departure> = emptyList())
 
 private val CHECKING = LegJudgement(DirectTrips.Result(emptyList(), pending = true, unresolved = false), emptyList())
 
@@ -451,20 +453,21 @@ private fun legFilter(
     // No line to follow: they may well call there, so never a silent "no".
     if (leg.lineId.isBlank()) {
         val miss = RouteMiss(leg.lineId, leg.fromId, RouteStops.Resolution.NoLine, leg.headings.firstOrNull().orEmpty())
-        return LegJudgement(DirectTrips.Result(emptyList(), pending = false, unresolved = true, misses = setOf(miss)), emptyList())
+        return LegJudgement(DirectTrips.Result(emptyList(), pending = false, unresolved = true, misses = setOf(miss)), emptyList(), line)
     }
     if (leg.lineId !in sequences) return CHECKING
     // A failed route can't tell: logged by its fetch.
-    val route = sequences[leg.lineId] ?: return LegJudgement(DirectTrips.Result(emptyList(), pending = false, unresolved = true), emptyList())
+    // Every train is unclear, so only one the rider could catch leaves the line unchecked (Codex, #649).
+    val route = sequences[leg.lineId] ?: return LegJudgement(DirectTrips.Result(emptyList(), pending = false, unresolved = true), emptyList(), line)
     val judged = line.map { train -> train to (TripVerdicts.get(leg, route, train) ?: return CHECKING) }
-    var unresolved = false
+    val unclear = ArrayList<Departure>()
     val misses = LinkedHashSet<RouteMiss>()
-    val kept = judged.filter { (_, verdict) ->
+    val kept = judged.filter { (train, verdict) ->
         when (val reach = verdict.reach) {
             DirectTrips.Verdict.Reaches -> true
             DirectTrips.Verdict.Misses -> false
             is DirectTrips.Verdict.Unknown -> {
-                unresolved = true
+                unclear += train
                 reach.miss?.let { misses += it }
                 false
             }
@@ -472,8 +475,9 @@ private fun legFilter(
     }
     val stops = if (kept.isEmpty()) emptyList() else listOf(StopArrivals(leg.fromId, leg.fromName, kept.map { it.first }, stop.fetchedAt))
     return LegJudgement(
-        DirectTrips.Result(stops, pending = false, unresolved = unresolved, misses = misses),
+        DirectTrips.Result(stops, pending = false, unresolved = unclear.isNotEmpty(), misses = misses),
         kept.filter { (_, verdict) -> verdict.leaves != false }.map { it.first },
+        unclear,
     )
 }
 
@@ -609,12 +613,60 @@ private fun legResults(
     now: Instant,
     sequences: Map<String, LineSequence?>,
     lines: Map<TripLeg, RideLines>,
-): List<Pair<TripLeg, DirectTrips.Result>> =
-    estimates.flatMap { it.route.rides }.distinct().flatMap { lines[it]?.legs ?: listOf(it) }.distinct().mapNotNull { leg ->
+): List<Pair<TripLeg, DirectTrips.Result>> {
+    val windows = catchWindows(estimates)
+    val statuses = rideStatuses(state)
+    val stopsOpen = lineStopsOpen(state, now)
+    // A line two routes' rides share is caught in either's windows (Codex, #649), and only where the
+    // ride may be taken on it, as the cards decide ([RideLines.vouched]): a suspended line, or one whose
+    // stops are closed, has no train the rider could take. Its status row says why on its own.
+    val legWindows = LinkedHashMap<TripLeg, MutableList<CatchWindow>>()
+    for (ride in estimates.flatMap { it.route.rides }.distinct()) {
+        val rideLines = lines[ride] ?: RideLines.only(ride)
+        for (leg in rideLines.legs) {
+            val open = legWindows.getOrPut(leg) { ArrayList() }
+            if (rideLines.vouched(leg, statuses, stopsOpen)) open += windows[ride].orEmpty()
+        }
+    }
+    return legWindows.entries.mapNotNull { (leg, windows) ->
         val stop = state.live[leg.fromId] ?: return@mapNotNull null
         if (Staleness.isStale(stop.fetchedAt, now)) return@mapNotNull null
-        legFilter(leg, stop, now, sequences)?.result?.let { leg to it }
+        val judged = legFilter(leg, stop, now, sequences) ?: return@mapNotNull null
+        val unclear = judged.unclear
+        if (unclear.isEmpty()) return@mapNotNull leg to judged.result
+        leg to judged.result.copy(unresolved = unclear.any { train -> windows.any { it.holds(train.expectedArrival) } })
     }
+}
+
+/**
+ * When a route's rider could board a ride: from when they reach its stop ([from], [TripTiming.readyAt];
+ * null when that can't be told) until the live train it's timed from leaves ([until], null when it isn't timed from one).
+ */
+private class CatchWindow(val from: Instant?, val until: Instant?) {
+    // A train leaving with the one the route is timed from might be the one the rider takes (Codex, #649).
+    fun holds(at: Instant) = (from == null || !at.isBefore(from)) && (until == null || !at.isAfter(until))
+}
+
+/**
+ * Per ride, the [CatchWindow] of each route riding it. A train whose path couldn't be followed outside
+ * every window can't change the times: leaving before the rider gets there it can't be caught, and
+ * leaving after the live train a route is timed from it can't be the soonest they catch (a later fast
+ * train arriving sooner would only make the trip quicker than shown). So it leaves nothing unchecked.
+ */
+private fun catchWindows(estimates: List<TripTiming.Estimate>): Map<TripLeg, List<CatchWindow>> {
+    val windows = HashMap<TripLeg, MutableList<CatchWindow>>()
+    for (estimate in estimates) {
+        val legs = estimate.route.legs
+        legs.forEachIndexed { index, leg ->
+            if (leg.isWalk) return@forEachIndexed
+            val from = TripTiming.readyAt(estimate, estimate.access, index)
+            val timing = estimate.legs.getOrNull(index)
+            val until = timing?.board?.takeIf { timing.live }
+            windows.getOrPut(leg) { ArrayList() } += CatchWindow(from, until)
+        }
+    }
+    return windows
+}
 
 /**
  * The lines whose live trains couldn't be checked against where the rider gets off once their checks
