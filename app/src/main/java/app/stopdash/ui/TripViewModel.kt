@@ -153,6 +153,13 @@ class TripViewModel(
     var origin: () -> TripOrigin = origin
 
     /**
+     * Whether a re-locate is in flight; set by the screen. The re-pick it hands over decides whether
+     * this trip plans again or gives way to a new nearest stop's, so a re-plan for a withheld arrival
+     * ([noteWithheld]) waits for it rather than plan from the fix being replaced.
+     */
+    var relocating: () -> Boolean = { false }
+
+    /**
      * How fast the rider walks ([WalkingSpeed]): every walk the Planner offers is timed at it, and so
      * is which trains each route can make. Set by the screen from the setting; a change once a plan is
      * held plans again at once, since each walk and connection was timed at the old pace.
@@ -544,6 +551,10 @@ class TripViewModel(
         val at = state.plannedAt ?: return
         // A failed plan waits for Retry; one in flight will bring its own departures.
         if (state.planError != null || state.planning) return
+        // A re-locate in flight hands over a re-pick, as it does for the minute tick: a plan now would
+        // start from the fix it replaces, and the list would change once for it and again for the
+        // re-pick. Not marked as asked, so the next withheld arrival after it lands plans again.
+        if (relocating()) return
         if (at == replannedFrom || Duration.between(at, clock()) < REPLAN_WITHHELD) return
         replannedFrom = at
         warn("trip re-planned (plan ${Duration.between(at, clock()).toMinutes()} min old): arrival withheld at ${why.describe()}")

@@ -1447,7 +1447,8 @@ sorts after every route in its tier that has an arrival, until a refresh brings 
 leg. Since the Planner's timetable does say when the next one leaves, a withheld arrival on a plan at
 least 5 minutes old plans the trip again at once rather than wait out the 15-minute reuse (maintainer,
 2026-09-27): once per plan, so it asks at most every 5 minutes, and each time the log says which leg
-withheld the arrival and why. Otherwise its arrival reads **"est."** instead of "about", and within
+withheld the arrival and why. A re-locate in flight (a return to the app) is waited for first, as the
+minute tick waits for it, so the routes change once, for where the rider is now. Otherwise its arrival reads **"est."** instead of "about", and within
 its tier it sorts **after every route whose legs are all live** — unless it is timed from at least one
 live train and gets there before that route **even at the latest end of its range** (maintainer,
 2026-09-30: a live ride then a frequent bus boarded on arrival sat below a slower live route even at

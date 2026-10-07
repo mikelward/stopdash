@@ -3436,6 +3436,7 @@ class MainActivity : ComponentActivity() {
         // The model outlives a rotation, and the origin it was made with reads that composition's
         // fix: this composition's replaces it, so a later plan starts from the current one.
         SideEffect { trip.origin = { latestHere?.let(TripOrigin::Here) ?: TripOrigin.Stop(fromId) } }
+        SideEffect { trip.relocating = isRelocating }
         // The walking-speed setting, from Settings or the picker atop the routes: a change plans again.
         val walkingSpeed by WalkingSpeedSetting.changes.collectAsStateWithLifecycle()
         SideEffect { trip.walkingSpeed = walkingSpeed }
