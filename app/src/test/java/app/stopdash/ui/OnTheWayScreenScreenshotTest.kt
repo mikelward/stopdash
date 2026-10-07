@@ -32,7 +32,11 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.unit.Dp
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Departure
 import app.stopdash.domain.LineStatus
@@ -1085,7 +1089,7 @@ class OnTheWayScreenScreenshotTest {
         show(trip.copy(boarded = true), TripProgress.Riding(mildmay, "Hackney Central", 4, null, getOffSoon = false))
         // The count beside its next stop, abbreviated, as when timed (Codex, #655).
         onCard("4 stops").assertIsDisplayed()
-        composeRule.onNodeWithTag("onTheWayNextStop", useUnmergedTree = true).assertTextEquals("· next Hackney C.")
+        composeRule.onNodeWithTag("onTheWayNextStop", useUnmergedTree = true).assertTextEquals("· next Hackney Central")
     }
 
     @Test
@@ -1097,7 +1101,7 @@ class OnTheWayScreenScreenshotTest {
             current = false,
         )
         onCard("4 stops").assertIsDisplayed()
-        composeRule.onNodeWithTag("onTheWayNextStop", useUnmergedTree = true).assertTextEquals("· next Hackney C.")
+        composeRule.onNodeWithTag("onTheWayNextStop", useUnmergedTree = true).assertTextEquals("· next Hackney Central")
     }
 
     @Test
@@ -1130,14 +1134,28 @@ class OnTheWayScreenScreenshotTest {
     }
 
     @Test
-    fun the_cards_next_stop_is_abbreviated_and_read_in_full() {
-        // Beside the count, the next stop with its common words shortened, so more of it fits; a screen
-        // reader hears it as named (maintainer, 2026-10-07).
-        show(trip.copy(boarded = true, onBoardSeen = true), TripProgress.Riding(mildmay, "Tottenham Court Road", 2, at(5), getOffSoon = false))
-        onCard("2 stops").assertIsDisplayed()
-        composeRule.onNodeWithTag("onTheWayNextStop", useUnmergedTree = true)
-            .assertTextEquals("· next Tottenham Court Rd")
-            .assertContentDescriptionEquals("· next Tottenham Court Road")
+    fun the_cards_next_stop_shortens_only_as_far_as_it_must() {
+        // Beside the count, the next stop as named where it fits; narrower, its common words shortened;
+        // narrower still, its floor; a screen reader hears it as named however it's drawn (maintainer, 2026-10-07).
+        var shown by mutableStateOf(TripProgress.Riding(mildmay, "Hackney Central", 2, at(5), getOffSoon = false))
+        var width by mutableStateOf(Dp(FULL_WIDTH))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.width(width)) {
+                    NextStep(null, null, shown, now, current = true, titleForms = listOf("Ride to Stratford"))
+                }
+            }
+        }
+        val next = { composeRule.onNodeWithTag("onTheWayNextStop", useUnmergedTree = true) }
+        next().assertTextEquals("· next Hackney Central")
+        assertTrue(next().fetchSemanticsNode().config.getOrNull(SemanticsProperties.ContentDescription).isNullOrEmpty())
+        // Too long as named: its common words shortened, and no further.
+        shown = shown.copy(nextStop = "Tottenham Court Road")
+        next().assertTextEquals("· next Tottenham Court Rd").assertContentDescriptionEquals("· next Tottenham Court Road")
+        // No word to shorten: straight from as named to its floor, where only that fits.
+        shown = shown.copy(nextStop = "Alpha Hill Broadway")
+        width = Dp(NARROW_FOR_ALPHA)
+        next().assertTextEquals("· next Alpha H. B.").assertContentDescriptionEquals("· next Alpha Hill Broadway")
         // The stop where they get off is next: "Next stop" alone, nothing beside it; nor one not named.
         val resources = composeRule.activity.resources
         assertNull(rideStopsSplit(resources, TripProgress.Riding(mildmay, "Stratford", 1, at(1), getOffSoon = true)))
@@ -1166,10 +1184,8 @@ class OnTheWayScreenScreenshotTest {
     fun on_the_way_stops_left_unknown_names_the_next_stop() {
         // A bus beyond its predictions: on it, its stops left not counted.
         show(trip.copy(boarded = true, onBoardSeen = true), TripProgress.Riding(mildmay, "Hackney Central", null, null, getOffSoon = false))
-        // Abbreviated, as beside a count, and read in full (Codex, #655).
-        composeRule.onNodeWithTag("onTheWayNextStop", useUnmergedTree = true)
-            .assertTextEquals("Next: Hackney C.")
-            .assertContentDescriptionEquals("Next: Hackney Central")
+        // As named where it fits, as beside a count (Codex, #655).
+        composeRule.onNodeWithTag("onTheWayNextStop", useUnmergedTree = true).assertTextEquals("Next: Hackney Central")
     }
 
     @Test
@@ -1759,4 +1775,10 @@ class OnTheWayScreenScreenshotTest {
     private fun capturing(): Boolean =
         System.getProperty("roborazzi.test.record") == "true" ||
             System.getProperty("roborazzi.test.verify") == "true"
+
+    private companion object {
+        // The card's width beside "2 stops" and the time, and one where "Alpha Hill Broadway" no longer fits.
+        const val FULL_WIDTH = 400f
+        const val NARROW_FOR_ALPHA = 300f
+    }
 }
