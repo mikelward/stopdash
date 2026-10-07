@@ -46,6 +46,7 @@ class FileRouteStopsStoreTest {
                 ),
             ),
         ),
+        unknown = mapOf("eurostar/inbound" to at),
     )
 
     @Test
