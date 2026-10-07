@@ -674,6 +674,7 @@
     <string name="step_free_any">Any</string>
     <string name="step_free_station">Station</string>
     <string name="step_free_fully">Fully</string>
+    <string name="step_free_any_detail">Stairs are OK</string>
     <string name="step_free_station_detail">Street to platform, for luggage or a stroller</string>
     <string name="step_free_fully_detail">Onto the train too, for a wheelchair</string>
     <string name="step_free_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>

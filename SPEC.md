@@ -1557,7 +1557,9 @@ trains that go straight somewhere.
 and step-free level are one row of dropdown chips rather than a full-width row each, so the routes
 start two rows higher: the pace by a walking icon ("Medium"), the limit by a word ("Max 20 min"), the
 level by the step-free icon ("Any"). Each is announced by its full name ("Walking speed, Medium") and
-opens the same menu as its Settings row; the row scrolls sideways when it doesn't fit.
+opens the same menu as its Settings row; the row scrolls sideways when it doesn't fit. The picks are in
+the plain text color, not the accent: they're choices, not alerts. Each step-free level says what it's
+for in its menu, Any included ("Stairs are OK").
 
 **Modes.** A row of chips under the walk choices says which kinds of transport a trip may
 ride: one per group the list already hides modes by, under the same names
