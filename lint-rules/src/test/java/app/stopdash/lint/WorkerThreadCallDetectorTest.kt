@@ -164,6 +164,51 @@ class WorkerThreadCallDetectorTest {
     }
 
     @Test
+    fun `a block handed to a store's member, reached through a reference, is clean only when that member runs it on a worker`() {
+        check(
+            kotlin(
+                """
+                package app.stopdash.ui
+                import androidx.annotation.WorkerThread
+                import androidx.compose.runtime.Composable
+                import app.stopdash.domain.RouteStops
+                import kotlinx.coroutines.CoroutineScope
+                import kotlinx.coroutines.Dispatchers
+                import kotlinx.coroutines.launch
+                import kotlinx.coroutines.withContext
+                open class Holder<T>(private val scope: CoroutineScope, var current: T) {
+                    fun update(@WorkerThread edit: (T) -> T) {
+                        scope.launch(Dispatchers.Default) { current = withContext(Dispatchers.Default) { edit(current) } }
+                    }
+                    fun updateInPlace(@WorkerThread edit: (T) -> T) {
+                        current = edit(current)
+                    }
+                }
+                object Setting {
+                    private val holder = Holder<List<String>>(TODO(), emptyList())
+                    fun toggle(id: String) = holder.update { RouteStops.resolve(it + id) }
+                    fun toggleInPlace(id: String) = holder.updateInPlace { RouteStops.resolve(it + id) }
+                }
+                @Composable
+                fun Page() {
+                    Chip(Setting::toggle)
+                    Chip(Setting::toggleInPlace)
+                }
+                @Composable
+                fun Chip(onToggle: (String) -> Unit) {}
+                """,
+            ).indented(),
+        ).expect(
+            """
+            src/app/stopdash/ui/Holder.kt:25: Error: RouteStops.resolve is marked @WorkerThread but called on the main thread (through toggleInPlace()), in composable Page: work it out off the main thread (withContext(worker) in a produceState, or a view model) [WorkerThreadCall]
+                Chip(Setting::toggleInPlace)
+                     ~~~~~~~~~~~~~~~~~~~~~~
+            1 error
+            """,
+        )
+    }
+
+    @Test
     fun `withContext or flowOn onto the main thread, or a flow collected without flowOn, is still the main thread`() {
         check(
             kotlin(

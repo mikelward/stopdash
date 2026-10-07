@@ -304,7 +304,14 @@ class WorkerThreadCallDetector : Detector(), SourceCodeScanner {
                 if (element.sourcePsi is KtNamedFunction) break
                 val outer = element.uastParent as? UCallExpression ?: (element.uastParent?.uastParent as? UCallExpression)
                 val method = outer?.resolve()
-                when (if (outer != null && method != null) hop(context, outer, method) else Hop.INHERIT) {
+                // As in composition: a block handed to a helper that runs it on a worker is off the main
+                // thread, here in a helper's own body too (a store's `update { … }`, Codex #642).
+                val hopped = when {
+                    outer == null || method == null -> Hop.INHERIT
+                    workerBlock(context, outer, method, element) -> Hop.OFF_MAIN
+                    else -> hop(context, outer, method)
+                }
+                when (hopped) {
                     Hop.OFF_MAIN -> if (!pinned) return Inline.NO
                     Hop.MAIN -> {
                         pinned = true
