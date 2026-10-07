@@ -5588,7 +5588,7 @@ internal fun errorMessage(kind: DeparturesUiState.Error.Kind): Int = when (kind)
  * couldn't be refreshed" when no stop is named.
  */
 @Composable
-private fun partialRefreshMessage(names: List<String>, reason: DeparturesUiState.Error.Kind?): String {
+internal fun partialRefreshMessage(names: List<String>, reason: DeparturesUiState.Error.Kind?): String {
     val which = when (names.size) {
         0 -> return stringResource(R.string.partial_refresh)
         1 -> names[0]
@@ -5609,7 +5609,7 @@ internal fun partialReason(kind: DeparturesUiState.Error.Kind): Int = when (kind
     DeparturesUiState.Error.Kind.KEY_REJECTED -> R.string.partial_reason_key_rejected
 }
 
-private fun refreshFailureMessage(kind: DeparturesUiState.Error.Kind): Int = when (kind) {
+internal fun refreshFailureMessage(kind: DeparturesUiState.Error.Kind): Int = when (kind) {
     DeparturesUiState.Error.Kind.OFFLINE -> R.string.refresh_failed_offline
     DeparturesUiState.Error.Kind.RATE_LIMITED -> R.string.refresh_failed_rate_limited
     DeparturesUiState.Error.Kind.NETWORK -> R.string.refresh_failed_network

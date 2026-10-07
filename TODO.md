@@ -2669,8 +2669,9 @@ Builds on Phase 1's minimal line-status marking.
         keeps the line page's scroll and folds, but From's station page replaces the Lines… overlay, so
         the line page comes back at its top. Its map's rows are worked out again on return, so saved
         scroll alone can't hold it; it needs the station flow layered over Lines… or the laid map kept.
-  - [ ] **Its departures board** (maintainer, 2026-10-07): the next departures from this stop under its
-        name, as From… shows them, without leaving the details.
+  - [x] **Its departures board** (maintainer, 2026-10-07): the line it was opened from first, then the
+        stop's other services under "Also here".
+    - [ ] A row opens its route page, as on a station's page.
   - [ ] **The lines that serve it**, as pills, each opening that line's page (the route data has them).
   - [ ] **Favorite it**: star the stop from its details, as a long press does on a route page's list.
   - [ ] **Show it on a map / walk there**: hand its position to the phone's maps app.
