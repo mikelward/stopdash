@@ -49,6 +49,33 @@ class PlaceStopsTest {
     }
 
     @Test
+    fun `the walk from the place is as far as the rider's max walk reaches at their pace`() {
+        // As far as a walk that long reads as that many minutes ([TripTiming.accessWalk]), never farther.
+        for (speed in WalkingSpeed.entries) for (max in MaxWalk.entries) {
+            val meters = PlaceStops.walkMeters(max, speed)
+            assertTrue("$max $speed", TripTiming.accessWalk(meters.toDouble(), speed).toMinutes() <= max.minutes)
+            assertTrue("$max $speed", TripTiming.accessWalk(meters + 30.0, speed).toMinutes() > max.minutes - 1)
+        }
+        // Farther at a faster pace, and farther for a longer walk.
+        assertTrue(PlaceStops.walkMeters(MaxWalk.FIFTEEN, WalkingSpeed.FAST) > PlaceStops.walkMeters(MaxWalk.FIFTEEN, WalkingSpeed.AVERAGE))
+        assertTrue(PlaceStops.walkMeters(MaxWalk.TWENTY, WalkingSpeed.AVERAGE) > PlaceStops.walkMeters(MaxWalk.FIFTEEN, WalkingSpeed.AVERAGE))
+    }
+
+    @Test
+    fun `a longer walk keeps a stop beyond the default walk, and asks the finder that far`() = runBlocking {
+        var asked = 0
+        val finder = object : StopFinder {
+            override suspend fun nearbyStops(latitude: Double, longitude: Double, radiusMeters: Int, stopTypes: List<String>): List<StopLocation> {
+                asked = radiusMeters
+                return listOf(stop("near", 0.001), stop("beyond", 0.009))
+            }
+        }
+        val ends = PlaceStopsFinder(finder, io = Dispatchers.Unconfined, compute = Dispatchers.Unconfined).ends(place, walkMeters = 1_100)
+        assertEquals(listOf("near", "beyond"), ends.map { it.id })
+        assertEquals(1_100 + 150, asked)
+    }
+
+    @Test
     fun `no stops in walking distance is no ends`() {
         assertTrue(PlaceStops.ends(place, listOf(stop("beyond", 0.01))).isEmpty())
     }

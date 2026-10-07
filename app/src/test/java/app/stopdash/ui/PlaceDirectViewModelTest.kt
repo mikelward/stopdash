@@ -60,7 +60,7 @@ class PlaceDirectViewModelTest {
 
     private fun model(
         client: TflClient,
-        ends: suspend () -> List<DirectTrips.End> = { listOf(DirectTrips.End("BOT", "Bottom")) },
+        ends: suspend (Int) -> List<DirectTrips.End> = { listOf(DirectTrips.End("BOT", "Bottom")) },
     ) = PlaceDirectViewModel(
         ends = ends,
         client = client,
@@ -91,6 +91,23 @@ class PlaceDirectViewModelTest {
         val row = (model.state.value as PlaceDirectViewModel.State.Ready).rows.single()
         assertEquals(setOf("BOT", "HUBB"), row.endIds)
         assertEquals("BOT,HUBB", row.endKey)
+    }
+
+    @Test
+    fun `the place's stops are looked up within the rider's walk, once for each walk`() = runBlocking {
+        val asked = mutableListOf<Int>()
+        val model = model(client { listOf(departure("Bottom", 60)) }, ends = { walk -> asked += walk; listOf(DirectTrips.End("BOT", "Bottom")) })
+        val origin = listOf(StopRef("TOP", "Top"))
+        model.setInputsQuietly(PlaceDirectViewModel.Inputs(origin, walkMeters = 1_000))
+        model.refresh()
+        model.refresh()
+        // Held while the walk stands; a longer walk asks again, for the new walk.
+        model.setInputsQuietly(PlaceDirectViewModel.Inputs(origin, walkMeters = 1_500))
+        model.refresh()
+        // Back to the first walk: its answer is reused, not asked for again.
+        model.setInputsQuietly(PlaceDirectViewModel.Inputs(origin, walkMeters = 1_000))
+        model.refresh()
+        assertEquals(listOf(1_000, 1_500), asked)
     }
 
     @Test

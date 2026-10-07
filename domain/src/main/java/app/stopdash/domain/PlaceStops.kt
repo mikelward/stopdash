@@ -6,14 +6,21 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * The stops a favorite place (SPEC D9) is a short walk from, as the destination a direct train or bus
- * must reach: every station, platform and bus stop within [WALK_METERS] of the place's coordinate,
- * nearest first. A departure from the rider's stops whose
- * route calls at one of them gets the rider there with only that walk at the end ([DirectTrips]).
+ * The stops a favorite place (SPEC D9) is a walk from, as the destination a direct train or bus must
+ * reach: every station, platform and bus stop within the rider's walk ([walkMeters]) of the place's
+ * coordinate, nearest first. A departure from the rider's stops whose route calls at one of them gets
+ * the rider there with only that walk at the end ([DirectTrips]).
  */
 object PlaceStops {
-    /** About ten minutes' walk at an average pace: the walk on from the stop to the place. */
+    /** About ten minutes' walk at an average pace: the walk on from the stop to the place, by default. */
     const val WALK_METERS = 800
+
+    /**
+     * How far from the place a stop may be: as far as the rider's [maxWalk] reaches at their [speed]
+     * ([TripTiming.walkReach]), the limit the Planner holds the trip's own walks to, so a stop the routes
+     * walk on from is one this section counts too (maintainer, 2026-10-07).
+     */
+    fun walkMeters(maxWalk: MaxWalk, speed: WalkingSpeed): Int = TripTiming.walkReach(maxWalk.minutes, speed).toInt()
 
     /**
      * [stops] within [walkMeters] of [place], nearest first and each once, as [DirectTrips.End]s
@@ -34,7 +41,7 @@ object PlaceStops {
 /**
  * Looks up [PlaceStops] for a place through [finder]: one TfL `/StopPoint` request by coordinate, on
  * [io] (a [CachingStopFinder] reads and writes its file there), then works the answer out on
- * [compute], never the caller's thread (AGENTS.md *Main thread*). It asks for [PlaceStops.WALK_METERS] plus a
+ * [compute], never the caller's thread (AGENTS.md *Main thread*). It asks for the walk plus a
  * cached lookup's reuse distance, so an answer reused from a lookup centered up to that far away still
  * covers the whole walk around this place; [PlaceStops.ends] then keeps only the walk. Give it a cache
  * of its own, so places never push the rider's own areas out of theirs. The place's coordinate goes only
@@ -46,13 +53,16 @@ class PlaceStopsFinder(
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val compute: CoroutineDispatcher = Workers.compute,
 ) {
-    suspend fun ends(place: Coordinates): List<DirectTrips.End> {
-        val stops = withContext(io) { finder.nearbyStops(place.latitude, place.longitude, LOOKUP_METERS) }
-        return withContext(compute) { PlaceStops.ends(place, stops) }
+    suspend fun ends(place: Coordinates, walkMeters: Int = PlaceStops.WALK_METERS): List<DirectTrips.End> {
+        val stops = withContext(io) { finder.nearbyStops(place.latitude, place.longitude, lookupMeters(walkMeters)) }
+        return withContext(compute) { PlaceStops.ends(place, stops, walkMeters) }
     }
 
     companion object {
         /** The walk, plus how far off a cached lookup may be centered and still be reused. */
-        const val LOOKUP_METERS = PlaceStops.WALK_METERS + NearbyStopsCache.REUSE_WITHIN_METERS.toInt()
+        fun lookupMeters(walkMeters: Int): Int = walkMeters + NearbyStopsCache.REUSE_WITHIN_METERS.toInt()
+
+        /** [lookupMeters] for the default walk. */
+        val LOOKUP_METERS = lookupMeters(PlaceStops.WALK_METERS)
     }
 }
