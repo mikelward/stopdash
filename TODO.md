@@ -2633,6 +2633,11 @@ Builds on Phase 1's minimal line-status marking.
         reach, from TfL's stops-near-a-point lookup (one cached request per place, shared with the place
         chips).
   - [ ] **Maybe the closures of the stations near favorite places** too (maintainer, 2026-10-06).
+  - [ ] **Show the row with no stops nearby** (Codex, #657): when location works but finds no stop
+        (`NearbyStopsViewModel.State.Empty`), the home screen shows the location gate, not the list, so
+        the disruptions row (chosen lines, favorite journeys' and places' lines) never shows there.
+        Host the row's line-status source above the Ready/Empty split and draw the row in the empty
+        state too.
   - [ ] **Name the walking reach's closed stops on the row**, as a trip's row names its closed stops.
   - [x] **Fold the list's "couldn't check for disruptions" banner into the row** (maintainer,
         2026-10-05): where the row shows, its "Unknown" says what the banner did, naming what it can.
