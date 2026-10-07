@@ -66,6 +66,13 @@ class StepFreeAccessTest {
         assertNull(rail.levelFor("940GZZEXMPB", "thameslink", "national-rail"))
     }
 
+    @Test
+    fun `a line is by lift when a platform it reads is reached only by one`() {
+        assertTrue(lifted.byLiftFor("940GZZEXMPC", "district", "tube"))
+        assertFalse(lifted.byLiftFor("940GZZEXMPD", "district", "tube"))
+        assertFalse(lifted.byLiftFor("940GZZEXMPC", "circle", "tube"))
+    }
+
     // An example station's lift map: the street (0) walks to a ticket hall (1); lifts A and B each
     // take the hall to the eastbound platform (2), and lift C alone to the westbound one (3).
     private val lifted = StepFreeAccess(

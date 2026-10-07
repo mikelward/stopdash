@@ -93,7 +93,17 @@ class StepFreeAccess(
      * National Rail platforms. Null when TfL describes neither.
      */
     fun levelFor(stopId: String, lineId: String, mode: String): StepFreeLevel? =
-        level(stopId, lineId) ?: if (mode.equals(NATIONAL_RAIL, ignoreCase = true)) level(stopId, NATIONAL_RAIL) else null
+        platformsFor(stopId, lineId, mode).minOfOrNull { it.level }
+
+    /** The platforms [levelFor] reads for a train of [lineId] at [stopId]; empty when TfL describes none. */
+    fun platformsFor(stopId: String, lineId: String, mode: String): List<StepFreePlatform> =
+        platforms(stopId, lineId).ifEmpty {
+            if (mode.equals(NATIONAL_RAIL, ignoreCase = true)) platforms(stopId, NATIONAL_RAIL) else emptyList()
+        }
+
+    /** Whether any platform [levelFor] reads for [lineId] at [stopId] is step-free only by a lift. */
+    fun byLiftFor(stopId: String, lineId: String, mode: String): Boolean =
+        platformsFor(stopId, lineId, mode).any { it.byLift != null }
 
     /** The lines TfL describes at [stopId]. */
     fun lines(stopId: String): Set<String> = stops[stopId]?.keys.orEmpty()

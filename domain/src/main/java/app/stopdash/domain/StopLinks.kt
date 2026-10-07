@@ -19,6 +19,9 @@ class StopLinks(
     val openId: String? = null,
     // Where the station is, from the index; null where it isn't placed.
     val position: Coordinates? = null,
+    // The lines the index lists under each of the station's own ids (this one and [ownIds]), so what is
+    // read under one id is read only for the lines that id serves (Codex on #678).
+    val linesById: Map<String, Set<String>> = emptyMap(),
 ) {
     val isEmpty: Boolean get() = lines.isEmpty() && sameHub.isEmpty() && nearby.isEmpty()
 
@@ -42,6 +45,9 @@ data class NearStation(
     // The interchange it's in, blank for none: what From opens for a station under several ids, as a search
     // for it does, so none of its ids' stops is left out.
     val hubId: String = "",
+    // What its details look up under From and To, by its own modes ([stopCueOf]), worked out here, on
+    // the worker, so the details never walk its modes (Codex on #678).
+    val cue: StopCue = StopCue.NONE,
 )
 
 /**
@@ -97,6 +103,7 @@ fun StationIndex.linksOf(id: String, nearbyMeters: Double = NEARBY_LINK_METERS, 
         station.latitude?.let { lat -> station.longitude?.let { lon -> Coordinates(lat, lon) } },
         station.modes,
         hubId = station.hubId,
+        cue = stopCueOf(station.modes),
     )
 
     // The other ids TfL lists this same station under, counted as this stop: its lines, and its board's ids.
@@ -127,7 +134,12 @@ fun StationIndex.linksOf(id: String, nearbyMeters: Double = NEARBY_LINK_METERS, 
             .take(nearbyLimit)
     }
     val openId = own.hubId.takeIf { ownGroup.isNotEmpty() && it.isNotBlank() }
-    return StopLinks(lines.values.toList(), sameHub, nearby, ownGroup.map { it.id }, openId, here)
+    val linesById = if (isHub) {
+        emptyMap()
+    } else {
+        (listOf(own) + ownGroup).associate { station -> station.id to station.lines.values.flatten().filterTo(HashSet()) { it.isNotBlank() } }
+    }
+    return StopLinks(lines.values.toList(), sameHub, nearby, ownGroup.map { it.id }, openId, here, linesById)
 }
 
 /** How far a station can be and still count as near a stop's details: a short walk. */

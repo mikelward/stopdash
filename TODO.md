@@ -2702,7 +2702,7 @@ Builds on Phase 1's minimal line-status marking.
       the stop's details, its full name and distance, with From and To doing what From… and To… do.
   - [x] **Its fare zone** (maintainer, 2026-10-07): TfL's StopPoint `additionalProperties` carry a
         tube or rail station's zone; one on-demand request per stop opened, cached.
-  - [ ] **Its accessibility** (maintainer, 2026-10-07): step-free from street to platform, and a lift
+  - [x] **Its accessibility** (maintainer, 2026-10-07): step-free from street to platform, and a lift
         out of service now, from the step-free data the route pages already read.
   - [ ] **Keep the line's map where it was across From** (Codex on #659): Back from a stop's details
         keeps the line page's scroll and folds, but From's station page replaces the Lines… overlay, so
