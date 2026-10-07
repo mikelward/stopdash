@@ -248,6 +248,24 @@ internal fun hereAnchor(anchor: Coordinates?, here: Coordinates?): Coordinates? 
     return if (moved >= TripViewModel.REPLAN_MOVE_METERS) here else anchor
 }
 
+/** The stop a trip from here is keyed by ([keptTripStart]), and where the rider was when it became so. */
+internal data class TripStart(val stopId: String, val at: Coordinates?)
+
+/**
+ * Which stop keys a trip from here, given the one held ([held]) and the nearest now ([nearestId]),
+ * with the rider at [here]. The Planner plans from [here], not the stop, so a new nearest stop the
+ * rider is under [TripViewModel.REPLAN_MOVE_METERS] from where the held one was taken keeps the held
+ * one: the trip, its routes and its open route stay up, re-planned in place, rather than start over at
+ * "Planning…" for a refined fix or a few steps (maintainer, 2026-10-07). A move that far, or a trip
+ * not from here ([here] null), takes the new stop, a trip of its own. O(1): it runs in composition.
+ */
+internal fun keptTripStart(held: TripStart?, nearestId: String, here: Coordinates?): TripStart {
+    if (held == null || here == null || held.at == null) return TripStart(nearestId, here)
+    if (held.stopId == nearestId) return held
+    val moved = NearestStops.distanceMeters(held.at.latitude, held.at.longitude, here.latitude, here.longitude)
+    return if (moved < TripViewModel.REPLAN_MOVE_METERS) held else TripStart(nearestId, here)
+}
+
 /** The key of a trip from here with no stop in range: the position ([hereAnchor]) it plans from. */
 internal fun hereStartId(anchor: Coordinates): String = "$HERE_START@${anchor.latitude},${anchor.longitude}"
 
