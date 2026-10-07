@@ -1360,7 +1360,9 @@ Planner's line.
 was dismissed) and each stop with a closure notice in force, then the check's word — "Checking…"
 while one runs, "Unknown:" and the pills and stops it couldn't check when one couldn't (in red), else
 "None" once there's nothing to show. A line whose trains couldn't be followed to where the rider gets
-off (its route failed to load) is named there too: the row took the place of the "Some routes couldn't
+off (its route failed to load, or a train's path couldn't be told) is named there too, but only while such
+a train could be the one the rider catches: one leaving after the train a route is timed from can't change
+its times, so it leaves nothing unchecked: the row took the place of the "Some routes couldn't
 be checked" banner, which slid in over the routes once the list showed (maintainer, 2026-10-04), and the
 lines page says what an unchecked line means for its times. The row is one line high whatever it says
 (maintainer, 2026-10-04), as the home screen's is: what doesn't fit is counted as "+N" rather than
