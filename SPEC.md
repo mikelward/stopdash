@@ -2607,6 +2607,13 @@ kept with it so the title never changes under the buttons, with
 page over Lines…, its Back returning to the stop; To plans a trip there from the stops near the rider,
 Lines… stepping aside for it with the trip's Back returning to the stop, and is offered only where
 To… is (the near-me list has stops to plan from).
+A bus stop shows its **letter and the way its buses go** under From and To ("Stop H, towards Oxford
+Circus"), or its compass heading where TfL gives no letter or "towards", as the near-me list heads its
+poles: from its stop area's poles, the area as the line's route data places the stop, both from the
+route pages' day-long cache (the route loaded if it isn't there yet, as on a page restored after the app
+was closed), so at most one request per area a day. Its line is held, blank, from the first frame, and a long "towards" is cut to that one line, so
+what's under it never moves as it comes in. A station shows none and asks for none; a stop the lookup
+couldn't place keeps the blank line.
 Under From and To are the **lines through it** as pills, each opening that line's page in place of the
 stop's (under, so the buttons never move as they come in); then the other stations of its interchange (**Same interchange**: the rail station beside
 a tube one) and the stations a short walk from it (**Nearby**, within 800 m, nearest five, with how far),
