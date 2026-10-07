@@ -1,6 +1,7 @@
 package app.stopdash.ui
 
 import androidx.annotation.VisibleForTesting
+import androidx.annotation.WorkerThread
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -136,10 +137,17 @@ class PlaceDirectViewModel(
     ) {
         // By identity for the collections: the screen hands the same ones until they change, and a
         // comparison of their contents would be work on the main thread that grows with them.
-        fun sameAs(other: Inputs) = origin === other.origin && distanceMeters === other.distanceMeters &&
-            hidden === other.hidden && avoided === other.avoided && stepFree == other.stepFree && tripModes === other.tripModes &&
-            walkMeters == other.walkMeters && loaded == other.loaded
+        fun sameAs(other: Inputs) = origin === other.origin && distanceMeters === other.distanceMeters && sameChoice(other)
+
+        /** Whether the rider's choices are [other]'s, whatever the stops: a change to any rules rows out. */
+        fun sameChoice(other: Inputs) = hidden === other.hidden && avoided === other.avoided && stepFree == other.stepFree &&
+            tripModes === other.tripModes && walkMeters == other.walkMeters && loaded == other.loaded
     }
+
+    // The stops the last published look took, with the inputs it took them under: one at the edge of the trip's reach
+    // stays while the rider's fix wavers ([steadyOrigin]). Written only in a look; read by a prune.
+    @Volatile
+    private var heldOrigin: Pair<Inputs, List<StopRef>>? = null
 
     @Volatile
     private var inputs = Inputs()
@@ -173,9 +181,7 @@ class PlaceDirectViewModel(
     fun setInputs(next: Inputs) {
         val before = inputs
         if (next.sameAs(before)) return
-        val choiceChanged = next.hidden !== before.hidden || next.avoided !== before.avoided ||
-            next.stepFree != before.stepFree || next.tripModes !== before.tripModes || next.walkMeters != before.walkMeters ||
-            next.loaded != before.loaded
+        val choiceChanged = !next.sameChoice(before)
         // With the publish lock, so a look about to publish under the old inputs sees the new ones and
         // stands down, rather than land after this and put its rows back ([publish]).
         synchronized(publishing) {
@@ -194,7 +200,7 @@ class PlaceDirectViewModel(
 
     private fun withoutStopsGone(next: Inputs) {
         val shown = _state.value as? State.Ready ?: return
-        val kept = next.origin.mapTo(HashSet()) { it.id }
+        val kept = steadyOrigin(next, heldOrigin).mapTo(HashSet()) { it.id }
         val rows = shown.rows.filter { it.row.fromId in kept }
         // None left: the new stops' trains aren't in yet, so it's Checking, never a "None" no look has found.
         val pruned = if (rows.isEmpty()) State.Checking else shown.copy(rows = rows)
@@ -251,6 +257,11 @@ class PlaceDirectViewModel(
     private var shownAt: Instant? = null
 
     // The route misses last sent to the debug log; read and written only under [looking].
+    // So is what the section last said to it ([look]).
+    private var reportedVerdict = ""
+
+    // The order the last published look's rows were put in, and under what inputs; also only under [looking].
+    private var heldLines: Pair<Inputs, List<String>>? = null
     private var reportedMisses: Set<RouteMiss> = emptySet()
 
     /** The rows on show, put back to "Checking…" if they were published longer than a [TICK] ago. */
@@ -296,7 +307,9 @@ class PlaceDirectViewModel(
             _state.value = State.Failed
             return
         }
-        val stops = chosen.origin
+        // A stop the trip's reach just left by a wavering fix stays, so its rows don't come and go ([steadyOrigin]).
+        // Held for the next look only if this one publishes ([publish] below), never one a change overtook.
+        val stops = steadyOrigin(chosen, heldOrigin)
         // The trip's modes turned off count as hidden here, as they leave the routes.
         val modesOff = ModeGroups.ALL.filterNot(chosen.tripModes::rides).flatMap { it.modes }
         val hidden = AvoidedLines.excluded(chosen.hidden, chosen.avoided) + modesOff
@@ -338,6 +351,10 @@ class PlaceDirectViewModel(
         // as every departure surface takes it ([LineStatus.asOf]).
         val statuses = LineStatus.asOf(held, now)
         val fresh = fetched.mapNotNull { stop -> stop?.takeUnless { Staleness.isStale(it.fetchedAt, now) } }
+        // The order and the debug-log verdict this look would show: kept only if it publishes, so a look a
+        // change overtook never seeds the next one's order with rows the rider never saw.
+        var heldNext: List<String>? = null
+        var verdictNext: String? = null
         val next = if (ends.isNotEmpty() && stops.isNotEmpty() && fresh.isEmpty()) {
             State.Failed
         } else {
@@ -350,11 +367,29 @@ class PlaceDirectViewModel(
             // never asked about (a train gone since let a later one in): unasked counts as unchecked.
             val asked = closureIds.toSet()
             val unchecked = closures.failed + result.rows.flatMap { row -> listOf(row.fromId) + row.reaches.map { it.id } }.filterNot { it in asked }
-            val rowsUnvouched = result.rows.any { row ->
+            val unvouched = result.rows.filter { row ->
                 row.lineId !in statuses || row.fromId in unchecked || unverifiedEnds(row, closures.found, unchecked, now)
             }
+            val rowsUnvouched = unvouched.isNotEmpty()
+            val unvouchedIds = unvouched.mapTo(HashSet()) { it.lineId }
+            // The rows on show keep their places; a line newly found goes under them, never above. Held apart
+            // from the state, so a stand-down to Checking (back after a while, a failure, a Retry) keeps it.
+            val ordered = heldOrder(result.rows, heldLines?.takeIf { it.first.sameChoice(chosen) }?.second.orEmpty()) { it.lineId }
+            heldNext = ordered.map { it.lineId }
+            // What the section says, and why it says it couldn't check, to the debug log when either changes:
+            // a row come or gone, or a caveat, is then traceable to the line and the reason. Ids only.
+            val missing = stops.map { it.id } - fresh.mapTo(HashSet()) { it.stopId }
+            val why = listOfNotNull(
+                "train unplaced (${result.misses.map { it.lineId }.distinct().sorted().joinToString(",")})".takeIf { result.unresolved },
+                "no arrivals (${missing.sorted().joinToString(",")})".takeIf { missing.isNotEmpty() },
+                "unvouched (${ordered.filter { it.lineId in unvouchedIds }.joinToString(",") { it.lineId }})".takeIf { rowsUnvouched },
+                "a route failed".takeIf { routesFailed },
+            )
+            val verdict = "rows ${ordered.joinToString(",") { "${it.lineId}@${it.fromId}" }.ifEmpty { "none" }}" +
+                if (why.isEmpty()) "" else "; unchecked: ${why.joinToString("; ")}"
+            verdictNext = verdict
             State.Ready(
-                rows = result.rows.map { row ->
+                rows = ordered.map { row ->
                     // Each direction its trains run in, by that direction's own verdict where TfL scoped
                     // the alert by direction, as the list's rows take it; the worst of them is said.
                     val status = statuses[row.lineId]?.let { line ->
@@ -380,6 +415,12 @@ class PlaceDirectViewModel(
         // Checked again as it's written: a change since the check above stands, never this look's rows.
         publish(chosen) {
             if (next is State.Ready) shownAt = SteadyClock.stamp(now)
+            heldOrigin = chosen to stops
+            heldNext?.let { heldLines = chosen to it }
+            verdictNext?.let { verdict ->
+                if (verdict != reportedVerdict) warn("direct: $verdict")
+                reportedVerdict = verdict
+            }
             _state.value = next
         }
     }
@@ -510,5 +551,37 @@ class PlaceDirectViewModel(
 
         /** How long a line's status stands before it's asked again: as the trip's own statuses refresh. */
         val STATUS_AGE: Duration = Duration.ofMinutes(2)
+
+        /**
+         * How far past [DirectTrips.ORIGIN_RADIUS_METERS] a stop the section already started from stays one:
+         * past a fix's usual waver, so a stop at the edge isn't in one look and out the next, its rows with it.
+         */
+        const val KEEP_SLACK_METERS = 50.0
+
+        /**
+         * [next]'s origin stops, plus those [held] took under the same choices that the rider is still within
+         * [KEEP_SLACK_METERS] past the trip's reach of, by [Inputs.distanceMeters]; one of unknown distance goes.
+         */
+        @WorkerThread
+        internal fun steadyOrigin(next: Inputs, held: Pair<Inputs, List<StopRef>>?): List<StopRef> {
+            if (held == null || !held.first.sameChoice(next)) return next.origin
+            val ids = next.origin.mapTo(HashSet()) { it.id }
+            val kept = held.second.filter { stop ->
+                stop.id !in ids && next.distanceMeters[stop.id]?.let { it <= DirectTrips.ORIGIN_RADIUS_METERS + KEEP_SLACK_METERS } == true
+            }
+            return if (kept.isEmpty()) next.origin else next.origin + kept
+        }
+
+        /**
+         * [rows] with those already [shown] (by [key]) in the order they're shown in, then the rest in their
+         * own order: a row never moves for one found or gone, nor for its trains' order changing.
+         */
+        @WorkerThread
+        internal fun <T> heldOrder(rows: List<T>, shown: List<String>, key: (T) -> String): List<T> {
+            if (shown.isEmpty()) return rows
+            val at = HashMap<String, Int>().apply { shown.forEachIndexed { i, id -> putIfAbsent(id, i) } }
+            val (kept, found) = rows.partition { key(it) in at }
+            return kept.sortedBy { at.getValue(key(it)) } + found
+        }
     }
 }

@@ -331,6 +331,9 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
   and, by line id only,
   a starred journey its line's route can't place (never its two ends together, which would
   record a route you travel),
+- **what a trip's *Direct* section shows, when that changes**: each row by its line id and the
+  stop ID it boards at, and why it says it couldn't check every line (by line id, or the stop IDs
+  whose arrivals didn't come) — never the place or any stop near it,
 - **what a trip plan's journey planner answer offered**: how many routes, and each by its lines
   alone (e.g. `102+northern, northern`: line ids, "walk" for a route on foot) — never a stop, a
   place or either end of the trip,

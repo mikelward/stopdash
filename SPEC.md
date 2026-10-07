@@ -1549,7 +1549,9 @@ picked in *To…*) shows a **Direct** section under its choices and over its rou
 trip's origin stops whose route calls at a stop within the rider's max walk of the place, at their walking
 pace (as far as the Planner lets the routes' own last walk go, so a stop the routes walk on from counts
 here too; maintainer, 2026-10-07; a change to either looks again),
-once, from its nearest stop, with its next three trains ("3 · 8 · 13 min"), nearest stop first; a line
+once, from its nearest stop, with its next three trains ("3 · 8 · 13 min"), nearest stop first, a row on
+show keeping its place while the trip is open (a line found later goes under the rows, never above, and
+a stop the rider's fix wavers just past the trip's reach stays one until 50 m past it; SPEC principle 4); a line
 not running a good service says so under its row ("Jubilee: Minor Delays"), as does a closure at the
 stop it boards at, or at every stop near the place it gets off at; a line whose status, or a stop whose
 closures, couldn't be had counts as unchecked. With a
