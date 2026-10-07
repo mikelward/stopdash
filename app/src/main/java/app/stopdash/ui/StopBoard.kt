@@ -22,6 +22,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.DepartureRow
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.RelativeTime
@@ -57,14 +58,24 @@ internal class StopBoardView(
 )
 
 /**
+ * The stops a stop's board asks for: [id], declaring [served], and the other ids TfL lists the same station
+ * under ([otherIds]). Those share one cluster, so their departures group as one place on the board, never
+ * as two places of one name (Codex on #664); a stop under one id keeps none, as a searched station's does.
+ */
+internal fun lineStopRefs(id: String, name: String, served: List<LineRef>, otherIds: List<String>): List<StopRef> {
+    val cluster = if (otherIds.isEmpty()) "" else id
+    return listOf(StopRef(id, name, lines = served, clusterId = cluster)) + otherIds.map { StopRef(it, name, clusterId = cluster) }
+}
+
+/**
  * [state]'s rows for [lineId] grouped by platform or pole, and every other line's after them
- * ([StopGrouping.groupByStop], [stopCard]). Walks every departure, so on the worker, never in
- * composition (AGENTS.md *Main thread*).
+ * ([StopGrouping.groupByStop], [stopCard]); with no [lineId], every line's in [StopBoardView.others].
+ * Walks every departure, so on the worker, never in composition (AGENTS.md *Main thread*).
  */
 @WorkerThread
 internal fun stopBoardView(
     state: DeparturesUiState.Loaded,
-    lineId: String,
+    lineId: String?,
     now: Instant,
     topology: RouteTopology = RouteTopology.EMPTY,
     // Alerts dismissed anywhere stay dismissed here: they're place-wide and line-wide (Codex on #661).
@@ -74,14 +85,14 @@ internal fun stopBoardView(
     // never dropped from the board (Codex on #661).
     val rows = DepartureRows.withoutDismissed(DepartureRows.across(state.stops, now, state.lineStatuses), dismissed)
     val (closures, services) = rows.partition { it.stopDisruption != null }
-    val (line, others) = services.partition { it.lineId == lineId }
+    val (line, others) = services.partition { lineId != null && it.lineId == lineId }
     fun cards(rows: List<DepartureRow>) = StopGrouping.groupByStop(rows).map { stopCard(it, topology) }
     return StopBoardView(cards(line), cards(others), closures, emptyStateUncertain(state, stopStamps(state.stops), now))
 }
 
 /** [departures] as [stopBoardView] splits them, worked out on [LocalWorker]; null until the first is in. */
 @Composable
-internal fun rememberStopBoard(departures: StopDepartures?, lineId: String): StopBoardView? {
+internal fun rememberStopBoard(departures: StopDepartures?, lineId: String?): StopBoardView? {
     val loaded = departures?.state as? DeparturesUiState.Loaded ?: return null
     val topology = LocalRouteTopology.current
     val slot: MutableState<Worked<Inputs, StopBoardView>?> = remember { mutableStateOf(null) }
@@ -96,11 +107,11 @@ internal fun rememberStopBoard(departures: StopDepartures?, lineId: String): Sto
 
 /**
  * The stop's board, after its title and buttons: [lineName]'s platform cards, then the stop's other
- * services under "Also here" (SPEC *Finding a line*). Loading and failure say so in place; a refresh
+ * services under "Also here" (SPEC *Finding a line*); with no [lineName], every service, none leading. Loading and failure say so in place; a refresh
  * that failed keeps the board up with a line saying so, and a stale card withholds its times
  * ([StopGroupCard]), so nothing old reads as live (SPEC D4).
  */
-internal fun LazyListScope.stopBoard(departures: StopDepartures?, view: StopBoardView?, lineName: String) {
+internal fun LazyListScope.stopBoard(departures: StopDepartures?, view: StopBoardView?, lineName: String?) {
     val state = departures?.state
     when {
         state is DeparturesUiState.Error -> item(key = "boardError") {
@@ -130,7 +141,7 @@ internal fun LazyListScope.stopBoard(departures: StopDepartures?, view: StopBoar
             items(view.closures, key = { row -> "closure|${row.stopId}|${row.stopDisruption}" }) { row ->
                 StopClosureCard(row, onDismiss = null)
             }
-            if (view.line.isEmpty()) {
+            if (lineName != null && view.line.isEmpty()) {
                 // "None due" only where the board can stand behind it: not stale, not after a failed or
                 // partial refresh (Codex on #661); else that it may be out of date, a tap asking again.
                 item(key = "boardLineEmpty") {
@@ -147,13 +158,30 @@ internal fun LazyListScope.stopBoard(departures: StopDepartures?, view: StopBoar
                 }
             }
             cards(view.line, "line", departures.now)
+            if (lineName == null && view.others.isEmpty()) {
+                // No line leading and nothing due: said as the near-me list says it, unless uncertain.
+                item(key = "boardEmpty") {
+                    if (view.emptyUncertain) {
+                        Text(
+                            stringResource(R.string.departures_stale_empty),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.fillMaxWidth().clickable(onClick = departures.onRefresh).padding(vertical = 8.dp),
+                        )
+                    } else {
+                        BoardNote(stringResource(R.string.stop_board_empty))
+                    }
+                }
+            }
             if (view.others.isNotEmpty()) {
-                item(key = "boardAlsoHere") {
-                    Text(
-                        stringResource(R.string.stop_board_also_here),
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(top = 16.dp).testTag("stopBoardAlsoHere"),
-                    )
+                if (lineName != null) {
+                    item(key = "boardAlsoHere") {
+                        Text(
+                            stringResource(R.string.stop_board_also_here),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(top = 16.dp).testTag("stopBoardAlsoHere"),
+                        )
+                    }
                 }
                 cards(view.others, "others", departures.now)
             }

@@ -67,6 +67,33 @@ class StopBoardTest {
     }
 
     @Test
+    fun with_no_line_leading_every_service_is_on_the_board() {
+        // A station opened from another's details, off the line the page was opened from.
+        val view = stopBoardView(loaded(board), null, now)
+        assertTrue(view.line.isEmpty())
+        assertEquals(setOf("victoria", "central", "bakerloo"), view.others.flatMap { card -> card.group.rows.map { it.lineId } }.toSet())
+    }
+
+    @Test
+    fun a_station_under_two_ids_is_one_place_on_the_board() {
+        // St Pancras's two records, both serving one platform's trains: one card, not two of one name (Codex on #664).
+        val refs = lineStopRefs("910GSTPX", "St Pancras International", emptyList(), listOf("910GSTPADOM"))
+        assertEquals(setOf("910GSTPX"), refs.map { it.clusterId }.toSet())
+        assertEquals("", lineStopRefs("940GZZLUOXC", "Oxford Circus", emptyList(), emptyList()).single().clusterId)
+        fun rail(destination: String, minutes: Long) =
+            Departure("thameslink", "Thameslink", "outbound", destination, "Platform A", now.plusSeconds(minutes * 60), "national-rail")
+        fun board(cluster: String) = DeparturesUiState.Loaded(
+            stops = refs.mapIndexed { i, ref ->
+                StopArrivals(ref.id, ref.name, listOf(rail(if (i == 0) "Brighton" else "Bedford", i + 2L)), fetchedAt = now, clusterId = cluster)
+            },
+            fetchedAt = now,
+        )
+        assertEquals(1, stopBoardView(board(refs.first().clusterId), null, now).others.size)
+        // Each id its own cluster, as before: two places of one name.
+        assertEquals(2, stopBoardView(board(""), null, now).others.size)
+    }
+
+    @Test
     fun a_closure_notice_comes_out_ahead_of_the_cards_never_dropped() {
         // Grouping leaves a stop's own notice to its caller: the board keeps it (Codex on #661).
         val closed = DeparturesUiState.Loaded(
