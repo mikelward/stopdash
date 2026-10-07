@@ -1571,7 +1571,7 @@ private fun DisruptionCard(signal: RouteDisruption.Signal, leg: TripLeg?) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(RouteDisruptionAlert.text(context, signal), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             (signal as? RouteDisruption.Signal.Line)?.status?.fullText?.trim()?.takeIf { it.isNotEmpty() }?.let {
-                Text(it, style = MaterialTheme.typography.bodyMedium)
+                LinkedText(it, style = MaterialTheme.typography.bodyMedium)
             }
             if (leg != null && !leg.isWalk) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1604,7 +1604,7 @@ private fun StationNoteCard(note: RouteDisruption.StationNote, onDismiss: (() ->
                     fontWeight = FontWeight.SemiBold,
                     modifier = if (onDismiss != null) Modifier.padding(end = 40.dp) else Modifier,
                 )
-                Text(note.text, style = MaterialTheme.typography.bodyMedium)
+                LinkedText(note.text, style = MaterialTheme.typography.bodyMedium)
             }
             if (onDismiss != null) {
                 IconButton(onClick = onDismiss, modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).testTag("onTheWayStationNoteDismiss")) {

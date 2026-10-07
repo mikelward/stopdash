@@ -1,5 +1,7 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
+
 /**
  * Finds the web links in a service alert's text, so the alert can make them tappable (maintainer,
  * 2026-09-23). TfL prose names a page both with and without a scheme ("https://tfl.gov.uk/strikes",
@@ -22,6 +24,7 @@ object AlertLinks {
     )
     private const val TRAILING = ".,;:!?)]}'\""
 
+    @WorkerThread
     fun find(text: String): List<Link> =
         LINK.findAll(text).mapNotNull { match ->
             val raw = match.value.trimEnd { it in TRAILING }
