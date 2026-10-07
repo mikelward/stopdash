@@ -281,6 +281,8 @@ private fun GateTopBar(
                         },
                     )
                 }
+                // So does Lines… (SPEC *Finding a line*).
+                LinesMenuItem(close)
                 if (onOpenStopDashSettings != null) {
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.menu_settings)) },

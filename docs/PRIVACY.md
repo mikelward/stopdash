@@ -106,6 +106,12 @@ TfL names it) is kept the same way, and forgotten once you unstar it. The search
 and matches your starred stops and the stops the app has lately shown you, all read on the
 device; none of that is sent anywhere either.
 
+**Lines…** (the menu's *Lines…*) asks TfL once a day for its public list of lines and keeps it in
+the app's cache; what you type is matched against that list on the device and never sent anywhere.
+Opening a line asks TfL for that line's status, naming only the line. The last eight lines you open
+are remembered on the device to list under *Recent*, in app storage that Android never backs up or
+transfers; they are never logged or sent anywhere, and clearing the app's data removes them.
+
 **Favorite places** (Home, Work, School or a place of your own, saved from Settings) are stored by
 **location**. When you add or edit one, the stop or station you type is sent to TfL's stop search,
 once you pause typing, to find its position — the same search *Find a station* uses. You can instead

@@ -57,6 +57,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.LifecycleOwner
@@ -75,6 +76,13 @@ import app.stopdash.data.DataStoreAlertsBehindStore
 import app.stopdash.data.DataStoreAppSettings
 import app.stopdash.data.DataStoreDismissedAlertsStore
 import app.stopdash.data.DataStoreFavoritePlacesStore
+import app.stopdash.ui.LocalOpenLines
+import app.stopdash.ui.LinesViewModel
+import app.stopdash.ui.LinesOverlay
+import app.stopdash.ui.LineRefSaver
+import app.stopdash.data.FileRecentLinesStore
+import app.stopdash.data.FileLineCatalogStore
+import app.stopdash.data.LineCatalog
 import app.stopdash.data.DataStoreNearbySetStore
 import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.data.DataStoreFavoriteJourneysStore
@@ -110,6 +118,7 @@ import app.stopdash.data.logNetworkWarning
 import app.stopdash.domain.AppSettings
 import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.FavoriteShortcuts
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.NearestStops
 import app.stopdash.domain.PlaceStopsFinder
 import app.stopdash.domain.AvoidedLines
@@ -721,6 +730,13 @@ class MainActivity : ComponentActivity() {
                 // (its TfL id and name). Hosted as overlays like Settings, so the near-me departures
                 // stop polling while they're up; back from a station returns to the search.
                 var stationSearchOpen by rememberSaveable { mutableStateOf(false) }
+                // *Lines…* (SPEC *Finding a line*): the line search, and the page of a line picked there.
+                var linesOpen by rememberSaveable { mutableStateOf(false) }
+                // The line open there: kept here, not in the overlay, so a page under Licenses is still
+                // up after Back from them (the overlay leaves composition beneath them).
+                var linesLine by rememberSaveable(stateSaver = LineRefSaver) { mutableStateOf<LineRef?>(null) }
+                // And the search's scroll, for the same reason.
+                val linesSaveable = rememberSaveableStateHolder()
                 // The station page is open to plan the trip on the way again (its Plan again): Start
                 // there takes that trip's place, rather than opening it ([OnTheWayActions]).
                 var replanning by rememberSaveable { mutableStateOf(false) }
@@ -1157,12 +1173,16 @@ class MainActivity : ComponentActivity() {
                     ) { route, destinationName, readyAt, destinations, destinationIds, destinationStopId ->
                         startOnTheWay(route, destinationName, readyAt, destinations, destinationIds, destinationStopId, false)
                     },
+                    LocalOpenLines provides {
+                        UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
+                        linesOpen = true
+                    },
                     LocalOnTheWayBanner provides onTheWayTrip?.let { trip ->
                         OnTheWayBannerState(trip, onTheWayProgress, onTheWayUpdatedAt, onTheWayAnsweredAt) { onTheWayOpen = true }
                     },
                 ) {
                     NearbyArea(
-                        overlayOpen = onTheWayOpen || licensesOpen || settingsOpen || favoritePlacesOpen || favoriteJourneysOpen || stationSearchOpen || openStationId != null,
+                        overlayOpen = onTheWayOpen || licensesOpen || settingsOpen || favoritePlacesOpen || favoriteJourneysOpen || linesOpen || stationSearchOpen || openStationId != null,
                         // A stop opened from a route page keeps that page under it, for Back.
                         keepBody = openStationId != null && routeStopOpened?.stationId == openStationId,
                         aboveOverlay = {
@@ -1176,7 +1196,7 @@ class MainActivity : ComponentActivity() {
                         },
                         overlayContent = {
                             // Which one shows when several are open ([topOverlay]); each closes via its own Back.
-                            val top = topOverlay(licenses = licensesOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen, settings = settingsOpen, favoriteJourneys = favoriteJourneysOpen)
+                            val top = topOverlay(licenses = licensesOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen, settings = settingsOpen, favoriteJourneys = favoriteJourneysOpen, lines = linesOpen)
                             if (top == TopOverlay.LICENSES) {
                                 LicensesScreen(onBack = { licensesOpen = false })
                             } else if (top == TopOverlay.ON_THE_WAY) {
@@ -1413,6 +1433,22 @@ class MainActivity : ComponentActivity() {
                                         onDismissWriteError = { JourneyRemovals.failed.value = false },
                                         onRetry = { journeysAttempt++ },
                                     )
+                                }
+                            } else if (top == TopOverlay.LINES) {
+                                val linesModel: LinesViewModel = viewModel(
+                                    key = "lines",
+                                    factory = viewModelFactory { initializer { linesViewModel(applicationContext, createSavedStateHandle()) } },
+                                )
+                                // The line's map is drawn from the route pages' day-long cache (SPEC *Line page → Map*).
+                                CompositionLocalProvider(LocalRouteStops provides routeStops(applicationContext)) {
+                                    LinesOverlay(linesModel, open = linesLine, onOpen = { linesLine = it }, saveable = linesSaveable, onBack = {
+                                        linesOpen = false
+                                        linesLine = null
+                                        // The next Lines… opens at the top, not where this one was scrolled.
+                                        linesSaveable.removeState(LinesViewModel.SEARCH_STATE_KEY)
+                                        // The next Lines… opens on the recent lines, not this search.
+                                        linesModel.setQuery("")
+                                    })
                                 }
                             } else if (top == TopOverlay.STATIONS) {
                                 // Planning the trip on the way again: Start takes its place, rather than opening it.
@@ -3757,6 +3793,45 @@ class MainActivity : ComponentActivity() {
             )
         }
 
+        // *Lines…* (SPEC *Finding a line*): TfL's list of lines, kept a day in the app's cache (public
+        // data), and one line's detailed status as its page opens, so its map draws closed track closed. On demand from the search, never the refresh path.
+        private val linesClient by lazy {
+            KtorTflClient(
+                httpClient,
+                appKey = { UserApiKeySetting.current },
+                rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
+                requestPool = SharedTflRequestPool.pool,
+                keyAnswered = RejectedApiKey.SHARED::record,
+                warn = ::logDepartureWarning,
+            )
+        }
+        private val lineCatalogLock = Any()
+        private var lineCatalogInstance: LineCatalog? = null
+
+        private fun lineCatalog(context: Context): LineCatalog = synchronized(lineCatalogLock) {
+            lineCatalogInstance ?: LineCatalog(
+                fetch = { linesClient.lines(LineCatalog.MODES) },
+                store = FileLineCatalogStore(File(AppDirs.cache(context), "lines.json"), ::logDepartureWarning),
+                warn = ::logDepartureWarning,
+            ).also { lineCatalogInstance = it }
+        }
+
+        internal fun linesViewModel(context: Context, saved: SavedStateHandle): LinesViewModel {
+            // The lines a rider looks up can say where they go: kept with the recent stations, never backed up.
+            val recent = FileRecentLinesStore(File(AppDirs.noBackup(context), "recent-lines.json"), ::logDepartureWarning)
+            val catalog = lineCatalog(context)
+            return LinesViewModel(
+                loadLines = catalog::lines,
+                refreshLines = catalog::refreshed,
+                loadRecent = recent::load,
+                recordOpen = recent::add,
+                lineStatus = linesClient::lineStatusInDetail,
+                warn = ::logDepartureWarning,
+                dismissedStore = DataStoreDismissedAlertsStore.from(context, warn = ::logDepartureWarning),
+                saved = saved,
+            )
+        }
+
         // TfL's lift outages, one request for every station, held for a few minutes whichever screen
         // asks: a route page asks when a station it lists is step-free only by a lift, never the
         // refresh path (SPEC *Step-free access*). A failed ask keeps the last answer and is logged.
@@ -4182,14 +4257,15 @@ internal fun StopDashAppRoot(
 }
 
 /** The activity-level overlays, as [topOverlay] picks between them. */
-internal enum class TopOverlay { LICENSES, ON_THE_WAY, FAVORITE_PLACES, FAVORITE_JOURNEYS, STATIONS, SETTINGS }
+internal enum class TopOverlay { LICENSES, ON_THE_WAY, FAVORITE_PLACES, FAVORITE_JOURNEYS, LINES, STATIONS, SETTINGS }
 
 /**
  * Which overlay shows when several are open at once. Licenses first: About opens it from any
  * screen's overflow, On the way's included, and its Back returns to the screen beneath — ranked
  * under the trip it was a tap that did nothing (Codex on #377). Then the trip on the way, what the
- * rider opened last; the saved places, then the favorite journeys, layered above Settings; the station pages and search,
- * unless Settings is open, which is last.
+ * rider opened last; the saved places, then the favorite journeys, layered above Settings; then
+ * Settings over *Lines…* and the station pages and search: a line page's menu opens the disruptions
+ * settings over it (Codex on #652), and their Back returns to Lines….
  */
 internal fun topOverlay(
     licenses: Boolean,
@@ -4197,13 +4273,15 @@ internal fun topOverlay(
     favoritePlaces: Boolean,
     settings: Boolean,
     favoriteJourneys: Boolean = false,
+    lines: Boolean = false,
 ): TopOverlay = when {
     licenses -> TopOverlay.LICENSES
     onTheWay -> TopOverlay.ON_THE_WAY
     favoritePlaces -> TopOverlay.FAVORITE_PLACES
     favoriteJourneys -> TopOverlay.FAVORITE_JOURNEYS
-    !settings -> TopOverlay.STATIONS
-    else -> TopOverlay.SETTINGS
+    settings -> TopOverlay.SETTINGS
+    lines -> TopOverlay.LINES
+    else -> TopOverlay.STATIONS
 }
 
 /**

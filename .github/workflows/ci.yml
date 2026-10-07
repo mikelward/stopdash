@@ -240,6 +240,8 @@ jobs:
         run: ./gradlew :app:testDebugUnitTest --tests "app.stopdash.ui.RouteDetailScreenScreenshotTest" -Proborazzi.test.record=true
       - name: Run StationSearch screenshot tests
         run: ./gradlew :app:testDebugUnitTest --tests "app.stopdash.ui.StationSearchScreenshotTest" -Proborazzi.test.record=true
+      - name: Run LineSearch screenshot tests
+        run: ./gradlew :app:testDebugUnitTest --tests "app.stopdash.ui.LineSearchScreenshotTest" -Proborazzi.test.record=true
       - name: Run TripScreen screenshot tests
         run: ./gradlew :app:testDebugUnitTest --tests "app.stopdash.ui.TripScreenScreenshotTest" -Proborazzi.test.record=true
       - name: Run FavoritePlaces screenshot tests

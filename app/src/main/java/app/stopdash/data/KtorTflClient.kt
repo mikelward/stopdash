@@ -5,6 +5,7 @@ import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.HubInfo
 import app.stopdash.domain.JourneyPlanner
 import app.stopdash.domain.LineSequence
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusBatch
 import app.stopdash.domain.LiftOutageSource
@@ -520,6 +521,48 @@ class KtorTflClient(
             // The area's leaf stop points (its poles), each with its letter and lines.
             dto.leaves().mapNotNull { it.toStopLocationOrNull() }
         }
+
+    /**
+     * Every line TfL runs in [modes], from `/Line/Mode/{modes}`: each line's id, name and mode, for
+     * *Lines…* to search on the device (SPEC *Finding a line*). The bus list alone is several hundred
+     * lines, so the answer may be slow to start. Throws on a transport or decode failure, like [arrivals].
+     */
+    suspend fun lines(modes: List<String>): List<LineRef> =
+        tflRequest { key ->
+            httpClient.get("$baseUrl/Line/Mode/${modes.joinToString(",")}") {
+                applyAppKey(key)
+                allowSlowAnswer()
+            }.body<List<TflModeLineDto>>()
+                .filter { it.id.isNotBlank() && it.name.isNotBlank() }
+                .map { LineRef(it.id, it.name, it.modeName) }
+                .distinctBy { it.id }
+        }
+
+    /**
+     * One line's status with its alerts placed — their directions and the sections a part closure
+     * shuts — from TfL's detailed answer (`?detail=true`), for a line page opened on its own
+     * (*Lines…*): there is no refresh behind it to pick up a background lookup ([lookUpAlertDirections]),
+     * so the page asks for the detail once, up front. Null when TfL gave the line no status at all;
+     * throws on a transport or decode failure, or [TflException.NotFound] for a line TfL doesn't know.
+     */
+    suspend fun lineStatusInDetail(lineId: String): LineStatus? {
+        val lines = tflRequest { key ->
+            httpClient.get("$baseUrl/Line/$lineId/Status") {
+                parameter("detail", "true")
+                applyAppKey(key)
+                allowSlowAnswer()
+            }.body<List<TflLineDto>>()
+        }
+        val line = lines.firstOrNull { it.id == lineId } ?: throw TflException.NotFound(null)
+        // The detail places its own alerts: recorded into a cache of its own, so this one-off answer
+        // neither waits on nor disturbs the refresh's lookups.
+        val placed = LineAlertDirections().apply { record(listOf(line), listOf(line)) }
+        return line.toLineStatus(
+            clock(),
+            onBadDate = { warn("line ${line.id}: unreadable alert posting date") },
+            sectionsOf = { entry -> placed.sectionsOf(line.id, entry) },
+        ) { entry -> placed.directionsOf(line.id, entry) }
+    }
 
     override suspend fun lineStatuses(lineIds: Collection<String>): List<LineStatus> {
         // No lines → no request: a refresh with no predicted lines has nothing to check,

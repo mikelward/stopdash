@@ -38,4 +38,13 @@ class TopOverlayTest {
     fun `with none of those open, the station pages and search show`() {
         assertEquals(TopOverlay.STATIONS, topOverlay(licenses = false, onTheWay = false, favoritePlaces = false, settings = false))
     }
+
+    @Test
+    fun `Lines shows over the station pages, under the trip on the way and the licenses`() {
+        assertEquals(TopOverlay.LINES, topOverlay(licenses = false, onTheWay = false, favoritePlaces = false, settings = false, lines = true))
+        // A line page's menu opens the disruptions settings over Lines…; their Back returns to it.
+        assertEquals(TopOverlay.SETTINGS, topOverlay(licenses = false, onTheWay = false, favoritePlaces = false, settings = true, lines = true))
+        assertEquals(TopOverlay.ON_THE_WAY, topOverlay(licenses = false, onTheWay = true, favoritePlaces = false, settings = false, lines = true))
+        assertEquals(TopOverlay.LICENSES, topOverlay(licenses = true, onTheWay = false, favoritePlaces = false, settings = false, lines = true))
+    }
 }

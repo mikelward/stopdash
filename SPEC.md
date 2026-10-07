@@ -2536,6 +2536,32 @@ those departures as verified-clean: it keeps the last-good disruption state (age
 stamped like any other data) or marks the affected departures "status unknown", rather
 than showing normal-looking times whose disruption status was never actually checked.
 
+### Finding a line
+
+**Lines…** (maintainer, 2026-10-07) sits in the near-me list's overflow under From… and To…, and in
+the location screen's, since it needs no location: a search for any line by name or number ("299",
+"Victoria", "Elizabeth"), opening the line's own page (*Line page*, below) — its status and its map.
+Before anything is typed it lists the **lines opened lately**, newest first (maintainer, 2026-10-07:
+recent lines rather than the lines nearby, so it needs no fix and works anywhere), or a one-line prompt
+when none has been. Matching is on the device, as the station search's is (*Find a station*): a name
+by its start or a word's, a number by its start then with it inside ("29" lists the 29, then 290 to
+299, then 129 and N29), never loosely, so a number (or a lettered one, "N25") never brings up a route
+merely sharing its characters.
+Each match shows the line's pill, its name and its mode. The lines are **TfL's own list**, every
+tube, DLR, Overground, Elizabeth line, tram, bus, river bus and cable car line (not National Rail's
+operators, nor coaches), fetched once a day and kept on the device, so typing never waits on the
+network: a kept list is up at once, whatever its age, and one a day old is renewed behind it (checked
+each time Lines… comes up); a list that can't be fetched keeps the last one, and with none kept the search says it
+couldn't load the lines, with Retry. A line opened here has no stop of the rider's on its map, which
+draws the whole line; its status is asked of TfL as the page opens, in detail (the stops each alert
+covers) since no refresh follows to fill them in, so a part closure is drawn on the map at once; the
+pill alone until it's in, and "Couldn't check" where it couldn't be or TfL gave none. While the page
+is up, and on a return to the app, it asks again every 45 seconds, keeping the last answer up meanwhile;
+an answer is taken down at 90 seconds old whatever is still being asked, so none older shows as current. Its
+alert is dismissible there as on any line's page, and one dismissed elsewhere reads as dismissed. Back from the page returns to the search; Back from the search,
+to where it was opened. What tapping a stop on that map should do (favorite it, start a trip from it)
+is the next decision (`TODO.md`).
+
 ### Line page
 
 **Every line opens a page of its own from the lines page, its map on it whatever its status**
