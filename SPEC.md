@@ -2567,8 +2567,15 @@ pill alone until it's in, and "Couldn't check" where it couldn't be or TfL gave 
 is up, and on a return to the app, it asks again every 45 seconds, keeping the last answer up meanwhile;
 an answer is taken down at 90 seconds old whatever is still being asked, so none older shows as current. Its
 alert is dismissible there as on any line's page, and one dismissed elsewhere reads as dismissed. Back from the page returns to the search; Back from the search,
-to where it was opened. What tapping a stop on that map should do (favorite it, start a trip from it)
-is the next decision (`TODO.md`).
+to where it was opened. A station tapped on that map opens its **details** (maintainer, 2026-10-07): its full name and how
+far it was from the rider's last fix when tapped ("Oxford Circus (350 m)"; the name alone with no fix),
+kept with it so the title never changes under the buttons, with
+**From** and **To**, which do what From… and To… do with this stop picked. From opens the stop's own
+page over Lines…, its Back returning to the stop; To plans a trip there from the stops near the rider,
+closing Lines… for it, and is offered only where To… is (the near-me list has stops to plan from).
+Back from the details returns to the line, its map just as it was, scrolled and unfolded (after From's
+station page, the line's page comes back at its top, `TODO.md`). Only a line page opened from Lines… opens stops so far
+(`TODO.md`).
 
 ### Line page
 

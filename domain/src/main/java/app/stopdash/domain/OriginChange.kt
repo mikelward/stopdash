@@ -60,6 +60,13 @@ sealed interface OriginChange {
             if (landing is Landing.Station) change else null
 
         /**
+         * Whether leaving the *From…* search for [landing] also closes *Lines…* under it, as a stop's
+         * page opened from a line's map is: near me, or the list, are the home screen's own, so the
+         * line search goes with it. Back to a station stays above it.
+         */
+        fun closesLines(landing: Landing?): Boolean = landing !is Landing.Station
+
+        /**
          * The *To…* a station's page leaves behind when the rider backs out of it to the *From…* search.
          * A change of start stays under way until the new station's trip appears, so backing out of one
          * still loading its stops, or that failed, keeps the trip's *To…*: the next station picked opens

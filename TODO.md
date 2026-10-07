@@ -2650,8 +2650,25 @@ Builds on Phase 1's minimal line-status marking.
       searched on the device (`LineSearch`), the recently opened lines before anything is typed
       (`RecentLines`), a pick opening the line page with its status asked as it opens. Needs a device
       check of the search and the page.
-- [ ] **What a tap on a stop does on a line page opened from Lines…** (maintainer, 2026-10-07: favorite
-      it, start a trip from there, or something else; to decide next).
+- [x] **What a tap on a stop does on a line page opened from Lines…** (maintainer, 2026-10-07): opens
+      the stop's details, its full name and distance, with From and To doing what From… and To… do.
+  - [ ] **Its fare zone** (maintainer, 2026-10-07): TfL's StopPoint `additionalProperties` carry a
+        tube or rail station's zone; one on-demand request per stop opened, cached.
+  - [ ] **Its accessibility** (maintainer, 2026-10-07): step-free from street to platform, and a lift
+        out of service now, from the step-free data the route pages already read.
+  - [ ] **Keep the line's map where it was across From** (Codex on #659): Back from a stop's details
+        keeps the line page's scroll and folds, but From's station page replaces the Lines… overlay, so
+        the line page comes back at its top. Its map's rows are worked out again on return, so saved
+        scroll alone can't hold it; it needs the station flow layered over Lines… or the laid map kept.
+  - [ ] **Its departures board** (maintainer, 2026-10-07): the next departures from this stop under its
+        name, as From… shows them, without leaving the details.
+  - [ ] **The lines that serve it**, as pills, each opening that line's page (the route data has them).
+  - [ ] **Favorite it**: star the stop from its details, as a long press does on a route page's list.
+  - [ ] **Show it on a map / walk there**: hand its position to the phone's maps app.
+  - [ ] **A bus stop's letter and direction** ("Stop H, towards Oxford Circus"), from its pole data.
+  - [ ] **Open a stop from every line page**: the home screen's lines row and a trip's lines page draw
+        the same map, its stations inert there for now.
+  - [ ] **Back from To's trip** lands on the near-me list, not the stop it was planned from.
 - [ ] **Coming-up closures on a line's page** (discussed 2026-10-06). TfL's future statuses
       (`/Line/{id}/Status/{from}/to/{to}`) for the next week, each drawn on the map like a closure in
       force: one free request when the page opens, cached for hours, a failure saying so with a retry.

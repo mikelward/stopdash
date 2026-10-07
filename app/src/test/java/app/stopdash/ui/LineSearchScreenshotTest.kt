@@ -10,6 +10,9 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.test.performScrollTo
 import app.stopdash.domain.LineRef
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -98,6 +101,57 @@ class LineSearchScreenshotTest {
         composeRule.onNodeWithText("Type a line name or route number").assertDoesNotExist()
         composeRule.onNodeWithText("Retry").performClick()
         assertTrue(retried)
+    }
+
+    @Test
+    fun line_stop_details() {
+        var from = 0
+        var to = 0
+        composeRule.setContent {
+            StopDashTheme {
+                LineStopPage(name = "Oxford Circus", distance = "350 m", onFrom = { from++ }, onTo = { to++ }, onBack = {})
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Oxford Circus (350 m)").assertIsDisplayed()
+        captureSnapshot("line-stop-details.png")
+        composeRule.onNodeWithText("From").performClick()
+        composeRule.onNodeWithText("To").performClick()
+        assertEquals(1, from)
+        assertEquals(1, to)
+    }
+
+    @Test
+    fun from_and_to_stay_reachable_under_a_long_name_on_a_short_screen() {
+        // A short window and a long name: the page scrolls to its buttons rather than clip them (Codex on #659).
+        var from = 0
+        composeRule.setContent {
+            StopDashTheme {
+                androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.height(180.dp)) {
+                    LineStopPage(
+                        name = List(12) { "King's Cross St. Pancras" }.joinToString(" "),
+                        distance = "350 m",
+                        onFrom = { from++ },
+                        onTo = {},
+                        onBack = {},
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("From").performScrollTo().performClick()
+        assertEquals(1, from)
+    }
+
+    @Test
+    fun a_stop_with_no_distance_and_no_to_shows_its_name_and_from_alone() {
+        composeRule.setContent {
+            StopDashTheme {
+                LineStopPage(name = "Oxford Circus", distance = null, onFrom = {}, onTo = null, onBack = {})
+            }
+        }
+        composeRule.onNodeWithText("Oxford Circus").assertIsDisplayed()
+        composeRule.onNodeWithText("From").assertIsDisplayed()
+        composeRule.onNodeWithText("To").assertDoesNotExist()
     }
 
     @Test

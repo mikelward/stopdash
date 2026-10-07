@@ -359,6 +359,14 @@
     <string name="lines_search_no_matches">No lines match</string>
     <!-- TfL's list of lines couldn't be loaded and none was kept from before; a Retry follows. -->
     <string name="lines_search_failed">Couldn\'t load the lines</string>
+    <!-- A station on a line's map, opened from Lines…: what a tap does, for a screen reader. -->
+    <string name="line_stop_open">Open stop</string>
+    <!-- A stop's details: its name and how far it is, "Oxford Circus (350 m)". -->
+    <string name="line_stop_title_distance">%1$s (%2$s)</string>
+    <!-- A stop's details: leave from this stop, as From… does. -->
+    <string name="line_stop_from">From</string>
+    <!-- A stop's details: go to this stop, as To… does. -->
+    <string name="line_stop_to">To</string>
     <!-- Placeholder in the destination search opened by "To…", beside its "To" label; it finds
          geocoded places too. -->
     <string name="station_search_to_hint">Station, stop or place</string>

@@ -1,6 +1,8 @@
 package app.stopdash.domain
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -62,6 +64,14 @@ class OriginChangeTest {
         val nearMe = OriginChange.NearMe(toCanaryWharf)
         assertNull(OriginChange.afterLeaving(nearMe, OriginChange.back(nearMe)))
         assertNull(OriginChange.afterLeaving(null, OriginChange.back(null)))
+    }
+
+    @Test
+    fun `leaving for near me or the list closes Lines, back to a station keeps it`() {
+        // A stop's page from a line's map, then "use my location": no change under way.
+        assertTrue(OriginChange.closesLines(OriginChange.here(null)))
+        assertTrue(OriginChange.closesLines(OriginChange.here(fromRoutes)))
+        assertFalse(OriginChange.closesLines(OriginChange.back(fromRoutes)))
     }
 
     @Test
