@@ -13,6 +13,16 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.hasScrollToNodeAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performScrollToNode
+import app.stopdash.data.TflRouteSequenceDto
+import app.stopdash.domain.Coordinates
+import app.stopdash.domain.LineSequence
+import app.stopdash.domain.RouteSequenceSource
+import app.stopdash.domain.RouteStopsRepository
+import kotlinx.serialization.json.Json
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.SavedStateHandle
@@ -21,6 +31,7 @@ import app.stopdash.domain.LineStatus
 import app.stopdash.ui.theme.StopDashTheme
 import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -157,5 +168,73 @@ class LinesOverlayTest {
         composeRule.onNodeWithTag("lineSearchField").performTextInput("299")
         composeRule.waitForIdle()
         assertEquals(1, queries)
+    }
+
+    @Test
+    fun a_station_tapped_on_the_map_opens_its_details_with_its_distance() {
+        val northern: LineSequence = Json { ignoreUnknownKeys = true }
+            .decodeFromString<TflRouteSequenceDto>(checkNotNull(javaClass.getResource("/fixtures/route_sequence_northern_outbound.json")).readText())
+            .toLineSequence()
+            // The recorded sequence carries no positions: Euston's, TfL's public station coordinate.
+            .let { it.copy(stopPositions = it.stopPositions + ("940GZZLUEUS" to (51.5282 to -0.1337))) }
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence = northern
+            },
+            io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
+        )
+        val line = LineRef("northern", "Northern", "tube")
+        val model = LinesViewModel(
+            loadLines = { listOf(line) },
+            loadRecent = { emptyList() },
+            recordOpen = { listOf(it) },
+            lineStatus = { LineStatus(lineId = "northern", severity = LineStatus.GOOD_SERVICE, description = "Good Service") },
+            io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
+            saved = SavedStateHandle(),
+        )
+        var stop by mutableStateOf<LineStopRef?>(null)
+        var fromStop: LineStopRef? = null
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides Dispatchers.Unconfined, LocalRouteStops provides repository) {
+                    LinesOverlay(
+                        model,
+                        open = line,
+                        onOpen = {},
+                        onBack = {},
+                        stop = stop,
+                        onStop = { stop = it },
+                        // A synthetic position in central London, nobody's.
+                        here = Coordinates(51.5, -0.12),
+                        onFrom = { fromStop = it },
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        // Euston sits in a fold: every station shown first.
+        composeRule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Show all stations"))
+        composeRule.onNodeWithText("Show all stations").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Euston"))
+        composeRule.onNodeWithText("Euston").performClick()
+        composeRule.waitForIdle()
+        assertEquals("Euston", stop?.name)
+        // Its distance was worked out at the tap and kept with it, so the title is whole from the first
+        // frame and stays so on a restore (Codex on #659).
+        assertTrue(stop?.distance?.isNotEmpty() == true)
+        assertEquals(stop, LineStopRefSaver.restore(with(LineStopRefSaver) { androidx.compose.runtime.saveable.SaverScope { true }.save(stop) }!!))
+        // Its name and how far it is, From to start there, no To where To… isn't offered.
+        composeRule.onNodeWithTag("lineStopTitle").assertTextContains("Euston (", substring = true)
+        composeRule.onNodeWithText("To").assertDoesNotExist()
+        composeRule.onNodeWithText("From").performClick()
+        assertEquals(stop, fromStop)
+        // Back returns to the line, its map where it was: every station still shown, Euston in view
+        // (Codex on #659).
+        stop = null
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Euston").assertIsDisplayed()
     }
 }

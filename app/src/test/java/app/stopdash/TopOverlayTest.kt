@@ -44,6 +44,8 @@ class TopOverlayTest {
         assertEquals(TopOverlay.LINES, topOverlay(licenses = false, onTheWay = false, favoritePlaces = false, settings = false, lines = true))
         // A line page's menu opens the disruptions settings over Lines…; their Back returns to it.
         assertEquals(TopOverlay.SETTINGS, topOverlay(licenses = false, onTheWay = false, favoritePlaces = false, settings = true, lines = true))
+        // A stop's From on Lines… opens its station page over it; its Back returns to Lines….
+        assertEquals(TopOverlay.STATIONS, topOverlay(licenses = false, onTheWay = false, favoritePlaces = false, settings = false, lines = true, station = true))
         assertEquals(TopOverlay.ON_THE_WAY, topOverlay(licenses = false, onTheWay = true, favoritePlaces = false, settings = false, lines = true))
         assertEquals(TopOverlay.LICENSES, topOverlay(licenses = true, onTheWay = false, favoritePlaces = false, settings = false, lines = true))
     }

@@ -1,7 +1,14 @@
 package app.stopdash.ui
 
+import app.stopdash.domain.StopDistance
+import app.stopdash.domain.NearestStops
+import app.stopdash.domain.Coordinates
+import androidx.compose.runtime.Immutable
+import androidx.compose.material3.Button
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,6 +54,8 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -87,9 +96,11 @@ internal fun LinesMenuItem(close: () -> Unit) {
 
 /**
  * *Lines…* (SPEC *Finding a line*): the search ([LineSearchScreen]) and, once a line is picked, its
- * page ([OneLinePage]): its status and its map. The picked line, [open], is held by the caller ([onOpen]
- * sets it), so a rotation, a return to the app, or Back from an overlay shown above this one keeps the
- * page up; Back from the page returns to the search, Back from the search closes it ([onBack]).
+ * page ([OneLinePage]): its status and its map. A station tapped on that map opens its details
+ * ([LineStopPage]): its name, how far it is from [here], and From and To. The picked line, [open], and
+ * stop, [stop], are held by the caller ([onOpen], [onStop] set them), so a rotation, a return to the app,
+ * or Back from an overlay shown above this one keeps the page up; Back from the stop returns to the
+ * line, from the line to the search, and from the search closes it ([onBack]).
  */
 @Composable
 internal fun LinesOverlay(
@@ -100,6 +111,14 @@ internal fun LinesOverlay(
     // The search's own saved state (its list's scroll), held by the caller above any overlay that can
     // cover this one (Licenses), so it outlives this leaving composition (Codex on #652).
     saveable: SaveableStateHolder = rememberSaveableStateHolder(),
+    stop: LineStopRef? = null,
+    onStop: (LineStopRef?) -> Unit = {},
+    // The rider's last fix, for the stop's distance; null shows none.
+    here: Coordinates? = null,
+    // From: the stop's own page, as From… opens a station's. To: a trip there from here, as To… plans
+    // one; null where To… isn't offered (no near-me stops to start from).
+    onFrom: (LineStopRef) -> Unit = {},
+    onTo: ((LineStopRef) -> Unit)? = null,
 ) {
     // Each time the overlay comes up: TfL's list is asked for again if its day is up, or after a failure.
     LaunchedEffect(Unit) { viewModel.reopened() }
@@ -136,8 +155,43 @@ internal fun LinesOverlay(
         val dismissFailed by viewModel.dismissWriteFailed.collectAsStateWithLifecycle()
         val pagesOpen = remember { mutableIntStateOf(0) }
         val dismissal = LineAlertDismissal(viewModel::dismiss, dismissFailed, viewModel::dismissWriteFailureShown, pagesOpen)
-        CompositionLocalProvider(LocalDismissLineAlert provides dismissal) {
+        val system = LocalDistanceSystem.current
+        CompositionLocalProvider(
+            LocalDismissLineAlert provides dismissal,
+            // A station tapped on the map opens its details (SPEC *Finding a line*).
+            LocalOpenLineMapStop provides { id, name, position ->
+                val distance = if (position == null || here == null || system == null) {
+                    null
+                } else {
+                    StopDistance.label(NearestStops.distanceMeters(here.latitude, here.longitude, position.first, position.second), system)
+                }
+                onStop(LineStopRef(id, name, distance))
+            },
+        ) {
             OneLinePage(row, line.id, line.name, line.mode, onClose = { onOpen(null) })
+        }
+        if (stop != null) {
+            // A stop's details are a window of their own over the line's page (itself one, [TripLinesPage]),
+            // which stays up beneath them with its place, its folds and its work, so Back returns to its map
+            // just as it was, the station just opened in view (Codex on #659). Its distance was worked out
+            // once, at the tap, and is kept with the stop as its label, so the title is whole from the first
+            // frame and never changes under From and To (Codex on #659).
+            Dialog(
+                onDismissRequest = { onStop(null) },
+                properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+            ) {
+                // A dialog's window has none of the app's text size nor its pinch (SPEC *Display size*): both
+                // applied again here (Codex on #659).
+                FontSizePinchWindow {
+                    LineStopPage(
+                        name = stop.name,
+                        distance = stop.distance,
+                        onFrom = { onFrom(stop) },
+                        onTo = onTo?.let { to -> { to(stop) } },
+                        onBack = { onStop(null) },
+                    )
+                }
+            }
         }
     } else {
         val state by viewModel.state.collectAsStateWithLifecycle()
@@ -149,6 +203,51 @@ internal fun LinesOverlay(
                 onRetry = viewModel::retry,
                 onBack = onBack,
             )
+        }
+    }
+}
+
+/**
+ * A stop tapped on a line's map (SPEC *Finding a line*): its full name, how far it is ([distance],
+ * where known), and **From** and **To**, which do what From… and To… do with this stop picked.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun LineStopPage(name: String, distance: String?, onFrom: () -> Unit, onTo: (() -> Unit)?, onBack: () -> Unit) {
+    BackHandler(onBack = onBack)
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
+                    }
+                },
+                title = {},
+                actions = { AppMenuOverflow() },
+            )
+        },
+    ) { padding ->
+        // Scrolls, so a long name at a large text size never pushes From and To out of reach (Codex on #659).
+        val scroll = rememberScrollState()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .scrollEdgeCue(scroll, scrollCueColors(MaterialTheme.colorScheme.background))
+                .verticalScroll(scroll)
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                if (distance != null) stringResource(R.string.line_stop_title_distance, name, distance) else name,
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.testTag("lineStopTitle"),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onFrom) { Text(stringResource(R.string.line_stop_from)) }
+                if (onTo != null) Button(onClick = onTo) { Text(stringResource(R.string.line_stop_to)) }
+            }
         }
     }
 }
@@ -300,6 +399,18 @@ private fun LineRow(line: LineRef, onClick: () -> Unit) {
 }
 
 /** A picked line, saved with the screen as its three strings. */
+/**
+ * A stop tapped on a line's map, by its TfL id and the name the map shows, and how far it was from the
+ * rider's last fix when tapped, as its label ("350 m"; null with no fix, or no published position).
+ */
+@Immutable
+data class LineStopRef(val id: String, val name: String, val distance: String? = null)
+
+internal val LineStopRefSaver: Saver<LineStopRef?, ArrayList<String>> = Saver(
+    save = { stop -> stop?.let { arrayListOf(it.id, it.name, it.distance.orEmpty()) } },
+    restore = { saved -> if (saved.size == 3) LineStopRef(saved[0], saved[1], saved[2].ifEmpty { null }) else null },
+)
+
 internal val LineRefSaver: Saver<LineRef?, ArrayList<String>> = Saver(
     save = { line -> line?.let { arrayListOf(it.id, it.name, it.mode) } },
     restore = { saved -> if (saved.size == 3) LineRef(saved[0], saved[1], saved[2]) else null },

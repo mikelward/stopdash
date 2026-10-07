@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -71,7 +72,15 @@ internal sealed interface LineMapUi {
      * The [map] folded as asked: [items] to draw, and whether there's anything to fold at all; laid out
      * for the status [statusKey] stands for.
      */
-    class Ready(val map: LineMap, val items: List<LineMap.Item>, val foldable: Boolean, val statusKey: Any? = null) : LineMapUi
+    class Ready(
+        val map: LineMap,
+        val items: List<LineMap.Item>,
+        val foldable: Boolean,
+        val statusKey: Any? = null,
+        // Each stop's published position from the route data the map was laid from (the same map, not a
+        // copy): a tapped station's, handed with it, so its details show their distance from the first frame.
+        val positions: Map<String, Pair<Double, Double>> = emptyMap(),
+    ) : LineMapUi
 }
 
 // The map laid out from [from] for the status [statusKey] stands for, or none where it can't be: kept
@@ -134,8 +143,9 @@ internal fun rememberLineMap(
     val current = laid?.takeIf { it.from === sequence && Inputs.same(it.statusKey, statusKey) }
     val viewSlot = remember { mutableStateOf<Worked<Inputs, LineMapUi.Ready?>?>(null) }
     val map = current?.map
+    val positions = current?.from?.stopPositions.orEmpty()
     val ready = rememberWorked(viewSlot, Inputs(map, opened, all, statusKey), keep = { _, _ -> true }) {
-        map?.let { LineMapUi.Ready(it, it.folded(opened?.keys().orEmpty(), all), it.foldable(), statusKey) }
+        map?.let { LineMapUi.Ready(it, it.folded(opened?.keys().orEmpty(), all), it.foldable(), statusKey, positions) }
     }
     return when {
         source is LineMapUi -> source as LineMapUi
@@ -269,7 +279,7 @@ internal fun LazyListScope.lineMapSection(state: LineMapSectionState, railColor:
             if (!ui.map.closurePlaced) item(key = "lineMapNotPlaced") { LineMapNote(stringResource(R.string.line_map_closure_not_placed)) }
             items(ui.items, key = { "lineMap:${it.key}" }) { item ->
                 when (item) {
-                    is LineMap.Item.Station -> StationRow(item.row, ui.map.columns, railColor)
+                    is LineMap.Item.Station -> StationRow(item.row, ui.map.columns, railColor, ui.positions[item.row.stopId])
                     is LineMap.Item.Fold -> FoldRow(item, ui.map.columns, railColor) { state.open(item.key) }
                 }
             }
@@ -329,8 +339,16 @@ private fun DrawScope.drawRails(rails: List<LineMap.Rail>, top: Boolean, railCol
     }
 }
 
+/**
+ * Opens a station tapped on a line's map: its stop id and name. Provided where the page offers a stop's
+ * details (a line page opened from *Lines…*, SPEC *Finding a line*); null leaves the map's stations inert.
+ */
+val LocalOpenLineMapStop = compositionLocalOf<((stopId: String, name: String, position: Pair<Double, Double>?) -> Unit)?> { null }
+
 @Composable
-private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color) {
+private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, position: Pair<Double, Double>?) {
+    val openStop = LocalOpenLineMapStop.current
+    val openLabel = stringResource(R.string.line_stop_open)
     val surface = MaterialTheme.colorScheme.surface
     val closedColor = MaterialTheme.colorScheme.error
     val starColor = MaterialTheme.colorScheme.primary
@@ -345,6 +363,13 @@ private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color) {
     ).joinToString(", ")
     Row(
         modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)
+            .then(
+                if (openStop != null && row.stopId.isNotBlank()) {
+                    Modifier.clickable(onClickLabel = openLabel, role = Role.Button) { openStop(row.stopId, row.name, position) }
+                } else {
+                    Modifier
+                },
+            )
             .semantics(mergeDescendants = true) { if (state.isNotEmpty()) stateDescription = state },
     ) {
         Canvas(Modifier.width(gutterWidth(columns)).fillMaxHeight()) {
