@@ -51,6 +51,25 @@ class DirectTripTest {
         assertEquals("far", tripStartId(listOf(far, near), emptyList(), setOf("far"), distances, noneNearby = false, hereAnchor = null))
     }
 
+    // A new nearest stop a few steps on (or a refined fix) keeps the trip from here it was, so its
+    // routes stay up; far enough on, or from a station, the new stop is a trip of its own.
+    @Test
+    fun `a trip from here keeps its stop while the rider is under 150 m from where it was taken`() {
+        val rider = Coordinates(51.5, -0.12)
+        // About 100 m north, then about 200 m north.
+        val near = Coordinates(51.5009, -0.12)
+        val far = Coordinates(51.5018, -0.12)
+        val held = keptTripStart(null, "a", rider)
+        assertEquals(TripStart("a", rider), held)
+        assertEquals(held, keptTripStart(held, "b", near))
+        assertEquals(TripStart("b", far), keptTripStart(held, "b", far))
+        // The same nearest stop keeps where it was taken, so the 150 m counts from there.
+        assertEquals(held, keptTripStart(held, "a", far))
+        // From a station there's no position: its stop always keys it.
+        assertEquals(TripStart("b", null), keptTripStart(TripStart("a", null), "b", null))
+        assertEquals(TripStart("b", null), keptTripStart(held, "b", null))
+    }
+
     @Test
     fun `with no stop in range a trip from here still starts, keyed by where it plans from`() {
         val rider = Coordinates(51.5, -0.12)

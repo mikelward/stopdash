@@ -1463,8 +1463,11 @@ better one), between stations, and after the last ride to the picked stop.
 **Lifecycle.** The trip screen appears at once, titled with both ends, with a "Planning…"
 placeholder; the Planner call runs off the render path. A plan is kept in memory for the trip and
 reused if the same trip is reopened within 15 minutes. From "Here", a re-locate (the crosshairs, or
-a fresh fix) that resolves to a different nearest stop discards the plan and re-plans at once,
-showing "Planning…" rather than the old routes. A new fix that keeps the same nearest stop keeps the
+a fresh fix) that resolves to a different nearest stop **150 m or more** from where the trip took its
+stop discards the plan and re-plans at once, showing "Planning…" rather than the old routes. Closer than
+that (a refined fix, a few steps that tip the nearest stop over), it is the same trip (maintainer,
+2026-10-07): the Planner plans from the rider, not the stop, so the routes stay up rather than flicker
+through "Planning…". A new fix that keeps the trip keeps the
 plan while the rider is within **150 m** of where it was planned from (a fix's wander, or a few steps);
 once they are farther, the plan's first walk is from somewhere they've left, so the trip plans again
 from where they are, keeping the old routes up meanwhile, so the reachable first-leg trains follow

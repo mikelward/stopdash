@@ -250,6 +250,7 @@ import app.stopdash.ui.PlaceDirectSection
 import app.stopdash.ui.PlaceDirectViewModel
 import app.stopdash.ui.TripEnds
 import app.stopdash.ui.TripScreen
+import app.stopdash.ui.TripStart
 import app.stopdash.ui.TripViewModel
 import app.stopdash.ui.WatchInstallActions
 import app.stopdash.ui.WriteFailures
@@ -262,6 +263,7 @@ import app.stopdash.ui.Worked
 import app.stopdash.ui.rememberShownJourneys
 import app.stopdash.ui.favoriteRouteName
 import app.stopdash.ui.hereAnchor
+import app.stopdash.ui.keptTripStart
 import app.stopdash.ui.reachedStopIds
 import app.stopdash.ui.rememberFarReveal
 import app.stopdash.ui.rememberHereOrigin
@@ -3272,6 +3274,7 @@ class MainActivity : ComponentActivity() {
             toStores.clearAll()
             search.clear()
             anchorHolder.anchor = null
+            anchorHolder.start = null
             onClose()
         }
         // Nothing nearby to start from (every mode hidden, or a relocation that left none of the
@@ -3282,8 +3285,8 @@ class MainActivity : ComponentActivity() {
         // range, by where it plans from, which moves only with a move far enough to plan again.
         val hereAnchor = hereAnchor(anchorHolder.anchor, here)
         SideEffect { anchorHolder.anchor = hereAnchor }
-        val fromId = tripStartId(origin, anchors, fromStopIds, distanceMeters, noneNearby, hereAnchor)
-        if (fromId == null) {
+        val nearestId = tripStartId(origin, anchors, fromStopIds, distanceMeters, noneNearby, hereAnchor)
+        if (nearestId == null) {
             LaunchedEffect(Unit) {
                 if (keepSearchOnEmptyOrigin) {
                     stores.clearAll()
@@ -3295,6 +3298,11 @@ class MainActivity : ComponentActivity() {
             }
             return
         }
+        // From here, a new nearest stop a few steps on keeps the trip it was ([keptTripStart]): its routes
+        // stay up and re-plan in place rather than start over. With no stop in range, the anchor above.
+        val start = if (noneNearby) TripStart(nearestId, null) else keptTripStart(anchorHolder.start, nearestId, here)
+        SideEffect { anchorHolder.start = start }
+        val fromId = start.stopId
         LaunchedEffect(Unit) { onShown() }
         // The destination search: before anything is picked, and when the trip's To row reopens it.
         if (picking || (favorite == null && toId == null)) {
@@ -4146,6 +4154,9 @@ internal class WriteFailuresHolder : androidx.lifecycle.ViewModel() {
  */
 internal class HereAnchorHolder : androidx.lifecycle.ViewModel() {
     var anchor: Coordinates? = null
+
+    // The stop a trip from here is keyed by, and where the rider was then ([keptTripStart]).
+    var start: TripStart? = null
 }
 
 internal class NearbyDeparturesStores : androidx.lifecycle.ViewModel() {
