@@ -5596,7 +5596,7 @@ private fun partialRefreshMessage(names: List<String>, reason: DeparturesUiState
     }
 }
 
-private fun partialReason(kind: DeparturesUiState.Error.Kind): Int = when (kind) {
+internal fun partialReason(kind: DeparturesUiState.Error.Kind): Int = when (kind) {
     DeparturesUiState.Error.Kind.OFFLINE -> R.string.partial_reason_offline
     DeparturesUiState.Error.Kind.RATE_LIMITED -> R.string.partial_reason_rate_limited
     DeparturesUiState.Error.Kind.NETWORK -> R.string.partial_reason_network
