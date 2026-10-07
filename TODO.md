@@ -2700,7 +2700,7 @@ Builds on Phase 1's minimal line-status marking.
       check of the search and the page.
 - [x] **What a tap on a stop does on a line page opened from Lines…** (maintainer, 2026-10-07): opens
       the stop's details, its full name and distance, with From and To doing what From… and To… do.
-  - [ ] **Its fare zone** (maintainer, 2026-10-07): TfL's StopPoint `additionalProperties` carry a
+  - [x] **Its fare zone** (maintainer, 2026-10-07): TfL's StopPoint `additionalProperties` carry a
         tube or rail station's zone; one on-demand request per stop opened, cached.
   - [ ] **Its accessibility** (maintainer, 2026-10-07): step-free from street to platform, and a lift
         out of service now, from the step-free data the route pages already read.

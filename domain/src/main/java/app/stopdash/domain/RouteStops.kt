@@ -149,6 +149,15 @@ interface StopAreaSource {
 }
 
 /**
+ * Reads a station's fare zone from TfL (`/StopPoint/{stopId}`): "1", "2/3", blank where TfL gives none
+ * (a station outside the zones, a bus stop). For a stop's details (SPEC *Finding a line*); on demand,
+ * never on the refresh path. Throws a [TflException] on failure.
+ */
+interface StopZoneSource {
+    suspend fun stopZone(stopId: String): String
+}
+
+/**
  * A departure a filter left out because it couldn't be checked against its line's route: the line,
  * the stop it boards at, why ([RouteStops.Resolution], never [RouteStops.Resolution.Found]), and
  * the [destination] TfL gave it (its terminus label, blank where none) — public TfL data, so it can
@@ -643,6 +652,8 @@ class RouteStopsRepository(
     private val stations: (() -> List<IndexedStation>)? = null,
     // Where the merging and placing above run ([Workers]).
     private val compute: CoroutineDispatcher = Workers.compute,
+    // A station's fare zone, for its details (null: none looked up, as in a test).
+    private val zones: StopZoneSource? = source as? StopZoneSource,
 ) {
     private val cache = ConcurrentHashMap<String, RouteStopsStore.Timed<LineSequence>>()
     // Each line+direction's routes merged and placed ([merge]), with the cache entries they came
@@ -661,6 +672,9 @@ class RouteStopsRepository(
     // And each such station's interchange, by the station's id.
     @Volatile private var hubByStation: Map<String, String> = emptyMap()
     private val areaCache = ConcurrentHashMap<String, RouteStopsStore.Timed<List<StopLocation>>>()
+    // Each station's fare zone as fetched, kept in memory for [maxAge]: a zone doesn't change, and one
+    // request per station opened in a day is all it costs, so it isn't persisted.
+    private val zoneCache = ConcurrentHashMap<String, RouteStopsStore.Timed<String>>()
     private val storeLock = Mutex()
     // Route sequences share TfL's in-flight request pool with the live refresh, and a National Rail
     // one can take seconds: at most this many at once, so live times always find a free slot.
@@ -770,6 +784,26 @@ class RouteStopsRepository(
         areaCache[areaId] = RouteStopsStore.Timed(clock(), poles)
         save()
         return poles
+    }
+
+    /**
+     * The fare zone of station [stopId] ("1", "2/3"), fetched once a day per station and kept in memory;
+     * blank where TfL gives none, or no zone source is wired. Throws a [TflException] on failure after
+     * logging it (sanitized: the stop id and error class).
+     */
+    suspend fun loadZone(stopId: String): String = withContext(compute) {
+        zoneCache.freshValue(stopId)?.let { return@withContext it }
+        val zones = zones ?: return@withContext ""
+        val zone = try {
+            zones.stopZone(stopId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: TflException) {
+            warn("stop zone fetch failed for $stopId: ${e::class.simpleName}")
+            throw e
+        }
+        zoneCache[stopId] = RouteStopsStore.Timed(clock(), zone)
+        zone
     }
 
     /**

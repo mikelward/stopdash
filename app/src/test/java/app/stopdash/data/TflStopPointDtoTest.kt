@@ -181,4 +181,91 @@ class TflStopPointDtoTest {
         ).toStopLocationOrNull()
         assertEquals("London Northwestern Railway", stop?.lines?.single()?.name)
     }
+
+    @Test
+    fun `a station's fare zone is its own Zone property`() {
+        val station = TflStopPointDto(
+            id = "940GZZLUOXC",
+            commonName = "Oxford Circus Underground Station",
+            additionalProperties = listOf(TflAdditionalPropertyDto("Geo", "Zone", "1")),
+        )
+        assertEquals("1", station.fareZone("940GZZLUOXC"))
+    }
+
+    @Test
+    fun `an interchange answering for one of its stations gives the interchange's zone`() {
+        // TfL answers /StopPoint/940GZZLUSTD with Stratford's interchange record, zoned "2/3".
+        val hub = TflStopPointDto(
+            id = "HUBSRA",
+            commonName = "Stratford",
+            additionalProperties = listOf(TflAdditionalPropertyDto("Geo", "Zone", "2/3")),
+            children = listOf(TflStopPointDto(id = "940GZZLUSTD", commonName = "Stratford Underground Station")),
+        )
+        assertEquals("2/3", hub.fareZone("940GZZLUSTD"))
+    }
+
+    @Test
+    fun `a zone only on the asked station in the tree is found there`() {
+        val hub = TflStopPointDto(
+            id = "HUBSRA",
+            commonName = "Stratford",
+            children = listOf(
+                TflStopPointDto(
+                    id = "940GZZLUSTD",
+                    commonName = "Stratford Underground Station",
+                    additionalProperties = listOf(TflAdditionalPropertyDto("Geo", "Zone", "2/3")),
+                ),
+            ),
+        )
+        assertEquals("2/3", hub.fareZone("940GZZLUSTD"))
+    }
+
+    @Test
+    fun `a stop with no Zone property has none`() {
+        val pole = TflStopPointDto(
+            id = "490000129D",
+            commonName = "King's Cross Station",
+            additionalProperties = listOf(TflAdditionalPropertyDto("Direction", "Towards", "Euston")),
+        )
+        assertEquals("", pole.fareZone("490000129D"))
+    }
+
+    @Test
+    fun `a station's own zone wins over its interchange's, and NA is no zone`() {
+        // TfL's recorded King's Cross St. Pancras: the interchange is zone 1, St Pancras's high-speed
+        // station inside it "NA", as zone fares don't run there.
+        val hub = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString<TflStopPointDto>(
+            checkNotNull(javaClass.getResource("/fixtures/stoppoint_hubkgx.json")).readText(),
+        )
+        assertEquals("1", hub.fareZone("940GZZLUKSX"))
+        // "NA" is TfL's answer for that station: no zone, never "Zone NA" or the interchange's 1.
+        assertEquals("", hub.fareZone("910GSTPADOM"))
+    }
+
+    @Test
+    fun `the asked station's zone is taken before the record's`() {
+        val hub = TflStopPointDto(
+            id = "HUBX",
+            commonName = "Somewhere",
+            additionalProperties = listOf(TflAdditionalPropertyDto("Geo", "Zone", "1")),
+            children = listOf(
+                TflStopPointDto(
+                    id = "910GX",
+                    commonName = "Somewhere Rail Station",
+                    additionalProperties = listOf(TflAdditionalPropertyDto("Geo", "Zone", "2")),
+                ),
+            ),
+        )
+        assertEquals("2", hub.fareZone("910GX"))
+    }
+
+    @Test
+    fun `a station outside the zones has none`() {
+        val station = TflStopPointDto(
+            id = "910GX",
+            commonName = "Somewhere Rail Station",
+            additionalProperties = listOf(TflAdditionalPropertyDto("Geo", "Zone", "NA")),
+        )
+        assertEquals("", station.fareZone("910GX"))
+    }
 }

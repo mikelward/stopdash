@@ -108,7 +108,7 @@ device; none of that is sent anywhere either.
 
 **Lines…** (the menu's *Lines…*) asks TfL once a day for its public list of lines and keeps it in
 the app's cache; what you type is matched against that list on the device and never sent anywhere.
-Opening a line asks TfL for that line's status, naming only the line. The last eight lines you open
+Opening a line asks TfL for that line's status, naming only the line. Opening a stop on its map asks TfL for that stop's public record, naming only the stop: a tube, rail or tram station's for its fare zone (kept in memory for a day, never stored), a bus stop's area for its letter (kept with the routes, below). The last eight lines you open
 are remembered on the device to list under *Recent*, in app storage that Android never backs up or
 transfers; they are never logged or sent anywhere, and clearing the app's data removes them.
 

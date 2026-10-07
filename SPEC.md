@@ -2612,8 +2612,12 @@ Circus"), or its compass heading where TfL gives no letter or "towards", as the 
 poles: from its stop area's poles, the area as the line's route data places the stop, both from the
 route pages' day-long cache (the route loaded if it isn't there yet, as on a page restored after the app
 was closed), so at most one request per area a day. Its line is held, blank, from the first frame, and a long "towards" is cut to that one line, so
-what's under it never moves as it comes in. A station shows none and asks for none; a stop the lookup
-couldn't place keeps the blank line.
+what's under it never moves as it comes in. A station shows its **fare zone** on that line instead
+("Zone 1", "Zone 2/3"), from its own TfL record, one request a station a day, kept in memory; a station
+asks for no poles, a bus stop for no zone, and a river bus pier or cable car station (which have no
+zone) for neither: each by its own mode, not the line's, as a station opened from another's details can
+be of another (a tube station beside a pier). A stop the lookup couldn't place, or one TfL gives no zone
+(outside the zones, or "NA" where zone fares don't run), keeps the blank line.
 Under From and To are the **lines through it** as pills, each opening that line's page in place of the
 stop's (under, so the buttons never move as they come in); then the other stations of its interchange (**Same interchange**: the rail station beside
 a tube one) and the stations a short walk from it (**Nearby**, within 800 m, nearest five, with how far),
