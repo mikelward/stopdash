@@ -339,6 +339,9 @@ fun MainScreen(
     always: HomeLines.Always? = null,
     // The lines the row always covers, the networks the rider chose ([HomeLines.Network]).
     alwaysNetworks: Set<String> = HomeLines.DEFAULT_NETWORKS,
+    // The lines of the stations near each favorite place, which the row covers as the rider's own; null
+    // until they're worked out, the row holding meanwhile so its pills don't reorder as they land.
+    placeLines: HomeLines.PlaceLines? = HomeLines.PlaceLines.NONE,
     // True while a dismiss write has failed and not yet been surfaced (SPEC principle 2): same
     // snackbar seam as [starWriteFailed], so a dismiss tap that didn't persist isn't swallowed
     // silently. Acknowledged state; the screen calls [onDismissWriteFailureShown] to clear it.
@@ -827,13 +830,13 @@ fun MainScreen(
     val homeWork = remember { mutableStateOf<Worked<Inputs, TripRow>?>(null) }
     val disruptionsRow = when {
         !showDisruptionsRow -> null
-        !journeysSettled || !starredKnown -> homeWork.value?.value ?: TripRow.CHECKING
+        !journeysSettled || !starredKnown || placeLines == null -> homeWork.value?.value ?: TripRow.CHECKING
         else -> {
             val held = homeWork.value?.value
             rememberWorked(
                 homeWork,
                 // Compared part by part, a snapshot by identity, never by its contents (Codex, #598).
-                Inputs(loaded, stopDistanceMeters, always, alwaysNetworks, dismissed, now, refreshing, starred, journeys, shown, cardJourneys, nearestStops),
+                Inputs(loaded, stopDistanceMeters, always, alwaysNetworks, dismissed, now, refreshing, starred, journeys, shown, cardJourneys, nearestStops, placeLines),
                 keep = { _, _ -> true },
             ) {
                 // A journey card still checking may yet show another line it rides: the last row (or
@@ -851,7 +854,7 @@ fun MainScreen(
                 val journeyLines = HashSet<String>()
                 journeys.forEach { journeyLines += it.lineId }
                 journeyCards.forEach { card -> (card.state as? JourneyCardState.Trains)?.rows?.forEach { journeyLines += it.lineId } }
-                HomeLines.row(loaded, stopDistanceMeters, always, dismissed, now, refreshing, alwaysNetworks, starred, journeyLines, journeys, nearestStops)
+                HomeLines.row(loaded, stopDistanceMeters, always, dismissed, now, refreshing, alwaysNetworks, starred, journeyLines, journeys, nearestStops, placeLines?.lines.orEmpty(), placeLines?.unread == true)
             } ?: TripRow.CHECKING
         }
     }

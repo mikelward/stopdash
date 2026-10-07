@@ -172,6 +172,9 @@ fun SettingsScreen(
     // Its page closed, back up to Settings: the caller drops [startOnDisruptions], so Settings composed
     // afresh (back from a page opened over it) opens at the top, not on that page again (Codex, #607).
     onDisruptionsClosed: () -> Unit = {},
+    // Favorite places opened from the Disruptions summary page, whose lines it includes: back from them
+    // returns to that page, not Settings' top.
+    onOpenFavoritePlacesFromDisruptions: () -> Unit = onOpenFavoritePlaces,
 ) {
     // Counts the overflow's openings: each re-masks both keys ([ApiKeyRow]) before "Send bug report"
     // can be picked, since the report's screenshot is of this screen and a revealed key would be
@@ -418,6 +421,7 @@ fun SettingsScreen(
             networksLoaded = summaryNetworksLoaded,
             networksWriteFailed = summaryNetworksWriteFailed,
             onDismissNetworksError = onDismissSummaryNetworksError,
+            onOpenFavoritePlaces = onOpenFavoritePlacesFromDisruptions,
             onBack = {
                 disruptionsOpen = false
                 onDisruptionsClosed()
@@ -874,6 +878,7 @@ internal fun DisruptionsSummaryPage(
     networksWriteFailed: Boolean,
     onDismissNetworksError: () -> Unit,
     onBack: () -> Unit,
+    onOpenFavoritePlaces: () -> Unit = {},
 ) {
     BackHandler(onBack = onBack)
     Surface(modifier = Modifier.fillMaxSize().testTag("disruptionsSummaryPage")) {
@@ -927,7 +932,7 @@ internal fun DisruptionsSummaryPage(
                     )
                 }
                 // Which lines it always covers: only while the row shows, as it says nothing otherwise.
-                if (show) SummaryNetworksRow(networks, onToggleLine, enabled = networksLoaded)
+                if (show) SummaryNetworksRow(networks, onToggleLine, enabled = networksLoaded, onOpenFavoritePlaces = onOpenFavoritePlaces)
             }
         }
     }
@@ -937,7 +942,8 @@ internal fun DisruptionsSummaryPage(
  * What the disruptions summary always covers: a chip per line, the Tube's and the Overground's each under
  * the network's name and the single-line networks' under "Other" (maintainer, 2026-10-06: lines picked
  * one by one, in groups; 2026-10-07: no chip for a whole network, the row leans on the rider's own). A chip shows
- * selected while covered. The lines near the rider and their favorites' are covered whatever's chosen,
+ * selected while covered. The lines near the rider, their favorites', and the stations' near each favorite
+ * place (a button away) are covered whatever's chosen,
  * so none chosen is fine. Until the stored choice is read ([enabled] false) none shows selected.
  *
  * A tap names its line, and the setting turns it the other way on its latest choice, off the main
@@ -945,7 +951,7 @@ internal fun DisruptionsSummaryPage(
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SummaryNetworksRow(selected: Set<String>, onToggle: (String) -> Unit, enabled: Boolean) {
+private fun SummaryNetworksRow(selected: Set<String>, onToggle: (String) -> Unit, enabled: Boolean, onOpenFavoritePlaces: () -> Unit) {
     val slot = remember { mutableStateOf<Worked<Inputs, List<List<Boolean>>>?>(null) }
     // The last chips stand while a tap's are worked out, so nothing blinks out under the finger. Keyed by
     // the choice's identity ([Inputs]), so nothing compares the set's contents on this thread (Codex, #642).
@@ -957,6 +963,10 @@ private fun SummaryNetworksRow(selected: Set<String>, onToggle: (String) -> Unit
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        // The places whose stations' lines it includes, a tap away (maintainer, 2026-10-07).
+        TextButton(onClick = onOpenFavoritePlaces, modifier = Modifier.testTag("summaryFavoritePlaces")) {
+            Text(stringResource(R.string.settings_favorite_places_title))
+        }
         // Every chip is drawn from the first frame, none selected or tappable until which are selected is
         // worked out (Codex, #642).
         HomeLines.PICKER.forEachIndexed { g, (network, lines) ->

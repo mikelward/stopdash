@@ -392,6 +392,39 @@ class HomeLinesTest {
     }
 
     @Test
+    fun `a favorite place's station lines are covered wherever the rider is, checking until asked, then the rider's own`() {
+        // The rider at a bus stop; a favorite place by Euston, whose stations' lines the row covers though no
+        // stop near the rider serves them (maintainer, 2026-10-07).
+        val loaded = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus")), now, lineStatuses = mapOf("73" to severe), determinedLineIds = setOf("73"))
+        val near = mapOf("near" to 50.0)
+        val place = listOf(LineRef("northern", "Northern", "tube"), LineRef("london-northwestern", "London Northwestern Railway", "national-rail"))
+        val waiting = HomeLines.row(loaded, near, null, emptySet(), now, placeLines = place)
+        assertEquals(setOf("73", "northern", "london-northwestern"), waiting.every.mapTo(HashSet()) { it.leg.lineId })
+        assertTrue(row(waiting, "northern").checking)
+        assertFalse(waiting.unknown)
+        // Once asked: as bad as the near bus, a place's line ranks with it as the rider's own, by name, ahead of a
+        // network's line far away just as bad.
+        val northern = LineStatus("northern", 6, "Severe Delays")
+        val central = LineStatus("central", 6, "Severe Delays")
+        val judged = HomeLines.row(
+            loaded, near, HomeLines.Always(mapOf("northern" to northern, "london-northwestern" to LineStatus("london-northwestern", LineStatus.GOOD_SERVICE, "Good Service"), "central" to central), now),
+            emptySet(), now, networks = setOf("central"), placeLines = place,
+        )
+        assertEquals(listOf("73", "northern", "central"), judged.lines.map { it.lineId })
+        assertEquals("Northern", row(judged, "northern").leg.lineName)
+        assertFalse(judged.checking)
+    }
+
+    @Test
+    fun `favorite places never read leave the row unknown, never a clean none`() {
+        val loaded = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus")), now, determinedLineIds = setOf("73"))
+        val good = HomeLines.row(loaded, mapOf("near" to 50.0), null, emptySet(), now)
+        assertFalse(good.unknown)
+        val unread = HomeLines.row(loaded, mapOf("near" to 50.0), null, emptySet(), now, placesUnread = true)
+        assertTrue(unread.unknown)
+    }
+
+    @Test
     fun `a star counts at its own stop, not at another fetched stop the line serves`() {
         // The 38 starred at a stop gone from the list; another far stop, fetched, also serves it: that stop
         // doesn't stand in for the star (Codex, #640). Starred at the fetched stop, it does.
@@ -401,6 +434,52 @@ class HomeLinesTest {
         assertTrue(elsewhere.every.none { it.leg.lineId == "38" })
         val here = HomeLines.row(loaded, far, null, emptySet(), now, starred = setOf(app.stopdash.domain.StarredRow("other", "38", "outbound")))
         assertEquals(listOf("38"), here.every.map { it.leg.lineId })
+    }
+
+    @Test
+    fun `a place's station lines follow the places, the last standing while they can't be read, worked on the worker`() {
+        // A place at King's Cross (a stock stand-in: a station, not anyone's home); Victoria's line far from it.
+        val index = app.stopdash.domain.StationIndex(
+            listOf(
+                app.stopdash.domain.IndexedStation("940GZZLUKSX", "King's Cross St. Pancras", latitude = 51.5308, longitude = -0.1238, lines = mapOf("tube" to listOf("northern"))),
+                app.stopdash.domain.IndexedStation("940GZZLUVIC", "Victoria", latitude = 51.4965, longitude = -0.1447, lines = mapOf("tube" to listOf("district"))),
+            ),
+            lineNames = mapOf("northern" to "Northern"),
+        )
+        val place = app.stopdash.domain.FavoritePlace("p", app.stopdash.domain.FavoriteKind.CUSTOM, "Place", app.stopdash.domain.Coordinates(51.5308, -0.1238))
+        val readOn = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val warned = mutableListOf<String>()
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }
+        try {
+            val sets = flowOf(
+                app.stopdash.domain.FavoritePlacesSet.Unavailable,
+                app.stopdash.domain.FavoritePlacesSet.Loaded(listOf(place)),
+                app.stopdash.domain.FavoritePlacesSet.Unavailable,
+                app.stopdash.domain.FavoritePlacesSet.Loaded(emptyList()),
+                app.stopdash.domain.FavoritePlacesSet.Loaded(listOf(place)),
+                app.stopdash.domain.FavoritePlacesSet.Discarded,
+            )
+            val lines = kotlinx.coroutines.runBlocking {
+                HomeLines.placeLines(sets, { index.also { readOn += Thread.currentThread().name } }, executor.asCoroutineDispatcher(), warned::add).toList()
+            }
+            val northern = listOf(LineRef("northern", "Northern", "tube"))
+            // Unreadable before any were read: none, marked unread. Read: the station's line. Unreadable again: the
+            // last stands. No places, then one again, then a discarded file: what each says.
+            assertEquals(listOf(emptyList(), northern, northern, emptyList(), northern, emptyList()), lines.map { it.lines })
+            assertEquals(listOf(true, false, false, false, false, false), lines.map { it.unread })
+            // No station index to read: the places' lines can't be named, so unread, never "no lines there".
+            val noIndex = kotlinx.coroutines.runBlocking {
+                HomeLines.placeLines(
+                    flowOf(app.stopdash.domain.FavoritePlacesSet.Loaded(listOf(place))), { app.stopdash.domain.StationIndex.EMPTY }, executor.asCoroutineDispatcher(),
+                ).toList()
+            }
+            assertEquals(listOf(true), noIndex.map { it.unread })
+            assertEquals(2, warned.size) // the two unreadable reads
+            assertTrue(readOn.isNotEmpty())
+            assertTrue(readOn.all { it.startsWith("worker") })
+        } finally {
+            executor.shutdown()
+        }
     }
 
     @Test

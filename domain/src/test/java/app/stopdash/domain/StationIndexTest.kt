@@ -18,6 +18,35 @@ class StationIndexTest {
     )
 
     @Test
+    fun `lines near a place are every line of the stations within reach of it`() {
+        // King's Cross and Euston, about 750 m apart; Victoria far from both.
+        val stations = StationIndex(
+            listOf(
+                IndexedStation("940GZZLUKSX", "King's Cross St. Pancras", latitude = 51.5308, longitude = -0.1238, lines = mapOf("tube" to listOf("northern", "victoria"))),
+                IndexedStation("910GKGX", "King's Cross", latitude = 51.5320, longitude = -0.1233, lines = mapOf("national-rail" to listOf("great-northern"))),
+                IndexedStation("940GZZLUEUS", "Euston", latitude = 51.5282, longitude = -0.1337, lines = mapOf("tube" to listOf("northern", "victoria"))),
+                IndexedStation("910GEUSTON", "Euston", latitude = 51.5281, longitude = -0.1340, lines = mapOf("national-rail" to listOf("london-northwestern"))),
+                IndexedStation("940GZZLUVIC", "Victoria", latitude = 51.4965, longitude = -0.1447, lines = mapOf("tube" to listOf("district"))),
+                IndexedStation("940GNOWHERE", "No position", lines = mapOf("tube" to listOf("central"))),
+            ),
+            lineNames = mapOf("northern" to "Northern", "victoria" to "Victoria", "great-northern" to "Great Northern"),
+        )
+        val kingsCross = Coordinates(51.5308, -0.1238)
+        assertEquals(
+            listOf(LineRef("northern", "Northern", "tube"), LineRef("victoria", "Victoria", "tube"), LineRef("great-northern", "Great Northern", "national-rail")),
+            stations.linesNear(listOf(kingsCross), 500),
+        )
+        // Two places: each one's own stations, together, a line both share once; one with no name by its id.
+        val euston = Coordinates(51.5282, -0.1337)
+        assertEquals(
+            listOf("northern", "victoria", "great-northern", "london-northwestern"),
+            stations.linesNear(listOf(kingsCross, euston), 500).map { it.id },
+        )
+        assertEquals("london-northwestern", stations.linesNear(listOf(euston), 500).last().name)
+        assertEquals(emptyList<LineRef>(), stations.linesNear(emptyList(), 500))
+    }
+
+    @Test
     fun `a station inside a matched hub is folded into the hub`() {
         assertEquals(listOf("HUBKGX"), index.search("kings").map { it.id })
     }
