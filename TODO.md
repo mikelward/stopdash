@@ -1666,6 +1666,17 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               line and wraps to a second only if those don't fit. Consider never wrapping it: one line,
               shortened to the floor and then cut with "…", trading a fuller name for a card that never
               grows or shifts.
+        - [x] **Done at the end of a trip lands on the near-me list** (maintainer, 2026-10-07; #658): an
+              arrived trip's Done closes the trip options it was started from (the near-me trip, or that
+              station's search, page and trip, a route page or Lines… it was opened from) and leaves a
+              screen the notification was opened over.
+          - [ ] **A Find a station search under Plan again**: Plan again from a notification opened over
+                an unrelated search opens the replacement station on top of it, so that trip's Done
+                closes the search too. Record whether the search belongs to the replacement (Codex, #658).
+          - [ ] **A near-me route page under a notification-opened overlay**: every overlay but a stop
+                opened from the route page drops the near-me body's saved route page, On the way from
+                its notification included, so Done lands on the list rather than that page. Keeping
+                the body under a notification-opened overlay is an app-wide change (Codex, #658).
       - [x] **One-tap trips**: the near-me top bar's Directions button opens *To…* in one tap, with
             room freed by shortening the freshness stamp to "1 min ago" (maintainer, 2026-09-26).
       - [ ] **Better than a bare "est."** (maintainer, 2026-09-26): a leg past its live predictions
