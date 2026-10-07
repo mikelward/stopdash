@@ -303,6 +303,144 @@ class PlaceDirectViewModelTest {
     }
 
     @Test
+    fun `a stop at the edge of the trip's reach stays while the fix wavers, its row with it`() = runBlocking {
+        val model = model(client { stopId -> if (stopId == "MID") listOf(departure("Bottom", 60)) else emptyList() })
+        val top = StopRef("TOP", "Top")
+        val mid = StopRef("MID", "Mid")
+        val within = PlaceDirectViewModel.Inputs(listOf(top, mid), mapOf("TOP" to 100.0, "MID" to 315.0))
+        model.setInputsQuietly(within)
+        model.refresh()
+        assertEquals("MID", (model.state.value as PlaceDirectViewModel.State.Ready).rows.single().row.fromId)
+        // The next fix puts Mid a few meters past the reach: it stays, and so does its row.
+        model.setInputsQuietly(PlaceDirectViewModel.Inputs(listOf(top), mapOf("TOP" to 95.0, "MID" to 330.0)))
+        model.refresh()
+        assertEquals("MID", (model.state.value as PlaceDirectViewModel.State.Ready).rows.single().row.fromId)
+        // Walked well away from it: it goes.
+        model.setInputsQuietly(PlaceDirectViewModel.Inputs(listOf(top), mapOf("TOP" to 60.0, "MID" to 420.0)))
+        model.refresh()
+        assertTrue((model.state.value as PlaceDirectViewModel.State.Ready).rows.isEmpty())
+    }
+
+    @Test
+    fun `a stop only a look a change overtook took isn't kept for the next`() = runBlocking {
+        val top = StopRef("TOP", "Top")
+        val mid = StopRef("MID", "Mid")
+        lateinit var model: PlaceDirectViewModel
+        var overtake = false
+        model = model(
+            client { stopId ->
+                // A later fix leaves Mid out, just past the reach, while this look's fetch is out.
+                if (overtake) model.setInputsQuietly(PlaceDirectViewModel.Inputs(listOf(top), mapOf("TOP" to 100.0, "MID" to 330.0)))
+                if (stopId == "MID") listOf(departure("Bottom", 60)) else emptyList()
+            },
+        )
+        model.setInputsQuietly(PlaceDirectViewModel.Inputs(listOf(top), mapOf("TOP" to 100.0, "MID" to 400.0)))
+        model.refresh()
+        // An intermediate fix takes Mid in, but a later one overtakes its look.
+        overtake = true
+        model.setInputsQuietly(PlaceDirectViewModel.Inputs(listOf(top, mid), mapOf("TOP" to 100.0, "MID" to 310.0)))
+        model.refresh(pulled = true)
+        overtake = false
+        model.refresh(pulled = true)
+        assertTrue((model.state.value as PlaceDirectViewModel.State.Ready).rows.isEmpty())
+    }
+
+    @Test
+    fun `a stop past the reach isn't kept over a changed choice, nor without a distance`() {
+        val top = StopRef("TOP", "Top")
+        val mid = StopRef("MID", "Mid")
+        val before = PlaceDirectViewModel.Inputs(listOf(top, mid), mapOf("MID" to 315.0))
+        val held = before to listOf(top, mid)
+        val wavered = PlaceDirectViewModel.Inputs(listOf(top), mapOf("MID" to 330.0), hidden = before.hidden, avoided = before.avoided, tripModes = before.tripModes)
+        assertEquals(listOf(top, mid), PlaceDirectViewModel.steadyOrigin(wavered, held))
+        val avoiding = PlaceDirectViewModel.Inputs(listOf(top), mapOf("MID" to 330.0), avoided = setOf("rail"))
+        assertEquals(listOf(top), PlaceDirectViewModel.steadyOrigin(avoiding, held))
+        val unknown = PlaceDirectViewModel.Inputs(listOf(top), emptyMap(), hidden = before.hidden, avoided = before.avoided, tripModes = before.tripModes)
+        assertEquals(listOf(top), PlaceDirectViewModel.steadyOrigin(unknown, held))
+    }
+
+    @Test
+    fun `rows on show keep their places as their trains come and go, and a line found later goes under them`() = runBlocking {
+        fun on(line: String, inSeconds: Long) = Departure(line, line, "", "Bottom", null, now.plusSeconds(inSeconds), "bus")
+        var trains = listOf(on("a", 60), on("b", 120))
+        val model = model(client { trains })
+        model.refresh()
+        fun shown() = (model.state.value as PlaceDirectViewModel.State.Ready).rows.map { it.row.lineId }
+        assertEquals(listOf("a", "b"), shown())
+        // b's bus now comes first, and a line not seen before has the soonest of all: nothing moves.
+        trains = listOf(on("c", 30), on("b", 45), on("a", 90))
+        // Asked afresh, past the shared arrivals.
+        model.refresh(pulled = true)
+        assertEquals(listOf("a", "b", "c"), shown())
+        // a gone: the rest close up in the order they were in.
+        trains = listOf(on("c", 30), on("b", 45))
+        model.refresh(pulled = true)
+        assertEquals(listOf("b", "c"), shown())
+        // Stood down to Checking (back after a while, a Retry): the order still holds.
+        Dispatchers.setMain(Dispatchers.Unconfined)
+        try {
+            model.retry()
+        } finally {
+            Dispatchers.resetMain()
+        }
+        trains = listOf(on("c", 30), on("b", 45), on("a", 50))
+        model.refresh(pulled = true)
+        assertEquals(listOf("b", "c", "a"), shown())
+    }
+
+    @Test
+    fun `a look a change overtook leaves the order as shown`() = runBlocking {
+        fun on(line: String, inSeconds: Long) = Departure(line, line, "", "Bottom", null, now.plusSeconds(inSeconds), "bus")
+        lateinit var model: PlaceDirectViewModel
+        var overtake = false
+        var trains = listOf(on("a", 60), on("b", 120))
+        model = model(
+            client {
+                // The rider's fix moves the trip's stops while this look's fetch is out.
+                if (overtake) model.setInputsQuietly(PlaceDirectViewModel.Inputs(listOf(StopRef("TOP", "Top"))))
+                trains
+            },
+        )
+        model.refresh()
+        fun shown() = (model.state.value as PlaceDirectViewModel.State.Ready).rows.map { it.row.lineId }
+        assertEquals(listOf("a", "b"), shown())
+        overtake = true
+        trains = listOf(on("b", 30), on("c", 60))
+        model.refresh(pulled = true)
+        assertEquals(listOf("a", "b"), shown())
+        overtake = false
+        trains = listOf(on("d", 20), on("b", 30), on("a", 40))
+        model.refresh(pulled = true)
+        assertEquals(listOf("a", "b", "d"), shown())
+    }
+
+    @Test
+    fun `what the section says goes to the debug log when it changes, not every look`() = runBlocking {
+        val logged = mutableListOf<String>()
+        var trains = listOf(departure("Bottom", 60))
+        val model = PlaceDirectViewModel(
+            ends = { listOf(DirectTrips.End("BOT", "Bottom")) },
+            client = client { trains },
+            routes = routes,
+            arrivals = ArrivalsCache(),
+            clock = { now },
+            warn = { logged += it },
+            io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
+        ).apply { setOrigin(listOf(StopRef("TOP", "Top"))) }
+        model.refresh()
+        model.refresh()
+        // Another line's train now comes first: the rows on show don't move, so nothing new is said.
+        trains = listOf(Departure("other", "Other", "", "Bottom", null, now.plusSeconds(30), "tube"), departure("Bottom", 60))
+        model.refresh(pulled = true)
+        trains = listOf(departure("Bottom", 60), Departure("other", "Other", "", "Bottom", null, now.plusSeconds(90), "tube"))
+        model.refresh(pulled = true)
+        trains = emptyList()
+        model.refresh(pulled = true)
+        assertEquals(listOf("direct: rows rail@TOP", "direct: rows rail@TOP,other@TOP", "direct: rows none"), logged.filter { it.startsWith("direct: ") })
+    }
+
+    @Test
     fun `nothing is looked up until the rider's choices are read`() = runBlocking {
         var asked = 0
         val model = model(client { asked++; listOf(departure("Bottom", 60)) })
