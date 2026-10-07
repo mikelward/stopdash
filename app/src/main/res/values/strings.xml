@@ -415,6 +415,9 @@
     <string name="trip_direct_none">None</string>
     <string name="trip_direct_failed">Couldn\'t check</string>
     <string name="trip_direct_more">+%1$d more</string>
+    <string name="trip_direct_open">Open route</string>
+    <string name="trip_direct_replan_failed">Couldn\'t update the Direct route</string>
+    <string name="trip_direct_not_planned">Couldn\'t plan</string>
     <string name="trip_direct_partial">Couldn\'t check every line</string>
     <!-- Atop a trip's routes, before a chip per line the rider avoids (maintainer, 2026-10-01). -->
     <string name="trip_avoiding">Avoiding</string>

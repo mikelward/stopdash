@@ -96,7 +96,17 @@ class PlaceDirectViewModel(
      * [notice] ("Bond Street: Station closed"), each said under the row.
      */
     @Immutable
-    data class ShownRow(val row: PlaceDirect.Row, val times: String, val disruption: String? = null, val notice: String? = null)
+    // [endIds]: the stops near the place its trains reach, by id and station, worked out with the look so a tap
+    // opening its ride ([TripViewModel.openDirect]) only reads them; [endKey] the same as one string, so a row
+    // that reaches others since a failed tap isn't said to have failed ([TripViewModel.DirectOpening.endKey]).
+    data class ShownRow(
+        val row: PlaceDirect.Row,
+        val times: String,
+        val disruption: String? = null,
+        val notice: String? = null,
+        val endIds: Set<String> = emptySet(),
+        val endKey: String = "",
+    )
 
     private val _state = MutableStateFlow<State>(State.Checking)
     val state: StateFlow<State> = _state.asStateFlow()
@@ -328,7 +338,11 @@ class PlaceDirectViewModel(
                         row.departures.map { it.direction }.distinct().map(line::forDirection).filter { it.disrupted }
                             .minWithOrNull(compareBy({ it.isFallback }, { it.severity }))
                     }
-                    ShownRow(row, Countdown.mergedLabel(row.departures, now), status?.description, closureNotice(row, closures.found, now))
+                    val ends = row.reaches.flatMapTo(HashSet()) { listOf(it.id, it.hubId) }.apply { remove("") }
+                    ShownRow(
+                        row, Countdown.mergedLabel(row.departures, now), status?.description, closureNotice(row, closures.found, now),
+                        ends, ends.sorted().joinToString(","),
+                    )
                 },
                 checking = result.pending,
                 // A row whose line's status, or a stop's closures, couldn't be had isn't vouched for either.

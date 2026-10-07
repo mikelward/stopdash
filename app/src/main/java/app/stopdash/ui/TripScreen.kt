@@ -756,7 +756,7 @@ internal fun tripEstimates(
     // such a leg is timed only by a live train ([TripTiming.estimate]'s timetabled). Null: all are.
     planned: Set<TripLeg>? = null,
 ): List<TripTiming.Estimate>? {
-    val routes = state.shownRoutes(hidden)?.let { TripViewModel.bestOf(it, keep) } ?: return null
+    val routes = state.shownRoutes(hidden)?.let { TripViewModel.bestOf(it, keep, state.directKeys) } ?: return null
     val notRunning = TripTiming.notRunning(state.statuses.values)
     // A line with no status known (left out of TfL's answer, or a failed check) can't be vouched
     // for as running.
@@ -828,8 +828,8 @@ internal fun sequenceLineIds(state: TripViewModel.State, hidden: Set<String>, se
     val shown = state.shownRoutes(hidden).orEmpty()
     // And every other line at a timed ride's boarding stop, to tell whether it serves the ride's
     // stops too ([rideLines]): a route each, loaded once a day like the rest.
-    val timed = TripViewModel.bestOf(shown.filterNot { route -> route.rides.any { HiddenModes.isHidden(it.mode, it.lineId, hidden) } }, keep)
-    val lines = timedLineIds(shown, hidden, keep) + rideLineIds(timed, state, hidden)
+    val timed = TripViewModel.bestOf(shown.filterNot { route -> route.rides.any { HiddenModes.isHidden(it.mode, it.lineId, hidden) } }, keep, state.directKeys)
+    val lines = timedLineIds(shown, hidden, keep, state.directKeys) + rideLineIds(timed, state, hidden)
     return (if (landing) settled + lines else lines).distinct()
 }
 
@@ -854,8 +854,8 @@ internal fun rememberTripLineIds(planned: TripViewModel.State, excluded: Set<Str
  * The lines of the routes a trip times: not riding a [hidden] mode, and within the cap, or the open
  * route ([keep]) past it ([TripViewModel.bestOf]).
  */
-internal fun timedLineIds(routes: List<TripRoute>, hidden: Set<String>, keep: Collection<String> = emptyList()): List<String> =
-    TripViewModel.bestOf(routes.filterNot { route -> route.rides.any { HiddenModes.isHidden(it.mode, it.lineId, hidden) } }, keep)
+internal fun timedLineIds(routes: List<TripRoute>, hidden: Set<String>, keep: Collection<String> = emptyList(), direct: Set<String> = emptySet()): List<String> =
+    TripViewModel.bestOf(routes.filterNot { route -> route.rides.any { HiddenModes.isHidden(it.mode, it.lineId, hidden) } }, keep, direct)
         .flatMap { route -> route.rides.map { it.lineId } }.distinct()
 
 /**
@@ -1228,7 +1228,7 @@ private fun TripContent(
     // A bus station's stand a bus boards at in place of the Planner's is placed only once the trip
     // has fetched it ([onPoles]), so it's handed to the trip to fetch ([placedStands]).
     val stands = remember(planned, routeSequences, excluded, openRef) {
-        placedStands(TripViewModel.bestOf(planned.shownRoutes(excluded).orEmpty(), openRef?.keys.orEmpty()), routeSequences)
+        placedStands(TripViewModel.bestOf(planned.shownRoutes(excluded).orEmpty(), openRef?.keys.orEmpty(), planned.directKeys), routeSequences)
     }
     LaunchedEffect(stands) { onPlacedStands(stands) }
     // The open route as the plan offers it now ([OpenRoute.routeIn]): its walks at the current pace,
@@ -2007,6 +2007,10 @@ private fun RouteList(
     ) {
         state.planError?.let { error -> item(key = "error") { PlanFailure(error, state.planning, onRetry) } }
         if (state.planError == null && state.planIncomplete) item(key = "incomplete") { PlanIncomplete(state.planning, onRetry) }
+        // A Direct route that couldn't be planned again ([TripViewModel.openDirect]): kept or closed, said.
+        if (state.planError == null && state.directFailed) {
+            item(key = "directFailed") { PlanNotice(stringResource(R.string.trip_direct_replan_failed), state.planning, onRetry) }
+        }
         // A plan past its reuse is being planned again: its routes stay, stamped with their age.
         val plannedAt = state.plannedAt
         if (state.planning && plannedAt != null) {
@@ -2707,6 +2711,10 @@ private fun RouteLegs(
         // A re-plan that failed says so over the open route too, with its Retry, as the list does.
         state.planError?.let { error -> item(key = "error") { PlanFailure(error, state.planning, onRetry) } }
         if (state.planError == null && state.planIncomplete) item(key = "incomplete") { PlanIncomplete(state.planning, onRetry) }
+        // A Direct route that couldn't be planned again ([TripViewModel.openDirect]): kept or closed, said.
+        if (state.planError == null && state.directFailed) {
+            item(key = "directFailed") { PlanNotice(stringResource(R.string.trip_direct_replan_failed), state.planning, onRetry) }
+        }
         item(key = "summary") { RouteSummary(listOf(estimate), rideLines, view.statuses, Modifier.padding(vertical = 8.dp)) }
         item(key = "status") { DisruptionsRow(row) }
         val firstStop = estimate.route.legs.firstOrNull()?.fromName

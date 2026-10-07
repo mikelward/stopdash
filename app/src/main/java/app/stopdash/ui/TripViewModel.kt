@@ -65,6 +65,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -227,7 +229,15 @@ class TripViewModel(
 
     // The walking speed, the walk limit, the step-free level or the trip modes changed: the plan
     // shown was made for the old ones.
+    // Bumped on every change of the rider's choices, first thing: read by a plan publishing from the worker,
+    // which drops its routes once the choices it was planned under have changed ([plan]).
+    @Volatile
+    private var optionsVersion = 0
+
     private fun optionsChanged() {
+        optionsVersion++
+        // A Direct row that found none under the old choices may have one under these: it no longer says so.
+        if (_directOpening.value?.failed == true) _directOpening.value = null
         // Routes planned for the old options aren't shown under the new ones, even while the new plan
         // runs or if it fails: the plan kept for these stands in, or none ("Planning…"). Before the
         // trip starts too, since the settings are read from storage after the model is made: it opens
@@ -235,9 +245,15 @@ class TripViewModel(
         val here = origin() is TripOrigin.Here
         val kept = plans.get(fromId, destinations, here, walkingSpeed, maxWalk, stepFree, tripModes)
         plannedFrom = plans.origin(fromId, destinations, here, walkingSpeed, maxWalk, stepFree, tripModes)
+        plannedContext = plannedFrom?.let { PlanContext(it, walkingSpeed, maxWalk, stepFree, tripModes) }
+        // A Direct route open is asked for again under the new choices ([plan]): a plan kept for them is
+        // planned again, not just shown, and reads as planning meanwhile, so the route isn't closed as gone.
+        val redoDirect = directRide != null && job != null && !awaitingOptions
         _state.update {
             it.copy(
                 routes = kept?.first,
+                directKeys = emptySet(),
+                planning = it.planning || redoDirect,
                 plannedAt = kept?.second,
                 planError = null,
                 planIncomplete = false,
@@ -248,7 +264,7 @@ class TripViewModel(
         }
         // Before the trip is first started there's no plan running to replace: the first takes them,
         // as does one still waiting for them to be read.
-        if (job != null && !awaitingOptions) start(replan = kept == null)
+        if (job != null && !awaitingOptions) start(replan = kept == null || redoDirect)
     }
 
     /** One boarding stop's last arrivals and when they were fetched; [failed] when the last fetch failed. */
@@ -318,6 +334,11 @@ class TripViewModel(
         // What's drawn from an earlier state tells by it, in constant time, that something it vouched for
         // has since failed, changed or gone (Codex, #529).
         val failures: Int = 0,
+        // The routes added for a Direct row ([openDirect]) that the plan didn't offer: openable, timed
+        // while open, never a card of their own. By [routeKey].
+        val directKeys: Set<String> = emptySet(),
+        // The last re-plan couldn't ask again for the Direct route open ([openDirect]): said with a Retry.
+        val directFailed: Boolean = false,
     ) {
         /**
          * [routes] as shown: without those riding a [hidden] mode, then without the detours
@@ -349,9 +370,9 @@ class TripViewModel(
             if (value == field) return
             // The routes timed and fetched for: those shown, within the cap ([bestOf]), since a
             // hidden mode can also move a route already shown into the soonest few.
-            val before = bestOf(_state.value.shownRoutes(field).orEmpty(), openKeys())
+            val before = bestOf(_state.value.shownRoutes(field).orEmpty(), openKeys(), _state.value.directKeys)
             field = value
-            if (_state.value.routes != null && bestOf(_state.value.shownRoutes(value).orEmpty(), openKeys()).any { route -> before.none { it === route } }) refresh()
+            if (_state.value.routes != null && bestOf(_state.value.shownRoutes(value).orEmpty(), openKeys(), _state.value.directKeys).any { route -> before.none { it === route } }) refresh()
         }
 
     /**
@@ -366,6 +387,9 @@ class TripViewModel(
             set(key) {
                 held.value = key
                 savedState[KEY_OPEN_ROUTE] = key
+                if (key != null && key != openAtTap) openedSinceTap = true
+                // A Direct row's route closed is let go: it was only ever there to be open.
+                if (_state.value.directKeys.isNotEmpty() || directRide != null) viewModelScope.launch { dropClosedDirect() }
             }
         override fun component1() = value
         override fun component2(): (String?) -> Unit = { value = it }
@@ -377,12 +401,13 @@ class TripViewModel(
 
     // The routes a refresh fetches for and checks ([refreshLive]): those shown, less a hidden mode's,
     // the soonest few and the open one ([bestOf]).
-    private fun timedRoutes(): List<TripRoute>? = _state.value.shownRoutes(hiddenModes)?.let { bestOf(it, openKeys()) }
+    private fun timedRoutes(): List<TripRoute>? = _state.value.let { s -> s.shownRoutes(hiddenModes)?.let { bestOf(it, openKeys(), s.directKeys) } }
 
     // The saved handle can outlive this trip (it's the activity's, by the model's key): a trip
     // planned afresh must not open this one's route.
     override fun onCleared() {
         savedState.remove<String>(KEY_OPEN_ROUTE)
+        savedState.remove<String>(KEY_DIRECT_RIDE)
     }
 
     // A refresh asked for while one runs: run once more when it ends, so a re-pick (a new fix, a
@@ -394,6 +419,286 @@ class TripViewModel(
      * time; a call during a refresh queues one more after it.
      */
     fun refresh() = start(replan = false)
+
+    /**
+     * A Direct row being opened ([openDirect]): its line and stop, whether no route was found, and the stops near the
+     * place it reached when tapped ([PlaceDirectViewModel.ShownRow.endKey]): a row reaching others since hasn't failed.
+     */
+    data class DirectOpening(val lineId: String, val fromId: String, val failed: Boolean = false, val endKey: String = "")
+
+    private val _directOpening = MutableStateFlow<DirectOpening?>(null)
+    val directOpening: StateFlow<DirectOpening?> = _directOpening.asStateFlow()
+    private var directJob: Job? = null
+
+    /**
+     * Opens a Direct row's ride as a route (SPEC *Direct to a place*; maintainer, 2026-10-07): the walk to
+     * [fromId], [lineId] from there, and the walk on to the place. The plan's own route when it has one
+     * riding just that line from that stop; otherwise the Planner is asked for the trip via [fromId] under
+     * the rider's own options, and its route riding just that line is added, openable but never a card.
+     * None found says so on the row ([directOpening]) rather than open something else. Only a ride that gets
+     * off at one of [ends] (the row's stops near the place, by id or station) is its ride: on a line that
+     * forks, another branch's train gets off somewhere else; empty, any is.
+     */
+    fun openDirect(lineId: String, fromId: String, ends: Set<String> = emptySet(), endKey: String = "") {
+        directJob?.cancel()
+        _directOpening.value = DirectOpening(lineId, fromId, endKey = endKey)
+        // The rider's latest choice from the moment of the tap, whether it opens or not: a row closed before,
+        // waiting on its Retry, is let go with its notice, so a plan landing meanwhile neither opens it again
+        // ([settleDirect]) nor asks for it ([plan]).
+        if (directAwaitingRetry) {
+            directRide = null
+            directAwaitingRetry = false
+            _state.update { it.copy(directFailed = false) }
+        }
+        // The route open at the tap: another opened while it's planned (a card tapped meanwhile) stands.
+        openAtTap = openRoute.value
+        openedSinceTap = false
+        directJob = viewModelScope.launch {
+            var opened = false
+            var overtaken = false
+            var askedLast: PlanContext? = null
+            run {
+                // Asked again whenever the rider changed a choice or moved while it was asked, however often: a
+                // route under the old ones may break their latest (a step-free level, a mode turned off). Each
+                // ask again comes from a change of theirs, so it ends when they stop. A route gone from a plan
+                // published meanwhile is asked for again once.
+                var goneAgain = false
+                while (true) {
+                    val asked = context()
+                    askedLast = asked
+                    val version = optionsVersion
+                    fun current() = optionsVersion == version && context().sameAs(asked)
+                    val found = try {
+                        findDirect(lineId, fromId, { ends }, asked, _state.value.routes.orEmpty(), plannedContext)
+                    } catch (e: TflException) {
+                        // The stop and line, never where the trip goes (SPEC *Privacy*).
+                        warn("direct route on $lineId from $fromId not planned: ${e::class.simpleName}")
+                        if (current()) break else continue
+                    }
+                    // None, or not reached, under the choices it was asked under: asked again if they've changed
+                    // since, else said.
+                    if (found == null) {
+                        if (current()) break else continue
+                    }
+                    // Its mode hidden, or its line avoided, meanwhile: its row is gone, so nothing opens.
+                    fun excluded() = HiddenModes.isHidden(found.mode, lineId, hiddenModes)
+                    if (tapOvertaken() || excluded()) {
+                        overtaken = true
+                        break
+                    }
+                    if (!current()) continue
+                    // Added and opened as one step ([committing]): checked again with nothing between the check
+                    // and the write, so a choice changed, or a card tapped, while it was merged stands.
+                    // The plan's own route, checked still there on the worker: a plan published since without it
+                    // means asking again, via its stop this time.
+                    var gone = false
+                    // Where the route opened was planned from: the plan's own, when it's the plan's route that's
+                    // kept under the key (one published meanwhile from near here, not quite where this was asked).
+                    var ownedByPlan = found.planned
+                    committing.withLock {
+                        val valid = { current() && !tapOvertaken() && !excluded() }
+                        val written = if (found.planned) {
+                            commitState(valid) { s ->
+                                gone = s.routes.orEmpty().none { routeKey(it) == found.key }
+                                // A notice from a Direct route before goes with it: this one's just been found.
+                                if (gone) s else s.copy(directFailed = false)
+                            } != null && !gone
+                        } else {
+                            // The plan shown now, if made under the same as this ask, owns any route of the same key
+                            // (one published meanwhile): opened as its own, never taken over as a Direct one.
+                            val planOwns = found.context.sameAs(plannedContext)
+                            commitState(valid) { s ->
+                                ownedByPlan = planOwns && s.routes.orEmpty().any { routeKey(it) == found.key }
+                                if (ownedByPlan) return@commitState s.copy(directFailed = false)
+                                // In place of a route with the same key from a plan made elsewhere (its walk from
+                                // there): the route opened is the one asked for from here.
+                                val routes = s.routes.orEmpty().filterNot { routeKey(it) == found.key } + found.route
+                                s.copy(routes = routes, directKeys = s.directKeys + found.key, directFailed = false, statusUnknown = unknownLines(routes, s), closuresUnknown = unknownClosures(routes, s))
+                            } != null
+                        }
+                        if (written) {
+                            // Kept, whichever gave the route, so a re-plan or the process restored asks for it again ([plan]).
+                            directRide = DirectRide(lineId, fromId, found.key, found.endsSaved)
+                            directAwaitingRetry = false
+                            directContext = if (ownedByPlan) plannedContext ?: found.context else found.context
+                            _directOpening.value = null
+                            openRoute.value = found.key
+                            opened = true
+                        } else if (tapOvertaken() || excluded()) {
+                            overtaken = true
+                        }
+                    }
+                    if (opened || overtaken) break
+                    if (gone && !goneAgain) {
+                        goneAgain = true
+                        continue
+                    }
+                    if (gone) break
+                }
+                if (!opened && !overtaken) warn("direct route on $lineId from $fromId: none opened")
+            }
+            when {
+                opened -> refresh()
+                // Another route opened while it was planned: that one stands, and the row says nothing.
+                overtaken -> _directOpening.value = null
+                else -> {
+                    directFailedFrom = askedLast
+                    _directOpening.value = DirectOpening(lineId, fromId, failed = true, endKey = endKey)
+                }
+            }
+        }
+    }
+
+    // Where a Direct row that found none was asked from ([DirectOpening.failed]): a plan from elsewhere clears it.
+    private var directFailedFrom: PlanContext? = null
+
+    // A Direct row that found none from elsewhere may have one from where [asked] plans: it no longer says so,
+    // whether that plan was had or not. Only the failure shown as the plan started ([atStart], by identity): one
+    // from a tap since is newer than this plan.
+    private fun clearFailedDirectElsewhere(asked: PlanContext, atStart: DirectOpening?) {
+        val opening = _directOpening.value ?: return
+        if (opening.failed && opening === atStart && !asked.sameAs(directFailedFrom)) _directOpening.value = null
+    }
+
+    // The route open when the Direct row being opened was tapped ([openDirect]), moved along with the trip's
+    // own reopening of a route ([moveOpenRoute]).
+    private var openAtTap: String? = null
+
+    // Another route opened since the Direct row being opened was tapped, even if closed again since: the rider's
+    // own choice, which stands. A route only closed meanwhile isn't one, whoever closed it (the trip, as a plan
+    // stops offering it, or the rider, going back to the list): the row tapped is still what they last chose.
+    private var openedSinceTap = false
+
+    private fun tapOvertaken() = openedSinceTap
+
+    private fun moveOpenRoute(key: String?) {
+        if (openRoute.value == openAtTap) openAtTap = key
+        openRoute.value = key
+    }
+
+    // One at a time: a plan published, a Direct row's route added, a Direct route let go ([commitState]).
+    private val committing = Mutex()
+
+    // Works out [change] from the state as it stands on the worker, then writes it on the caller with nothing
+    // between [valid]'s last check and the write, so a choice the rider makes on the main thread meanwhile
+    // stands; the state moved by another writer meanwhile, it's worked out again. Null when not written.
+    private suspend fun commitState(valid: () -> Boolean, change: (State) -> State): State? {
+        repeat(COMMIT_TRIES) {
+            if (!valid()) return null
+            val before = _state.value
+            val after = withContext(compute) { change(before) }
+            if (!valid()) return null
+            if (_state.compareAndSet(before, after)) return after
+        }
+        warn("trip state kept changing: a change wasn't written")
+        return null
+    }
+
+    // What a route is planned under: where from, and the rider's choices.
+    private data class PlanContext(val origin: TripOrigin, val speed: WalkingSpeed, val maxWalk: MaxWalk, val stepFree: StepFree, val modes: TripModes)
+
+    private fun context() = PlanContext(origin(), walkingSpeed, maxWalk, stepFree, tripModes)
+
+    // The same choices, from the same place: from here, within [REPLAN_MOVE_METERS] of it, the distance a
+    // new fix has to move before the trip plans again ([refreshFor]).
+    private fun PlanContext.sameAs(other: PlanContext?): Boolean {
+        if (other == null || copy(origin = other.origin) != other) return false
+        if (origin == other.origin) return true
+        val a = (origin as? TripOrigin.Here)?.coordinate ?: return false
+        val b = (other.origin as? TripOrigin.Here)?.coordinate ?: return false
+        return NearestStops.distanceMeters(a.latitude, a.longitude, b.latitude, b.longitude) < REPLAN_MOVE_METERS
+    }
+
+    // A Direct row opened as a route ([openDirect]): its line and stop, and the key of the route open for it.
+    // Each opening is its own instance, compared by identity: the same row closed and opened again is a new
+    // selection, though its values match, so a plan begun before it never speaks for it ([plan]).
+    // Its stops near the place are kept as saved ([endsSaved], worked out on the worker) and read back on the
+    // worker when first wanted ([ends]), so saving or restoring it walks none of them on the main thread.
+    private data class DirectRide(val lineId: String, val fromId: String, val key: String, val endsSaved: String = "") {
+        val ends: Set<String> by lazy { endsSaved.split(',').filterTo(HashSet()) { it.isNotEmpty() } }
+    }
+
+    // The Direct row whose route is open, from the plan or the Planner's via its stop: saved with the open
+    // route, so a re-plan or a restored process asks for that route again, until the rider closes it.
+    // One let go awaiting its Retry ([directAwaitingRetry]) isn't restored: its notice and Retry aren't kept either.
+    private var directRide: DirectRide? =
+        savedState.get<String>(KEY_DIRECT_RIDE)?.takeUnless { savedState.get<Boolean>(KEY_DIRECT_AWAITING) == true }
+            ?.split('\n', limit = 4)?.takeIf { it.size >= 3 }?.let { saved ->
+            DirectRide(saved[0], saved[1], saved[2], saved.getOrNull(3).orEmpty())
+        }
+        set(ride) {
+            field = ride
+            savedState[KEY_DIRECT_RIDE] = ride?.let { "${it.lineId}\n${it.fromId}\n${it.key}\n${it.endsSaved}" }
+        }
+
+    // A re-ask failed and its route, planned from elsewhere or under other choices, was let go: the trip
+    // closes it, but its row is kept, with the notice, so the Retry asks for it again ([plan]).
+    private var directAwaitingRetry = false
+        set(awaiting) {
+            field = awaiting
+            savedState[KEY_DIRECT_AWAITING] = awaiting
+        }
+
+    // Where from and under what the Direct route on show was planned ([plan] keeps it through a failed
+    // re-ask only under the same).
+    private var directContext: PlanContext? = null
+
+    // A Direct row's route found: [planned] when it's the plan's own, with its [key] worked out on the worker.
+    // [context]: what it was planned under, where its first walk starts from (the plan's, when it's the plan's own).
+    // [endsSaved]: the row's stops near the place as [DirectRide] keeps them, joined on the worker too.
+    private data class Found(val route: TripRoute, val planned: Boolean, val key: String, val mode: String, val context: PlanContext, val endsSaved: String)
+
+    // The route riding just [lineId] from [fromId] under [asked]: [plan]'s own when it has one, else the
+    // Planner's via that stop; null when none rides it alone.
+    // [plan] is used only when it was planned under the same as [asked] ([planContext]): one planned from
+    // somewhere else, or under other choices, would start its walk from there.
+    // [ends] is read only on the worker: a row's stops near the place may be many.
+    private suspend fun findDirect(lineId: String, fromId: String, ends: () -> Set<String>, asked: PlanContext, plan: List<TripRoute>, planContext: PlanContext?): Found? {
+        val hidden = hiddenModes
+        val stops = _state.value.destinationStops
+        if (asked.sameAs(planContext)) withContext(compute) {
+            val ids = ends()
+            State(routes = plan, destinationStops = stops).shownRoutes(hidden).orEmpty().firstOrNull { ridesOnly(it, lineId, fromId, ids) }
+                ?.let { Found(it, planned = true, key = routeKey(it), mode = it.rides.first().mode, context = planContext ?: asked, endsSaved = ids.joinToString(",")) }
+        }?.let { return it }
+        val destination = destinations.firstOrNull { it is TripDestination.Place } ?: destinations.firstOrNull() ?: return null
+        val answer = withContext(io) { planner.fewestChangesVia(asked.origin, destination, fromId, asked.speed, asked.maxWalk, asked.stepFree, asked.modes) }
+        return withContext(compute) {
+            val ids = ends()
+            answer.filter { ridesOnly(it, lineId, fromId, ids) }.minByOrNull { it.legs.lastOrNull()?.arrival ?: Instant.MAX }
+                ?.let { Found(it, planned = false, key = routeKey(it), mode = it.rides.first().mode, context = asked, endsSaved = ids.joinToString(",")) }
+        } ?: run {
+            warn("direct route on $lineId from $fromId: none of ${answer.size} planned rides it alone")
+            null
+        }
+    }
+
+    // The Direct routes no longer open, taken out of the plan. Its row is let go too, and its notice, once the
+    // rider closes it or opens another route; not when the trip closed it after a failed re-ask that left
+    // nothing open ([directAwaitingRetry]), whose Retry asks for it again.
+    private suspend fun dropClosedDirect() = committing.withLock {
+        // Read as it stands, parsed on the worker: a through route's is JSON ([OpenRoute.parse]).
+        val saved = openRoute.value
+        val open = withContext(compute) { OpenRoute.parse(saved)?.keys.orEmpty() }
+        if (openRoute.value != saved) return@withLock
+        val ride = directRide
+        val stillOpen = ride != null && ride.key in open
+        val awaiting = directAwaitingRetry && open.isEmpty()
+        if (!stillOpen && !awaiting) {
+            directRide = null
+            directAwaitingRetry = false
+        }
+        // Taken out on the worker: it walks the plan's routes. Opened again meanwhile, it's judged again then.
+        commitState({ openRoute.value == saved }) { s ->
+            val closed = s.directKeys - open
+            val failed = s.directFailed && (stillOpen || awaiting)
+            if (closed.isEmpty() && failed == s.directFailed) {
+                s
+            } else {
+                s.copy(routes = s.routes?.filterNot { routeKey(it) in closed }, directKeys = s.directKeys - closed, directFailed = failed)
+            }
+        }
+    }
 
     // Whether the screen has asked for its first refresh, and the last re-pick it refreshed for.
     private var started = false
@@ -448,10 +753,18 @@ class TripViewModel(
     // Where the plan shown was planned from; null until one is (a reused plan carries its own).
     private var plannedFrom: TripOrigin? = plans.origin(fromId, destinations, origin() is TripOrigin.Here, walkingSpeed, maxWalk, stepFree, tripModes)
 
+    // What the plan shown was planned under, where from included ([findDirect] reuses its routes only then).
+    private var plannedContext: PlanContext? = plannedFrom?.let { PlanContext(it, walkingSpeed, maxWalk, stepFree, tripModes) }
+
+    // From where the plan walks from, or the Direct route open ([directContext]; carried through a plan made
+    // elsewhere, its walk is from where it was asked).
     private fun movedFromPlan(): Boolean {
-        val from = (plannedFrom as? TripOrigin.Here)?.coordinate ?: return false
         val now = (origin() as? TripOrigin.Here)?.coordinate ?: return false
-        return NearestStops.distanceMeters(from.latitude, from.longitude, now.latitude, now.longitude) >= REPLAN_MOVE_METERS
+        fun movedFrom(from: TripOrigin?): Boolean {
+            val at = (from as? TripOrigin.Here)?.coordinate ?: return false
+            return NearestStops.distanceMeters(at.latitude, at.longitude, now.latitude, now.longitude) >= REPLAN_MOVE_METERS
+        }
+        return movedFrom(plannedFrom) || (directRide != null && movedFrom(directContext?.origin))
     }
 
     private val _dismissed = MutableStateFlow<Set<DismissedAlert>>(emptySet())
@@ -670,6 +983,9 @@ class TripViewModel(
 
     private suspend fun plan() {
         _state.update { it.copy(planning = true) }
+        // The Direct row open as this plan starts: one opened since is newer than anything this plan says.
+        val rideAtStart = directRide
+        val openingAtStart = _directOpening.value
         // A first plan shows each stop's answer as it lands, so routes appear without waiting on
         // the slowest. A re-plan keeps the last plan until every stop has answered or failed, so
         // routes (and an open one) don't come and go as the answers land.
@@ -694,10 +1010,11 @@ class TripViewModel(
         val limit = maxWalk
         val access = stepFree
         val modes = tripModes
+        val version = optionsVersion
         // Whether the rider has changed an option since this plan started: its routes are for the old ones.
         fun optionsChangedSince() = speed != walkingSpeed || limit != maxWalk || access != stepFree || modes != tripModes
         // What has landed so far, shown on a first plan.
-        fun showGathered() {
+        suspend fun showGathered() {
             // Nothing yet from any stop keeps "Planning…" (or the last plan) rather than
             // say there's no route while others are still answering.
             // A plan for a walk the rider has since changed from isn't shown.
@@ -706,8 +1023,19 @@ class TripViewModel(
             // left out where it's shown ([State.shownRoutes]).
             val shown = gathered.toList()
             // A first answer after a failed plan clears its error: the routes it brings stand,
-            // timed at once from any boarding stop's arrivals another screen just fetched.
-            _state.update { withLive(it.copy(routes = shown, planError = null, statusUnknown = unknownLines(shown, it), closuresUnknown = unknownClosures(shown, it)), cached(shown, it.live)) }
+            // timed at once from any boarding stop's arrivals another screen just fetched. A Direct route
+            // opened meanwhile ([openDirect]) is carried, as a whole plan carries it: worked out on the worker
+            // ([commitState]), since it walks every route.
+            committing.withLock {
+                commitState({ !optionsChangedSince() }) { s ->
+                    val carried = if (s.directKeys.isEmpty()) emptyList() else s.routes.orEmpty().filter { routeKey(it) in s.directKeys }
+                    val all = if (carried.isEmpty()) shown else mergedRoutes(shown.filterNot { routeKey(it) in s.directKeys }, carried)
+                    withLive(s.copy(routes = all, planError = null, statusUnknown = unknownLines(all, s), closuresUnknown = unknownClosures(all, s)), cached(all, s.live))
+                }
+            } ?: return
+            // Shown, they're the plan's own, made from here under these choices: a Direct row tapped now opens
+            // one of them rather than ask for it again ([openDirect]).
+            plannedContext = PlanContext(from, speed, limit, access, modes)
         }
         try {
             coroutineScope {
@@ -760,9 +1088,53 @@ class TripViewModel(
         // Failed only when no stop answered: one that answered with no route is still an answer.
         if (answered == 0 && failed != null) {
             _state.update { it.copy(planning = false, planError = errorKindOf(failed), failures = it.failures + 1) }
+            // A Direct route open from elsewhere, or under other choices, can't stand with this plan's walk
+            // unknown: let go, said, its Retry the plan's own.
+            val asked = PlanContext(from, speed, limit, access, modes)
+            letGoStaleDirect(asked, rideAtStart)
+            clearFailedDirectElsewhere(asked, openingAtStart)
             return
         }
         val routes = gathered.toList()
+        // A Direct row's route still open is asked for again from where and under what this plan was
+        // ([openDirect]): never carried over from an older plan, whose walk may start somewhere else.
+        val ride = directRide
+        val asked = PlanContext(from, speed, limit, access, modes)
+        var directFailedNow = false
+        var direct = ride?.let { (lineId, stopId) ->
+            try {
+                findDirect(lineId, stopId, { ride.ends }, asked, routes, asked)
+            } catch (e: TflException) {
+                warn("direct route on $lineId from $stopId not planned again: ${e::class.simpleName}")
+                directFailedNow = true
+                null
+            }
+        }
+        // Closed while it was asked ([dropClosedDirect]), or another Direct row opened meanwhile ([openDirect]):
+        // this plan's answer, or failure, is for a route no longer open, and the newer one's is left as it is.
+        val stale = directRide !== ride
+        if (stale) {
+            direct = null
+            directFailedNow = false
+        }
+        // Its mode hidden, or its line avoided, meanwhile: its row is gone, so its route is let go, not added.
+        if (direct != null && HiddenModes.isHidden(direct.mode, ride!!.lineId, hiddenModes)) direct = null
+        // The rider changed a choice while it was asked: this plan is for the old ones, so it isn't shown
+        // (kept for reuse under them, as above); the new one is planned next.
+        if (optionsChangedSince()) {
+            if (failed == null) plans.put(fromId, destinations, routes, clock(), from, speed, limit, access, modes)
+            _state.update { it.copy(planning = false) }
+            return
+        }
+        // Asked again and not reached: the route on show stays while it was planned from here under these
+        // same choices, and the trip says it couldn't plan it again ([State.directFailed]), with a Retry.
+        // By its saved key, whichever gave it: the plan's own route as much as one asked for via its stop.
+        val keptKey = ride?.key
+        val kept = if (directFailedNow && asked.sameAs(directContext) && keptKey != null) {
+            withContext(compute) { _state.value.routes.orEmpty().firstOrNull { routeKey(it) == keptKey } }
+        } else {
+            null
+        }
         // A route to one of the destination's stops that rides through another and comes back isn't
         // shown when another route gets off there no later: the rider would get off the first time.
         val visible = State(routes = routes, destinationStops = _state.value.destinationStops).shownRoutes(hiddenModes).orEmpty()
@@ -771,21 +1143,106 @@ class TripViewModel(
         val at = clock()
         // Only a whole plan is kept for reuse: a partial one is planned again on the next open.
         if (failed == null) plans.put(fromId, destinations, routes, at, from, speed, limit, access, modes)
-        plannedFrom = from
         // A new plan's lines are unchecked until their status arrives: none passes as running
         // normally meanwhile (its last known status, if held, stands).
-        _state.update {
-            it.copy(
-                routes = routes,
-                plannedAt = at,
-                planning = false,
-                planError = null,
-                planIncomplete = failed != null,
-                // A plan that reached only some of the trip's stops has failed in part ([State.failures]).
-                failures = if (failed != null) it.failures + 1 else it.failures,
-                statusUnknown = unknownLines(routes, it),
-                closuresUnknown = unknownClosures(routes, it),
-            )
+        val offered = direct?.takeUnless { it.planned }
+        val extra = offered?.route ?: kept
+        val extraKey = offered?.key ?: kept?.let { keptKey }
+        // Published as one step ([committing]): worked out on the worker (the merge and the checks walk every
+        // route's legs, AGENTS.md *Main thread*), then written with nothing between its last check and the
+        // write. Choices changed since, its routes are for the old ones: the state stays as the change set it
+        // (the plan kept for the new ones, or "Planning…"), and the new plan comes next. A Direct row closed,
+        // or another opened, meanwhile is left as the rider left it.
+        var published = false
+        committing.withLock {
+            for (attempt in 0 until COMMIT_TRIES) {
+                if (optionsVersion != version) break
+                val rideNow = directRide
+                val stale = rideNow !== ride
+                // A Direct row opened from the plan shown, which this plan offers too: this plan's own now.
+                var adoptedNewer = false
+                val written = commitState({ optionsVersion == version && directRide === rideNow }) { s ->
+                    // A Direct route opened while this plan ran keeps its own route ([openDirect]), whether it was
+                    // asked for via its stop or the plan's own then: kept off the cards like any Direct route. One
+                    // that was the plan's own, offered by this plan too, stays a card: this plan's copy is newer.
+                    val newer = rideNow?.key
+                    val planKeys = if (stale) routes.mapTo(HashSet(), ::routeKey) else emptySet()
+                    adoptedNewer = stale && newer != null && newer !in s.directKeys && newer in planKeys
+                    val carried = if (stale) {
+                        s.routes.orEmpty().filter { route -> routeKey(route).let { it in s.directKeys || (it == newer && !adoptedNewer) } }
+                    } else {
+                        listOfNotNull(extra)
+                    }
+                    // A Direct-only route carried over stands in place of this plan's copy under its key: asked for
+                    // since this plan began, it's from where the rider is now, and the open route is found by its key.
+                    val carriedKeys = if (stale) carried.mapTo(HashSet(), ::routeKey) else emptySet()
+                    val own = if (carriedKeys.isEmpty()) routes else routes.filterNot { routeKey(it) in carriedKeys }
+                    val all = if (carried.isEmpty()) own else mergedRoutes(own, carried)
+                    val planned = if (stale) own.mapTo(HashSet(), ::routeKey) else emptySet()
+                    s.copy(
+                        routes = all,
+                        directKeys = if (stale) s.directKeys + carried.map(::routeKey).filterNot { it in planned } else setOfNotNull(extraKey),
+                        directFailed = if (stale) s.directFailed else directFailedNow,
+                        plannedAt = at,
+                        planning = false,
+                        planError = null,
+                        planIncomplete = failed != null,
+                        // A plan that reached only some of the trip's stops has failed in part ([State.failures]).
+                        failures = if (failed != null) s.failures + 1 else s.failures,
+                        statusUnknown = unknownLines(all, s),
+                        closuresUnknown = unknownClosures(all, s),
+                    )
+                } ?: continue
+                published = true
+                if (adoptedNewer) directContext = asked
+                plannedFrom = from
+                plannedContext = asked
+                clearFailedDirectElsewhere(asked, openingAtStart)
+                // Still with nothing between it and the write: the Direct row this plan asked for again.
+                if (ride != null && !stale) settleDirect(ride, direct, directFailedNow, kept != null)
+                break
+            }
+        }
+        if (!published) _state.update { it.copy(planning = false) }
+    }
+
+    // The Direct route open, planned other than [asked] (the rider has moved, or chosen otherwise), let go when
+    // a plan for [asked] couldn't be had: closed with its notice, its row kept for the Retry ([directAwaitingRetry]).
+    // Only the row open when the failed plan started ([rideAt]): a newer one stands.
+    private suspend fun letGoStaleDirect(asked: PlanContext, rideAt: DirectRide?) = committing.withLock {
+        val ride = directRide ?: return@withLock
+        if (ride !== rideAt) return@withLock
+        if (asked.sameAs(directContext)) return@withLock
+        directAwaitingRetry = true
+        commitState({ directRide === ride }) { s ->
+            s.copy(routes = s.routes?.filterNot { routeKey(it) in s.directKeys }, directKeys = emptySet(), directFailed = true)
+        } ?: return@withLock
+        if (openRoute.value == ride.key) moveOpenRoute(null)
+    }
+
+    // After a plan, the Direct row [ride] it asked for again: [direct] what was found, or [failed] to ask.
+    private fun settleDirect(ride: DirectRide, found: Found?, failed: Boolean, kept: Boolean) {
+        // Hidden while this plan was published: let go as one not found, never opened again.
+        val direct = found?.takeUnless { HiddenModes.isHidden(it.mode, ride.lineId, hiddenModes) }
+        when {
+            // Planned again: kept under its key now (a bus moved to another pole), and open again where it was
+            // open, or where its Retry was waiting ([directAwaitingRetry]).
+            direct != null -> {
+                val reopen = openRoute.value == ride.key || (openRoute.value == null && directAwaitingRetry)
+                directRide = ride.copy(key = direct.key)
+                directAwaitingRetry = false
+                directContext = direct.context
+                if (reopen && openRoute.value != direct.key) moveOpenRoute(direct.key)
+            }
+            // Not reached, and its route let go (planned from elsewhere or under other choices): the trip
+            // closes it, the notice and the row kept for the Retry.
+            failed -> if (!kept) directAwaitingRetry = true
+            // Nothing rides that line alone from here: it closes as any route a plan stops offering does
+            // ([openRouteGone]), and its row is let go.
+            else -> {
+                directRide = null
+                directAwaitingRetry = false
+            }
         }
     }
 
@@ -1252,11 +1709,25 @@ class TripViewModel(
     private fun earlier(held: LocalDate?, day: LocalDate): LocalDate = if (held != null && held.isBefore(day)) held else day
 
     companion object {
-        private const val KEY_OPEN_ROUTE = "openRoute"
+        private const val KEY_DIRECT_RIDE = "directRide"
+        private const val KEY_DIRECT_AWAITING = "directAwaiting"
+        const val KEY_OPEN_ROUTE = "openRoute"
+
+        // How many times a change is worked out again while the state keeps moving under it ([commitState]).
+        private const val COMMIT_TRIES = 5
 
         // The stops among [destinations]; a place has none, so no route to it is a detour.
         private fun stopIds(destinations: List<TripDestination>): List<String> =
             destinations.filterIsInstance<TripDestination.Stop>().map { it.id }
+
+        // Whether [route] rides only [lineId], boarding at [fromId] (or, a bus, at the pole the Planner named
+        // before it was moved to the one its bus uses), its walks aside, and gets off at one of [ends] (any, when
+        // empty): a Direct row's ride as a route, not another branch's.
+        internal fun ridesOnly(route: TripRoute, lineId: String, fromId: String, ends: Set<String> = emptySet()): Boolean {
+            val ride = route.rides.singleOrNull() ?: return false
+            if (ride.lineId != lineId || (ride.fromId != fromId && ride.plannedFromId != fromId)) return false
+            return ends.isEmpty() || ride.toId in ends || ride.plannedToId in ends || ride.toArea in ends
+        }
 
         private fun boardingStops(routes: List<TripRoute>): List<String> =
             routes.flatMap { route -> route.rides.map { it.fromId } }.filter { it.isNotBlank() }.distinct()
@@ -1294,8 +1765,9 @@ class TripViewModel(
          * cards walk least on the live ranking ([routeLabels]), with no threshold, so it's kept
          * whatever it saves. One route more at most, so the cap still bounds the requests.
          */
-        internal fun bestOf(routes: List<TripRoute>, keep: Collection<String>): List<TripRoute> {
-            val soonest = routes.sortedBy { it.legs.lastOrNull()?.arrival ?: Instant.MAX }
+        internal fun bestOf(routes: List<TripRoute>, keep: Collection<String>, direct: Set<String> = emptySet()): List<TripRoute> {
+            // A Direct row's route ([State.directKeys]) is never one of the soonest few: timed only kept, open.
+            val soonest = routes.filterNot { direct.isNotEmpty() && routeKey(it) in direct }.sortedBy { it.legs.lastOrNull()?.arrival ?: Instant.MAX }
             // Of routes walking as little, the soonest: so a plan with no walks adds none past the cap.
             val leastWalking = soonest.minByOrNull { it.walking }
             val keys = soonest.map(::routeKey).distinct().take(MAX_ROUTES).toSet() + keep + listOfNotNull(leastWalking?.let(::routeKey))
@@ -1303,7 +1775,8 @@ class TripViewModel(
         }
 
         /** [bestOf], keeping the one route [keep] names. */
-        internal fun bestOf(routes: List<TripRoute>, keep: String? = null): List<TripRoute> = bestOf(routes, listOfNotNull(keep))
+        internal fun bestOf(routes: List<TripRoute>, keep: String? = null, direct: Set<String> = emptySet()): List<TripRoute> =
+            bestOf(routes, listOfNotNull(keep), direct)
 
         /** How many distinct routes a trip times at most. */
         const val MAX_ROUTES = 6

@@ -1285,6 +1285,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             wait on the Planner; Direct reads cached arrivals), but not always. Reserving three rows'
             height would leave a blank band on every "None" trip; revealing Direct with the routes would
             tie it to the Planner. Maintainer's call (Codex on #645).
+      - [x] **A Direct row opens its ride as a route** (maintainer, 2026-10-07): the plan's route riding
+            just that line from that stop, else the Planner asked via the stop (`TripViewModel.openDirect`).
+      - [ ] **A plan kept after a failed re-plan from a new place still walks from the old one**: every card
+            keeps its first walk from where the rider was (Codex on #648). Only an open Direct route is let go
+            (and said); the cards stay with the plan's error and Retry. Drop, mark, or keep them as they are?
       - [ ] **Retire favorite journeys** now Direct covers them (no migration: no users yet).
       - [ ] **Pin a place's Direct trains to the widget** (PR 3 of the favorite-destinations plan).
       - [ ] **Walk to the Direct row's stop**: show it ("Bond Street (3 min)") as a trip card does.
