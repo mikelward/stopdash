@@ -81,6 +81,7 @@ import app.stopdash.ui.LinesViewModel
 import app.stopdash.ui.LinesOverlay
 import app.stopdash.ui.LineRefSaver
 import app.stopdash.ui.LineStopRefSaver
+import app.stopdash.ui.StopDepartures
 import app.stopdash.ui.LineStopRef
 import app.stopdash.data.FileRecentLinesStore
 import app.stopdash.data.FileLineCatalogStore
@@ -1461,7 +1462,12 @@ class MainActivity : ComponentActivity() {
                             } else if (top == TopOverlay.LINES) {
                                 val linesModel = linesModel()
                                 // The line's map is drawn from the route pages' day-long cache (SPEC *Line page → Map*).
-                                CompositionLocalProvider(LocalRouteStops provides routeStops(applicationContext)) {
+                                // And a stop's board groups a branching line's trains by where they go, as a station's does.
+                                val linesWriteFailures = viewModel<WriteFailuresHolder>().failures
+                                CompositionLocalProvider(
+                                    LocalRouteStops provides routeStops(applicationContext),
+                                    LocalRouteTopology provides routeTopology.value,
+                                ) {
                                     // The near-me fix, for a stop's distance, and To… there only where the list has
                                     // stops to plan from, as its own To… does.
                                     val nearHere = nearby
@@ -1516,6 +1522,8 @@ class MainActivity : ComponentActivity() {
                                         // Back from the search: Lines… closes, the next opening at the top on
                                         // the recent lines, not where this one was.
                                         onBack = closeLines,
+                                        // A stop's live departures, kept and refreshed while its page is up.
+                                        departures = { stop, line -> lineStopDepartures(stop, line, linesWriteFailures) },
                                     )
                                 }
                             } else if (top == TopOverlay.STATIONS) {
@@ -3699,6 +3707,81 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
+     * A searched place's departures model: [stops], with every service shown whatever the near-me list
+     * hides, never the widget's list. A station's page with nowhere to stand ([LookDepartures]) and a
+     * stop opened from a line's map ([lineStopDepartures]) both keep one.
+     */
+    private fun searchedDeparturesModel(appContext: Context, stops: List<StopRef>, writeFailures: WriteFailures): MainViewModel =
+        MainViewModel(
+            client = departuresClient(appContext),
+            departureSourceChanges = RailApiKeySetting.changes,
+            // No hidden modes: a searched station's page shows all of its services, so
+            // it asks for its National Rail board whatever the near-me list hides.
+            seedStops = stops,
+            // Stars and dismissals are per row/place across every view, so a star
+            // set here shows on the near-me list too, and the other way round.
+            starredStore = DataStoreStarredRowsStore.from(appContext, warn = ::logStarWarning),
+            dismissedStore = DataStoreDismissedAlertsStore.from(appContext, warn = ::logDepartureWarning),
+            warn = ::logDepartureWarning,
+            arrivalsReuse = ARRIVALS_REUSE,
+            sharedArrivals = ArrivalsCache.SHARED,
+            disruptionReuse = DISRUPTION_REUSE,
+            disruptionCache = StopClosureCache.SHARED,
+            hubNames = HubInfoCache.SHARED,
+            // No disruptions row here, so no lines asked about for one.
+            alwaysNetworks = { emptySet() },
+            lineStatusReuse = LINE_STATUS_REUSE,
+            rateWaitMillis = { SharedTflRateLimiter.waitedMillis },
+            logStats = ::logDepartureWarning,
+            // Not the widget's list: the near-me model keeps the journey pins.
+            ownsWidgetJourneys = false,
+            // A star set here reorders the widget's pinned rows too, so redraw it.
+            redrawWidget = { redrawWidgets(appContext) },
+            writeFailures = writeFailures,
+            onStarToggled = { row -> rememberStarredPlace(appContext, row) },
+        )
+
+    /**
+     * The live departures of [stop], opened from a line's map (SPEC *Finding a line*): a model of its own,
+     * kept for this stop only ([NearbyDeparturesStores]), refreshed while shown and on a return to the app,
+     * as a station's page is, and counting down from a ticking clock.
+     */
+    @Composable
+    private fun lineStopDepartures(stop: LineStopRef, line: LineRef, writeFailures: WriteFailures): StopDepartures {
+        val appContext = applicationContext
+        val stores: NearbyDeparturesStores = viewModel(key = "line-stop-stores")
+        val owner = stores.ownerFor("${stop.id}|${line.id}", this)
+        val viewModel: MainViewModel = viewModel(
+            viewModelStoreOwner = owner,
+            factory = viewModelFactory {
+                // The line it was opened from is declared as served there, so its status is asked for even
+                // when it has nothing due (a suspension): the board then shows why, not just "No departures"
+                // (Codex on #661).
+                initializer { searchedDeparturesModel(appContext, listOf(StopRef(stop.id, stop.name, lines = listOf(line))), writeFailures) }
+            },
+        )
+        val state by viewModel.state.collectAsStateWithLifecycle()
+        AutoRefresh(viewModel, NOT_RELOCATING)
+        // Opened again on a stop whose model was kept: asked again at once, as a first opening is, rather
+        // than leaving the last board up until the next tick (Codex on #661). A first opening is already
+        // loading, and isn't asked twice.
+        LaunchedEffect(viewModel) {
+            if (viewModel.state.value !is DeparturesUiState.Loading && !viewModel.refreshing.value) viewModel.refresh()
+        }
+        val lifecycleOwner = LocalLifecycleOwner.current
+        LaunchedEffect(lifecycleOwner, viewModel) {
+            var returning = false
+            lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                if (returning && !viewModel.refreshing.value) viewModel.refresh()
+                returning = true
+            }
+        }
+        val dismissed by viewModel.dismissed.collectAsStateWithLifecycle()
+        val now = tickingNow()
+        return StopDepartures(state, now, onRefresh = { viewModel.refresh() }, dismissed = dismissed)
+    }
+
+    /**
      * A searched station's page with nowhere to stand (TfL placed none of its stops, SPEC *Finding
      * stops*): [stops]' live departures under [title], with its own retained [MainViewModel] from the
      * caller's store, and no To…. Never saved for the widget. Back runs [onClose]; the crosshairs,
@@ -3714,38 +3797,7 @@ class MainActivity : ComponentActivity() {
     ) {
         val appContext = applicationContext
         val viewModel: MainViewModel = viewModel(
-            factory = viewModelFactory {
-                initializer {
-                    MainViewModel(
-                        client = departuresClient(appContext),
-                        departureSourceChanges = RailApiKeySetting.changes,
-                        // No hidden modes: a searched station's page shows all of its services, so
-                        // it asks for its National Rail board whatever the near-me list hides.
-                        seedStops = stops,
-                        // Stars and dismissals are per row/place across every view, so a star
-                        // set here shows on the near-me list too, and the other way round.
-                        starredStore = DataStoreStarredRowsStore.from(appContext, warn = ::logStarWarning),
-                        dismissedStore = DataStoreDismissedAlertsStore.from(appContext, warn = ::logDepartureWarning),
-                        warn = ::logDepartureWarning,
-                        arrivalsReuse = ARRIVALS_REUSE,
-                        sharedArrivals = ArrivalsCache.SHARED,
-                        disruptionReuse = DISRUPTION_REUSE,
-                        disruptionCache = StopClosureCache.SHARED,
-                        hubNames = HubInfoCache.SHARED,
-                        // No disruptions row here, so no lines asked about for one.
-                        alwaysNetworks = { emptySet() },
-                        lineStatusReuse = LINE_STATUS_REUSE,
-                        rateWaitMillis = { SharedTflRateLimiter.waitedMillis },
-                        logStats = ::logDepartureWarning,
-                        // Not the widget's list: the near-me model keeps the journey pins.
-                        ownsWidgetJourneys = false,
-                        // A star set here reorders the widget's pinned rows too, so redraw it.
-                        redrawWidget = { redrawWidgets(appContext) },
-                        writeFailures = writeFailures,
-                        onStarToggled = { row -> rememberStarredPlace(appContext, row) },
-                    )
-                }
-            },
+            factory = viewModelFactory { initializer { searchedDeparturesModel(appContext, stops, writeFailures) } },
         )
         val state by viewModel.state.collectAsStateWithLifecycle()
         val refreshing by viewModel.refreshing.collectAsStateWithLifecycle()

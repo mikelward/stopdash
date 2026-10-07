@@ -7,12 +7,11 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.material3.Button
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,6 +19,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -119,6 +119,10 @@ internal fun LinesOverlay(
     // one; null where To… isn't offered (no near-me stops to start from).
     onFrom: (LineStopRef) -> Unit = {},
     onTo: ((LineStopRef) -> Unit)? = null,
+    // The stop's live departures, from a model the caller keeps alive and refreshing while the page is
+    // up ([StopDepartures]); null draws none.
+    // The line it was opened from goes with it, so its status is asked for even with nothing due there.
+    departures: @Composable (LineStopRef, LineRef) -> StopDepartures? = { _, _ -> null },
 ) {
     // Each time the overlay comes up: TfL's list is asked for again if its day is up, or after a failure.
     LaunchedEffect(Unit) { viewModel.reopened() }
@@ -183,9 +187,13 @@ internal fun LinesOverlay(
                 // A dialog's window has none of the app's text size nor its pinch (SPEC *Display size*): both
                 // applied again here (Codex on #659).
                 FontSizePinchWindow {
+                    val board = departures(stop, line)
                     LineStopPage(
                         name = stop.name,
                         distance = stop.distance,
+                        lineName = line.name,
+                        departures = board,
+                        view = rememberStopBoard(board, line.id),
                         onFrom = { onFrom(stop) },
                         onTo = onTo?.let { to -> { to(stop) } },
                         onBack = { onStop(null) },
@@ -213,7 +221,17 @@ internal fun LinesOverlay(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun LineStopPage(name: String, distance: String?, onFrom: () -> Unit, onTo: (() -> Unit)?, onBack: () -> Unit) {
+internal fun LineStopPage(
+    name: String,
+    distance: String?,
+    onFrom: () -> Unit,
+    onTo: (() -> Unit)?,
+    onBack: () -> Unit,
+    // The line it was opened from, whose departures lead its board, then the rest ([stopBoard]).
+    lineName: String = "",
+    departures: StopDepartures? = null,
+    view: StopBoardView? = null,
+) {
     BackHandler(onBack = onBack)
     Scaffold(
         topBar = {
@@ -229,25 +247,31 @@ internal fun LineStopPage(name: String, distance: String?, onFrom: () -> Unit, o
         },
     ) { padding ->
         // Scrolls, so a long name at a large text size never pushes From and To out of reach (Codex on #659).
-        val scroll = rememberScrollState()
-        Column(
+        val listState = rememberLazyListState()
+        LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .scrollEdgeCue(scroll, scrollCueColors(MaterialTheme.colorScheme.background))
-                .verticalScroll(scroll)
-                .padding(horizontal = 16.dp),
+                .scrollEdgeCue(listState, scrollCueColors(MaterialTheme.colorScheme.background))
+                .testTag("lineStopPage"),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(
-                if (distance != null) stringResource(R.string.line_stop_title_distance, name, distance) else name,
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.testTag("lineStopTitle"),
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onFrom) { Text(stringResource(R.string.line_stop_from)) }
-                if (onTo != null) Button(onClick = onTo) { Text(stringResource(R.string.line_stop_to)) }
+            item(key = "title") {
+                Text(
+                    if (distance != null) stringResource(R.string.line_stop_title_distance, name, distance) else name,
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.testTag("lineStopTitle"),
+                )
             }
+            item(key = "actions") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = onFrom) { Text(stringResource(R.string.line_stop_from)) }
+                    if (onTo != null) Button(onClick = onTo) { Text(stringResource(R.string.line_stop_to)) }
+                }
+            }
+            if (departures != null) stopBoard(departures, view, lineName)
         }
     }
 }

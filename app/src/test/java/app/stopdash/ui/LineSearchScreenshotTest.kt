@@ -12,7 +12,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.height
-import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performScrollToNode
 import app.stopdash.domain.LineRef
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -122,6 +124,55 @@ class LineSearchScreenshotTest {
     }
 
     @Test
+    fun line_stop_departures() {
+        // Oxford Circus, a public interchange, opened from the Victoria line, with made-up times: the
+        // Victoria line's platforms first, then the Central and Bakerloo lines under "Also here".
+        val now = java.time.Instant.parse("2026-10-07T09:00:00Z")
+        fun train(line: String, name: String, destination: String, platform: String, minutes: Long) =
+            app.stopdash.domain.Departure(line, name, "outbound", destination, platform, now.plusSeconds(minutes * 60), "tube")
+        val state = DeparturesUiState.Loaded(
+            stops = listOf(
+                app.stopdash.domain.StopArrivals(
+                    "940GZZLUOXC",
+                    "Oxford Circus",
+                    listOf(
+                        train("victoria", "Victoria", "Walthamstow Central", "Northbound - Platform 5", 2),
+                        train("victoria", "Victoria", "Walthamstow Central", "Northbound - Platform 5", 5),
+                        train("victoria", "Victoria", "Brixton", "Southbound - Platform 6", 1),
+                        train("victoria", "Victoria", "Brixton", "Southbound - Platform 6", 4),
+                        train("central", "Central", "Epping", "Eastbound - Platform 1", 3),
+                        train("central", "Central", "Ealing Broadway", "Westbound - Platform 2", 2),
+                        train("bakerloo", "Bakerloo", "Elephant & Castle", "Southbound - Platform 4", 6),
+                    ),
+                    fetchedAt = now,
+                ),
+            ),
+            fetchedAt = now,
+        )
+        val departures = StopDepartures(state, now, onRefresh = {})
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides kotlinx.coroutines.Dispatchers.Unconfined) {
+                    LineStopPage(
+                        name = "Oxford Circus",
+                        distance = "350 m",
+                        onFrom = {},
+                        onTo = {},
+                        onBack = {},
+                        lineName = "Victoria",
+                        departures = departures,
+                        view = rememberStopBoard(departures, "victoria"),
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Brixton").assertIsDisplayed()
+        composeRule.onNodeWithText("Also here").assertExists()
+        captureSnapshot("line-stop-departures.png")
+    }
+
+    @Test
     fun from_and_to_stay_reachable_under_a_long_name_on_a_short_screen() {
         // A short window and a long name: the page scrolls to its buttons rather than clip them (Codex on #659).
         var from = 0
@@ -138,7 +189,8 @@ class LineSearchScreenshotTest {
                 }
             }
         }
-        composeRule.onNodeWithText("From").performScrollTo().performClick()
+        composeRule.onNodeWithTag("lineStopPage").performScrollToNode(hasText("From"))
+        composeRule.onNodeWithText("From").performClick()
         assertEquals(1, from)
     }
 

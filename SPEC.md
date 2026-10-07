@@ -2576,9 +2576,18 @@ kept with it so the title never changes under the buttons, with
 **From** and **To**, which do what From… and To… do with this stop picked. From opens the stop's own
 page over Lines…, its Back returning to the stop; To plans a trip there from the stops near the rider,
 closing Lines… for it, and is offered only where To… is (the near-me list has stops to plan from).
-Back from the details returns to the line, its map just as it was, scrolled and unfolded (after From's
-station page, the line's page comes back at its top, `TODO.md`). Only a line page opened from Lines… opens stops so far
-(`TODO.md`).
+Under them is the stop's **board** (maintainer, 2026-10-07): the line it was opened from first, by
+platform or pole as the near-me list draws them, then the stop's other services under **"Also here"**,
+so a rider who came for the line sees it before anything else. A line with nothing due says so ("No
+Northern departures") over the rest. The board is the stop's live arrivals, from the same shared cache
+as a station's page, asked as the details open and again while they're up and on a return to the app,
+as a station's page is, and asked again each time the details open; until they're in it says it's
+loading, a failure says so with Try again, and a refresh that failed keeps the board up with a line
+saying so, while a stale card withholds its times (D4). A stamp over the board gives its age, or says
+its disruption checks are still out ("Checking…") or couldn't be made, so unchecked times never read as
+clean; a closure or moved-stop notice heads the board, as on the near-me list. Its rows open nothing yet. Back from the details returns to the line, its map just as it was,
+scrolled and unfolded (after From's station page, the line's page comes back at its top, `TODO.md`).
+Only a line page opened from Lines… opens stops so far (`TODO.md`).
 
 ### Line page
 
