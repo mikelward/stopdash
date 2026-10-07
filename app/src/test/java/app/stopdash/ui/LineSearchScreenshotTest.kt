@@ -17,6 +17,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performScrollToNode
 import app.stopdash.domain.LineRef
@@ -232,6 +234,22 @@ class LineSearchScreenshotTest {
             }
         }
         composeRule.onNodeWithText("Loading departures…").assertIsDisplayed()
+    }
+
+    @Test
+    fun the_star_adds_the_stop_as_a_favorite_place_once_it_is_placed() {
+        var ready by mutableStateOf(false)
+        var favorited = 0
+        composeRule.setContent {
+            StopDashTheme {
+                LineStopPage(name = "Euston", distance = null, onFrom = {}, onTo = null, onBack = {}, actionsReady = ready, onFavorite = { favorited++ })
+            }
+        }
+        // Waits on the stop's links, which carry where it is.
+        composeRule.onNodeWithTag("lineStopFavorite").assertIsNotEnabled()
+        ready = true
+        composeRule.onNodeWithContentDescription("Add to favourite places").performClick()
+        assertEquals(1, favorited)
     }
 
     @Test

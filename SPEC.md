@@ -2617,7 +2617,11 @@ as a station's page is, and asked again each time the details open; until they'r
 loading, a failure says so with Try again, and a refresh that failed keeps the board up with a line
 saying so, while a stale card withholds its times (D4). A stamp over the board gives its age, or says
 its disruption checks are still out ("Checking…") or couldn't be made, so unchecked times never read as
-clean; a closure or moved-stop notice heads the board, as on the near-me list. Its rows open nothing yet. Back from a station opened from another's details returns to that one, as it
+clean; a closure or moved-stop notice heads the board, as on the near-me list. Its rows open nothing yet. A star in its top bar **adds it as a favorite place** (maintainer, 2026-10-07):
+the favorite-places editor opens over it, filled in as a custom place named for the station at its
+position (the index's, else its stops' center, as a pick from the place search, a lookup that fails
+offering a retry on its row), so the rider can still rename it or pick its icon and days before Save;
+Save or Cancel returns to the stop. Home and Work are set from Settings, as before. The star waits on the stop's links, which carry its position. Back from a station opened from another's details returns to that one, as it
 was left, and so back through the stations opened (the last ten); Back from the first returns to the line, its map just as it was,
 scrolled and unfolded (after From's station page, the line's page comes back at its top, `TODO.md`).
 Only a line page opened from Lines… opens stops so far (`TODO.md`).

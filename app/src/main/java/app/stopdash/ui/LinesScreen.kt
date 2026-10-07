@@ -9,6 +9,7 @@ import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.minimumInteractiveComponentSize
 import app.stopdash.domain.NearestStops
 import app.stopdash.domain.Coordinates
+import app.stopdash.domain.StationMatch
 import androidx.compose.runtime.Immutable
 import androidx.compose.material3.Button
 import androidx.activity.compose.BackHandler
@@ -126,6 +127,8 @@ internal fun LinesOverlay(
     // one; null where To… isn't offered (no near-me stops to start from).
     onFrom: (LineStopRef) -> Unit = {},
     onTo: ((LineStopRef) -> Unit)? = null,
+    // Favorite: the stop as a favorite place, at its position where the index has one; null offers none.
+    onFavorite: ((LineStopRef, Coordinates?) -> Unit)? = null,
     // The stop's live departures, from a model the caller keeps alive and refreshing while the page is
     // up ([StopDepartures]); null draws none.
     // With it, the lines to declare served there (the line it was opened from, else the station's own), so
@@ -180,7 +183,8 @@ internal fun LinesOverlay(
             LocalDismissLineAlert provides dismissal,
             // A station tapped on the map opens its details (SPEC *Finding a line*).
             LocalOpenLineMapStop provides { id, name, position ->
-                onStop(LineStopRef(id, name, distanceTo(position?.let { Coordinates(it.first, it.second) })))
+                val at = position?.let { Coordinates(it.first, it.second) }
+                onStop(LineStopRef(id, name, distanceTo(at), position = at))
             },
         ) {
             OneLinePage(row, line.id, line.name, line.mode, onClose = { onOpen(null) })
@@ -243,7 +247,13 @@ internal fun LinesOverlay(
                                     // The station the trail lets go of forgets its scroll too (Codex on #667).
                                     stop.evictedByOpening()?.let(saveable::removeState)
                                     onStop(
-                                        LineStopRef(station.id, station.name, distanceTo(station.position), onLine = line.id in station.lineIds)
+                                        LineStopRef(
+                                            station.id,
+                                            station.name,
+                                            distanceTo(station.position),
+                                            onLine = line.id in station.lineIds,
+                                            position = station.position,
+                                        )
                                             .openedFrom(stop),
                                     )
                                 },
@@ -252,6 +262,9 @@ internal fun LinesOverlay(
                                 actionsReady = links != null,
                                 onFrom = { onFrom(stop.copy(fromId = links?.openId)) },
                                 onTo = onTo?.let { to -> { to(stop.copy(fromId = links?.openId)) } },
+                                // Where it is: the index's, else where the map placed it (a bus stop), so no lookup
+                                // is needed for a stop already placed (Codex on #670).
+                                onFavorite = onFavorite?.let { favorite -> { favorite(stop, links?.position ?: stop.position) } },
                                 onBack = back,
                             )
                         }
@@ -299,6 +312,8 @@ internal fun LineStopPage(
     links: StopLinks? = null,
     onOpenLine: (LineRef) -> Unit = {},
     onOpenStation: (NearStation) -> Unit = {},
+    // Save it as a favorite place; null offers none. Waits on [actionsReady], for its position.
+    onFavorite: (() -> Unit)? = null,
 ) {
     BackHandler(onBack = onBack)
     Scaffold(
@@ -310,7 +325,14 @@ internal fun LineStopPage(
                     }
                 },
                 title = {},
-                actions = { AppMenuOverflow() },
+                actions = {
+                    if (onFavorite != null) {
+                        IconButton(onClick = onFavorite, enabled = actionsReady, modifier = Modifier.testTag("lineStopFavorite")) {
+                            Icon(StarBorderIcon, contentDescription = stringResource(R.string.line_stop_favorite))
+                        }
+                    }
+                    AppMenuOverflow()
+                },
             )
         },
     ) { padding ->
@@ -587,6 +609,8 @@ data class LineStopRef(
     // How many stations were opened before this one, counting those [previous] no longer keeps: set once,
     // as it opens, so its [pageKey] holds as older stations drop off the trail (Codex on #667).
     val depth: Int = 0,
+    // Where it is, as the map or the index placed it when it was opened; null where neither did.
+    val position: Coordinates? = null,
 ) {
     /**
      * This stop opened from [from]'s details, so Back returns there. The trail keeps the last
@@ -621,14 +645,19 @@ data class LineStopRef(
     }
 }
 
-// Saved as five strings a stop, this one first, then the station it was opened from, and so on back.
+// Saved as "v2", then seven strings a stop, this one first, then the station it was opened from, and so on
+// back: its id, name, distance, whether it's on the line, its depth, and its position (blank where none).
+// Saves from before (#667's five a stop, and a single stop's three or four) still restore.
 internal val LineStopRefSaver: Saver<LineStopRef?, ArrayList<String>> = Saver(
     save = { stop ->
         stop?.let {
-            val out = ArrayList<String>()
+            val out = arrayListOf(LINE_STOP_SAVE_V2)
             var at: LineStopRef? = it
             while (at != null) {
-                out += listOf(at.id, at.name, at.distance.orEmpty(), if (at.onLine) "1" else "0", at.depth.toString())
+                out += listOf(
+                    at.id, at.name, at.distance.orEmpty(), if (at.onLine) "1" else "0", at.depth.toString(),
+                    at.position?.latitude?.toString().orEmpty(), at.position?.longitude?.toString().orEmpty(),
+                )
                 at = at.previous
             }
             out
@@ -636,6 +665,22 @@ internal val LineStopRefSaver: Saver<LineStopRef?, ArrayList<String>> = Saver(
     },
     restore = { saved ->
         when {
+            saved.firstOrNull() == LINE_STOP_SAVE_V2 -> {
+                val fields = saved.drop(1)
+                if (fields.isEmpty() || fields.size % 7 != 0) {
+                    null
+                } else {
+                    fields.chunked(7).foldRight(null as LineStopRef?) { stop, before ->
+                        val lat = stop[5].toDoubleOrNull()
+                        val lon = stop[6].toDoubleOrNull()
+                        LineStopRef(
+                            stop[0], stop[1], stop[2].ifEmpty { null }, onLine = stop[3] != "0", previous = before,
+                            depth = stop[4].toIntOrNull() ?: 0,
+                            position = if (lat != null && lon != null) Coordinates(lat, lon) else null,
+                        )
+                    }
+                }
+            }
             // Saves from before onLine, and from before the trail.
             saved.size == 3 -> LineStopRef(saved[0], saved[1], saved[2].ifEmpty { null })
             saved.size == 4 -> LineStopRef(saved[0], saved[1], saved[2].ifEmpty { null }, onLine = saved[3] != "0")
@@ -644,6 +689,16 @@ internal val LineStopRefSaver: Saver<LineStopRef?, ArrayList<String>> = Saver(
                 LineStopRef(id, name, distance.ifEmpty { null }, onLine = onLine != "0", previous = before, depth = depth.toIntOrNull() ?: 0)
             }
         }
+    },
+)
+
+private const val LINE_STOP_SAVE_V2 = "v2"
+
+/** A stop to add as a favorite place, saved as its id, name and position (blank where it has none). */
+internal val StationMatchSaver: Saver<StationMatch?, ArrayList<String>> = Saver(
+    save = { match -> match?.let { arrayListOf(it.id, it.name, it.latitude?.toString().orEmpty(), it.longitude?.toString().orEmpty()) } },
+    restore = { saved ->
+        if (saved.size == 4) StationMatch(saved[0], saved[1], latitude = saved[2].toDoubleOrNull(), longitude = saved[3].toDoubleOrNull()) else null
     },
 )
 

@@ -48,6 +48,9 @@ class StopLinksTest {
         val meters = links.nearby.single().meters!!
         assertTrue("Euston is $meters m away", meters in 600.0..800.0)
         assertEquals(setOf("northern", "victoria"), links.nearby.single().lineIds)
+        // Where it is, for its Favorite's place.
+        assertTrue(links.position != null)
+        assertEquals(null, StopLinks.NONE.position)
     }
 
     @Test

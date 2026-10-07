@@ -17,6 +17,8 @@ class StopLinks(
     // What From and To open for a station under several ids in an interchange: that interchange, so none of
     // its ids' stops is left out, as a search for it opens (Codex on #664). Null to open the stop itself.
     val openId: String? = null,
+    // Where the station is, from the index; null where it isn't placed.
+    val position: Coordinates? = null,
 ) {
     val isEmpty: Boolean get() = lines.isEmpty() && sameHub.isEmpty() && nearby.isEmpty()
 
@@ -125,7 +127,7 @@ fun StationIndex.linksOf(id: String, nearbyMeters: Double = NEARBY_LINK_METERS, 
             .take(nearbyLimit)
     }
     val openId = own.hubId.takeIf { ownGroup.isNotEmpty() && it.isNotBlank() }
-    return StopLinks(lines.values.toList(), sameHub, nearby, ownGroup.map { it.id }, openId)
+    return StopLinks(lines.values.toList(), sameHub, nearby, ownGroup.map { it.id }, openId, here)
 }
 
 /** How far a station can be and still count as near a stop's details: a short walk. */
