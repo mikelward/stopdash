@@ -29,7 +29,10 @@ class LineMap internal constructor(
      * this row's). [closedGoingDown] and [closedGoingUp] where TfL places a closure on the track it
      * stands for, for trains going down the map and up it: TfL shuts a stretch one way or both.
      * [riddenGoingDown] and [riddenGoingUp] where the rider's trip rides that track, down the map and
-     * up it.
+     * up it. [runsDown] and [runsUp] where the line runs that track down the map and up it: a bus round
+     * a one-way street, or to a stand its way back doesn't start from, runs one way only. [arrives] on
+     * the rail into the row a track ends at, where the track is drawn once rather than at every row it
+     * passes.
      */
     data class Rail(
         val from: Int,
@@ -38,7 +41,13 @@ class LineMap internal constructor(
         val closedGoingUp: Boolean = false,
         val riddenGoingDown: Boolean = false,
         val riddenGoingUp: Boolean = false,
+        val runsDown: Boolean = true,
+        val runsUp: Boolean = true,
+        val arrives: Boolean = false,
     ) {
+        /** Run one way only: drawn with an arrow the way it's run. */
+        val oneWay: Boolean = runsDown != runsUp
+
         /** Closed one way or both: drawn closed. */
         val closed: Boolean = closedGoingDown || closedGoingUp
 
@@ -117,6 +126,13 @@ class LineMap internal constructor(
          */
         val kept: Boolean = starred || nearby || riding || alertsRider
 
+        /**
+         * A one-way track into it run down the map, and one run up it: its arrows, said to a screen reader
+         * too (Codex, #665), worked out here on the worker rather than in composition.
+         */
+        val oneWayDown: Boolean = top.any { it.arrives && it.oneWay && it.runsDown }
+        val oneWayUp: Boolean = top.any { it.arrives && it.oneWay && it.runsUp }
+
         /** Folds into a run with its neighbors: one track through, nothing placed on it, nothing of its own to say. */
         val plain: Boolean = !kept && !end && !junction && level == null
     }
@@ -152,6 +168,10 @@ class LineMap internal constructor(
         ) : Item {
             /** [ends] as one line, "Edgware · High Barnet · Mill Hill East", joined here on the worker. */
             val endsText: String = ends.joinToString(" · ")
+
+            /** A one-way track folded in run down the map, and one run up it ([Row.oneWayDown]). */
+            val oneWayDown: Boolean = rails.any { it.oneWayDown }
+            val oneWayUp: Boolean = rails.any { it.oneWayUp }
         }
     }
 
@@ -159,7 +179,18 @@ class LineMap internal constructor(
      * A fold's rail in [column]: dotted where its stations are [folded] into it, solid for a branch only
      * passing by; running in from the row above where [fromTop], on to the row below where [toBottom].
      */
-    data class FoldRail(val column: Int, val folded: Boolean, val fromTop: Boolean, val toBottom: Boolean, val closed: Boolean = false)
+    data class FoldRail(
+        val column: Int,
+        val folded: Boolean,
+        val fromTop: Boolean,
+        val toBottom: Boolean,
+        val closed: Boolean = false,
+        // A one-way track folded in on this column run down the map, and one run up it: a one-way track's
+        // arrow is drawn on the rail into the row it ends at, so a fold holding that row draws it instead,
+        // both ways where the tracks it holds disagree (Codex, #665).
+        val oneWayDown: Boolean = false,
+        val oneWayUp: Boolean = false,
+    )
 
     /** Whether an alert is placed on the rider's own stops or a stretch they ride: then the rest of the line folds away ([folded]). */
     val alerted: Boolean = rows.any { it.alertsRider }
@@ -260,7 +291,7 @@ class LineMap internal constructor(
                 fromTop = span.first().top.any { it.from == c },
                 toBottom = span.last().bottom.any { it.to == c },
                 closed = span.any { row -> (row.top + row.bottom).any { it.closed && (it.from == c || it.to == c) } },
-            )
+            ).withWay(span, c)
         }
         return fold(key, rails, span, section = true, closedTrack = rails.any { it.closed })
     }
@@ -272,7 +303,14 @@ class LineMap internal constructor(
             .map { FoldRail(it.from, folded = false, fromTop = true, toBottom = true, closed = it.closed) }
         // Its own track drawn closed where a closure shuts any of it, into or out of the fold included.
         val closed = span.any { row -> row.top.any { it.closed && it.to == column } || row.bottom.any { it.closed && it.from == column } }
-        return fold(key, listOf(FoldRail(column, folded = true, fromTop = true, toBottom = true, closed = closed)) + passing, span, section = false, closedTrack = closed)
+        val own = FoldRail(column, folded = true, fromTop = true, toBottom = true, closed = closed).withWay(span, column)
+        return fold(key, listOf(own) + passing, span, section = false, closedTrack = closed)
+    }
+
+    // This rail with the ways the line runs the one-way tracks [span] ends on [column].
+    private fun FoldRail.withWay(span: List<Row>, column: Int): FoldRail {
+        val arriving = span.flatMap { row -> row.top.filter { it.arrives && it.to == column && it.oneWay } }
+        return copy(oneWayDown = arriving.any { it.runsDown }, oneWayUp = arriving.any { it.runsUp })
     }
 
     // [closedTrack]: a track of its own closed, which says no service there even where every station
@@ -325,8 +363,12 @@ class LineMap internal constructor(
         ): LineMap? {
             val alone = oneWay(sequence, otherWay = false)
             val both = oneWay(sequence, otherWay = true)
-            val outbound = laidOut(sequence, alone, closures, alertText, placed, starred, riding, rides, nearby)
-            if (both.routes == alone.routes) return outbound
+            // The way back drawn on the outbound way's own tracks: one map, its arrows from both ways.
+            if (both.routes == alone.routes) return laidOut(sequence, alone, closures, alertText, placed, starred, riding, rides, nearby)
+            // Else the outbound way alone where the way back can't be drawn, with no arrows: the way back runs
+            // somewhere the map doesn't show, so its tracks can't say which way buses run them.
+            val unknownWay = OneWay(alone.routes, alone.same, alone.through)
+            val outbound = laidOut(sequence, unknownWay, closures, alertText, placed, starred, riding, rides, nearby)
             val drawn = laidOut(sequence, both, closures, alertText, placed, starred, riding, rides, nearby) ?: return outbound
             fun LineMap.twice() = rows.size - rows.mapTo(HashSet()) { it.stopId }.size
             return if (outbound != null && drawn.twice() > outbound.twice()) outbound else drawn
@@ -420,6 +462,8 @@ class LineMap internal constructor(
                     closedGoingUp = "${base(to)}>${base(from)}" in closed,
                     riddenGoingDown = "$from>$to" in riddenTracks,
                     riddenGoingUp = "$to>$from" in riddenTracks,
+                    runsDown = way.travel?.contains("${base(from)}>${base(to)}") ?: true,
+                    runsUp = way.travel?.contains("${base(to)}>${base(from)}") ?: true,
                 )
             } ?: return null
             val columns = rows.maxOf { row -> maxOf(row.column, (row.top + row.bottom).maxOfOrNull { maxOf(it.from, it.to) } ?: 0) } + 1
@@ -519,6 +563,7 @@ class LineMap internal constructor(
             val routes: List<List<String>>,
             val same: Map<String, String>,
             val through: Map<Pair<String, String>, List<String>> = emptyMap(),
+            val travel: Set<String>? = null,
         )
 
         // The routes one way: TfL's outbound, which runs each pattern once; failing that (a sequence
@@ -542,6 +587,10 @@ class LineMap internal constructor(
             val same = HashMap<String, String>()
             val through = HashMap<Pair<String, String>, List<String>>()
             val inbound = routes.filter { it.direction == "inbound" }.map { it.stopIds }.filter { it.size >= 2 }
+            // Each hop the way buses run it, outbound and back, as "a>b": a track run one way only gets an
+            // arrow. Unknown (null) with no way back that meets the outbound way to say which run both.
+            val travel = outbound.flatMapTo(HashSet()) { route -> route.zipWithNext { a, b -> "$a>$b" } }
+            var back = false
             for (route in inbound) {
                 for (id in route) {
                     if (id in onOutbound) continue
@@ -562,9 +611,14 @@ class LineMap internal constructor(
                 // What it passes is kept whether or not it's drawn: its closures shut the street it runs
                 // along, drawn by the outbound way where it is alone (Codex, #663).
                 through += passed
-                if (otherWay && turned.size >= 2 && turned.any { it in onOutbound }) kept += turned
+                val meets = turned.size >= 2 && turned.any { it in onOutbound }
+                if (meets) {
+                    back = true
+                    turned.zipWithNext { a, b -> travel += "$b>$a" }
+                }
+                if (otherWay && meets) kept += turned
             }
-            return OneWay(kept.toList(), same, through)
+            return OneWay(kept.toList(), same, through, travel.takeIf { back })
         }
 
         /** How near a stop of the way back must be to an outbound stop of its name to be taken as it. */
@@ -813,7 +867,7 @@ class LineMap internal constructor(
                 val coming = lanes.indices.filter { lanes[it]?.to == node }
                 val column = coming.minOrNull() ?: free()
                 val top = lanes.mapIndexedNotNull { i, lane ->
-                    lane?.let { closed(it.from, it.to).copy(from = i, to = if (it.to == node) column else i) }
+                    lane?.let { closed(it.from, it.to).copy(from = i, to = if (it.to == node) column else i, arrives = it.to == node) }
                 }
                 coming.forEach { lanes[it] = null }
                 val onward = graph.nextOf(node).sortedWith(longestFirst)

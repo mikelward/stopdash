@@ -38,6 +38,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -304,6 +305,10 @@ private val COLUMN_PITCH = 24.dp
 private val DOT_RADIUS = 6.dp
 private val RAIL_WIDTH = 4.dp
 
+// A one-way track's arrowhead: twice the rail's width across, so it reads over the rail.
+private val ARROW_LENGTH = 8.dp
+private val ARROW_WIDTH = 12.dp
+
 // The first rail's middle: its edge 16dp in, as the last rail's edge is 16dp from the names.
 private val COLUMN_INSET = 16.dp + RAIL_WIDTH / 2
 
@@ -331,12 +336,31 @@ private fun DrawScope.drawRails(rails: List<LineMap.Rail>, top: Boolean, railCol
                 cubicTo(from, y0 + bend, to, y1 - bend, to, y1)
             }
         }
-        drawPath(
-            path,
-            if (rail.closed) closedColor else railColor,
-            style = Stroke(RAIL_WIDTH.toPx(), pathEffect = if (rail.closed) closedDashes() else null),
-        )
+        val color = if (rail.closed) closedColor else railColor
+        drawPath(path, color, style = Stroke(RAIL_WIDTH.toPx(), pathEffect = if (rail.closed) closedDashes() else null))
+        // A track the line runs one way only: an arrowhead the way it runs, once, on the way into the row
+        // it ends at.
+        if (top && rail.arrives && rail.oneWay) drawOneWayArrow(path, down = rail.runsDown, color)
     }
+}
+
+// An arrowhead [along] the way along [path] (a third for the rail into a row, so clear of its station's dot),
+// pointing the way it's drawn ([down]) or back up it, wider than the rail so it reads over it.
+private fun DrawScope.drawOneWayArrow(path: Path, down: Boolean, color: Color, along: Float = 1f / 3) {
+    val measure = PathMeasure().apply { setPath(path, false) }
+    val distance = measure.length * along
+    val at = measure.getPosition(distance)
+    val tangent = measure.getTangent(distance)
+    val (dx, dy) = if (down) tangent.x to tangent.y else -tangent.x to -tangent.y
+    val length = ARROW_LENGTH.toPx()
+    val halfWidth = ARROW_WIDTH.toPx() / 2
+    val arrow = Path().apply {
+        moveTo(at.x + dx * length / 2, at.y + dy * length / 2)
+        lineTo(at.x - dx * length / 2 - dy * halfWidth, at.y - dy * length / 2 + dx * halfWidth)
+        lineTo(at.x - dx * length / 2 + dy * halfWidth, at.y - dy * length / 2 - dx * halfWidth)
+        close()
+    }
+    drawPath(arrow, color)
 }
 
 /**
@@ -360,6 +384,9 @@ private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, positio
         stringResource(R.string.route_stop_in_alert).takeIf { row.marked },
         // A closed track drawn to it, where its own line says nothing (Codex, #606).
         stringResource(R.string.line_map_beside_closure).takeIf { row.besideClosure },
+        // The arrows on one-way tracks into it, said as well as drawn (Codex, #665).
+        stringResource(R.string.line_map_one_way_down).takeIf { row.oneWayDown },
+        stringResource(R.string.line_map_one_way_up).takeIf { row.oneWayUp },
     ).joinToString(", ")
     Row(
         modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)
@@ -433,11 +460,17 @@ private fun FoldRow(fold: LineMap.Item.Fold, columns: Int, railColor: Color, onO
     val clickLabel = pluralStringResource(R.plurals.line_map_show, fold.count, fold.count)
     // How bad an alert folded into it is, without naming where (maintainer, 2026-10-06): no service, or a
     // station an alert names, as the route page marks one.
-    val (glyph, state) = when (fold.level) {
+    val (glyph, alert) = when (fold.level) {
         LineMap.Level.CLOSURE -> "\u26D4" to stringResource(R.string.line_map_fold_closure)
         LineMap.Level.WARNING -> "\u26A0" to stringResource(R.string.line_map_fold_alert)
         null -> null to null
     }
+    // The arrows on one-way tracks folded in, said as well as drawn (Codex, #665).
+    val state = listOfNotNull(
+        alert,
+        stringResource(R.string.line_map_one_way_down).takeIf { fold.oneWayDown },
+        stringResource(R.string.line_map_one_way_up).takeIf { fold.oneWayUp },
+    ).joinToString(", ").ifEmpty { null }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)
@@ -460,6 +493,14 @@ private fun FoldRow(fold: LineMap.Item.Fold, columns: Int, railColor: Color, onO
                         if (rail.closed) closedColor else railColor, Offset(x, y0), Offset(x, y1), RAIL_WIDTH.toPx(),
                         pathEffect = if (rail.closed) closedDashes() else null,
                     )
+                }
+                // One-way tracks folded in: their arrows on the fold's rail, as the rows they end at would draw
+                // them, one each way where they disagree.
+                if (rail.oneWayDown || rail.oneWayUp) {
+                    val path = Path().apply { moveTo(x, y0); lineTo(x, y1) }
+                    val color = if (rail.closed) closedColor else railColor
+                    if (rail.oneWayDown) drawOneWayArrow(path, down = true, color, along = 1f / 3)
+                    if (rail.oneWayUp) drawOneWayArrow(path, down = false, color, along = 2f / 3)
                 }
             }
         }
