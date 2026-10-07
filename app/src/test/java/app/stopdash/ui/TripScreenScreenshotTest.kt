@@ -65,6 +65,8 @@ import app.stopdash.R
 import app.stopdash.data.TflRouteSequenceDto
 import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.Departure
+import app.stopdash.domain.Countdown
+import app.stopdash.domain.PlaceDirect
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.ModeGroups
@@ -1194,6 +1196,76 @@ class TripScreenScreenshotTest {
         composeRule.onNodeWithTag("stepFree-FULLY").assertTextEquals("Fully", "Onto the train too, for a wheelchair")
         composeRule.onNodeWithTag("stepFree-FULLY").performClick()
         assertEquals(StepFree.FULLY, chosenStepFree)
+    }
+
+    // A trip to a place's Direct section (SPEC *Direct to a place*): its lines from the rider's stops.
+    private fun directRow(lineId: String, lineName: String, mode: String, from: String, vararg minutes: Long, disruption: String? = null): PlaceDirectViewModel.ShownRow {
+        val trains = minutes.map { Departure(lineId, lineName, "", "Canary Wharf", null, now.plusSeconds(it * 60), mode) }
+        return PlaceDirectViewModel.ShownRow(
+            PlaceDirect.Row(lineId, lineName, mode, from, from, trains),
+            Countdown.mergedLabel(trains, now),
+            disruption,
+        )
+    }
+
+    private fun showDirect(direct: PlaceDirectViewModel.State) {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf",
+                    state = planned,
+                    now = now,
+                    access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source),
+                    onBack = {},
+                    onRetry = {},
+                    onWalkingSpeedChange = {},
+                    onMaxWalkChange = {},
+                    onStepFreeChange = {},
+                    aboveRoutes = { PlaceDirectSection(direct, onRetry = {}) },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+    }
+
+    @Test
+    fun trip_place_direct() {
+        // Under the choices, over the routes: each line once, its stop and next trains; three, then "+N more".
+        showDirect(
+            PlaceDirectViewModel.State.Ready(
+                listOf(
+                    directRow("elizabeth", "Elizabeth line", "elizabeth-line", "Bond Street", 3, 8, 13),
+                    directRow("jubilee", "Jubilee", "tube", "Bond Street", 2, 5, 9, disruption = "Minor Delays"),
+                    directRow("dlr", "DLR", "dlr", "Bank", 4, 10),
+                    directRow("135", "135", "bus", "Old Street", 6),
+                ),
+                checking = false,
+                uncertain = false,
+            ),
+        )
+        composeRule.onNodeWithText("Direct").assertIsDisplayed()
+        composeRule.onNodeWithTag("placeDirect-elizabeth").assertIsDisplayed()
+        composeRule.onAllNodesWithTag("placeDirect-135").assertCountEquals(0)
+        // A line not running a good service says so under its row.
+        composeRule.onNodeWithText("Jubilee: Minor Delays").assertIsDisplayed()
+        captureSnapshot("trip-place-direct.png")
+        composeRule.onNodeWithText("+1 more").performClick()
+        composeRule.onNodeWithTag("placeDirect-135").assertExists()
+    }
+
+    @Test
+    fun trip_place_direct_says_none_or_couldnt_check() {
+        // Never a blank: nothing direct says None; a lookup that failed says so, with a Retry.
+        showDirect(PlaceDirectViewModel.State.Ready(emptyList(), checking = false, uncertain = false))
+        composeRule.onNodeWithText("None").assertIsDisplayed()
+    }
+
+    @Test
+    fun trip_place_direct_failed() {
+        showDirect(PlaceDirectViewModel.State.Failed)
+        composeRule.onNodeWithText("Couldn't check").assertIsDisplayed()
+        composeRule.onNodeWithTag("placeDirectRetry").assertIsDisplayed()
     }
 
     @Test

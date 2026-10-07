@@ -1271,10 +1271,18 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             merged, since its three quickest routes are often one route at three departures.
       - [x] **One row of walk choices** (maintainer, 2026-10-07): walking speed, max walk and
             step-free as one row of dropdown chips atop a trip's routes, not a full-width row each.
-      - [ ] **Direct trains to a favorite place** (maintainer, 2026-10-07): atop the trip a place chip
+      - [x] **Direct trains to a favorite place** (maintainer, 2026-10-07): atop the trip a place chip
             opens, a *Direct* section of the lines from nearby stops that call within a walk of the
             place (`PlaceStops`, #641), up to 3 rows then "+N more"; "None" or "Couldn't check" in one
-            row. Replaces favorite journeys, which then go (no migration: no users yet).
+            row; nothing looked up within 200 m of the place.
+      - [ ] **Direct's rows landing can move the routes under them**: "Checking…" (one line) grows to
+            up to three rows plus "+N more" when the look lands. Usually before the routes show (they
+            wait on the Planner; Direct reads cached arrivals), but not always. Reserving three rows'
+            height would leave a blank band on every "None" trip; revealing Direct with the routes would
+            tie it to the Planner. Maintainer's call (Codex on #645).
+      - [ ] **Retire favorite journeys** now Direct covers them (no migration: no users yet).
+      - [ ] **Pin a place's Direct trains to the widget** (PR 3 of the favorite-destinations plan).
+      - [ ] **Walk to the Direct row's stop**: show it ("Bond Street (3 min)") as a trip card does.
       - [x] **Mode toggles** at the top of a trip, remembered across trips (the Planner's `mode=`):
             chips under the step-free dropdown, one per mode group the list hides by (SPEC *Modes*);
             the design is autopilot's, see *Decisions needing review*.

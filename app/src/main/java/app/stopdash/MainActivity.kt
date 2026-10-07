@@ -59,6 +59,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
@@ -108,6 +109,9 @@ import app.stopdash.data.logAppSettingsWarning
 import app.stopdash.data.logNetworkWarning
 import app.stopdash.domain.AppSettings
 import app.stopdash.domain.ArrivalsCache
+import app.stopdash.domain.FavoriteShortcuts
+import app.stopdash.domain.NearestStops
+import app.stopdash.domain.PlaceStopsFinder
 import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.BugReport
 import app.stopdash.domain.CachingStopFinder
@@ -143,6 +147,7 @@ import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.StarredRowSet
 import app.stopdash.domain.StationMatch
+import app.stopdash.domain.StepFree
 import app.stopdash.domain.StepFreeAccess
 import app.stopdash.domain.StopClosureCache
 import app.stopdash.domain.Workers
@@ -228,6 +233,8 @@ import app.stopdash.ui.StationSearchViewModel
 import app.stopdash.ui.StationStopsViewModel
 import app.stopdash.ui.StopClosureChecks
 import app.stopdash.ui.StopRef
+import app.stopdash.ui.PlaceDirectSection
+import app.stopdash.ui.PlaceDirectViewModel
 import app.stopdash.ui.TripEnds
 import app.stopdash.ui.TripScreen
 import app.stopdash.ui.TripViewModel
@@ -388,6 +395,11 @@ class MainActivity : ComponentActivity() {
     // memory only: they aren't places near the rider, so they mustn't show in the search as stops
     // the app has shown them nearby, or push the rider's own nearby lookups out of that cache.
     private val stationAreaStopFinder by lazy { CachingStopFinder(nearbyTflClient, stationAreaStopsCache) }
+
+    // The stops a short walk from a place a trip goes to ([PlaceStopsFinder]), for its Direct section:
+    // cached apart again, in a file, so a place's stops hold for a day and never push the rider's own
+    // nearby lookups out.
+    private val placeStopsFinder by lazy { PlaceStopsFinder(CachingStopFinder(nearbyTflClient, placeStopsCache(applicationContext))) }
 
     // The location gate: resolves the nearby stops (an on-demand, location-sending action)
     // before the departures view, which then refreshes those stops location-free.
@@ -2965,6 +2977,46 @@ class MainActivity : ComponentActivity() {
      * searched station, a look: its models are retained apart from the near-me list's and dropped
      * when it closes, nothing is saved, and the destination isn't added to the search's Recent list.
      */
+    /**
+     * The Direct section's model for a trip to [place] ([PlaceDirectViewModel]), retained beside the
+     * trip's own model in its [owner] and handed the trip's [inputs] as it composes: its lookups run
+     * only while the trip is on screen.
+     */
+    @Composable
+    private fun rememberPlaceDirect(
+        owner: ViewModelStoreOwner,
+        place: TripDestination.Place,
+        inputs: PlaceDirectViewModel.Inputs,
+        lifecycleOwner: LifecycleOwner,
+    ): PlaceDirectViewModel {
+        val appContext = applicationContext
+        val direct: PlaceDirectViewModel = viewModel(
+            viewModelStoreOwner = owner,
+            key = "place-direct",
+            factory = viewModelFactory {
+                initializer {
+                    PlaceDirectViewModel(
+                        ends = { placeStopsFinder.ends(place.coordinate) },
+                        // Every stop of a station asks for its National Rail board, as the trip's client
+                        // does, so each candidate stop has its trains, not only the first to answer.
+                        client = departuresClient(appContext, boardAtEveryStop = true),
+                        routes = routeStops(appContext),
+                        stepFreeAccess = { StepFreeStore.load(appContext) },
+                        closureCache = StopClosureCache.SHARED,
+                        liftsOut = { liftOutages.current().ids },
+                        arrivals = ArrivalsCache.SHARED,
+                        warn = ::logDepartureWarning,
+                    )
+                }
+            },
+        )
+        SideEffect { direct.setInputs(inputs) }
+        LaunchedEffect(lifecycleOwner, direct) {
+            lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { direct.run() }
+        }
+        return direct
+    }
+
     @Composable
     private fun HereTripArea(
         origin: List<StopRef>,
@@ -3296,6 +3348,21 @@ class MainActivity : ComponentActivity() {
         // from here nothing more to wait for ([TripViewModel.fixSettled]).
         LaunchedEffect(trip, relocatingNow) { if (!relocatingNow) trip.fixSettled(pickId) }
         val pulling by trip.pulling.collectAsStateWithLifecycle()
+        // A place's Direct section (SPEC *Direct to a place*): only for a place the rider isn't already
+        // at, by the same 200 m the place chips hide within, so a trip there looks nothing up.
+        val direct = favorite?.takeUnless { place ->
+            here != null && NearestStops.distanceMeters(
+                here.latitude, here.longitude, place.coordinate.latitude, place.coordinate.longitude,
+            ) <= FavoriteShortcuts.HIDE_WITHIN_METERS
+        }?.let { place ->
+            // What the routes leave out, it leaves out too: hidden and avoided lines, the step-free level
+            // and the trip's modes turned off.
+            // Built bare, not remembered: remember's keys compare contents, the model compares identities.
+            val inputs = PlaceDirectViewModel.Inputs(origin, distanceMeters, hiddenModes, avoidedLines, stepFree, tripModes, planOptionsLoaded)
+            rememberPlaceDirect(owner, place, inputs, lifecycleOwner)
+        }
+        val directState = direct?.state?.collectAsStateWithLifecycle()?.value
+        val directPulling = direct?.pulling?.collectAsStateWithLifecycle()?.value == true
         TripScreen(
             title = title,
             journey = tripKey,
@@ -3334,6 +3401,11 @@ class MainActivity : ComponentActivity() {
             },
             onWithheld = trip::noteWithheld,
             onListShown = trip::noteListShown,
+            aboveRoutes = if (direct != null && directState != null) {
+                { PlaceDirectSection(directState, direct::retry) }
+            } else {
+                null
+            },
             onShownStops = trip::checkShownStops,
             onPlacedStands = trip::boardAt,
             walkingSpeed = walkingSpeed,
@@ -3370,10 +3442,12 @@ class MainActivity : ComponentActivity() {
             // ([TripViewModel.refreshFor] plans again once the fix lands 150 m on, and a fix nearer
             // another stop carries the pull into that trip, [lastPull]). The indicator holds until
             // the trip has refreshed for that fix.
-            pullRefreshing = pulling || (here != null && relocatingNow),
+            pullRefreshing = pulling || directPulling || (here != null && relocatingNow),
             onPullRefresh = {
                 ArrivalsCache.SHARED.clear()
                 lastPull = trip.pullRefresh(awaitFix = here != null)
+                // The Direct section looks again too, the indicator held until it has.
+                direct?.pullRefresh()
                 if (here != null) relocate()
             },
         )
@@ -4326,6 +4400,16 @@ private var nearbyStopsCacheInstance: NearbyStopsCache? = null
 
 /** The in-memory cache of searched stations' surroundings (From…), apart from the rider's own. */
 private val stationAreaStopsCache = NearbyStopsCache()
+
+private val placeStopsCacheLock = Any()
+private var placeStopsCacheInstance: NearbyStopsCache? = null
+
+/** The stops around trips' places ([PlaceStopsFinder]), in a file of their own beside the rider's. */
+private fun placeStopsCache(context: Context): NearbyStopsCache = synchronized(placeStopsCacheLock) {
+    placeStopsCacheInstance ?: NearbyStopsCache(
+        FileNearbyStopsStore(File(AppDirs.cache(context), "place-stops.json"), warn = ::logLocationWarning),
+    ).also { placeStopsCacheInstance = it }
+}
 
 private fun nearbyStopsCache(context: Context): NearbyStopsCache = synchronized(nearbyStopsCacheLock) {
     nearbyStopsCacheInstance ?: NearbyStopsCache(
