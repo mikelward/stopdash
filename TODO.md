@@ -29,7 +29,8 @@ exercises the whole spine the widget later renders from.
       open route, what frames them, and each card's alerts, notices and times are one frame worked out on
       the page's worker (`tripFrame`), drawn against its own state and time.
   - [ ] **The rest of the trip page off the main thread**: the open route's leg rows (`RideLeg` →
-        `rideLegRows`, their headways), a line page's rows (`legRows` for `detailRow`), and the
+        `rideLegRows`, their headways), a line page's rows (`legRows` for `detailRow`, its `legFilter`
+        pass over the board's trains and their calling-point lookups among it: Codex, #650), and the
         once-per-refresh chain (`onPoles`, `placedStands`/`shownRoutes`,
         `withThroughRoutes`, `plannedLegs`, `rideLines`) still run in composition. So does
         `TripViewModel`'s own refresh on `viewModelScope`: the setup before its first request
