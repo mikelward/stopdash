@@ -789,7 +789,10 @@ line is withheld while stale, D4), and the line's **full disruption text**, whic
 in for: shown collapsed to its first line, tapped to expand (the same widget the stop-closure card
 uses). A **web link** in an alert — with or without `https://`, as TfL writes them ("visit
 tfl.gov.uk/status-updates") — is underlined and opens in the browser on tap; only http/https links
-are made, an email address isn't treated as one, and with no browser the tap says so. Below that it lists **every station from the boarding stop to where the soonest train
+are made, an email address isn't treated as one, and with no browser the tap says so. The same holds
+for every disruption text the app shows in full (maintainer, 2026-10-07: National Rail's reason is often
+its page alone): a line's page off the disruptions row or a trip, and the On the way screen's disruption
+and station notices. Below that it lists **every station from the boarding stop to where the soonest train
 terminates** (a short-working ends where it does, not at the line's end), on a rail in the line's
 color. **A tap on a station opens its own page** (maintainer, 2026-10-06), by its stop area where TfL
 gives one, so a bus stop opens as the whole place; Back returns to the route page (from a station's

@@ -3779,11 +3779,12 @@ internal fun TripLineReason(
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
         item(key = "line") { TripLineRow(line) }
         if (reason != null) {
-            item(key = "reason") { Text(reason, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 16.dp)) }
+            // Its web links tappable: National Rail's reason is often a page and nothing else (maintainer, 2026-10-07).
+            item(key = "reason") { LinkedText(reason, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 16.dp)) }
         }
         if (quieted != null) {
             item(key = "quieted") {
-                Text(quieted, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 16.dp))
+                LinkedText(quieted, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 16.dp))
             }
         }
         if (map != null) lineMapSection(map, railColor)
