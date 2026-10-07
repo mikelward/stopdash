@@ -1289,6 +1289,39 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun trip_place_direct_unchecked_is_said_on_the_header() {
+        // A line or train that couldn't be checked: said beside "Direct", so nothing below moves when it's
+        // found out; with rows, under none of them.
+        showDirect(
+            PlaceDirectViewModel.State.Ready(
+                listOf(directRow("jubilee", "Jubilee", "tube", "Bond Street", 2, 5, 9)),
+                checking = false,
+                uncertain = true,
+                retryable = false,
+            ),
+        )
+        composeRule.onNodeWithTag("placeDirectPartial").assertTextEquals("Couldn't check every line")
+        captureSnapshot("trip-place-direct-unchecked.png")
+    }
+
+    @Test
+    fun trip_place_direct_none_with_trains_no_retry_can_check() {
+        // Nothing found, and the only trains unchecked are ones no Retry can tell: None, with the header
+        // saying some went unchecked, never "Couldn't check" with a Retry that can't help.
+        showDirect(PlaceDirectViewModel.State.Ready(emptyList(), checking = false, uncertain = true, retryable = false))
+        composeRule.onNodeWithText("None").assertIsDisplayed()
+        composeRule.onNodeWithTag("placeDirectPartial").assertIsDisplayed()
+        composeRule.onAllNodesWithTag("placeDirectRetry").assertCountEquals(0)
+    }
+
+    @Test
+    fun trip_place_direct_none_with_a_route_a_retry_may_get_offers_it() {
+        showDirect(PlaceDirectViewModel.State.Ready(emptyList(), checking = false, uncertain = true, retryable = true))
+        composeRule.onNodeWithText("Couldn't check").assertIsDisplayed()
+        composeRule.onNodeWithTag("placeDirectRetry").assertIsDisplayed()
+    }
+
+    @Test
     fun trip_place_direct_failed() {
         showDirect(PlaceDirectViewModel.State.Failed)
         composeRule.onNodeWithText("Couldn't check").assertIsDisplayed()

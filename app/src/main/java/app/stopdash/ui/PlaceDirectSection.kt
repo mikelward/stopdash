@@ -58,12 +58,27 @@ internal fun PlaceDirectSection(
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     Column(modifier.fillMaxWidth().testTag("placeDirect").padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Text(
-            text = stringResource(R.string.trip_direct_title),
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.semantics { heading() },
-        )
+        // Some line went unchecked: said on the header's own line, so the rows and the routes under them
+        // never move when it's found out after they're shown (SPEC principle 4).
+        val unchecked = (state as? PlaceDirectViewModel.State.Ready)?.let { it.uncertain && (it.rows.isNotEmpty() || !it.retryable) } == true
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = stringResource(R.string.trip_direct_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.semantics { heading() },
+            )
+            if (unchecked) {
+                Text(
+                    stringResource(R.string.trip_direct_partial),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false).testTag("placeDirectPartial"),
+                )
+            }
+        }
         when (state) {
             PlaceDirectViewModel.State.Checking -> DirectNote(stringResource(R.string.trip_direct_checking))
             PlaceDirectViewModel.State.Failed -> DirectFailed(onRetry)
@@ -88,11 +103,12 @@ internal fun PlaceDirectSection(
                             Text(stringResource(R.string.trip_direct_more, more))
                         }
                     }
-                    // Some stop or line went unchecked: the rows may not be every way there.
-                    if (state.uncertain) DirectNote(stringResource(R.string.trip_direct_partial), MaterialTheme.colorScheme.error)
                 }
                 state.checking -> DirectNote(stringResource(R.string.trip_direct_checking))
-                state.uncertain -> DirectFailed(onRetry)
+                // Something a Retry could get (a stop's arrivals, a line's route) didn't come back.
+                state.uncertain && state.retryable -> DirectFailed(onRetry)
+                // None, with the header saying some trains couldn't be checked: ones no Retry can tell
+                // (a train past its board's calling points, a line TfL has no route for).
                 else -> DirectNote(stringResource(R.string.trip_direct_none))
             }
         }

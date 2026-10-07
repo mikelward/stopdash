@@ -1560,8 +1560,15 @@ hidden line, or a mode the trip's chips turned off, never shows; a change to any
 nearby set, or a pull looks again at once. Three
 rows show, then "+N more". A line is judged by its route as a trip's leg is, so a departure whose route
 isn't known yet is left out and flagged rather than guessed; with none it says **None**, while routes
-load **Checking…**, and when the place's stops or every origin stop's arrivals couldn't be had,
-**Couldn't check** with a Retry. The place's stops are one TfL `/StopPoint` lookup by its coordinate
+load **Checking…**, and when the place's stops or every origin stop's arrivals couldn't be had, or with
+no rows something a Retry may get didn't come back (a stop's arrivals, a line's route), **Couldn't
+check** with a Retry. A train no Retry can tell (past the calling points its station's board gives, at
+a busy terminus only the next ten; a line TfL has no route for, as Eurostar) doesn't fail the section:
+with no rows it says **None** (maintainer, 2026-10-07). Any line or train left unchecked is said beside
+the **Direct** header ("Couldn't check every line"), never as a line under the rows, so finding it out
+after the rows show moves nothing; where the section itself says **Couldn't check**, that says it, and
+the header doesn't repeat it. A line TfL answers it has no route for isn't asked about again for a
+day. The place's stops are one TfL `/StopPoint` lookup by its coordinate
 (cached a day, apart from the rider's own areas); arrivals come from the shared cache, fetched only past
 its age, and only while the trip is on screen. Within 200 m of the place (where its chip hides) the
 section isn't shown and nothing is looked up. It replaces favorite journeys as the way to see the
