@@ -4835,6 +4835,8 @@ internal fun lineRow(
     // Its work still to come as this page shows it, the caller's dismissals already applied: no default,
     // so every page says which it shows (Codex, #689).
     planned: List<PlannedAlert>,
+    // The line's week ahead couldn't be asked (Lines… alone asks it): its Coming up says so.
+    aheadUnknown: Boolean = false,
 ): TripRow {
     val known = mode.ifBlank { ride?.mode.orEmpty() }.ifBlank { Connections.knownMode(lineId).orEmpty() }
     val leg = ride?.takeIf { it.lineId == lineId }
@@ -4848,6 +4850,7 @@ internal fun lineRow(
         // What its map draws of the alert, so the same alert fetched again keeps the map up (Codex, #623).
         mapKey = LineMap.alertKey(status),
         planned = planned,
+        aheadUnknown = aheadUnknown && !checking,
     )
     return TripRow(checking = checking, every = listOf(line))
 }

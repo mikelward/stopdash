@@ -82,6 +82,43 @@ data class LineStatus(
      */
     fun forDirection(direction: String): LineStatus = byDirection[direction] ?: this
 
+    /**
+     * This status with [ahead] (TfL's work for the coming days, [planned]'s kind) added to its work to come,
+     * soonest first: an alert under way in the same words isn't added, nor one already listed, as TfL gives
+     * the same alert in both answers once it's posted. A listed alert is matched by its words, as the two
+     * answers can date one alert differently (its posting here, its period there), and accounts for one of
+     * [ahead]'s alerts in those words, the soonest, so a later one in the same words is still added. Among
+     * [ahead], alerts are told apart by their whole identity ([plannedAlertFingerprint]): two closures in the
+     * same words on different days stay two, and one TfL gave no words for stays (Codex, #697). Walks both:
+     * on a worker only.
+     */
+    @WorkerThread
+    fun withWorkAhead(ahead: List<PlannedAlert>): LineStatus {
+        if (ahead.isEmpty()) return this
+        val underWayWords = HashSet<String>()
+        fullText?.let(underWayWords::add)
+        underWay.mapNotNullTo(underWayWords) { it.fullText }
+        underWayWords.remove("")
+        // How many of [planned] are still to be matched, by their words; and each one's whole identity.
+        val unmatched = HashMap<String, Int>()
+        planned.forEach { if (it.fullText.isNotEmpty()) unmatched.merge(it.fullText, 1, Int::plus) }
+        val listed = planned.mapTo(HashSet()) { plannedAlertFingerprint(it) }
+        val seen = HashSet<String>()
+        val added = ArrayList<PlannedAlert>()
+        for (alert in ahead.sortedBy { it.startsOn }) {
+            val identity = plannedAlertFingerprint(alert)
+            if (!seen.add(identity) || alert.fullText in underWayWords) continue
+            val left = unmatched[alert.fullText] ?: 0
+            if (identity in listed || left > 0) {
+                if (left > 0) unmatched[alert.fullText] = left - 1
+                continue
+            }
+            added += alert
+        }
+        if (added.isEmpty()) return this
+        return copy(planned = (planned + added).sortedBy { it.startsOn })
+    }
+
     /** True when there is anything to show for the line: a disruption now, or work to come. */
     val hasAlerts: Boolean get() = disrupted || planned.isNotEmpty()
 

@@ -4689,6 +4689,18 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun a_lines_week_ahead_not_checked_says_so_under_coming_up() {
+        // Its week ahead couldn't be asked: Coming up says so rather than claim a clean week (SPEC D4).
+        val row = TripRow(
+            checking = false,
+            every = listOf(TripLine(northernLeg(), LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service"), aheadUnknown = true)),
+        )
+        composeRule.setContent { StopDashTheme(dynamicColor = false) { TripLinesPage(row, onClose = {}, alone = true) } }
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.line_coming_up)).assertExists()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.line_coming_up_unknown)).assertExists()
+    }
+
+    @Test
     fun work_to_come_read_back_from_the_stored_snapshot_offers_no_dismiss() {
         // Its words left out, only its fingerprint kept: a dismissal can't be keyed to match it, so no × until the
         // line's check brings the words back (Codex, #689).

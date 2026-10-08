@@ -26,6 +26,51 @@ class TflLineStatusDtoTest {
     private val monday = java.time.Instant.parse("2026-09-28T06:00:00Z")
 
     @Test
+    fun `the week ahead's work is read from its own periods, leaving out what's under way`() {
+        // A real date-range answer for three public lines: the Circle closed next weekend, the Elizabeth line
+        // closed early on the Sunday and severely delayed now, the Northern line good.
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        val text = checkNotNull(javaClass.getResource("/fixtures/line_status_week_ahead.json")).readText()
+        val lines = json.decodeFromString<List<TflLineDto>>(text).associateBy { it.id }
+        assertEquals(setOf("circle", "elizabeth", "northern"), lines.keys)
+        val now = java.time.Instant.parse("2026-10-08T06:30:00Z")
+
+        val circle = lines.getValue("circle").workAhead(now).single()
+        assertEquals("Part Closure", circle.label)
+        assertEquals(java.time.LocalDate.of(2026, 10, 10), circle.startsOn)
+        assertTrue(circle.fullText, circle.fullText.contains("Edgware Road"))
+        // The Sunday closure is ahead; the delays in force now are the line's own status's to say.
+        val elizabeth = lines.getValue("elizabeth").workAhead(now)
+        assertEquals(listOf(java.time.LocalDate.of(2026, 10, 11)), elizabeth.map { it.startsOn })
+        assertEquals(emptyList<Any>(), lines.getValue("northern").workAhead(now))
+        // Once the weekend has begun, it's under way, not to come.
+        assertEquals(emptyList<Any>(), lines.getValue("circle").workAhead(java.time.Instant.parse("2026-10-10T09:00:00Z")))
+        // The soonest work's own start, which the week's answer is kept no longer than (Codex, #697).
+        val start = checkNotNull(lines.getValue("circle").nextWorkStart(now))
+        assertEquals(java.time.LocalDate.of(2026, 10, 10), start.atZone(java.time.ZoneId.of("Europe/London")).toLocalDate())
+        assertEquals(null, lines.getValue("northern").nextWorkStart(now))
+    }
+
+    @Test
+    fun `a week ahead dated so it can't be read fails, never a clean week`() {
+        // Work TfL dated unreadably may be work to come: the check fails rather than leave it out (Codex, #697).
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        val line = json.decodeFromString<TflLineDto>(
+            """{"id": "circle", "name": "Circle", "lineStatuses": [{"statusSeverity": 5, "statusSeverityDescription": "Part Closure",
+              "reason": "No service.", "validityPeriods": [{"fromDate": "next Saturday", "toDate": "2026-10-12T04:00:00Z"}]}]}""",
+        )
+        val failed = runCatching { line.workAhead(java.time.Instant.parse("2026-10-08T06:30:00Z")) }.exceptionOrNull()
+        assertTrue("$failed", failed is app.stopdash.domain.TflException.Unreachable)
+        // Nor one TfL gave no start at all.
+        val startless = json.decodeFromString<TflLineDto>(
+            """{"id": "circle", "name": "Circle", "lineStatuses": [{"statusSeverity": 5, "statusSeverityDescription": "Part Closure",
+              "reason": "No service.", "validityPeriods": [{"toDate": "2026-10-12T04:00:00Z"}]}]}""",
+        )
+        val alsoFailed = runCatching { startless.workAhead(java.time.Instant.parse("2026-10-08T06:30:00Z")) }.exceptionOrNull()
+        assertTrue("$alsoFailed", alsoFailed is app.stopdash.domain.TflException.Unreachable)
+    }
+
+    @Test
     fun `work that hasn't started is planned, not a disruption`() {
         val later = "Road will be closed from 13 Oct 07:00 until 31 Oct 18:00. Buses will be diverted."
         val result = checkNotNull(line(plannedWork(later)).toLineStatus(monday))

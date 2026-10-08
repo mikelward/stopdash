@@ -2767,8 +2767,9 @@ Builds on Phase 1's minimal line-status marking.
 - [ ] **Coming-up closures on a line's page** (discussed 2026-10-06; maintainer, 2026-10-08: coming up
       should look different from what's under way). The page lists the work to come the line's status
       already carries under **Coming up**, muted, each with the day it starts.
-  - [ ] TfL's future statuses (`/Line/{id}/Status/{from}/to/{to}`) for the next week, added to it:
-        one free request when the page opens, cached for hours, a failure saying so with a retry.
+  - [x] TfL's future statuses (`/Line/{id}/Status/{from}/to/{to}`) for the next week, added to it
+        on the lines page's line page: one free request when it opens, kept three hours, a failure said.
+  - [ ] The week ahead on the home screen's and a trip's line pages too.
   - [ ] Each on the map too, drawn apart from a closure in force (lighter, or dashed).
 - [x] **A trip's lines page keeps the rider's starred stops on the map too.** The trip reads the starred
       rows and journeys as they change, walked on the worker, and its lines page keeps their stops as

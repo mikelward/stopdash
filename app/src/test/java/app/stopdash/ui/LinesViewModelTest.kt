@@ -92,7 +92,16 @@ class LinesViewModelTest {
         dismissedStore = store,
         saved = saved,
         loadIndex = { indexLoads++; index() },
+        workAhead = { aheadAsked++; app.stopdash.data.WorkAhead(ahead(), aheadStartsIn) },
+        aheadReuse = java.time.Duration.ofHours(3),
     )
+
+    private var aheadAsked = 0
+    private var aheadStartsIn: java.time.Duration? = null
+    private val weekend = app.stopdash.domain.PlannedAlert(
+        "Part Closure", "Saturday 10 and Sunday 11 October, no service between Edgware Road and Aldgate.", java.time.LocalDate.of(2026, 10, 10),
+    )
+    private var ahead: () -> List<app.stopdash.domain.PlannedAlert> = { emptyList() }
 
     private var indexLoads = 0
     private var index: () -> app.stopdash.domain.StationIndex = {
@@ -417,5 +426,83 @@ class LinesViewModelTest {
         // A good service has no alert to dismiss.
         val good = LineStatus("jubilee", LineStatus.GOOD_SERVICE, "Good Service")
         assertFalse(lineAlertDismissed(good, setOf(DismissedAlert.ofLineStatus(good))))
+    }
+
+    @Test
+    fun `the week ahead is added to the line's work to come, asked once and kept`() {
+        ahead = { listOf(weekend) }
+        val vm = vm()
+        vm.page(n299)
+        // The status shows first; the week ahead joins it on the worker.
+        repeat(3) { releaseCompute() }
+        assertEquals(listOf(weekend), vm.check.value?.status?.planned)
+        assertEquals(false, vm.check.value?.aheadUnknown)
+        assertEquals(1, aheadAsked)
+        // Asked again within its hours: the status is, the week ahead isn't, and stays on the page.
+        clock += java.time.Duration.ofMinutes(5).toMillis()
+        vm.check(n299)
+        repeat(3) { releaseCompute() }
+        assertEquals(2, asked)
+        assertEquals(1, aheadAsked)
+        assertEquals(listOf(weekend), vm.check.value?.status?.planned)
+    }
+
+    @Test
+    fun `the week ahead is asked again once its soonest work starts`() {
+        // Kept no longer than until it starts: under way then, not to come, so the page asks again rather than
+        // leave it under Coming up for the rest of its hours (Codex, #697).
+        ahead = { listOf(weekend) }
+        aheadStartsIn = java.time.Duration.ofMinutes(20)
+        val vm = vm()
+        vm.page(n299)
+        repeat(3) { releaseCompute() }
+        assertEquals(1, aheadAsked)
+        clock += java.time.Duration.ofMinutes(10).toMillis()
+        vm.check(n299)
+        repeat(3) { releaseCompute() }
+        assertEquals(1, aheadAsked)
+        clock += java.time.Duration.ofMinutes(11).toMillis()
+        ahead = { emptyList() }
+        vm.check(n299)
+        repeat(3) { releaseCompute() }
+        assertEquals(2, aheadAsked)
+        assertEquals(emptyList<Any>(), vm.check.value?.status?.planned)
+    }
+
+    @Test
+    fun `the week ahead's hold counts from its ask, however late its answer comes`() {
+        // Answered 10 minutes after it was asked, its work 15 minutes off by then: asked again 15 minutes after
+        // the ask, never 15 after the answer (Codex, #697).
+        ahead = { clock += java.time.Duration.ofMinutes(10).toMillis(); listOf(weekend) }
+        aheadStartsIn = java.time.Duration.ofMinutes(15)
+        val vm = vm()
+        vm.page(n299)
+        repeat(3) { releaseCompute() }
+        assertEquals(1, aheadAsked)
+        ahead = { listOf(weekend) }
+        clock += java.time.Duration.ofMinutes(6).toMillis()
+        vm.check(n299)
+        repeat(3) { releaseCompute() }
+        assertEquals(2, aheadAsked)
+    }
+
+    @Test
+    fun `a week ahead that couldn't be asked is said so, and asked again`() {
+        ahead = { throw java.io.IOException("down") }
+        val vm = vm()
+        vm.page(n299)
+        repeat(3) { releaseCompute() }
+        assertEquals(true, vm.check.value?.aheadUnknown)
+        assertEquals("Good Service", vm.check.value?.status?.description)
+        // The next tick asks again, the note standing until it's answered.
+        ahead = { listOf(weekend) }
+        clock += java.time.Duration.ofMinutes(5).toMillis()
+        vm.check(n299)
+        idle()
+        assertEquals(true, vm.check.value?.aheadUnknown)
+        repeat(3) { releaseCompute() }
+        assertEquals(2, aheadAsked)
+        assertEquals(false, vm.check.value?.aheadUnknown)
+        assertEquals(listOf(weekend), vm.check.value?.status?.planned)
     }
 }

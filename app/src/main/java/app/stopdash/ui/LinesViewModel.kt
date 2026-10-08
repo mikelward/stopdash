@@ -9,11 +9,12 @@ import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineSearch
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.PlannedAlert
+import app.stopdash.data.WorkAhead
 import app.stopdash.domain.Workers
 import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StopLinks
 import app.stopdash.domain.linksOf
-import app.stopdash.domain.PlannedAlert
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -63,6 +64,11 @@ internal class LinesViewModel(
     // The bundled station index ([app.stopdash.data.StationIndexStore]), for a stop's lines and the
     // stations beside it (SPEC *Finding a line*); blocking, run on [io].
     private val loadIndex: () -> StationIndex = { StationIndex.EMPTY },
+    // The line's work planned for the coming days ([app.stopdash.data.KtorTflClient.lineWorkAhead]), for its
+    // *Coming up*: asked once as its page opens and kept for [aheadReuse], or until the soonest of it starts,
+    // whichever comes first. Throws when it couldn't be asked.
+    private val workAhead: suspend (String) -> WorkAhead = { WorkAhead(emptyList(), null) },
+    private val aheadReuse: java.time.Duration = WORK_AHEAD_REUSE,
 ) : ViewModel() {
     /**
      * What the search shows. Compared by identity, never as a data class: the state flow compares each
@@ -92,7 +98,25 @@ internal class LinesViewModel(
      * The opened line's status check: under way, its answer, or that it couldn't be made; [checkedAt]
      * is when an answer came in ([elapsedMillis]), null while none has.
      */
-    class Check(val lineId: String, val checking: Boolean, val status: LineStatus?, val unknown: Boolean, val checkedAt: Long? = null)
+    class Check(
+        val lineId: String,
+        val checking: Boolean,
+        val status: LineStatus?,
+        val unknown: Boolean,
+        val checkedAt: Long? = null,
+        // The week ahead couldn't be asked: its *Coming up* says so, and the page's next tick asks again.
+        val aheadUnknown: Boolean = false,
+    )
+
+    // Each line's work ahead as last answered, when ([elapsedMillis]), and how long it holds: no longer than
+    // until the soonest of it starts, as it's under way then and asked again (Codex, #697). Read and written
+    // on the main thread.
+    private class Ahead(val alerts: List<PlannedAlert>, val at: Long, val holdsFor: java.time.Duration)
+
+    private val ahead = HashMap<String, Ahead>()
+
+    // The lines whose week ahead couldn't be asked last time: still said so while it's asked again.
+    private val aheadFailed = HashSet<String>()
 
     private val _state = MutableStateFlow(State(query = saved.get<String>(QUERY_KEY).orEmpty().take(MAX_QUERY)))
     val state: StateFlow<State> = _state.asStateFlow()
@@ -219,11 +243,16 @@ internal class LinesViewModel(
         val kept = held?.takeIf { !it.unknown && it.younger(reuse) }
         _check.value = Check(line.id, checking = true, status = kept?.status, unknown = false, checkedAt = kept?.checkedAt)
         checkJob = viewModelScope.launch {
+            val kept = ahead[line.id]?.takeIf { it.younger(it.holdsFor) }
+            var status: LineStatus? = null
             val answer = try {
                 // No status at all is no answer: the page says it couldn't check, and asks again.
-                val status = withContext(io) { lineStatus(line.id) }
+                status = withContext(io) { lineStatus(line.id) }
                 if (status == null) warn("line status for ${line.id}: none given")
-                Check(line.id, checking = false, status = status, unknown = status == null, checkedAt = elapsedMillis())
+                // The week ahead as last asked added to it, on the worker: it walks both.
+                // An empty week has nothing to add, so no hop.
+                val shown = kept?.alerts?.takeIf { it.isNotEmpty() }?.let { alerts -> status?.let { withContext(compute) { it.withWorkAhead(alerts) } } } ?: status
+                Check(line.id, checking = false, status = shown, unknown = status == null, checkedAt = elapsedMillis(), aheadUnknown = line.id in aheadFailed)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -233,7 +262,47 @@ internal class LinesViewModel(
             }
             _check.value = answer
             if (answer.status != null) expire(answer)
+            val checked = status ?: return@launch
+            if (kept == null) addWorkAhead(line.id, checked, answer)
         }
+    }
+
+    /**
+     * Asks for [lineId]'s week ahead and adds it to [checked], the status [answer] shows, while that answer
+     * is still up; one that couldn't be asked is said so on the page, and asked again at its next tick.
+     */
+    private suspend fun addWorkAhead(lineId: String, checked: LineStatus, answer: Check) {
+        // Its hold counted from the ask, before the request and anything that can delay its answer reaching
+        // here: the client measures [WorkAhead.startsIn] later than this, so it can only expire early, never
+        // keep work past its start (Codex, #697).
+        val asked = elapsedMillis()
+        val week = try {
+            withContext(io) { workAhead(lineId) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            warn("work ahead failed for $lineId: ${e::class.simpleName}")
+            null
+        }
+        if (week != null) {
+            val holds = week.startsIn?.takeIf { it < aheadReuse } ?: aheadReuse
+            ahead[lineId] = Ahead(week.alerts, asked, holds)
+            aheadFailed -= lineId
+        } else {
+            aheadFailed += lineId
+        }
+        val alerts = week?.alerts
+        val shown = alerts?.takeIf { it.isNotEmpty() }?.let { withContext(compute) { checked.withWorkAhead(it) } } ?: answer.status
+        _check.update { now ->
+            if (now != null && now.lineId == lineId && now.checkedAt == answer.checkedAt && now.status != null) {
+                Check(now.lineId, now.checking, shown, now.unknown, now.checkedAt, aheadUnknown = alerts == null)
+            } else now
+        }
+    }
+
+    private fun Ahead.younger(limit: java.time.Duration): Boolean {
+        val age = elapsedMillis() - at
+        return age >= 0 && age < limit.toMillis()
     }
 
     /**
@@ -322,6 +391,9 @@ internal class LinesViewModel(
     }
 
     companion object {
+        // How long a line's week ahead stands before its page asks again: planned work moves slowly.
+        val WORK_AHEAD_REUSE: java.time.Duration = java.time.Duration.ofHours(3)
+
         private const val QUERY_KEY = "query"
 
         /** The longest query taken: past any line's name or number, and short enough that the main thread's own reads of it stay trivial. */

@@ -1,0 +1,95 @@
+[
+ {
+  "id": "circle",
+  "name": "Circle",
+  "modeName": "tube",
+  "disruptions": [],
+  "lineStatuses": [
+   {
+    "id": 0,
+    "lineId": "circle",
+    "statusSeverity": 5,
+    "statusSeverityDescription": "Part Closure",
+    "reason": "CIRCLE LINE: Saturday 10 and Sunday 11 October, no service between Edgware Road and Aldgate (via Victoria)",
+    "validityPeriods": [
+     {
+      "fromDate": "2026-10-10T03:30:00Z",
+      "toDate": "2026-10-12T00:29:00Z",
+      "isNow": false
+     }
+    ],
+    "disruption": {
+     "category": "PlannedWork",
+     "categoryDescription": "PlannedWork",
+     "description": "CIRCLE LINE: Saturday 10 and Sunday 11 October, no service between Edgware Road and Aldgate (via Victoria)",
+     "affectedRoutes": [],
+     "affectedStops": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "elizabeth",
+  "name": "Elizabeth line",
+  "modeName": "elizabeth-line",
+  "disruptions": [],
+  "lineStatuses": [
+   {
+    "id": 0,
+    "lineId": "elizabeth",
+    "statusSeverity": 5,
+    "statusSeverityDescription": "Part Closure",
+    "reason": "ELIZABETH LINE: Sunday 11 October, until 0815, no service between West Drayton and Slough. Replacement bus service W1 operates between Hayes & Harlington and Slough via West Drayton and Langley, not serving Iver.",
+    "validityPeriods": [
+     {
+      "fromDate": "2026-10-11T03:30:00Z",
+      "toDate": "2026-10-11T07:15:00Z",
+      "isNow": false
+     }
+    ],
+    "disruption": {
+     "category": "PlannedWork",
+     "categoryDescription": "PlannedWork",
+     "description": "ELIZABETH LINE: Sunday 11 October, until 0815, no service between West Drayton and Slough. Replacement bus service W1 operates between Hayes & Harlington and Slough via West Drayton and Langley, not serving Iver.",
+     "affectedRoutes": [],
+     "affectedStops": []
+    }
+   },
+   {
+    "id": 0,
+    "lineId": "elizabeth",
+    "statusSeverity": 6,
+    "statusSeverityDescription": "Severe Delays",
+    "reason": "Severe Delays between Paddington and Heathrow Airport / Reading while we fix a signal failure in the Paddington area. Tickets are being accepted on London Underground, Great Western Railway and South Western Railway. GOOD SERVICE on the rest of the line. ",
+    "validityPeriods": [
+     {
+      "fromDate": "2026-10-08T05:47:15Z",
+      "toDate": "2026-10-09T00:29:00Z",
+      "isNow": true
+     }
+    ],
+    "disruption": {
+     "category": "RealTime",
+     "categoryDescription": "RealTime",
+     "description": "Severe Delays between Paddington and Heathrow Airport / Reading while we fix a signal failure in the Paddington area. Tickets are being accepted on London Underground, Great Western Railway and South Western Railway. GOOD SERVICE on the rest of the line. ",
+     "affectedRoutes": [],
+     "affectedStops": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "northern",
+  "name": "Northern",
+  "modeName": "tube",
+  "disruptions": [],
+  "lineStatuses": [
+   {
+    "id": 0,
+    "statusSeverity": 10,
+    "statusSeverityDescription": "Good Service",
+    "validityPeriods": []
+   }
+  ]
+ }
+]
