@@ -1,5 +1,7 @@
 package app.stopdash.ui
 
+import androidx.annotation.WorkerThread
+
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.ui.text.Placeholder
@@ -55,6 +57,7 @@ import androidx.compose.ui.unit.em
 import app.stopdash.R
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
+import app.stopdash.domain.LineMap
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.RouteStop
@@ -122,6 +125,89 @@ sealed interface RouteStopsUi {
         val positions: Map<String, Pair<Double, Double>> = emptyMap(),
         val sequence: LineSequence? = null,
     ) : RouteStopsUi
+}
+
+/**
+ * What the route page's map ([LineMapColumn]) draws for the train it follows, worked out from [RouteStopsUi.Loaded]
+ * off the main thread: the train's path from the boarding stop as the stretch it [rides], the boarding stop the
+ * rider's own ([riding]), the stations [after] it that a journey can end at, and each path station's other lines
+ * ([connections]) and [stepFree] level for the line.
+ */
+internal class RouteMapInputs(
+    val rides: List<List<String>>,
+    val riding: Set<String>,
+    val after: Set<String>,
+    val connections: Map<String, List<LineRef>>,
+    val stepFree: Map<String, StepFreeLevel>,
+) {
+    /** The path's stations by the ids the map draws them as, where none is drawn as another stop. */
+    val asDrawn = RouteMapStations(
+        after.associateWith { it }, connections, stepFree, rides.flatten().associateWith { it }, rides.lastOrNull()?.lastOrNull(),
+    )
+
+    /**
+     * The path's stations by the ids the map draws them as: a way back's pole drawn as the outbound one
+     * ([LineMap.drawnAs]) found by that one's id, so a long press or a tap on it acts on the route's own stop.
+     */
+    @WorkerThread
+    fun drawn(drawnAs: Map<String, String>): RouteMapStations {
+        if (drawnAs.isEmpty()) return asDrawn
+        fun shown(id: String) = drawnAs[id] ?: id
+        return RouteMapStations(
+            after = after.associateBy { shown(it) },
+            connections = connections.mapKeys { shown(it.key) },
+            stepFree = stepFree.mapKeys { shown(it.key) },
+            path = rides.flatten().associateBy { shown(it) },
+            terminus = rides.lastOrNull()?.lastOrNull()?.let { shown(it) },
+        )
+    }
+
+    /** The path's step-free [levels], by the id each station is drawn as ([LineMap.drawnAs]). */
+    @WorkerThread
+    fun stepFreeDrawn(levels: Map<String, StepFreeLevel>, drawnAs: Map<String, String>): Map<String, StepFreeLevel> {
+        val path = rides.flatten().toSet()
+        return levels.filterKeys { it in path }.mapKeys { drawnAs[it.key] ?: it.key }
+    }
+
+    /**
+     * Whether [map] draws every stop of the train's path, each on its open stretch: one that can't place the
+     * way the train runs (a bus's way back with no poles it can match) draws other stops, so the page keeps its list.
+     */
+    @WorkerThread
+    fun drawnOn(map: LineMap): Boolean {
+        val open = map.rows.filter { it.onPath }.mapTo(HashSet()) { it.stopId }
+        return rides.flatten().all { (map.drawnAs[it] ?: it) in open }
+    }
+
+    companion object {
+        @WorkerThread
+        fun of(loaded: RouteStopsUi.Loaded, levels: Map<String, StepFreeLevel>): RouteMapInputs {
+            val ids = loaded.stops.map { it.id }
+            return RouteMapInputs(
+                rides = listOf(ids),
+                riding = setOfNotNull(ids.firstOrNull()),
+                after = ids.drop(1).toSet(),
+                connections = loaded.stops.filter { it.connections.isNotEmpty() }.associate { it.id to it.connections },
+                stepFree = ids.toSet().let { path -> levels.filterKeys { it in path } },
+            )
+        }
+    }
+}
+
+/** The route page's map's stations by the id each is drawn as: [after] maps it to the route's own stop. */
+internal class RouteMapStations(
+    val after: Map<String, String>,
+    val connections: Map<String, List<LineRef>>,
+    val stepFree: Map<String, StepFreeLevel>,
+    // Every stop of the train's path, by the id it's drawn as: the stop the train calls at, which a tap opens.
+    val path: Map<String, String> = emptyMap(),
+    // Where the train ends, by the id it's drawn as.
+    val terminus: String? = null,
+) {
+    companion object {
+        /** No station's marks or actions: while the map's own ids for them are still worked out. */
+        val NONE = RouteMapStations(emptyMap(), emptyMap(), emptyMap())
+    }
 }
 
 /**
@@ -347,7 +433,7 @@ internal fun RouteStopsSection(
  * no other visible cue — until the user dismisses it.
  */
 @Composable
-private fun JourneyTip(onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+internal fun JourneyTip(onDismiss: () -> Unit, modifier: Modifier = Modifier) {
     Surface(
         color = MaterialTheme.colorScheme.secondaryContainer,
         shape = MaterialTheme.shapes.medium,

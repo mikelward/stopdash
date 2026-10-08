@@ -2970,11 +2970,12 @@ class MainScreenScreenshotTest {
         journeyScreen(forkedOrigin("West End" to 60), forkedSource, kingToNorthEnd)
         composeRule.onNodeWithText("West End").performClick()
         composeRule.waitForIdle()
-        // The West End train's page: its stops run to West End, and nothing names the north branch
-        // (the page's "Northern line" heading is the line, not the branch).
+        // The West End train's page: its stops run to West End, open, and the north branch it doesn't take
+        // is folded to the end it leads to, as the line page draws it: only the rider's starred North Park
+        // stands out of the fold (the page's "Northern line" heading is the line, not the branch).
         composeRule.onAllNodesWithText("West End", substring = true).assertCountEquals(2)
-        composeRule.onAllNodesWithText("North End", substring = true).assertCountEquals(0)
-        composeRule.onAllNodesWithText("North Park", substring = true).assertCountEquals(0)
+        composeRule.onAllNodesWithText("North End", substring = true).assertCountEquals(1)
+        composeRule.onAllNodesWithText("North Park ★", substring = true).assertCountEquals(1)
     }
 
     @Test

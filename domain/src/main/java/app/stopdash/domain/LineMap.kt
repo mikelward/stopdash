@@ -19,6 +19,9 @@ class LineMap internal constructor(
     // its words name no station drawn (a bus's way back left off). The page then says so, rather than
     // show a map that looks unaffected (Codex, #606).
     val closurePlaced: Boolean = true,
+    // Each stop of the way back drawn as an outbound stop (a bus's pole across the road), by that outbound
+    // stop's id: what a page that names stops by its route's own ids maps a drawn row's back to.
+    val drawnAs: Map<String, String> = emptyMap(),
 ) {
     /** How bad an alert placed on a station is: no service there, or its name in an alert's words. */
     enum class Level { WARNING, CLOSURE }
@@ -85,6 +88,8 @@ class LineMap internal constructor(
         val ridden: Boolean = false,
         // One of [riding] that no ride's stretch places, so not known which way it's ridden.
         val ridingUnplaced: Boolean = false,
+        // On the stretch the page is about (a route page's train), never folded whatever is placed on it.
+        val onPath: Boolean = false,
     ) {
         private val own: List<Rail> = top.filter { it.to == column } + bottom.filter { it.from == column }
 
@@ -146,7 +151,7 @@ class LineMap internal constructor(
          * or turn back). An alert anywhere else folds away with where it is, its fold saying how bad
          * (maintainer, 2026-10-06).
          */
-        val kept: Boolean = starred || nearby || riding || alertsRider
+        val kept: Boolean = starred || nearby || riding || alertsRider || onPath
 
         /**
          * A one-way track into it run down the map, and one run up it: its arrows, said to a screen reader
@@ -397,16 +402,19 @@ class LineMap internal constructor(
             nearby: Set<String> = emptySet(),
             here: Coordinates? = null,
             upcoming: List<PlannedAlert> = emptyList(),
+            // Every station [rides] take open, as a route page's train is (SPEC *Route detail*); else only
+            // what an alert places on them.
+            ridesOpen: Boolean = false,
         ): LineMap? {
             val alone = oneWay(sequence, otherWay = false)
             val both = oneWay(sequence, otherWay = true)
             // The way back drawn on the outbound way's own tracks: one map, its arrows from both ways.
-            if (both.routes == alone.routes) return laidOut(sequence, alone, closures, alertText, placed, starred, riding, rides, nearby, here, upcoming)
+            if (both.routes == alone.routes) return laidOut(sequence, alone, closures, alertText, placed, starred, riding, rides, nearby, here, upcoming, ridesOpen)
             // Else the outbound way alone where the way back can't be drawn, with no arrows: the way back runs
             // somewhere the map doesn't show, so its tracks can't say which way buses run them.
             val unknownWay = OneWay(alone.routes, alone.same, alone.through)
-            val outbound = laidOut(sequence, unknownWay, closures, alertText, placed, starred, riding, rides, nearby, here, upcoming)
-            val drawn = laidOut(sequence, both, closures, alertText, placed, starred, riding, rides, nearby, here, upcoming) ?: return outbound
+            val outbound = laidOut(sequence, unknownWay, closures, alertText, placed, starred, riding, rides, nearby, here, upcoming, ridesOpen)
+            val drawn = laidOut(sequence, both, closures, alertText, placed, starred, riding, rides, nearby, here, upcoming, ridesOpen) ?: return outbound
             fun LineMap.twice() = rows.size - rows.mapTo(HashSet()) { it.stopId }.size
             return if (outbound != null && drawn.twice() > outbound.twice()) outbound else drawn
         }
@@ -423,6 +431,7 @@ class LineMap internal constructor(
             nearby: Set<String>,
             here: Coordinates?,
             upcoming: List<PlannedAlert>,
+            ridesOpen: Boolean,
         ): LineMap? {
             fun same(id: String) = way.same[id] ?: id
             // A section's stops as the map has them: the way back's poles as the outbound stops, and a hop
@@ -558,10 +567,12 @@ class LineMap internal constructor(
                         riding = row.key in riding,
                         ridingUnplaced = row.key in unplaced,
                         ridden = row.key in ridden,
+                        onPath = ridesOpen && row.key in ridden,
                     )
                 },
                 columns,
                 closurePlaced = byWords.none { it.isEmpty() },
+                drawnAs = way.same,
             )
         }
 
@@ -586,9 +597,10 @@ class LineMap internal constructor(
             nearby: Set<String> = emptySet(),
             here: Coordinates? = null,
             upcoming: List<PlannedAlert> = emptyList(),
+            ridesOpen: Boolean = false,
         ): LineMap? {
             val placed = (placed(status) + placed(quieted)).distinct()
-            return of(sequence, placed.flatMap { it.sections }.distinct(), shown(status, placed), starred, riding, placed, rides, nearby, here, upcoming)
+            return of(sequence, placed.flatMap { it.sections }.distinct(), shown(status, placed), starred, riding, placed, rides, nearby, here, upcoming, ridesOpen)
         }
 
         /**

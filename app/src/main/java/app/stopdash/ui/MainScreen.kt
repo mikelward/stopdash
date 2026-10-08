@@ -5366,8 +5366,121 @@ internal fun RouteDetailScreen(
                     end(row.stopId, row.stopName), end(stop.id, stop.name), row.lineId, row.lineName, rowMode,
                 )
             }
-            // Every station from here to where the soonest train terminates (SPEC *Route detail*).
-            RouteStopsSection(
+            // The line's map, open from here to where the soonest train terminates and folded beyond (SPEC *Route
+            // detail*), once the train's stops are in; until then, and where no route data is wired, the list's notes.
+            val railLoaded = railState as? RouteStopsUi.Loaded
+            val mapWorker = LocalWorker.current
+            // The train's path and what its stations show, worked out off the main thread as its stops come in. Its
+            // step-free marks are worked out apart (below), so a lift reported out never lays the map out again.
+            val stepFreeLevels = stepFree.levels
+            val routeMapFor by produceState<Pair<RouteStopsUi.Loaded, RouteMapInputs>?>(null, ByIdentity(railLoaded), mapWorker) {
+                val loaded = railLoaded ?: run { value = null; return@produceState }
+                value = loaded to withContext(mapWorker) { RouteMapInputs.of(loaded, emptyMap()) }
+            }
+            // Only for the stops in hand now: a route gone stale (or another train's) never draws in the frame before
+            // the state above catches up (SPEC D4).
+            val routeMap = routeMapFor?.takeIf { it.first === railLoaded }?.second
+            // The map stands for this train's route and what it draws of the status ([LineStatus.mapKey], worked out
+            // with the status): another route or another alert never has the last one's map stand in, while the same
+            // alert fetched again as a new status keeps the map up. Built once per status, never compared whole here.
+            val routeMapKey = remember(railKey, ByIdentity(row.status)) { "$railKey|${row.status?.mapKey.orEmpty()}" }
+            val mapSection = routeMap?.let { inputs ->
+                rememberLineMapSection(
+                    row.lineId,
+                    row.status,
+                    journeysHere.here.starredStopIds,
+                    inputs.riding,
+                    statusKey = routeMapKey,
+                    rides = inputs.rides,
+                    planned = row.plannedAlerts,
+                    ridesOpen = true,
+                    seed = railLoaded?.sequence,
+                    singleOpen = true,
+                    foldsFor = railKey,
+                    // Only the train's path open: never another station for being nearest the rider.
+                    nearMe = false,
+                )
+            }
+            // The stations as the map draws them: a bus's way back may be drawn on its outbound poles.
+            val drawnAs = (mapSection?.ui as? LineMapUi.Ready)?.map?.drawnAs
+            val mapStationsFor by produceState<Triple<RouteMapInputs, Map<String, String>?, RouteMapStations>?>(
+                null, ByIdentity(routeMap), ByIdentity(drawnAs), mapWorker,
+            ) {
+                val inputs = routeMap ?: run { value = null; return@produceState }
+                value = Triple(inputs, drawnAs, withContext(mapWorker) { inputs.drawn(drawnAs.orEmpty()) })
+            }
+            // Only as worked out for this route and the map now drawn: until then, where the map draws a stop as
+            // another, none of its stations' marks or actions rather than ones keyed by ids it doesn't draw.
+            val mapStations = mapStationsFor?.takeIf { it.first === routeMap && it.second === drawnAs }?.third
+            // The path's step-free marks by the id each station is drawn as, for the levels in hand now: none, rather
+            // than a mark a lift just reported out has taken away, while they're worked out again.
+            val stepFreeFor by produceState<Triple<Any?, Any?, Map<String, StepFreeLevel>>?>(
+                null, ByIdentity(routeMap), ByIdentity(stepFreeLevels), ByIdentity(drawnAs), mapWorker,
+            ) {
+                val inputs = routeMap ?: run { value = null; return@produceState }
+                val levels = stepFreeLevels.orEmpty()
+                value = Triple(inputs, stepFreeLevels, withContext(mapWorker) { inputs.stepFreeDrawn(levels, drawnAs.orEmpty()) })
+            }
+            val stepFreeDrawn = stepFreeFor?.takeIf { it.first === routeMap && it.second === stepFreeLevels }?.third.orEmpty()
+            // Whether the map drawn shows the train's whole path, checked on the worker for each map laid out: the last
+            // answer for this route stands while the next is checked, so a status refreshed doesn't swap list and map.
+            val drawnMap = (mapSection?.ui as? LineMapUi.Ready)?.map
+            val pathDrawnFor by produceState<Pair<RouteMapInputs, Boolean>?>(null, ByIdentity(routeMap), ByIdentity(drawnMap), mapWorker) {
+                val inputs = routeMap ?: run { value = null; return@produceState }
+                val map = drawnMap ?: return@produceState
+                value = inputs to withContext(mapWorker) { inputs.drawnOn(map) }
+            }
+            val pathDrawn = pathDrawnFor?.takeIf { it.first === routeMap }?.second
+            // The map where it can be drawn and shows the train's path, else the list it stands in for: never a note,
+            // nor another way's stops, in place of the train's stops in hand.
+            val mapDrawable = mapSection != null && mapSection.ui !is LineMapUi.Failed && mapSection.ui !is LineMapUi.Unavailable &&
+                pathDrawn != false && (pathDrawn == true || mapSection.ui !is LineMapUi.Ready)
+            if (mapDrawable && mapSection != null && routeMap != null) {
+                val inputs = routeMap
+                val stations = mapStations ?: if (drawnAs.isNullOrEmpty()) inputs.asDrawn else RouteMapStations.NONE
+                if (onToggleJourney != null && journeysHereFavorable && onDismissJourneyTip != null) {
+                    JourneyTip(onDismissJourneyTip, Modifier.padding(top = 16.dp))
+                }
+                (PlatformDirection.of(followed?.platform) ?: bearingDirection(row.bearing))?.let {
+                    Text(it, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp))
+                }
+                val toggle = onToggleJourney?.takeIf { journeysHereFavorable }
+                val extras = LineMapExtras(
+                    connections = stations.connections,
+                    stepFree = stepFreeDrawn,
+                    onLongPress = toggle?.let { t -> { id, name -> stations.after[id]?.let { t(journeyTo(RouteStop(it, name))) } } },
+                    // Not while the map drawn shows the stars from before a change: the press would act on the new.
+                    longPressReady = (journeysHere.current || noJourneysHere) && mapSection.current,
+                    longPressStops = stations.after.keys,
+                    terminus = stations.terminus,
+                )
+                // No tap until the stations are mapped to the stops the train calls at: before, a pole drawn as another
+                // would open the wrong one.
+                val mapped = mapStations != null || drawnAs.isNullOrEmpty()
+                val openMapStop: ((String, String, Pair<Double, Double>?) -> Unit)? = onOpenStop?.takeIf { mapped }?.let { open ->
+                    { id, name, _ ->
+                        val loaded = railLoaded
+                        // The stop the train calls at, not the one the map draws it as (a bus's pole across the road).
+                        val stop = stations.path[id] ?: id
+                        val area = loaded?.sequence?.stopAreas?.get(stop).orEmpty()
+                        val routeId = stations.after[id]
+                        val opened = open(
+                            RouteStopOpen(
+                                stationId = area.ifBlank { stop },
+                                name = name.ifBlank { stop },
+                                journey = if (routeId != null && journeysHereFavorable) journeyTo(RouteStop(routeId, name)) else null,
+                                hubId = loaded?.sequence?.stopHubs?.get(stop).orEmpty(),
+                            ),
+                        )
+                        if (!opened) onBack()
+                    }
+                }
+                CompositionLocalProvider(LocalLineMapExtras provides extras, LocalOpenLineMapStop provides openMapStop) {
+                    // No "Show all stations": drawn in the page's column, the whole line at once would stall it; its
+                    // folds open one by one, as the stop list drew a route's every stop.
+                    LineMapColumn(mapSection, railColorFor(row), offerAll = false)
+                }
+            } else RouteStopsSection(
                 state = railState,
                 railColor = railColorFor(row),
                 onRetry = { routeStopsRetry++ },

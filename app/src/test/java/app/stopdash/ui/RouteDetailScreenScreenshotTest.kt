@@ -11,6 +11,7 @@ import androidx.compose.runtime.getValue
 import kotlinx.coroutines.Dispatchers
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -18,6 +19,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.assertCountEquals
@@ -916,6 +918,174 @@ class RouteDetailScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
+    }
+
+    @Test
+    fun theRoutePageDrawsTheLineAsItsMap_openFromHereToWhereTheTrainEnds() {
+        // The whole Victoria line as TfL routes it; the train runs from Victoria to King's Cross. Public stations.
+        val northbound = listOf(
+            "940GZZLUBXN" to "Brixton", "940GZZLUSKW" to "Stockwell", "940GZZLUVXL" to "Vauxhall", "940GZZLUPCO" to "Pimlico",
+        ) + victoriaLineNorthbound.map { it.id to it.name } + listOf("940GZZLUWWL" to "Walthamstow Central")
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence =
+                    LineSequence(
+                        routes = listOf(
+                            LineRoute("Brixton - Walthamstow Central", northbound.map { it.first }, "outbound"),
+                            LineRoute("Walthamstow Central - Brixton", northbound.map { it.first }.asReversed(), "inbound"),
+                        ),
+                        stopNames = northbound.toMap(),
+                    )
+            },
+            io = kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+        val toggled = mutableListOf<String>()
+        setDetail {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalRouteStops provides repository, LocalStepFree provides stepFreeTable) {
+                    RouteDetailScreen(
+                        row = healthyRow(platform = "Northbound - Platform 5"),
+                        isStarred = false,
+                        starrable = false,
+                        disruptionUnknown = false,
+                        stale = false,
+                        now = now,
+                        onToggleStar = {},
+                        onBack = {},
+                        routeStops = RouteStopsUi.Loaded(victoriaLineNorthbound),
+                        onToggleJourney = { toggled += it.to.name },
+                    )
+                }
+            }
+        }
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("lineMap").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.waitForIdle()
+        // Its stop the rider's, the train's stations open with their step-free marks, the line beyond them folded.
+        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your stop")).assertExists()
+        composeRule.onNodeWithText("Green Park Step-free to the train", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("Pimlico", useUnmergedTree = true).assertDoesNotExist()
+        // Its folds open one by one: never the whole line drawn at once in the page's column.
+        composeRule.onNodeWithText("Show all stations").assertDoesNotExist()
+        // A long press on a station the train calls at saves the journey there.
+        // Only a station the train calls at offers one: the line's far end, off its path, would save nothing.
+        val longPressable = SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick)
+        composeRule.onNode(hasText("Euston", substring = true) and longPressable).assertExists()
+        composeRule.onNode(hasText("Brixton", substring = true) and longPressable).assertDoesNotExist()
+        composeRule.onNodeWithText("Euston", useUnmergedTree = true).performTouchInput { longClick() }
+        assertEquals(listOf("Euston"), toggled)
+        captureSnapshot("route-detail-line-map.png", heightPx = 2400)
+    }
+
+    // The route page with its train's stops in hand and [source] for the line's route data.
+    private fun routeMapPage(
+        source: RouteSequenceSource,
+        routeStops: RouteStopsUi,
+        row: () -> DepartureRow = { healthyRow(platform = "Northbound - Platform 5") },
+        here: app.stopdash.domain.Coordinates? = null,
+    ) {
+        val repository = RouteStopsRepository(source, io = kotlinx.coroutines.Dispatchers.Unconfined)
+        setDetail {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(
+                    LocalRouteStops provides repository, LocalStepFree provides stepFreeTable, LocalRiderPosition provides here,
+                ) {
+                    RouteDetailScreen(
+                        row = row(),
+                        isStarred = false,
+                        starrable = false,
+                        disruptionUnknown = false,
+                        stale = false,
+                        now = now,
+                        onToggleStar = {},
+                        onBack = {},
+                        routeStops = routeStops,
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+    }
+
+    @Test
+    fun theRoutePageDrawsItsMapFromTheRouteItHas_askingForNoOther() {
+        // The train's own direction, already loaded for its stops: the map is drawn from it, not the line's both ways.
+        val calls = mutableListOf<String>()
+        val ids = victoriaLineNorthbound.map { it.id }
+        val sequence = LineSequence(
+            routes = listOf(LineRoute("Victoria - Walthamstow Central", ids, "outbound")),
+            stopNames = victoriaLineNorthbound.associate { it.id to it.name },
+        )
+        routeMapPage(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                    calls += direction
+                    return sequence
+                }
+            },
+            RouteStopsUi.Loaded(victoriaLineNorthbound, sequence = sequence),
+        )
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("lineMap").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your stop")).assertExists()
+        assertEquals(emptyList<String>(), calls)
+    }
+
+    @Test
+    fun theRoutePageOpensOneFoldAtATime() {
+        // The train runs Oxford Circus to Euston: the line folded both sides of it, south and north. Public stations.
+        val line = listOf(
+            "940GZZLUBXN" to "Brixton", "940GZZLUSKW" to "Stockwell", "940GZZLUVXL" to "Vauxhall", "940GZZLUPCO" to "Pimlico",
+            "940GZZLUVIC" to "Victoria", "940GZZLUGPK" to "Green Park", "940GZZLUOXC" to "Oxford Circus",
+            "940GZZLUWRR" to "Warren Street", "940GZZLUEUS" to "Euston", "940GZZLUKSX" to "King's Cross St. Pancras",
+            "940GZZLUHAI" to "Highbury & Islington", "940GZZLUFPK" to "Finsbury Park", "940GZZLUSVS" to "Seven Sisters",
+            "940GZZLUWWL" to "Walthamstow Central",
+        )
+        val sequence = LineSequence(
+            routes = listOf(LineRoute("Brixton - Walthamstow Central", line.map { it.first }, "outbound")),
+            stopNames = line.toMap(),
+            stopPositions = mapOf("940GZZLUVIC" to (51.4965 to -0.1447)),
+        )
+        val path = line.subList(6, 9).map { (id, name) -> RouteStop(id, name) }
+        var platform by mutableStateOf("Northbound - Platform 5")
+        routeMapPage(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence = sequence
+            },
+            RouteStopsUi.Loaded(path, sequence = sequence),
+            row = { healthyRow(platform = platform) },
+            // The rider at Victoria, off the train's path: it stays folded, never kept open as the nearest station.
+            here = app.stopdash.domain.Coordinates(51.4965, -0.1447),
+        )
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("lineMap").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Victoria", useUnmergedTree = true).assertDoesNotExist()
+        composeRule.onNodeWithText("Stockwell to", substring = true).performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Pimlico", useUnmergedTree = true).assertExists()
+        // The next fold opened, the last folds again: never more than one stretch beyond the train's path.
+        composeRule.onNodeWithText("King's Cross St. Pancras to", substring = true).performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Highbury & Islington", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("Pimlico", useUnmergedTree = true).assertDoesNotExist()
+        // Another train followed: what was opened for the last one's path folds again.
+        platform = "Northbound - Platform 6"
+        composeRule.waitForIdle()
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("lineMap").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithText("Highbury & Islington", useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun aMapThatCantBeHad_leavesTheTrainsStopList() {
+        // The line's route data failing: the train's stops already in hand stay listed, never a map's error in their place.
+        routeMapPage(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence =
+                    throw TflException.Offline(null)
+            },
+            RouteStopsUi.Loaded(victoriaLineNorthbound),
+        )
+        composeRule.onAllNodesWithTag("lineMap").assertCountEquals(0)
+        composeRule.onNodeWithText("Euston", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("King's Cross St. Pancras", substring = true, useUnmergedTree = true).assertExists()
     }
 
     @Test

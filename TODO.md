@@ -2804,14 +2804,20 @@ Builds on Phase 1's minimal line-status marking.
   - [x] Each on the map too, apart from a closure in force (maintainer, 2026-10-08: a calendar where a closure
         in force has ⛔): the stations it will shut marked with a calendar and "No service from 10 Oct", muted,
         their rails drawn as they run today; a fold holding one carries the calendar.
-  - [ ] The same calendar on the route page's stops a closure still to come will shut, once it marks a
-        closure in force there with ⛔.
+  - [x] The same calendar on the route page's stops a closure still to come will shut, once it marks a
+        closure in force there with ⛔ (both come with the route page drawing the line's map).
 - [x] **A trip's lines page keeps the rider's starred stops on the map too.** The trip reads the starred
       rows and journeys as they change, walked on the worker, and its lines page keeps their stops as
       the home screen's does.
-- [ ] **The route page draws the line as the folding map too** (maintainer, 2026-10-06): its stop list
+- [x] **The route page draws the line as the folding map too** (maintainer, 2026-10-06): its stop list
       becomes the line page's map (`LineMap`), with the path the rider takes open, from the stop they
       board at to where they get off, and the rest of the line folded to the ends it leads to.
+  - [ ] Step-free marks, connections and the long-press journey on the folded stations too, once
+        opened: they are worked out for the train's path only, so an opened fold's stations are plain.
+  - [ ] The list's inference of an alert's stretch from its words ("between X and Y") on the map too:
+        the map marks only what TfL places on the line's stations.
+  - [ ] Draw the route page's map lazily: it sits in the page's scrolled column, so it offers no "Show all
+        stations" (the whole line drawn at once would stall it); lazy, it could.
 - [x] **An alert off the rider's stops and rides folds, its fold saying how bad** (maintainer,
       2026-10-06; SPEC *Line page*). Shown in full only at the rider's own stops and on the stretches
       their trip rides (each ride from where it boards to where it gets off); anywhere else its stations
