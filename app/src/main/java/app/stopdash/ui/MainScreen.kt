@@ -175,6 +175,9 @@ import app.stopdash.domain.StopGrouping
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.StopQualifier
 import app.stopdash.domain.TflException
+import app.stopdash.domain.Workers
+import app.stopdash.domain.PlaceStops
+import app.stopdash.domain.PlaceStopsFinder
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.UntimedTrain
@@ -500,13 +503,70 @@ fun MainScreen(
     }
     // Each bus journey's area poles, by journey key: absent while loading, null when it failed.
     // One map until a lookup comes in, so the work keyed on it isn't done again each recomposition.
-    val journeyPoles: Map<String, List<StopLocation>?> by remember(journeyAreas) {
+    val journeyAreaPoles: Map<String, List<StopLocation>?> by remember(journeyAreas) {
         derivedStateOf {
             journeyAreas.mapNotNull { (key, areaId) ->
                 if (areaId in loadedPoles) key to loadedPoles[areaId] else null
             }.toMap()
         }
     }
+    // The stops around each journey's ends (SPEC *Journeys*): beside its origin, the stops it may board
+    // from on any line; at its far end, every stop within the rider's walk, as a trip's Direct section
+    // reaches a place. One TfL lookup by each end's published position, cached a day ([LocalJourneyEndStops]),
+    // on IO off the main thread; a failed one is kept as such (null), unless an earlier answer is held.
+    val endStopFinder = LocalJourneyEndStops.current
+    val journeyWalkMeters = LocalJourneyWalkMeters.current
+    var endStops by remember { mutableStateOf<Map<String, List<StopLocation>?>>(emptyMap()) }
+    // The radius each held answer was asked with: a failed lookup keeps one only if it covers the walk
+    // now asked for (a longer max walk reaches further), else the failure stands (Codex, #691).
+    var endStopRadius by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    val endStopsLock = remember { Any() }
+    LaunchedEffect(endStopFinder, cardJourneys, journeyWalkMeters, journeyRouteRetry, routeRecheck) {
+        val finder = endStopFinder ?: return@LaunchedEffect
+        val walk = journeyWalkMeters ?: return@LaunchedEffect
+        withContext(Workers.compute) {
+            val radius = journeyEndRadius(walk)
+            val ends = cardJourneys.flatMap { listOf(it.from, it.to) }
+                .filter { it.latitude != null && it.longitude != null }
+                .distinctBy { it.stopId }
+            for (end in ends) {
+                launch {
+                    val stops = try {
+                        finder.around(end, radius)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: TflException) {
+                        // Logged (sanitized) by the finder; null marks the failure for the card, unless an
+                        // earlier answer is held.
+                        synchronized(endStopsLock) { endStops[end.stopId]?.takeIf { (endStopRadius[end.stopId] ?: 0) >= radius } }
+                    }
+                    synchronized(endStopsLock) {
+                        endStops = endStops + (end.stopId to stops)
+                        endStopRadius = if (stops == null) endStopRadius - end.stopId else endStopRadius + (end.stopId to radius)
+                    }
+                }
+            }
+        }
+    }
+    val aroundWanted = Inputs(cardJourneys, endStops, endStopRadius, journeyWalkMeters, journeyAreas, journeyAreaPoles, endStopFinder)
+    // Worked out on the list's worker, the last answer for the same journeys standing in meanwhile.
+    val journeyAround = rememberWorked(listWork.journeyAround, aroundWanted, keep = { held, wanted -> held.parts[0] === wanted.parts[0] }) {
+        // With no lookup wired (a test, a preview), each journey boards from its origin and stop area alone.
+        // An end's answer counts only once it covers the walk now set: one asked for a shorter walk, or
+        // before the rider's own walk is read, waits for the lookup that does (Codex, #691).
+        val required = journeyWalkMeters?.let(::journeyEndRadius) ?: Int.MAX_VALUE
+        journeyBoardingOf(
+            if (endStopFinder == null) emptyList() else cardJourneys, endStops, journeyWalkMeters ?: PlaceStops.WALK_METERS,
+            journeyAreas, journeyAreaPoles, cardJourneys, endStopRadius, required,
+        )
+    }
+    // The far end's stops within the walk, by journey key.
+    val journeyFarEnds = journeyAround?.farEnds.orEmpty()
+    // The journeys that weigh stops beside their origin (a position to look around, or a bus stop area),
+    // whose cards wait for them.
+    val journeyPoleKeys = journeyAround?.poleKeys.orEmpty()
+    // Every journey's stops beside its origin, by key: absent while a lookup is out, null when one failed.
+    val journeyPoles: Map<String, List<StopLocation>?> = journeyAround?.poles.orEmpty()
     // The stop each journey is fetched from ([journeyOriginsOf]) and, with them, the lines whose routes
     // the cards need ([journeyLineIdsOf]), worked out together on the list's worker: the lines never run
     // against origins standing in, which the current ones would then change, canceling the routes they
@@ -514,11 +574,11 @@ fun MainScreen(
     // loaded don't drop out and back; none until the first is in. The lines are the same [Reported] while
     // they're unchanged, so the loader keyed on them is told apart by identity and loads nothing again.
     val loadedStops = loaded?.stops
-    val originsWanted = Inputs(cardJourneys, journeySegments, starSequences, journeyPoles, journeyStarLines, loadedStops)
+    val originsWanted = Inputs(cardJourneys, journeySegments, starSequences, journeyPoles, journeyStarLines, loadedStops, journeyFarEnds)
     val journeyRoutes = rememberWorked(listWork.journeyOrigins, originsWanted, keep = { _, _ -> true }) {
         val last = listWork.journeyOrigins.value?.value
-        val origins = journeyOriginsOf(cardJourneys, journeySegments, starSequences, journeyPoles)
-        val lines = journeyLineIdsOf(journeyStarLines, origins, loadedStops.orEmpty(), cardJourneys, journeySegments, journeyPoles)
+        val origins = journeyOriginsOf(cardJourneys, journeySegments, starSequences, journeyPoles, journeyFarEnds)
+        val lines = journeyLineIdsOf(journeyStarLines, origins, loadedStops.orEmpty(), cardJourneys, journeySegments, journeyPoles, journeyFarEnds)
         JourneyOrigins(origins, Reported.of(lines, last?.lineIds))
     }
     val journeyOrigins = journeyRoutes?.origins
@@ -589,12 +649,16 @@ fun MainScreen(
     // The poles beside each bus journey's origin that board a line reaching its far end, fetched
     // alongside the origin (one arrivals request each) and shown on its card under their letter.
     // Worked out on the list's worker, the last answer for the same journeys standing in meanwhile.
-    val siblingsWanted = Inputs(cardJourneys, journeySegments, journeyPoles, journeySequences)
+    val siblingsWanted = Inputs(cardJourneys, journeySegments, journeyPoles, journeySequences, journeyFarEnds, journeyViewKey, journeyOrigins)
     val journeySiblings = rememberWorked(listWork.siblings, siblingsWanted, keep = { held, wanted -> held.parts[0] === wanted.parts[0] }) {
         cardJourneys.mapNotNull { j ->
             val originId = journeySegments[j.key]?.originId ?: return@mapNotNull null
             val poles = journeyPoles[j.key] ?: return@mapNotNull null
-            j.key to Journeys.siblingPoles(j, originId, poles, journeySequences)
+            // A card boards from its nearest few stops; its own view from them all (SPEC *Journeys*).
+            // The origin is one of them (Codex, #691).
+            val limit = if (j.key == journeyViewKey) Int.MAX_VALUE else Journeys.MAX_BOARDING_STOPS - 1
+            val originLines = journeyOrigins?.firstOrNull { it.id == originId }?.lines.orEmpty().mapTo(HashSet()) { it.id }
+            j.key to Journeys.siblingPoles(j, originId, poles, journeySequences, journeyFarEnds[j.key], limit, originLines)
         }.toMap()
     }.orEmpty()
     // Whether they're still being worked out as things stand: a bus journey with poles checks meanwhile,
@@ -612,13 +676,13 @@ fun MainScreen(
     // waits on them without its origin (Codex, #625).
     val journeyStops = rememberWorked(
         listWork.journeyStops,
-        heldWhile(originsPending, listWork.journeyStops, Inputs(journeyOrigins, cardJourneys, journeySegments, journeySiblings, journeyViewKey)),
+        heldWhile(originsPending, listWork.journeyStops, Inputs(journeyOrigins, cardJourneys, journeySegments, journeySiblings, journeyViewKey, journeyFarEnds)),
         keep = { _, _ -> true },
     ) {
         // The last answer as it stands when this runs, read on the worker, whose reports this one reuses
         // where they're unchanged.
         val last = listWork.journeyStops.value?.value
-        journeyOrigins?.let { journeyStopsOf(it, cardJourneys, journeySegments, journeySiblings, journeyViewKey, last) }
+        journeyOrigins?.let { journeyStopsOf(it, cardJourneys, journeySegments, journeySiblings, journeyViewKey, last, journeyFarEnds) }
     }
     // The stops first, then the ids that say they're in, each only as it changes: an answer standing in
     // reports nothing again, so the view model never hears the same stops as if newly reported, which a
@@ -683,15 +747,16 @@ fun MainScreen(
                 segment == null -> JourneyCardState.NotChecked()
                 origin == null -> JourneyCardState.Checking
                 // A bus origin's neighboring poles still being looked up, or their lines' routes loading.
-                journey.key in journeyAreas && journey.key !in journeyPoles -> JourneyCardState.Checking
+                journey.key in journeyPoleKeys && journey.key !in journeyPoles -> JourneyCardState.Checking
                 siblingsPending && journeyPoles[journey.key] != null -> JourneyCardState.Checking
                 journeySiblings[journey.key]?.pendingLines.orEmpty().isNotEmpty() -> JourneyCardState.Checking
                 else -> {
                     val siblings = journeySiblings[journey.key]?.poles.orEmpty()
                     val siblingStops = siblings.map { pole -> ld?.stops?.firstOrNull { it.stopId == pole.id } }
                     // The origin's trains, then each neighboring pole's (matched to the far end the same way).
-                    val parts = listOf(Journeys.trains(segment, across, journeySequences, journey)) +
-                        siblings.map { pole -> Journeys.trains(JourneySegment(pole.id, emptySet()), across, journeySequences, journey) }
+                    val farEnds = journeyFarEnds[journey.key]
+                    val parts = listOf(Journeys.trains(segment, across, journeySequences, journey, farEnds)) +
+                        siblings.map { pole -> Journeys.trains(JourneySegment(pole.id, emptySet()), across, journeySequences, journey, farEnds) }
                     val trains = JourneyTrains(
                         rows = parts.flatMap { it.rows },
                         pending = parts.any { it.pending },
@@ -735,11 +800,14 @@ fun MainScreen(
                                 retry = trains.routeFailed || polesFailed,
                                 changes = changes,
                                 topology = topology,
+                                limit = if (journey.key == journeyViewKey) Int.MAX_VALUE else JOURNEY_ROWS,
+                                capped = journeySiblings[journey.key]?.capped == true,
                             )
                         // A route that failed to load is the one gap a retry can close.
                         trains.routeFailed -> JourneyCardState.RouteFailed
                         !current || trains.unresolved || siblingsMissed -> JourneyCardState.NotChecked(retry = polesFailed)
-                        else -> JourneyCardState.Trains(emptyList())
+                        // None from the nearest stops: "More" still opens the rest, if more board it (Codex, #691).
+                        else -> JourneyCardState.Trains(emptyList(), capped = journeySiblings[journey.key]?.capped == true)
                     }
                 }
             }
@@ -797,7 +865,8 @@ fun MainScreen(
         listKey,
         Inputs(
             listRows, nearbyRows, starred, stopDistanceMeters, cardJourneys, journeySegments, journeySequences,
-            journeyAreas, journeyPoles, journeySiblings, journeyDestinationIds, segmentsPending, siblingsPending, topology,
+            journeyPoleKeys, journeyPoles, journeyFarEnds, journeySiblings, journeyDestinationIds, segmentsPending, siblingsPending, topology,
+            journeyViewKey,
         ),
     )
     val shownHeld = listWork.shown.value?.key
@@ -864,10 +933,10 @@ fun MainScreen(
     // What the judged cards report ([cardReportsOf]), worked out on the list's worker, the last answer
     // standing in meanwhile; none before the cards are judged, which would read as no far ends to check.
     // Each report is made only as it changes.
-    val cardReportsWanted = Inputs(shown, cardJourneys, farJourneyMeters, journeyAreas, journeyPoles, journeySiblings, siblingsPending)
+    val cardReportsWanted = Inputs(shown, cardJourneys, farJourneyMeters, journeyPoleKeys, journeyPoles, journeySiblings, siblingsPending)
     val cardReports = rememberWorked(listWork.cardReports, cardReportsWanted, keep = { _, _ -> true }) {
         val last = listWork.cardReports.value?.value
-        cardReportsOf(shown, cardJourneys, farJourneyMeters, journeyAreas, journeyPoles, journeySiblings, siblingsPending, last)
+        cardReportsOf(shown, cardJourneys, farJourneyMeters, journeyPoleKeys, journeyPoles, journeySiblings, siblingsPending, last)
     }
     // The cards say only "Some routes couldn't be checked"; the log says which trains and why, once
     // per distinct set (a refresh finding the same misses logs nothing new).
@@ -2416,6 +2485,24 @@ private fun DepartureList(
     // A journey's heading (or, in its own view, its actions), closure notices, and trains or note —
     // shared by the near journeys at the top and the revealed faraway ones at the bottom, whose
     // headings also carry their distance ([farMeters]).
+    // The rest behind "+N more" (or "More", with stops not yet fetched), opening the journey's own view,
+    // which draws and fetches them all.
+    fun LazyListScope.journeyMore(card: JourneyCard, state: JourneyCardState.Trains) {
+        val open = onOpenJourney
+        if (journeyView || open == null || state.hiddenRows == 0 && !state.capped) return
+        item(key = "journey-more|${card.journey.key}") {
+            TextButton(onClick = { open(card.journey) }, modifier = Modifier.testTag("journeyMore")) {
+                Text(
+                    // Stops not yet fetched hold rows not yet counted: no number then (Codex, #691).
+                    if (state.capped) {
+                        stringResource(R.string.journey_more)
+                    } else {
+                        stringResource(R.string.trip_direct_more, state.hiddenRows)
+                    },
+                )
+            }
+        }
+    }
     fun LazyListScope.journeyItems(cards: List<JourneyCard>, farMeters: Map<String, Double>? = null) {
             cards.forEachIndexed { index, card ->
                 if (journeyView) {
@@ -2470,6 +2557,7 @@ private fun DepartureList(
                                 )
                             }
                         }
+                        journeyMore(card, state)
                         journeyChanges(card, state, now, starred, onToggleStar, starringAvailable, onOpenChangeDetail, onOpenSettings)
                         if (state.incomplete) {
                             item(key = "journey-note|${card.journey.key}") {
@@ -2511,6 +2599,7 @@ private fun DepartureList(
                                 )
                             }
                         }
+                        journeyMore(card, state)
                         // A suspended line's status row is no direct train: with trains to change from, say so under it.
                         if (state.changes.isNotEmpty() && !state.incomplete && !Journeys.directDue(state.rows)) {
                             item(key = "journey-none|${card.journey.key}") {
@@ -3738,6 +3827,9 @@ internal data class JourneyCard(
 )
 
 /** What a journey card can say about its trains. */
+/** How many rows a journey card draws on the near-me list before "+N more", as a trip's Direct section does. */
+internal const val JOURNEY_ROWS = DIRECT_ROWS
+
 internal sealed interface JourneyCardState {
     /** The origin's departures or the line's route aren't in yet. */
     data object Checking : JourneyCardState
@@ -3764,20 +3856,32 @@ internal sealed interface JourneyCardState {
         val changes: List<JourneyChange> = emptyList(),
         // How the card's stop cards group a branching line's trains ([stopCard]).
         val topology: RouteTopology = RouteTopology.EMPTY,
+        // How many of [rows] the card draws ([JOURNEY_ROWS] on the list, the rest behind "+N more";
+        // all in the journey's own view).
+        val limit: Int = Int.MAX_VALUE,
+        // More stops board it than the card fetched ([Journeys.MAX_BOARDING_STOPS]): "More" opens the
+        // journey's own view, which fetches them all.
+        val capped: Boolean = false,
     ) : JourneyCardState {
+        /** The rows the card draws: the nearest boarding stops' first, as judged. */
+        val drawnRows: List<DepartureRow> = rows.take(limit)
+
+        /** How many rows wait behind "+N more". */
+        val hiddenRows: Int get() = rows.size - drawnRows.size
+
         /**
-         * Every row the card shows, the direct trains and those to change from, with the two parts of
+         * Every row the card draws, the direct trains and those to change from, with the two parts of
          * one row (the same stop, line, direction and platform) joined again: the near-me list's
          * no-repeat check and a tapped train's route page each look for the whole row.
          */
         val shownRows: List<DepartureRow>
-            get() = (rows + changes.map { it.row })
+            get() = (drawnRows + changes.map { it.row })
                 .groupBy { listOf(it.stopId, it.lineId, it.directionKey, it.platform) }
                 .values
                 .map { parts -> parts.singleOrNull() ?: DepartureRows.joined(parts) }
 
-        /** [rows] by boarding stop, as the card draws them: grouped where the card is judged, on the worker. */
-        val groups: List<StopGroup> = StopGrouping.groupByStop(rows, warningsLead = false)
+        /** [drawnRows] by boarding stop, as the card draws them: grouped where the card is judged, on the worker. */
+        val groups: List<StopGroup> = StopGrouping.groupByStop(drawnRows, warningsLead = false)
 
         /** Each of [groups] as its stop card draws it ([stopCard]), worked out with them. */
         val cards: List<StopCard> = groups.map { stopCard(it, topology) }

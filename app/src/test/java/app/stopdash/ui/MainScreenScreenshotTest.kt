@@ -2903,6 +2903,48 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `a journey card draws its first three lines, the rest behind more, which opens the journey`() {
+        // Five lines from King, each calling at North Park: the card draws three, then "+2 more".
+        val direct = LineSequence(listOf(LineRoute("King ↔ North Park", listOf("KING", "NPARK"))), mapOf("KING" to "King", "NPARK" to "North Park"))
+        val origin = StopArrivals(
+            "KING", "King",
+            (1..5).map { n -> Departure("l$n", "L$n", "outbound", "North Park", null, now.plusSeconds(60L * n), "bus") },
+            fetchedAt = now.minusSeconds(60),
+        )
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(
+                        LocalRouteStops provides RouteStopsRepository(
+                            object : RouteSequenceSource {
+                                override suspend fun routeSequence(lineId: String, direction: String) = direct
+                            },
+                        ),
+                    ) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(listOf(manorHouse(), origin), now.minusSeconds(60)),
+                            now,
+                            {},
+                            stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
+                            journeys = listOf(FavoriteJourney(JourneyEnd("KING", "King"), JourneyEnd("NPARK", "North Park"), "l1", "L1", "bus")),
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("+2 more").assertExists()
+        listOf("L1", "L2", "L3").forEach { composeRule.onAllNodesWithText(it).assertCountEquals(1) }
+        listOf("L4", "L5").forEach { composeRule.onAllNodesWithText(it).assertCountEquals(0) }
+        captureSnapshot("main-journey-card-more.png")
+        // The journey's own view draws every line.
+        composeRule.onNodeWithText("+2 more").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Swap direction").assertExists()
+        listOf("L1", "L2", "L3", "L4", "L5").forEach { composeRule.onAllNodesWithText(it).assertCountEquals(1) }
+    }
+
+    @Test
     fun `with a direct train due, a train on the other branch isn't offered`() {
         journeyScreen(forkedOrigin("West End" to 60, "North End" to 600), forkedSource, kingToNorthEnd)
         composeRule.onNodeWithText("King ➔ North Park").assertExists()

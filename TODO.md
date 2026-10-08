@@ -2188,6 +2188,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [ ] **Check the line's route reaches To from From**: a line both serve can still need a change
             (two Northern branches); the card then shows its change at the fork. Use the card's cached
             route lookups to say so at Add.
+  - [x] **Every direct route, buses too** (maintainer, 2026-10-08): a card boards from every stop within
+        320 m of its origin, on any mode, and reaches every stop within the rider's max walk of its far end,
+        as Direct does; at most its nearest 6 boarding stops a refresh, 3 rows then "+N more" / "More"
+        opening the journey's own view.
+    - [ ] **Add's "No direct line" weighs only a line both stations serve**: a bus between stops near each
+          station is direct on the card but refused at Add. Check with the same lookups before refusing.
   - [ ] **Rename a starred journey** — needs a label in the stored file (a schema version bump, so
         an older build can't drop it on its next write).
   - [ ] **Converge "journey" and "trip"** (maintainer, 2026-10-05: "longer term we'll need to

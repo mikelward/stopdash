@@ -32,6 +32,7 @@ internal fun journeyOriginsOf(
     segments: Map<String, JourneySegment?>,
     starSequences: Map<String, LineSequence?>,
     poles: Map<String, List<StopLocation>?>,
+    farEnds: Map<String, Journeys.FarEnd> = emptyMap(),
 ): List<StopRef> =
     journeys.mapNotNull { j ->
         val id = segments[j.key]?.originId ?: j.from.stopId.takeUnless { j.bus } ?: return@mapNotNull null
@@ -47,8 +48,11 @@ internal fun journeyOriginsOf(
             .filter { it.mode.isNotBlank() && it.mode.equals(mode, ignoreCase = true) }
         // Its pole letter and area, once looked up, so the card heads it like its neighbors.
         val pole = poles[j.key]?.firstOrNull { it.id == id }
+        // And any line the origin's own lookup lists that serves a stop at the far end, of whatever mode,
+        // so its route and status are checked too (Codex, #691).
+        val toward = farEnds[j.key]?.let { far -> pole?.lines.orEmpty().filter { it.id in far.lineIds } }.orEmpty()
         StopRef(
-            id, j.from.name, lines = listOf(j.line) + served,
+            id, j.from.name, lines = (listOf(j.line) + served + toward).distinctBy { it.id },
             clusterId = pole?.clusterId.orEmpty(), stopLetter = pole?.stopLetter.orEmpty(),
             bearing = pole?.bearing.orEmpty(), towards = pole?.towards.orEmpty(),
             // Its interchange, so a closure there folds and titles by the interchange (SPEC
@@ -59,8 +63,9 @@ internal fun journeyOriginsOf(
 
 /**
  * The lines whose routes the journey cards need: each journey's starred line ([starLines]), every line
- * the list has at its origin ([origins], from [stops]), and the lines boarding beside a bus origin
- * (and not at it), so their routes can say whether they reach the far end ([Journeys.siblingPoles]).
+ * the list has at its origin ([origins], from [stops]), and the lines boarding beside the origin that
+ * may reach the far end ([Journeys.boardsTowards], by [farEnds]), so their routes can
+ * say whether they do ([Journeys.siblingPoles]).
  */
 @WorkerThread
 internal fun journeyLineIdsOf(
@@ -70,25 +75,27 @@ internal fun journeyLineIdsOf(
     journeys: List<FavoriteJourney>,
     segments: Map<String, JourneySegment?>,
     poles: Map<String, List<StopLocation>?>,
+    farEnds: Map<String, Journeys.FarEnd> = emptyMap(),
 ): List<String> {
     val originIds = origins.mapTo(HashSet()) { it.id }
     val originLines = stops.filter { it.stopId in originIds }
-        .flatMap { stop -> stop.departures.map { it.lineId } + stop.lines.map { it.id } }
+        .flatMap { stop -> stop.departures.map { it.lineId } + stop.lines.map { it.id } } +
+        origins.flatMap { origin -> origin.lines.map { it.id } }
     val siblingLines = journeys.flatMap { j ->
         val originId = segments[j.key]?.originId ?: return@flatMap emptyList()
-        val areaPoles = poles[j.key].orEmpty()
-        val atOrigin = areaPoles.firstOrNull { it.id == originId }?.lines.orEmpty().mapTo(HashSet()) { it.id }
-        areaPoles.filter { it.id != originId }.flatMap { pole ->
-            pole.lines.filter { it.id !in atOrigin && Journeys.ofMode(it, j.mode) }.map { it.id }
+        // Every line beside the origin that may reach the far end, the origin's own too: whether a stop
+        // beside it boards one is judged by both stops' routes ([Journeys.siblingPoles]).
+        poles[j.key].orEmpty().filter { it.id != originId }.flatMap { pole ->
+            pole.lines.filter { Journeys.boardsTowards(it, j, farEnds[j.key]) }.map { it.id }
         }
     }
     return (starLines + originLines + siblingLines).filter { it.isNotBlank() }.distinct()
 }
 
 /**
- * The stops the journeys are fetched from, as the screen reports them: their [origins], then the poles
- * beside a bus origin that board a line reaching its far end ([siblings]), each with its lines of the
- * journey's mode; and each journey's boarding stops by key, with the journey view open ([viewKey]).
+ * The stops the journeys are fetched from, as the screen reports them: their [origins], then the stops
+ * beside the origin that board a line reaching its far end ([siblings]), each with the lines that may
+ * ([Journeys.boardsTowards], by [farEnds]; a stop two journeys board from, with both's lines); and each journey's boarding stops by key, with the journey view open ([viewKey]).
  * Each the same [Reported] as [last]'s where it holds the same.
  */
 @WorkerThread
@@ -99,13 +106,14 @@ internal fun journeyStopsOf(
     siblings: Map<String, SiblingPoles>,
     viewKey: String?,
     last: JourneyStops? = null,
+    farEnds: Map<String, Journeys.FarEnd> = emptyMap(),
 ): JourneyStops {
     val originIds = origins.mapTo(HashSet()) { it.id }
     val siblingOrigins = journeys.flatMap { j ->
         siblings[j.key]?.poles.orEmpty().map { pole ->
-            pole.toStopRef().copy(lines = pole.lines.filter { Journeys.ofMode(it, j.mode) })
+            pole.toStopRef().copy(lines = pole.lines.filter { Journeys.boardsTowards(it, j, farEnds[j.key]) })
         }
-    }.distinctBy { it.id }.filter { it.id !in originIds }
+    }.filter { it.id !in originIds }.let(::mergeJourneyOrigins)
     val stopIds = journeys.associate { j ->
         val originId = segments[j.key]?.originId ?: j.from.stopId
         j.key to (setOf(originId) + siblings[j.key]?.poles.orEmpty().map { it.id })
@@ -120,7 +128,7 @@ internal fun journeyStopsOf(
  * so a far one opened in the app doesn't join it. One check per boarding stop: the origin under the
  * journey's key, a neighboring pole under its [WidgetJourneys.poleKey], each pinned from its own stop.
  * And the boarding keys of each journey whose neighboring poles are settled (none to look up, or
- * looked up and judged: [areas], [poles], [siblings], [siblingsPending]), so a pole that no longer
+ * looked up and judged: [poleKeys], [poles], [siblings], [siblingsPending]), so a pole that no longer
  * qualifies loses its pin. Each the same [Reported] as [last]'s where it holds the same.
  */
 @WorkerThread
@@ -128,7 +136,7 @@ internal fun cardReportsOf(
     shown: ShownRows?,
     journeys: List<FavoriteJourney>,
     farJourneyMeters: Map<String, Double>,
-    areas: Map<String, String>,
+    poleKeys: Set<String>,
     poles: Map<String, List<StopLocation>?>,
     siblings: Map<String, SiblingPoles>,
     siblingsPending: Boolean,
@@ -155,7 +163,7 @@ internal fun cardReportsOf(
     val boarding = cards.filter { card ->
         val key = card.journey.key
         card.boardingIds.isNotEmpty() && (
-            key !in areas ||
+            key !in poleKeys ||
                 poles[key] != null && !siblingsPending && siblings[key]?.settled == true
             )
     }.associate { card ->
@@ -198,4 +206,98 @@ internal fun fartherShownOf(
     val kept = CollapsedPlaces.withBusesPicked(farther.map { it.place }, shownBus, opened, shownStopIds = shownStops)
         .associateBy { it.key }
     return farther.mapNotNull { card -> kept[card.place.key]?.let { card.copy(place = it) } }
+}
+
+/**
+ * What the screen knows of the stops around each journey's ends ([journeyAroundOf]): the stops beside
+ * the origin it may board from, the far end's stops within the rider's walk, and whether a lookup is
+ * still out.
+ */
+internal class JourneyAround(
+    // The stops within [Journeys.BOARDING_RADIUS_METERS] of the origin, nearest first; null when the
+    // lookup failed.
+    val poles: List<StopLocation>?,
+    // The far end's stops within the walk; null while unknown (no position, failed, or still out),
+    // when the card matches the far end by its own stop alone.
+    val farEnd: Journeys.FarEnd?,
+    val loading: Boolean,
+    // The far end's lookup failed: the card can't say every line reaching it was checked (Codex, #691).
+    val farFailed: Boolean = false,
+)
+
+/**
+ * The stops around each of [journeys]' ends, by journey key, from [endStops] (each end's lookup by stop
+ * id: absent while out, null when it failed) within [walkMeters] of the far end. A journey whose origin
+ * has no position has none: it boards from its origin (and a bus's stop area) alone, as before.
+ */
+@WorkerThread
+internal fun journeyAroundOf(
+    journeys: List<FavoriteJourney>,
+    endStops: Map<String, List<StopLocation>?>,
+    walkMeters: Int,
+): Map<String, JourneyAround> =
+    journeys.mapNotNull { j ->
+        if (j.from.latitude == null || j.from.longitude == null) return@mapNotNull null
+        val farKnown = j.to.latitude != null && j.to.longitude != null
+        val loading = j.from.stopId !in endStops || farKnown && j.to.stopId !in endStops
+        val poles = endStops[j.from.stopId]?.let { Journeys.stopsAround(j.from, it, Journeys.BOARDING_RADIUS_METERS) }
+        val farEnd = endStops[j.to.stopId]?.let { Journeys.farEnd(j.to, it, walkMeters) }
+        val farFailed = farKnown && j.to.stopId in endStops && endStops[j.to.stopId] == null
+        j.key to JourneyAround(poles, farEnd, loading, farFailed)
+    }.toMap()
+
+/**
+ * Each journey's boarding stops to weigh beside its origin, by key: those around it ([around]), then its
+ * bus stop area's ([areaPoles], by journey key) not among them. Absent while any lookup it needs is out (the far end's
+ * too, which says which lines to weigh, so the stops fetched don't change twice); null when
+ * one failed, so the card says it couldn't check every stop. Keyed by [areas] for a stop area.
+ */
+@WorkerThread
+internal fun journeyPolesOf(
+    journeys: List<FavoriteJourney>,
+    around: Map<String, JourneyAround>,
+    areas: Map<String, String>,
+    areaPoles: Map<String, List<StopLocation>?>,
+): Map<String, List<StopLocation>?> =
+    journeys.mapNotNull { j ->
+        val near = around[j.key]
+        val areaId = areas[j.key]
+        if (near == null && areaId == null) return@mapNotNull null
+        if (near?.loading == true || areaId != null && j.key !in areaPoles) return@mapNotNull null
+        // Either end's lookup failed: null, so the card says it couldn't check every line, with a retry.
+        if (near?.farFailed == true) return@mapNotNull j.key to null
+        val nearPoles = near?.let { it.poles ?: return@mapNotNull j.key to null }.orEmpty()
+        val inArea = if (areaId == null) emptyList() else areaPoles[j.key] ?: return@mapNotNull j.key to null
+        j.key to (nearPoles + inArea).distinctBy { it.id }
+    }.toMap()
+
+/** The journeys' boarding stops beside their origins and their far ends' stops ([journeyBoardingOf]). */
+internal class JourneyBoarding(
+    val poles: Map<String, List<StopLocation>?>,
+    val farEnds: Map<String, Journeys.FarEnd>,
+    val poleKeys: Set<String>,
+)
+
+/** [journeyAroundOf] and [journeyPolesOf] together, with the keys of the journeys that weigh stops beside their origin. */
+@WorkerThread
+internal fun journeyBoardingOf(
+    // The journeys to look around: none with no lookup wired.
+    lookedAround: List<FavoriteJourney>,
+    endStops: Map<String, List<StopLocation>?>,
+    walkMeters: Int,
+    areas: Map<String, String>,
+    areaPoles: Map<String, List<StopLocation>?>,
+    journeys: List<FavoriteJourney> = lookedAround,
+    // The radius each end's answer was asked with, and the one the walk now needs: an answer short of it
+    // is still out, never a complete check (a failure stands as one).
+    radius: Map<String, Int> = emptyMap(),
+    required: Int = 0,
+): JourneyBoarding {
+    val covered = endStops.filter { (id, stops) -> stops == null || (radius[id] ?: 0) >= required }
+    val around = journeyAroundOf(lookedAround, covered, walkMeters)
+    return JourneyBoarding(
+        journeyPolesOf(journeys, around, areas, areaPoles),
+        around.mapNotNull { (key, a) -> a.farEnd?.let { key to it } }.toMap(),
+        journeys.filter { it.key in around || it.key in areas }.mapTo(HashSet()) { it.key },
+    )
 }

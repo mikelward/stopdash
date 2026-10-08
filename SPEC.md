@@ -1040,7 +1040,25 @@ stop area whose line — one the origin itself doesn't serve — reaches the far
 from stop K beside the starred bus's stop L). Its buses join the card under their pole's own heading,
 and the widget pins them from that pole. It costs one lookup of the stop area's poles a day,
 the routes of lines found only at those poles, and one more arrivals request per qualifying pole
-per refresh. A pole is dropped only once it has been judged: while its lookup or a line's route is
+per refresh.
+
+**Every direct route, by any mode** (maintainer, 2026-10-08). A journey between two stations shows
+the buses between them too, and a bus journey the trains: beside its origin the card boards from
+every stop within 320 m (as far as *To…* from the near-me list starts), and a train or bus counts as
+reaching the far end when it calls at **any stop within the rider's max walk** of it, at their pace —
+the reach a trip's *Direct* section gives a place, so the two always agree on what's direct (the 134
+a long walk from the far end counts, as it does there). Only lines that also serve a stop at the far
+end are weighed, so a big station's dozens of buses cost a route lookup only for those that may go
+there. The stops around each end are one TfL lookup by its published position, cached a day (no new
+data leaves the device: public stops around public stations). To keep a hub-to-hub journey within
+the request budget, a card fetches **at most its nearest 6 boarding stops** each refresh (one
+arrivals request each, most often already fetched for the near-me list, and a closure check every
+5 minutes); and it draws **its first 3 rows**, nearest stops first, then **+N more** — or **More**
+when further stops board it — which opens the journey's own view, where every row and boarding stop
+is shown and fetched. The widget pins from the rows the card judged, as many as fit. An end without
+a published position keeps to its own stop and stop area, as before.
+
+A pole is dropped only once it has been judged: while its lookup or a line's route is
 loading or has failed, the card says so and the widget keeps what it had. The origin's departures are fetched alongside the near-me stops (one request, none
 when it's already near) and stay out of the near-me list; each line's route is the same lookup the
 route page makes (one per line at the origin, a day). Until they are in, the card says it's
@@ -1085,7 +1103,8 @@ changing mostly lands the rider on that same train at the fork. It names only wh
 the connecting train's time, which isn't known. Rail only: a bus's path is often the route's end,
 too loose to send a rider to change on. The widget keeps showing direct trains only.
 
-**Direct only, for now.** A favorite journey is one line between two stops; a starred trip with a change
+**Direct only, for now.** A favorite journey is saved on one line between two stops (its route
+places the ends) and shows every direct line between them; a starred trip with a change
 (the eventual goal behind starring home and work) builds on *Trips with a change* below. The long-press entry point has no
 cue of its own, so a starrable stop list opens with a one-line tip ("Long-press a stop to favorite the journey
 there") until the user dismisses it (maintainer, 2026-09-24); the dismissal is kept with the app's
