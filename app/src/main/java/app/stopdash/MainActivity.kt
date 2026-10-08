@@ -4040,8 +4040,26 @@ class MainActivity : ComponentActivity() {
             }
         }
         val dismissed by viewModel.dismissed.collectAsStateWithLifecycle()
+        // A row's route page pins and dismisses through this stop's own model, as a station's page does.
+        val starred by viewModel.starred.collectAsStateWithLifecycle()
+        val starringAvailable by viewModel.starringAvailable.collectAsStateWithLifecycle()
+        val starWriteFailed by viewModel.starWriteFailed.collectAsStateWithLifecycle()
+        val dismissWriteFailed by viewModel.dismissWriteFailed.collectAsStateWithLifecycle()
         val now = tickingNow()
-        return StopDepartures(state, now, onRefresh = { viewModel.refresh() }, dismissed = dismissed)
+        return StopDepartures(
+            state,
+            now,
+            onRefresh = { viewModel.refresh() },
+            dismissed = dismissed,
+            starred = starred,
+            starringAvailable = starringAvailable,
+            onToggleStar = viewModel::toggleStar,
+            onDismissAlert = viewModel::dismissAlert,
+            starWriteFailed = starWriteFailed,
+            onStarWriteFailureShown = viewModel::starWriteFailureShown,
+            dismissWriteFailed = dismissWriteFailed,
+            onDismissWriteFailureShown = viewModel::dismissWriteFailureShown,
+        )
     }
 
     /**

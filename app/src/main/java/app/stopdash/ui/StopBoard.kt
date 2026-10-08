@@ -37,6 +37,7 @@ import app.stopdash.domain.RouteFocus
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.StopGrouping
 import app.stopdash.domain.Staleness
+import app.stopdash.domain.StarredRow
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -56,6 +57,18 @@ internal class StopDepartures(
     val onRefresh: () -> Unit,
     // The alerts dismissed anywhere, as the near-me list has them.
     val dismissed: Set<DismissedAlert> = emptySet(),
+    // A route page's star and dismiss, as on a station's page: the routes pinned to the top, whether pinning
+    // can be saved, and the stop's own model's writes; null leaves them off. A write that failed says so
+    // ([starWriteFailed], [dismissWriteFailed]) until its [onStarWriteFailureShown] or
+    // [onDismissWriteFailureShown].
+    val starred: Set<StarredRow> = emptySet(),
+    val starringAvailable: Boolean = false,
+    val onToggleStar: ((DepartureRow) -> Unit)? = null,
+    val onDismissAlert: ((DepartureRow) -> Unit)? = null,
+    val starWriteFailed: Boolean = false,
+    val onStarWriteFailureShown: () -> Unit = {},
+    val dismissWriteFailed: Boolean = false,
+    val onDismissWriteFailureShown: () -> Unit = {},
 )
 
 /**
@@ -323,6 +336,8 @@ internal fun StopRoutePage(
     // Its line's page ("View line") open over it: held by the caller, whose usage stats count it.
     lineOpen: MutableState<Boolean>,
     onBack: () -> Unit,
+    // The board's model's star and dismiss ([StopDepartures]); null offers neither.
+    actions: StopDepartures? = null,
 ) {
     val row = view?.rowsByKey?.get(key) ?: return
     val loaded = view.source ?: return
@@ -335,8 +350,11 @@ internal fun StopRoutePage(
         FontSizePinchWindow {
             RouteDetailScreen(
                 row = row,
-                isStarred = false,
-                starrable = false,
+                // Pinned and dismissed as on a station's page: the stop's own model holds them.
+                isStarred = actions?.onToggleStar != null && StarredRow.of(row) in actions.starred,
+                // Same rule as the list card: only a timed row with starring available is pinnable.
+                starrable = actions?.onToggleStar != null && actions.starringAvailable &&
+                    row.stopDisruption == null && row.upcoming.isNotEmpty(),
                 // Per row, as the near-me list's page judges it: its line unchecked, or its stop's closure check.
                 disruptionUnknown = loaded.lineUncheckedFor(row) || row.stopId in loaded.stopsDisruptionUnknown,
                 disruptionChecking = loaded.checkingDisruptionsFor(row),
@@ -345,10 +363,17 @@ internal fun StopRoutePage(
                 // A stale row's status isn't presented as current (SPEC D4).
                 stale = Staleness.isStale(row.fetchedAt, now),
                 now = now,
-                onToggleStar = {},
+                onToggleStar = { actions?.onToggleStar?.invoke(row) },
                 onBack = onBack,
                 focus = focus,
                 lineOpen = lineOpen,
+                onDismissAlert = actions?.onDismissAlert?.takeIf { row.status != null }?.let { dismiss -> { dismiss(row) } },
+                // One planned alert dismissed on its own: passed as a row standing for just that alert.
+                onDismissPlanned = actions?.onDismissAlert?.let { dismiss ->
+                    { planned -> dismiss(row.copy(status = null, stopDisruption = null, plannedAlerts = listOf(planned))) }
+                },
+                // A station on its stop list opens that station's page, as from any route page.
+                onOpenStop = LocalOpenRouteStop.current,
             )
         }
     }

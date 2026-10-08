@@ -17,6 +17,8 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.MutableState
 import androidx.compose.material3.Button
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarHost
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -453,10 +455,20 @@ internal fun LinesOverlay(
                                     { links?.let { it.position ?: stop.position }?.let { at -> show(stop, at) } }
                                 },
                                 mapReady = links?.let { it.position ?: stop.position } != null,
+                                // A pin or dismiss that couldn't be saved says so here once its route page is closed.
+                                routeOpen = routeKey != null,
                                 onBack = back,
                             )
                             routeKey?.let { key ->
-                                StopRoutePage(view, key, routeDestination?.let { RouteFocus(it, routeBranch) }, routeLineOpen, onBack = { routeKey = null })
+                                // Its star and dismiss through the board's own model, as on a station's page.
+                                StopRoutePage(
+                                    view,
+                                    key,
+                                    routeDestination?.let { RouteFocus(it, routeBranch) },
+                                    routeLineOpen,
+                                    onBack = { routeKey = null },
+                                    actions = board,
+                                )
                             }
                         }
                     }
@@ -523,8 +535,28 @@ internal fun LineStopPage(
     access: StopAccess? = null,
     // Its line, under the cue's, kept from the first frame as that one is, for a station.
     accessSlot: Boolean = false,
+    // A route page open over it: a failed pin or dismiss there ([StopDepartures.starWriteFailed]) is said here
+    // once it's closed, as the near-me list says one once its route page is (the page has no room for it).
+    routeOpen: Boolean = false,
 ) {
     BackHandler(onBack = onBack)
+    val snackbarHostState = remember { SnackbarHostState() }
+    val starFailedMessage = stringResource(R.string.star_write_failed)
+    val dismissFailedMessage = stringResource(R.string.dismiss_write_failed)
+    val starFailed = departures?.starWriteFailed == true
+    val dismissFailed = departures?.dismissWriteFailed == true
+    LaunchedEffect(starFailed, routeOpen) {
+        if (starFailed && !routeOpen) {
+            departures?.onStarWriteFailureShown?.invoke()
+            snackbarHostState.showSnackbar(starFailedMessage)
+        }
+    }
+    LaunchedEffect(dismissFailed, routeOpen) {
+        if (dismissFailed && !routeOpen) {
+            departures?.onDismissWriteFailureShown?.invoke()
+            snackbarHostState.showSnackbar(dismissFailedMessage)
+        }
+    }
     val zoneCue = zone?.takeIf { it.isNotBlank() }?.let { stringResource(R.string.line_stop_zone, it) }
     val accessCue = when {
         access == null || access.level == null -> null
@@ -557,6 +589,7 @@ internal fun LineStopPage(
                 },
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         // Scrolls, so a long name at a large text size never pushes From and To out of reach (Codex on #659).
         val listState = rememberLazyListState()

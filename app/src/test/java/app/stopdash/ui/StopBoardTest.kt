@@ -397,6 +397,83 @@ class StopBoardTest {
         assertEquals(null, routeKey)
     }
 
+    @Test
+    fun a_route_page_from_a_stop_pins_through_the_stop_s_own_model() {
+        val state = loaded(board)
+        val toggled = mutableListOf<String>()
+        var starred by androidx.compose.runtime.mutableStateOf(emptySet<app.stopdash.domain.StarredRow>())
+        composeRule.setContent {
+            CompositionLocalProvider(LocalWorker provides kotlinx.coroutines.Dispatchers.Unconfined) {
+                val departures = StopDepartures(
+                    state,
+                    now,
+                    onRefresh = {},
+                    starred = starred,
+                    starringAvailable = true,
+                    onToggleStar = { row ->
+                        toggled += row.lineId
+                        starred = starred + app.stopdash.domain.StarredRow.of(row)
+                    },
+                )
+                val view = rememberStopBoard(departures, "victoria")
+                val key = view?.rowsByKey?.values?.firstOrNull { it.destination == "Brixton" }?.detailKey()
+                if (key != null) {
+                    StopRoutePage(view, key, null, androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }, onBack = {}, actions = departures)
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        // Pinned as on a station's page, through the stop's model, and shown pinned (SPEC *Finding a line*).
+        composeRule.onNodeWithContentDescription("Pin to top").performClick()
+        composeRule.waitForIdle()
+        assertEquals(listOf("victoria"), toggled)
+        composeRule.onNodeWithContentDescription("Unpin from top").assertExists()
+    }
+
+    @Test
+    fun a_route_page_with_no_model_offers_no_pin() {
+        val state = loaded(board)
+        composeRule.setContent {
+            CompositionLocalProvider(LocalWorker provides kotlinx.coroutines.Dispatchers.Unconfined) {
+                val departures = StopDepartures(state, now, onRefresh = {})
+                val view = rememberStopBoard(departures, "victoria")
+                val key = view?.rowsByKey?.values?.firstOrNull { it.destination == "Brixton" }?.detailKey()
+                if (key != null) {
+                    StopRoutePage(view, key, null, androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }, onBack = {})
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Pin to top").assertDoesNotExist()
+    }
+
+    @Test
+    fun a_pin_that_could_not_be_saved_is_said_on_the_stop_once_its_route_page_is_closed() {
+        val state = loaded(board)
+        var routeOpen by androidx.compose.runtime.mutableStateOf(true)
+        var shown = 0
+        composeRule.setContent {
+            CompositionLocalProvider(LocalWorker provides kotlinx.coroutines.Dispatchers.Unconfined) {
+                LineStopPage(
+                    name = "Oxford Circus",
+                    distance = null,
+                    onFrom = {},
+                    onTo = null,
+                    onBack = {},
+                    departures = StopDepartures(state, now, onRefresh = {}, starWriteFailed = shown == 0, onStarWriteFailureShown = { shown++ }),
+                    routeOpen = routeOpen,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        // Held while the route page is over it: it has no room for the message.
+        assertEquals(0, shown)
+        routeOpen = false
+        composeRule.waitForIdle()
+        assertEquals(1, shown)
+        composeRule.onNodeWithText("Couldn't save your pin").assertExists()
+    }
+
     /** [items], noting the thread of each pass over it in [reads]. */
     private class NotingList<T>(private val items: List<T>, private val reads: MutableList<String>) : AbstractList<T>() {
         override val size: Int get() = items.size
