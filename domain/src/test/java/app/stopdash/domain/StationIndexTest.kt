@@ -47,6 +47,23 @@ class StationIndexTest {
     }
 
     @Test
+    fun `lines near a place are named as riders say them`() {
+        val tottenhamCourtRoad = StationIndex(
+            listOf(
+                IndexedStation(
+                    "910GTOTCTRD", "Tottenham Court Road", latitude = 51.5165, longitude = -0.1310,
+                    lines = mapOf("elizabeth-line" to listOf("elizabeth")),
+                ),
+            ),
+            lineNames = mapOf("elizabeth" to "Elizabeth line"),
+        )
+        assertEquals(
+            listOf(LineRef("elizabeth", "Elizabeth", "elizabeth-line")),
+            tottenhamCourtRoad.linesNear(listOf(Coordinates(51.5165, -0.1310)), 100),
+        )
+    }
+
+    @Test
     fun `a station inside a matched hub is folded into the hub`() {
         assertEquals(listOf("HUBKGX"), index.search("kings").map { it.id })
     }

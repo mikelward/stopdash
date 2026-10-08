@@ -39,6 +39,7 @@ import app.stopdash.domain.mergedRoutes
 import app.stopdash.domain.TflException
 import app.stopdash.domain.StopTimetable
 import app.stopdash.domain.TimetableSource
+import app.stopdash.domain.riderLineName
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
@@ -542,7 +543,7 @@ class KtorTflClient(
                 allowSlowAnswer()
             }.body<List<TflModeLineDto>>()
                 .filter { it.id.isNotBlank() && it.name.isNotBlank() }
-                .map { LineRef(it.id, it.name, it.modeName) }
+                .map { LineRef(it.id, riderLineName(it.name, it.modeName), it.modeName) }
                 .distinctBy { it.id }
         }
 

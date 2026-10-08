@@ -101,4 +101,14 @@ class LineCatalogTest {
         store.add(bus)
         assertEquals(listOf(bus, tube), FileRecentLinesStore(File(dir, "recent.json")).load())
     }
+
+    @Test
+    fun a_saved_line_is_renamed_on_the_way_back_in() = runBlocking {
+        val tfl = LineRef("elizabeth", "Elizabeth line", "elizabeth-line")
+        FileRecentLinesStore(File(dir, "recent.json")).add(tfl)
+        assertEquals(listOf(tfl.copy(name = "Elizabeth")), FileRecentLinesStore(File(dir, "recent.json")).load())
+        val catalogFile = File(dir, "catalog.json")
+        FileLineCatalogStore(catalogFile).save(LineCatalogFile(0L, listOf(tfl)))
+        assertEquals(listOf(tfl.copy(name = "Elizabeth")), FileLineCatalogStore(catalogFile).load()?.lines)
+    }
 }

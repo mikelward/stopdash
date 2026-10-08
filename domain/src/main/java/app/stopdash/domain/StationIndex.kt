@@ -62,7 +62,7 @@ class StationIndex(
 
     /**
      * Every line of the stations within [meters] of any of [places], by id, each once with its mode and name
-     * ([lineNames], else its id): the lines a rider at one of them can take with no bus (the index holds no
+     * ([lineNames], else its id, as riders say it: [riderLineName]): the lines a rider at one of them can take with no bus (the index holds no
      * bus stops). A station with no position never counts. In the stations' order. Walks every station for
      * every place: on a worker only.
      */
@@ -75,7 +75,7 @@ class StationIndex(
             val lon = station.longitude ?: continue
             if (places.none { NearestStops.distanceMeters(it.latitude, it.longitude, lat, lon) <= meters }) continue
             for ((mode, ids) in station.lines) {
-                ids.forEach { id -> if (id.isNotBlank()) lines.getOrPut(id) { LineRef(id, lineNames[id] ?: id, mode) } }
+                ids.forEach { id -> if (id.isNotBlank()) lines.getOrPut(id) { LineRef(id, riderLineName(lineNames[id] ?: id, mode), mode) } }
             }
         }
         return lines.values.toList()

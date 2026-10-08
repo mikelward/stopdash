@@ -1,6 +1,7 @@
 package app.stopdash.data
 
 import app.stopdash.domain.LineRef
+import app.stopdash.domain.riderLineName
 import java.io.File
 import java.io.IOException
 import java.time.Duration
@@ -91,7 +92,8 @@ private data class PersistedCatalogLine(val id: String, val name: String, val mo
 
 private fun LineRef.persisted() = PersistedCatalogLine(id, name, mode)
 
-private fun PersistedCatalogLine.toDomain() = LineRef(id, name, mode)
+// Renamed on the way back in, as every saved name is ([riderLineName]).
+private fun PersistedCatalogLine.toDomain() = LineRef(id, riderLineName(name, mode), mode)
 
 @Serializable
 private data class PersistedLineCatalog(val fetchedAt: Long, val lines: List<PersistedCatalogLine> = emptyList())

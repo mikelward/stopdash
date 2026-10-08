@@ -4210,7 +4210,7 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithText("ELI").assertExists()
         composeRule.onNodeWithText("LIB").assertExists()
         composeRule.onNodeWithText("TRA").assertExists()
-        composeRule.onNodeWithContentDescription("Elizabeth line").assertExists()
+        composeRule.onNodeWithContentDescription("Elizabeth").assertExists()
         composeRule.onNodeWithContentDescription("Liberty").assertExists()
     }
 
