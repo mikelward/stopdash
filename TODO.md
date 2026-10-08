@@ -1792,9 +1792,17 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             wait's own fixes; High, "Missed …", with Plan again from where they are; kept until back.
       - [x] **"‹line› closed" under "Missed …"** (maintainer, 2026-10-08): the line on from the stop gone
             past is avoided (sticky, as a route card's Avoid) and the trip planned again from where they are.
-      - [ ] **"Stop closed" under "Missed …"** (maintainer, 2026-10-08: sticky): the stop gone past avoided as
-            lines are, a route through it dropped on the phone (the Planner can't leave out a stop), with a
-            chip atop the trip and a Settings list to clear it; then planned again.
+      - [x] **"Stop closed" under "Missed …"** (maintainer, 2026-10-08: sticky): the stop gone past avoided as
+            lines are, a route boarding, getting off or changing there dropped on the phone (the Planner can't
+            leave out a stop), with a chip atop the trip and a Settings row to clear it; then planned again.
+      - [ ] **A trip's route filter runs on the main thread** (found by lint, 2026-10-08): `State.shownRoutes`
+            and `openRouteGone` walk every route through `AvoidedLines.drops` from composition (`TripContent`)
+            and from the trip's callbacks (`carryPull`, `refreshFor`, `refresh`, `retry`, `openDirect`,
+            `boardAt`, `pullRefresh`…). It did before as an inline line check; marking `drops` `@WorkerThread`
+            names fourteen call paths to move off the main thread (AGENTS.md *Main thread*).
+      - [ ] (Consider) **A closed station's other ids**: a stop is avoided by the id its ride named (a bus stop
+            by its area), so an interchange known by several ids (Liverpool Street's Elizabeth line and Tube
+            stations) is only left out on the line it was avoided from; a station hub id would take in both.
       - [ ] **Alert a rider on another train than the plan's** (maintainer, 2026-10-06), the same way,
             once the tracker notices it (the item above on a branch taken without a tap).
       - [ ] (Consider) **A stop gone past while the trip still has them on the ride**: with no calls

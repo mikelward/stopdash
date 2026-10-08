@@ -838,7 +838,7 @@ internal fun sequenceLineIds(state: TripViewModel.State, hidden: Set<String>, se
     val shown = state.shownRoutes(hidden).orEmpty()
     // And every other line at a timed ride's boarding stop, to tell whether it serves the ride's
     // stops too ([rideLines]): a route each, loaded once a day like the rest.
-    val timed = TripViewModel.bestOf(shown.filterNot { route -> route.rides.any { HiddenModes.isHidden(it.mode, it.lineId, hidden) } }, keep, state.directKeys)
+    val timed = TripViewModel.bestOf(shown.filterNot { route -> AvoidedLines.drops(route, hidden) }, keep, state.directKeys)
     val lines = timedLineIds(shown, hidden, keep, state.directKeys) + rideLineIds(timed, state, hidden)
     return (if (landing) settled + lines else lines).distinct()
 }
@@ -865,7 +865,7 @@ internal fun rememberTripLineIds(planned: TripViewModel.State, excluded: Set<Str
  * route ([keep]) past it ([TripViewModel.bestOf]).
  */
 internal fun timedLineIds(routes: List<TripRoute>, hidden: Set<String>, keep: Collection<String> = emptyList(), direct: Set<String> = emptySet()): List<String> =
-    TripViewModel.bestOf(routes.filterNot { route -> route.rides.any { HiddenModes.isHidden(it.mode, it.lineId, hidden) } }, keep, direct)
+    TripViewModel.bestOf(routes.filterNot { route -> AvoidedLines.drops(route, hidden) }, keep, direct)
         .flatMap { route -> route.rides.map { it.lineId } }.distinct()
 
 /**
@@ -877,7 +877,7 @@ internal fun timedLineIds(routes: List<TripRoute>, hidden: Set<String>, keep: Co
  */
 internal fun openRouteGone(state: TripViewModel.State, hidden: Set<String>, open: OpenRoute): Boolean {
     val route = open.routeIn(state.shownRoutes(hidden).orEmpty()) ?: return true
-    return route.rides.any { HiddenModes.isHidden(it.mode, it.lineId, hidden) }
+    return AvoidedLines.drops(route, hidden)
 }
 
 /** A route's identity across refreshes and re-ranking: its lines and stops in order. */

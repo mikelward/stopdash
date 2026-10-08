@@ -26,7 +26,7 @@ class UsageEventTest {
             "0-1s", "1-3s", "3-10s", "10-30s", "30s+",
             "here", "stop", "place", "first", "again",
             // setting_change's settings, then their values.
-            "walking_speed", "max_walk", "step_free", "trip_mode", "avoided_line", "hidden_mode",
+            "walking_speed", "max_walk", "step_free", "trip_mode", "avoided_line", "avoided_stop", "hidden_mode",
             "distance_units", "disruptions_row", "disruption_line", "live_widget", "text_size",
             "pinch_resize", "tfl_key", "rail_key", "bug_report_consent",
             "slow", "average", "fast", "10", "15", "20", "30", "45", "60", "any", "station", "fully",
@@ -229,6 +229,10 @@ class UsageEventTest {
         val avoided = UsageEvent.SettingChanged.avoidedLines(emptySet(), setOf("victoria"))
         assertEquals(listOf(mapOf("setting" to "avoided_line", "value" to "added")), avoided.map { it.params })
         assertEquals(listOf("removed"), UsageEvent.SettingChanged.avoidedLines(setOf("victoria"), emptySet()).map { it.params["value"] })
+        // A stop avoided counts as one, never which.
+        val stop = UsageEvent.SettingChanged.avoidedLines(emptySet(), setOf(AvoidedLines.stopKey("940GZZLUBNK", "Bank")))
+        assertEquals(listOf(mapOf("setting" to "avoided_stop", "value" to "added")), stop.map { it.params })
+        stop.forEach(::assertClosed)
         val row = UsageEvent.SettingChanged.disruptionLines(setOf("central"), setOf("central", "jubilee"))
         assertEquals(listOf(mapOf("setting" to "disruption_line", "value" to "added")), row.map { it.params })
         val line = HiddenModes.lineKey("victoria", "Victoria")

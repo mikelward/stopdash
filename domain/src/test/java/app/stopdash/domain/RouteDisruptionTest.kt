@@ -959,6 +959,16 @@ class RouteDisruptionTest {
     }
 
     @Test
+    fun `a bus stop gone past on another line than planned is avoided by the planned stop's area`() {
+        // Planned on the red bus to C, a pole of a stop area; ridden on the green bus, whose leg names only the pole.
+        val planned = ride.copy(mode = "bus", toArea = "490GEXAMPLE")
+        val ridden = planned.copy(lineId = "green", lineName = "Green", toArea = "")
+        val past = trip.copy(route = TripRoute(listOf(planned, walk, second)), legIndex = 1, pastLeg = 0, pastAtId = "X", pastAtName = "X", offLeg = ridden)
+        val missed = checkNotNull(RouteDisruption.missed(past, TripProgress.Walking(walk, at(20))))
+        assertEquals(AvoidedLines.stopKey("490GEXAMPLE", "C"), missed.stopAvoid)
+    }
+
+    @Test
     fun `the ride on from a stop gone past is the next one that isn't a walk`() {
         val past = trip.copy(legIndex = 1, pastLeg = 0, pastAtId = "X", pastAtName = "X")
         val missed = checkNotNull(RouteDisruption.missed(past, TripProgress.Walking(walk, at(20))))
@@ -969,6 +979,8 @@ class RouteDisruptionTest {
         assertEquals(lineLabel("Blue", "tube"), missed.onwardLabel)
         // And the entry that avoids it, likewise, so the button's tap only reads it.
         assertEquals(AvoidedLines.key(second.lineId, lineLabel("Blue", "tube")), missed.onwardAvoid)
+        // And the stop gone past, should it be closed: by the ride's own stop id, as the route names it.
+        assertEquals(AvoidedLines.stopKey("C", "C"), missed.stopAvoid)
         // A trip that ends at the stop gone past has no ride on from it.
         val last = ActiveTrip(TripRoute(listOf(ride)), "C", startedAt = t0)
         assertNull(RouteDisruption.missedOnward(last, missed))
@@ -980,7 +992,7 @@ class RouteDisruptionTest {
         val past = trip.copy(legIndex = 1, pastLeg = 0, pastAtId = "X", pastAtName = "X")
         val walking = TripProgress.Walking(walk, at(20))
         val missed = RouteDisruption.missed(past, walking)
-        assertEquals(Signal.Missed(0, "red", "Red", "C", "C", "X", "X", onward = second, onwardLabel = lineLabel("Blue", "tube"), onwardAvoid = AvoidedLines.key(second.lineId, lineLabel("Blue", "tube"))), missed)
+        assertEquals(Signal.Missed(0, "red", "Red", "C", "C", "X", "X", onward = second, onwardLabel = lineLabel("Blue", "tube"), onwardAvoid = AvoidedLines.key(second.lineId, lineLabel("Blue", "tube")), stopAvoid = AvoidedLines.stopKey("C", "C")), missed)
         assertEquals(Tier.HIGH, missed?.tier)
         assertEquals("missed/0/C", missed?.key)
         // A card, with the ride it's on, and a plan again from where they are.

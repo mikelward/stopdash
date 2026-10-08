@@ -73,7 +73,8 @@ class PlaceDirectViewModelTest {
     ).apply { setOrigin(listOf(StopRef("TOP", "Top"))) }
 
     // Sets the origin without the look a change starts: each test runs its looks itself.
-    private fun PlaceDirectViewModel.setOrigin(stops: List<StopRef>) = setInputsQuietly(PlaceDirectViewModel.Inputs(stops))
+    private fun PlaceDirectViewModel.setOrigin(stops: List<StopRef>, avoided: Set<String> = emptySet()) =
+        setInputsQuietly(PlaceDirectViewModel.Inputs(stops, avoided = avoided))
 
     @Test
     fun `a line from the rider's stop that reaches the place is a row with its countdowns`() = runBlocking {
@@ -83,6 +84,19 @@ class PlaceDirectViewModelTest {
         val row = ready.rows.single()
         assertEquals("TOP", row.row.fromId)
         assertEquals("1 · 5 min", row.times)
+    }
+
+    @Test
+    fun `an avoided stop isn't asked about, so its failing leaves the rest sure`() = runBlocking {
+        val asked = mutableListOf<String>()
+        // Top found closed, and TfL failing for it: Mid's row stands, not marked unsure, and Top is never asked.
+        val model = model(client { stopId -> asked += stopId; if (stopId == "TOP") error("down") else listOf(departure("Bottom", 60)) })
+        model.setOrigin(listOf(StopRef("TOP", "Top"), StopRef("MID", "Mid")), avoided = setOf(AvoidedLines.stopKey("TOP", "Top")))
+        model.refresh()
+        val ready = model.state.value as PlaceDirectViewModel.State.Ready
+        assertEquals("MID", ready.rows.single().row.fromId)
+        assertFalse(ready.uncertain)
+        assertEquals(listOf("MID"), asked)
     }
 
     @Test
