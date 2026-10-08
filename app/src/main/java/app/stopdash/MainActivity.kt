@@ -216,6 +216,9 @@ import app.stopdash.ui.LINE_STATUS_REUSE
 import app.stopdash.ui.LicensesScreen
 import app.stopdash.ui.ListWork
 import app.stopdash.ui.LocalAlertsBehind
+import app.stopdash.ui.LocalLineWorkAhead
+import app.stopdash.ui.LineWorkAhead
+import app.stopdash.ui.WorkAheadCache
 import app.stopdash.ui.LocalDismissLineAlert
 import app.stopdash.ui.LineAlertDismissal
 import app.stopdash.ui.LocalAppMenu
@@ -616,7 +619,11 @@ class MainActivity : ComponentActivity() {
                     stepFreeRead = true
                 }
                 val nearby by nearbyViewModel.state.collectByIdentityWithLifecycle()
+                // A line's week ahead, for the home screen's and a trip's lines pages, the dismissals shared.
+                val lineDismissals = lineDismissalsModel()
+                val lineWorkAhead = remember(lineDismissals) { LineWorkAhead(workAheadCache, lineDismissals.dismissed) }
                 CompositionLocalProvider(
+                    LocalLineWorkAhead provides lineWorkAhead,
                     LocalStepFree provides stepFree,
                     LocalStepFreeLoading provides !stepFreeRead,
                     LocalLiftsOut provides liftOutages,
@@ -2911,7 +2918,7 @@ class MainActivity : ComponentActivity() {
                 // The disruptions row's lines page dismisses a line's alert (maintainer, 2026-10-06).
                 LocalDismissLineAlert provides LineAlertDismissal(
                     viewModel::dismissLineAlert, dismissWriteFailed, viewModel::dismissWriteFailureShown, linesPagesOpen,
-                    viewModel::dismissPlannedAlert,
+                    viewModel::dismissPlannedAlert, viewModel.dismissed.collectByIdentityWithLifecycle().value,
                 ),
             ) {
                 MainScreen(
@@ -4211,7 +4218,7 @@ class MainActivity : ComponentActivity() {
             LocalRouteStops provides routeStops(appContext),
             LocalDismissLineAlert provides LineAlertDismissal(
                 viewModel::dismissLineAlert, dismissWriteFailed, viewModel::dismissWriteFailureShown, linesPagesOpen,
-                viewModel::dismissPlannedAlert,
+                viewModel::dismissPlannedAlert, viewModel.dismissed.collectByIdentityWithLifecycle().value,
             ),
         ) {
             val now = tickingNow()
@@ -4384,7 +4391,18 @@ class MainActivity : ComponentActivity() {
                 dismissedStore = DataStoreDismissedAlertsStore.from(context, warn = ::logDepartureWarning),
                 saved = saved,
                 loadIndex = { StationIndexStore.load(context.applicationContext) },
+                aheadCache = workAheadCache,
+            )
+        }
+
+        // Each line's week ahead, one cache for every page that shows it: the Lines… search's line page, and
+        // the home screen's and a trip's lines pages. Main thread only; its client is built on first ask.
+        internal val workAheadCache by lazy {
+            WorkAheadCache(
                 workAhead = { linesClient.lineWorkAhead(it) },
+                io = Dispatchers.IO,
+                elapsedMillis = { android.os.SystemClock.elapsedRealtime() },
+                warn = ::logDepartureWarning,
             )
         }
 

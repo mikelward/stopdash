@@ -2785,7 +2785,7 @@ Builds on Phase 1's minimal line-status marking.
       already carries under **Coming up**, muted, each with the day it starts.
   - [x] TfL's future statuses (`/Line/{id}/Status/{from}/to/{to}`) for the next week, added to it
         on the lines page's line page: one free request when it opens, kept three hours, a failure said.
-  - [ ] The week ahead on the home screen's and a trip's line pages too.
+  - [x] The week ahead on the home screen's and a trip's line pages too, one cache for every page.
   - [ ] Each on the map too, drawn apart from a closure in force (lighter, or dashed).
 - [x] **A trip's lines page keeps the rider's starred stops on the map too.** The trip reads the starred
       rows and journeys as they change, walked on the worker, and its lines page keeps their stops as
