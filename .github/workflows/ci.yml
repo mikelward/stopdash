@@ -124,6 +124,10 @@ jobs:
         run: python3 scripts/build_crs_index_test.py
       - name: Test the step-free access builder
         run: python3 scripts/build_step_free_test.py
+      - name: Test the Analytics definitions registration
+        # Run by hand against the Analytics property (dev-docs/firebase.md step 6), never by CI, so a
+        # regression would first show up as a failed or wrong registration.
+        run: python3 scripts/register_analytics_definitions_test.py
       - name: Assemble debug APK
         run: ./gradlew assembleDebug
       - name: Upload debug APK

@@ -32,16 +32,32 @@ register the final one.
 5. Update the Play **Data Safety** form from `docs/PRIVACY.md`: Crash logs, Diagnostics, App
    interactions, Device or other IDs, and Approximate location (Analytics' IP-derived region) —
    collected, optional, not shared, encrypted in transit.
-6. Register the custom definitions in Google Analytics (Admin → Data display → Custom definitions →
-   Create custom dimension; the Firebase console's Analytics links there), or the parameters and user
-   properties below reach only DebugView and BigQuery, never the reports. **Event-scoped** custom
-   dimensions, one per parameter name: `kind`, `what`, `mode`, `grant`, `outcome`, `accuracy`,
-   `time_to_fix`, `tube`, `overground`, `rail`, `bus`, `tram`, `boat`, `from`, `routes`, `to`, `plan`,
-   `choice`, `rank`, `changes`, `setting`, `setting_value` (`screen_name` is built in). **User-scoped**, one
-   per user property: `walking_speed`, `max_walk`, `step_free`, `trip_modes_off`, `avoided_lines`,
-   `hidden_modes`, `hidden_lines`, `distance_units`, `disruptions_row`, `live_widget`, `text_size`,
-   `pinch_resize`, `own_tfl_key`, `rail_key`, `widgets`, `watch`, `starred_rows`, `favorite_places`,
-   `favorite_journeys`, `notifications`, `location`. The free tier allows 50 and 25.
+6. Register the custom definitions, or the parameters and user properties reach only DebugView and
+   BigQuery, never the reports. `analytics-definitions.tsv` (beside this file) lists one per event
+   parameter and user property, and `AnalyticsDefinitionsTest` fails when it and the app drift apart.
+   `scripts/register_analytics_definitions.py` creates the ones the property lacks, through the Analytics
+   Admin API; user-scoped ones are kept out of ads personalization, those already there (made by hand,
+   say) updated to be. The API costs nothing (£0, a few dozen calls a run against its free quota), and
+   the script runs on the maintainer's machine, sending Analytics only these names and display names:
+   nothing about the app's users, so the Play Data Safety form is unchanged. Once, in the Firebase
+   project's Google Cloud console, enable the **Google Analytics Admin API**; your account needs the
+   Editor role on the Analytics property. Then:
+
+   ```sh
+   gcloud auth application-default login \
+       --scopes=https://www.googleapis.com/auth/analytics.edit,https://www.googleapis.com/auth/cloud-platform
+   python3 scripts/register_analytics_definitions.py PROPERTY_ID --quota-project FIREBASE_PROJECT_ID
+   ```
+
+   `PROPERTY_ID` is the number in Analytics' Admin → Property settings. That's a dry run listing what
+   it would do; add `--apply` to do it, and `--archive-stale` to archive dimensions no longer listed (a
+   renamed parameter's old name). Analytics can take up to 48 hours to free an archived slot, so a run
+   that would pass the property's limits creates nothing; run it again later. It's safe to run again
+   after any change to the list. Should Google refuse gcloud's own sign-in for that scope, create a
+   Desktop OAuth client in the project (APIs & Services → Credentials) and add `--client-id-file=` its
+   downloaded JSON to the login; or pass any token with the scope as `GA_ACCESS_TOKEN`. By hand
+   instead: Admin → Data display → Custom definitions → Create custom dimension, one per line of the
+   list.
 
 ## What's counted
 
