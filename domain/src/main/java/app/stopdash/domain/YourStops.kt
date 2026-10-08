@@ -48,7 +48,7 @@ data class YourStops(
          * Gathers the lists from what the device holds: the [recent] picks, stops and places, most
          * recent first; then
          * [journeys]' ends in their saved order and the [starred] rows' stops by name, as the
-         * favorites, less any picked lately; and every [known] stop. Names are cleaned the way the
+         * favorites, less any picked lately; and every [known] stop serving a line. Names are cleaned the way the
          * rest of the app shows them.
          */
         fun of(
@@ -74,7 +74,9 @@ data class YourStops(
             return YourStops(
                 favorites = (journeyEnds + starred.sortedBy { cleanStopName(it.name) }).cleaned().filter { it.id !in pickedIds },
                 recent = picked,
-                known = known.cleaned(),
+                // A stop shown lately with no lines (TfL lists some stands that way) has no departures to
+                // open: it would list with no mode and open to an empty page, so it isn't offered.
+                known = known.filter { it.modes.isNotEmpty() }.cleaned(),
                 unnamedStarred = unnamedStarred,
                 recentPicks = picks,
             )
