@@ -224,6 +224,7 @@ import app.stopdash.ui.LocalOnTheWay
 import app.stopdash.ui.LocalOnTheWayBanner
 import app.stopdash.ui.LocalRouteStops
 import app.stopdash.ui.LocalRouteTopology
+import app.stopdash.ui.LocalRiderPosition
 import app.stopdash.ui.LocalStepFree
 import app.stopdash.ui.LocalStepFreeLoading
 import app.stopdash.ui.LocationBanner
@@ -603,12 +604,19 @@ class MainActivity : ComponentActivity() {
                     value = withContext(Dispatchers.IO) { StepFreeStore.load(applicationContext) }
                     stepFreeRead = true
                 }
+                val nearby by nearbyViewModel.state.collectByIdentityWithLifecycle()
                 CompositionLocalProvider(
                     LocalStepFree provides stepFree,
                     LocalStepFreeLoading provides !stepFreeRead,
                     LocalLiftsOut provides liftOutages,
+                    // The near-me fix, for every line page's map: its stop nearest the rider, with how far.
+                    LocalRiderPosition provides when (val near = nearby) {
+                        is NearbyStopsViewModel.State.Ready -> near.location
+                        is NearbyStopsViewModel.State.Empty -> near.location
+                        is NearbyStopsViewModel.State.Failed -> near.location
+                        else -> null
+                    },
                 ) {
-                val nearby by nearbyViewModel.state.collectByIdentityWithLifecycle()
 
                 // True once a request has come back denied with the rationale suppressed —
                 // Android's "don't ask again" / permanently-denied signal. Then re-requesting

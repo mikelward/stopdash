@@ -191,6 +191,9 @@
     <!-- Under a station on a line's map: the line's station nearest the rider, kept unfolded. -->
     <!-- TODO: translate -->
     <string name="line_map_nearest" tools:ignore="MissingTranslation">Nearest</string>
+    <!-- The same, with how far the rider is from it: "Nearest · 300 m". -->
+    <!-- TODO: translate -->
+    <string name="line_map_nearest_at" tools:ignore="MissingTranslation">Nearest · %1$s</string>
     <!-- Under a fold on the map: how many stations it holds. -->
     <!-- TODO: translate -->
     <plurals name="line_map_stations" tools:ignore="MissingTranslation">

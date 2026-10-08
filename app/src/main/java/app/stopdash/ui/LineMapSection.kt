@@ -55,9 +55,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
+import app.stopdash.domain.Coordinates
 import app.stopdash.domain.LineMap
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.NearestStops
+import app.stopdash.domain.StopDistance
 import app.stopdash.domain.TflException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
@@ -82,12 +85,22 @@ internal sealed interface LineMapUi {
         // Each stop's published position from the route data the map was laid from (the same map, not a
         // copy): a tapped station's, handed with it, so its details show their distance from the first frame.
         val positions: Map<String, Pair<Double, Double>> = emptyMap(),
+        // How far the rider is from each station marked nearest, where their position is known
+        // ([LocalRiderPosition]): worked out with the folding, so a row only reads it.
+        val nearestMeters: Map<String, Double> = emptyMap(),
     ) : LineMapUi
 }
 
 // The map laid out from [from] for the status [statusKey] stands for, or none where it can't be: kept
 // apart from "not laid out yet" (null).
 internal class Laid(val from: LineSequence?, val statusKey: Any?, val map: LineMap?)
+
+/**
+ * The rider's last near-me fix, provided app-wide: a line's map says how far its nearest stop is, and where
+ * no near-me list chose that stop (*Lines…*, a trip, a departure) marks the line's own stop nearest the fix,
+ * however far ([LineMap.of]). Null marks none.
+ */
+internal val LocalRiderPosition = compositionLocalOf<Coordinates?> { null }
 
 /**
  * [lineId]'s map for its page (SPEC *Line page → Map*): its route data from the route pages' own
@@ -137,10 +150,16 @@ internal fun rememberLineMap(
     val sequence = source as? LineSequence
     // Kept above the page where it's given one ([LocalLineMapWork]), so a page come back draws its map at once.
     val held = LocalLineMapWork.current
+    val here = LocalRiderPosition.current
     val ownLaid = remember { mutableStateOf<Worked<Inputs, Laid>?>(null) }
     val laidSlot = held?.laid ?: ownLaid
-    val laid = rememberWorked(laidSlot, Inputs(sequence, status, statusKey, starred, riding, quieted, rides, nearby), keep = { _, _ -> true }) {
-        Laid(sequence, statusKey, sequence?.let { LineMap.forStatus(it, status, starred, riding, quieted, rides, nearby) })
+    val laid = rememberWorked(laidSlot, Inputs(sequence, status, statusKey, starred, riding, quieted, rides, nearby, here), keep = { _, _ -> true }) {
+        Laid(
+            sequence,
+            statusKey,
+            // No near-me list's pick: the stop the map draws nearest the rider's fix, however far.
+            sequence?.let { LineMap.forStatus(it, status, starred, riding, quieted, rides, nearby, here) },
+        )
     }
     // A map laid out for this route data and this status, for starred or ridden stops since changed
     // standing in until the new one is in; never one laid out before the data came, which would read
@@ -150,8 +169,17 @@ internal fun rememberLineMap(
     val viewSlot = held?.view ?: ownView
     val map = current?.map
     val positions = current?.from?.stopPositions.orEmpty()
-    val ready = rememberWorked(viewSlot, Inputs(map, opened, all, statusKey), keep = { _, _ -> true }) {
-        map?.let { LineMapUi.Ready(it, it.folded(opened?.keys().orEmpty(), all), it.foldable(), statusKey, positions) }
+    val ready = rememberWorked(viewSlot, Inputs(map, opened, all, statusKey, here), keep = { _, _ -> true }) {
+        map?.let {
+            val nearestMeters = if (here == null) {
+                emptyMap()
+            } else {
+                it.rows.filter { row -> row.nearby }.mapNotNull { row ->
+                    positions[row.stopId]?.let { (lat, lon) -> row.stopId to NearestStops.distanceMeters(here.latitude, here.longitude, lat, lon) }
+                }.toMap()
+            }
+            LineMapUi.Ready(it, it.folded(opened?.keys().orEmpty(), all), it.foldable(), statusKey, positions, nearestMeters)
+        }
     }
     return when {
         source is LineMapUi -> source as LineMapUi
@@ -323,7 +351,7 @@ internal fun LazyListScope.lineMapSection(state: LineMapSectionState, railColor:
             if (!ui.map.closurePlaced) item(key = "lineMapNotPlaced") { LineMapNote(stringResource(R.string.line_map_closure_not_placed)) }
             items(ui.items, key = { "lineMap:${it.key}" }) { item ->
                 when (item) {
-                    is LineMap.Item.Station -> StationRow(item.row, ui.map.columns, railColor, ui.positions[item.row.stopId])
+                    is LineMap.Item.Station -> StationRow(item.row, ui.map.columns, railColor, ui.positions[item.row.stopId], ui.nearestMeters[item.row.stopId])
                     is LineMap.Item.Fold -> FoldRow(item, ui.map.columns, railColor) { state.open(item.key) }
                 }
             }
@@ -413,17 +441,24 @@ private fun DrawScope.drawOneWayArrow(path: Path, down: Boolean, color: Color, a
 val LocalOpenLineMapStop = compositionLocalOf<((stopId: String, name: String, position: Pair<Double, Double>?) -> Unit)?> { null }
 
 @Composable
-private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, position: Pair<Double, Double>?) {
+private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, position: Pair<Double, Double>?, nearestMeters: Double?) {
     val openStop = LocalOpenLineMapStop.current
     val openLabel = stringResource(R.string.line_stop_open)
     val surface = MaterialTheme.colorScheme.surface
     val closedColor = MaterialTheme.colorScheme.error
     val starColor = MaterialTheme.colorScheme.primary
+    val system = LocalDistanceSystem.current
+    // "Nearest", with how far where the rider's fix gives it, so they judge how near that is.
+    val nearest = if (nearestMeters != null && system != null) {
+        stringResource(R.string.line_map_nearest_at, StopDistance.label(nearestMeters, system))
+    } else {
+        stringResource(R.string.line_map_nearest)
+    }
     // What the drawing says, said to a screen reader too: the rider's stop, a star, the alert.
     val state = listOfNotNull(
         stringResource(R.string.route_stop_current).takeIf { row.riding },
         stringResource(R.string.line_map_starred).takeIf { row.starred },
-        stringResource(R.string.line_map_nearest).takeIf { row.nearby && !row.riding },
+        nearest.takeIf { row.nearby },
         stringResource(R.string.route_stop_in_alert).takeIf { row.marked },
         // A closed track drawn to it, where its own line says nothing (Codex, #606).
         stringResource(R.string.line_map_beside_closure).takeIf { row.besideClosure },
@@ -475,9 +510,9 @@ private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, positio
                 row.servedOneWay -> Text(stringResource(R.string.line_map_no_service_one_way), style = MaterialTheme.typography.bodySmall, color = closedColor)
             }
             // Why it's on the page when the stations around it fold, under its service where that's shut.
-            if (row.nearby && !row.riding) {
+            if (row.nearby) {
                 Text(
-                    stringResource(R.string.line_map_nearest),
+                    nearest,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

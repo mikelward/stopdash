@@ -444,6 +444,22 @@ class LineMapTest {
     }
 
     @Test
+    fun `with no nearby stop given, the stop the map draws nearest the rider is marked, never a pole it doesn't draw`() {
+        // Gamma's pole across the road, C2, and a pole on none of the line's routes, Z9, both nearer the
+        // rider than any pole the map draws: the pick is among its own rows, so one row is marked, Gamma's.
+        val at = mapOf("A1" to 0.0, "B1" to 0.001, "C1" to 0.002, "D1" to 0.003, "C2" to 0.0021, "Z9" to 0.0022)
+            .mapValues { (_, lon) -> 0.0 to lon }
+        val line = bus(listOf("D2", "C2", "B2", "A2")).copy(stopPositions = at)
+        val map = LineMap.forStatus(line, null, here = Coordinates(0.0, 0.0022))!!
+        assertEquals(listOf("C1"), map.rows.filter { it.nearby }.map { it.stopId })
+        // A nearby stop given (the near-me list's pick) wins over the fix.
+        val given = LineMap.forStatus(line, null, nearby = setOf("A1"), here = Coordinates(0.0, 0.0022))!!
+        assertEquals(listOf("A1"), given.rows.filter { it.nearby }.map { it.stopId })
+        // No fix, nothing given: none marked.
+        assertTrue(LineMap.forStatus(line, null)!!.rows.none { it.nearby })
+    }
+
+    @Test
     fun `the station nearest the rider never folds, and isn't starred`() {
         val kingsCross = ids.getValue("King's Cross St. Pancras")
         assertFalse("King's Cross St. Pancras" in LineMap.of(northern())!!.folded(emptySet()).labels())

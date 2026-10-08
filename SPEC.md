@@ -2596,8 +2596,8 @@ tube, DLR, Overground, Elizabeth line, tram, bus, river bus and cable car line (
 operators, nor coaches), fetched once a day and kept on the device, so typing never waits on the
 network: a kept list is up at once, whatever its age, and one a day old is renewed behind it (checked
 each time Lines… comes up); a list that can't be fetched keeps the last one, and with none kept the search says it
-couldn't load the lines, with Retry. A line opened here has no stop of the rider's on its map, which
-draws the whole line; its status is asked of TfL as the page opens, in detail (the stops each alert
+couldn't load the lines, with Retry. A line opened here has no stop of the rider's on its map but the one
+nearest them (*Folding*), and draws the whole line; its status is asked of TfL as the page opens, in detail (the stops each alert
 covers) since no refresh follows to fill them in, so a part closure is drawn on the map at once; the
 pill alone until it's in, and "Couldn't check" where it couldn't be or TfL gave none. While the page
 is up, and on a return to the app, it asks again every 45 seconds, keeping the last answer up meanwhile;
@@ -2753,7 +2753,11 @@ and "Fold" puts it back as it opened. **The rider's own stops never fold** (main
 2026-10-06): their starred stops (a starred row's or journey's end, starred), on a trip's lines page as on
 the home screen's, the stops of the
 trip they're riding the line on (the route page's blue dot), and, opened from the home screen, the
-line's station nearest them within walking reach, reading "Nearest" (maintainer, 2026-10-06).
+line's station nearest them within walking reach, reading "Nearest" (maintainer, 2026-10-06). Every line
+page marks one (maintainer, 2026-10-08): where the near-me list holds none of the line within walking reach
+(opened from **Lines…**, a trip, a departure, or a home-screen line with no stop nearby), the line's own
+station nearest the rider's last fix, however far. Wherever the fix is known "Nearest" says how far
+("Nearest · 300 m"), so the rider judges whether that's near rather than the page hiding it past a cutoff.
 
 ### Freshness
 
