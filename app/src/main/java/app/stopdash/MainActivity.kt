@@ -1320,11 +1320,13 @@ class MainActivity : ComponentActivity() {
                                     }
                                     onTheWayOpen = false
                                 }
-                                val nextBoard by tracker.nextBoard.collectAsStateWithLifecycle()
-                                val routeDisruptions by tracker.routeDisruptions.collectAsStateWithLifecycle()
-                                val stationNotes by tracker.stationNotes.collectAsStateWithLifecycle()
+                                // Taken in by identity: the board's departures, the route's signals and notes and a check's
+                                // every line status are compared where the tracker writes them, never on the main thread
+                                // (Codex, #627).
+                                val nextBoard by tracker.nextBoard.collectByIdentityWithLifecycle()
+                                val routeDisruptions by tracker.routeDisruptions.collectByIdentityWithLifecycle()
+                                val stationNotes by tracker.stationNotes.collectByIdentityWithLifecycle()
                                 val replanFrom by tracker.replanFrom.collectAsStateWithLifecycle()
-                                // Taken in by identity: a check's every line status, never compared on the main thread (Codex, #627).
                                 val lineChecks by tracker.lineChecks.collectByIdentityWithLifecycle()
                                 // Back leaves a trip on the way running; once it has arrived, it clears it and,
                                 // the trip done with, the trip options it was started from close too, landing
