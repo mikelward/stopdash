@@ -169,6 +169,13 @@ class LineMap internal constructor(
             /** [ends] as one line, "Edgware · High Barnet · Mill Hill East", joined here on the worker. */
             val endsText: String = ends.joinToString(" · ")
 
+            /**
+             * The rail a closure's no-entry sign is drawn on, with no service in it: the closed rail, else
+             * the stations' own. Picked here on the worker, since the row's height depends on it.
+             */
+            val signRail: FoldRail? = if (level != Level.CLOSURE) null else
+                rails.firstOrNull { it.closed } ?: rails.firstOrNull { it.folded } ?: rails.firstOrNull()
+
             /** A one-way track folded in run down the map, and one run up it ([Row.oneWayDown]). */
             val oneWayDown: Boolean = rails.any { it.oneWayDown }
             val oneWayUp: Boolean = rails.any { it.oneWayUp }

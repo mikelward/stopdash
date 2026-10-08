@@ -598,6 +598,9 @@ class LineMapTest {
         assertEquals(LineMap.Level.CLOSURE, fold.level)
         assertTrue(fold.unnamed)
         assertTrue("its track drawn closed", fold.rails.single { it.folded }.closed)
+        // Its no-entry sign goes on that closed rail; a fold with no closure draws none.
+        assertTrue(fold.signRail === fold.rails.single { it.folded })
+        assertTrue(items.filterIsInstance<LineMap.Item.Fold>().filter { it.level == null }.all { it.signRail == null })
         assertTrue(items.labels().none { "Angel" in it || "Moorgate" in it || "Euston" in it && it.startsWith("[") })
         // The junctions either side stay on the page, as with good service.
         assertTrue(items.labels().containsAll(listOf("Camden Town", "Kennington")))

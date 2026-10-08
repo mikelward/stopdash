@@ -51,4 +51,27 @@ class FoldArrowsTest {
         assertTrue(span(32f, alone.upAt, tails = true).endInclusive <= 32f)
         assertFalse(foldArrows(55f, both = true, whole, gap).tails)
     }
+
+    @Test
+    fun `a no-entry sign on a one-way rail covers no arrow, whatever the fold's height`() {
+        // The fold row holds the sign's rail at SIGN_RAIL_MIN at the least, whatever the font scale.
+        val sign = NO_ENTRY_SIZE.value
+        var length = SIGN_RAIL_MIN.value
+        while (length <= 200f) {
+            for ((down, up) in listOf(true to false, false to true, true to true)) {
+                val (placed, at) = foldArrowsWithSign(length, down, up, whole, gap)
+                val mark = (length * at - sign / 2)..(length * at + sign / 2)
+                val arrows = listOfNotNull(
+                    span(length, placed.downAt, placed.tails).takeIf { down },
+                    span(length, placed.upAt, placed.tails).takeIf { up },
+                )
+                for (arrow in arrows) {
+                    assertTrue("clear at $length dp ($down, $up): $arrow, $mark", arrow.endInclusive <= mark.start || arrow.start >= mark.endInclusive)
+                    assertTrue("on the rail at $length dp", arrow.start >= 0f && arrow.endInclusive <= length)
+                }
+                assertTrue("sign on the rail at $length dp", mark.start >= 0f && mark.endInclusive <= length)
+            }
+            length += 1f
+        }
+    }
 }

@@ -2813,8 +2813,10 @@ off; a closure counts there only where it shuts a track the trip rides, the way 
 else an alert stays folded and gives nothing away of where it is: the stations it's
 placed on fold with the plain stations around them on their track, up to the next station the map
 shows (a junction, an end of the line, the rider's own), a station on its own included, and the fold
-says how many and how bad without naming any of them ("9 stations ⛔"): ⛔ where a station or a track
-in it has no service (one way or both), else ⚠ where an alert's words name a station. A tap opens it in full. **The
+says how many and how bad without naming any of them: where a station or a track in it has no service
+(one way or both), a no-entry sign on its rail and "No service" under its label ("9 stations", then
+"No service"), so the diagram shows where the line is shut and the words say what (maintainer,
+2026-10-08); else ⚠ after its label where an alert's words name a station. A tap opens it in full. **The
 line's ends and junctions always show**, an alert on one or not (maintainer, 2026-10-06), so where the
 line goes and where it parts read at a glance: Uxbridge, named in a delay along its branch, stays on
 the page with its ⚠, the stations along the branch folding behind it; a Central line delay naming
