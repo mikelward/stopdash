@@ -4537,7 +4537,7 @@ internal fun plannedDate(alert: PlannedAlert): String {
  * then TfL's text collapsed to its first line, in the muted surface rather than the error one.
  */
 @Composable
-private fun PlannedAlertBlock(alert: PlannedAlert, modifier: Modifier = Modifier, onDismiss: (() -> Unit)? = null) {
+internal fun PlannedAlertBlock(alert: PlannedAlert, modifier: Modifier = Modifier, onDismiss: (() -> Unit)? = null) {
     Column(modifier = modifier.fillMaxWidth()) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             // Outlined and neutral: a filled tint reads as a warning, and nothing is wrong yet.
@@ -4573,8 +4573,10 @@ private fun PlannedAlertBlock(alert: PlannedAlert, modifier: Modifier = Modifier
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.weight(1f).padding(start = 8.dp),
             )
-            // Every service alert is dismissible (SPEC *Disruptions*), a planned one on its own.
-            if (onDismiss != null) {
+            // Every service alert is dismissible (SPEC *Disruptions*), a planned one on its own; but one read
+            // from the stored snapshot carries only its fingerprint, no words a dismissal could be keyed on to
+            // match it, so no × until the line's check brings them back (Codex, #689).
+            if (onDismiss != null && (alert.fullText.isNotBlank() || alert.fingerprint == null)) {
                 IconButton(onClick = onDismiss) {
                     Icon(
                         imageVector = Icons.Filled.Close,
@@ -4766,7 +4768,8 @@ internal fun OneLinePage(lineRow: TripRow?, lineId: String, lineName: String, mo
  * Statuses are fetched again as new objects with every check, so the alert is compared by what the
  * page shows of it ([sameAlert]); one fetched again unchanged keeps the page, and its map, still.
  * [held] and [wanted] are the page's [Inputs], ending with the line's status, whether it was dismissed,
- * unknown and checking.
+ * unknown and checking. The line's work to come is no verdict and isn't compared: it comes with the row
+ * worked out, never taking the page down meanwhile, so nothing here walks it (Codex, #689).
  */
 internal fun sameVerdict(held: Inputs, wanted: Inputs): Boolean {
     val n = held.parts.size
@@ -4804,6 +4807,9 @@ internal fun routeLineRow(row: DepartureRow, ride: TripLeg?, unknown: Boolean, c
     lineRow(
         row.mode, row.lineId, row.lineName, row.stopId, row.stopName,
         status = row.status ?: row.statusBehind, dismissed = row.statusDismissed, ride = ride, unknown = unknown, checking = checking,
+        // The work to come as the route page lists it, dismissals left out: the row's own, which a good
+        // service's status doesn't carry (Codex, #689).
+        planned = row.plannedAlerts,
     )
 
 /**
@@ -4826,6 +4832,9 @@ internal fun lineRow(
     ride: TripLeg?,
     unknown: Boolean,
     checking: Boolean,
+    // Its work still to come as this page shows it, the caller's dismissals already applied: no default,
+    // so every page says which it shows (Codex, #689).
+    planned: List<PlannedAlert>,
 ): TripRow {
     val known = mode.ifBlank { ride?.mode.orEmpty() }.ifBlank { Connections.knownMode(lineId).orEmpty() }
     val leg = ride?.takeIf { it.lineId == lineId }
@@ -4838,6 +4847,7 @@ internal fun lineRow(
         unknown = unknown && !checking,
         // What its map draws of the alert, so the same alert fetched again keeps the map up (Codex, #623).
         mapKey = LineMap.alertKey(status),
+        planned = planned,
     )
     return TripRow(checking = checking, every = listOf(line))
 }

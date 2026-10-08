@@ -273,6 +273,17 @@ fun plannedAlertFingerprint(alert: PlannedAlert): String =
 fun plannedShownFingerprint(alert: PlannedAlert): String =
     alert.shownFingerprint ?: lineAlertFingerprint(LineStatus("", alert.severity, alert.label, alert.fullText.ifBlank { null }))
 
+/**
+ * Whether [alerts] holds a dismissal of [alert], planned work on [lineId]. One with its words is matched by
+ * its dismissal's identity, a set lookup cheap enough wherever rows are marked; only one read back from the
+ * stored snapshot, its words left out, is matched by fingerprint, which hashes every dismissal (Codex, #689).
+ */
+fun plannedDismissed(alerts: Set<DismissedAlert>, lineId: String, alert: PlannedAlert): Boolean = when {
+    alerts.isEmpty() -> false
+    alert.fullText.isNotBlank() || alert.fingerprint == null -> DismissedAlert.ofPlanned(lineId, alert) in alerts
+    else -> dismissedLine(alerts, lineId, alert.fingerprint)
+}
+
 /** Whether [alerts] holds a dismissal of the line alert whose fingerprint is [fingerprint]. */
 fun dismissedLine(alerts: Set<DismissedAlert>, lineId: String, fingerprint: String): Boolean =
     alerts.any { it.alertKey == lineAlertKey(lineId) && fingerprint(it.contentSignature) == fingerprint }

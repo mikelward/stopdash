@@ -110,6 +110,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
+import app.stopdash.domain.plannedAlertFingerprint
 import app.stopdash.domain.Countdown
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
@@ -960,6 +961,8 @@ internal fun TripScreen(
     onDismissAlert: ((DepartureRow) -> Unit)? = null,
     // A line's alert dismissed from the disruptions row's lines page ([TripLinesPage]); null offers none.
     onDismissLineAlert: ((LineStatus) -> Unit)? = null,
+    // One of a line's alerts still to come dismissed from its page there; null offers none.
+    onDismissPlannedAlert: ((String, PlannedAlert) -> Unit)? = null,
     dismissWriteFailed: Boolean = false,
     onDismissWriteFailureShown: () -> Unit = {},
     // Start an open route on the way (SPEC *On the way*); null offers no Start.
@@ -1036,7 +1039,7 @@ internal fun TripScreen(
     val statuses = rememberStatusesAsOf(state.statuses, state.statusesSortedOn, now)
     val state = remember(state, statuses) { state.copy(statuses = statuses) }
     val linesPagesOpen = remember { mutableIntStateOf(0) }
-    val lineDismissal = onDismissLineAlert?.let { LineAlertDismissal(it, dismissWriteFailed, onDismissWriteFailureShown, linesPagesOpen) }
+    val lineDismissal = onDismissLineAlert?.let { LineAlertDismissal(it, dismissWriteFailed, onDismissWriteFailureShown, linesPagesOpen, onDismissPlannedAlert) }
     CompositionLocalProvider(
         LocalRouteStops provides routeStops,
         LocalTripJourney provides journey,
@@ -3380,6 +3383,9 @@ internal data class TripLine(
     // What its map draws of [status] ([LineMap.alertKey]), worked out with the line: a status rebuilt with
     // the same alert keeps the map up, another redraws it. Null where not worked out: [status] itself.
     val mapKey: String? = null,
+    // The line's work still to come, less what the rider dismissed (SPEC *Line page*), worked out with
+    // the line: [status]'s own where nothing else is known.
+    val planned: List<PlannedAlert> = status?.planned.orEmpty(),
 ) {
     /** Whether the page shows [status]'s disruption: a line kept from before still warns of it. */
     val disrupted: Boolean get() = status?.disrupted == true
@@ -3395,7 +3401,82 @@ internal data class TripLine(
 
     /** TfL's reason for the [quieted] alert, null when there's none to show. */
     val quietedReason: String? = quieted?.fullText?.takeIf { it.isNotBlank() }
+
+    /**
+     * [planned] as a restored page shows it until the line is back ([SavedPlanned]). Worked out with the
+     * line, so saving it is a read.
+     */
+    val plannedSaved: SavedPlanned = SavedPlanned.of(planned)
 }
+
+/** This process, told apart from the one a saved page was saved in: a rotation keeps it, a relaunch doesn't. */
+internal object ThisProcess {
+    // Set anew only by a test standing in for a relaunch.
+    var id: String = java.util.UUID.randomUUID().toString()
+        @androidx.annotation.VisibleForTesting internal set
+}
+
+/**
+ * A line's work to come as a page saves it to be restored: each alert's label, words and the day it
+ * starts (its epoch day), side by side, so saving and restoring wrap them and an alert is read back by
+ * field reads alone, never a parse in composition (Codex, #689).
+ */
+internal class SavedPlanned(val labels: ArrayList<String>, val texts: ArrayList<String>, val days: LongArray) {
+    val size: Int get() = labels.size
+
+    /** The [index]th alert, as its block shows it. */
+    operator fun get(index: Int): PlannedAlert = PlannedAlert(labels[index], texts[index], java.time.LocalDate.ofEpochDay(days[index]))
+
+    companion object {
+        val NONE = SavedPlanned(ArrayList(), ArrayList(), LongArray(0))
+
+        /** [planned] saved: a walk of the alerts, so on the worker. */
+        @WorkerThread
+        fun of(planned: List<PlannedAlert>): SavedPlanned =
+            if (planned.isEmpty()) NONE
+            else SavedPlanned(
+                planned.mapTo(ArrayList(planned.size)) { it.label },
+                planned.mapTo(ArrayList(planned.size)) { it.fullText },
+                LongArray(planned.size) { planned[it].startsOn.toEpochDay() },
+            )
+
+        /** Saves and restores one by wrapping its three parts. */
+        val Saver: androidx.compose.runtime.saveable.Saver<SavedPlanned?, Any> = androidx.compose.runtime.saveable.Saver(
+            save = { saved -> saved?.let { arrayListOf(it.labels, it.texts, it.days) } },
+            restore = {
+                @Suppress("UNCHECKED_CAST")
+                val parts = it as List<Any>
+                SavedPlanned(parts[0] as ArrayList<String>, parts[1] as ArrayList<String>, parts[2] as LongArray)
+            },
+        )
+    }
+}
+
+/**
+ * The work to come every one of [statuses] carries for [lineId], each alert once (by its fingerprint: its
+ * day, label and words), soonest first, less what [dismissed] holds a dismissal of: a trip's cards can ride the line
+ * different ways, each way's status carrying its own (Codex, #689).
+ */
+@WorkerThread
+internal fun plannedAcross(lineId: String, statuses: List<LineStatus>, dismissed: Set<DismissedAlert>): List<PlannedAlert> =
+    statuses.flatMap { it.planned }
+        // By fingerprint: one read back from the stored snapshot keeps only that, its prose left out (Codex, #689).
+        .distinctBy { plannedAlertFingerprint(it) }
+        .sortedBy { it.startsOn }
+        .filter { !plannedDismissed(lineId, it, dismissed) }
+
+/** [status]'s work still to come on [lineId], less what [dismissed] holds a dismissal of. */
+@WorkerThread
+internal fun plannedShown(lineId: String, status: LineStatus?, dismissed: Set<DismissedAlert>): List<PlannedAlert> =
+    status?.planned.orEmpty().filter { !plannedDismissed(lineId, it, dismissed) }
+
+/**
+ * Whether [dismissed] holds a dismissal of [alert] on [lineId], matched by its fingerprint: one read from
+ * the stored snapshot carries no prose, only the fingerprint of the alert as dismissed (Codex, #689).
+ */
+@WorkerThread
+internal fun plannedDismissed(lineId: String, alert: PlannedAlert, dismissed: Set<DismissedAlert>): Boolean =
+    app.stopdash.domain.plannedDismissed(dismissed, lineId, alert)
 
 /**
  * Worst first: a disruption over a good service, then a line not running over one running worse than
@@ -3439,6 +3520,9 @@ internal fun tripLines(
     // Per line, the worst alert a card's rider dismissed there, kept apart: tied with one standing on
     // another card, it would otherwise never be named (Codex, #559).
     val worstDismissed = HashMap<String, LineStatus>()
+    // Per line, every card's status for it: two cards can ride it different ways, each way's status
+    // carrying its own work to come (Codex, #689).
+    val rawAll = HashMap<String, MutableList<LineStatus>>()
     fun keep(into: HashMap<String, LineStatus>, id: String, status: LineStatus?) {
         if (status == null) return
         val held = into[id]
@@ -3454,6 +3538,7 @@ internal fun tripLines(
             mapCalls(leg).takeIf { it.size >= 2 }?.let { rides.getOrPut(leg.lineId) { LinkedHashSet() } += it }
             keep(worstShown, leg.lineId, statuses[leg.lineId])
             keep(worstRaw, leg.lineId, raw[leg.lineId])
+            raw[leg.lineId]?.let { rawAll.getOrPut(leg.lineId) { ArrayList() } += it }
             val was = raw[leg.lineId]
             val left = statuses[leg.lineId]
             if (was != null && was.disrupted && (left == null || DismissedAlert.ofLineStatus(was) != DismissedAlert.ofLineStatus(left))) {
@@ -3484,6 +3569,7 @@ internal fun tripLines(
             mapKey = LineMap.alertKey(status, quieted),
             dismissed = id !in shown && raw?.disrupted == true,
             quieted = quieted,
+            planned = plannedAcross(id, rawAll[id].orEmpty(), dismissed),
             checking = pending,
             // A finished check names what it couldn't check; a line with no current status is never
             // passed off as a good service, whatever the note says.
@@ -3659,6 +3745,8 @@ internal class LineAlertDismissal(
     val failed: Boolean,
     val onFailureShown: () -> Unit,
     val pagesOpen: MutableIntState,
+    // Dismisses one of a line's alerts still to come ([TripLine.planned]); null offers no × on them.
+    val dismissPlanned: ((String, PlannedAlert) -> Unit)? = null,
 )
 
 /**
@@ -3727,6 +3815,11 @@ internal fun TripLinesPage(
     var reasonMode by rememberSaveable { mutableStateOf("") }
     var reasonText by rememberSaveable { mutableStateOf<String?>(null) }
     var quietedText by rememberSaveable { mutableStateOf<String?>(null) }
+    var plannedSaved by rememberSaveable(stateSaver = SavedPlanned.Saver) { mutableStateOf<SavedPlanned?>(null) }
+    // The process it was saved in: shown again only in the same one (a rotation), never after the app was
+    // closed and came back, when the work may have started or been called off meanwhile (Codex, #689).
+    var plannedSavedIn by rememberSaveable { mutableStateOf<String?>(null) }
+    val plannedKept = plannedSaved.takeIf { plannedSavedIn == ThisProcess.id }
     // Alone, the row's one line as it is now: no order to hold, nor an old line to hold over a newer row.
     val reasonLine = if (alone) {
         row.every.firstOrNull()?.takeIf { it.leg.lineId == reasonId }
@@ -3738,6 +3831,12 @@ internal fun TripLinesPage(
             reasonMode = reasonLine.leg.mode
             reasonText = reasonLine.reason
             quietedText = reasonLine.quietedReason
+            // A one-line page's stand-in while its row is worked out again ([lineStandIn], after a rotation)
+            // knows no work to come: what was saved stays until the line is back (Codex, #689).
+            if (!reasonLine.restoring) {
+                plannedSaved = reasonLine.plannedSaved
+                plannedSavedIn = ThisProcess.id
+            }
         }
     }
     // A reason page restored (a rotation) stays up, titled, until its line is in again: never the
@@ -3801,7 +3900,17 @@ internal fun TripLinesPage(
         ) { padding ->
             if (onReason) {
                 if (reasonLine != null) {
-                    TripLineReason(reasonLine, Modifier.padding(padding), starred = row.starredStops.ifEmpty { LocalStarredStops.current })
+                    // Its work to come dismissible one by one, as on a route page (SPEC *Disruptions*).
+                    val dismissPlanned = dismissal?.dismissPlanned?.takeIf { !reasonLine.gone && !reasonLine.restoring }
+                    TripLineReason(
+                        reasonLine,
+                        Modifier.padding(padding),
+                        starred = row.starredStops.ifEmpty { LocalStarredStops.current },
+                        onDismissPlanned = dismissPlanned?.let { dismiss -> { alert -> dismiss(reasonLine.leg.lineId, alert) } },
+                        // The stand-in shows the work to come as last shown: no verdict, so kept however the
+                        // page came back (SPEC *Line page*).
+                        restoredPlanned = plannedKept.takeIf { reasonLine.restoring },
+                    )
                 } else {
                     // Restoring: the line's pill and the reason as last shown, in their places, until the
                     // line is back.
@@ -3819,6 +3928,7 @@ internal fun TripLinesPage(
                         reasonText.takeIf { settled },
                         quietedText.takeIf { settled },
                         restoring = true,
+                        restoredPlanned = plannedKept,
                     )
                 }
             } else {
@@ -3855,6 +3965,10 @@ internal fun TripLineReason(
     restoredQuieted: String? = null,
     starred: Set<String> = emptySet(),
     restoring: Boolean = false,
+    // A restored page's work to come as last shown ([TripLine.plannedSaved]), until the line is back.
+    restoredPlanned: SavedPlanned? = null,
+    // Dismisses one alert of the work to come; null offers no ×.
+    onDismissPlanned: ((PlannedAlert) -> Unit)? = null,
 ) {
     val reason = line.reason ?: restored
     // The worse alert the rider dismissed, under the one that stands, toned down.
@@ -3877,6 +3991,26 @@ internal fun TripLineReason(
         if (quieted != null) {
             item(key = "quieted") {
                 LinkedText(quieted, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 16.dp))
+            }
+        }
+        // The line's work that hasn't started, muted and apart from what's under way (maintainer, 2026-10-08:
+        // coming up should look different), each with the day it starts.
+        val planned = line.planned
+        val saved = restoredPlanned.takeIf { planned.isEmpty() && line.status == null } ?: SavedPlanned.NONE
+        val count = if (planned.isNotEmpty()) planned.size else saved.size
+        if (count > 0) {
+            item(key = "comingUp") {
+                Text(
+                    stringResource(R.string.line_coming_up),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 16.dp).semantics { heading() },
+                )
+            }
+            // Keyed by place: two alerts can share a day and words, and a key must be unique.
+            items(count, key = { "planned:$it" }) { index ->
+                val alert = planned.getOrNull(index) ?: saved[index]
+                PlannedAlertBlock(alert, Modifier.padding(top = 8.dp), onDismiss = onDismissPlanned?.let { { it(alert) } })
             }
         }
         if (map != null) lineMapSection(map, railColor)
@@ -4218,7 +4352,7 @@ internal fun shownStatuses(statuses: Map<String, LineStatus>, dismissed: Set<Dis
     // Each alert goes on its own (Codex, PR #337): a dismissed disruption leaves the line's planned
     // work showing, and a dismissed planned alert leaves the rest.
     return statuses.mapNotNull { (line, status) ->
-        val planned = status.planned.filter { DismissedAlert.ofPlanned(status.lineId, it) !in dismissed }
+        val planned = status.planned.filter { !plannedDismissed(status.lineId, it, dismissed) }
         val shown = status.remainingAfter(dismissed)?.copy(planned = planned)
             ?: LineStatus(status.lineId, LineStatus.GOOD_SERVICE, GOOD_SERVICE_LABEL, planned = planned)
         // A line left with nothing once its alerts are dismissed goes; one that had nothing stays.

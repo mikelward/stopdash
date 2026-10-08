@@ -2,6 +2,8 @@ package app.stopdash.ui
 
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRows
+import app.stopdash.domain.DismissedAlert
+import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.TripLeg
@@ -11,6 +13,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 
 /** The line a route page's "View line" opens ([routeLineRow]). */
 class RouteLineRowTest {
@@ -50,6 +53,56 @@ class RouteLineRowTest {
         // Another line's ride says nothing of this one's.
         val other = routeLineRow(row, ride.copy(lineId = "victoria"), unknown = false, checking = false).every.single()
         assertEquals(setOf("940GZZLUKSX"), other.riding)
+    }
+
+    @Test
+    fun `a good service's work to come is the route page's own, carried to the line's page`() {
+        // No status (a good service), its weekend work on the row alone, as the route page lists it (Codex, #689).
+        val weekend = PlannedAlert("Part Closure", "Saturday and Sunday, no service between Kennington and Morden.", LocalDate.of(2026, 10, 10))
+        val line = routeLineRow(row.copy(plannedAlerts = listOf(weekend)), null, unknown = false, checking = false).every.single()
+        assertEquals(listOf(weekend), line.planned)
+        assertEquals(1, line.plannedSaved.size)
+        assertEquals(weekend, line.plannedSaved[0])
+    }
+
+    @Test
+    fun `work to come is no verdict, a page is held through it changing, and its row brings the new`() {
+        // The page's verdict is the alert under way and how sure its check is; its work to come is updated
+        // with the row worked out, and never takes the page down meanwhile (SPEC *Line page*; Codex, #689).
+        val weekend = PlannedAlert("Part Closure", "Saturday and Sunday, no service between Kennington and Morden.", LocalDate.of(2026, 10, 10))
+        val good = LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service")
+        assertTrue(sameAlert(good.copy(planned = listOf(weekend)), good))
+        val reworded = weekend.copy(fullText = "Sunday only.")
+        assertEquals(listOf(reworded), routeLineRow(row.copy(plannedAlerts = listOf(reworded)), null, unknown = false, checking = false).every.single().planned)
+    }
+
+    @Test
+    fun `a trip riding a line two ways lists every way's work to come, once each`() {
+        // Each card's way carries its own work to come; the line's page lists them all (Codex, #689).
+        val weekend = PlannedAlert("Part Closure", "Saturday, no service northbound.", LocalDate.of(2026, 10, 10))
+        val later = PlannedAlert("Part Closure", "Saturday 17 October, no service southbound.", LocalDate.of(2026, 10, 17))
+        val north = LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(later, weekend))
+        val south = LineStatus("northern", 9, "Minor Delays", planned = listOf(weekend.copy()))
+        assertEquals(listOf(weekend, later), plannedAcross("northern", listOf(north, south), emptySet()))
+        assertEquals(listOf(later), plannedAcross("northern", listOf(north, south), setOf(DismissedAlert.ofPlanned("northern", weekend))))
+        // Read back from the stored snapshot, two alerts the same day and label but different words stay two.
+        val other = weekend.copy(fullText = "Saturday, no service between Euston and Camden Town.")
+        fun stored(alert: PlannedAlert) = alert.copy(fullText = "", fingerprint = app.stopdash.domain.plannedAlertFingerprint(alert))
+        assertEquals(2, plannedAcross("northern", listOf(north.copy(planned = listOf(stored(weekend), stored(other)))), emptySet()).size)
+    }
+
+    @Test
+    fun `work to come the rider dismissed is left off a line's page`() {
+        val weekend = PlannedAlert("Part Closure", "Saturday and Sunday, no service between Kennington and Morden.", LocalDate.of(2026, 10, 10))
+        val later = PlannedAlert("Part Closure", "Saturday 17 October, no service between Euston and Camden Town.", LocalDate.of(2026, 10, 17))
+        val status = LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(weekend, later))
+        assertEquals(listOf(weekend, later), plannedShown("northern", status, emptySet()))
+        assertEquals(listOf(later), plannedShown("northern", status, setOf(DismissedAlert.ofPlanned("northern", weekend))))
+        // Read back from the stored snapshot, its prose left out and its fingerprint kept: still dismissed (Codex, #689).
+        val stored = weekend.copy(fullText = "", fingerprint = app.stopdash.domain.plannedAlertFingerprint(weekend))
+        assertEquals(emptyList<PlannedAlert>(), plannedShown("northern", status.copy(planned = listOf(stored)), setOf(DismissedAlert.ofPlanned("northern", weekend))))
+        // Dismissed on another line, it stays.
+        assertEquals(listOf(weekend, later), plannedShown("northern", status, setOf(DismissedAlert.ofPlanned("victoria", weekend))))
     }
 
     @Test

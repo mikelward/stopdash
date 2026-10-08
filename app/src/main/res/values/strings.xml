@@ -122,6 +122,9 @@
     <!-- Click label of a trip's disruptions row: it opens every line the trip rides with its status. -->
     <!-- TODO: translate -->
     <string name="trip_lines_open" tools:ignore="MissingTranslation">Show every line</string>
+    <!-- On a line's page, over the line's work that hasn't started yet, each with the day it starts. -->
+    <!-- TODO: translate -->
+    <string name="line_coming_up" tools:ignore="MissingTranslation">Coming up</string>
     <!-- Title of the page listing every line a trip rides with its status. -->
     <!-- TODO: translate -->
     <string name="trip_lines_title" tools:ignore="MissingTranslation">Line status</string>

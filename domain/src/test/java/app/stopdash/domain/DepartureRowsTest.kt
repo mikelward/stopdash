@@ -990,6 +990,11 @@ class DepartureRowsTest {
         val kept = DepartureRows.withoutDismissed(rows, setOf(checkNotNull(dismissal)))
         assertEquals(listOf(second), kept.single().plannedAlerts)
         assertTrue(dismissal in DepartureRows.liveLineStatusAlerts(statuses))
+
+        // Read back from the stored snapshot, prose left out and fingerprint kept: still dismissed (Codex, #689).
+        fun stored(alert: PlannedAlert) = alert.copy(fullText = "", fingerprint = plannedAlertFingerprint(alert))
+        val restored = rows.single().copy(plannedAlerts = listOf(stored(first), stored(second)))
+        assertEquals(listOf(stored(second)), DepartureRows.withoutDismissed(listOf(restored), setOf(dismissal)).single().plannedAlerts)
     }
 
     @Test

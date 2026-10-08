@@ -71,6 +71,7 @@ data class LineStatus(
     // known, or nothing is under way.
     val underWay: List<LineAlert> = emptyList(),
 ) {
+
     /** True when TfL reports anything other than a good service on this line. */
     val disrupted: Boolean get() = severity != GOOD_SERVICE
 
