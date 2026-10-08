@@ -1,6 +1,7 @@
 package app.stopdash.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,10 +28,16 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import android.content.Context
+import androidx.annotation.WorkerThread
 import app.stopdash.R
+import java.time.DayOfWeek
+import java.time.format.TextStyle
 import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.FavoriteJourneysStore
+import app.stopdash.domain.JourneyAlertSchedule
+import app.stopdash.domain.JourneyAlerts
 import app.stopdash.domain.JourneyPair
 import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationMatch
@@ -58,8 +65,15 @@ data class FavoriteJourneysUi(
     val journeys: List<FavoriteJourney>? = emptyList(),
     val loaded: Boolean = true,
     val writeFailed: Boolean = false,
+    // An alert schedule change that couldn't be saved: its write outlives the Alerts screen, so a failure
+    // after leaving it is said here, where the rider now is (Codex on #700).
+    val alertWriteFailed: Boolean = false,
     // A pair picked to add, as it stands (null when none is under way or left to say).
     val adding: JourneyAddNote? = null,
+    // What each journey's row says of its alerts, by journey key ([journeyAlertSummaries], worked out
+    // off the main thread): one line per watched direction, or none for "Alerts off". A journey
+    // missing (not worked out yet, or the schedules unreadable) says nothing of alerts.
+    val alertSummaries: Map<String, List<String>> = emptyMap(),
 )
 
 /**
@@ -198,83 +212,118 @@ fun FavoriteJourneysScreen(
     onBack: () -> Unit,
     onRemove: (FavoriteJourney) -> Unit,
     onDismissWriteError: () -> Unit = {},
+    onDismissAlertWriteError: () -> Unit = {},
     // Reads the store again after it couldn't be read (a disk error, or a newer StopDash's file).
     onRetry: () -> Unit = {},
     // Starts adding one: the station search, then a line's route page, where a tapped stop's page
     // offers the journey there (maintainer, 2026-10-06). Null shows no Add.
     onAdd: (() -> Unit)? = null,
     onDismissAddNote: () -> Unit = {},
+    // Opens a journey's alerts (SPEC *Journeys → Alerts*); null leaves rows inert.
+    onOpenAlerts: ((FavoriteJourney) -> Unit)? = null,
 ) {
     BackHandler(onBack = onBack)
     Surface(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    text = stringResource(R.string.favorite_journeys_title),
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.weight(1f),
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (onAdd != null) {
-                        TextButton(onClick = onAdd, modifier = Modifier.testTag("addJourney")) {
-                            Text(stringResource(R.string.favorite_journeys_add))
-                        }
-                    }
-                    TextButton(onClick = onBack) { Text(stringResource(R.string.action_back)) }
-                    AppMenuOverflow()
-                }
-            }
-            // Outside the scroll, so a failed removal says so wherever the list is scrolled.
-            if (state.writeFailed) {
+        Box(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
+            Column(modifier = Modifier.fillMaxSize()) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text(
-                        text = stringResource(R.string.favorite_journeys_write_failed),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
+                        text = stringResource(R.string.favorite_journeys_title),
+                        style = MaterialTheme.typography.titleLarge,
                         modifier = Modifier.weight(1f),
                     )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    TextButton(onClick = onDismissWriteError, modifier = Modifier.testTag("dismissJourneyWriteError")) {
-                        Text(stringResource(R.string.action_dismiss))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (onAdd != null) {
+                            TextButton(onClick = onAdd, modifier = Modifier.testTag("addJourney")) {
+                                Text(stringResource(R.string.favorite_journeys_add))
+                            }
+                        }
+                        TextButton(onClick = onBack) { Text(stringResource(R.string.action_back)) }
+                        AppMenuOverflow()
+                    }
+                }
+                // Outside the scroll, so a failed removal says so wherever the list is scrolled.
+                if (state.writeFailed) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.favorite_journeys_write_failed),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        TextButton(onClick = onDismissWriteError, modifier = Modifier.testTag("dismissJourneyWriteError")) {
+                            Text(stringResource(R.string.action_dismiss))
+                        }
+                    }
+                }
+                state.adding?.let { AddNoteRow(it, onDismissAddNote) }
+                // Lazy, so only the rows on screen are composed however many journeys are starred (Codex on #589).
+                val listState = rememberLazyListState()
+                val journeys = state.journeys
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .scrollEdgeCue(listState, scrollCueColors(MaterialTheme.colorScheme.surface)),
+                ) {
+                    when {
+                        // Before the first read: the screen shows at once, with nothing to remove yet.
+                        !state.loaded -> item { Note(stringResource(R.string.favorite_journeys_loading)) }
+                        // Unreadable: a disk error or a newer schema, which the store doesn't tell apart. Said,
+                        // not shown as none (principle 2), with Retry, since a disk error may pass (Codex on #589).
+                        journeys == null -> item {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(modifier = Modifier.weight(1f)) {
+                                    Note(stringResource(R.string.favorite_journeys_unavailable), error = true)
+                                }
+                                TextButton(
+                                    onClick = onRetry,
+                                    modifier = Modifier.padding(end = 8.dp).testTag("retryJourneys"),
+                                ) { Text(stringResource(R.string.favorite_journeys_retry)) }
+                            }
+                        }
+                        journeys.isEmpty() -> item { Note(stringResource(R.string.favorite_journeys_empty)) }
+                        else -> items(journeys, key = { it.key }) { journey ->
+                            JourneyRow(
+                                journey,
+                                alerts = state.alertSummaries[journey.key],
+                                onRemove = { onRemove(journey) },
+                                onOpen = onOpenAlerts?.let { open -> { open(journey) } },
+                            )
+                        }
                     }
                 }
             }
-            state.adding?.let { AddNoteRow(it, onDismissAddNote) }
-            // Lazy, so only the rows on screen are composed however many journeys are starred (Codex on #589).
-            val listState = rememberLazyListState()
-            val journeys = state.journeys
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .scrollEdgeCue(listState, scrollCueColors(MaterialTheme.colorScheme.surface)),
-            ) {
-                when {
-                    // Before the first read: the screen shows at once, with nothing to remove yet.
-                    !state.loaded -> item { Note(stringResource(R.string.favorite_journeys_loading)) }
-                    // Unreadable: a disk error or a newer schema, which the store doesn't tell apart. Said,
-                    // not shown as none (principle 2), with Retry, since a disk error may pass (Codex on #589).
-                    journeys == null -> item {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(modifier = Modifier.weight(1f)) {
-                                Note(stringResource(R.string.favorite_journeys_unavailable), error = true)
-                            }
-                            TextButton(
-                                onClick = onRetry,
-                                modifier = Modifier.padding(end = 8.dp).testTag("retryJourneys"),
-                            ) { Text(stringResource(R.string.favorite_journeys_retry)) }
+            // Over the screen's foot rather than in its flow: an alert change that fails after the rider came
+            // back here mustn't move the rows they may be tapping (Codex on #700).
+            if (state.alertWriteFailed) {
+                Surface(
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    tonalElevation = 3.dp,
+                    shadowElevation = 3.dp,
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.journey_alerts_write_failed),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = onDismissAlertWriteError, modifier = Modifier.testTag("dismissJourneyAlertWriteError")) {
+                            Text(stringResource(R.string.action_dismiss))
                         }
-                    }
-                    journeys.isEmpty() -> item { Note(stringResource(R.string.favorite_journeys_empty)) }
-                    else -> items(journeys, key = { it.key }) { journey ->
-                        JourneyRow(journey, onRemove = { onRemove(journey) })
                     }
                 }
             }
@@ -324,8 +373,15 @@ private fun Note(text: String, error: Boolean = false) {
 }
 
 @Composable
-private fun JourneyRow(journey: FavoriteJourney, onRemove: () -> Unit) {
-    val spoken = stringResource(R.string.journey_title_spoken, journey.from.name, journey.to.name)
+private fun JourneyRow(
+    journey: FavoriteJourney,
+    alerts: List<String>?,
+    onRemove: () -> Unit,
+    onOpen: (() -> Unit)?,
+) {
+    // Both ways, as the ⇄ shows: opening it sets alerts for each direction (Codex on #700).
+    val spoken = stringResource(R.string.journey_title_both_ways_spoken, journey.from.name, journey.to.name)
+    val openDescription = stringResource(R.string.favorite_journey_open_alerts, journey.from.name, journey.to.name)
     Row(
         modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -333,11 +389,18 @@ private fun JourneyRow(journey: FavoriteJourney, onRemove: () -> Unit) {
         Column(
             modifier = Modifier
                 .weight(1f)
+                .then(
+                    if (onOpen == null) {
+                        Modifier
+                    } else {
+                        Modifier.clickable(onClickLabel = openDescription, onClick = onOpen).testTag("openAlerts-${journey.key}")
+                    },
+                )
                 .padding(vertical = 8.dp)
                 .semantics(mergeDescendants = true) {},
         ) {
             Text(
-                text = stringResource(R.string.journey_title, journey.from.name, journey.to.name),
+                text = stringResource(R.string.journey_title_both_ways, journey.from.name, journey.to.name),
                 style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.semantics { contentDescription = spoken },
             )
@@ -350,6 +413,7 @@ private fun JourneyRow(journey: FavoriteJourney, onRemove: () -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            AlertsSummary(alerts)
         }
         Spacer(modifier = Modifier.width(8.dp))
         // TalkBack names the journey, not just "Remove", so the right row's action is clear.
@@ -360,5 +424,64 @@ private fun JourneyRow(journey: FavoriteJourney, onRemove: () -> Unit) {
                 .testTag("remove-${journey.key}")
                 .semantics { contentDescription = removeDescription },
         ) { Text(stringResource(R.string.favorite_journey_remove)) }
+    }
+}
+
+// Under a journey: each watched direction's days and times, or "Alerts off".
+@Composable
+private fun AlertsSummary(lines: List<String>?) {
+    // Always two one-line slots, one per direction, filled or not: a save finishing after the rider has come
+    // back to this list changes what a row says but never its height, so no row below it moves under a tap
+    // (Codex on #700). Unknown (null) holds the same space, empty.
+    val shown = when {
+        lines == null -> emptyList()
+        lines.isEmpty() -> listOf(stringResource(R.string.favorite_journey_alerts_off))
+        else -> lines
+    }
+    for (slot in 0 until 2) {
+        val text = shown.getOrNull(slot).orEmpty()
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (lines.isNullOrEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/**
+ * What each journey's row in Settings says of its alerts ([FavoriteJourneysUi.alertSummaries]): for
+ * each watched direction, the saved way first, where it goes, its days in a few words ("Mon–Fri") and
+ * its windows ("Alerts to Waterloo: Mon–Fri 08:00–10:00"); empty when none is watched. Walks every
+ * journey and window, so it runs off the main thread (AGENTS.md *Main thread*).
+ */
+@WorkerThread
+internal fun journeyAlertSummaries(
+    context: Context,
+    journeys: List<FavoriteJourney>,
+    schedules: Map<String, JourneyAlertSchedule>,
+): Map<String, List<String>> {
+    val locale = context.resources.configuration.locales[0]
+    fun days(days: Set<DayOfWeek>): String = when (days) {
+        DayOfWeek.values().toSet() -> context.getString(R.string.journey_alerts_days_every)
+        JourneyAlertSchedule.WEEKDAYS -> context.getString(R.string.journey_alerts_days_weekdays)
+        setOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY) -> context.getString(R.string.journey_alerts_days_weekends)
+        emptySet<DayOfWeek>() -> context.getString(R.string.journey_alerts_days_none)
+        else -> days.sorted().joinToString(", ") { it.getDisplayName(TextStyle.SHORT, locale) }
+    }
+    return journeys.associate { journey ->
+        journey.key to listOf(journey, journey.reversed()).mapNotNull { way ->
+            schedules[JourneyAlerts.directionKey(way, way.from.stopId)]?.let { schedule ->
+                context.getString(
+                    R.string.favorite_journey_alerts_direction,
+                    way.to.name,
+                    days(schedule.days),
+                    schedule.windows.joinToString(", ") {
+                        context.getString(R.string.journey_alerts_window, it.start.format(TIME), it.end.format(TIME))
+                    },
+                )
+            }
+        }
     }
 }

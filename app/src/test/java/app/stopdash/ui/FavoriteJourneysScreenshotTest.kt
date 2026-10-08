@@ -12,11 +12,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import app.stopdash.domain.JourneyAlertSchedule
+import app.stopdash.domain.JourneyAlerts
 import app.stopdash.domain.JourneyEnd
+import java.time.DayOfWeek
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.StationMatch
 import app.stopdash.ui.theme.StopDashTheme
@@ -68,7 +73,8 @@ class FavoriteJourneysScreenshotTest {
     fun the_list_names_each_journey_and_removes_the_one_tapped() {
         val removed = mutableListOf<FavoriteJourney>()
         show(FavoriteJourneysUi(listOf(victoriaLine, northern)), onRemove = { removed += it })
-        composeRule.onNodeWithText("Victoria ➔ King's Cross St. Pancras").assertIsDisplayed()
+        // Saved both ways, so a two-way arrow (maintainer, 2026-10-08).
+        composeRule.onNodeWithText("Victoria ⇄ King's Cross St. Pancras").assertIsDisplayed()
         composeRule.onNodeWithText("Northern").assertIsDisplayed()
         captureSnapshot("favorite-journeys-list.png")
         composeRule.onNodeWithContentDescription("Remove Euston to Waterloo").performClick()
@@ -211,7 +217,7 @@ class FavoriteJourneysScreenshotTest {
     @Test
     fun a_pair_being_added_says_so_with_nothing_to_dismiss() {
         show(FavoriteJourneysUi(emptyList(), adding = JourneyAddNote.Adding("Euston", "Waterloo")))
-        composeRule.onNodeWithText("Adding Euston ➔ Waterloo…").assertIsDisplayed()
+        composeRule.onNodeWithText("Adding Euston ⇄ Waterloo…").assertIsDisplayed()
         composeRule.onNodeWithTag("dismissJourneyAddNote").assertDoesNotExist()
     }
 
@@ -247,6 +253,59 @@ class FavoriteJourneysScreenshotTest {
     }
 
     @Test
+    fun an_alert_change_that_wasnt_saved_is_said_on_the_list_too() {
+        var dismissed = false
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                FavoriteJourneysScreen(
+                    state = FavoriteJourneysUi(listOf(victoriaLine), alertWriteFailed = true),
+                    onBack = {},
+                    onRemove = {},
+                    onDismissAlertWriteError = { dismissed = true },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        // Left the Alerts screen before the save failed: said where the rider now is (Codex on #700).
+        composeRule.onNodeWithText("Couldn't save that change").assertIsDisplayed()
+        composeRule.onNodeWithTag("dismissJourneyAlertWriteError").performClick()
+        assertEquals(true, dismissed)
+    }
+
+    @Test
+    fun a_late_alert_save_error_doesnt_move_the_list() {
+        var failed by mutableStateOf(false)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                FavoriteJourneysScreen(state = FavoriteJourneysUi(listOf(victoriaLine), alertWriteFailed = failed), onBack = {}, onRemove = {})
+            }
+        }
+        composeRule.waitForIdle()
+        val before = composeRule.onNodeWithTag("remove-${victoriaLine.key}").getUnclippedBoundsInRoot()
+        failed = true
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("dismissJourneyAlertWriteError").assertIsDisplayed()
+        // Said over the screen, not in its flow (Codex on #700).
+        assertEquals(before, composeRule.onNodeWithTag("remove-${victoriaLine.key}").getUnclippedBoundsInRoot())
+    }
+
+    @Test
+    fun a_row_keeps_its_height_when_its_alert_summary_changes() {
+        var summaries by mutableStateOf(mapOf(northern.key to emptyList<String>()))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                FavoriteJourneysScreen(state = FavoriteJourneysUi(listOf(northern, victoriaLine), alertSummaries = summaries), onBack = {}, onRemove = {})
+            }
+        }
+        composeRule.waitForIdle()
+        val below = composeRule.onNodeWithTag("remove-${victoriaLine.key}").getUnclippedBoundsInRoot()
+        // A save finishing after the rider came back turns both directions on: the row below stays put (Codex on #700).
+        summaries = mapOf(northern.key to listOf("Alerts to Waterloo: Mon–Fri 08:00–10:00", "Alerts to Euston: Mon–Fri 16:00–18:00"))
+        composeRule.waitForIdle()
+        assertEquals(below, composeRule.onNodeWithTag("remove-${victoriaLine.key}").getUnclippedBoundsInRoot())
+    }
+
+    @Test
     fun a_failed_removal_says_so_until_dismissed() {
         var dismissed = 0
         composeRule.setContent {
@@ -262,6 +321,147 @@ class FavoriteJourneysScreenshotTest {
         composeRule.onNodeWithText("Couldn't remove that journey").assertIsDisplayed()
         composeRule.onNodeWithTag("dismissJourneyWriteError").performClick()
         assertEquals(1, dismissed)
+    }
+
+    @Test
+    fun each_journey_says_its_alerts_and_a_tap_opens_them() {
+        val alerts = mapOf(
+            JourneyAlerts.directionKey(northern, northern.from.stopId) to JourneyAlertSchedule(windows = JourneyAlertSchedule.DEFAULT_WINDOWS.take(1)),
+            JourneyAlerts.directionKey(northern, northern.to.stopId) to JourneyAlertSchedule(windows = JourneyAlertSchedule.DEFAULT_WINDOWS.drop(1)),
+        )
+        val opened = mutableListOf<FavoriteJourney>()
+        val summaries = journeyAlertSummaries(composeRule.activity, listOf(northern, victoriaLine), alerts)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                FavoriteJourneysScreen(
+                    state = FavoriteJourneysUi(listOf(northern, victoriaLine), alertSummaries = summaries),
+                    onBack = {},
+                    onRemove = {},
+                    onOpenAlerts = { opened += it },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Alerts to Waterloo: Mon–Fri 08:00–10:00").assertIsDisplayed()
+        composeRule.onNodeWithText("Alerts to Euston: Mon–Fri 16:00–18:00").assertIsDisplayed()
+        composeRule.onNodeWithText("Alerts off").assertIsDisplayed()
+        captureSnapshot("favorite-journeys-alerts.png")
+        composeRule.onNodeWithTag("openAlerts-${northern.key}").performClick()
+        assertEquals(listOf(northern), opened)
+    }
+
+    @Test
+    fun a_journeys_alerts_show_each_direction_and_each_change_builds_on_the_last() {
+        val out = JourneyAlerts.directionKey(northern, northern.from.stopId)
+        val back = JourneyAlerts.directionKey(northern, northern.to.stopId)
+        // Stands in for the store: each change applied to what's held now.
+        var stored by mutableStateOf(mapOf(out to JourneyAlertSchedule(windows = JourneyAlertSchedule.DEFAULT_WINDOWS.take(1))))
+        val update = { key: String, change: (JourneyAlertSchedule?) -> JourneyAlertSchedule? ->
+            val next = change(stored[key])
+            stored = if (next == null) stored - key else stored + (key to next)
+        }
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                JourneyAlertsScreen(state = JourneyAlertsUi(northern, stored), onBack = {}, onUpdate = update)
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Euston ⇄ Waterloo").assertIsDisplayed()
+        composeRule.onNodeWithText("Euston ➔ Waterloo").assertIsDisplayed()
+        composeRule.onNodeWithText("Waterloo ➔ Euston").assertIsDisplayed()
+        composeRule.onNodeWithText("08:00–10:00").assertIsDisplayed()
+        captureSnapshot("journey-alerts.png")
+
+        // The way back, off, turns on at its evening default.
+        composeRule.onNodeWithTag("alertsSwitch-$back").performClick()
+        assertEquals(JourneyAlertSchedule(windows = JourneyAlertSchedule.DEFAULT_WINDOWS.drop(1)), stored[back])
+        // Two days off the way out, one after the other: both stick.
+        composeRule.onNodeWithTag("alertDay-$out-MONDAY").performClick()
+        composeRule.onNodeWithTag("alertDay-$out-TUESDAY").performClick()
+        assertEquals(setOf(DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY), stored[out]?.days)
+        // Its only window can't be removed (the switch turns it off), nor its last day.
+        composeRule.onNodeWithContentDescription("Remove 08:00–10:00").assertDoesNotExist()
+        listOf("WEDNESDAY", "THURSDAY", "FRIDAY").forEach { composeRule.onNodeWithTag("alertDay-$out-$it").performClick() }
+        assertEquals(setOf(DayOfWeek.FRIDAY), stored[out]?.days)
+        // At most a few windows: no Add past the cap.
+        update(out) { it?.copy(windows = List(JourneyAlertSchedule.MAX_WINDOWS) { i -> JourneyAlertSchedule.DEFAULT_WINDOWS[0].let { w -> w.copy(start = w.start.plusHours(i * 3L), end = w.end.plusHours(i * 3L)) } }) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("addTime-$out").assertDoesNotExist()
+        // With two windows, either can be removed.
+        update(out) { it?.copy(windows = JourneyAlertSchedule.DEFAULT_WINDOWS) }
+        composeRule.onNodeWithContentDescription("Remove 08:00–10:00").performClick()
+        assertEquals(JourneyAlertSchedule.DEFAULT_WINDOWS.drop(1), stored[out]?.windows)
+        // And the way out off.
+        composeRule.onNodeWithTag("alertsSwitch-$out").performClick()
+        assertEquals(null, stored[out])
+    }
+
+    @Test
+    fun a_journeys_alerts_say_a_change_that_wasnt_saved_until_dismissed() {
+        var dismissed = false
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                JourneyAlertsScreen(
+                    state = JourneyAlertsUi(northern, emptyMap(), writeFailed = true),
+                    onBack = {},
+                    onUpdate = { _, _ -> },
+                    onDismissWriteError = { dismissed = true },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Couldn't save that change").assertIsDisplayed()
+        composeRule.onNodeWithText("Dismiss").performClick()
+        assertEquals(true, dismissed)
+    }
+
+    @Test
+    fun a_failed_save_doesnt_move_the_controls() {
+        val out = JourneyAlerts.directionKey(northern, northern.from.stopId)
+        var failed by mutableStateOf(false)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                JourneyAlertsScreen(state = JourneyAlertsUi(northern, emptyMap(), writeFailed = failed), onBack = {}, onUpdate = { _, _ -> })
+            }
+        }
+        composeRule.waitForIdle()
+        val before = composeRule.onNodeWithTag("alertsSwitch-$out").getUnclippedBoundsInRoot()
+        failed = true
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("journeyAlertsWriteFailed").assertIsDisplayed()
+        // Said over the screen, not in its flow (Codex on #700).
+        assertEquals(before, composeRule.onNodeWithTag("alertsSwitch-$out").getUnclippedBoundsInRoot())
+    }
+
+    @Test
+    fun a_journeys_alerts_still_loading_dont_call_the_schedules_unreadable() {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                JourneyAlertsScreen(state = JourneyAlertsUi(northern, null, loading = true), onBack = {}, onUpdate = { _, _ -> })
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Alerts").assertIsDisplayed()
+        assertEquals(0, composeRule.onAllNodesWithText("Can't read", substring = true).fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun a_journeys_alerts_say_when_notifications_are_off() {
+        var allowed = false
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                JourneyAlertsScreen(
+                    state = JourneyAlertsUi(northern, emptyMap(), notificationsOff = true),
+                    onBack = {},
+                    onUpdate = { _, _ -> },
+                    onAllowNotifications = { allowed = true },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("journeyAlertsNotificationsOff").assertIsDisplayed()
+        composeRule.onNodeWithText("Allow").performClick()
+        assertEquals(true, allowed)
     }
 
     private fun captureSnapshot(name: String, widthPx: Int = 1080, heightPx: Int = 1920) {

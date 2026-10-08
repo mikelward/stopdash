@@ -715,6 +715,22 @@ interface FavoriteJourneysStore {
      */
     suspend fun add(journey: FavoriteJourney)
 
+    /**
+     * Each watched direction's alert schedule, by [JourneyAlerts.directionKey] (SPEC *Journeys →
+     * Alerts*); a direction with none isn't watched. Only directions of saved journeys. Null while
+     * unreadable, like [journeys].
+     */
+    fun alertSchedules(): kotlinx.coroutines.flow.Flow<Map<String, JourneyAlertSchedule>?> =
+        kotlinx.coroutines.flow.flowOf(emptyMap())
+
+    /**
+     * Changes the schedule for [directionKey] by [change], applied to the latest stored one (null when
+     * it isn't watched; a null result stops watching it), so two quick taps each build on the other
+     * rather than the second writing over the first. Ignored for a journey that isn't saved. Off the
+     * main thread.
+     */
+    suspend fun updateAlertSchedule(directionKey: String, change: (JourneyAlertSchedule?) -> JourneyAlertSchedule?) {}
+
     companion object {
         /** Persists nothing and reads an empty list: tests and an unwired build. */
         val NONE: FavoriteJourneysStore = object : FavoriteJourneysStore {

@@ -42,7 +42,7 @@ class WidgetClockChangeReceiverTest {
     @Test
     fun `the app listens for the clock being set`() {
         val receivers = context.packageManager.queryBroadcastReceivers(Intent(Intent.ACTION_TIME_CHANGED).setPackage(context.packageName), 0)
-        assertEquals(listOf(WidgetClockChangeReceiver::class.java.name), receivers.map { it.activityInfo.name })
+        assertTrue(WidgetClockChangeReceiver::class.java.name in receivers.map { it.activityInfo.name })
     }
 
     @Test

@@ -1108,6 +1108,48 @@ destination costs a request only every few minutes. A failed check keeps the las
 claims nothing new. Alerts on lines with no favorite journey (a separate favorite-lines list) stay a
 `TODO.md` idea.
 
+**Alerts** (maintainer, 2026-10-08). A favorite journey can post a **silent notification** when one
+of its lines is disrupted at the times the rider travels it. Alerts are **off by default** and set
+**per direction**, since the way there and the way back are ridden at different times: each direction
+has its own switch, days of the week and one or more time windows (in the device's time zone, a
+window not crossing midnight). Turning a direction on starts it at **Monday to Friday, 08:00–10:00**
+for the way the journey was saved and **16:00–18:00** for the way back; guessing which way is the
+morning one (from favorite places, say) is a `TODO.md` follow-up. The settings live on the journey's
+own **Alerts** screen, opened by tapping its row in Settings' list (a direction keeps at least one
+day and one window, and has at most four: its switch is how it's turned off; a change that couldn't be saved is said there), which says each watched
+direction's days and times ("Alerts to Waterloo: Mon–Fri 08:00–10:00") or "Alerts off". That list
+names a journey with a two-way arrow ("Euston ⇄ Waterloo"), since it is saved both ways; a card and
+the Alerts screen's sections keep ➔ for the way shown.
+
+The check runs **in the background** (WorkManager), only while a window is open: one at a window's
+start (at once when a direction is turned on, or the app starts, mid-window), then **every 15
+minutes** (WorkManager's floor) and once as it closes, and none outside one. Each asks TfL for the status of
+the journey's line and the lines the app last found running directly between its ends (its widget
+pins), in **one batched line-status request** for every journey being watched: £0, about 8 requests
+per two-hour window, the same kind the list makes, so nothing new leaves the device. Battery: one
+deferrable wakeup every quarter hour inside a window, needing a network. Nothing is scheduled while
+no direction is watched, or while Android won't show the app's notifications or has this channel
+turned off (the Alerts screen says so, with **Allow**), since every alert would be invisible. The
+check is re-scheduled when the device's clock or time zone changes (a window is a time of day where
+the rider is), and on a return to the app when none is pending or the one pending was left timed
+for an old clock. The
+lines a check asks about come from the pins worked out for the direction it travels, else those
+for the other way: the widget keeps only the direction last shown, and a direct line between two
+stops almost always runs both ways.
+
+One notification per journey, on its own **low-importance channel** (no sound, vibration or
+heads-up), titled the way the open window travels ("Euston ➔ Waterloo") and naming each disrupted
+line with TfL's label and words. It is posted once for a disruption: kept up to date silently while
+it shows, posted again only when what TfL says changes, and **not brought back** once swiped away
+(one that only timed out, behind a late check, is). Alerts turned back on in Android's settings
+re-arm the check the next time the app comes to the foreground.
+It goes when the lines recover or the window closes: it times out at the window's close, or sooner
+if two checks pass without renewing it, so it never outlives its window or the check behind it (D4),
+offline or not. Where both directions' windows overlap, both directions' lines are checked. A check TfL didn't answer claims nothing:
+what's shown stays until its timeout. A tap opens the app. The check asks about every alert on the
+line, either direction: which way a disruption runs is known only for some bus alerts, and only after
+a lookup the background check doesn't make.
+
 **Change at a fork.** When a line runs only one branch from the origin (a Northern line train to
 Edgware from King's Cross, none to High Barnet) and no direct train is due, the card shows the
 other branch's trains instead, under "King's Cross ➔ Camden Town (for High Barnet)", with "No direct

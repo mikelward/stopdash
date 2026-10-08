@@ -196,6 +196,16 @@ from TfL, like any other stop, and at the stops beside it; to find those, and th
 from the other end, it asks TfL for the stops around each end's public position (TfL's own, never
 yours), as opening a station does, and keeps the answer on the device for up to a day.
 
+**Journey alerts**, if you turn them on for a favorite journey, keep each direction's days and times
+with the journey on the device. During those times stopdash checks in the background, about every
+15 minutes, by asking TfL for the status of the journey's lines (the same request the app makes for
+the lines near you), and shows a silent notification on your phone naming the journey's two stops and
+the disruption. What each alert last said, and whether you swiped it away, is kept on the device so
+the same disruption isn't shown again. It is never logged or sent anywhere, stays out of your Android
+backup and device transfer (it describes this phone's notifications), and is deleted when the
+disruption clears, when the alert's time window closes, when you turn that direction's alerts off or
+remove the journey, or when notifications are turned off.
+
 **Held in memory only:** the last precise (GPS) position, for up to 10 minutes, so a rough
 network position that comes in while you haven't moved doesn't replace it. It is never written to
 storage or logged, is sent only as the position of a nearby-stop lookup or as the start of a trip

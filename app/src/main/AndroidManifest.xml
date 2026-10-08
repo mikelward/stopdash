@@ -75,6 +75,24 @@
                 android:resource="@xml/stopdash_widget_info" />
         </receiver>
 
+        <!-- Hears a journey alert swiped away (its delete intent, sent by this app's own
+             PendingIntent), so the same disruption isn't posted again. Not exported. -->
+        <receiver
+            android:name=".JourneyAlertDismissReceiver"
+            android:exported="false" />
+
+        <!-- A clock set or a time-zone change re-schedules the journey alert check, whose windows
+             are times of day where the rider is. System broadcasts, so a receiver that isn't
+             exported hears them. -->
+        <receiver
+            android:name=".JourneyAlertClockReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
         <!-- A setting of the device's clock redraws the widget, whose countdowns and age are
              drawn against the clock as it read then. A system broadcast, so it reaches a
              receiver that isn't exported. -->

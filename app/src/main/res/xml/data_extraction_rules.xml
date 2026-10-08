@@ -2,7 +2,8 @@
 <!-- Cloud backup and device-to-device transfer (API 31+): as backup_rules.xml — everything but
      the telemetry opt-in and the Firebase SDKs' collection flags, so consent never carries over
      to another install, the per-watch complication rows, relearned from the watches still
-     paired, and the stops the app last found near the rider (where they are now). -->
+     paired, the stops the app last found near the rider (where they are now), and the journey
+     alerts' state, which describes this install's notifications and permission prompt. -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="telemetry.xml" />
@@ -10,6 +11,9 @@
         <exclude domain="sharedpref" path="com.google.android.gms.measurement.prefs.xml" />
         <exclude domain="sharedpref" path="watch_complication_rows.xml" />
         <exclude domain="file" path="datastore/widget-nearby-set.json" />
+        <exclude domain="sharedpref" path="journey-alerts-state.xml" />
+        <exclude domain="sharedpref" path="journey-alerts-announced.xml" />
+        <exclude domain="sharedpref" path="journey-alerts-dismissed.xml" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="telemetry.xml" />
@@ -17,5 +21,8 @@
         <exclude domain="sharedpref" path="com.google.android.gms.measurement.prefs.xml" />
         <exclude domain="sharedpref" path="watch_complication_rows.xml" />
         <exclude domain="file" path="datastore/widget-nearby-set.json" />
+        <exclude domain="sharedpref" path="journey-alerts-state.xml" />
+        <exclude domain="sharedpref" path="journey-alerts-announced.xml" />
+        <exclude domain="sharedpref" path="journey-alerts-dismissed.xml" />
     </device-transfer>
 </data-extraction-rules>
