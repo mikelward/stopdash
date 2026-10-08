@@ -386,6 +386,16 @@ private val ARROW_TAIL_WIDTH = 2.dp
 // The least space between two arrows on one fold rail, one each way.
 private val ARROW_GAP = 8.dp
 
+// The no-entry sign across, its 2dp surface ring included.
+internal val NO_ENTRY_SIZE = 20.dp
+
+// The shortest rail a no-entry sign and its one-way arrows fit on apart ([foldArrowsWithSign]); a fold
+// row with the sign is held at least this tall plus its rail's insets.
+internal val SIGN_RAIL_MIN = 40.dp
+
+// How far a fold rail that ends in the row stops short of the row's edge.
+private val FOLD_RAIL_INSET = 12.dp
+
 /** Where a fold rail [length] long draws its arrows, as fractions along it, and whether they keep their tails. */
 internal data class FoldArrows(val downAt: Float, val upAt: Float, val tails: Boolean)
 
@@ -398,6 +408,22 @@ internal data class FoldArrows(val downAt: Float, val upAt: Float, val tails: Bo
 internal fun foldArrows(length: Float, both: Boolean, whole: Float, gap: Float): FoldArrows {
     val roomy = length / 2 >= whole + gap
     return if (both && roomy) FoldArrows(1f / 4, 3f / 4, tails = true) else FoldArrows(1f / 3, 2f / 3, tails = !both || roomy)
+}
+
+/**
+ * A fold rail's arrows and its no-entry sign together (Codex, #706), the sign's place as a fraction along
+ * the rail. An arrow alone moves out to a quarter from its end and the sign takes the third it leaves
+ * free; arrows both ways go out to an eighth from each end with the sign between. Arrows keep their tails
+ * only where the rail is [roomy] enough for a whole arrow beside the sign, else are drawn as heads alone.
+ */
+internal fun foldArrowsWithSign(length: Float, down: Boolean, up: Boolean, whole: Float, gap: Float): Pair<FoldArrows, Float> {
+    val roomy = length >= 2 * whole + gap * 2
+    return when {
+        down && up -> FoldArrows(1f / 8, 7f / 8, tails = false) to 1f / 2
+        down -> FoldArrows(1f / 4, 3f / 4, tails = roomy) to 2f / 3
+        up -> FoldArrows(1f / 4, 3f / 4, tails = roomy) to 1f / 3
+        else -> foldArrows(length, both = false, whole, gap) to 1f / 2
+    }
 }
 
 // The first rail's middle: its edge 16dp in, as the last rail's edge is 16dp from the names.
@@ -594,14 +620,17 @@ private fun FoldRow(fold: LineMap.Item.Fold, columns: Int, railColor: Color, onO
     val clickLabel = pluralStringResource(R.plurals.line_map_show, fold.count, fold.count)
     // How bad an alert folded into it is, without naming where (maintainer, 2026-10-06): no service, or a
     // station an alert names, as the route page marks one.
-    val (glyph, alert) = when (fold.level) {
-        LineMap.Level.CLOSURE -> "\u26D4" to stringResource(R.string.line_map_fold_closure)
-        LineMap.Level.WARNING -> "\u26A0" to stringResource(R.string.line_map_fold_alert)
-        null -> null to null
-    }
-    // The arrows on one-way tracks folded in, said as well as drawn (Codex, #665).
+    // A closure is drawn on the rail as a no-entry sign and said in words under the title (maintainer,
+    // 2026-10-08); an alert keeps its glyph after the title, as a station row marks one.
+    val closure = fold.level == LineMap.Level.CLOSURE
+    val closureText = stringResource(R.string.line_map_no_service)
+    val warning = fold.level == LineMap.Level.WARNING
+    val surface = MaterialTheme.colorScheme.surface
+    val signBar = MaterialTheme.colorScheme.onError
+    // The arrows on one-way tracks folded in, said as well as drawn (Codex, #665). The closure is read
+    // out as the row's own text.
     val state = listOfNotNull(
-        alert,
+        stringResource(R.string.line_map_fold_alert).takeIf { warning },
         stringResource(R.string.line_map_one_way_down).takeIf { fold.oneWayDown },
         stringResource(R.string.line_map_one_way_up).takeIf { fold.oneWayUp },
     ).joinToString(", ").ifEmpty { null }
@@ -611,8 +640,12 @@ private fun FoldRow(fold: LineMap.Item.Fold, columns: Int, railColor: Color, onO
             .clickable(onClickLabel = clickLabel, role = Role.Button, onClick = onOpen)
             .semantics { if (state != null) stateDescription = state },
     ) {
-        Canvas(Modifier.width(gutterWidth(columns)).fillMaxHeight()) {
-            val inset = 12.dp.toPx()
+        // Room on the sign's rail for it and its arrows beside it, whatever the font scale (Codex, #706).
+        val signRail = fold.signRail
+        val minHeight = if (signRail == null) 0.dp else
+            SIGN_RAIL_MIN + FOLD_RAIL_INSET * ((if (signRail.fromTop) 0 else 1) + (if (signRail.toBottom) 0 else 1))
+        Canvas(Modifier.width(gutterWidth(columns)).fillMaxHeight().heightIn(min = minHeight)) {
+            val inset = FOLD_RAIL_INSET.toPx()
             for (rail in fold.rails) {
                 val x = columnX(rail.column)
                 val y0 = if (rail.fromTop) 0f else inset
@@ -630,17 +663,19 @@ private fun FoldRow(fold: LineMap.Item.Fold, columns: Int, railColor: Color, onO
                 }
                 // One-way tracks folded in: their arrows on the fold's rail, as the rows they end at would draw
                 // them, one each way where they disagree.
+                val whole = (ARROW_LENGTH + ARROW_TAIL_LENGTH).toPx()
+                val gap = ARROW_GAP.toPx()
+                val (placed, signAt) = if (rail === signRail) {
+                    foldArrowsWithSign(y1 - y0, rail.oneWayDown, rail.oneWayUp, whole, gap)
+                } else {
+                    foldArrows(y1 - y0, both = rail.oneWayDown && rail.oneWayUp, whole, gap) to null
+                }
                 if (rail.oneWayDown || rail.oneWayUp) {
                     val path = Path().apply { moveTo(x, y0); lineTo(x, y1) }
-                    val placed = foldArrows(
-                        y1 - y0,
-                        both = rail.oneWayDown && rail.oneWayUp,
-                        whole = (ARROW_LENGTH + ARROW_TAIL_LENGTH).toPx(),
-                        gap = ARROW_GAP.toPx(),
-                    )
                     if (rail.oneWayDown) drawOneWayArrow(path, down = true, arrowColor, along = placed.downAt, tail = placed.tails)
                     if (rail.oneWayUp) drawOneWayArrow(path, down = false, arrowColor, along = placed.upAt, tail = placed.tails)
                 }
+                if (signAt != null) drawNoEntry(Offset(x, y0 + (y1 - y0) * signAt), closedColor, signBar, surface)
             }
         }
         Column(
@@ -650,16 +685,35 @@ private fun FoldRow(fold: LineMap.Item.Fold, columns: Int, railColor: Color, onO
             Text(
                 buildAnnotatedString {
                     append(title)
-                    if (glyph != null) withStyle(SpanStyle(color = closedColor)) { append(" $glyph") }
+                    if (warning) withStyle(SpanStyle(color = closedColor)) { append(" \u26A0") }
                 },
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
             )
-            if (!fold.unnamed) Text(stations, style = MaterialTheme.typography.bodyMedium, color = muted)
+            if (!fold.unnamed || closure) {
+                Text(
+                    buildAnnotatedString {
+                        if (!fold.unnamed) append(stations)
+                        if (!fold.unnamed && closure) append(" · ")
+                        if (closure) withStyle(SpanStyle(color = closedColor)) { append(closureText) }
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = muted,
+                )
+            }
         }
         // Read out by the row's click label.
         Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = muted, modifier = Modifier.padding(horizontal = 12.dp))
     }
+}
+
+// A no-entry sign: a filled disc with a bar across, ringed in [surface] so the rail stops short of it.
+private fun DrawScope.drawNoEntry(center: Offset, color: Color, bar: Color, surface: Color) {
+    val radius = (NO_ENTRY_SIZE / 2 - 2.dp).toPx()
+    drawCircle(surface, (NO_ENTRY_SIZE / 2).toPx(), center)
+    drawCircle(color, radius, center)
+    val half = radius * 0.6f
+    drawLine(bar, Offset(center.x - half, center.y), Offset(center.x + half, center.y), 2.5.dp.toPx(), cap = StrokeCap.Round)
 }
 
 private fun lineMapFailureMessage(kind: DeparturesUiState.Error.Kind): Int = when (kind) {
