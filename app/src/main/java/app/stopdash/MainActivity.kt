@@ -608,7 +608,7 @@ class MainActivity : ComponentActivity() {
                     LocalStepFreeLoading provides !stepFreeRead,
                     LocalLiftsOut provides liftOutages,
                 ) {
-                val nearby by nearbyViewModel.state.collectAsStateWithLifecycle()
+                val nearby by nearbyViewModel.state.collectByIdentityWithLifecycle()
 
                 // True once a request has come back denied with the rationale suppressed —
                 // Android's "don't ask again" / permanently-denied signal. Then re-requesting
@@ -874,9 +874,9 @@ class MainActivity : ComponentActivity() {
                 // list dropped so it's rebuilt from that set, as a From… page's "Show all" does. The
                 // list's own Show all, checkboxes and Undo re-pick in place first, and this then
                 // finds nothing owed (SPEC *Finding stops → Hiding a mode*).
-                val hiddenNow by HiddenModesSetting.changes.collectAsStateWithLifecycle()
+                val hiddenNow by HiddenModesSetting.changes.collectByIdentityWithLifecycle()
                 val hiddenWriteFailedNow by HiddenModesSetting.writeFailed.collectAsStateWithLifecycle()
-                val avoidedNow by AvoidedLinesSetting.changes.collectAsStateWithLifecycle()
+                val avoidedNow by AvoidedLinesSetting.changes.collectByIdentityWithLifecycle()
                 val avoidedWriteFailedNow by AvoidedLinesSetting.writeFailed.collectAsStateWithLifecycle()
                 LaunchedEffect(hiddenNow) {
                     if (nearbyViewModel.shownAgainSincePick(hiddenNow)) {
@@ -985,7 +985,7 @@ class MainActivity : ComponentActivity() {
                 val showDisruptionsRow by DisruptionsRowSetting.changes.collectAsStateWithLifecycle()
                 val showDisruptionsRowLoaded by DisruptionsRowSetting.isLoaded.collectAsStateWithLifecycle()
                 val showDisruptionsRowWriteFailed by DisruptionsRowSetting.writeFailed.collectAsStateWithLifecycle()
-                val summaryNetworks by SummaryNetworksSetting.changes.collectAsStateWithLifecycle()
+                val summaryNetworks by SummaryNetworksSetting.changes.collectByIdentityWithLifecycle()
                 val summaryNetworksLoaded by SummaryNetworksSetting.isLoaded.collectAsStateWithLifecycle()
                 val summaryNetworksWriteFailed by SummaryNetworksSetting.writeFailed.collectAsStateWithLifecycle()
                 val walkingSpeed by WalkingSpeedSetting.changes.collectAsStateWithLifecycle()
@@ -1068,7 +1068,7 @@ class MainActivity : ComponentActivity() {
                     }
                     endFailuresShown = endFailures
                 }
-                val onTheWayTrip by tracker.trip.collectAsStateWithLifecycle()
+                val onTheWayTrip by tracker.trip.collectByIdentityWithLifecycle()
                 // A trip on the way is followed by its foreground service, app open or closed: started
                 // here (the foreground), on Start and on every return to the app with a trip on the way,
                 // so a start Android refused is tried again, and a location grant made meanwhile (in
@@ -1078,7 +1078,7 @@ class MainActivity : ComponentActivity() {
                     if (onTheWayActive) OnTheWayService.start(applicationContext)
                     onPauseOrDispose {}
                 }
-                val onTheWayProgress by tracker.progress.collectAsStateWithLifecycle()
+                val onTheWayProgress by tracker.progress.collectByIdentityWithLifecycle()
                 val onTheWayUpdatedAt by tracker.updatedAt.collectAsStateWithLifecycle()
                 val onTheWayAnsweredAt by tracker.answeredAt.collectAsStateWithLifecycle()
                 val openOnTheWayAsked by openOnTheWay.collectAsStateWithLifecycle()
@@ -1478,7 +1478,7 @@ class MainActivity : ComponentActivity() {
                                     },
                                 )
                                 val favoritePlacesState by favoritePlacesModel.state
-                                    .collectAsStateWithLifecycle()
+                                    .collectByIdentityWithLifecycle()
                                 // Opened from a stop's details: its editor starts filled in with the stop, once; the
                                 // editor's own draft keeps the stop until its position is in (Codex on #670).
                                 LaunchedEffect(placeToAdd) {
@@ -1578,7 +1578,7 @@ class MainActivity : ComponentActivity() {
                                             }
                                         },
                                     )
-                                    val searchState by search.state.collectAsStateWithLifecycle()
+                                    val searchState by search.state.collectByIdentityWithLifecycle()
                                     LaunchedEffect(Unit) { search.refreshYours() }
                                     val closePicker = {
                                         search.clear()
@@ -1660,7 +1660,7 @@ class MainActivity : ComponentActivity() {
                                     // kept where the trip's To… reads it, so the trip has its origin at once.
                                     // Null while it's worked out: To is offered once it's in, beside From, which
                                     // doesn't move (Codex on #659).
-                                    val linesHidden by HiddenModesSetting.changes.collectAsStateWithLifecycle()
+                                    val linesHidden by HiddenModesSetting.changes.collectByIdentityWithLifecycle()
                                     val linesToOrigin = (nearHere as? NearbyStopsViewModel.State.Ready)?.let { ready ->
                                         rememberHereOrigin(ready, linesHidden, viewModel(viewModelStoreOwner = this@MainActivity, key = "here-origin-shown-places"))
                                     }
@@ -1941,7 +1941,7 @@ class MainActivity : ComponentActivity() {
                                 clusters: List<NearbySelection.NearbyCluster>,
                                 noneNearby: Boolean,
                             ) {
-                                val hidden by HiddenModesSetting.changes.collectAsStateWithLifecycle()
+                                val hidden by HiddenModesSetting.changes.collectByIdentityWithLifecycle()
                                 // A precise fix that moves the set moves the trip too, as its own
                                 // re-locate does: the origins are worked out from the set shown.
                                 val refinementNow by nearbyViewModel.refinement.collectAsStateWithLifecycle()
@@ -2019,7 +2019,7 @@ class MainActivity : ComponentActivity() {
                                 // inside the nearby lifecycle: the location gate, its errors and a
                                 // re-locate on return apply to it as they do to the list.
                                 is NearbyStopsViewModel.State.Ready -> if (hereTripOpen) {
-                                    val hidden by HiddenModesSetting.changes.collectAsStateWithLifecycle()
+                                    val hidden by HiddenModesSetting.changes.collectByIdentityWithLifecycle()
                                     // Worked out from the current set, off the main thread, so a re-locate
                                     // moves the trip with the rider; none left (all hidden) ends it. A
                                     // placeholder until it's in, never an empty origin, which would end it.
@@ -2547,9 +2547,11 @@ class MainActivity : ComponentActivity() {
                     }
                 },
             )
-            val state by viewModel.state.collectAsStateWithLifecycle()
-            val journeyDestinationStops by viewModel.journeyDestinationStops.collectAsStateWithLifecycle()
-            val journeyDestinationsUnknown by viewModel.journeyDestinationsUnknown.collectAsStateWithLifecycle()
+            // Taken in by identity, like every state here that holds lists: the view model's flows compare
+            // them where they're written, never on the main thread (Codex, #627).
+            val state by viewModel.state.collectByIdentityWithLifecycle()
+            val journeyDestinationStops by viewModel.journeyDestinationStops.collectByIdentityWithLifecycle()
+            val journeyDestinationsUnknown by viewModel.journeyDestinationsUnknown.collectByIdentityWithLifecycle()
             val departuresRefreshing by viewModel.refreshing.collectAsStateWithLifecycle()
             // A network just chosen, the row just turned on, or a journey just starred (one far away, whose
             // origin no refresh fetches) is checked at once, not at the next refresh: on each change, and each
@@ -2585,7 +2587,7 @@ class MainActivity : ComponentActivity() {
             val shownPlaces = shownPlacesOrPending.orEmpty()
             // Readable places whose chips aren't worked out yet: the list waits for them.
             val shownPlacesPending = chipsPending(favoritePlacesRead, favoritePlaces, shownPlacesOrPending)
-            val hiddenModes by HiddenModesSetting.changes.collectAsStateWithLifecycle()
+            val hiddenModes by HiddenModesSetting.changes.collectByIdentityWithLifecycle()
             // Where a To… from here would start, for whether it's offered at all.
             // Held by the activity, with the key the near-me To… shares, so opening it has its origin at once.
             val hereOriginNow = rememberHereOrigin(
@@ -2596,7 +2598,7 @@ class MainActivity : ComponentActivity() {
             // Null until the picks are worked out (the bundled list loads off the main thread), so a
             // recreated screen (a rotation, a return from Settings) doesn't read "nothing offered" and
             // close the cards the retained list has open.
-            val shownNearStops by viewModel.shownNearStops.collectAsStateWithLifecycle()
+            val shownNearStops by viewModel.shownNearStops.collectByIdentityWithLifecycle()
             // The shown stops the loaded list has departures for (null while still loading): one whose
             // fetch failed isn't on the list, so its lines keep their farther cards.
             val loadedStopIds = reachedStopIds(state)
@@ -2626,7 +2628,7 @@ class MainActivity : ComponentActivity() {
             }
             val farther = fartherFor?.forSet(ready.clusterSetKey)
             val hiddenModesWriteFailed by HiddenModesSetting.writeFailed.collectAsStateWithLifecycle()
-            val starred by viewModel.starred.collectAsStateWithLifecycle()
+            val starred by viewModel.starred.collectByIdentityWithLifecycle()
             // Favorite journeys (SPEC *Journeys*): read from the device, each turned so its origin is
             // the end nearer this fix, or flipped by a tap on its card. The shown origins are fetched
             // alongside the near-me stops.
@@ -2670,7 +2672,7 @@ class MainActivity : ComponentActivity() {
             val telemetryUnanswered by TelemetryConsent.unanswered.collectAsStateWithLifecycle()
             val starringAvailable by viewModel.starringAvailable.collectAsStateWithLifecycle()
             val starWriteFailed by viewModel.starWriteFailed.collectAsStateWithLifecycle()
-            val dismissed by viewModel.dismissed.collectAsStateWithLifecycle()
+            val dismissed by viewModel.dismissed.collectByIdentityWithLifecycle()
             val dismissWriteFailed by viewModel.dismissWriteFailed.collectAsStateWithLifecycle()
             // The lines pages open over the near-me list, which say a failed dismiss themselves.
             val linesPagesOpen = remember { mutableIntStateOf(0) }
@@ -2868,7 +2870,7 @@ class MainActivity : ComponentActivity() {
                         DisruptionsRowSetting.changes.collectAsStateWithLifecycle().value,
                     always = viewModel.always.collectAsStateWithLifecycle().value,
                     // The keys alone: expanded to lines on the row's worker (Codex, #592).
-                    alwaysNetworks = SummaryNetworksSetting.changes.collectAsStateWithLifecycle().value,
+                    alwaysNetworks = SummaryNetworksSetting.changes.collectByIdentityWithLifecycle().value,
                     now = tickingNow(),
                     // Re-locates then re-fetches (see onRelocate above) — the same action a return
                     // to the foreground runs, so the refresh control and reopening the app both move
@@ -3143,7 +3145,7 @@ class MainActivity : ComponentActivity() {
             onCloseStation()
         }
         if (stationId == null) {
-            val state by search.state.collectAsStateWithLifecycle()
+            val state by search.state.collectByIdentityWithLifecycle()
             // Reread the user's own stops each time the search shows: a star may have changed.
             LaunchedEffect(Unit) { search.refreshYours() }
             ReportScreen(UsageEvent.Screen.SEARCH)
@@ -3214,7 +3216,7 @@ class MainActivity : ComponentActivity() {
                     }
                 },
             )
-            val stops by stopsModel.state.collectAsStateWithLifecycle()
+            val stops by stopsModel.state.collectByIdentityWithLifecycle()
             val ready = stops as? StationStopsViewModel.State.Ready
             val center = ready?.center
             if (ready == null || center == null) {
@@ -3295,8 +3297,8 @@ class MainActivity : ComponentActivity() {
                 }
             },
         )
-        val state by fromNearby.state.collectAsStateWithLifecycle()
-        val hidden by HiddenModesSetting.changes.collectAsStateWithLifecycle()
+        val state by fromNearby.state.collectByIdentityWithLifecycle()
+        val hidden by HiddenModesSetting.changes.collectByIdentityWithLifecycle()
         // Showing a mode here changes the setting for every list, so the near-me set re-picks too,
         // and its retained list is dropped so it's rebuilt from that set on the way back.
         val nearMeStores: NearbyDeparturesStores = viewModel(viewModelStoreOwner = this@MainActivity)
@@ -3660,7 +3662,7 @@ class MainActivity : ComponentActivity() {
         LaunchedEffect(Unit) { onShown() }
         // The destination search: before anything is picked, and when the trip's To row reopens it.
         if (picking || (favorite == null && toId == null)) {
-            val state by search.state.collectAsStateWithLifecycle()
+            val state by search.state.collectByIdentityWithLifecycle()
             LaunchedEffect(Unit) { search.refreshYours() }
             ReportScreen(UsageEvent.Screen.TRIP_TO)
             StationSearchScreen(
@@ -3730,7 +3732,7 @@ class MainActivity : ComponentActivity() {
                         initializer { StationStopsViewModel(stationFinder, toStopId, warn = ::logDepartureWarning) }
                     },
                 )
-                val to by toModel.state.collectAsStateWithLifecycle()
+                val to by toModel.state.collectByIdentityWithLifecycle()
                 val members = (to as? StationStopsViewModel.State.Ready)?.stops
                 if (members == null) {
                     // The trip, waiting on where it goes.
@@ -3796,7 +3798,7 @@ class MainActivity : ComponentActivity() {
         val lifecycleOwner = LocalLifecycleOwner.current
         // The lines the rider avoids leave their routes out as a hidden line's do ([AvoidedLines]), so the
         // trip neither shows nor fetches for them.
-        val avoidedLines by AvoidedLinesSetting.changes.collectAsStateWithLifecycle()
+        val avoidedLines by AvoidedLinesSetting.changes.collectByIdentityWithLifecycle()
         SideEffect { trip.hiddenModes = AvoidedLines.excluded(hiddenModes, avoidedLines) }
         SideEffect { lastPull?.let(trip::carryPull) }
         // The model outlives a rotation, and the origin it was made with reads that composition's
@@ -3813,7 +3815,7 @@ class MainActivity : ComponentActivity() {
         val stepFree by StepFreeSetting.changes.collectAsStateWithLifecycle()
         SideEffect { trip.stepFree = stepFree }
         // The kinds of transport the routes may ride, from the chips atop the routes, likewise.
-        val tripModes by TripModesSetting.changes.collectAsStateWithLifecycle()
+        val tripModes by TripModesSetting.changes.collectByIdentityWithLifecycle()
         SideEffect { trip.tripModes = tripModes }
         // Nothing is planned, nor picked, until all five are read: a plan under the defaults would
         // show routes past the rider's own limit, with stairs they asked to avoid, on a mode they
@@ -3829,7 +3831,7 @@ class MainActivity : ComponentActivity() {
         // A re-pick of the nearby set (a fresh fix, a retried location) that kept the same nearest
         // stop keeps this trip, but its walk and live times follow the new fix at once rather than
         // wait for the next tick.
-        val repick by repicked.collectAsStateWithLifecycle()
+        val repick by repicked.collectByIdentityWithLifecycle()
         val pickId = tripRepickId(noneNearby, here, repick?.id)
         // The model remembers which re-pick it refreshed for, so a rotation (a new effect over the
         // retained model) doesn't fetch again.
@@ -3844,7 +3846,7 @@ class MainActivity : ComponentActivity() {
                 isRefreshing = { trip.state.value.refreshing || trip.state.value.planning || isRelocating() },
             ) { trip.refresh() }
         }
-        val tripState by trip.state.collectAsStateWithLifecycle()
+        val tripState by trip.state.collectByIdentityWithLifecycle()
         // From here the Planner's own first walk leg takes the rider to the first stop, so there's no
         // walk to add; at a From… station they're at its own stops (a neighbor, when every own stop is
         // hidden, is still a walk from it, at the rider's own pace as the Planner's walks are).
@@ -3870,7 +3872,7 @@ class MainActivity : ComponentActivity() {
             val inputs = PlaceDirectViewModel.Inputs(origin, distanceMeters, hiddenModes, avoidedLines, stepFree, tripModes, walkMeters, planOptionsLoaded)
             rememberPlaceDirect(owner, place, inputs, lifecycleOwner)
         }
-        val directState = direct?.state?.collectAsStateWithLifecycle()?.value
+        val directState = direct?.state?.collectByIdentityWithLifecycle()?.value
         val directPulling = direct?.pulling?.collectAsStateWithLifecycle()?.value == true
         // The rider's starred stops and journeys' ends, for the lines page's maps: read and walked on the
         // worker as they change, never here.
@@ -3906,7 +3908,7 @@ class MainActivity : ComponentActivity() {
             onHiddenModesWriteFailureShown = HiddenModesSetting::writeFailureShown,
             menu = LocalAppMenu.current,
             openRoute = trip.openRoute,
-            dismissed = trip.dismissed.collectAsStateWithLifecycle().value,
+            dismissed = trip.dismissed.collectByIdentityWithLifecycle().value,
             onDismissAlert = trip::dismissAlert,
             onDismissLineAlert = trip::dismissLineAlert,
             dismissWriteFailed = trip.dismissWriteFailed.collectAsStateWithLifecycle().value,
@@ -4042,7 +4044,7 @@ class MainActivity : ComponentActivity() {
                 }
             },
         )
-        val state by viewModel.state.collectAsStateWithLifecycle()
+        val state by viewModel.state.collectByIdentityWithLifecycle()
         AutoRefresh(viewModel, NOT_RELOCATING)
         // Opened again on a stop whose model was kept: asked again at once, as a first opening is, rather
         // than leaving the last board up until the next tick (Codex on #661). A first opening is already
@@ -4058,9 +4060,9 @@ class MainActivity : ComponentActivity() {
                 returning = true
             }
         }
-        val dismissed by viewModel.dismissed.collectAsStateWithLifecycle()
+        val dismissed by viewModel.dismissed.collectByIdentityWithLifecycle()
         // A row's route page pins and dismisses through this stop's own model, as a station's page does.
-        val starred by viewModel.starred.collectAsStateWithLifecycle()
+        val starred by viewModel.starred.collectByIdentityWithLifecycle()
         val starringAvailable by viewModel.starringAvailable.collectAsStateWithLifecycle()
         val starWriteFailed by viewModel.starWriteFailed.collectAsStateWithLifecycle()
         val dismissWriteFailed by viewModel.dismissWriteFailed.collectAsStateWithLifecycle()
@@ -4099,12 +4101,12 @@ class MainActivity : ComponentActivity() {
         val viewModel: MainViewModel = viewModel(
             factory = viewModelFactory { initializer { searchedDeparturesModel(appContext, stops, writeFailures) } },
         )
-        val state by viewModel.state.collectAsStateWithLifecycle()
+        val state by viewModel.state.collectByIdentityWithLifecycle()
         val refreshing by viewModel.refreshing.collectAsStateWithLifecycle()
-        val starred by viewModel.starred.collectAsStateWithLifecycle()
+        val starred by viewModel.starred.collectByIdentityWithLifecycle()
         val starringAvailable by viewModel.starringAvailable.collectAsStateWithLifecycle()
         val starWriteFailed by viewModel.starWriteFailed.collectAsStateWithLifecycle()
-        val dismissed by viewModel.dismissed.collectAsStateWithLifecycle()
+        val dismissed by viewModel.dismissed.collectByIdentityWithLifecycle()
         val dismissWriteFailed by viewModel.dismissWriteFailed.collectAsStateWithLifecycle()
         // Kept live while shown, like the near-me list; there's no location to re-resolve.
         AutoRefresh(viewModel, NOT_RELOCATING)
