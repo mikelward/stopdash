@@ -894,7 +894,7 @@ class MainViewModelTest {
         val backing = MutableStateFlow<Set<DismissedAlert>>(emptySet())
         // Each walk through the dismissed set the list holds, by thread: what's left once one is let go
         // of is worked out on the worker too, as it grows with every dismissal (Codex on #519).
-        val walked = java.util.Collections.synchronizedList(mutableListOf<Thread>())
+        val walked = app.stopdash.ThreadRecorder()
         val store = object : DismissedAlertsStore {
             override fun dismissed() = backing.map { if (it.isEmpty()) it else WalkedSet(it, walked) }
             override suspend fun dismiss(alert: DismissedAlert) {
@@ -973,15 +973,16 @@ class MainViewModelTest {
             thread.shutdown()
         }
         assertTrue("$ranOn", ranOn.isNotEmpty() && ranOn.none { it === caller })
-        assertTrue("$walked", walked.isNotEmpty() && walked.none { it === caller })
+        val walkedOn = walked.threads()
+        assertTrue("$walkedOn", walkedOn.isNotEmpty() && walkedOn.none { it == caller.name.substringBefore(" @") })
         assertEquals(emptySet<DismissedAlert>(), backing.value)
     }
 
     // [items], noting the thread of each walk through it in [walked]; a lookup isn't one.
-    private class WalkedSet<T>(private val items: Set<T>, private val walked: MutableList<Thread>) : AbstractSet<T>() {
+    private class WalkedSet<T>(private val items: Set<T>, private val walked: app.stopdash.ThreadRecorder) : AbstractSet<T>() {
         override val size: Int get() = items.size
         override fun contains(element: T): Boolean = element in items
-        override fun iterator(): Iterator<T> = items.iterator().also { walked += Thread.currentThread() }
+        override fun iterator(): Iterator<T> = items.iterator().also { walked.note() }
     }
 
     @Test

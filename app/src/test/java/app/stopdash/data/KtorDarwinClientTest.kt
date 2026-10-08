@@ -36,15 +36,16 @@ class KtorDarwinClientTest {
             expectSuccess = true
             install(ContentNegotiation) { json(json) }
         }
-        val warnedOn = mutableListOf<Thread>()
-        val client = KtorDarwinClient(http, apiKey = { "EXAMPLE" }, baseUrl = "https://darwin.example", warn = { warnedOn += Thread.currentThread() })
+        val warnedOn = app.stopdash.ThreadRecorder()
+        val client = KtorDarwinClient(http, apiKey = { "EXAMPLE" }, baseUrl = "https://darwin.example", warn = { warnedOn.note() })
         // The caller's own single thread, as a screen's main thread is.
         val caller = Executors.newSingleThreadExecutor()
         try {
             val callerThread = caller.submit<Thread> { Thread.currentThread() }.get()
             runBlocking(caller.asCoroutineDispatcher()) { client.board("WAT") }
-            assertTrue(warnedOn.isNotEmpty())
-            assertTrue(warnedOn.none { it == callerThread })
+            val warned = warnedOn.threads()
+            assertTrue(warned.isNotEmpty())
+            assertTrue(warned.none { it == callerThread.name.substringBefore(" @") })
         } finally {
             caller.shutdown()
         }
