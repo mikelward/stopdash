@@ -1976,6 +1976,30 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `a rider seen down the line while still on the walk to the train is on it, not still walking`() = runTest {
+        // Walking to A, placed, for two minutes; no fix ever catches them there (underground), and a
+        // minute in they're seen at B, 1.1 km on: on a train, not on foot.
+        val placedRide = ride.copy(fromAt = app.stopdash.domain.Coordinates(51.5, -0.12))
+        val toA = TripLeg(TripLeg.WALKING, "", "", "", "", "A", "A", at(3), at(5))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        now = at(3)
+        tracker.start(TripRoute(listOf(toA, placedRide)), "C", readyAt = now)
+        tracker.refresh()
+        assertTrue(tracker.progress.value is TripProgress.Walking)
+        now = at(4)
+        // Within walking reach of A: still walking.
+        tracker.refresh(fixAt(51.502))
+        assertTrue(tracker.progress.value is TripProgress.Walking)
+        tracker.refresh(fixAt(51.51))
+        assertEquals(1, tracker.trip.value?.legIndex)
+        assertEquals(true, tracker.trip.value?.boarded)
+        assertTrue(tracker.progress.value is TripProgress.Riding)
+        assertEquals(tracker.trip.value, kept)
+        assertTrue(logged.none { "51." in it })
+    }
+
+    @Test
     fun `a train that left with no calls to place it may be theirs, so none on the board ahead is named`() = runTest {
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         sequences["red"] = redLine

@@ -1286,7 +1286,13 @@ class ActiveTripTracker(
         // boarding stop, whichever the trip was following (maintainer, 2026-09-29).
         // The leg this step began on, once the fix has moved it: [boardedAlong] can finish the ride.
         val stepLeg = trip.legIndex
-        val along = seenRider?.let { boardedAlong(trip, it, seenAt, now) }
+        // Still on the walk to a ride, but further on than they could have walked: on a train past a station
+        // no fix caught them at. Their walk is done if they're seen along that ride, never otherwise.
+        val along = seenRider?.let { rider ->
+            boardedAlong(trip, rider, seenAt, now) ?: OnTheWay.pastWalkOnFoot(trip, rider, now)?.let { walked ->
+                boardedAlong(walked, rider, seenAt, now)?.takeIf { it.trip.legIndex > trip.legIndex }
+            }
+        }
         if (along != null) {
             trip = along.trip
             calls = along.calls
