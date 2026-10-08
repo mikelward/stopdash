@@ -2,6 +2,7 @@ package app.stopdash.widget
 
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import app.stopdash.ThreadRecorder
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.RouteTopology
@@ -40,9 +41,9 @@ class WidgetModelsOffMainTest {
     private val portrait = DpSize(380.dp, 400.dp)
     private val landscape = DpSize(700.dp, 250.dp)
 
-    private fun recordingWorker(base: CoroutineDispatcher, ranOn: MutableSet<String>) = object : CoroutineDispatcher() {
+    private fun recordingWorker(base: CoroutineDispatcher, ranOn: ThreadRecorder) = object : CoroutineDispatcher() {
         override fun dispatch(context: CoroutineContext, block: Runnable) =
-            base.dispatch(context) { ranOn += Thread.currentThread().name; block.run() }
+            base.dispatch(context) { ranOn.note(); block.run() }
     }
 
     @Test
@@ -50,12 +51,12 @@ class WidgetModelsOffMainTest {
         val pool = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
         try {
             val base = pool.asCoroutineDispatcher()
-            val ranOn = mutableSetOf<String>()
+            val ranOn = ThreadRecorder()
             val worker = recordingWorker(base, ranOn)
             val models = runBlocking {
                 widgetModels(snapshot, now, emptySet(), 1f, RouteTopology.EMPTY, emptySet(), listOf(portrait, landscape), worker = worker)
             }
-            assertEquals(setOf("test-worker"), ranOn)
+            assertEquals(setOf("test-worker"), ranOn.threads().toSet())
             assertEquals(setOf(portrait, landscape), models.bySize.keys)
             val min = WidgetGeometry(WIDGET_MIN_SIZE.width, WIDGET_MIN_SIZE.height, 1f)
             assertEquals(widgetModel(snapshot, now, geometry = min), models.fallback)
@@ -72,16 +73,16 @@ class WidgetModelsOffMainTest {
     fun `a size reported later is worked out on the worker, and a known one isn't again`() {
         val pool = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
         try {
-            val ranOn = mutableSetOf<String>()
+            val ranOn = ThreadRecorder()
             val worker = recordingWorker(pool.asCoroutineDispatcher(), ranOn)
             val models = runBlocking {
                 widgetModels(snapshot, now, emptySet(), 1f, RouteTopology.EMPTY, emptySet(), listOf(portrait), worker = worker)
             }
             ranOn.clear()
             assertSame(models, runBlocking { models.including(portrait) })
-            assertEquals(emptySet<String>(), ranOn)
+            assertEquals(emptySet<String>(), ranOn.threads().toSet())
             val resized = runBlocking { models.including(landscape) }
-            assertEquals(setOf("test-worker"), ranOn)
+            assertEquals(setOf("test-worker"), ranOn.threads().toSet())
             val geometry = WidgetGeometry(landscape.width, landscape.height, 1f)
             assertEquals(widgetModel(snapshot, now, geometry = geometry), resized[landscape])
         } finally {
@@ -132,7 +133,7 @@ class WidgetModelsOffMainTest {
     fun `a redraw an open session sees draws again on the worker, and only for a new generation`() {
         val pool = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
         try {
-            val ranOn = mutableSetOf<String>()
+            val ranOn = ThreadRecorder()
             val worker = recordingWorker(pool.asCoroutineDispatcher(), ranOn)
             val first = DeparturesDrawing(
                 runBlocking { widgetModels(snapshot, now, emptySet(), 1f, RouteTopology.EMPTY, emptySet(), listOf(portrait)) },
@@ -155,7 +156,7 @@ class WidgetModelsOffMainTest {
             assertEquals(listOf(4L), drawnFor)
             assertEquals(4L, again.generation)
             assertEquals(later, (again as DeparturesDrawing).now)
-            assertEquals(setOf("test-worker"), ranOn)
+            assertEquals(setOf("test-worker"), ranOn.threads().toSet())
         } finally {
             pool.shutdown()
         }

@@ -2,6 +2,7 @@ package app.stopdash.ui
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.junit4.createComposeRule
+import app.stopdash.ThreadRecorder
 import app.stopdash.domain.LineAlert
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.PlannedAlert
@@ -42,7 +43,7 @@ class StatusesAsOfOffMainTest {
 
     @Test
     fun startedWork_joinsTheAlertsUnderWayOnTheWorker() {
-        val read = mutableListOf<String>()
+        val read = ThreadRecorder()
         val alerts = listOf(LineAlert(6, "Diversion", "Bus stop 'Alpha Road' will not be served."), LineAlert(9, "Minor Delays", "Minor delays."))
         val started = PlannedAlert("Part Closure", "Road closed from today.", LocalDate.of(2026, 10, 3))
         val status = LineStatus("99", 6, "Diversion", alerts.first().fullText, planned = listOf(started), underWay = Watched(alerts, read))
@@ -58,13 +59,13 @@ class StatusesAsOfOffMainTest {
 
         // The work started today is under way now, beside the alerts that were.
         assertEquals(3, shown.getValue("99").underWay.size)
-        assertTrue(read.isNotEmpty())
-        assertEquals(setOf("test-worker"), read.map { it.substringBefore(" @") }.toSet())
+        assertTrue(read.threads().isNotEmpty())
+        assertEquals(setOf("test-worker"), read.threads().toSet())
     }
 
     @Test
     fun sortedToday_areShownAsTheyAre_withNoWait() {
-        val read = mutableListOf<String>()
+        val read = ThreadRecorder()
         val status = LineStatus("99", 6, "Diversion", "Diverted.", underWay = Watched(listOf(LineAlert(6, "Diversion", "Diverted.")), read))
         val statuses = mapOf("99" to status)
         var shown: Map<String, LineStatus>? = null
@@ -75,7 +76,7 @@ class StatusesAsOfOffMainTest {
         }
         composeRule.waitForIdle()
         assertSame(statuses, shown)
-        assertTrue(read.isEmpty())
+        assertTrue(read.threads().isEmpty())
     }
 
     @Test

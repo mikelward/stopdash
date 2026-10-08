@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import app.stopdash.R
+import app.stopdash.ThreadRecorder
 import com.mikepenz.aboutlibraries.Libs
 import com.mikepenz.aboutlibraries.entity.Library
 import com.mikepenz.aboutlibraries.util.withJson
@@ -35,7 +36,7 @@ class LicensesOffMainTest {
     val composeRule = createComposeRule()
 
     /** Each pass over the libraries notes its thread; the list's rows read by index, not by a pass. */
-    private val scans = java.util.Collections.synchronizedList(mutableListOf<String>())
+    private val scans = ThreadRecorder()
 
     private val libraries: Libs = run {
         val loaded = Libs.Builder().withJson(ApplicationProvider.getApplicationContext(), R.raw.aboutlibraries).build()
@@ -51,7 +52,7 @@ class LicensesOffMainTest {
         }
         composeRule.onNodeWithText("Activity").performClick()
         composeRule.onNodeWithText("Version 1.13.0").assertIsDisplayed()
-        assertEquals(emptyList<String>(), scans.toList())
+        assertEquals(emptyList<String>(), scans.threads())
     }
 
     @Test
@@ -67,8 +68,8 @@ class LicensesOffMainTest {
             composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTextExists("Version 1.13.0") }
         }
         composeRule.onNodeWithText("Version 1.13.0").assertIsDisplayed()
-        assertTrue(scans.isNotEmpty())
-        assertEquals(setOf("licenses-worker"), scans.toSet())
+        assertTrue(scans.threads().isNotEmpty())
+        assertEquals(setOf("licenses-worker"), scans.threads().toSet())
     }
 
     private fun androidx.compose.ui.test.junit4.ComposeContentTestRule.onAllNodesWithTextExists(text: String): Boolean =
@@ -76,12 +77,12 @@ class LicensesOffMainTest {
 
     private class RecordingList(
         private val items: List<Library>,
-        private val scans: MutableList<String>,
+        private val scans: ThreadRecorder,
     ) : AbstractList<Library>(), ImmutableList<Library> {
         override val size: Int get() = items.size
         override fun get(index: Int): Library = items[index]
         override fun iterator(): Iterator<Library> {
-            scans += Thread.currentThread().name.substringBefore(" @")
+            scans.note()
             return items.iterator()
         }
         override fun subList(fromIndex: Int, toIndex: Int): ImmutableList<Library> =

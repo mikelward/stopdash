@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createComposeRule
+import app.stopdash.ThreadRecorder
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
@@ -123,12 +124,12 @@ class ShownPlacesOffMainTest {
         // A worker on a thread of its own: every read of the saved places happens there, never on the
         // composition's (main) thread.
         val worker = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "chips-worker") }.asCoroutineDispatcher()
-        val reads = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val reads = ThreadRecorder()
         val saved = listOf(here, far)
         val places = object : AbstractList<FavoritePlace>() {
             override val size: Int get() = saved.size
             override fun get(index: Int): FavoritePlace {
-                reads += Thread.currentThread().name.substringBefore(" @")
+                reads.note()
                 return saved[index]
             }
         }
@@ -145,8 +146,8 @@ class ShownPlacesOffMainTest {
             composeRule.waitUntil(5_000) { shown.isNotEmpty() }
         }
         assertEquals(listOf(far), shown)
-        assertTrue(reads.isNotEmpty())
-        assertEquals(setOf("chips-worker"), reads.toSet())
+        assertTrue(reads.threads().isNotEmpty())
+        assertEquals(setOf("chips-worker"), reads.threads().toSet())
     }
 
     @Test

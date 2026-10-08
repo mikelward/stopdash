@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import app.stopdash.ThreadRecorder
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Departure
 import app.stopdash.domain.LineStatus
@@ -82,11 +83,11 @@ class ActiveTripTrackerTest {
 
     // Where the station index places stops, by id, and the threads it was read on.
     private val stopPositions = mutableMapOf<String, app.stopdash.domain.Coordinates>()
-    private val indexThreads = mutableListOf<String>()
+    private val indexThreads = ThreadRecorder()
     // The thread each save ran on.
-    private val saveThreads = mutableListOf<String>()
+    private val saveThreads = ThreadRecorder()
     // The thread each "route disruption" post ran on.
-    private val postThreads = mutableListOf<String>()
+    private val postThreads = ThreadRecorder()
     private var saves = true
     // The next save is cut short, as by the activity being recreated mid-write.
     private var cancelNextSave = false
@@ -182,7 +183,7 @@ class ActiveTripTrackerTest {
         preciseAllowed = preciseAllowed,
         load = load,
         save = {
-            saveThreads += Thread.currentThread().name.substringBefore(" @")
+            saveThreads.note()
             if (cancelNextSave) {
                 cancelNextSave = false
                 throw kotlinx.coroutines.CancellationException("recreated")
@@ -239,7 +240,7 @@ class ActiveTripTrackerTest {
         },
         hidden = { hiddenLines },
         stations = {
-            indexThreads += Thread.currentThread().name.substringBefore(" @")
+            indexThreads.note()
             app.stopdash.domain.StationIndex(
                 stopPositions.map { (id, at) -> app.stopdash.domain.IndexedStation(id, id, latitude = at.latitude, longitude = at.longitude) },
             )
@@ -287,7 +288,7 @@ class ActiveTripTrackerTest {
             )
         },
         onDisruption = { _, signals, how, until ->
-            postThreads += Thread.currentThread().name.substringBefore(" @")
+            postThreads.note()
             disruptionAlerts += "${how.name.lowercase()} ${signals.joinToString(",") { it.key }}"
             routesReadAtPost += sequencesRead.toList()
             disruptionUntil += until
@@ -332,7 +333,7 @@ class ActiveTripTrackerTest {
         try {
             val tracker = tracker(worker)
             kotlinx.coroutines.runBlocking(caller) { tracker.start(changing, "C", readyAt = now) }
-            assertEquals(listOf("worker"), indexThreads)
+            assertEquals(listOf("worker"), indexThreads.threads())
             assertTrue(kept?.onFootChanges != null)
         } finally {
             caller.close()
@@ -917,7 +918,7 @@ class ActiveTripTrackerTest {
         saves = true
         saveThreads.clear()
         tracker.dismissDisruptions(listOf(severe))
-        assertTrue(saveThreads.isEmpty())
+        assertTrue(saveThreads.threads().isEmpty())
         assertEquals(emptySet<String>(), tracker.trip.value?.disruptionsDismissed)
     }
 
@@ -1014,7 +1015,7 @@ class ActiveTripTrackerTest {
             departures["A"] = listOf(train("3", 8))
             trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
             val lift = RouteDisruption.StationNote(0, "C", "C", "Lift out of service.")
-            val read = mutableListOf<String>()
+            val read = ThreadRecorder()
             knownNotes = Watched(listOf(lift), read)
             kotlinx.coroutines.runBlocking(caller) {
                 tracker.start(route, "C", readyAt = now)
@@ -1025,9 +1026,9 @@ class ActiveTripTrackerTest {
             }
             assertEquals(lift.dismissKeys, kept?.disruptionsDismissed)
             assertNull(tracker.stationNotes.value)
-            assertTrue(saveThreads.isNotEmpty() && saveThreads.all { it == "worker" })
-            assertTrue(read.isNotEmpty())
-            assertEquals(setOf("worker"), read.toSet())
+            assertTrue(saveThreads.threads().isNotEmpty() && saveThreads.threads().all { it == "worker" })
+            assertTrue(read.threads().isNotEmpty())
+            assertEquals(setOf("worker"), read.threads().toSet())
         } finally {
             caller.close()
             worker.close()
@@ -1060,7 +1061,7 @@ class ActiveTripTrackerTest {
             val severe = line(0, 6, "Severe Delays")
             // Lists that note each thread that reads them: what's known, and what the screen showed, are
             // only ever gone through on the worker (Codex on #519).
-            val read = mutableListOf<String>()
+            val read = ThreadRecorder()
             known = Watched(listOf(severe), read)
             kotlinx.coroutines.runBlocking(caller) {
                 tracker.start(route, "C", readyAt = now)
@@ -1072,12 +1073,12 @@ class ActiveTripTrackerTest {
             }
             assertEquals(setOf(severe.dismissKey), kept?.disruptionsDismissed)
             assertNull(tracker.routeDisruptions.value)
-            assertTrue(saveThreads.isNotEmpty() && saveThreads.all { it == "worker" })
-            assertTrue(read.isNotEmpty())
-            assertEquals(setOf("worker"), read.toSet())
+            assertTrue(saveThreads.threads().isNotEmpty() && saveThreads.threads().all { it == "worker" })
+            assertTrue(read.threads().isNotEmpty())
+            assertEquals(setOf("worker"), read.threads().toSet())
             // The alert, put together from every signal, is posted from the worker too (Codex on #519).
-            assertTrue(postThreads.isNotEmpty())
-            assertEquals(setOf("worker"), postThreads.toSet())
+            assertTrue(postThreads.threads().isNotEmpty())
+            assertEquals(setOf("worker"), postThreads.threads().toSet())
         } finally {
             caller.close()
             worker.close()
@@ -1096,7 +1097,7 @@ class ActiveTripTrackerTest {
             trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
             val severe = line(0, 6, "Severe Delays")
             val suspended = line(0, 3, "Part Suspended")
-            val read = mutableListOf<String>()
+            val read = ThreadRecorder()
             known = Watched(listOf(severe, suspended), read)
             kotlinx.coroutines.runBlocking(caller) {
                 tracker.start(route, "C", readyAt = now)
@@ -1105,8 +1106,8 @@ class ActiveTripTrackerTest {
                 tracker.dismissDisruptions(Watched(listOf(severe), read))
             }
             assertEquals(listOf(suspended), tracker.routeDisruptions.value?.signals)
-            assertTrue(read.isNotEmpty())
-            assertEquals(setOf("worker"), read.toSet())
+            assertTrue(read.threads().isNotEmpty())
+            assertEquals(setOf("worker"), read.threads().toSet())
         } finally {
             caller.close()
             worker.close()
@@ -1126,7 +1127,7 @@ class ActiveTripTrackerTest {
             departures["A"] = listOf(train("3", 6))
             trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 16))
             departures["D"] = emptyList()
-            val read = mutableListOf<String>()
+            val read = ThreadRecorder()
             val severe = line(0, 6, "Severe Delays")
             known = Watched(listOf(severe), read)
             kotlinx.coroutines.runBlocking(caller) {
@@ -1142,8 +1143,8 @@ class ActiveTripTrackerTest {
             }
             val none = RouteDisruption.Signal.Unpredicted(2, "blue", "Blue", "D", "D")
             assertEquals(setOf(severe.key, none.key), tracker.routeDisruptions.value?.signals?.mapTo(HashSet()) { it.key })
-            assertTrue(read.isNotEmpty())
-            assertEquals(setOf("worker"), read.toSet())
+            assertTrue(read.threads().isNotEmpty())
+            assertEquals(setOf("worker"), read.threads().toSet())
         } finally {
             caller.close()
             worker.close()
@@ -5713,8 +5714,8 @@ class ActiveTripTrackerTest {
 }
 
 // [items], noting the thread of each read in [read]: work done over it is seen where it ran.
-internal class Watched<T>(private val items: List<T>, private val read: MutableList<String>) : AbstractList<T>() {
-    private fun seen() { synchronized(read) { read += Thread.currentThread().name.substringBefore(" @") } }
+internal class Watched<T>(private val items: List<T>, private val read: ThreadRecorder) : AbstractList<T>() {
+    private fun seen() { read.note() }
 
     // Whether there's anything, unnoted: for a fake standing in for TfL, whose own reads aren't the app's.
     val quietlyEmpty: Boolean get() = items.isEmpty()

@@ -10,6 +10,7 @@ import androidx.compose.ui.test.isSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performScrollTo
+import app.stopdash.ThreadRecorder
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.Assert.assertEquals
@@ -32,7 +33,7 @@ class SummaryPickerOffMainTest {
     val composeRule = createComposeRule()
 
     /** Each read of the choice notes its thread. */
-    private val reads = java.util.Collections.synchronizedList(mutableListOf<String>())
+    private val reads = ThreadRecorder()
 
     private val chosen: Set<String> = RecordingSet(setOf("victoria"), reads)
 
@@ -53,7 +54,7 @@ class SummaryPickerOffMainTest {
         composeRule.setContent { CompositionLocalProvider(LocalWorker provides held) { page() } }
         composeRule.onNodeWithTag("summaryLine-victoria").assertIsNotSelected().assertIsNotEnabled()
         composeRule.onNodeWithTag("summaryLine-tram").performScrollTo().assertIsNotSelected()
-        assertEquals(emptyList<String>(), reads.toList())
+        assertEquals(emptyList<String>(), reads.threads())
     }
 
     @Test
@@ -66,13 +67,13 @@ class SummaryPickerOffMainTest {
             }
         }
         composeRule.onNodeWithTag("summaryLine-victoria").assertIsSelected().assertIsEnabled()
-        assertTrue(reads.isNotEmpty())
-        assertEquals(setOf("picker-worker"), reads.toSet())
+        assertTrue(reads.threads().isNotEmpty())
+        assertEquals(setOf("picker-worker"), reads.threads().toSet())
     }
 
-    private class RecordingSet(private val items: Set<String>, private val reads: MutableList<String>) : AbstractSet<String>() {
+    private class RecordingSet(private val items: Set<String>, private val reads: ThreadRecorder) : AbstractSet<String>() {
         private fun note() {
-            reads += Thread.currentThread().name.substringBefore(" @")
+            reads.note()
         }
         override val size: Int get() = items.size.also { note() }
         override fun contains(element: String): Boolean = items.contains(element).also { note() }

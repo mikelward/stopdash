@@ -8,6 +8,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
+import app.stopdash.ThreadRecorder
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.RouteStop
 import app.stopdash.domain.FavoriteJourney
@@ -219,7 +220,7 @@ class RoutePageOffMainTest {
 
     @Test
     fun the_journeys_and_stations_are_only_gone_through_on_the_worker_thread() {
-        val reads = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val reads = ThreadRecorder()
         val journeys = NotingList(listOf(journey), reads)
         val listed = NotingList(page.stops, reads)
         val worker = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "route-worker") }.asCoroutineDispatcher()
@@ -239,8 +240,8 @@ class RoutePageOffMainTest {
         assertEquals(setOf(there.id), stars)
         assertEquals(2, marks?.size)
         assertEquals(false, lifts)
-        assertTrue(reads.isNotEmpty())
-        assertEquals(setOf("route-worker"), reads.toSet())
+        assertTrue(reads.threads().isNotEmpty())
+        assertEquals(setOf("route-worker"), reads.threads().toSet())
     }
 
     @Test
@@ -371,11 +372,11 @@ class RoutePageOffMainTest {
     }
 
     /** [items], noting the thread of each pass over it in [reads]. */
-    private class NotingList<T>(private val items: List<T>, private val reads: MutableList<String>) : AbstractList<T>() {
+    private class NotingList<T>(private val items: List<T>, private val reads: ThreadRecorder) : AbstractList<T>() {
         override val size: Int get() = items.size
         override fun get(index: Int): T = items[index]
         override fun iterator(): Iterator<T> {
-            reads += Thread.currentThread().name.substringBefore(" @")
+            reads.note()
             return items.iterator()
         }
     }

@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import app.stopdash.ThreadRecorder
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.RouteFocus
@@ -49,13 +50,13 @@ class RouteDetailWorkTest {
         val pool = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
         try {
             val base = pool.asCoroutineDispatcher()
-            val ranOn = mutableSetOf<String>()
+            val ranOn = ThreadRecorder()
             val worker = object : CoroutineDispatcher() {
                 override fun dispatch(context: CoroutineContext, block: Runnable) =
-                    base.dispatch(context) { ranOn += Thread.currentThread().name; block.run() }
+                    base.dispatch(context) { ranOn.note(); block.run() }
             }
             val work = runBlocking { routeDetailWork(row, focus = null, RouteTopology.EMPTY, worker) }
-            assertEquals(setOf("test-worker"), ranOn)
+            assertEquals(setOf("test-worker"), ranOn.threads().toSet())
             // With no route tapped, the page names every terminus the row runs to.
             assertEquals(listOf("Brixton", "Stockwell"), work.destinations)
             // A tapped route lists only its own trains, and names only its terminus.

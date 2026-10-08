@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createComposeRule
+import app.stopdash.ThreadRecorder
 import app.stopdash.domain.StopArrivals
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -94,12 +95,12 @@ class EmptyStateOffMainTest {
     @Test
     fun the_stops_are_only_aged_on_the_worker_thread() {
         // The stops, in a list noting each thread going through it.
-        val reads = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val reads = ThreadRecorder()
         val stops = object : AbstractList<StopArrivals>() {
             override val size: Int get() = 1
             override fun get(index: Int): StopArrivals = stop
             override fun iterator(): Iterator<StopArrivals> {
-                reads += Thread.currentThread().name.substringBefore(" @")
+                reads.note()
                 return listOf(stop).iterator()
             }
         }
@@ -117,7 +118,7 @@ class EmptyStateOffMainTest {
             composeRule.waitUntil(5_000) { answers > 0 }
         }
         assertFalse(uncertain)
-        assertTrue(reads.isNotEmpty())
-        assertEquals(setOf("empty-worker"), reads.toSet())
+        assertTrue(reads.threads().isNotEmpty())
+        assertEquals(setOf("empty-worker"), reads.threads().toSet())
     }
 }

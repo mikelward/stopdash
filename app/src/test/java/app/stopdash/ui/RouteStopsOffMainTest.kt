@@ -9,6 +9,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import app.stopdash.ThreadRecorder
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.LineRoute
@@ -51,13 +52,13 @@ class RouteStopsOffMainTest {
 
     @Test
     fun aTrainsStops_areLoadedAndMatchedOnTheWorker() {
-        val threads = mutableListOf<String>()
+        val threads = ThreadRecorder()
         // Public names, synthetic ids. The repository works in place, so the thread it loads on is
         // the one the page handed it to.
         val repository = RouteStopsRepository(
             object : RouteSequenceSource {
                 override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
-                    synchronized(threads) { threads += Thread.currentThread().name }
+                    threads.note()
                     return LineSequence(
                         routes = listOf(LineRoute("Brixton - Walthamstow Central", listOf("s1", "s2", "s3"))),
                         stopNames = mapOf("s1" to "Victoria", "s2" to "Green Park", "s3" to "Walthamstow Central"),
@@ -99,7 +100,8 @@ class RouteStopsOffMainTest {
 
         assertTrue("$state", state is RouteStopsUi.Loaded)
         assertEquals(listOf("s1", "s2", "s3"), (state as RouteStopsUi.Loaded).stops.map { it.id })
-        assertTrue("loaded on $threads", threads.isNotEmpty() && threads.all { it.startsWith("test-worker") })
+        val loadedOn = threads.threads()
+        assertTrue("loaded on $loadedOn", loadedOn.isNotEmpty() && loadedOn.all { it.startsWith("test-worker") })
     }
 
     @Test

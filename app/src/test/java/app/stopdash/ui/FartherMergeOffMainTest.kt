@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import app.stopdash.ThreadRecorder
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopLocation
 import java.time.Instant
@@ -50,19 +51,20 @@ class FartherMergeOffMainTest {
 
     @Test
     fun openedCards_areMergedOnCompute() = runBlocking {
-        val threads = mutableListOf<String>()
+        val threads = ThreadRecorder()
         val shown = shownWithOpened(
             MutableStateFlow(list),
             MutableStateFlow(cards("a" to (openA to card))),
             compute,
             merge = { l, o ->
-                synchronized(threads) { threads += Thread.currentThread().name }
+                threads.note()
                 withOpenedFarther(l, o)
             },
         ).first()
 
         assertEquals(listOf("E", "MA"), shown.state.ids())
-        assertTrue("merged on $threads", threads.isNotEmpty() && threads.all { it.startsWith("test-compute") })
+        val ran = threads.threads()
+        assertTrue("merged on $ran", ran.isNotEmpty() && ran.all { it.startsWith("test-compute") })
     }
 
     @Test

@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createComposeRule
+import app.stopdash.ThreadRecorder
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.FavoriteJourney
@@ -44,12 +45,11 @@ class ShownJourneysOffMainTest {
     fun the_journeys_are_oriented_and_measured_on_the_worker() {
         val pool = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
         try {
-            val walkedOn = mutableListOf<String>()
+            val walkedOn = ThreadRecorder()
             // Read by the work as it walks the saved journeys, so it says where that ran.
             val saved = object : List<FavoriteJourney> by listOf(near, far) {
                 override fun iterator(): Iterator<FavoriteJourney> {
-                    // Written on the worker, read on the test thread: guarded, or the read can catch a write.
-                    synchronized(walkedOn) { walkedOn += Thread.currentThread().name.substringBefore(" @") }
+                    walkedOn.note()
                     return listOf(near, far).iterator()
                 }
             }
@@ -61,7 +61,7 @@ class ShownJourneysOffMainTest {
                 }
             }
             composeRule.waitUntil(timeoutMillis = 5_000) { shown != null }
-            assertEquals(setOf("test-worker"), synchronized(walkedOn) { walkedOn.toSet() })
+            assertEquals(setOf("test-worker"), walkedOn.threads().toSet())
             // The flipped one is turned round; the far one is held back, measured to its nearer end.
             assertEquals(listOf("B", "C"), shown!!.journeys.map { it.from.stopId })
             assertEquals(setOf(far.key), shown!!.farMeters.keys)

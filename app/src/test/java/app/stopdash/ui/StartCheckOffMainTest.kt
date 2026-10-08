@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.neverEqualPolicy
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createComposeRule
+import app.stopdash.ThreadRecorder
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
 import java.time.Instant
@@ -47,21 +48,22 @@ class StartCheckOffMainTest {
 
     @Test
     fun theCheck_isWorkedOutOnTheWorker() {
-        val threads = mutableListOf<String>()
+        val threads = ThreadRecorder()
         var check: StartCheck? = null
         composeRule.setContent {
             CompositionLocalProvider(LocalWorker provides worker) {
                 check = rememberStartCheck(
                     route, emptyMap(), originUnconfirmed = false,
-                    follow = { synchronized(threads) { threads += Thread.currentThread().name }; true },
-                    start = { _, _, _ -> synchronized(threads) { threads += Thread.currentThread().name }; true },
+                    follow = { threads.note(); true },
+                    start = { _, _, _ -> threads.note(); true },
                 )
             }
         }
         composeRule.waitUntil(timeoutMillis = 5_000) { check != null }
         assertEquals(StartCheck(canFollow = true, canStart = true), check)
-        assertEquals(2, threads.size)
-        assertTrue("checked on $threads", threads.all { it.startsWith("test-worker") })
+        val ran = threads.threads()
+        assertEquals(2, ran.size)
+        assertTrue("checked on $ran", ran.all { it.startsWith("test-worker") })
     }
 
     @Test

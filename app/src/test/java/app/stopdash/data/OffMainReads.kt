@@ -1,8 +1,8 @@
 package app.stopdash.data
 
 import androidx.datastore.core.DataStore
+import app.stopdash.ThreadRecorder
 import java.io.Closeable
-import java.util.Collections
 import java.util.concurrent.Executors
 import kotlinx.coroutines.ExecutorCoroutineDispatcher
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -17,8 +17,10 @@ import kotlinx.coroutines.runBlocking
  * where the mapping itself ran.
  */
 internal class OffMainReads : Closeable {
-    /** The thread each read of a [recorded] list ran on. */
-    val reads: MutableList<String> = Collections.synchronizedList(mutableListOf())
+    private val recorder = ThreadRecorder()
+
+    /** The thread each read of a [recorded] list ran on, as a snapshot. */
+    val reads: List<String> get() = recorder.threads()
 
     val worker: ExecutorCoroutineDispatcher = Executors.newSingleThreadExecutor { Thread(it, WORKER) }.asCoroutineDispatcher()
 
@@ -26,7 +28,7 @@ internal class OffMainReads : Closeable {
     fun <E> recorded(vararg items: E): List<E> = object : AbstractList<E>() {
         override val size: Int get() = items.size
         override fun get(index: Int): E {
-            reads += Thread.currentThread().name.substringBefore(" @")
+            recorder.note()
             return items[index]
         }
     }

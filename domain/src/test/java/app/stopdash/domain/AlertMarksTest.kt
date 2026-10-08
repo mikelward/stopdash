@@ -45,16 +45,16 @@ class AlertMarksTest {
         val caller = Executors.newSingleThreadExecutor { Thread(it, "test-caller") }.asCoroutineDispatcher()
         val worker = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }.asCoroutineDispatcher()
         try {
-            val namedOn = mutableListOf<String>()
+            val namedOn = ThreadRecorder()
             runBlocking(caller) {
                 AlertMarks.of(alert, alert, hasStatus = true, train, emptyList(), train, { stop ->
-                    namedOn += Thread.currentThread().name
+                    namedOn.note()
                     stop.name
                 }, worker = worker)
             }
-            assertTrue(namedOn.isNotEmpty())
+            assertTrue(namedOn.threads().isNotEmpty())
             // Debug coroutines append " @coroutine#n" to the name; the thread is what matters.
-            assertEquals(setOf("test-worker"), namedOn.mapTo(HashSet()) { it.substringBefore(" @") })
+            assertEquals(setOf("test-worker"), namedOn.threads().toSet())
         } finally {
             caller.close()
             worker.close()
