@@ -4732,6 +4732,27 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun a_station_tapped_on_a_line_page_with_no_details_of_its_own_opens_them_by_the_line() {
+        // The home screen's or a trip's line page: a station tapped opens *Lines…*'s details over it, for this line.
+        val status = LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service")
+        val opened = mutableListOf<Pair<LineRef, String>>()
+        val repository = RouteStopsRepository(object : RouteSequenceSource {
+            override suspend fun routeSequence(lineId: String, direction: String): LineSequence = northernLine
+        })
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(
+                    LocalRouteStops provides repository,
+                    LocalOpenLineStop provides { line, id, name, _ -> opened += line to name },
+                ) { Surface { TripLineReason(TripLine(northernLeg(), status)) } }
+            }
+        }
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("Loading map…").fetchSemanticsNodes().isEmpty() && hasLine("Kennington") }
+        lineMapRow("Kennington").performClick()
+        assertEquals(listOf(LineRef("northern", "Northern", "tube") to "Kennington"), opened)
+    }
+
+    @Test
     fun work_to_come_is_dismissed_one_by_one_from_a_lines_page() {
         // Every service alert is dismissible, planned work on a line's page too (Codex, #689).
         val closure = PlannedAlert("Part Closure", "Saturday 10 and Sunday 11 October, no service between Kennington and Morden.", LocalDate.of(2026, 10, 10))

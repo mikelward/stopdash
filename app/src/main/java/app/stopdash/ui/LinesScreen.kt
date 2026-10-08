@@ -207,6 +207,9 @@ internal fun LinesOverlay(
     saveable: SaveableStateHolder = rememberSaveableStateHolder(),
     stop: LineStopRef? = null,
     onStop: (LineStopRef?) -> Unit = {},
+    // Back from the first stop opened: in place of returning to the line's page, where Lines… was opened on the
+    // stop from another page's map; null returns to the line.
+    onStopClosed: (() -> Unit)? = null,
     // The rider's last fix, for the stop's distance; null shows none.
     here: Coordinates? = null,
     // From: the stop's own page, as From… opens a station's. To: a trip there from here, as To… plans
@@ -303,11 +306,12 @@ internal fun LinesOverlay(
         // so it outlives this overlay leaving composition under From, Settings or Licenses (Codex on #667):
         // Back to a station opened before returns it as it was left, not at its top.
         if (stop != null) {
-            // Back to the station this one was opened from, else to the line; the page left forgets its scroll,
-            // so opening it again starts at its top.
+            // Back to the station this one was opened from, else to the line, or to the page whose map it was
+            // tapped on ([onStopClosed]); the page left forgets its scroll, so opening it again starts at its top.
             val back = {
                 saveable.removeState(stop.pageKey)
-                onStop(stop.previous)
+                val closed = onStopClosed
+                if (stop.previous == null && closed != null) closed() else onStop(stop.previous)
             }
             // Its lines and the stations beside it, from the bundled index, worked out off the main thread.
             LaunchedEffect(stop.id) { viewModel.stopLinks(stop.id) }

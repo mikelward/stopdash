@@ -4261,50 +4261,62 @@ internal fun TripLineReason(
     val held = LocalLineMapWork.current
     // A restored page goes back to where it was once its map is in, the rows it was scrolled among there.
     if (held != null && map?.ui is LineMapUi.Ready) SideEffect { held.restoreScroll() }
-    LazyColumn(modifier.fillMaxSize(), state = held?.list ?: ownList, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
-        item(key = "line") { TripLineRow(line) }
-        if (reason != null) {
-            // Its web links tappable: National Rail's reason is often a page and nothing else (maintainer, 2026-10-07).
-            item(key = "reason") { LinkedText(reason, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 16.dp)) }
+    // A station tapped on its map opens its details: the page's own where it has them (*Lines…*), else *Lines…*'s
+    // over this one, by this line, where they can show here.
+    val openOwn = LocalOpenLineMapStop.current
+    val openAny = LocalOpenLineStop.current
+    val leg = line.leg
+    val openStop = openOwn ?: openAny?.let { open ->
+        remember(open, leg.lineId, leg.lineName, leg.mode) {
+            { id: String, name: String, position: Pair<Double, Double>? -> open(LineRef(leg.lineId, leg.lineName, leg.mode), id, name, position) }
         }
-        if (quieted != null) {
-            item(key = "quieted") {
-                LinkedText(quieted, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 16.dp))
+    }
+    CompositionLocalProvider(LocalOpenLineMapStop provides openStop) {
+        LazyColumn(modifier.fillMaxSize(), state = held?.list ?: ownList, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
+            item(key = "line") { TripLineRow(line) }
+            if (reason != null) {
+                // Its web links tappable: National Rail's reason is often a page and nothing else (maintainer, 2026-10-07).
+                item(key = "reason") { LinkedText(reason, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 16.dp)) }
             }
-        }
-        // The line's work that hasn't started, muted and apart from what's under way (maintainer, 2026-10-08:
-        // coming up should look different), each with the day it starts.
-        val planned = line.planned
-        val saved = aheadHeld ?: restoredPlanned.takeIf { planned.isEmpty() && line.status == null } ?: SavedPlanned.NONE
-        val count = if (planned.isNotEmpty() && aheadHeld == null) planned.size else saved.size
-        val aheadUnknown = line.aheadUnknown || aheadFailed
-        if (count > 0 || aheadUnknown) {
-            item(key = "comingUp") {
-                Text(
-                    stringResource(R.string.line_coming_up),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 16.dp).semantics { heading() },
-                )
-            }
-            // Keyed by place: two alerts can share a day and words, and a key must be unique.
-            items(count, key = { "planned:$it" }) { index ->
-                val alert = if (aheadHeld != null) saved[index] else planned.getOrNull(index) ?: saved[index]
-                PlannedAlertBlock(alert, Modifier.padding(top = 8.dp), onDismiss = onDismissPlanned?.let { { it(alert) } })
-            }
-            // Never a clean week claimed for want of an answer (SPEC D4): the page asks again at its next tick.
-            if (aheadUnknown) {
-                item(key = "aheadUnknown") {
-                    Text(
-                        stringResource(R.string.line_coming_up_unknown),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
+            if (quieted != null) {
+                item(key = "quieted") {
+                    LinkedText(quieted, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 16.dp))
                 }
             }
+            // The line's work that hasn't started, muted and apart from what's under way (maintainer, 2026-10-08:
+            // coming up should look different), each with the day it starts.
+            val planned = line.planned
+            val saved = aheadHeld ?: restoredPlanned.takeIf { planned.isEmpty() && line.status == null } ?: SavedPlanned.NONE
+            val count = if (planned.isNotEmpty() && aheadHeld == null) planned.size else saved.size
+            val aheadUnknown = line.aheadUnknown || aheadFailed
+            if (count > 0 || aheadUnknown) {
+                item(key = "comingUp") {
+                    Text(
+                        stringResource(R.string.line_coming_up),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 16.dp).semantics { heading() },
+                    )
+                }
+                // Keyed by place: two alerts can share a day and words, and a key must be unique.
+                items(count, key = { "planned:$it" }) { index ->
+                    val alert = if (aheadHeld != null) saved[index] else planned.getOrNull(index) ?: saved[index]
+                    PlannedAlertBlock(alert, Modifier.padding(top = 8.dp), onDismiss = onDismissPlanned?.let { { it(alert) } })
+                }
+                // Never a clean week claimed for want of an answer (SPEC D4): the page asks again at its next tick.
+                if (aheadUnknown) {
+                    item(key = "aheadUnknown") {
+                        Text(
+                            stringResource(R.string.line_coming_up_unknown),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
+                }
+            }
+            if (map != null) lineMapSection(map, railColor)
         }
-        if (map != null) lineMapSection(map, railColor)
     }
 }
 

@@ -78,6 +78,7 @@ import app.stopdash.data.DataStoreAlertsBehindStore
 import app.stopdash.data.DataStoreAppSettings
 import app.stopdash.data.DataStoreDismissedAlertsStore
 import app.stopdash.data.DataStoreFavoritePlacesStore
+import app.stopdash.ui.LocalOpenLineStop
 import app.stopdash.ui.LocalOpenLines
 import app.stopdash.ui.LinesViewModel
 import app.stopdash.ui.LineDismissalsViewModel
@@ -129,6 +130,8 @@ import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.FavoriteShortcuts
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.NearestStops
+import app.stopdash.ui.LocalDistanceSystem
+import app.stopdash.domain.StopDistance
 import app.stopdash.domain.PlaceStops
 import app.stopdash.domain.PlaceStopsFinder
 import app.stopdash.domain.AvoidedLines
@@ -796,6 +799,9 @@ class MainActivity : ComponentActivity() {
                 // A stop tapped on that line's map, its details up; its From opens the stop's page over
                 // Lines…, whose Back returns here.
                 var linesStop by rememberSaveable(stateSaver = LineStopRefSaver) { mutableStateOf<LineStopRef?>(null) }
+                // Lines… opened on a stop tapped on another line page's map (the home screen's, a trip's): Back from
+                // the stop, or from a line its pills open, closes Lines… back to that page, kept under it.
+                var linesForStop by rememberSaveable { mutableStateOf(false) }
                 // Lines… closed, the next opening at the top on the recent lines: from its own Back, or
                 // "use my location" on a stop's page opened over it, which lands on the near-me list.
                 // Its search cleared the next time Lines… shows, when it was closed with no model at hand
@@ -804,6 +810,7 @@ class MainActivity : ComponentActivity() {
                 // Null [model]: the search is cleared when Lines… next shows ([linesQueryReset]).
                 val closeLines = { model: LinesViewModel? ->
                     linesPresence = linesPresence.closed()
+                    linesForStop = false
                     linesLineWork.clear()
                     linesLine = null
                     // The stop pages' scrolls go with them.
@@ -1274,6 +1281,31 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+                // A station tapped on the home screen's or a trip's line page: Lines… opens on it, that line's page
+                // under it, its distance from the rider's last fix where there is one.
+                val lineStopSystem = LocalDistanceSystem.current
+                val openLineStop: (LineRef, String, String, Pair<Double, Double>?) -> Unit = remember(lineStopSystem) { { line, id, name, position ->
+                    val at = position?.let { Coordinates(it.first, it.second) }
+                    // The near-me state as it is at the tap, read from its source rather than through what was
+                    // composed (Codex on #708).
+                    val fix = when (val near = nearbyViewModel.state.value) {
+                        is NearbyStopsViewModel.State.Ready -> near.location
+                        is NearbyStopsViewModel.State.Empty -> near.location
+                        is NearbyStopsViewModel.State.Failed -> near.location
+                        else -> null
+                    }
+                    val distance = if (at == null || fix == null || lineStopSystem == null) {
+                        null
+                    } else {
+                        StopDistance.label(NearestStops.distanceMeters(fix.latitude, fix.longitude, at.latitude, at.longitude), lineStopSystem)
+                    }
+                    UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
+                    linesLineWork.clear()
+                    linesLine = line
+                    linesStop = LineStopRef(id, name, distance, position = at)
+                    linesForStop = true
+                    linesPresence = linesPresence.opened()
+                } }
                 CompositionLocalProvider(
                     LocalOpenRouteStop provides openRouteStop,
                     LocalStationJourney provides stopJourneyState,
@@ -1298,6 +1330,12 @@ class MainActivity : ComponentActivity() {
                     ) { route, destinationName, readyAt, destinations, destinationIds, destinationStopId ->
                         startOnTheWay(route, destinationName, readyAt, destinations, destinationIds, destinationStopId, false)
                     },
+                    // A station tapped on a line page's map with no stop details of its own: Lines…'s, over it, only
+                    // where nothing else is open above the page, so Lines… is what shows ([topOverlay]).
+                    LocalOpenLineStop provides openLineStop.takeIf {
+                        linesPresence == LinesPresence.CLOSED && !onTheWayOpen && !licensesOpen && !settingsOpen &&
+                            !favoritePlacesOpen && !favoriteJourneysOpen && !stationSearchOpen && openStationId == null
+                    },
                     LocalOpenLines provides {
                         UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
                         // Hidden under a stop's trip (the location gate's overflow offers it there), it
@@ -1311,7 +1349,7 @@ class MainActivity : ComponentActivity() {
                     NearbyArea(
                         overlayOpen = onTheWayOpen || licensesOpen || settingsOpen || favoritePlacesOpen || favoriteJourneysOpen || linesPresence.shown || stationSearchOpen || openStationId != null,
                         // A stop opened from a route page keeps that page under it, for Back.
-                        keepBody = openStationId != null && routeStopOpened?.stationId == openStationId,
+                        keepBody = openStationId != null && routeStopOpened?.stationId == openStationId || linesForStop,
                         bodyGeneration = nearbyBodyGeneration,
                         aboveOverlay = {
                             ForegroundReturnLatcher(
@@ -1719,11 +1757,13 @@ class MainActivity : ComponentActivity() {
                                     LinesOverlay(
                                         linesModel,
                                         open = linesLine,
-                                        onOpen = { linesLine = it },
+                                        // Opened on a stop from another page: Back from a line closes Lines… to it.
+                                        onOpen = { if (it == null && linesForStop) closeLines() else linesLine = it },
                                         saveable = linesSaveable,
                                         lineWork = linesLineWork,
                                         stop = linesStop,
                                         onStop = { linesStop = it },
+                                        onStopClosed = closeLines.takeIf { linesForStop },
                                         here = fix,
                                         // The stop's own page, as a From… pick opens a station's, above Lines…
                                         // ([topOverlay]): its Back returns to the stop.
@@ -1738,7 +1778,9 @@ class MainActivity : ComponentActivity() {
                                         },
                                         // A trip there from the stops near the rider, as To… plans one. The trip is
                                         // the list's own, so Lines… steps aside for it, kept under it for its Back.
-                                        onTo = if (linesToOrigin?.isNotEmpty() == true) {
+                                        // Not over a trip a stop was tapped on, which a trip from here would replace,
+                                        // so Back would never come back to it (Codex on #708).
+                                        onTo = if (linesToOrigin?.isNotEmpty() == true && !(linesForStop && hereTripOpen)) {
                                             { stop ->
                                                 linesPresence = linesPresence.stepAsideForTrip()
                                                 listStores.clearAll()
