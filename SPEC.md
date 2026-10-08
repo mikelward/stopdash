@@ -2645,8 +2645,10 @@ saying so, while a stale card withholds its times (D4). A stamp over the board g
 its disruption checks are still out ("Checking…") or couldn't be made, so unchecked times never read as
 clean; a closure or moved-stop notice heads the board, and a bus alert wholly behind the stop is muted,
 as on the near-me list. A row opens its **route
-page** over the details, as on a station's page, Back returning to the stop; its stops are inert there
-for now, and it offers no star or dismissal, which stay with the near-me list and station pages. A star in its top bar **adds it as a favorite place** (maintainer, 2026-10-07):
+page** over the details, as on a station's page, Back returning to the stop. It works as there: its
+star pins the route to the top, its alerts can be dismissed, and a station on its stop list opens that
+station's page in place of Lines…, Back returning to the route page as from any route page. A pin or dismissal that couldn't be
+saved says so on the stop's details once the route page is closed. A star in its top bar **adds it as a favorite place** (maintainer, 2026-10-07):
 the favorite-places editor opens over it, filled in as a custom place named for the station at its
 position (the index's, else its stops' center, as a pick from the place search, a lookup that fails
 offering a retry on its row), so the rider can still rename it or pick its icon and days before Save;
