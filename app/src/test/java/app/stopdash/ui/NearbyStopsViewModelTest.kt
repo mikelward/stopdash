@@ -440,7 +440,7 @@ class NearbyStopsViewModelTest {
         assertEquals(listOf("location_fix", "nearby_stops"), events.map { it.name })
         assertEquals(mapOf("outcome" to "fresh", "accuracy" to "10-25m", "time_to_fix" to "1-3s"), events[0].params)
         assertEquals(
-            mapOf("tube" to "1", "train" to "0", "bus" to "2-3", "tram" to "0", "boat" to "0", "coach" to "0"),
+            mapOf("tube" to "1", "train" to "0", "bus" to "2-3", "tram" to "0", "boat" to "0"),
             events[1].params,
         )
     }

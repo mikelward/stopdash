@@ -13,6 +13,7 @@ import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.DEFAULT_FONT_SCALE
 import app.stopdash.domain.DistanceUnits
 import app.stopdash.domain.MaxWalk
+import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripModes
 import app.stopdash.domain.WalkingSpeed
@@ -119,7 +120,7 @@ class DataStoreAppSettings internal constructor(
     }
 
     override fun hiddenModes(): Flow<Set<String>> =
-        persisted().map { it?.hiddenModes.orEmpty() }
+        persisted().map { ModeGroups.fromStored(it?.hiddenModes.orEmpty()) }
 
     override suspend fun setHiddenModes(modes: Set<String>) {
         dataStore.updateData { (it ?: PersistedSettings()).copy(hiddenModes = modes) }

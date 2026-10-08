@@ -444,7 +444,9 @@ The app finds stops two ways:
   the user doesn't ride (a dozen Thameslink rows, every bus at a junction). Modes hide by **group**,
   named as a rider thinks of them (maintainer, 2026-09-24): **Tube & DLR** (the DLR is turn-up-and-go
   and on the Tube map), **Train** (the Overground, the Elizabeth line and National Rail), **Bus**,
-  **Tram**, **Boat** (TfL's "river bus") and **Coach**. The overflow menu lists all six, always the
+  **Tram** and **Boat** (TfL's "river bus"). A coach counts as a **Bus**: TfL lists no coach routes
+  or stops, and riders don't tell the two apart (maintainer, 2026-10-08; until then Coach was a sixth
+  group, empty in practice). The overflow menu lists all five, always the
   same, each with a checkbox ticked while it shows. A long press on a near-me
   row opens a small menu, pinning or unpinning it and **"Hide all ‹group› services"** (a bare "Hide
   Train" read as hiding that one train); a long press on a place's header offers it for each group
@@ -1602,7 +1604,7 @@ for in its menu, Any included ("Stairs are OK").
 
 **Modes.** A row of chips under the walk choices says which kinds of transport a trip may
 ride: one per group the list already hides modes by, under the same names
-(**Tube & DLR**, **Train**, **Bus**, **Tram**, **Boat**, **Coach**), selected while the trip rides it.
+(**Tube & DLR**, **Train**, **Bus**, **Tram**, **Boat**), selected while the trip rides it.
 A tap turns a group off or on and plans again at once, as the options above do; plans are kept per
 choice, and the choice is remembered across trips. It is sent as the Planner's `mode` list, less the
 groups turned off. Walking, the cable car and rail replacement buses always stay: every route needs

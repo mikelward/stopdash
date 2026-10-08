@@ -929,6 +929,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
   - [x] **Mode checkboxes in the overflow menu** (maintainer, 2026-09-24): six fixed groups — Tube &
         DLR, Train (Overground, Elizabeth line, National Rail), Bus, Tram, Boat, Coach — each ticked
         while shown; the long press hides by the same groups.
+  - [x] **Fold Coach into Bus** (maintainer, 2026-10-08): TfL lists no coach routes or stops, so the
+        group never filtered anything, and riders don't tell a coach from a bus. A
+        stored Coach hide follows Bus.
   - [ ] **Hide one line at a place** ("Hide Thameslink here") and **hide one platform/pole** (its
         card collapses to the header; a stop none of whose cards show isn't fetched).
   - [x] **Hide an individual line everywhere** (maintainer, 2026-09-27), e.g. the Northern or

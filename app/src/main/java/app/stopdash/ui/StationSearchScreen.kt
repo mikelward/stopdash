@@ -593,7 +593,6 @@ private val GROUP_NAMES_IN_SENTENCE = mapOf(
     "bus" to "bus",
     "tram" to "tram",
     "boat" to "boat",
-    "coach" to "coach",
 )
 
 /** The hidden groups' names, in menu order ("Train, Bus"), for the banner and empty states. */
@@ -615,7 +614,6 @@ private val GROUP_NAMES = mapOf(
     "bus" to "Bus",
     "tram" to "Tram",
     "boat" to "Boat",
-    "coach" to "Coach",
 )
 
 /** A mode's display name ("national-rail" → "National Rail"), or its id tidied for one we don't know. */

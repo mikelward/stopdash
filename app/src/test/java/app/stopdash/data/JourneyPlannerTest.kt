@@ -626,7 +626,8 @@ class JourneyPlannerTest {
             val modes = checkNotNull(request.url.parameters["mode"]).split(",")
             assertTrue(modes.none { it in setOf("bus", "overground", "elizabeth-line", "national-rail") })
             // Still walking, so the rider's pace applies, and the Tube, tram and the rest.
-            assertTrue(modes.containsAll(listOf("walking", "tube", "dlr", "tram", "river-bus", "coach", "replacement-bus")))
+            assertTrue("coach" !in modes)
+            assertTrue(modes.containsAll(listOf("walking", "tube", "dlr", "tram", "river-bus", "replacement-bus")))
         }
     }
 
