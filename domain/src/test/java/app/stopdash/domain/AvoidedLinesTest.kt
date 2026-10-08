@@ -40,4 +40,15 @@ class AvoidedLinesTest {
         assertTrue(HiddenModes.isHidden("tube", "northern", excluded))
         assertFalse(HiddenModes.isHidden("tube", "central", excluded))
     }
+
+    @Test
+    fun `a tap adds a line at the end or takes it out, leaving the rest in order`() {
+        val northern = AvoidedLines.key("northern", "Northern line")
+        val central = AvoidedLines.key("central", "Central line")
+        val avoided = AvoidedLines.changed(setOf(northern), central, avoided = true)
+        assertEquals(listOf(northern, central), avoided.toList())
+        assertEquals(setOf(northern), AvoidedLines.changed(avoided, central, avoided = false))
+        // Avoiding one already avoided changes nothing.
+        assertEquals(avoided, AvoidedLines.changed(avoided, northern, avoided = true))
+    }
 }

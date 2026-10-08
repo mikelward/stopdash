@@ -863,6 +863,10 @@
     <!-- TODO: translate -->
     <string name="on_the_way_plan_again" tools:ignore="MissingTranslation">Plan again from %1$s</string>
     <string name="on_the_way_keep_going" tools:ignore="MissingTranslation">Keep going</string>
+    <!-- Under "Missed ‹station›": the rider stayed on because the line they were to change onto is
+         closed. Avoids that line and plans again. The argument names it as it reads alone ("Central line"). -->
+    <!-- TODO: translate -->
+    <string name="on_the_way_line_closed" tools:ignore="MissingTranslation">%1$s closed</string>
     <!-- A train on the trip's board that leaves the plan: its heading, in brackets, and its times. -->
     <string name="on_the_way_off_plan_heading" tools:ignore="MissingTranslation">(%1$s)</string>
     <string name="on_the_way_off_plan_times" tools:ignore="MissingTranslation">%1$s min</string>

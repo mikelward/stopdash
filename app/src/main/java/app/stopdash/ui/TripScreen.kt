@@ -1021,6 +1021,9 @@ internal fun TripScreen(
     onStopAvoiding: ((String) -> Unit)? = null,
     avoidedLinesWriteFailed: Boolean = false,
     onAvoidedLinesWriteFailureShown: () -> Unit = {},
+    // Whether a change to [avoidedLines] is still being applied: the list doesn't first show until it's in,
+    // so a line avoided as the trip opens (a closed line after a missed change) never shows on it.
+    avoidedLinesSaving: Boolean = false,
     // Which journey this is (its origin and destination): another, a new nearest stop's included,
     // starts the list afresh, never under the last journey's order, disruptions or banner (Codex, #543),
     // and what the page worked out for another never stands in for it, though the screen stays put as a
@@ -1076,7 +1079,7 @@ internal fun TripScreen(
             onPullRefresh,
             onShownStops,
             onPlacedStands,
-            avoided = TripAvoided(avoidedLines, onAvoidLine, onStopAvoiding, avoidedLinesWriteFailed, onAvoidedLinesWriteFailureShown),
+            avoided = TripAvoided(avoidedLines, onAvoidLine, onStopAvoiding, avoidedLinesWriteFailed, onAvoidedLinesWriteFailureShown, avoidedLinesSaving),
             tripKey = journey,
             onListShown = onListShown,
             aboveRoutes = aboveRoutes,
@@ -1144,6 +1147,8 @@ private class TripAvoided(
     val onStopAvoiding: ((String) -> Unit)? = null,
     val writeFailed: Boolean = false,
     val onWriteFailureShown: () -> Unit = {},
+    // A change to [lines] still being applied ([TripScreen]'s avoidedLinesSaving).
+    val saving: Boolean = false,
 )
 
 /** The shared alert dismissals a trip's line page works with (see [TripScreen]). */
@@ -1748,7 +1753,8 @@ private fun TripContent(
                 listCheck,
                 // Everything the list draws is in: its cards' order, its disruptions, and every route
                 // loaded (a line with no trains predicted can't make the check wait on it, Codex, #543).
-                settledAround = headed != null && widthsIn && rowIn && loads.loading.isEmpty(),
+                // And no line still being avoided: the list isn't first shown with a route on it (Codex, #695).
+                settledAround = headed != null && widthsIn && rowIn && loads.loading.isEmpty() && !avoided.saving,
             )
             val revealed = revealedState.value
             // The list's own branch below: the only one a pull refreshes.

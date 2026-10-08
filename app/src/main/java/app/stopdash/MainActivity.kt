@@ -161,6 +161,7 @@ import app.stopdash.domain.PlanTargets
 import app.stopdash.domain.RailAwareTflClient
 import app.stopdash.domain.RecentPositions
 import app.stopdash.domain.ReplanOrigin
+import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.SavedTrip
 import app.stopdash.domain.SnapshotStore
@@ -1416,6 +1417,22 @@ class MainActivity : ComponentActivity() {
                                 // line list asked for just to show a trip (Codex, #696).
                                 val boardDismissals = lineDismissalsModel()
                                 val boardLinesPagesOpen = remember { mutableIntStateOf(0) }
+                                // The trip list from the station still ahead nearest the rider to where they chose to
+                                // go, as the From… search opens one (maintainer, 2026-10-02): Start there takes this
+                                // trip's place ([replanning]).
+                                // Where the trip goes came with the stop ([ReplanOrigin.Stop.to]), worked out off the main thread.
+                                fun planAgainFrom(stop: ReplanOrigin.Stop) {
+                                    settingsOpen = false
+                                    favoritePlacesOpen = false
+                                    originChange = null
+                                    openStationId = stop.id
+                                    openStationName = stop.name
+                                    // Opened for the trip, not from Lines…, whatever's under it.
+                                    stationFromLines = null
+                                    stationTo = stop.to
+                                    replanning = true
+                                    onTheWayOpen = false
+                                }
                                 // The next ride's trains, checked against the same route data as the trip's cards.
                                 CompositionLocalProvider(LocalRouteStops provides routeStops(applicationContext)) {
                                 OnTheWayScreen(
@@ -1440,23 +1457,20 @@ class MainActivity : ComponentActivity() {
                                     cards = routeDisruptions?.cardsAt(now).orEmpty(),
                                     notes = stationNotes?.at(now).orEmpty(),
                                     replanFrom = replanFrom,
-                                    // The trip list from the station still ahead nearest the rider to where
-                                    // they chose to go, as the From… search opens one (maintainer, 2026-10-02):
-                                    // Start there takes this trip's place ([replanning]).
-                                    onPlanAgain = onTheWayTrip?.let { trip ->
-                                        { stop: ReplanOrigin.Stop ->
-                                            settingsOpen = false
-                                            favoritePlacesOpen = false
-                                            originChange = null
-                                            openStationId = stop.id
-                                            openStationName = stop.name
-                                            // Opened for the trip, not from Lines…, whatever's under it.
-                                            stationFromLines = null
-                                            stationTo = ToChoice.of(trip)
-                                            replanning = true
-                                            onTheWayOpen = false
+                                    onPlanAgain = onTheWayTrip?.let { { stop: ReplanOrigin.Stop -> planAgainFrom(stop) } },
+                                    // The line on from a stop gone past is closed (maintainer, 2026-10-08): avoided as a
+                                    // route card's Avoid does, sticky until its chip or Settings clears it, then planned
+                                    // again as above, so the list opens already without it.
+                                    onLineClosed = onTheWayTrip?.let {
+                                        { missed: RouteDisruption.Signal.Missed, stop: ReplanOrigin.Stop ->
+                                            // The entry avoiding the line, worked out with the signal: the tap only reads it.
+                                            missed.onwardAvoid.takeIf { it.isNotEmpty() }?.let { AvoidedLinesSetting.setAvoided(it, avoided = true) }
+                                            // At once: the trip holds its plan and its list until the line is avoided
+                                            // ([AvoidedLinesSetting.editsPending]), so no route on it shows first (Codex, #695).
+                                            planAgainFrom(stop)
                                         }
                                     },
+                                    lineClosedEnabled = AvoidedLinesSetting.isLoaded.collectAsStateWithLifecycle().value,
                                     // Read and kept going: in the app's scope, so a rotation can't cut the save short.
                                     onDismissDisruptions = { shown ->
                                         ((application as? StopdashApp)?.applicationScope ?: onTheWayScope).launch { tracker.dismissDisruptions(shown) }
@@ -3851,7 +3865,8 @@ class MainActivity : ComponentActivity() {
                         stepFree = StepFreeSetting.changes.value,
                         tripModes = TripModesSetting.changes.value,
                         optionsLoaded = WalkingSpeedSetting.isLoaded.value && MaxWalkSetting.isLoaded.value &&
-                            StepFreeSetting.isLoaded.value && TripModesSetting.isLoaded.value && AvoidedLinesSetting.isLoaded.value,
+                            StepFreeSetting.isLoaded.value && TripModesSetting.isLoaded.value && AvoidedLinesSetting.isLoaded.value &&
+                            AvoidedLinesSetting.editsPending.value == 0,
                         usage = UsageEvents::log,
                     )
                 }
@@ -3889,7 +3904,10 @@ class MainActivity : ComponentActivity() {
             StepFreeSetting.isLoaded.collectAsStateWithLifecycle().value &&
             TripModesSetting.isLoaded.collectAsStateWithLifecycle().value &&
             AvoidedLinesSetting.isLoaded.collectAsStateWithLifecycle().value
-        SideEffect { trip.optionsLoaded = planOptionsLoaded }
+        // A line being avoided as the trip opens (a closed line after a missed change): it plans once
+        // that's in, and its list isn't first shown till then (Codex, #695).
+        val avoidedSaving = AvoidedLinesSetting.editsPending.collectAsStateWithLifecycle().value > 0
+        SideEffect { trip.optionsLoaded = planOptionsLoaded && !avoidedSaving }
         // A re-pick of the nearby set (a fresh fix, a retried location) that kept the same nearest
         // stop keeps this trip, but its walk and live times follow the new fix at once rather than
         // wait for the next tick.
@@ -4025,6 +4043,7 @@ class MainActivity : ComponentActivity() {
             onStopAvoiding = { entry -> AvoidedLinesSetting.setAvoided(entry, avoided = false) },
             avoidedLinesWriteFailed = AvoidedLinesSetting.writeFailed.collectAsStateWithLifecycle().value,
             onAvoidedLinesWriteFailureShown = AvoidedLinesSetting::writeFailureShown,
+            avoidedLinesSaving = avoidedSaving,
             planOptionsLoaded = planOptionsLoaded,
             // Where it starts and where it goes, each a tap to change (maintainer, 2026-09-28): From
             // opens the From… search, To the destination search, the other end kept.

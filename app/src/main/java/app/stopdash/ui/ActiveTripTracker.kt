@@ -2,6 +2,7 @@ package app.stopdash.ui
 
 import androidx.annotation.VisibleForTesting
 import app.stopdash.domain.ActiveTrip
+import app.stopdash.domain.ToChoice
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Workers
 import app.stopdash.domain.Departure
@@ -1017,7 +1018,9 @@ class ActiveTripTracker(
         // Seen past a ride's stop, from the stop they're at or heading for: the plan's stops are behind them.
         // Only while that alert stands: once dismissed (Keep going), another alert plans again as it would (Codex, #635).
         val missedKept = known.signals.firstNotNullOfOrNull { it as? RouteDisruption.Signal.Missed }
-        _replanFrom.value = missedKept?.let { ReplanOrigin.Stop(it.atId, it.atName) } ?: replanStop(trip, progress, rider, asked)
+        val from = missedKept?.let { ReplanOrigin.Stop(it.atId, it.atName) } ?: replanStop(trip, progress, rider, asked)
+        // With where the trip goes, worked out here so planning again from it only reads it.
+        _replanFrom.value = from?.let { withContext(io) { it.copy(to = ToChoice.of(trip)) } }
     }
 
     // No train of its line predicted for the ride at a change the rider is a few minutes from

@@ -1,5 +1,7 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
+
 /**
  * A *To…* from a searched station (SPEC *Finding stops → From… To…*): whether its destination search
  * is up, and what was picked — a stop ([stopId], [name]) or a place ([place], a saved favorite or a
@@ -48,6 +50,7 @@ data class ToChoice(
          * along: its place, or the stop or station picked ([ActiveTrip.destinationStopId]). A trip kept
          * before that was stored goes to the stop its route ends at, by the destination's name.
          */
+        @WorkerThread
         fun of(trip: ActiveTrip): ToChoice {
             trip.destinations.filterIsInstance<TripDestination.Place>().firstOrNull()?.let { return ToChoice(name = it.name, place = it) }
             val stopId = trip.destinationStopId.ifBlank { trip.route.legs.lastOrNull { !it.isWalk }?.toId.orEmpty() }

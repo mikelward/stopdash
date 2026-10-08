@@ -1790,6 +1790,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [x] **Alert a stop gone past** (maintainer, 2026-10-06: the one to say loudest): seen on the
             ride's line beyond where they got off, at a train's pace, within 15 min, from the walk's or
             wait's own fixes; High, "Missed …", with Plan again from where they are; kept until back.
+      - [x] **"‹line› closed" under "Missed …"** (maintainer, 2026-10-08): the line on from the stop gone
+            past is avoided (sticky, as a route card's Avoid) and the trip planned again from where they are.
+      - [ ] **"Stop closed" under "Missed …"** (maintainer, 2026-10-08: sticky): the stop gone past avoided as
+            lines are, a route through it dropped on the phone (the Planner can't leave out a stop), with a
+            chip atop the trip and a Settings list to clear it; then planned again.
       - [ ] **Alert a rider on another train than the plan's** (maintainer, 2026-10-06), the same way,
             once the tracker notices it (the item above on a branch taken without a tap).
       - [ ] (Consider) **A stop gone past while the trip still has them on the ride**: with no calls

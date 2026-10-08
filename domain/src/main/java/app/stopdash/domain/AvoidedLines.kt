@@ -1,5 +1,7 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
+
 /**
  * The lines a rider avoids on a trip (SPEC *Trips with a change → Avoiding a line*; maintainer,
  * 2026-10-01): sticky across trips until cleared, from a chip atop the trip or from Settings. Each is
@@ -30,6 +32,10 @@ object AvoidedLines {
 
     /** [entries] less any that isn't a line's: a stored set from a later build keeps only what this one reads. */
     fun fromStored(entries: Set<String>): Set<String> = entries.filterTo(LinkedHashSet(), HiddenModes::isLineKey)
+
+    /** [current] with [entry] avoided, or no longer avoided: the edit a tap makes, in the stored order. */
+    @WorkerThread
+    fun changed(current: Set<String>, entry: String, avoided: Boolean): Set<String> = if (avoided) current + entry else current - entry
 
     /** What a trip leaves out: the [hidden] modes and lines, and the [avoided] lines. */
     fun excluded(hidden: Set<String>, avoided: Set<String>): Set<String> = if (avoided.isEmpty()) hidden else hidden + avoided
