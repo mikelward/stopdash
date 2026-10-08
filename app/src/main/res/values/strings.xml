@@ -435,6 +435,8 @@
     <string name="trip_direct_none">None</string>
     <string name="trip_direct_failed">Couldn\'t check</string>
     <string name="trip_direct_more">+%1$d more</string>
+    <!-- Under a favorite journey's card when more stops board it than the card fetched: opens the journey's own view. -->
+    <string name="journey_more">More</string>
     <string name="trip_direct_open">Open route</string>
     <string name="trip_direct_replan_failed">Couldn\'t update the Direct route</string>
     <string name="trip_direct_not_planned">Couldn\'t plan</string>

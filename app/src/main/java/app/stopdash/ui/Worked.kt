@@ -113,6 +113,8 @@ class ListWork {
     // The journey cards' segments and neighboring poles, by journey key.
     internal val segments: MutableState<Worked<Inputs, JourneySegments>?> = mutableStateOf(null)
     internal val siblings: MutableState<Worked<Inputs, Map<String, SiblingPoles>>?> = mutableStateOf(null)
+    // The stops around each journey's ends: beside its origin, and within the walk of its far end.
+    internal val journeyAround: MutableState<Worked<Inputs, JourneyBoarding>?> = mutableStateOf(null)
 
     // The stops the journeys are fetched from, and the lines whose routes their cards need.
     // Each journey's own origin with the lines its card needs, and the stops reported from them.

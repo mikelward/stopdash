@@ -192,7 +192,9 @@ that time can show an estimate of how far it is, and is then let go, or sooner w
 settings and stars, so they ride your own Android backup like the rest (above); they are never
 logged or sent anywhere. For the widget, the departures at a journey's nearer stop, and which of
 them reach the other end, are saved with the widget's other departures on the device. Showing a journey's trains fetches the departures at its nearer stop
-from TfL, like any other stop.
+from TfL, like any other stop, and at the stops beside it; to find those, and the stops a short walk
+from the other end, it asks TfL for the stops around each end's public position (TfL's own, never
+yours), as opening a station does, and keeps the answer on the device for up to a day.
 
 **Held in memory only:** the last precise (GPS) position, for up to 10 minutes, so a rough
 network position that comes in while you haven't moved doesn't replace it. It is never written to

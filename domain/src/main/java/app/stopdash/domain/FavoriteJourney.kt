@@ -67,6 +67,8 @@ data class SiblingPoles(
     val poles: List<StopLocation>,
     val pendingLines: Set<String>,
     val failedLines: Set<String> = emptySet(),
+    // More stops qualify than [poles] holds ([Journeys.MAX_BOARDING_STOPS]): the journey's own view has them.
+    val capped: Boolean = false,
 ) {
     /** Whether every neighboring pole has been judged, so one not in [poles] truly doesn't qualify. */
     val settled: Boolean get() = pendingLines.isEmpty() && failedLines.isEmpty()
@@ -326,6 +328,9 @@ object Journeys {
         // The journey (this way round), so each line can place the far end on its own route — another
         // route may stop at a different pole of the destination's stop area.
         journey: FavoriteJourney? = null,
+        // Every stop within the rider's walk of the far end ([farEnd]): a departure calling at one
+        // reaches it too, as a trip's Direct section counts.
+        farEnd: FarEnd? = null,
     ): JourneyTrains {
         var pending = false
         var unresolved = false
@@ -350,6 +355,7 @@ object Journeys {
                 // call at (see callingAt), as [segment] placed them.
                 val sequence = sequences[row.lineId]?.callingAt(row.stopId)
                     ?.let { if (journey == null) it else it.callingAtEnds(journey) }
+                    ?.let { farEnd?.across(it, row.stopId) ?: it }
                 if (sequence == null) {
                     // A failed route can't say whether its departures — or its warning, on a
                     // status-only row — belong to this segment: never a silent drop.
@@ -359,7 +365,7 @@ object Journeys {
                     }
                     return@mapNotNull null
                 }
-                val destinations = segment.destinationIds +
+                val destinations = segment.destinationIds + farEnd?.ids.orEmpty() +
                     (journey?.let { destinationsOn(it.to, segment.originId, sequence, maxTier(it, row.lineId)) }.orEmpty())
                 if (row.upcoming.isEmpty()) {
                     val served = servedDestinations(sequence, segment.originId, destinations)
@@ -480,12 +486,16 @@ object Journeys {
     fun directDue(rows: List<DepartureRow>): Boolean = rows.any { it.upcoming.isNotEmpty() }
 
     /**
-     * The other poles of [originId]'s stop area ([poles], its lookup) that board a line reaching
-     * [journey]'s far end — a bus leaving from stop K beside the journey's stop L — and, among each
-     * such pole's lines, those whose route isn't in [sequences] yet ([SiblingPoles.pendingLines]; a
-     * line at the origin itself is left to the origin's own check). A pole qualifies once one of its
-     * lines' routes calls there and then at the far end, matched as [trains] matches it. Only a pole
-     * of the journey's mode: another mode's stop in the area is a different journey.
+     * The other stops beside [originId] ([poles]: its stop area's and those within
+     * [BOARDING_RADIUS_METERS], nearest first) that board a line reaching [journey]'s far end — a bus
+     * from stop K beside the journey's stop L, or from the road outside its station — and, among each
+     * such stop's lines, those whose route isn't in [sequences] yet ([SiblingPoles.pendingLines]; a line
+     * at the origin itself is left to the origin's own check). A stop qualifies once one of its lines'
+     * routes calls there and then at the far end, matched as [trains] matches it, or at a stop within
+     * the rider's walk of it ([farEnd]). Only lines that may reach it are weighed ([boardsTowards]):
+     * with the far end's stops known, a line serving one of them, of any mode; without, the journey's
+     * own mode. At most [limit] stops besides the origin, nearest first ([SiblingPoles.capped] when more
+     * qualify): a card's [MAX_BOARDING_STOPS] less the origin.
      */
     @WorkerThread
     fun siblingPoles(
@@ -493,34 +503,113 @@ object Journeys {
         originId: String,
         poles: List<StopLocation>,
         sequences: Map<String, LineSequence?>,
+        farEnd: FarEnd? = null,
+        limit: Int = Int.MAX_VALUE,
+        // The lines the origin is fetched for, beyond its pole's own: a station TfL lists under another id
+        // nearby (its National Rail twin) doesn't board them again, twice over.
+        originLineIds: Set<String> = emptySet(),
     ): SiblingPoles {
-        val mode = journey.mode
-        val originLines = poles.firstOrNull { it.id == originId }?.lines.orEmpty().mapTo(HashSet()) { it.id }
+        val originLines = poles.firstOrNull { it.id == originId }?.lines.orEmpty().mapTo(HashSet()) { it.id } + originLineIds
         val pending = HashSet<String>()
         val failed = HashSet<String>()
-        val serving = poles.filter { pole ->
+        val serving = poles.distinctBy { it.id }.filter { pole ->
             if (pole.id == originId) return@filter false
-            val lines = pole.lines.filter { ofMode(it, mode) }
+            val lines = pole.lines.filter { boardsTowards(it, journey, farEnd) }
             if (lines.isEmpty()) return@filter false
             lines.any { line ->
-                if (line.id in originLines) {
-                    // Served at the origin too (the way-back pole's lines, usually): the origin's
-                    // check covers it, and its route isn't loaded for nothing.
-                    false
-                } else if (line.id !in sequences) {
+                if (line.id !in sequences) {
                     pending += line.id
-                    false
-                } else {
-                    // A route that failed to load can't say either way: undecided, never a "no".
-                    val sequence = sequences[line.id] ?: run {
-                        failed += line.id
-                        return@any false
-                    }
-                    destinationsOn(journey.to, pole.id, sequence, maxTier(journey, line.id)).isNotEmpty()
+                    return@any false
                 }
+                // A route that failed to load can't say either way: undecided, never a "no".
+                val sequence = sequences[line.id] ?: run {
+                    failed += line.id
+                    return@any false
+                }
+                val reaches = { stopId: String ->
+                    destinationsOn(journey.to, stopId, sequence, maxTier(journey, line.id)).isNotEmpty() ||
+                        farEnd != null && servedDestinations(farEnd.across(sequence, stopId), stopId, farEnd.ids).isNotEmpty()
+                }
+                // Served at the origin too, and there reaching the far end (the way-back pole's line, or a
+                // station's twin id): the origin's check covers it. Where the origin's own route doesn't
+                // get there and this stop's does, it boards here (Codex, #691).
+                if (line.id in originLines && reaches(originId)) false else reaches(pole.id)
             }
         }
-        return SiblingPoles(serving, pending, failed)
+        return SiblingPoles(serving.take(limit), pending, failed, capped = serving.size > limit)
+    }
+
+    /**
+     * Whether [line], boarding beside a journey's origin, may reach its far end: with the far end's
+     * stops known ([farEnd]), one of them serves it, whatever its mode (a bus between two stations,
+     * maintainer, 2026-10-08); without, it's of the journey's own mode ([ofMode]).
+     */
+    fun boardsTowards(line: LineRef, journey: FavoriteJourney, farEnd: FarEnd?): Boolean =
+        if (farEnd != null) line.id in farEnd.lineIds else ofMode(line, journey.mode)
+
+    /** How far from a journey's origin another stop still boards it: as far as To… from the near-me list starts. */
+    const val BOARDING_RADIUS_METERS = DirectTrips.ORIGIN_RADIUS_METERS
+
+    /**
+     * The most stops beside its origin a journey card fetches (one arrivals request each a refresh),
+     * nearest first, so a journey between two hubs with a dozen bus lines can't spend the rate budget
+     * on its own (maintainer, 2026-10-08). The journey's own view fetches them all.
+     */
+    const val MAX_BOARDING_STOPS = 6
+
+    /**
+     * Where a journey ends, as the stops a train or bus may set the rider down at: every stop within
+     * the rider's walk of the far end ([ids]), and the lines serving them ([lineIds]), the lines worth
+     * weighing beside the origin.
+     */
+    data class FarEnd(
+        val ids: Set<String>,
+        val lineIds: Set<String>,
+        // Each stop with its interchange and name, so a route through a sibling id of one (another
+        // platform's id in the same interchange) still reaches it, as a trip's Direct section matches.
+        val ends: List<DirectTrips.End> = ids.map { DirectTrips.End(it, "") },
+    ) {
+        /**
+         * [sequence] as seen from [stopId] boarding and these stops alighting, each matched through its
+         * interchange ([DirectTrips.routeAt]).
+         */
+        @WorkerThread
+        fun across(sequence: LineSequence, stopId: String): LineSequence =
+            DirectTrips.routeAt(sequence, stopId, "", "", ends)
+    }
+
+    /**
+     * [stops] (a lookup around [end]'s position) within [radiusMeters] of it, nearest first and each
+     * once; none when the end has no position.
+     */
+    @WorkerThread
+    fun stopsAround(end: JourneyEnd, stops: List<StopLocation>, radiusMeters: Double): List<StopLocation> {
+        val lat = end.latitude ?: return emptyList()
+        val lon = end.longitude ?: return emptyList()
+        return stops.asSequence()
+            .map { it to NearestStops.distanceMeters(lat, lon, it.latitude, it.longitude) }
+            .filter { (_, meters) -> meters <= radiusMeters }
+            .sortedBy { (_, meters) -> meters }
+            .map { (stop, _) -> stop }
+            .distinctBy { it.id }
+            .toList()
+    }
+
+    /**
+     * The far end of a journey ending at [end]: the stops of [stops] (a lookup around it) within
+     * [walkMeters] — as far as the rider's max walk reaches at their pace ([PlaceStops.walkMeters]), as
+     * a trip's Direct section reaches a place — and their lines; null when the end has no position, so
+     * the card matches the far end by its own stop alone, as before.
+     */
+    @WorkerThread
+    fun farEnd(end: JourneyEnd, stops: List<StopLocation>, walkMeters: Int): FarEnd? {
+        if (end.latitude == null || end.longitude == null) return null
+        val near = stopsAround(end, stops, walkMeters.toDouble())
+        return FarEnd(
+            near.mapTo(HashSet()) { it.id },
+            near.flatMapTo(HashSet()) { stop -> stop.lines.map { it.id } },
+            near.map { DirectTrips.End(it.id, it.name, it.hubId) },
+        )
     }
 
     /**

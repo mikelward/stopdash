@@ -223,6 +223,9 @@ import app.stopdash.ui.LocalLiftsOut
 import app.stopdash.ui.LocalOnTheWay
 import app.stopdash.ui.LocalOnTheWayBanner
 import app.stopdash.ui.LocalRouteStops
+import app.stopdash.ui.LocalJourneyWalkMeters
+import app.stopdash.ui.LocalJourneyEndStops
+import app.stopdash.ui.JourneyEndStops
 import app.stopdash.ui.LocalRouteTopology
 import app.stopdash.ui.LocalRiderPosition
 import app.stopdash.ui.LocalStepFree
@@ -431,6 +434,13 @@ class MainActivity : ComponentActivity() {
     // cached apart again, in a file, so a place's stops hold for a day and never push the rider's own
     // nearby lookups out.
     private val placeStopsFinder by lazy { PlaceStopsFinder(CachingStopFinder(nearbyTflClient, placeStopsCache(applicationContext))) }
+
+    // The stops around a favorite journey's ends, by their published positions (SPEC *Journeys*): a
+    // day-long file of their own, big enough for every saved journey's two ends, so none is asked again
+    // within the day or pushes a trip's places out (Codex, #691).
+    private val journeyEndStops by lazy {
+        JourneyEndStops(CachingStopFinder(nearbyTflClient, journeyEndStopsCache(applicationContext)), ::logRouteStopsWarning)
+    }
 
     // The location gate: resolves the nearby stops (an on-demand, location-sending action)
     // before the departures view, which then refreshes those stops location-free.
@@ -2855,6 +2865,17 @@ class MainActivity : ComponentActivity() {
             CompositionLocalProvider(
                 LocalRouteTopology provides routeTopology.value,
                 LocalRouteStops provides routeStops(appContext),
+                LocalJourneyEndStops provides journeyEndStops,
+                // A journey's far end reaches as far as a trip's Direct section reaches a place: the rider's
+                // max walk at their pace.
+                LocalJourneyWalkMeters provides PlaceStops.walkMeters(
+                    MaxWalkSetting.changes.collectAsStateWithLifecycle().value,
+                    WalkingSpeedSetting.changes.collectAsStateWithLifecycle().value,
+                ).takeIf {
+                    // Not on the defaults before the rider's own are read (Codex, #691).
+                    MaxWalkSetting.isLoaded.collectAsStateWithLifecycle().value &&
+                        WalkingSpeedSetting.isLoaded.collectAsStateWithLifecycle().value
+                },
                 // The near-me list keeps its verdicts on alerts behind a stop for the widget and the watch.
                 LocalAlertsBehind provides remember(appContext) {
                     AlertsBehindRecorder(DataStoreAlertsBehindStore.from(appContext, warn = ::logDepartureWarning), ::logDepartureWarning)
@@ -5111,6 +5132,20 @@ private fun placeStopsCache(context: Context): NearbyStopsCache = synchronized(p
         FileNearbyStopsStore(File(AppDirs.cache(context), "place-stops.json"), warn = ::logLocationWarning),
     ).also { placeStopsCacheInstance = it }
 }
+
+private val journeyEndStopsCacheLock = Any()
+private var journeyEndStopsCacheInstance: NearbyStopsCache? = null
+
+/** The stops around favorite journeys' ends ([JourneyEndStops]): public stations' surroundings, a file of their own. */
+private fun journeyEndStopsCache(context: Context): NearbyStopsCache = synchronized(journeyEndStopsCacheLock) {
+    journeyEndStopsCacheInstance ?: NearbyStopsCache(
+        FileNearbyStopsStore(File(AppDirs.cache(context), "journey-end-stops.json"), warn = ::logLocationWarning),
+        maxAreas = JOURNEY_END_AREAS,
+    ).also { journeyEndStopsCacheInstance = it }
+}
+
+/** Journey ends kept at once: two each for more favorite journeys than a rider keeps. */
+private const val JOURNEY_END_AREAS = 40
 
 private fun nearbyStopsCache(context: Context): NearbyStopsCache = synchronized(nearbyStopsCacheLock) {
     nearbyStopsCacheInstance ?: NearbyStopsCache(

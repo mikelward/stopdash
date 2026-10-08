@@ -365,6 +365,96 @@ class JourneysTest {
     }
 
     @Test
+    fun `a bus beside a station reaching a stop near the far end boards the journey`() {
+        // A rail journey Top → Mid. Outside Top, stop TOPB boards bus b7 to MIDB, a short walk from
+        // Mid; bus b8 from TOPC goes elsewhere; TOPD's tram t9 serves no stop near Mid at all.
+        val far = listOf(
+            StopLocation("MID", "Mid", 51.49, -0.12, listOf(LineRef("example", "Example", "tube"))),
+            StopLocation("MIDB", "Mid Road", 51.4905, -0.12, listOf(LineRef("b7", "7", "bus"), LineRef("b8", "8", "bus"))),
+            // Beyond the walk.
+            StopLocation("DALE", "Dale", 51.45, -0.12, listOf(LineRef("t9", "T9", "tram"))),
+        )
+        val farEnd = Journeys.farEnd(journey.to, far, walkMeters = 800)!!
+        assertEquals(setOf("MID", "MIDB"), farEnd.ids)
+        val around = listOf(
+            StopLocation("TOPC", "Top Lane", 51.5115, -0.12, listOf(LineRef("b8", "8", "bus"))),
+            StopLocation("TOPB", "Top Road", 51.5102, -0.12, listOf(LineRef("b7", "7", "bus"))),
+            StopLocation("TOPD", "Top Tram", 51.5101, -0.12, listOf(LineRef("t9", "T9", "tram"))),
+            StopLocation("TOP", "Top", 51.51, -0.12, listOf(LineRef("example", "Example", "tube"))),
+            // Too far from Top to count as boarding there.
+            StopLocation("FAR", "Far", 51.52, -0.12, listOf(LineRef("b7", "7", "bus"))),
+        )
+        val poles = Journeys.stopsAround(journey.from, around, Journeys.BOARDING_RADIUS_METERS)
+        assertEquals(listOf("TOP", "TOPD", "TOPB", "TOPC"), poles.map { it.id })
+        val b7 = LineSequence(listOf(LineRoute("Top ↔ Mid", listOf("TOPB", "MIDB"))), mapOf("TOPB" to "Top Road", "MIDB" to "Mid Road"))
+        val b8 = LineSequence(listOf(LineRoute("Mid ↔ Top", listOf("MIDB", "TOPC"))), mapOf("TOPC" to "Top Lane", "MIDB" to "Mid Road"))
+        // The tram serves nothing near Mid: not weighed, so its route isn't loaded.
+        val loading = Journeys.siblingPoles(journey, "TOP", poles, mapOf("example" to rail), farEnd)
+        assertEquals(setOf("b7", "b8"), loading.pendingLines)
+        // b8 runs the other way: only b7's stop boards the journey, a bus beside a tube journey.
+        val placed = Journeys.siblingPoles(journey, "TOP", poles, mapOf("example" to rail, "b7" to b7, "b8" to b8), farEnd)
+        assertEquals(listOf("TOPB"), placed.poles.map { it.id })
+        assertFalse(placed.capped)
+        // A line the origin is fetched for that reaches the far end from there isn't boarded again
+        // beside it (a station's twin id, the way-back pole)...
+        val through = LineSequence(listOf(LineRoute("Top ↔ Mid", listOf("TOP", "TOPB", "MIDB"))), mapOf("MIDB" to "Mid Road"))
+        val twice = Journeys.siblingPoles(journey, "TOP", poles, mapOf("example" to rail, "b7" to through, "b8" to b8), farEnd, originLineIds = setOf("b7"))
+        assertTrue(twice.poles.isEmpty())
+        // ...but where its route from the origin doesn't get there, the stop beside it boards it.
+        val elsewhere = Journeys.siblingPoles(journey, "TOP", poles, mapOf("example" to rail, "b7" to b7, "b8" to b8), farEnd, originLineIds = setOf("b7"))
+        assertEquals(listOf("TOPB"), elsewhere.poles.map { it.id })
+        // Its departures count, calling at the stop near Mid.
+        val rows = rowsAt("TOPB", departure("Mid Road", 60, "b7", "bus"))
+        val trains = Journeys.trains(JourneySegment("TOPB", emptySet()), rows, mapOf("b7" to b7), journey, farEnd)
+        assertEquals(listOf("b7"), trains.rows.map { it.lineId })
+        assertEquals(setOf("MIDB"), trains.reachedIds)
+    }
+
+    @Test
+    fun `a stop near the far end listed under its interchange sibling's id is reached`() {
+        // The lookup lists the far end's station as MIDX; the line's route calls at its sibling MIDY,
+        // the same station in interchange HUBM.
+        val far = listOf(StopLocation("MIDX", "Mid Road", 51.4905, -0.12, listOf(LineRef("r1", "R1", "national-rail")), hubId = "HUBM"))
+        val farEnd = Journeys.farEnd(journey.to, far, walkMeters = 800)!!
+        val r1 = LineSequence(
+            listOf(LineRoute("Top ↔ Mid", listOf("TOPR", "MIDY"))),
+            mapOf("TOPR" to "Top Rail", "MIDY" to "Mid Road"),
+            stopHubs = mapOf("MIDY" to "HUBM"),
+        )
+        val poles = listOf(StopLocation("TOPR", "Top Rail", 51.5101, -0.12, listOf(LineRef("r1", "R1", "national-rail"))))
+        val placed = Journeys.siblingPoles(journey, "TOP", poles, mapOf("r1" to r1), farEnd)
+        assertEquals(listOf("TOPR"), placed.poles.map { it.id })
+        val rows = rowsAt("TOPR", departure("Mid Road", 60, "r1", "national-rail"))
+        val trains = Journeys.trains(JourneySegment("TOPR", emptySet()), rows, mapOf("r1" to r1), journey, farEnd)
+        assertEquals(listOf("r1"), trains.rows.map { it.lineId })
+    }
+
+    @Test
+    fun `a card boards from at most its nearest few stops`() {
+        val lines = (1..8).map { "b$it" }
+        val farEnd = Journeys.FarEnd(setOf("MIDB"), lines.toSet())
+        // Eight stops, each its own line to the stop near Mid, nearest first.
+        val poles = lines.mapIndexed { i, line ->
+            StopLocation("P$i", "Top Road", 51.51 + i * 0.0001, -0.12, listOf(LineRef(line, line, "bus")))
+        }
+        val sequences = lines.mapIndexed { i, line ->
+            line to LineSequence(listOf(LineRoute("Top ↔ Mid", listOf("P$i", "MIDB"))), mapOf("MIDB" to "Mid Road"))
+        }.toMap()
+        // Six boarding stops in all: the origin and its five nearest neighbors.
+        val capped = Journeys.siblingPoles(journey, "TOP", poles, sequences, farEnd, Journeys.MAX_BOARDING_STOPS - 1)
+        assertEquals((0 until 5).map { "P$it" }, capped.poles.map { it.id })
+        assertTrue(capped.capped)
+        assertEquals(8, Journeys.siblingPoles(journey, "TOP", poles, sequences, farEnd).poles.size)
+    }
+
+    @Test
+    fun `an end with no position has no stops around it`() {
+        val end = JourneyEnd("X", "X")
+        assertTrue(Journeys.stopsAround(end, listOf(StopLocation("A", "A", 51.5, -0.12)), 500.0).isEmpty())
+        assertNull(Journeys.farEnd(end, emptyList(), 800))
+    }
+
+    @Test
     fun `a pole beside the origin boarding another line to the far end is a sibling`() {
         fun pole(id: String, vararg lines: String, mode: String = "bus") =
             StopLocation(id, "Park", 51.5, -0.12, lines.map { LineRef(it, it, mode) }, clusterId = "G-PARK", stopLetter = id.takeLast(1))
