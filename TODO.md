@@ -1161,6 +1161,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           undecided): a trailing icon, shown only with text in the field, that empties the query
           in one tap, in both the From… and To… searches. Needs approved copy for its content
           description (proposed: "Clear search") before it's built.
+    - [ ] **A row per station name for King's Cross & St Pancras** (maintainer, 2026-10-08): list
+          the one hub as "St Pancras Intl", opening with National Rail first, and as "King's
+          Cross", opening with the Underground first, so either name finds a row that leads with
+          what that station is for. Today the page orders a hub's rows by distance, then stop id
+          (every member is 0 m), so it needs a lead mode carried from the row to the page. Only
+          King's Cross needs it: the other "&" hubs (Elephant & Castle, Highbury & Islington, …)
+          are one place, and Paddington's members share one name, so a short explicit list beats
+          deriving rows from names. Matching either half of the hub's name already works (#705).
     - [ ] **Rank by use**: TypeLauncher breaks ties by how often each item is opened. Here that
           would store which stations a user looks at (user data, on device, riding backup), so it
           waits for a decision and a *Privacy* line.
