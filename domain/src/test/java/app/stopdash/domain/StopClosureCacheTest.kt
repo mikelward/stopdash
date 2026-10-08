@@ -254,8 +254,10 @@ class StopClosureCacheTest {
             ) { ids -> ran("send"); ids.associateWith { Result.success(emptyList()) } }
             assertTrue(pending.getValue("A").cached)
             assertTrue(pending.getValue("C").await().isSuccess)
-            assertEquals(setOf("reusable", "group", "now", "send"), ranOn.keys)
-            assertTrue("$ranOn", ranOn.values.none { caller in it })
+            // Read under the lock its writes take: a step still finishing on the worker can't catch the read.
+            val steps = synchronized(ranOn) { ranOn.mapValues { it.value.toSet() } }
+            assertEquals(setOf("reusable", "group", "now", "send"), steps.keys)
+            assertTrue("$steps", steps.values.none { caller in it })
         } finally {
             executor.shutdownNow()
         }
@@ -369,7 +371,8 @@ class StopClosureCacheTest {
             val readOn = mutableSetOf<Thread>()
             val ids = sequence { synchronized(readOn) { readOn += Thread.currentThread() }; yield("A"); yield("B") }
             cache.settling(worker, ids) {}
-            assertTrue("$readOn", readOn.isNotEmpty() && caller !in readOn)
+            val read = synchronized(readOn) { readOn.toSet() }
+            assertTrue("$read", read.isNotEmpty() && caller !in read)
         } finally {
             executor.shutdownNow()
         }

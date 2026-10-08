@@ -516,11 +516,11 @@ class JourneyPlannerTest {
             expectSuccess = true
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
-        val lookedUpOn = mutableListOf<Thread>()
+        val lookedUpOn = app.stopdash.ThreadRecorder()
         val client = KtorTflClient(
             httpClient = http,
             baseUrl = "https://tfl.example",
-            stationOf = { lookedUpOn += Thread.currentThread(); null },
+            stationOf = { lookedUpOn.note(); null },
         )
         // The caller's own single thread, as a screen's main thread is.
         val caller = java.util.concurrent.Executors.newSingleThreadExecutor()
@@ -533,8 +533,9 @@ class JourneyPlannerTest {
                     "490G000672",
                 )
             }
-            assertTrue(lookedUpOn.isNotEmpty())
-            assertTrue(lookedUpOn.none { it == callerThread })
+            val lookedUp = lookedUpOn.threads()
+            assertTrue(lookedUp.isNotEmpty())
+            assertTrue(lookedUp.none { it == callerThread.name.substringBefore(" @") })
         } finally {
             caller.shutdown()
         }

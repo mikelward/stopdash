@@ -143,10 +143,11 @@ exercises the whole spine the widget later renders from.
       ran on share one `ThreadRecorder` (app and domain test sources): notes and reads under one lock, so
       a read never catches a write (`ShownJourneysOffMainTest` threw `ConcurrentModificationException` on
       CI, #676's run).
-  - [ ] A few tests still collect `Thread` objects rather than names in a list a worker writes
-        (`MainViewModelTest`'s `walked`, `TripViewModelTest`'s `ranOn`, `LinkedTextOffMainTest`,
-        `KtorDarwinClientTest`, `JourneyPlannerTest`, the domain's `StopClosureCacheTest`): the same race,
-        for the same recorder, noting the name instead, once each is read.
+  - [x] The tests collecting `Thread` objects a worker writes while the test reads share it too
+        (`MainViewModelTest`'s `walked`, `KtorDarwinClientTest`, `JourneyPlannerTest`), or read under the
+        lock their writes take (`StopClosureCacheTest`). A list written inside `submit { }.get()` or a
+        joined thread (`TripViewModelTest`'s `ranOn`, `LinkedTextOffMainTest`) is read only after that
+        handoff, so it stays as it is.
 - [ ] **Decode Lines…'s saved state off the main thread** (Codex on #678, #679). Compose runs
       `Saver.save`/`restore` on the main thread with no dispatcher to hop to, and two savers walk what they
       hold there: `LineStopRefSaver` splits each saved stop's fields (and maps a v3 save's modes to a cue),
