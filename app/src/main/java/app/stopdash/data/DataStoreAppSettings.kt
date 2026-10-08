@@ -13,6 +13,7 @@ import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.DEFAULT_FONT_SCALE
 import app.stopdash.domain.DistanceUnits
 import app.stopdash.domain.MaxWalk
+import app.stopdash.domain.HiddenModesChoice
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripModes
@@ -124,6 +125,15 @@ class DataStoreAppSettings internal constructor(
 
     override suspend fun setHiddenModes(modes: Set<String>) {
         dataStore.updateData { (it ?: PersistedSettings()).copy(hiddenModes = modes) }
+    }
+
+    override fun hiddenModesChoice(): Flow<HiddenModesChoice> =
+        persisted().map { HiddenModesChoice(ModeGroups.fromStored(it?.hiddenModes.orEmpty()), it?.nationalRailChosen ?: false) }
+
+    override suspend fun setHiddenModesChoice(choice: HiddenModesChoice) {
+        dataStore.updateData {
+            (it ?: PersistedSettings()).copy(hiddenModes = choice.modes, nationalRailChosen = choice.railChosen)
+        }
     }
 
     override fun showDisruptionsRow(): Flow<Boolean> =
@@ -285,6 +295,9 @@ data class PersistedSettings(
     val railApiKey: String? = null,
     // The transport modes hidden from the near-me list. Defaulted, so an older file hides none.
     val hiddenModes: Set<String> = emptySet(),
+    // Whether the rider has shown or hid National Rail themselves ([RailKeyDefault]); until then it is
+    // hidden while no National Rail key is set. Defaulted, so an older file has made no choice.
+    val nationalRailChosen: Boolean = false,
     // The distance-units choice by enum name, or null for the default (follow the locale). A string,
     // not the enum, so a value a newer build adds reads back as the default rather than corrupting.
     val distanceUnits: String? = null,

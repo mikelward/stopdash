@@ -935,6 +935,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
   - [x] **Regroup the trains as Underground, Overground, National Rail** (maintainer, 2026-10-08):
         Underground is the Tube, the DLR and the Elizabeth line; Eurostar goes with National Rail;
         the menu says what a name doesn't in a short subtitle. The Disruptions page's chips follow.
+  - [x] **National Rail unticked until a key is set** (maintainer, 2026-10-08): ticking it with no
+        key asks for one (Get a key / Add key / Show anyway); a key added shows it by itself; the
+        rider's own choice outranks the default. Not stored, so it lifts with no write.
+    - [ ] **Step-by-step key help**: walk the rider through the Rail Data Marketplace sign-up
+          (account, subscribing to the free live departure board product, copying the key). Check
+          the site's current wording first, since it renames products.
+    - [ ] **Check a pasted National Rail key** with one board request, so a wrong key says so in
+          Settings rather than as "No data" on the next refresh.
   - [ ] **Hide one line at a place** ("Hide Thameslink here") and **hide one platform/pole** (its
         card collapses to the header; a stop none of whose cards show isn't fetched).
   - [x] **Hide an individual line everywhere** (maintainer, 2026-09-27), e.g. the Northern or

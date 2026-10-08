@@ -893,6 +893,8 @@ class MainActivity : ComponentActivity() {
                 // list's own Show all, checkboxes and Undo re-pick in place first, and this then
                 // finds nothing owed (SPEC *Finding stops → Hiding a mode*).
                 val hiddenNow by HiddenModesSetting.changes.collectByIdentityWithLifecycle()
+                // The rider's own hides, without National Rail's keyless default, for Settings' Hidden list.
+                val hiddenChosenNow by HiddenModesSetting.chosen.collectByIdentityWithLifecycle()
                 val hiddenWriteFailedNow by HiddenModesSetting.writeFailed.collectAsStateWithLifecycle()
                 val avoidedNow by AvoidedLinesSetting.changes.collectByIdentityWithLifecycle()
                 val avoidedWriteFailedNow by AvoidedLinesSetting.writeFailed.collectAsStateWithLifecycle()
@@ -1917,7 +1919,7 @@ class MainActivity : ComponentActivity() {
                                     onInstallOnWatch = installOnWatch.takeIf { watchInstallAvailable },
                                     // One item shown again at a time; the lists showing nearby stops
                                     // re-pick for it as they come back into view.
-                                    hiddenModes = hiddenNow,
+                                    hiddenModes = hiddenChosenNow,
                                     onShowHidden = { group -> HiddenModesSetting.setGroupHidden(group, hidden = false) },
                                     hiddenWriteFailed = hiddenWriteFailedNow,
                                     onDismissHiddenError = HiddenModesSetting::writeFailureShown,
@@ -2022,7 +2024,8 @@ class MainActivity : ComponentActivity() {
                                         // "Show all" re-picks the set from the same fix, as the list's does,
                                         // so a hidden mode's stops can become origins again.
                                         showAllModes = {
-                                            HiddenModesSetting.showAll()
+                                            // The trip's banner names National Rail hidden for want of a key too, so its Show all shows it.
+                                            HiddenModesSetting.showAll(keepRailDefault = false)
                                             nearbyViewModel.refilter()
                                         },
                                         relocating = nearbyViewModel.relocating,
@@ -3059,6 +3062,9 @@ class MainActivity : ComponentActivity() {
                     onHideMode = { mode -> HiddenModesSetting.setGroupHidden(ModeGroups.of(mode), hidden = true) },
                     onShowAllModes = onShowAllModes,
                     onSetModeGroupShown = onSetModeGroupShown,
+                    railKeyMissing = HiddenModesSetting.railKeyMissing.collectAsStateWithLifecycle().value,
+                    modesLoaded = HiddenModesSetting.isLoaded.collectAsStateWithLifecycle().value,
+                    ownHiddenModes = HiddenModesSetting.chosen.collectByIdentityWithLifecycle().value,
                     hiddenModesWriteFailed = hiddenModesWriteFailed,
                     onHiddenModesWriteFailureShown = HiddenModesSetting::writeFailureShown,
                 )
@@ -3388,7 +3394,8 @@ class MainActivity : ComponentActivity() {
                 returnBusy = fromNearby::relocatingSinceLeft,
                 relocate = { fromNearby.relocate() },
                 showAllModes = {
-                    HiddenModesSetting.showAll()
+                    // The trip's banner names National Rail hidden for want of a key too, so its Show all shows it.
+                    HiddenModesSetting.showAll(keepRailDefault = false)
                     fromNearby.refilter()
                     nearMeRefilter()
                 },

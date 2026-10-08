@@ -8,6 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
@@ -81,6 +82,36 @@ class StoredSettingUpdateTest {
         stored.emit(setOf("tram"))
         runCurrent()
         assertEquals(setOf("tram", "victoria"), holder.current)
+    }
+
+    @Test
+    fun `a tap waits for what it reads besides the setting, and the next waits behind it`() = runTest {
+        val stored = MutableSharedFlow<Set<String>>(replay = 1)
+        val written = mutableListOf<Set<String>>()
+        val holder = holder(onScheduler(), stored, written)
+        stored.emit(setOf("tram"))
+        runCurrent()
+        val keyRead = kotlinx.coroutines.CompletableDeferred<Unit>()
+        holder.update(awaitFirst = { keyRead.await() }) { HomeLines.toggle(it, "victoria") }
+        holder.update { HomeLines.toggle(it, "central") }
+        runCurrent()
+        assertTrue("nothing applied before the key is read", written.isEmpty())
+        keyRead.complete(Unit)
+        runCurrent()
+        assertEquals(listOf(setOf("tram", "victoria"), setOf("tram", "victoria", "central")), written)
+    }
+
+    @Test
+    fun `settled waits for a tap asked before it`() = runTest {
+        val stored = MutableSharedFlow<Set<String>>(replay = 1)
+        val written = mutableListOf<Set<String>>()
+        val holder = holder(onScheduler(), stored, written)
+        stored.emit(setOf("tram"))
+        runCurrent()
+        holder.update { HomeLines.toggle(it, "victoria") }
+        val settled = async { holder.settled() }
+        runCurrent()
+        assertEquals(setOf("tram", "victoria"), settled.await())
     }
 
     @Test

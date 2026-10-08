@@ -68,7 +68,8 @@ internal class UsageStateReader(
             stepFree = StepFreeSetting.changes.value,
             tripModes = TripModesSetting.changes.value,
             avoidedLines = AvoidedLinesSetting.changes.value.size,
-            hiddenModes = HiddenModesSetting.current,
+            // The rider's own hides: National Rail's keyless default follows from [railKey].
+            hiddenModes = HiddenModesSetting.chosenNow,
             distanceUnits = DistanceUnitsSetting.changes.value,
             disruptionsRow = DisruptionsRowSetting.changes.value,
             liveWidget = liveWidget,
