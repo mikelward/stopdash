@@ -89,8 +89,9 @@ data class LineStatus(
      * answers can date one alert differently (its posting here, its period there), and accounts for one of
      * [ahead]'s alerts in those words, the soonest, so a later one in the same words is still added. Among
      * [ahead], alerts are told apart by their whole identity ([plannedAlertFingerprint]): two closures in the
-     * same words on different days stay two, and one TfL gave no words for stays (Codex, #697). Walks both:
-     * on a worker only.
+     * same words on different days stay two, and one TfL gave no words for stays (Codex, #697). A listed alert
+     * with no stretch placed (no closure, or one with no sections) takes the stretch its match in [ahead] carries ([PlannedAlert.closure]), keeping
+     * its own identity, so the line's map can mark it (Codex, #707). Walks both: on a worker only.
      */
     @WorkerThread
     fun withWorkAhead(ahead: List<PlannedAlert>): LineStatus {
@@ -105,18 +106,29 @@ data class LineStatus(
         val listed = planned.mapTo(HashSet()) { plannedAlertFingerprint(it) }
         val seen = HashSet<String>()
         val added = ArrayList<PlannedAlert>()
+        // [planned] with the stretches matched alerts in [ahead] place, where it placed none.
+        val placed = planned.toMutableList()
+        fun place(alert: PlannedAlert, identity: String) {
+            val stretch = alert.closure ?: return
+            val at = placed.indices.firstOrNull { i ->
+                placed[i].closure?.sections.isNullOrEmpty() && (plannedAlertFingerprint(placed[i]) == identity || placed[i].fullText == alert.fullText)
+            } ?: return
+            placed[at] = placed[at].copy(closure = stretch)
+        }
         for (alert in ahead.sortedBy { it.startsOn }) {
             val identity = plannedAlertFingerprint(alert)
             if (!seen.add(identity) || alert.fullText in underWayWords) continue
             val left = unmatched[alert.fullText] ?: 0
             if (identity in listed || left > 0) {
                 if (left > 0) unmatched[alert.fullText] = left - 1
+                place(alert, identity)
                 continue
             }
             added += alert
         }
-        if (added.isEmpty()) return this
-        return copy(planned = (planned + added).sortedBy { it.startsOn })
+        val enriched = placed.indices.any { placed[it] !== planned[it] }
+        if (added.isEmpty() && !enriched) return this
+        return copy(planned = (placed + added).sortedBy { it.startsOn })
     }
 
     /** True when there is anything to show for the line: a disruption now, or work to come. */

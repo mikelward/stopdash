@@ -140,6 +140,7 @@ import app.stopdash.domain.AlertStart
 import app.stopdash.domain.AroundDelays
 import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.PartClosure
 import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.RideLines
@@ -3549,15 +3550,32 @@ internal object ThisProcess {
 }
 
 /**
- * A line's work to come as a page saves it to be restored: each alert's label, words and the day it
- * starts (its epoch day), side by side, so saving and restoring wrap them and an alert is read back by
- * field reads alone, never a parse in composition (Codex, #689).
+ * A line's work to come as a page saves it to be restored: each alert's label, words, the day it starts (its
+ * epoch day) and the stretches it shuts ([PlannedAlert.closure], none where it places none), side by side, so
+ * saving and restoring wrap them and an alert is read back by field reads alone, never a parse in composition
+ * (Codex, #689). The stretches keep the line's map marked as last shown while a rotated page works its week
+ * ahead in again (Codex, #707).
  */
-internal class SavedPlanned(val labels: ArrayList<String>, val texts: ArrayList<String>, val days: LongArray) {
+internal class SavedPlanned(
+    val labels: ArrayList<String>,
+    val texts: ArrayList<String>,
+    val days: LongArray,
+    val sections: ArrayList<ArrayList<ArrayList<String>>> = ArrayList(),
+) {
     val size: Int get() = labels.size
 
-    /** The [index]th alert, as its block shows it. */
-    operator fun get(index: Int): PlannedAlert = PlannedAlert(labels[index], texts[index], java.time.LocalDate.ofEpochDay(days[index]))
+    /** The [index]th alert, as its block shows it and the map marks it. */
+    operator fun get(index: Int): PlannedAlert {
+        val stretch = sections.getOrNull(index)?.takeIf { it.isNotEmpty() }
+        return PlannedAlert(
+            labels[index], texts[index], java.time.LocalDate.ofEpochDay(days[index]),
+            closure = stretch?.let { PartClosure(PlannedAlert.PART_CLOSURE, labels[index], null, it) },
+        )
+    }
+
+    /** Every alert, as the map marks them: a walk, so on the worker. */
+    @WorkerThread
+    fun alerts(): List<PlannedAlert> = List(size) { get(it) }
 
     companion object {
         val NONE = SavedPlanned(ArrayList(), ArrayList(), LongArray(0))
@@ -3570,15 +3588,21 @@ internal class SavedPlanned(val labels: ArrayList<String>, val texts: ArrayList<
                 planned.mapTo(ArrayList(planned.size)) { it.label },
                 planned.mapTo(ArrayList(planned.size)) { it.fullText },
                 LongArray(planned.size) { planned[it].startsOn.toEpochDay() },
+                planned.mapTo(ArrayList(planned.size)) { alert ->
+                    alert.closure?.sections.orEmpty().mapTo(ArrayList()) { ArrayList(it) }
+                },
             )
 
-        /** Saves and restores one by wrapping its three parts. */
+        /** Saves and restores one by wrapping its parts. */
         val Saver: androidx.compose.runtime.saveable.Saver<SavedPlanned?, Any> = androidx.compose.runtime.saveable.Saver(
-            save = { saved -> saved?.let { arrayListOf(it.labels, it.texts, it.days) } },
+            save = { saved -> saved?.let { arrayListOf(it.labels, it.texts, it.days, it.sections) } },
             restore = {
                 @Suppress("UNCHECKED_CAST")
                 val parts = it as List<Any>
-                SavedPlanned(parts[0] as ArrayList<String>, parts[1] as ArrayList<String>, parts[2] as LongArray)
+                SavedPlanned(
+                    parts[0] as ArrayList<String>, parts[1] as ArrayList<String>, parts[2] as LongArray,
+                    parts.getOrNull(3) as? ArrayList<ArrayList<ArrayList<String>>> ?: ArrayList(),
+                )
             },
         )
     }
@@ -3627,9 +3651,17 @@ internal fun TripLine.withWorkAhead(ahead: List<PlannedAlert>?, failed: Boolean,
     if (merged === base) return if (unknown == aheadUnknown) this else copy(aheadUnknown = unknown)
     val listed = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<PlannedAlert, Boolean>())
     listed.addAll(base.planned)
-    val added = merged.planned.filter { it !in listed && !plannedDismissed(leg.lineId, it, dismissed) }
-    if (added.isEmpty()) return if (unknown == aheadUnknown) this else copy(aheadUnknown = unknown)
-    return copy(planned = (planned + added).sortedBy { it.startsOn }, aheadUnknown = unknown)
+    val fresh = merged.planned.filter { it !in listed }
+    // One already listed that the week ahead placed a stretch for, under its own identity: it takes the stretch
+    // where this page lists it (Codex, #707).
+    val baseIds = base.planned.mapTo(HashSet()) { plannedAlertFingerprint(it) }
+    val stretches = fresh.filter { plannedAlertFingerprint(it) in baseIds }.associateBy { plannedAlertFingerprint(it) }
+    val own = if (stretches.isEmpty()) planned else planned.map { alert ->
+        stretches[plannedAlertFingerprint(alert)]?.takeIf { alert.closure?.sections.isNullOrEmpty() } ?: alert
+    }
+    val added = fresh.filter { plannedAlertFingerprint(it) !in baseIds && !plannedDismissed(leg.lineId, it, dismissed) }
+    if (added.isEmpty() && own == planned) return if (unknown == aheadUnknown) this else copy(aheadUnknown = unknown)
+    return copy(planned = (own + added).sortedBy { it.startsOn }, aheadUnknown = unknown)
 }
 
 /**
@@ -4220,7 +4252,8 @@ internal fun TripLineReason(
     // The worse alert the rider dismissed, under the one that stands, toned down.
     val quieted = line.quietedReason ?: restoredQuieted
     // A stand-in line ([TripLine.restoring]) has no map either: its status isn't in.
-    val map = if (restoring || line.restoring) null else rememberLineMapSection(line, starred)
+    // While its week is worked in again, marked with the work to come as last shown, as Coming up is.
+    val map = if (restoring || line.restoring) null else rememberLineMapSection(line, starred, aheadHeld)
     val railColor = lineRailColor(line.leg.lineId, line.leg.mode, line.leg.lineName)
     // A list, so a long line's map draws only the stations on screen; where it was scrolled kept with the
     // map's work where the page has one kept for it ([LocalLineMapWork]).

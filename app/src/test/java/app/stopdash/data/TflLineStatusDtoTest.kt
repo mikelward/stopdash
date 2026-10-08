@@ -52,6 +52,19 @@ class TflLineStatusDtoTest {
     }
 
     @Test
+    fun `a closure in the week ahead carries the stretch it shuts, for the map`() {
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        val text = checkNotNull(javaClass.getResource("/fixtures/line_status_week_ahead.json")).readText()
+        val circle = json.decodeFromString<List<TflLineDto>>(text).single { it.id == "circle" }
+        val now = java.time.Instant.parse("2026-10-08T06:30:00Z")
+        val stretch = listOf("A", "B", "C")
+        val placed = circle.workAhead(now) { listOf(AffectedSection("", stretch)) }.single()
+        assertEquals(listOf(stretch), placed.closure?.sections)
+        // Unplaced where the detail names no stops.
+        assertEquals(null, circle.workAhead(now).single().closure)
+    }
+
+    @Test
     fun `a week ahead dated so it can't be read fails, never a clean week`() {
         // Work TfL dated unreadably may be work to come: the check fails rather than leave it out (Codex, #697).
         val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }

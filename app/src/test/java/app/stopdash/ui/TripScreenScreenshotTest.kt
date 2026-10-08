@@ -4674,6 +4674,64 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun a_closure_still_to_come_is_marked_on_the_map_with_its_day() {
+        // A weekend closure ahead: the stations it will shut carry a calendar and the day, muted, their rails drawn
+        // as they run today (maintainer, 2026-10-08).
+        val words = "Saturday 10 and Sunday 11 October, no service between Kennington and Battersea Power Station."
+        val closure = PlannedAlert(
+            "Part Closure", words, LocalDate.of(2026, 10, 10),
+            closure = PartClosure(5, "Part Closure", words, listOf(listOf("940GZZLUKNG", "940GZZNEUGST", "940GZZBPSUST"), listOf("940GZZBPSUST", "940GZZNEUGST", "940GZZLUKNG"))),
+        )
+        val line = TripLine(northernLeg(), LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(closure)))
+        showLinePage(line, northernLine, shown = "Nine Elms")
+        // Nine Elms, and Battersea Power Station beyond it; never Kennington, where Morden trains will still call.
+        lineMapRow("Battersea Power Station")
+        composeRule.onAllNodesWithText("No service from 10 Oct", substring = true).assertCountEquals(2)
+        composeRule.onNode(hasText("Kennington") and hasText("No service from", substring = true)).assertDoesNotExist()
+        // Tall enough to take the map down to the marked stations.
+        captureSnapshot("trip-line-closure-coming-up.png", heightPx = 2520)
+        composeRule.onAllNodesWithText("No service").assertCountEquals(0)
+    }
+
+    @Test
+    fun a_closure_still_to_come_coming_in_keeps_the_map_up_while_its_marks_are_worked_in() {
+        // The week ahead answering, its marks worked in on a held worker: the map laid out before stays up, never a
+        // loading note in its place (Codex, #707).
+        val words = "Saturday 10 and Sunday 11 October, no service between Kennington and Battersea Power Station."
+        val closure = PlannedAlert(
+            "Part Closure", words, LocalDate.of(2026, 10, 10),
+            closure = PartClosure(5, "Part Closure", words, listOf(listOf("940GZZLUKNG", "940GZZNEUGST", "940GZZBPSUST"), listOf("940GZZBPSUST", "940GZZNEUGST", "940GZZLUKNG"))),
+        )
+        val status = LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service")
+        // Keyed as every page keys its line's map ([TripLine.mapKey]): by what the map draws of the alert.
+        var line by mutableStateOf(TripLine(northernLeg(), status, mapKey = app.stopdash.domain.LineMap.alertKey(status)))
+        val queued = ArrayDeque<Runnable>()
+        var stepped by mutableStateOf(false)
+        val worker = java.util.concurrent.Executor { if (stepped) queued.addLast(it) else it.run() }.asCoroutineDispatcher()
+        val repository = RouteStopsRepository(object : RouteSequenceSource {
+            override suspend fun routeSequence(lineId: String, direction: String): LineSequence = northernLine
+        })
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalRouteStops provides repository, LocalWorker provides worker) { Surface { TripLineReason(line) } }
+            }
+        }
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("Loading map…").fetchSemanticsNodes().isEmpty() && hasLine("Nine Elms") }
+        stepped = true
+        line = TripLine(northernLeg(), status.copy(planned = listOf(closure)), mapKey = app.stopdash.domain.LineMap.alertKey(status))
+        var steps = 0
+        while (true) {
+            composeRule.waitForIdle()
+            composeRule.onNodeWithText("Loading map…").assertDoesNotExist()
+            val next = queued.removeFirstOrNull() ?: break
+            next.run()
+            assertTrue("the worker settles", ++steps < 50)
+        }
+        lineMapRow("Battersea Power Station")
+        composeRule.onAllNodesWithText("No service from 10 Oct", substring = true).assertCountEquals(2)
+    }
+
+    @Test
     fun work_to_come_is_dismissed_one_by_one_from_a_lines_page() {
         // Every service alert is dismissible, planned work on a line's page too (Codex, #689).
         val closure = PlannedAlert("Part Closure", "Saturday 10 and Sunday 11 October, no service between Kennington and Morden.", LocalDate.of(2026, 10, 10))

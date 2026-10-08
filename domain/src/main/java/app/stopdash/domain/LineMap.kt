@@ -44,6 +44,10 @@ class LineMap internal constructor(
         val runsDown: Boolean = true,
         val runsUp: Boolean = true,
         val arrives: Boolean = false,
+        // Each closure still to come that shuts this track going down the map, and going up it: by the day it
+        // starts, keyed by which closure, so one closure's day is never read as another's (Codex, #707).
+        val upcomingDown: Map<Int, java.time.LocalDate> = emptyMap(),
+        val upcomingUp: Map<Int, java.time.LocalDate> = emptyMap(),
     ) {
         /** Run one way only: drawn with an arrow the way it's run. */
         val oneWay: Boolean = runsDown != runsUp
@@ -93,6 +97,24 @@ class LineMap internal constructor(
 
         /** Every track to it closed going one way only: trains call going the other way. */
         val servedOneWay: Boolean = noneDown != noneUp
+
+        /**
+         * The day a closure still to come shuts every track to it, so no train will call: marked with a calendar,
+         * its rails drawn as they run today. No alert placed on the rider, so it never changes how the map folds.
+         * Null where trains will still call (where such a closure begins, as Kennington, or one shuts it one
+         * way only). One closure has to shut it all: two shutting a track each, on their own days, never leave
+         * it with no train at once (Codex, #707). The soonest, where several do.
+         */
+        val upcomingFrom: java.time.LocalDate? = if (own.isEmpty()) {
+            null
+        } else {
+            // Each way a track is run: a one-way track (a bus round a loop) shut its one way leaves none (Codex, #707).
+            (own.first().upcomingDown + own.first().upcomingUp).entries
+                .filter { (closure, _) ->
+                    own.all { (!it.runsDown || closure in it.upcomingDown) && (!it.runsUp || closure in it.upcomingUp) }
+                }
+                .minOfOrNull { it.value }
+        }
 
         /** A closed track to it while it's still served both ways: where a closure begins (Kennington's). */
         val besideClosure: Boolean = !unserved && !servedOneWay && own.any { it.closed }
@@ -165,6 +187,8 @@ class LineMap internal constructor(
             val section: Boolean,
             val level: Level? = null,
             val unnamed: Boolean = false,
+            // A closure still to come shuts a station folded into it ([Row.upcomingFrom]).
+            val upcoming: Boolean = false,
         ) : Item {
             /** [ends] as one line, "Edgware · High Barnet · Mill Hill East", joined here on the worker. */
             val endsText: String = ends.joinToString(" · ")
@@ -331,6 +355,8 @@ class LineMap internal constructor(
         count = span.mapTo(HashSet()) { it.stopId }.size,
         section = section,
         level = (span.mapNotNull { it.level } + listOfNotNull(Level.CLOSURE.takeIf { closedTrack })).maxOrNull(),
+        // Shut now, its no-entry sign says more: the calendar is for a station still served (Codex, #707).
+        upcoming = span.any { it.upcomingFrom != null && !it.unserved && !it.servedOneWay },
     )
 
     companion object {
@@ -370,16 +396,17 @@ class LineMap internal constructor(
             rides: List<List<String>> = emptyList(),
             nearby: Set<String> = emptySet(),
             here: Coordinates? = null,
+            upcoming: List<PlannedAlert> = emptyList(),
         ): LineMap? {
             val alone = oneWay(sequence, otherWay = false)
             val both = oneWay(sequence, otherWay = true)
             // The way back drawn on the outbound way's own tracks: one map, its arrows from both ways.
-            if (both.routes == alone.routes) return laidOut(sequence, alone, closures, alertText, placed, starred, riding, rides, nearby, here)
+            if (both.routes == alone.routes) return laidOut(sequence, alone, closures, alertText, placed, starred, riding, rides, nearby, here, upcoming)
             // Else the outbound way alone where the way back can't be drawn, with no arrows: the way back runs
             // somewhere the map doesn't show, so its tracks can't say which way buses run them.
             val unknownWay = OneWay(alone.routes, alone.same, alone.through)
-            val outbound = laidOut(sequence, unknownWay, closures, alertText, placed, starred, riding, rides, nearby, here)
-            val drawn = laidOut(sequence, both, closures, alertText, placed, starred, riding, rides, nearby, here) ?: return outbound
+            val outbound = laidOut(sequence, unknownWay, closures, alertText, placed, starred, riding, rides, nearby, here, upcoming)
+            val drawn = laidOut(sequence, both, closures, alertText, placed, starred, riding, rides, nearby, here, upcoming) ?: return outbound
             fun LineMap.twice() = rows.size - rows.mapTo(HashSet()) { it.stopId }.size
             return if (outbound != null && drawn.twice() > outbound.twice()) outbound else drawn
         }
@@ -395,6 +422,7 @@ class LineMap internal constructor(
             rides: List<List<String>>,
             nearby: Set<String>,
             here: Coordinates?,
+            upcoming: List<PlannedAlert>,
         ): LineMap? {
             fun same(id: String) = way.same[id] ?: id
             // A section's stops as the map has them: the way back's poles as the outbound stops, and a hop
@@ -418,6 +446,14 @@ class LineMap internal constructor(
 
             // Each closed track the way round trains can't run it.
             val closed = closures.flatMapTo(HashSet()) { section -> drawn(section).zipWithNext { a, b -> "$a>$b" } }
+            // Each track a closure still to come shuts, the way round trains can't run it: by which closure and
+            // the day it starts.
+            val upcomingTracks = HashMap<String, HashMap<Int, java.time.LocalDate>>()
+            upcoming.forEachIndexed { index, alert ->
+                for (section in alert.closure?.sections.orEmpty()) {
+                    drawn(section).zipWithNext { a, b -> upcomingTracks.getOrPut("$a>$b") { HashMap() }[index] = alert.startsOn }
+                }
+            }
             fun named(text: String?): Set<String> = if (text.isNullOrBlank()) {
                 emptySet()
             } else {
@@ -481,6 +517,8 @@ class LineMap internal constructor(
                     riddenGoingUp = "$to>$from" in riddenTracks,
                     runsDown = way.travel?.contains("${base(from)}>${base(to)}") ?: true,
                     runsUp = way.travel?.contains("${base(to)}>${base(from)}") ?: true,
+                    upcomingDown = upcomingTracks["${base(from)}>${base(to)}"].orEmpty(),
+                    upcomingUp = upcomingTracks["${base(to)}>${base(from)}"].orEmpty(),
                 )
             } ?: return null
             val columns = rows.maxOf { row -> maxOf(row.column, (row.top + row.bottom).maxOfOrNull { maxOf(it.from, it.to) } ?: 0) } + 1
@@ -547,9 +585,10 @@ class LineMap internal constructor(
             rides: List<List<String>> = emptyList(),
             nearby: Set<String> = emptySet(),
             here: Coordinates? = null,
+            upcoming: List<PlannedAlert> = emptyList(),
         ): LineMap? {
             val placed = (placed(status) + placed(quieted)).distinct()
-            return of(sequence, placed.flatMap { it.sections }.distinct(), shown(status, placed), starred, riding, placed, rides, nearby, here)
+            return of(sequence, placed.flatMap { it.sections }.distinct(), shown(status, placed), starred, riding, placed, rides, nearby, here, upcoming)
         }
 
         /**

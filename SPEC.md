@@ -2756,7 +2756,10 @@ ahead" where that ask failed or its answer couldn't be read, asked again at the 
 anywhere stays off every line page; a route page's line page lists the work to come the route page
 does, a good service's included. A page restored after a rotation keeps it as last shown; after the app was closed and came back it
 waits for the line, the work having maybe started or been called off meanwhile. It is no verdict: changed, it
-comes in with the line's row, never taking the page down meanwhile as a changed alert does. A route page opens its line's page too, from its overflow's **View line**
+comes in with the line's row, never taking the page down meanwhile as a changed alert does. A closure to come
+is on the map too (maintainer, 2026-10-08): each station it will shut, every track to it closing, carries a
+calendar and "No service from 10 Oct", muted, where a closure in force draws ⛔ and dashes; its rails are drawn as
+they run today, and it folds as any plain station does, its fold carrying the calendar. A route page opens its line's page too, from its overflow's **View line**
 (maintainer, 2026-10-06), over the route page, which Back returns to: the line's status as the route
 page has it (an alert behind the stop included, the page being about the whole line; "Couldn't
 check" where the line's own check failed or has gone stale, beside a status kept from before too,

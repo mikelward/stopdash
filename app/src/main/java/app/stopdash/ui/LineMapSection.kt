@@ -1,5 +1,12 @@
 package app.stopdash.ui
 
+import androidx.compose.foundation.layout.fillMaxSize
+import app.stopdash.domain.PlannedAlert
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.foundation.text.InlineTextContent
 import androidx.annotation.WorkerThread
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
@@ -128,6 +135,10 @@ internal fun rememberLineMap(
     quieted: LineStatus? = null,
     rides: List<List<String>> = emptyList(),
     nearby: Set<String> = emptySet(),
+    // The line's work still to come: each closure's stations marked from the day it starts ([LineMap.forStatus]).
+    upcoming: List<PlannedAlert> = emptyList(),
+    // Marked instead of [upcoming] where given: the work to come as a page last showed it, read on the worker.
+    upcomingHeld: SavedPlanned? = null,
 ): LineMapUi? {
     val repository = LocalRouteStops.current ?: return null
     val worker = LocalWorker.current
@@ -153,12 +164,12 @@ internal fun rememberLineMap(
     val here = LocalRiderPosition.current
     val ownLaid = remember { mutableStateOf<Worked<Inputs, Laid>?>(null) }
     val laidSlot = held?.laid ?: ownLaid
-    val laid = rememberWorked(laidSlot, Inputs(sequence, status, statusKey, starred, riding, quieted, rides, nearby, here), keep = { _, _ -> true }) {
+    val laid = rememberWorked(laidSlot, Inputs(sequence, status, statusKey, starred, riding, quieted, rides, nearby, here, upcoming, upcomingHeld), keep = { _, _ -> true }) {
         Laid(
             sequence,
             statusKey,
             // No near-me list's pick: the stop the map draws nearest the rider's fix, however far.
-            sequence?.let { LineMap.forStatus(it, status, starred, riding, quieted, rides, nearby, here) },
+            sequence?.let { LineMap.forStatus(it, status, starred, riding, quieted, rides, nearby, here, upcomingHeld?.alerts() ?: upcoming) },
         )
     }
     // A map laid out for this route data and this status, for starred or ridden stops since changed
@@ -276,7 +287,7 @@ internal class LineMapSectionState(
  * where there's no route data to be had (none wired, as in a test of the page alone): no map at all.
  */
 @Composable
-internal fun rememberLineMapSection(line: TripLine, starred: Set<String>): LineMapSectionState? {
+internal fun rememberLineMapSection(line: TripLine, starred: Set<String>, upcomingHeld: SavedPlanned? = null): LineMapSectionState? {
     val leg = line.leg
     var retry by remember(leg.lineId) { mutableIntStateOf(0) }
     // Kept above the page where it's given somewhere to keep them ([LocalLineMapWork]), else saved here.
@@ -285,7 +296,10 @@ internal fun rememberLineMapSection(line: TripLine, starred: Set<String>): LineM
     val ownAll = rememberSaveable(leg.lineId) { mutableStateOf(false) }
     var opened by (held?.opened ?: ownOpened)
     var all by (held?.all ?: ownAll)
-    val ui = rememberLineMap(leg.lineId, line.status, starred, line.riding, opened, all, retry, line.mapKey ?: line.status, line.quieted, line.rides, line.nearby)
+    // The work to come marks the map but isn't what it's keyed by: as it comes in or changes, the map laid out
+    // before stands in until the marks are worked in, never a loading note in its place (Codex, #707). While the
+    // page works its week ahead in again, the work to come as last shown ([upcomingHeld]).
+    val ui = rememberLineMap(leg.lineId, line.status, starred, line.riding, opened, all, retry, line.mapKey ?: line.status, line.quieted, line.rides, line.nearby, line.planned, upcomingHeld)
     val atFirst = opened == null && !all
     return if (ui == null) {
         null
@@ -586,9 +600,13 @@ private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, positio
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = if (row.end) FontWeight.SemiBold else FontWeight.Normal,
             )
+            val upcoming = row.upcomingFrom
             when {
                 row.unserved -> Text(stringResource(R.string.line_map_no_service), style = MaterialTheme.typography.bodySmall, color = closedColor)
                 row.servedOneWay -> Text(stringResource(R.string.line_map_no_service_one_way), style = MaterialTheme.typography.bodySmall, color = closedColor)
+                // A closure still to come: a calendar, as a route row marks planned work, in the muted color since
+                // nothing is shut yet (maintainer, 2026-10-08).
+                upcoming != null -> UpcomingClosureNote(upcoming)
             }
             // Why it's on the page when the stations around it fold, under its service where that's shut.
             if (row.nearby) {
@@ -625,12 +643,16 @@ private fun FoldRow(fold: LineMap.Item.Fold, columns: Int, railColor: Color, onO
     val closure = fold.level == LineMap.Level.CLOSURE
     val closureText = stringResource(R.string.line_map_no_service)
     val warning = fold.level == LineMap.Level.WARNING
+    // A closure still to come at a station still served: a calendar after the title, beside an alert's glyph where
+    // there's one too, as they're separate facts (Codex, #707).
+    val upcoming = fold.upcoming
     val surface = MaterialTheme.colorScheme.surface
     val signBar = MaterialTheme.colorScheme.onError
     // The arrows on one-way tracks folded in, said as well as drawn (Codex, #665). The closure is read
     // out as the row's own text.
     val state = listOfNotNull(
         stringResource(R.string.line_map_fold_alert).takeIf { warning },
+        stringResource(R.string.line_map_fold_upcoming).takeIf { upcoming },
         stringResource(R.string.line_map_one_way_down).takeIf { fold.oneWayDown },
         stringResource(R.string.line_map_one_way_up).takeIf { fold.oneWayUp },
     ).joinToString(", ").ifEmpty { null }
@@ -682,13 +704,19 @@ private fun FoldRow(fold: LineMap.Item.Fold, columns: Int, railColor: Color, onO
             verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
             modifier = Modifier.weight(1f).heightIn(min = 56.dp).padding(vertical = 8.dp),
         ) {
+            // A closure still to come in it: a calendar, in the muted color.
             Text(
                 buildAnnotatedString {
                     append(title)
                     if (warning) withStyle(SpanStyle(color = closedColor)) { append(" \u26A0") }
+                    if (upcoming) {
+                        append(" ")
+                        appendInlineContent(CALENDAR_INLINE, "\uD83D\uDCC5")
+                    }
                 },
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
+                inlineContent = if (upcoming) calendarInline(muted) else emptyMap(),
             )
             if (!fold.unnamed || closure) {
                 Text(
@@ -721,4 +749,33 @@ private fun lineMapFailureMessage(kind: DeparturesUiState.Error.Kind): Int = whe
     DeparturesUiState.Error.Kind.RATE_LIMITED -> R.string.line_map_failed_rate_limited
     DeparturesUiState.Error.Kind.NETWORK, DeparturesUiState.Error.Kind.SERVER -> R.string.line_map_failed_unreachable
     DeparturesUiState.Error.Kind.KEY_REJECTED -> R.string.line_map_failed_key_rejected
+}
+
+// The key of the calendar drawn in a line of text ([calendarInline]).
+private const val CALENDAR_INLINE = "calendar"
+
+/** A calendar the height of the text it sits in, for [CALENDAR_INLINE], in [tint]; said by the row, not itself. */
+private fun calendarInline(tint: Color) = mapOf(
+    CALENDAR_INLINE to InlineTextContent(Placeholder(1.em, 1.em, PlaceholderVerticalAlign.TextCenter)) {
+        Icon(CalendarIcon, contentDescription = null, tint = tint, modifier = Modifier.fillMaxSize())
+    },
+)
+
+/**
+ * Under a station a closure still to come will shut: a calendar and "No service from 10 Oct", muted, as nothing
+ * is shut yet and the station's rails are drawn as they run today.
+ */
+@Composable
+private fun UpcomingClosureNote(from: java.time.LocalDate) {
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Text(
+        buildAnnotatedString {
+            appendInlineContent(CALENDAR_INLINE, "\uD83D\uDCC5")
+            append(" ")
+            append(stringResource(R.string.line_map_no_service_from, plannedDay(from)))
+        },
+        style = MaterialTheme.typography.bodySmall,
+        color = muted,
+        inlineContent = calendarInline(muted),
+    )
 }

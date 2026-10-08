@@ -4525,10 +4525,14 @@ private val PLANNED_GLYPH_SIZE = 18.sp
 
 /** The day [alert] starts, short and in the rider's own locale ("13 Oct"). */
 @Composable
-internal fun plannedDate(alert: PlannedAlert): String {
+internal fun plannedDate(alert: PlannedAlert): String = plannedDay(alert.startsOn)
+
+/** [day], short and in the rider's own locale ("13 Oct"), as a planned alert's start is said. */
+@Composable
+internal fun plannedDay(day: java.time.LocalDate): String {
     val locale = LocalConfiguration.current.locales[0]
-    return remember(alert.startsOn, locale) {
-        alert.startsOn.format(DateTimeFormatter.ofPattern("d MMM", locale))
+    return remember(day, locale) {
+        day.format(DateTimeFormatter.ofPattern("d MMM", locale))
     }
 }
 
