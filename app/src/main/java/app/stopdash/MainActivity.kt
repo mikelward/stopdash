@@ -4383,6 +4383,7 @@ class MainActivity : ComponentActivity() {
                 dismissedStore = DataStoreDismissedAlertsStore.from(context, warn = ::logDepartureWarning),
                 saved = saved,
                 loadIndex = { StationIndexStore.load(context.applicationContext) },
+                workAhead = { linesClient.lineWorkAhead(it) },
             )
         }
 

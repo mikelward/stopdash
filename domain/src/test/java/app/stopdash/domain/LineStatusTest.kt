@@ -170,4 +170,43 @@ class LineStatusTest {
         assertEquals("Part Closure", LineStatus.asOf(map, java.time.Instant.parse("2026-10-13T08:00:00Z"))["blue"]?.forDirection("inbound")?.description)
         assertSame(map, LineStatus.asOf(map, java.time.Instant.parse("2026-10-12T08:00:00Z")))
     }
+
+    @Test
+    fun `the week's work is added to the work to come, once, soonest first`() {
+        val line = LineStatus("blue", 9, "Minor Delays", fullText = "Minor delays.", planned = listOf(later))
+        val weekend = PlannedAlert("Part Closure", "Saturday and Sunday, no service.", LocalDate.of(2026, 10, 17), severity = 5)
+        // Already listed, or under way in the same words: not added again.
+        val again = later.copy(startsOn = LocalDate.of(2026, 10, 19))
+        val now = PlannedAlert("Minor Delays", "Minor delays.", LocalDate.of(2026, 10, 14))
+        val merged = line.withWorkAhead(listOf(weekend, again, now, weekend))
+        assertEquals(listOf("Saturday and Sunday, no service.", "Diverted from 20 October."), merged.planned.map { it.fullText })
+        assertEquals("Minor Delays", merged.description)
+        // Nothing ahead, or nothing new: the same status.
+        assertSame(line, line.withWorkAhead(emptyList()))
+        assertSame(line, line.withWorkAhead(listOf(again)))
+    }
+
+    @Test
+    fun `the week's closures in the same words on different days, or in none, are each kept`() {
+        // Two weekends' closures TfL words alike stay two; one it gave no words for stays too (Codex, #697).
+        val line = LineStatus("blue", LineStatus.GOOD_SERVICE, "Good Service")
+        val first = PlannedAlert("Part Closure", "No service between A and B.", LocalDate.of(2026, 10, 17), severity = 5)
+        val second = first.copy(startsOn = LocalDate.of(2026, 10, 24))
+        val wordless = PlannedAlert("Part Closure", "", LocalDate.of(2026, 10, 31), severity = 5)
+        val merged = line.withWorkAhead(listOf(first, second, wordless, second, wordless))
+        assertEquals(listOf(first, second, wordless), merged.planned)
+        // Asked again with all three listed: nothing new.
+        assertSame(merged, merged.withWorkAhead(listOf(first, second, wordless)))
+    }
+
+    @Test
+    fun `a closure already listed accounts for one of the week's, so a later one in its words is added`() {
+        // The status lists this weekend's closure, dated by its posting; the week has it, dated by its period, and
+        // next weekend's in the same words: only the soonest is the one listed (Codex, #697).
+        val listed = PlannedAlert("Part Closure", "No service between A and B.", LocalDate.of(2026, 10, 16), severity = 5)
+        val line = LineStatus("blue", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(listed))
+        val thisWeekend = listed.copy(startsOn = LocalDate.of(2026, 10, 17))
+        val nextWeekend = listed.copy(startsOn = LocalDate.of(2026, 10, 24))
+        assertEquals(listOf(listed, nextWeekend), line.withWorkAhead(listOf(nextWeekend, thisWeekend)).planned)
+    }
 }

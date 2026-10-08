@@ -403,6 +403,7 @@ class KtorTflClientTest {
         warn: (String) -> Unit = {},
         httpTimeout: Boolean = false,
         keyAnswered: (String, Boolean) -> Unit = { _, _ -> },
+        clock: () -> java.time.Instant = java.time.Instant::now,
     ): KtorTflClient {
         val engine = MockEngine { request ->
             capture(request)
@@ -417,7 +418,7 @@ class KtorTflClientTest {
             if (httpTimeout) install(HttpTimeout)
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
-        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, appKey = { appKey }, warn = warn, keyAnswered = keyAnswered)
+        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, appKey = { appKey }, warn = warn, keyAnswered = keyAnswered, clock = clock)
     }
 
     @Test
@@ -439,6 +440,28 @@ class KtorTflClientTest {
         assertEquals(listOf(listOf("A", "B")), status.closures.flatMap { it.sections })
         assertEquals("Part Suspended", status.forDirection("outbound").description)
         assertFalse(status.awaitingDirections)
+    }
+
+    @Test
+    fun `a week ahead whose answer leaves the line out is a failure, not a clean week`() = runTest {
+        // Said as "Couldn't check the week ahead", never kept as no work to come (Codex, #697).
+        for (body in listOf("[]", """[{"id": "other", "name": "Other", "lineStatuses": []}]""")) {
+            val failed = runCatching { client(body).lineWorkAhead("bus1") }.exceptionOrNull()
+            assertTrue("$body: $failed", failed is TflException.NotFound)
+        }
+        // The line there with nothing planned: an empty week, as asked.
+        assertEquals(emptyList<Any>(), client("""[{"id": "bus1", "name": "1", "lineStatuses": []}]""").lineWorkAhead("bus1").alerts)
+    }
+
+    @Test
+    fun `a week ahead is classified as of its answer, not its ask`() = runTest {
+        // Asked a minute before a closure starts, answered after: under way by then, not to come (Codex, #697).
+        val times = ArrayDeque(listOf(java.time.Instant.parse("2026-10-10T03:29:00Z"), java.time.Instant.parse("2026-10-10T03:31:00Z")))
+        val body = """[{"id": "circle", "name": "Circle", "lineStatuses": [{"statusSeverity": 5, "statusSeverityDescription": "Part Closure",
+          "reason": "No service.", "validityPeriods": [{"fromDate": "2026-10-10T03:30:00Z", "toDate": "2026-10-12T04:00:00Z"}]}]}]"""
+        val week = client(body, clock = { times.removeFirstOrNull() ?: java.time.Instant.parse("2026-10-10T03:31:00Z") }).lineWorkAhead("circle")
+        assertEquals(emptyList<Any>(), week.alerts)
+        assertEquals(null, week.startsIn)
     }
 
     @Test

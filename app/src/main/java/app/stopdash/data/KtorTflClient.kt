@@ -12,6 +12,7 @@ import app.stopdash.domain.LiftOutageSource
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.PlaceCandidate
+import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.PlaceSearch
 import app.stopdash.domain.PostcodeResolution
 import app.stopdash.domain.PostcodeResolver
@@ -573,6 +574,31 @@ class KtorTflClient(
         ) { entry -> placed.directionsOf(line.id, entry) }
     }
 
+    /**
+     * The work TfL has planned on [lineId] over the next [days] that hasn't started ([TflLineDto.workAhead]),
+     * from its date-range status (`/Line/{id}/Status/{from}/to/{to}`), for a line page's *Coming up*. One
+     * request, asked when the page opens and kept for hours by its caller. Throws on a transport or decode
+     * failure, or [TflException.NotFound] where the answer leaves the line out; empty where TfL has
+     * nothing planned. With it, how long until the soonest of it starts, for the caller to keep it no
+     * longer than that (Codex, #697).
+     */
+    suspend fun lineWorkAhead(lineId: String, days: Long = WORK_AHEAD_DAYS): WorkAhead {
+        val now = clock()
+        val from = WORK_AHEAD_FORMAT.format(now)
+        val to = WORK_AHEAD_FORMAT.format(now.plus(java.time.Duration.ofDays(days)))
+        val lines = tflRequest { key ->
+            httpClient.get("$baseUrl/Line/$lineId/Status/$from/to/$to") {
+                applyAppKey(key)
+            }.body<List<TflLineDto>>()
+        }
+        // An answer without the line asked for is no clean week: a failure, said as one (Codex, #697).
+        val line = lines.firstOrNull { it.id == lineId } ?: throw TflException.NotFound(null)
+        // Classified as of the answer, not the ask: a slow or retried request can span a period's start
+        // (Codex, #697).
+        val answered = clock()
+        return WorkAhead(line.workAhead(answered), line.nextWorkStart(answered)?.let { java.time.Duration.between(answered, it) })
+    }
+
     override suspend fun lineStatuses(lineIds: Collection<String>): List<LineStatus> {
         // No lines → no request: a refresh with no predicted lines has nothing to check,
         // and an empty `/Line//Status` path would 404.
@@ -842,3 +868,11 @@ class KtorTflClient(
             }
     }
 }
+
+// How far ahead a line page's *Coming up* looks ([KtorTflClient.lineWorkAhead]): a week, TfL's own weekend
+// closures being announced the week before.
+private const val WORK_AHEAD_DAYS = 7L
+
+// TfL's date-range path takes local-free date-times; asked in UTC, which its periods come back in too.
+private val WORK_AHEAD_FORMAT: java.time.format.DateTimeFormatter =
+    java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss").withZone(java.time.ZoneOffset.UTC)

@@ -125,6 +125,9 @@
     <!-- On a line's page, over the line's work that hasn't started yet, each with the day it starts. -->
     <!-- TODO: translate -->
     <string name="line_coming_up" tools:ignore="MissingTranslation">Coming up</string>
+    <!-- Under a line's Coming up when its work for the week ahead couldn't be checked; it is asked again. -->
+    <!-- TODO: translate -->
+    <string name="line_coming_up_unknown" tools:ignore="MissingTranslation">Couldn\'t check the week ahead</string>
     <!-- Title of the page listing every line a trip rides with its status. -->
     <!-- TODO: translate -->
     <string name="trip_lines_title" tools:ignore="MissingTranslation">Line status</string>

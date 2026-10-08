@@ -256,11 +256,12 @@ internal fun LinesOverlay(
         val checking = held == null || held.checking || (held.status == null && !held.unknown)
         val dismissed by viewModel.lineDismissed.collectAsStateWithLifecycle()
         val dismissals by viewModel.dismissed.collectByIdentityWithLifecycle()
-        val row = rememberWorked(slot, Inputs(line.id, line.name, line.mode, dismissals, status, dismissed, unknown, checking), keep = ::sameVerdict) {
+        val aheadUnknown = held?.aheadUnknown == true
+        val row = rememberWorked(slot, Inputs(line.id, line.name, line.mode, dismissals, aheadUnknown, status, dismissed, unknown, checking), keep = ::sameVerdict) {
             // No stop of the rider's: the map draws the whole line, none of it marked as theirs.
             lineRow(
                 line.mode, line.id, line.name, "", "", status, dismissed = dismissed, ride = null, unknown = unknown, checking = checking,
-                planned = plannedShown(line.id, status, dismissals),
+                planned = plannedShown(line.id, status, dismissals), aheadUnknown = aheadUnknown,
             )
         }
         // Its alert dismissible here as on any line's page (SPEC *Disruptions*), into the shared store.

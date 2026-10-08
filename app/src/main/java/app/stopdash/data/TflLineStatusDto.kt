@@ -5,6 +5,7 @@ import app.stopdash.domain.LineAlert
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.PartClosure
 import app.stopdash.domain.PlannedAlert
+import app.stopdash.domain.TflException
 import app.stopdash.domain.ResolvedDisruption
 import app.stopdash.domain.mostSevereDisruption
 import app.stopdash.domain.resolveDisruption
@@ -44,6 +45,11 @@ data class TflLineStatusEntryDto(
 @Serializable
 data class TflValidityPeriodDto(
     val fromDate: String? = null,
+    // When it ends, and whether TfL counts it as in force now. Only a date-range request
+    // (`/Line/{ids}/Status/{from}/to/{to}`) makes these the work's own times ([workAhead]); a plain
+    // status's are when the alert was posted and until when it's shown.
+    val toDate: String? = null,
+    val isNow: Boolean? = null,
 )
 
 /** When TfL posted this entry: its earliest `fromDate`, or null when it gave none. */
@@ -242,6 +248,54 @@ fun TflLineDto.toLineStatus(
     }
     return whole.copy(byDirection = byDirection.takeIf { split -> split.values.any { it != whole } }.orEmpty())
 }
+
+/**
+ * The work TfL has planned on this line that hasn't started by [now], from a date-range request
+ * (`/Line/{ids}/Status/{from}/to/{to}`), whose periods are the work's own: each alert with a period
+ * still to begin, dated by the day the first such period starts in London, soonest first. An alert in
+ * force now, or one with no period, is left out: the line's own status speaks for what's under way.
+ * A period dated so it can't be read, or given no start, throws ([TflException.Unreachable]): work it
+ * may hold is never taken for a clean week (Codex, #697).
+ */
+fun TflLineDto.workAhead(now: Instant): List<PlannedAlert> = workAheadStarts(now).map { it.second }.distinct()
+
+/**
+ * A line's work to come over the coming days ([workAhead]), and how long until the soonest of it starts
+ * ([startsIn], null with none): kept no longer than that, as it's under way then, no longer to come.
+ */
+class WorkAhead(val alerts: List<PlannedAlert>, val startsIn: java.time.Duration?)
+
+/** When the soonest of [workAhead]'s work starts: what's kept of it is work to come until then. */
+fun TflLineDto.nextWorkStart(now: Instant): Instant? = workAheadStarts(now).minOfOrNull { it.first }
+
+// Each alert's work to come with the instant its first period still to begin starts, soonest first.
+private fun TflLineDto.workAheadStarts(now: Instant): List<Pair<Instant, PlannedAlert>> =
+    lineStatuses
+        .filter { it.statusSeverity != LineStatus.GOOD_SERVICE }
+        .mapNotNull { entry ->
+            val periods = entry.validityPeriods.mapNotNull { period ->
+                // A period with no start can't be placed: the check fails rather than drop it (Codex, #697).
+                val from = validityInstant(period.fromDate ?: throw TflException.Unreachable("validity period without a start", null))
+                val to = period.toDate?.let(::validityInstant)
+                Triple(from, to, period.isNow == true)
+            }
+            // Under way already, by TfL's word or its times: not work to come.
+            if (periods.isEmpty() || periods.any { (from, to, isNow) -> isNow || (!from.isAfter(now) && (to == null || to.isAfter(now))) }) {
+                return@mapNotNull null
+            }
+            val start = periods.map { it.first }.filter { it.isAfter(now) }.minOrNull() ?: return@mapNotNull null
+            val resolved = resolveDisruption(entry.statusSeverityDescription, entry.statusSeverity, entry.reason)
+            start to PlannedAlert(resolved.label, resolved.fullText, start.atZone(AlertStart.ZONE).toLocalDate(), resolved.severity, resolved.isFallback)
+        }
+        .sortedBy { it.second.startsOn }
+
+// A validity period's time as TfL gives it; one that can't be read fails the week's check.
+private fun validityInstant(text: String): Instant =
+    try {
+        Instant.parse(text)
+    } catch (e: java.time.format.DateTimeParseException) {
+        throw TflException.Unreachable("unreadable validity date", e)
+    }
 
 // False when TfL gave a posting date that can't be read: without the anchor a missing year is a
 // guess, so the alert stays under way, the safe side (Codex, PR #337), and the oddity is reported.

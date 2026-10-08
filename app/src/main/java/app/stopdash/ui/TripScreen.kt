@@ -3481,6 +3481,8 @@ internal data class TripLine(
     // The line's work still to come, less what the rider dismissed (SPEC *Line page*), worked out with
     // the line: [status]'s own where nothing else is known.
     val planned: List<PlannedAlert> = status?.planned.orEmpty(),
+    // The line's week ahead couldn't be asked, so its *Coming up* may be missing work: the page says so.
+    val aheadUnknown: Boolean = false,
 ) {
     /** Whether the page shows [status]'s disruption: a line kept from before still warns of it. */
     val disrupted: Boolean get() = status?.disrupted == true
@@ -4093,7 +4095,7 @@ internal fun TripLineReason(
         val planned = line.planned
         val saved = restoredPlanned.takeIf { planned.isEmpty() && line.status == null } ?: SavedPlanned.NONE
         val count = if (planned.isNotEmpty()) planned.size else saved.size
-        if (count > 0) {
+        if (count > 0 || line.aheadUnknown) {
             item(key = "comingUp") {
                 Text(
                     stringResource(R.string.line_coming_up),
@@ -4106,6 +4108,17 @@ internal fun TripLineReason(
             items(count, key = { "planned:$it" }) { index ->
                 val alert = planned.getOrNull(index) ?: saved[index]
                 PlannedAlertBlock(alert, Modifier.padding(top = 8.dp), onDismiss = onDismissPlanned?.let { { it(alert) } })
+            }
+            // Never a clean week claimed for want of an answer (SPEC D4): the page asks again at its next tick.
+            if (line.aheadUnknown) {
+                item(key = "aheadUnknown") {
+                    Text(
+                        stringResource(R.string.line_coming_up_unknown),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
             }
         }
         if (map != null) lineMapSection(map, railColor)
