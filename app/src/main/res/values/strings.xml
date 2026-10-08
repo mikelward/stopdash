@@ -561,18 +561,58 @@
     <!-- Adding a favorite journey from Settings: the station search's placeholder while picking where it starts. -->
     <string name="journey_pick_from_hint">From station or stop</string>
     <!-- Under Favorite journeys' title while a picked pair is looked up and saved. %1$s and %2$s are its two stations. -->
-    <string name="favorite_journeys_adding">Adding %1$s ➔ %2$s…</string>
+    <string name="favorite_journeys_adding">Adding %1$s ⇄ %2$s…</string>
     <!-- The picked pair was already saved. -->
-    <string name="favorite_journeys_add_already">%1$s ➔ %2$s is already a favorite</string>
+    <string name="favorite_journeys_add_already">%1$s ⇄ %2$s is already a favorite</string>
     <!-- No line serves both picked stations: a journey with a change isn't supported yet. -->
     <string name="favorite_journeys_add_no_line">No direct line from %1$s to %2$s</string>
     <!-- The same station picked for both ends. -->
     <string name="favorite_journeys_add_same">Pick two different stations</string>
     <!-- Looking up the picked stations failed. %3$s is why, as the partial-refresh banner says it ("offline"). -->
-    <string name="favorite_journeys_add_failed">Couldn\'t add %1$s ➔ %2$s: %3$s</string>
+    <string name="favorite_journeys_add_failed">Couldn\'t add %1$s ⇄ %2$s: %3$s</string>
     <!-- Saving the picked pair failed (a disk error). -->
-    <string name="favorite_journeys_add_not_saved">Couldn\'t save %1$s ➔ %2$s</string>
+    <string name="favorite_journeys_add_not_saved">Couldn\'t save %1$s ⇄ %2$s</string>
     <string name="favorite_journey_remove">Remove</string>
+    <!-- A favorite journey in Settings' list: saved both ways, so a two-way arrow (maintainer, 2026-10-08). -->
+    <string name="journey_title_both_ways">%1$s ⇄ %2$s</string>
+    <!-- Under a favorite journey in Settings' list: no direction is watched for alerts. -->
+    <string name="favorite_journey_alerts_off">Alerts off</string>
+    <!-- Under a favorite journey in Settings' list, one per watched direction: %1$s is where it goes, %2$s its days ("Mon–Fri"), %3$s its times ("08:00–10:00"). -->
+    <string name="favorite_journey_alerts_direction">Alerts to %1$s: %2$s %3$s</string>
+    <!-- Content description for a favorite journey's row in Settings, which opens its alerts. -->
+    <string name="favorite_journey_open_alerts">Alerts for %1$s and %2$s</string>
+    <!-- A favorite journey's alerts screen (SPEC *Journeys → Alerts*). -->
+    <string name="journey_alerts_title">Alerts</string>
+    <string name="journey_alerts_hint">Silent notification if a line is disrupted</string>
+    <!-- Content description for a direction's switch: %1$s ➔ %2$s is the direction. -->
+    <string name="journey_alerts_direction_switch">Alerts from %1$s to %2$s</string>
+    <string name="journey_alerts_add_time">Add time</string>
+    <!-- Content description for a time window chip's remove button; %1$s is the window ("08:00–10:00"). -->
+    <string name="journey_alerts_remove_time">Remove %1$s</string>
+    <!-- Content description for a time window chip, which opens its editor; %1$s is the window. -->
+    <string name="journey_alerts_edit_time">Change %1$s</string>
+    <!-- A time window, start to end. -->
+    <string name="journey_alerts_window">%1$s–%2$s</string>
+    <string name="journey_alerts_window_start">Start</string>
+    <string name="journey_alerts_window_end">End</string>
+    <string name="journey_alerts_window_invalid">End must be after start</string>
+    <string name="journey_alerts_window_taken">Already set</string>
+    <string name="journey_alerts_save">Save</string>
+    <!-- A change on a journey's alerts screen couldn't be saved (a disk error). -->
+    <string name="journey_alerts_write_failed">Couldn\'t save that change</string>
+    <!-- Toast when a change to a journey's alerts couldn't be saved after the rider had left its screens. -->
+    <string name="journey_alerts_write_failed_away">Couldn\'t save journey alerts</string>
+    <!-- On a journey's alerts screen when Android won't show StopDash's notifications. -->
+    <string name="journey_alerts_notifications_off">Notifications are off, so alerts won\'t show</string>
+    <string name="journey_alerts_notifications_allow">Allow</string>
+    <!-- A direction's days, summarized. -->
+    <string name="journey_alerts_days_every">Every day</string>
+    <string name="journey_alerts_days_weekdays">Mon–Fri</string>
+    <string name="journey_alerts_days_weekends">Sat–Sun</string>
+    <string name="journey_alerts_days_none">No days</string>
+    <!-- The notification channel for journey alerts, as Android's settings list it. -->
+    <string name="journey_alerts_channel">Journey alerts</string>
+    <string name="journey_alerts_channel_description">A favorite journey\'s line is disrupted during its alert times</string>
     <!-- Content description for a favorite journey's Remove button; %1$s and %2$s are its two stops. -->
     <string name="favorite_journey_remove_description">Remove %1$s to %2$s</string>
     <!-- Settings switch for the home screen's one-line disruptions row. -->
@@ -790,6 +830,8 @@
     <string name="journey_title">%1$s ➔ %2$s</string>
     <!-- The journey heading as a screen reader hears it, in place of the arrow icon. -->
     <string name="journey_title_spoken">%1$s to %2$s</string>
+    <!-- A saved journey (both ways, shown with ⇄) as a screen reader hears it. -->
+    <string name="journey_title_both_ways_spoken">%1$s and %2$s, both ways</string>
     <string name="journey_checking">Checking trains…</string>
     <string name="journey_none">No trains to %1$s soon</string>
     <!-- A journey card with no train to its far end soon, above trains on another branch it can

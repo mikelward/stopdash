@@ -3,6 +3,11 @@ package app.stopdash.data
 import androidx.datastore.core.DataStore
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.JourneyAlertSchedule
+import app.stopdash.domain.JourneyAlerts
+import app.stopdash.domain.TimeWindow
+import java.time.DayOfWeek
+import java.time.LocalTime
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -10,6 +15,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -75,6 +81,8 @@ class DataStoreFavoriteJourneysStoreTest {
         val warnings = mutableListOf<String>()
         val store = DataStoreFavoriteJourneysStore(data, warn = { warnings += it })
         assertNull(store.journeys().first())
+        // Its alert schedules are unreadable too, not "none set".
+        assertNull(store.alertSchedules().first())
         store.toggle(journey)
         assertEquals(future, data.data.first())
         assertEquals(1, warnings.size)
@@ -129,5 +137,86 @@ class DataStoreFavoriteJourneysStoreTest {
             assertTrue(reads.reads.isNotEmpty())
             assertEquals(setOf(OffMainReads.WORKER), reads.reads.toSet())
         }
+    }
+
+    @Test
+    fun `alert schedules are saved per direction, and go when their journey does`() = runTest {
+        val store = DataStoreFavoriteJourneysStore(FakeDataStore(null))
+        store.add(journey)
+        val out = JourneyAlerts.directionKey(journey, journey.from.stopId)
+        val back = JourneyAlerts.directionKey(journey, journey.to.stopId)
+        val evenings = JourneyAlertSchedule(days = setOf(DayOfWeek.SATURDAY), windows = listOf(TimeWindow(LocalTime.of(16, 30), LocalTime.of(18, 0))))
+        store.updateAlertSchedule(out) { JourneyAlertSchedule.DEFAULT }
+        store.updateAlertSchedule(back) { evenings }
+        assertEquals(mapOf(out to JourneyAlertSchedule.DEFAULT, back to evenings), store.alertSchedules().first())
+
+        store.updateAlertSchedule(back) { null }
+        assertEquals(mapOf(out to JourneyAlertSchedule.DEFAULT), store.alertSchedules().first())
+
+        // Two changes in a row each build on the last: neither is lost.
+        store.updateAlertSchedule(out) { it?.copy(days = it.days - DayOfWeek.MONDAY) }
+        store.updateAlertSchedule(out) { it?.copy(days = it.days - DayOfWeek.TUESDAY) }
+        assertEquals(setOf(DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY), store.alertSchedules().first()?.get(out)?.days)
+        store.updateAlertSchedule(out) { JourneyAlertSchedule.DEFAULT }
+
+        // Removed, then saved again: its alerts start off.
+        store.remove(journey)
+        store.add(journey)
+        assertEquals(emptyMap<String, JourneyAlertSchedule>(), store.alertSchedules().first())
+    }
+
+    @Test
+    fun `a schedule for a journey not saved isn't kept`() = runTest {
+        val store = DataStoreFavoriteJourneysStore(FakeDataStore(null))
+        store.updateAlertSchedule(JourneyAlerts.directionKey(journey, journey.from.stopId)) { JourneyAlertSchedule.DEFAULT }
+        assertEquals(emptyMap<String, JourneyAlertSchedule>(), store.alertSchedules().first())
+    }
+
+    @Test
+    fun `alert schedules survive the JSON round trip`() = runTest {
+        val key = JourneyAlerts.directionKey(journey, journey.from.stopId)
+        val out = ByteArrayOutputStream()
+        FavoriteJourneysSerializer.writeTo(listOf(journey).toPersisted(mapOf(key to JourneyAlertSchedule.DEFAULT)), out)
+        val read = FavoriteJourneysSerializer.readFrom(ByteArrayInputStream(out.toByteArray()))
+        assertEquals(mapOf(key to JourneyAlertSchedule.DEFAULT), read?.alertsToDomain())
+        assertEquals(listOf(journey), read?.toDomain())
+    }
+
+    @Test
+    fun `a stored schedule is read back as the app saves them, bounded and in order`() = runTest {
+        // A file from elsewhere (a restore, another build) with repeats, out of order and too many windows.
+        val key = JourneyAlerts.directionKey(journey, journey.from.stopId)
+        val hours = (6..12).map { TimeWindow(LocalTime.of(it, 0), LocalTime.of(it + 1, 0)) }
+        val messy = JourneyAlertSchedule(windows = (hours.reversed() + hours.first()))
+        val read = listOf(journey).toPersisted(mapOf(key to messy)).alertsToDomain()!!.getValue(key).windows
+        assertEquals(hours.take(JourneyAlertSchedule.MAX_WINDOWS), read)
+    }
+
+    @Test
+    fun `a stored schedule that could never fire reads as off, and a window that never opens is dropped`() = runTest {
+        val key = JourneyAlerts.directionKey(journey, journey.from.stopId)
+        val backwards = TimeWindow(LocalTime.of(10, 0), LocalTime.of(8, 0))
+        val good = TimeWindow(LocalTime.of(16, 0), LocalTime.of(18, 0))
+        val partly = listOf(journey).toPersisted(mapOf(key to JourneyAlertSchedule(windows = listOf(backwards, good)))).alertsToDomain()!!
+        assertEquals(listOf(good), partly.getValue(key).windows)
+        val never = listOf(journey).toPersisted(mapOf(key to JourneyAlertSchedule(windows = listOf(backwards)))).alertsToDomain()!!
+        assertEquals(emptyMap<String, JourneyAlertSchedule>(), never)
+        val noDays = listOf(journey).toPersisted(mapOf(key to JourneyAlertSchedule(days = emptySet()))).alertsToDomain()!!
+        assertEquals(emptyMap<String, JourneyAlertSchedule>(), noDays)
+    }
+
+    @Test
+    fun `a write waits while the journey alert check holds the settings lock`() = runTest {
+        val lock = kotlinx.coroutines.sync.Mutex()
+        val store = DataStoreFavoriteJourneysStore(FakeDataStore(null), compute = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler), writes = lock)
+        lock.lock()
+        val write = backgroundScope.launch { store.add(journey) }
+        testScheduler.advanceUntilIdle()
+        // Held from the check's last read through its posts: the edit can't land in between (Codex on #700).
+        assertTrue(write.isActive)
+        assertEquals(emptyList<FavoriteJourney>(), store.journeys().first())
+        lock.unlock()
+        write.join()
+        assertEquals(listOf(journey), store.journeys().first())
     }
 }

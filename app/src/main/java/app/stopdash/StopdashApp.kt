@@ -132,6 +132,20 @@ open class StopdashApp : Application() {
         warmSharedState()
         installWatchSync()
         installWidgetDismissalRedraw()
+        installJourneyAlerts()
+    }
+
+    /**
+     * Keeps the journey alert check armed from the saved schedules (SPEC *Journeys → Alerts*),
+     * re-arming on every change. `open` so the test [Application] can skip it; guarded, since alerts
+     * that can't be scheduled are a lost convenience, never a reason to take the app down.
+     */
+    protected open fun installJourneyAlerts() {
+        try {
+            JourneyAlertChecks.start(this, applicationScope)
+        } catch (e: Exception) {
+            StopdashDebugLog.warning("journey alerts: start failed: %s", e::class.simpleName)
+        }
     }
 
     /**

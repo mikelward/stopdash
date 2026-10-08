@@ -3030,8 +3030,24 @@ Builds on Phase 1's minimal line-status marking.
       distinct favorite-route set) first. Open: how an alert here relates to the same line's alert
       further down (dedupe or both), and whether a dismissal carries across. Touches SPEC
       *Disruptions* and the near-me ordering.
-- [ ] **Commute disruption announcements, without being noisy** (requested 2026-09-19,
-      on-device). Notify the user of a disruption to *their* commute — a watched line/stop on
+- [~] **Journey alerts** (maintainer, 2026-10-08; SPEC *Journeys → Alerts*). Silent notifications
+      for a favorite journey's lines, per direction, at the rider's chosen days and times. Built: the
+      schedules, the background check and the notification, and the Alerts screen. Follow-ups:
+  - [ ] **Guess which direction is the morning one** (maintainer, 2026-10-08). Today the saved way
+        gets 08:00–10:00 and the way back 16:00–18:00; the end nearer Home (a favorite place) is the
+        likely signal for which is which.
+  - [ ] **Open the journey from its notification**, not just the app.
+  - [ ] **Only the alerts for the way traveled**, where TfL scopes an alert to a direction (bus
+        diversions): needs the alert's direction looked up in the background, and which TfL direction
+        the journey's line runs between its ends.
+  - [ ] **Places as the primary entity** (maintainer, 2026-10-08: "To design"). Favorite places are
+        what the rider saves; trips are routes between two places; direct routes and route alerts
+        hang off those, absorbing favorite journeys and trips with a change. Includes an **"Add Home ➔
+        Work"** button (and the like) once trips between places can be saved, and where meeting places
+        fit. Design before building.
+- [~] **Commute disruption announcements, without being noisy** (requested 2026-09-19,
+      on-device). Favorite journeys' alerts (above) are the first cut: windows, dedupe, a
+      WorkManager check only inside them, and no check while notifications are off. Notify the user of a disruption to *their* commute — a watched line/stop on
       the routes they take — but only when it matters: scoped to their working-hours / trip
       windows (Phase 2 favorite-destinations item) and de-duplicated so an ongoing disruption
       doesn't re-notify. The whole design turns on not crying wolf; a notification is a battery

@@ -51,6 +51,11 @@ class TestStopdashApp : StopdashApp() {
         // DataStore to follow; WidgetDismissalRedrawTest drives the redraw with fakes.
     }
 
+    override fun installJourneyAlerts() {
+        // Intentionally empty — no WorkManager in the test suite, and no real journeys DataStore to
+        // follow; JourneyAlertsTest covers the decisions.
+    }
+
     override fun installMainThreadWatch() {
         // Intentionally empty — Robolectric runs everything on its main thread, so the watch would
         // report the tests' own setup; MainThreadViolationsTest covers what it says.

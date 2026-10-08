@@ -32,6 +32,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -254,6 +255,10 @@ import app.stopdash.ui.SettingsScreen
 import app.stopdash.ui.FavoriteJourneysUi
 import app.stopdash.ui.FavoriteJourneyPicker
 import app.stopdash.ui.FavoriteJourneysScreen
+import app.stopdash.ui.JourneyAlertsScreen
+import app.stopdash.ui.journeyAlertSummaries
+import app.stopdash.ui.JourneyAlertsUi
+import app.stopdash.domain.JourneyAlertSchedule
 import app.stopdash.ui.JourneyAdds
 import app.stopdash.ui.addFavoriteJourneyPair
 import app.stopdash.ui.removeFavoriteJourney
@@ -1148,10 +1153,31 @@ class MainActivity : ComponentActivity() {
                 var alertsOff by remember { mutableStateOf(false) }
                 LifecycleResumeEffect(Unit) {
                     alertsOff = !GetOffSoonAlert.canAlert(applicationContext)
+                    // Journey alerts turned back on (or off) in Android's settings re-arm their check here,
+                    // wherever the rider comes back to. In the app's scope, so leaving again doesn't cut it short.
+                    (application as? StopdashApp)?.applicationScope?.launch {
+                        try {
+                            JourneyAlertChecks.onForeground(applicationContext)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            logStarWarning("journey alerts foreground sync failed: ${e::class.simpleName}")
+                        }
+                    }
                     onPauseOrDispose {}
                 }
-                val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+                // As the journey alerts' own prompt does: a refusal here is the same permission, so the
+                // Alerts screen's Allow knows when only Settings can turn it on (Codex on #700).
+                var tripRationaleBefore by rememberSaveable { mutableStateOf(false) }
+                var tripAskedAt by rememberSaveable { mutableLongStateOf(0L) }
+                val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
                     alertsOff = !GetOffSoonAlert.canAlert(applicationContext)
+                    val before = tripRationaleBefore
+                    val after = shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
+                    val atOnce = SystemClock.elapsedRealtime() - tripAskedAt < JourneyAlertState.AT_ONCE_MILLIS
+                    (application as? StopdashApp)?.applicationScope?.launch(Dispatchers.IO) {
+                        JourneyAlertState.recordPrompt(applicationContext, granted, before, after, atOnce)
+                    }
                 }
                 // An Undo offer whose screen closed under it, put back by the screen landed on.
                 val hideUndoCarrier = remember { HideUndoCarrier() }
@@ -1183,6 +1209,8 @@ class MainActivity : ComponentActivity() {
                     TimeToBoardAlert.ensureChannel(applicationContext)
                     RouteDisruptionAlert.ensureChannel(applicationContext)
                     if (ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                        tripRationaleBefore = shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
+                        tripAskedAt = SystemClock.elapsedRealtime()
                         notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                     }
                 }
@@ -1648,8 +1676,147 @@ class MainActivity : ComponentActivity() {
                                 var journeyFromId by rememberSaveable { mutableStateOf<String?>(null) }
                                 var journeyFromName by rememberSaveable { mutableStateOf("") }
                                 val journeyAdding by JourneyAdds.note.collectAsStateWithLifecycle()
+                                // The journey whose alerts are open (SPEC *Journeys → Alerts*), the row's own copy, kept
+                                // over a rotation, so the screen draws at once rather than after a lookup (Codex on #700).
+                                var alertsJourney by rememberSaveable(stateSaver = AlertsJourneySaver) { mutableStateOf<FavoriteJourney?>(null) }
+                                val alertSchedules by remember(journeyStore, journeysAttempt) { journeyStore.alertSchedules().map { AlertsRead(it) } }
+                                    .collectAsStateWithLifecycle(initialValue = null)
+                                // Whether Android will show the alerts, checked again on every return (Settings may
+                                // have changed it); asked for when a direction is first turned on.
+                                // Unknown (null) until first asked, and the controls wait with it, so a warning is never
+                                // inserted above them once they can be tapped. Not saved: Android saves state before the
+                                // app stops, so a restored answer may predate a change made in Settings meanwhile, and a
+                                // recreated screen asks again rather than trust it (Codex on #700).
+                                var journeyNotificationsOff by remember { mutableStateOf<Boolean?>(null) }
+                                // A schedule change that couldn't be saved, said on the Alerts screen until dismissed.
+                                // Process-wide, since the write it reports outlives this overlay (Codex on #700).
+                                val alertWriteFailed by JourneyAlertWrites.failed.collectAsStateWithLifecycle()
+                                // Re-arms the check once notifications are granted from this screen.
+                                val rearmJourneyAlerts = {
+                                    removeScope.launch {
+                                        try {
+                                            JourneyAlertChecks.resync(applicationContext, journeyStore, checkNowIfActive = true)
+                                        } catch (e: CancellationException) {
+                                            throw e
+                                        } catch (e: Exception) {
+                                            logStarWarning("journey alerts re-arm failed: ${e::class.simpleName}")
+                                        }
+                                    }
+                                }
+                                LifecycleResumeEffect(Unit) {
+                                    // Asked off the main thread: a notification-manager call.
+                                    // The check itself is re-armed app-wide on resume; this only keeps the screen's note true.
+                                    val asking = removeScope.launch {
+                                        journeyNotificationsOff = withContext(Dispatchers.IO) { !JourneyAlertNotification.canAlert(applicationContext) }
+                                    }
+                                    onPauseOrDispose { asking.cancel() }
+                                }
+                                // Back to unknown once the app is left: Android's settings may change before it returns,
+                                // and the controls wait for the fresh answer rather than show under an old one and have
+                                // the warning pushed in above them, or taken out from above them, as it arrives (Codex on
+                                // #700). Only on stop: the permission prompt pauses the app without leaving it.
+                                LifecycleStartEffect(Unit) {
+                                    onStopOrDispose { journeyNotificationsOff = null }
+                                }
+                                // The list and what each row says of its alerts, worked out off the main thread from the
+                                // two stores and shown together, so a row never grows its summary after it appears
+                                // (Codex on #700). The previous pair stays up while the next is worked out.
+                                val journeysShown by produceState<Pair<List<FavoriteJourney>?, Map<String, List<String>>>?>(null, read, alertSchedules) {
+                                    val loaded = read ?: return@produceState
+                                    val alerts = alertSchedules ?: return@produceState
+                                    val journeys = loaded.journeys
+                                    val schedules = alerts.schedules
+                                    value = journeys to if (journeys == null || schedules == null) {
+                                        emptyMap()
+                                    } else {
+                                        withContext(Workers.compute) { journeyAlertSummaries(applicationContext, journeys, schedules) }
+                                    }
+                                }
+                                // Whether Android was offering a rationale when the prompt was asked for: with what it
+                                // offers after, it tells a final refusal from a swiped-away prompt ([JourneyAlertState.recordPrompt]).
+                                var rationaleBeforeAsk by rememberSaveable { mutableStateOf(false) }
+                                var askedAt by rememberSaveable { mutableLongStateOf(0L) }
+                                val journeyNotificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                                    journeyNotificationsOff = !granted
+                                    // Refused for good: Android won't show the prompt again, so Allow opens the app's
+                                    // notification settings from now on, across restarts (Codex on #700).
+                                    val before = rationaleBeforeAsk
+                                    val after = shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
+                                    val atOnce = SystemClock.elapsedRealtime() - askedAt < JourneyAlertState.AT_ONCE_MILLIS
+                                    removeScope.launch(Dispatchers.IO) { JourneyAlertState.recordPrompt(applicationContext, granted, before, after, atOnce) }
+                                    // Refused with no prompt shown (denied for good before this install recorded it): this
+                                    // tap would otherwise do nothing, so it opens the settings that can turn them on.
+                                    if (!granted && !before && !after && atOnce) {
+                                        startActivity(
+                                            Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                                .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, packageName),
+                                        )
+                                    }
+                                    // Granted now: the check that wasn't armed while they were off is armed.
+                                    rearmJourneyAlerts()
+                                }
+                                // What keeps alerts from showing is asked off the main thread; only the prompt or a settings
+                                // page opens here. In this composition's scope, not the process's: the launcher belongs to
+                                // it, and one left from a recreated activity mustn't be launched (Codex on #700).
+                                val gateScope = rememberCoroutineScope()
+                                val askNotifications: () -> Unit = {
+                                    gateScope.launch {
+                                        when (JourneyAlertNotification.gate(applicationContext)) {
+                                            JourneyAlertNotification.Gate.NEEDS_PERMISSION -> {
+                                                rationaleBeforeAsk = shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
+                                                askedAt = SystemClock.elapsedRealtime()
+                                                journeyNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                            }
+                                            // Switched off for the app, or the prompt denied for good: only its settings page
+                                            // can turn them on.
+                                            JourneyAlertNotification.Gate.APP_OFF -> startActivity(
+                                                Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, packageName),
+                                            )
+                                            // Only this channel turned off: its own settings page.
+                                            JourneyAlertNotification.Gate.CHANNEL_OFF -> startActivity(
+                                                Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                                                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, packageName)
+                                                    .putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, JourneyAlertNotification.CHANNEL_ID),
+                                            )
+                                            JourneyAlertNotification.Gate.OPEN -> Unit
+                                        }
+                                    }
+                                }
+                                // Refreshed from the store off the main thread as it changes; removed meanwhile, back to the list.
+                                LaunchedEffect(alertsJourney?.key, read) {
+                                    val key = alertsJourney?.key ?: return@LaunchedEffect
+                                    val journeys = read?.journeys ?: return@LaunchedEffect
+                                    alertsJourney = withContext(Workers.compute) { journeys.firstOrNull { it.key == key } }
+                                }
                                 ReportScreen(if (journeyPicking) UsageEvent.Screen.SEARCH else UsageEvent.Screen.FAVORITE_JOURNEYS)
-                                if (journeyPicking) {
+                                val shownAlerts = alertsJourney
+                                if (shownAlerts != null) {
+                                    JourneyAlertsScreen(
+                                        state = JourneyAlertsUi(shownAlerts, alertSchedules?.schedules, journeyNotificationsOff == true, alertWriteFailed, loading = alertSchedules == null || journeyNotificationsOff == null),
+                                        onBack = { alertsJourney = null },
+                                        onUpdate = { key, change ->
+                                            // Asked for when a direction is turned on, the one time an alert is wanted.
+                                            if (change(null) != null && alertSchedules?.schedules?.containsKey(key) != true) askNotifications()
+                                            // The process's scope, so a change followed at once by Back still lands.
+                                            JourneyAlertWrites.attempt(
+                                                removeScope,
+                                                ::logStarWarning,
+                                                failedAway = {
+                                                    // Judged from where the app is when it fails: the journeys list (and the Alerts
+                                                    // screen above it) closed, nothing on screen says it.
+                                                    withContext(Dispatchers.Main) {
+                                                        if (!favoriteJourneysOpen) {
+                                                            Toast.makeText(applicationContext, R.string.journey_alerts_write_failed_away, Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    }
+                                                },
+                                            ) { journeyStore.updateAlertSchedule(key, change) }
+                                        },
+                                        onAllowNotifications = askNotifications,
+                                        onDismissWriteError = JourneyAlertWrites::dismiss,
+                                    )
+                                } else if (journeyPicking) {
                                     val appContext = applicationContext
                                     val search: StationSearchViewModel = viewModel(
                                         key = "journey-search",
@@ -1700,8 +1867,9 @@ class MainActivity : ComponentActivity() {
                                         onBack = closePicker,
                                     )
                                 } else {
+                                    val listAlertWriteFailed by JourneyAlertWrites.failed.collectAsStateWithLifecycle()
                                     FavoriteJourneysScreen(
-                                        state = FavoriteJourneysUi(read?.journeys, loaded = read != null, writeFailed = journeyRemoveFailed, adding = journeyAdding),
+                                        state = FavoriteJourneysUi(journeysShown?.first, loaded = journeysShown != null, writeFailed = journeyRemoveFailed, alertWriteFailed = listAlertWriteFailed, adding = journeyAdding, alertSummaries = journeysShown?.second.orEmpty()),
                                         onBack = { favoriteJourneysOpen = false },
                                         onAdd = {
                                             JourneyAdds.dismiss()
@@ -1714,7 +1882,9 @@ class MainActivity : ComponentActivity() {
                                             }
                                         },
                                         onDismissWriteError = { JourneyRemovals.failed.value = false },
+                                        onDismissAlertWriteError = { JourneyAlertWrites.failed.value = false },
                                         onRetry = { journeysAttempt++ },
+                                        onOpenAlerts = { journey -> alertsJourney = journey },
                                     )
                                 }
                             } else if (top == TopOverlay.LINES) {
@@ -5539,6 +5709,26 @@ private fun logUpdateWarning(message: String) = StopdashDebugLog.warning("update
 /** One read of the saved journeys: [journeys] is null when the store couldn't be read. */
 private class JourneysRead(val journeys: List<FavoriteJourney>?)
 
+// The journeys' alert schedules as read: wrapped like [JourneysRead], so "not read yet" is told from unreadable.
+/**
+ * Keeps the open Alerts screen's journey over a recreation: its stops' ids and names and its line, all
+ * the screen draws from. Positions aren't kept; the store's copy replaces this one once read.
+ */
+internal val AlertsJourneySaver = androidx.compose.runtime.saveable.listSaver<FavoriteJourney?, String>(
+    save = { journey ->
+        journey?.let { listOf(it.from.stopId, it.from.name, it.from.areaId, it.to.stopId, it.to.name, it.to.areaId, it.lineId, it.lineName, it.mode) }.orEmpty()
+    },
+    restore = { saved ->
+        if (saved.size < 9) {
+            null
+        } else {
+            FavoriteJourney(JourneyEnd(saved[0], saved[1], areaId = saved[2]), JourneyEnd(saved[3], saved[4], areaId = saved[5]), saved[6], saved[7], saved[8])
+        }
+    },
+)
+
+private class AlertsRead(val schedules: Map<String, JourneyAlertSchedule>?)
+
 /** The saved journeys' keys as read: null [keys] when the file couldn't be read. */
 private class KeysRead(val keys: Set<String>?)
 
@@ -5577,6 +5767,44 @@ internal object StopJourneyWrites {
         val isLatest = latest[key] == attempt
         if (isLatest) if (failed) this.failed[key] = Unit else this.failed.remove(key)
         return isLatest
+    }
+}
+
+/**
+ * Whether the latest journey alert schedule change failed to save (SPEC *Journeys → Alerts*). Held
+ * for the process, not the Alerts screen: the write runs on the app's scope so a change followed at
+ * once by Back still lands, and its failure has to reach whichever screen is up when it ends.
+ */
+internal object JourneyAlertWrites {
+    val failed = MutableStateFlow(false)
+    private val latest = java.util.concurrent.atomic.AtomicLong()
+
+    /**
+     * Runs [write] on [scope]; a storage failure is logged and shown until dismissed, or until a later
+     * change saves: only the latest attempt's result reaches [failed], as [JourneyRemovals]' does, so a
+     * retry that works takes the message down (Codex on #700).
+     */
+    fun attempt(scope: CoroutineScope, warn: (String) -> Unit = {}, failedAway: suspend () -> Unit = {}, write: suspend () -> Unit): Job {
+        val mine = latest.incrementAndGet()
+        return scope.launch {
+            val ok = try {
+                write()
+                true
+            } catch (e: IOException) {
+                warn("journey alerts not saved: ${e::class.simpleName}")
+                false
+            }
+            if (latest.get() == mine) {
+                failed.value = !ok
+                // Said wherever the rider is too, should they have left the screens that show it, never
+                // dropped (SPEC principle 2; Codex on #700), as a stop page's journey save does.
+                if (!ok) failedAway()
+            }
+        }
+    }
+
+    fun dismiss() {
+        failed.value = false
     }
 }
 

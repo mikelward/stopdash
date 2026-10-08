@@ -477,15 +477,24 @@ private fun PlaceEditor(
  */
 @Composable
 private fun ShowOnDaysRow(selected: Set<DayOfWeek>, enabled: Boolean, onToggle: (DayOfWeek) -> Unit) {
-    val locale = LocalConfiguration.current.locales[0]
-    val days = remember(locale) { daysOfWeekFrom(WeekFields.of(locale).firstDayOfWeek) }
     Text(
         text = stringResource(R.string.favorite_place_show_on_main),
         style = MaterialTheme.typography.bodyLarge,
     )
     Spacer(modifier = Modifier.height(8.dp))
+    DayToggleRow(selected = selected, enabled = enabled, rowTag = "placeShowOnDays", dayTagPrefix = "placeDay-", onToggle = onToggle)
+}
+
+/**
+ * A row of seven day toggles, the locale's first day first, each 48dp high and named for a screen
+ * reader: a favorite place's chip days, and a journey direction's alert days.
+ */
+@Composable
+internal fun DayToggleRow(selected: Set<DayOfWeek>, enabled: Boolean, rowTag: String, dayTagPrefix: String, onToggle: (DayOfWeek) -> Unit) {
+    val locale = LocalConfiguration.current.locales[0]
+    val days = remember(locale) { daysOfWeekFrom(WeekFields.of(locale).firstDayOfWeek) }
     Row(
-        modifier = Modifier.fillMaxWidth().testTag("placeShowOnDays"),
+        modifier = Modifier.fillMaxWidth().testTag(rowTag),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         days.forEach { day ->
@@ -500,7 +509,7 @@ private fun ShowOnDaysRow(selected: Set<DayOfWeek>, enabled: Boolean, onToggle: 
                     .border(1.dp, if (on) colors.secondaryContainer else colors.outline, CircleShape)
                     .toggleable(value = on, enabled = enabled, role = Role.Checkbox, onValueChange = { onToggle(day) })
                     .semantics { contentDescription = day.getDisplayName(TextStyle.FULL, locale) }
-                    .testTag("placeDay-${day.name}"),
+                    .testTag("$dayTagPrefix${day.name}"),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
