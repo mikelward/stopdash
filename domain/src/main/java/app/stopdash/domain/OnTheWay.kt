@@ -1904,6 +1904,26 @@ object OnTheWay {
     }
 
     /**
+     * [trip] with its walk to a ride done at [now] ([walked]) when [rider] is further from that ride's
+     * boarding stop than they could be on foot: the walk started no further off than [PAST_WALK_MPS] for its
+     * planned time, and they've had no more than that pace since it began. They're on a train, then, past
+     * the station the fix never caught them at (underground, or a fix that timed out); whether it's the
+     * ride's train is [seenAlong]'s to say from the result. Null otherwise: not on a walk to a ride, its
+     * boarding stop unplaced, a fix that places no one, or one they could have walked to.
+     */
+    fun pastWalkOnFoot(trip: ActiveTrip, rider: LocationFix, now: Instant): ActiveTrip? {
+        val ride = walkingToRide(trip, now) ?: return null
+        val walk = trip.leg ?: return null
+        val boarding = ride.fromAt ?: return null
+        if (rider.isFallback || rider.isCoarse) return null
+        val accuracy = rider.accuracyMeters?.toDouble() ?: return null
+        val since = Duration.between(trip.legStartedAt, now)
+        if (since.isNegative) return null
+        val onFoot = (walk.run.seconds + since.seconds) * PAST_WALK_MPS
+        return walked(trip, now).takeIf { distance(rider.coordinates, boarding) - accuracy > onFoot }
+    }
+
+    /**
      * [trip] with the rider at the start of leg [index] at [now], because they said so (maintainer,
      * 2026-09-28): **Next**, or a tap on a leg, for when location and the walk's time can't tell (a
      * station far bigger than the point TfL places it at, no fix). The leg starts now, as if they'd

@@ -1301,6 +1301,26 @@ class OnTheWayTest {
         assertEquals(TripProgress.Waiting(ride.copy(fromAt = platform), null), OnTheWay.advance(there, null, at(1)).second)
     }
 
+    @Test
+    fun `a rider seen down the line while still walking to the train is on it, never one who could have walked there`() {
+        // A minute into the two-minute walk, at B, 1.1 km past the boarding stop: no fix caught them at A
+        // (underground), and nobody walks that far in three minutes' allowance.
+        val walked = OnTheWay.pastWalkOnFoot(walkingTrip, fix(atB, 20f), at(1))!!
+        assertEquals(1, walked.legIndex)
+        assertEquals(OnTheWay.Along(0, atStop = true), OnTheWay.seenAlong(walked, fix(atB, 20f), along, at(1)))
+        // Within reach on foot of the boarding stop (its planned walk and the time since, at a brisk pace):
+        // still walking, whichever way.
+        assertNull(OnTheWay.pastWalkOnFoot(walkingTrip, fix(north(400.0), 20f), at(1)))
+        // As far, on a walk planned long enough to have started there: still walking.
+        val longWalk = walkingTrip.copy(route = TripRoute(listOf(toStop.copy(arrival = at(10)), ride.copy(fromAt = platform), walk, second)))
+        assertNull(OnTheWay.pastWalkOnFoot(longWalk, fix(atB, 20f), at(1)))
+        // A vague fix says nothing; nor does one with the boarding stop unplaced, or off a walk to a ride.
+        assertNull(OnTheWay.pastWalkOnFoot(walkingTrip, fix(atB, 20f).copy(isFallback = true), at(1)))
+        val unplaced = walkingTrip.copy(route = TripRoute(listOf(toStop, ride, walk, second)))
+        assertNull(OnTheWay.pastWalkOnFoot(unplaced, fix(atB, 20f), at(1)))
+        assertNull(OnTheWay.pastWalkOnFoot(OnTheWay.walked(walkingTrip, at(1)), fix(atB, 20f), at(1)))
+    }
+
     // Riding to C, placed at a synthetic point, on a train due there at 14 min.
     private val getOff = Coordinates(51.53, -0.12)
     private val nearlyThere = OnTheWay.follow(trip.copy(route = TripRoute(listOf(ride.copy(toAt = getOff), walk, second))), train("8", 5))

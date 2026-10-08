@@ -1772,7 +1772,10 @@ as it was.
   process; a fix gone stale while TfL answered isn't acted on, and a failed read is asked again on the
   next refresh, the walk ending as before until then; without a fix, the walk runs its
   estimated time as before. The estimate errs long on purpose (it grays trains a rider might miss),
-  so it mustn't hold a rider already at the station on "Walk to…". The **walk to the destination**
+  so it mustn't hold a rider already at the station on "Walk to…". Nor one already past it: a fix
+  never catches a rider underground, so one seen further from the boarding stop than they could be on
+  foot (the walk's planned time and the time since, at a brisk 2.5 m/s) and **seen along the ride**
+  is on board, as when waiting for its train (below), not still told to walk there. The **walk to the destination**
   (the trip's last leg, with the destination placed) ends when the rider is **seen there**, within
   100 m with the fix's uncertainty counted, not on its time (maintainer, 2026-10-03): ending on its
   time said "arrived" to a rider still a few hundred meters away. Never seen there (indoors, a
