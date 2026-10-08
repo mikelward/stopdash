@@ -2709,10 +2709,8 @@ Builds on Phase 1's minimal line-status marking.
         tube or rail station's zone; one on-demand request per stop opened, cached.
   - [x] **Its accessibility** (maintainer, 2026-10-07): step-free from street to platform, and a lift
         out of service now, from the step-free data the route pages already read.
-  - [ ] **Keep the line's map where it was across From** (Codex on #659): Back from a stop's details
-        keeps the line page's scroll and folds, but From's station page replaces the Lines… overlay, so
-        the line page comes back at its top. Its map's rows are worked out again on return, so saved
-        scroll alone can't hold it; it needs the station flow layered over Lines… or the laid map kept.
+  - [x] **Keep the line's map where it was across From** (Codex on #659): the line page's row, laid
+        map, folds and scroll are kept above Lines…, so Back from From's station page draws it as it was.
   - [x] **Its departures board** (maintainer, 2026-10-07): the line it was opened from first, then the
         stop's other services under "Also here".
     - [x] A row opens its route page, as on a station's page.

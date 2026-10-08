@@ -13,6 +13,9 @@ import app.stopdash.domain.NearestStops
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.StationMatch
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.MutableState
 import androidx.compose.material3.Button
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
@@ -121,6 +124,68 @@ internal fun LinesMenuItem(close: () -> Unit) {
     )
 }
 
+/** A line page's work in Lines…: its row ([row]) and its map ([map]), kept while the page is away. */
+@Stable
+internal class LinePageWork(internal val map: LineMapWork = LineMapWork()) {
+    internal val row: MutableState<Worked<Inputs, TripRow>?> = mutableStateOf(null)
+}
+
+/**
+ * The [LinePageWork] for the line open in Lines…, kept by the caller so the page outlives the overlay
+ * leaving composition, and replaced only for another line, whose page starts afresh.
+ */
+internal class LinePageWorkHolder private constructor(private var lineId: String?, private var work: LinePageWork) {
+    constructor() : this(null, LinePageWork())
+
+    /** Forgets the page's work, so the line opened again starts afresh, at its top. */
+    fun clear() {
+        lineId = null
+        work = LinePageWork()
+    }
+
+    fun workFor(lineId: String): LinePageWork {
+        if (lineId != this.lineId) {
+            work = LinePageWork()
+            this.lineId = lineId
+        }
+        return work
+    }
+
+    companion object {
+        /**
+         * Saves what the rider sees of the line's page, its folds and scroll, so a rotation or the process
+         * coming back keeps them (Codex on #679); the map itself is worked out again.
+         */
+        val Saver: Saver<LinePageWorkHolder, Any> = listSaver(
+            save = { holder ->
+                val map = holder.work.map
+                listOf(
+                    holder.lineId.orEmpty(),
+                    with(OpenedFoldsSaver) { save(map.opened.value) } ?: arrayListOf<String>(),
+                    map.all.value,
+                    // A restored position not yet applied is saved as it was, not the short list's top.
+                    map.pendingScroll?.first ?: map.list.firstVisibleItemIndex,
+                    map.pendingScroll?.second ?: map.list.firstVisibleItemScrollOffset,
+                )
+            },
+            restore = { saved ->
+                val lineId = (saved.getOrNull(0) as? String)?.takeIf { it.isNotEmpty() }
+                @Suppress("UNCHECKED_CAST")
+                val folds = (saved.getOrNull(1) as? ArrayList<String>)?.takeIf { it.isNotEmpty() }?.let(OpenedFoldsSaver::restore)
+                val index = saved.getOrNull(3) as? Int ?: 0
+                val offset = saved.getOrNull(4) as? Int ?: 0
+                // The list starts at its top and moves to where it was once the map is laid out again.
+                val map = LineMapWork(
+                    opened = folds,
+                    all = saved.getOrNull(2) as? Boolean ?: false,
+                    pendingScroll = (index to offset).takeIf { index > 0 || offset > 0 },
+                )
+                LinePageWorkHolder(lineId, LinePageWork(map))
+            },
+        )
+    }
+}
+
 /**
  * *Lines…* (SPEC *Finding a line*): the search ([LineSearchScreen]) and, once a line is picked, its
  * page ([OneLinePage]): its status and its map. A station tapped on that map opens its details
@@ -156,6 +221,9 @@ internal fun LinesOverlay(
     // a suspended one's status is asked for even with nothing due there.
     // And the stop's other ids ([StopLinks.ownIds]), asked for too.
     departures: @Composable (LineStopRef, List<LineRef>, List<String>) -> StopDepartures? = { _, _, _ -> null },
+    // The line page's worked-out row and map, held by the caller above any overlay that takes this one's
+    // place (From's station page), so the page comes back as it was left (Codex on #659).
+    lineWork: LinePageWorkHolder = remember { LinePageWorkHolder() },
 ) {
     // Each time the overlay comes up: TfL's list is asked for again if its day is up, or after a failure.
     LaunchedEffect(Unit) { viewModel.reopened() }
@@ -177,7 +245,8 @@ internal fun LinesOverlay(
         }
         val check by viewModel.check.collectAsStateWithLifecycle()
         val held = check?.takeIf { it.lineId == line.id }
-        val slot = remember { mutableStateOf<Worked<Inputs, TripRow>?>(null) }
+        val work = lineWork.workFor(line.id)
+        val slot = work.row
         val status = held?.status
         val unknown = held?.unknown == true
         // No answer up and none failed (asking, or the last one taken down at its age): "Checking…", never
@@ -208,7 +277,20 @@ internal fun LinesOverlay(
                 onStop(LineStopRef(id, name, distanceTo(at), position = at))
             },
         ) {
-            OneLinePage(row, line.id, line.name, line.mode, onClose = { onOpen(null) })
+            // Its map, folds and scroll in [work], held by the caller: back from From, as it was left.
+            CompositionLocalProvider(LocalLineMapWork provides work.map) {
+                OneLinePage(
+                    row,
+                    line.id,
+                    line.name,
+                    line.mode,
+                    onClose = {
+                        // Closed, the line opened again starts afresh, at its top.
+                        lineWork.clear()
+                        onOpen(null)
+                    },
+                )
+            }
         }
         // Each stop page's own saved state (its scroll), by [LineStopRef.pageKey], in the caller's [saveable]
         // so it outlives this overlay leaving composition under From, Settings or Licenses (Codex on #667):
