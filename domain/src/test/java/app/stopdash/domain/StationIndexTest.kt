@@ -69,6 +69,21 @@ class StationIndexTest {
     }
 
     @Test
+    fun `st pa finds the King's Cross & St Pancras hub ahead of St Paul's bus stops`() {
+        val kingsCross = StationIndex(
+            listOf(
+                IndexedStation("HUBKGX", "King's Cross & St Pancras International", listOf("national-rail", "tube")),
+                IndexedStation("910GSTPX", "London St Pancras International Rail Station", listOf("national-rail"), hubId = "HUBKGX"),
+            ),
+        )
+        val local = kingsCross.search("st pa")
+        assertEquals(listOf("HUBKGX"), local.map { it.id })
+        // TfL's St Paul's stops start with the query too; the hub leads their tier.
+        val stPauls = StationMatch("490000225T", "St Paul's Station", listOf("bus"))
+        assertEquals(listOf("HUBKGX", "490000225T"), kingsCross.rank("st pa", local, listOf(stPauls)).map { it.id })
+    }
+
+    @Test
     fun `KX, KGX and KC all find King's Cross first`() {
         for (query in listOf("kx", "kgx", "kc")) {
             assertEquals(query, "HUBKGX", index.search(query).first().id)

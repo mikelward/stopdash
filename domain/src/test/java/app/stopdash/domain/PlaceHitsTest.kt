@@ -28,6 +28,13 @@ class PlaceHitsTest {
     }
 
     @Test
+    fun `a place with an ampersand isn't split, so the longer prefix match still leads it`() {
+        // Only an interchange's name parts at an "&"; a place's would beat the prefix match on length.
+        val candidates = listOf(candidate("Alpha & Zeta"), candidate("Zeta Gardens Hall"))
+        assertEquals(listOf("Zeta Gardens Hall", "Alpha & Zeta"), PlaceHits.rank("zeta", candidates, PlaceKind.PLACE).map { it.name })
+    }
+
+    @Test
     fun `drops a place-name candidate whose name doesn't match the query at all`() {
         val candidates = listOf(candidate("Zeta Hall"), candidate("Gamma House"))
         assertEquals(listOf("Zeta Hall"), PlaceHits.rank("zeta", candidates, PlaceKind.PLACE).map { it.name })

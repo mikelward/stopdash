@@ -32,6 +32,20 @@ class StationMatcherTest {
     }
 
     @Test
+    fun `each station of an interchange named for two matches as a prefix`() {
+        assertEquals(Prefix, tier("st pa", "King's Cross & St Pancras International", "HUBKGX"))
+        assertEquals(Prefix, tier("kings", "King's Cross & St Pancras International", "HUBKGX"))
+        assertEquals(Prefix, tier("castle", "Elephant & Castle", "HUBEPH"))
+    }
+
+    @Test
+    fun `a place with an ampersand is one name, so it ranks below one starting with the query`() {
+        // A geocoded place or a line isn't an interchange: "Alpha & Zeta" only contains "zeta".
+        assertEquals(Anchored, tier("zeta", "Alpha & Zeta"))
+        assertEquals(Prefix, tier("zeta", "Zeta Gardens Hall"))
+    }
+
+    @Test
     fun `word initials anchor`() {
         assertEquals(Anchored, tier("kc", "King's Cross St. Pancras"))
         assertEquals(Anchored, tier("ksp", "King's Cross St. Pancras"))
