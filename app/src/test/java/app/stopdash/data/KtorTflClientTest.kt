@@ -454,6 +454,33 @@ class KtorTflClientTest {
     }
 
     @Test
+    fun `a closure in the week ahead TfL gave no words for still carries its stretch`() = runTest {
+        // Kept under Coming up, so marked on the map too (Codex, #707).
+        val body = """[{"id": "bus1", "name": "1", "lineStatuses": [{"statusSeverity": 3, "statusSeverityDescription": "Part Suspended",
+          "reason": "", "validityPeriods": [{"fromDate": "2026-10-10T03:30:00Z", "toDate": "2026-10-12T04:00:00Z"}],
+          "disruption": {"affectedRoutes": [{"direction": "outbound", "routeSectionNaptanEntrySequence": [
+            {"stopPoint": {"naptanId": "A"}}, {"stopPoint": {"naptanId": "B"}}, {"stopPoint": {"naptanId": "C"}}]}],
+            "affectedStops": [{"naptanId": "A"}, {"naptanId": "B"}]}}]}]"""
+        val week = client(body, clock = { java.time.Instant.parse("2026-10-08T12:00:00Z") }).lineWorkAhead("bus1")
+        assertEquals(listOf(listOf("A", "B")), week.alerts.single().closure?.sections)
+    }
+
+    @Test
+    fun `closures in the week ahead in the same words on different days keep their own stretches`() = runTest {
+        // Saturday's A–B and Sunday's C–D: neither shown shutting the other's (Codex, #707).
+        fun entry(from: String, to: String, stops: List<String>) = """{"statusSeverity": 3, "statusSeverityDescription": "Part Suspended",
+          "reason": "No service.", "validityPeriods": [{"fromDate": "$from", "toDate": "$to"}],
+          "disruption": {"category": "PlannedWork", "affectedRoutes": [{"direction": "outbound", "routeSectionNaptanEntrySequence": [
+            {"stopPoint": {"naptanId": "A"}}, {"stopPoint": {"naptanId": "B"}}, {"stopPoint": {"naptanId": "C"}}, {"stopPoint": {"naptanId": "D"}}]}],
+            "affectedStops": [${stops.joinToString { """{"naptanId": "$it"}""" }}]}}"""
+        val body = """[{"id": "bus1", "name": "1", "lineStatuses": [
+          ${entry("2026-10-10T03:30:00Z", "2026-10-11T03:30:00Z", listOf("A", "B"))},
+          ${entry("2026-10-11T03:30:00Z", "2026-10-12T03:30:00Z", listOf("C", "D"))}]}]"""
+        val week = client(body, clock = { java.time.Instant.parse("2026-10-08T12:00:00Z") }).lineWorkAhead("bus1")
+        assertEquals(listOf(listOf(listOf("A", "B")), listOf(listOf("C", "D"))), week.alerts.map { it.closure?.sections })
+    }
+
+    @Test
     fun `a week ahead is classified as of its answer, not its ask`() = runTest {
         // Asked a minute before a closure starts, answered after: under way by then, not to come (Codex, #697).
         val times = ArrayDeque(listOf(java.time.Instant.parse("2026-10-10T03:29:00Z"), java.time.Instant.parse("2026-10-10T03:31:00Z")))

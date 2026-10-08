@@ -255,9 +255,13 @@ fun TflLineDto.toLineStatus(
  * still to begin, dated by the day the first such period starts in London, soonest first. An alert in
  * force now, or one with no period, is left out: the line's own status speaks for what's under way.
  * A period dated so it can't be read, or given no start, throws ([TflException.Unreachable]): work it
- * may hold is never taken for a clean week (Codex, #697).
+ * may hold is never taken for a clean week (Codex, #697). [sectionsOf] gives the stretches each alert
+ * shuts where the answer's detail names them, so a closure is placed on the line's map too.
  */
-fun TflLineDto.workAhead(now: Instant): List<PlannedAlert> = workAheadStarts(now).map { it.second }.distinct()
+fun TflLineDto.workAhead(
+    now: Instant,
+    sectionsOf: (entry: TflLineStatusEntryDto) -> List<AffectedSection> = { emptyList() },
+): List<PlannedAlert> = workAheadStarts(now, sectionsOf).map { it.second }.distinct()
 
 /**
  * A line's work to come over the coming days ([workAhead]), and how long until the soonest of it starts
@@ -269,7 +273,10 @@ class WorkAhead(val alerts: List<PlannedAlert>, val startsIn: java.time.Duration
 fun TflLineDto.nextWorkStart(now: Instant): Instant? = workAheadStarts(now).minOfOrNull { it.first }
 
 // Each alert's work to come with the instant its first period still to begin starts, soonest first.
-private fun TflLineDto.workAheadStarts(now: Instant): List<Pair<Instant, PlannedAlert>> =
+private fun TflLineDto.workAheadStarts(
+    now: Instant,
+    sectionsOf: (entry: TflLineStatusEntryDto) -> List<AffectedSection> = { emptyList() },
+): List<Pair<Instant, PlannedAlert>> =
     lineStatuses
         .filter { it.statusSeverity != LineStatus.GOOD_SERVICE }
         .mapNotNull { entry ->
@@ -285,7 +292,10 @@ private fun TflLineDto.workAheadStarts(now: Instant): List<Pair<Instant, Planned
             }
             val start = periods.map { it.first }.filter { it.isAfter(now) }.minOrNull() ?: return@mapNotNull null
             val resolved = resolveDisruption(entry.statusSeverityDescription, entry.statusSeverity, entry.reason)
-            start to PlannedAlert(resolved.label, resolved.fullText, start.atZone(AlertStart.ZONE).toLocalDate(), resolved.severity, resolved.isFallback)
+            // Placed as a closure under way is ([Alert.closure]), line-wide.
+            val closure = Alert(entry, resolved, if (resolved.inferred || resolved.severity !in LineStatus.PART_SEVERITIES) emptyList() else sectionsOf(entry), null)
+                .closure(null)?.takeIf { it.sections.isNotEmpty() }
+            start to PlannedAlert(resolved.label, resolved.fullText, start.atZone(AlertStart.ZONE).toLocalDate(), resolved.severity, resolved.isFallback, closure = closure)
         }
         .sortedBy { it.second.startsOn }
 

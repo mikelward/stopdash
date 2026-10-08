@@ -187,6 +187,22 @@ class LineStatusTest {
     }
 
     @Test
+    fun `an alert already listed with no stretch takes the one the week ahead places, keeping its identity`() {
+        val listed = PlannedAlert("Part Closure", "No service between A and B.", LocalDate.of(2026, 10, 14), severity = 5)
+        val line = LineStatus("blue", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(listed))
+        val stretch = PartClosure(PlannedAlert.PART_CLOSURE, "Part Closure", null, listOf(listOf("A", "B"), listOf("B", "A")))
+        // Dated from its period by the week ahead, from its posting by the status: the same alert.
+        val placed = listed.copy(startsOn = LocalDate.of(2026, 10, 17), closure = stretch)
+        val merged = line.withWorkAhead(listOf(placed))
+        assertEquals(listOf(listed.copy(closure = stretch)), merged.planned)
+        // One already placed keeps its own; with nothing to add, the same status.
+        assertSame(merged, merged.withWorkAhead(listOf(placed)))
+        // A closure TfL hasn't placed yet, its sections empty, counts as none placed (Codex, #707).
+        val unplaced = LineStatus("blue", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(listed.copy(closure = stretch.copy(sections = emptyList()))))
+        assertEquals(stretch.sections, unplaced.withWorkAhead(listOf(placed)).planned.single().closure?.sections)
+    }
+
+    @Test
     fun `the week's closures in the same words on different days, or in none, are each kept`() {
         // Two weekends' closures TfL words alike stay two; one it gave no words for stays too (Codex, #697).
         val line = LineStatus("blue", LineStatus.GOOD_SERVICE, "Good Service")

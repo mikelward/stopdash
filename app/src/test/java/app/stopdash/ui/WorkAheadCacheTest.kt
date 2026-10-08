@@ -146,6 +146,33 @@ class WorkAheadCacheTest {
     }
 
     @Test
+    fun an_alert_listed_without_its_stretch_takes_the_one_the_week_ahead_places() {
+        val stretch = app.stopdash.domain.PartClosure(PlannedAlert.PART_CLOSURE, "Part Closure", null, listOf(listOf("A", "B"), listOf("B", "A")))
+        val line = TripLine(leg, good.copy(planned = listOf(weekend)))
+        val shown = line.withWorkAhead(listOf(weekend.copy(startsOn = LocalDate.of(2026, 10, 9), closure = stretch)), failed = false, dismissed = emptySet())
+        assertEquals(listOf(weekend.copy(closure = stretch)), shown.planned)
+        // Listed with a closure TfL placed nowhere yet: the same.
+        val unplaced = TripLine(leg, good.copy(planned = listOf(weekend.copy(closure = stretch.copy(sections = emptyList())))))
+        val placed = unplaced.withWorkAhead(listOf(weekend.copy(startsOn = LocalDate.of(2026, 10, 9), closure = stretch)), failed = false, dismissed = emptySet())
+        assertEquals(stretch.sections, placed.planned.single().closure?.sections)
+    }
+
+    @Test
+    fun the_work_to_come_a_page_saves_keeps_each_closures_stretch_for_its_map() {
+        // Restored through a rotation, the map stays marked while the week is worked in again (Codex, #707).
+        val stretch = app.stopdash.domain.PartClosure(PlannedAlert.PART_CLOSURE, "Part Closure", null, listOf(listOf("A", "B"), listOf("B", "A")))
+        val saved = SavedPlanned.of(listOf(weekend.copy(closure = stretch), later))
+        val restored = with(SavedPlanned.Saver) {
+            val bundled = androidx.compose.runtime.saveable.SaverScope { true }.save(saved)
+            restore(checkNotNull(bundled))
+        }
+        val alerts = checkNotNull(restored).alerts()
+        assertEquals(stretch.sections, alerts[0].closure?.sections)
+        assertNull("one that places none stays so", alerts[1].closure)
+        assertEquals(listOf(weekend.startsOn, later.startsOn), alerts.map { it.startsOn })
+    }
+
+    @Test
     fun an_alert_dismissed_stays_off_whichever_answer_carries_it() {
         // Dismissed as the status gave it; the week ahead dates it from its period, so its identity differs.
         val dismissed = setOf(DismissedAlert.ofPlanned("northern", weekend))

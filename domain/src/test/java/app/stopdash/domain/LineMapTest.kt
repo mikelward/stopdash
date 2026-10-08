@@ -3,6 +3,7 @@ package app.stopdash.domain
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -167,6 +168,64 @@ class LineMapTest {
         assertTrue(kennington.besideClosure)
         assertFalse(map.row("Nine Elms").besideClosure)
         assertFalse(map.row("Oval").besideClosure)
+    }
+
+    @Test
+    fun `a closure still to come marks the stations it will shut, with the day, and leaves the track open`() {
+        val weekend = java.time.LocalDate.of(2026, 10, 10)
+        val planned = PlannedAlert(
+            "Part Closure", "Saturday 10 and Sunday 11 October, no service between Kennington and Battersea Power Station.", weekend,
+            closure = PartClosure(PlannedAlert.PART_CLOSURE, "Part Closure", null, closure),
+        )
+        val map = LineMap.of(northern(), upcoming = listOf(planned))!!
+        assertEquals(weekend, map.row("Nine Elms").upcomingFrom)
+        assertEquals("and the branch's end beyond it", weekend, map.row("Battersea Power Station").upcomingFrom)
+        assertNull("Morden trains will still call", map.row("Kennington").upcomingFrom)
+        assertNull(map.row("Oval").upcomingFrom)
+        // Nothing shut today: its rails run, nothing placed on the rider, and nothing folds differently for it.
+        assertFalse(map.row("Nine Elms").unserved)
+        assertNull(map.row("Nine Elms").level)
+        assertFalse(map.rows.any { row -> (row.top + row.bottom).any { it.closed } })
+        assertEquals(LineMap.of(northern())!!.folded(emptySet()).labels(), map.folded(emptySet()).labels())
+        // A fold holding one says so: Clapham North, shut between Stockwell and Clapham Common, folds with the
+        // Morden branch's plain stations.
+        val stretch = ids("Stockwell", "Clapham North", "Clapham Common")
+        val clapham = planned.copy(closure = PartClosure(PlannedAlert.PART_CLOSURE, "Part Closure", null, listOf(stretch, stretch.asReversed())))
+        val folds = LineMap.of(northern(), upcoming = listOf(clapham))!!.folded(emptySet()).filterIsInstance<LineMap.Item.Fold>()
+        assertEquals(listOf("Oval"), folds.filter { it.upcoming }.map { it.first })
+        assertFalse(LineMap.of(northern())!!.folded(emptySet()).filterIsInstance<LineMap.Item.Fold>().any { it.upcoming })
+    }
+
+    @Test
+    fun `a closure still to come shutting one way only, or two shutting a track each, marks no station`() {
+        val weekend = java.time.LocalDate.of(2026, 10, 10)
+        fun closing(day: java.time.LocalDate, vararg sections: List<String>) = PlannedAlert(
+            "Part Closure", "No service.", day, closure = PartClosure(PlannedAlert.PART_CLOSURE, "Part Closure", null, sections.toList()),
+        )
+        val southbound = ids("Kennington", "Nine Elms", "Battersea Power Station")
+        // Trains still call at Nine Elms going north.
+        val oneWay = LineMap.of(northern(), upcoming = listOf(closing(weekend, southbound)))!!
+        assertNull(oneWay.row("Nine Elms").upcomingFrom)
+        // Kennington to Nine Elms on Saturday, Nine Elms to Battersea on Sunday: neither shuts Nine Elms.
+        val first = ids("Kennington", "Nine Elms")
+        val second = ids("Nine Elms", "Battersea Power Station")
+        val split = LineMap.of(
+            northern(),
+            upcoming = listOf(closing(weekend, first, first.asReversed()), closing(weekend.plusDays(1), second, second.asReversed())),
+        )!!
+        assertNull(split.row("Nine Elms").upcomingFrom)
+        assertEquals("the branch's end, shut by Sunday's alone", weekend.plusDays(1), split.row("Battersea Power Station").upcomingFrom)
+    }
+
+    @Test
+    fun `a fold calls a closure still to come only at stations still served`() {
+        // Shut now as well, its no-entry sign says more (Codex, #707).
+        val stretch = ids("Stockwell", "Clapham North", "Clapham Common")
+        val both = listOf(stretch, stretch.asReversed())
+        val coming = PlannedAlert("Part Closure", "Saturday, no service.", java.time.LocalDate.of(2026, 10, 10), closure = PartClosure(PlannedAlert.PART_CLOSURE, "Part Closure", null, both))
+        val map = LineMap.of(northern(), closures = both, upcoming = listOf(coming))!!
+        assertNotNull(map.row("Clapham North").upcomingFrom)
+        assertTrue(map.folded(emptySet()).filterIsInstance<LineMap.Item.Fold>().none { it.upcoming })
     }
 
     @Test
@@ -366,6 +425,16 @@ class LineMapTest {
         // One with a stop of its own between still forks there.
         val elsewhere = LineMap.of(spread(listOf("D2", "C2", "X2", "A2")))!!
         assertEquals(2, elsewhere.columns)
+    }
+
+    @Test
+    fun `a closure still to come shutting a one-way track its one way marks the stop it alone reaches`() {
+        // Delta is reached only going down the map, its way back starting from a stand of its own (Codex, #707).
+        val day = java.time.LocalDate.of(2026, 10, 10)
+        val shut = PlannedAlert("Part Closure", "No service.", day, closure = PartClosure(PlannedAlert.PART_CLOSURE, "Part Closure", null, listOf(listOf("C1", "D1"))))
+        val map = LineMap.of(spread(listOf("X2", "C2", "B2", "A2")), upcoming = listOf(shut))!!
+        assertEquals(day, map.row("Delta").upcomingFrom)
+        assertNull("still reached from the stand's way", map.row("Gamma").upcomingFrom)
     }
 
     @Test

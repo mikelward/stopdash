@@ -611,15 +611,29 @@ class KtorTflClient(
         val to = WORK_AHEAD_FORMAT.format(now.plus(java.time.Duration.ofDays(days)))
         val lines = tflRequest { key ->
             httpClient.get("$baseUrl/Line/$lineId/Status/$from/to/$to") {
+                // With the stretch each closure shuts, so the line's map can mark where it will be.
+                parameter("detail", "true")
                 applyAppKey(key)
+                allowSlowAnswer()
             }.body<List<TflLineDto>>()
         }
         // An answer without the line asked for is no clean week: a failure, said as one (Codex, #697).
         val line = lines.firstOrNull { it.id == lineId } ?: throw TflException.NotFound(null)
+        // Each alert's stretches from its own entries: those of one occurrence (its words, kind and periods)
+        // pooled, as TfL can scope one alert over several entries, but never another's in the same words on
+        // another day (Codex, #707), nor one TfL gave no words for left out.
+        fun occurrence(entry: TflLineStatusEntryDto) = listOf(
+            entry.reason, entry.statusSeverity, entry.disruption?.category.orEmpty().trim().lowercase(),
+            entry.validityPeriods.map { it.fromDate to it.toDate },
+        )
+        val placed = line.lineStatuses.groupBy(::occurrence).mapValues { (_, entries) -> entries.flatMap { it.affectedSections() }.distinct() }
         // Classified as of the answer, not the ask: a slow or retried request can span a period's start
         // (Codex, #697).
         val answered = clock()
-        return WorkAhead(line.workAhead(answered), line.nextWorkStart(answered)?.let { java.time.Duration.between(answered, it) })
+        return WorkAhead(
+            line.workAhead(answered) { entry -> placed[occurrence(entry)].orEmpty() },
+            line.nextWorkStart(answered)?.let { java.time.Duration.between(answered, it) },
+        )
     }
 
     override suspend fun lineStatuses(lineIds: Collection<String>): List<LineStatus> {

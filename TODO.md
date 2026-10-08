@@ -2797,7 +2797,11 @@ Builds on Phase 1's minimal line-status marking.
   - [x] TfL's future statuses (`/Line/{id}/Status/{from}/to/{to}`) for the next week, added to it
         on the lines page's line page: one free request when it opens, kept three hours, a failure said.
   - [x] The week ahead on the home screen's and a trip's line pages too, one cache for every page.
-  - [ ] Each on the map too, drawn apart from a closure in force (lighter, or dashed).
+  - [x] Each on the map too, apart from a closure in force (maintainer, 2026-10-08: a calendar where a closure
+        in force has ⛔): the stations it will shut marked with a calendar and "No service from 10 Oct", muted,
+        their rails drawn as they run today; a fold holding one carries the calendar.
+  - [ ] The same calendar on the route page's stops a closure still to come will shut, once it marks a
+        closure in force there with ⛔.
 - [x] **A trip's lines page keeps the rider's starred stops on the map too.** The trip reads the starred
       rows and journeys as they change, walked on the worker, and its lines page keeps their stops as
       the home screen's does.

@@ -179,6 +179,12 @@
     <!-- Under the map's heading when a closure TfL places can't be put on the map. -->
     <!-- TODO: translate -->
     <string name="line_map_closure_not_placed" tools:ignore="MissingTranslation">This closure isn\'t on the map</string>
+    <!-- Under a station on a line's map that a closure still to come will shut, by the day it starts ("No service from 10 Oct"). -->
+    <!-- TODO: translate -->
+    <string name="line_map_no_service_from" tools:ignore="MissingTranslation">No service from %1$s</string>
+    <!-- A screen reader's words for a fold on the map holding a station a closure still to come will shut, drawn as a calendar. -->
+    <!-- TODO: translate -->
+    <string name="line_map_fold_upcoming" tools:ignore="MissingTranslation">Has a closure coming up</string>
     <!-- A screen reader's words for a fold on the map holding a station an alert names, drawn ⚠. -->
     <!-- TODO: translate -->
     <string name="line_map_fold_alert" tools:ignore="MissingTranslation">Has an alert</string>
