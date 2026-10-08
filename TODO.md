@@ -144,6 +144,11 @@ exercises the whole spine the widget later renders from.
       Thread.currentThread().name`), which can throw `ConcurrentModificationException` when the read
       catches a write: `ShownJourneysOffMainTest` did on CI (#676's run). It was fixed with a guard; a
       shared recorder (a synchronized list with a `threads()` read) would close the rest at once.
+- [ ] **Decode the line page's saved trail off the main thread** (Codex on #678). `LineStopRefSaver`
+      restores the stop details trail by splitting each saved stop's fields (and, for a v3 save, mapping
+      its modes to a cue) inside `Saver.restore`, which Compose runs on the main thread with no dispatcher
+      to hop to. It's bounded by the trail cap (`MAX_TRAIL`), but it is still decode work on the UI path;
+      restore a raw save and parse it on the worker, or save it in a form that needs no parsing.
 - [ ] Sharpen `WorkerThreadCall` where it still guesses: a helper's default argument doing the work
       (`fun rows(v = RouteStops.resolve(…))`) isn't followed, and a local function or stored lambda is
       matched to its calls by name, so a shadowing local of the same name is attributed to it. A
