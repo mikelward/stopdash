@@ -3870,6 +3870,15 @@ class MainActivity : ComponentActivity() {
         }
         val directState = direct?.state?.collectAsStateWithLifecycle()?.value
         val directPulling = direct?.pulling?.collectAsStateWithLifecycle()?.value == true
+        // The rider's starred stops and journeys' ends, for the lines page's maps: read and walked on the
+        // worker as they change, never here.
+        val starredStops by remember {
+            HomeLines.riderStops(
+                DataStoreStarredRowsStore.from(appContext, warn = ::logStarWarning).starred(),
+                DataStoreFavoriteJourneysStore.from(appContext, warn = ::logStarWarning).journeys(),
+                Workers.compute,
+            )
+        }.collectAsStateWithLifecycle(initialValue = emptySet())
         TripScreen(
             title = title,
             journey = tripKey,
@@ -3878,6 +3887,7 @@ class MainActivity : ComponentActivity() {
             access = access,
             // The same route data as the list checks its trains against (SPEC *Trips with a change*).
             routeStops = routeStops(appContext),
+            starredStops = starredStops,
             onBack = close,
             onRetry = trip::retry,
             locationBanner = locationBanner.collectAsStateWithLifecycle().value,

@@ -1027,12 +1027,20 @@ internal fun TripScreen(
     // Drawn under the choices, above the routes, while no route is open: a trip to a place's *Direct*
     // section ([PlaceDirectSection]). Null draws nothing.
     aboveRoutes: (@Composable () -> Unit)? = null,
+    // The rider's starred stops and journeys' ends ([HomeLines.riderStops]), kept on a line's map on the
+    // trip's lines page as the home screen's keeps them.
+    starredStops: Set<String> = emptySet(),
 ) {
     val statuses = rememberStatusesAsOf(state.statuses, state.statusesSortedOn, now)
     val state = remember(state, statuses) { state.copy(statuses = statuses) }
     val linesPagesOpen = remember { mutableIntStateOf(0) }
     val lineDismissal = onDismissLineAlert?.let { LineAlertDismissal(it, dismissWriteFailed, onDismissWriteFailureShown, linesPagesOpen) }
-    CompositionLocalProvider(LocalRouteStops provides routeStops, LocalTripJourney provides journey, LocalDismissLineAlert provides lineDismissal) {
+    CompositionLocalProvider(
+        LocalRouteStops provides routeStops,
+        LocalTripJourney provides journey,
+        LocalDismissLineAlert provides lineDismissal,
+        LocalStarredStops provides starredStops,
+    ) {
         TripContent(
             title, state, now, access, onBack, onRetry, locationBanner, relocating, onRelocate,
             hiddenModes, onShowAllModes, onHideMode, onUnhideMode, hiddenModesWriteFailed, onHiddenModesWriteFailureShown, menu, openRoute,
@@ -3632,6 +3640,12 @@ internal class LineAlertDismissal(
 internal val LocalDismissLineAlert = compositionLocalOf<LineAlertDismissal?> { null }
 
 /**
+ * The rider's own stops ([HomeLines.riderStops]) where a lines page's row carries none (a trip's, which
+ * rides its own): a line's map keeps them on the page too. Worked out on the worker; empty for none.
+ */
+internal val LocalStarredStops = compositionLocalOf<Set<String>> { emptySet() }
+
+/**
  * Every line a trip rides with its status, as a full-screen dialog over the trip, with Back and the
  * arrow to return (maintainer, 2026-10-04: a full-screen dialog, not a sheet; one the home screen can
  * open too, so it reads only what it's given and the app's own menu). Every line opens its own page:
@@ -3759,7 +3773,7 @@ internal fun TripLinesPage(
         ) { padding ->
             if (onReason) {
                 if (reasonLine != null) {
-                    TripLineReason(reasonLine, Modifier.padding(padding), starred = row.starredStops)
+                    TripLineReason(reasonLine, Modifier.padding(padding), starred = row.starredStops.ifEmpty { LocalStarredStops.current })
                 } else {
                     // Restoring: the line's pill and the reason as last shown, in their places, until the
                     // line is back.

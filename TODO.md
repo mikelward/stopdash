@@ -2737,9 +2737,9 @@ Builds on Phase 1's minimal line-status marking.
 - [ ] **Coming-up closures on a line's page** (discussed 2026-10-06). TfL's future statuses
       (`/Line/{id}/Status/{from}/to/{to}`) for the next week, each drawn on the map like a closure in
       force: one free request when the page opens, cached for hours, a failure saying so with a retry.
-- [ ] **A trip's lines page keeps the rider's starred stops on the map too.** Only the home screen's
-      row passes them today (the trip passes the stops it rides); the trip's row needs the starred
-      rows and journeys read alongside its own work.
+- [x] **A trip's lines page keeps the rider's starred stops on the map too.** The trip reads the starred
+      rows and journeys as they change, walked on the worker, and its lines page keeps their stops as
+      the home screen's does.
 - [ ] **The route page draws the line as the folding map too** (maintainer, 2026-10-06): its stop list
       becomes the line page's map (`LineMap`), with the path the rider takes open, from the stop they
       board at to where they get off, and the rest of the line folded to the ends it leads to.
