@@ -64,6 +64,21 @@ class StatusesAsOfOffMainTest {
     }
 
     @Test
+    fun startedSevereDelays_countAsDelayed() {
+        // Severe delays planned from today, in statuses sorted yesterday: the trip's caps count them (Codex, #703).
+        val started = PlannedAlert("Severe Delays", "Severe delays.", LocalDate.of(2026, 10, 3), severity = 6)
+        val statuses = mapOf("99" to LineStatus("99", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(started)))
+        var shown: StatusesAsOf? = null
+        composeRule.setContent {
+            CompositionLocalProvider(LocalWorker provides worker) {
+                shown = rememberStatusesAndDelaysAsOf(statuses, LocalDate.of(2026, 10, 2), now)
+            }
+        }
+        composeRule.waitUntil(timeoutMillis = 5_000) { shown?.delayed != null }
+        assertEquals(setOf("99"), shown?.delayed)
+    }
+
+    @Test
     fun sortedToday_areShownAsTheyAre_withNoWait() {
         val read = ThreadRecorder()
         val status = LineStatus("99", 6, "Diversion", "Diverted.", underWay = Watched(listOf(LineAlert(6, "Diversion", "Diverted.")), read))

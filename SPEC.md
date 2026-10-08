@@ -1697,6 +1697,21 @@ one at a time (maintainer, 2026-09-30). It waits on the quickest answer, so its 
 after the rest; failing, it leaves the plan as it was and says so in the debug log. A trip to a stop
 never asks: its fewest changes are already planned there.
 
+**Around severe delays.** The Planner plans as if trains ran to the timetable, avoiding only a line that
+isn't running, so with severe delays on the Northern line every route it offered could still ride it
+(maintainer's report, 2026-10-08). So when the route it offers soonest rides a line with **severe
+delays**, it's asked once more for the quickest routes with that line's **mode** left out (the tube,
+say), once a plan however many stops a complex has (to the one that route reaches), and what it adds
+joins the plan: the Planner can't leave out one line, only a mode, so the routes
+already planned stay, other lines of that mode with them (maintainer, 2026-10-08). The soonest route's
+lines are judged by the statuses the trip holds, the rest asked for (once, on a trip's first plan); a
+plan made before the delays began (one reused, or the delays started since) is planned again once when
+a refresh finds them, so the request is made then. A
+route riding a line with severe delays then ranks as if it got there **ten minutes** later: its trains'
+predictions stand for little, so a route clear of the delays arriving about as soon goes first, while
+one much sooner still leads. Minor delays change nothing. Failing, it leaves the plan as it was and says
+so in the debug log, which names only the modes left out.
+
 **One stop per end, every station of a complex.** The Planner takes a single stop or station id for
 each end, not an interchange's or a folded search result's several stands, and it leans toward the
 end's own mode: aimed at King's Cross St. Pancras's Underground station it offered a change onto the

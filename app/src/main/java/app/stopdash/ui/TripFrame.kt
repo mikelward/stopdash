@@ -1,6 +1,7 @@
 package app.stopdash.ui
 
 import androidx.annotation.WorkerThread
+import app.stopdash.domain.AroundDelays
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.LineRef
@@ -136,7 +137,8 @@ internal fun tripFrame(
     // closing it while this frame stands in shows the list it would show (Codex, #529).
     // Nor a Direct row's route ([TripViewModel.openDirect]): it's there only to be open, and the soonest
     // few are counted without it, so it never takes a card's place.
-    val listed = TripViewModel.bestOf(state.shownRoutes(excluded).orEmpty(), direct = state.directKeys)
+    // Capped by the delays in the statuses shown, as the estimates were ([tripEstimates]; Codex, #703).
+    val listed = TripViewModel.bestOf(state.shownRoutes(excluded).orEmpty(), direct = state.directKeys, delayed = AroundDelays.delayed(state.statuses.values))
         .mapTo(HashSet(), ::routeKey)
     // Nor one kept only as the one open, its train through a change not predicted: closed, it's off the
     // list as it would be (Codex, #529).

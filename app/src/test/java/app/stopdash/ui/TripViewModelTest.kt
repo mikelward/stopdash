@@ -58,6 +58,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -165,6 +166,15 @@ class TripViewModelTest {
             if (key in failFor) throw TflException.Offline(null)
             return byDestination[key] ?: routes
         }
+        // Each request around delays: the modes it left out, in order; each answered [withoutRoutes].
+        val withoutAsked = mutableListOf<Set<String>>()
+        val withoutTo = mutableListOf<TripDestination>()
+        var withoutRoutes: List<TripRoute> = emptyList()
+        override suspend fun quickestWithout(from: TripOrigin, to: TripDestination, leaveOut: Set<String>, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes): List<TripRoute> {
+            withoutAsked += leaveOut
+            withoutTo += to
+            return withoutRoutes
+        }
         // Each fewest-changes-via request: where it planned to and the stop it passed, in order.
         val viaAsked = mutableListOf<Pair<TripDestination, String>>()
         // Its answer per via stop; one in [failFor] fails.
@@ -209,15 +219,20 @@ class TripViewModelTest {
         // A request asking about any of these fails; these lines are answered as disrupted.
         var failLines = emptySet<String>()
         var disruptedLines = emptySet<String>()
+        // Answered with this work planned, in good service until it starts.
+        var plannedFor: Map<String, List<app.stopdash.domain.PlannedAlert>> = emptyMap()
         // Answered with the lookup of which way their alerts go still under way.
         var awaitingLines = emptySet<String>()
         var statusChecks = 0
+        // Checks past this many fail.
+        var statusChecksAnswered = Int.MAX_VALUE
         override suspend fun lineStatuses(lineIds: Collection<String>): List<LineStatus> {
             statusChecks++
-            if (failStatus || lineIds.any { it in failLines }) throw TflException.Offline(null)
+            if (failStatus || statusChecks > statusChecksAnswered || lineIds.any { it in failLines }) throw TflException.Offline(null)
             return lineIds.filterNot { it in omitLines }.map {
                 if (it in disruptedLines) LineStatus(it, 6, "Severe Delays") else LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service")
             }.map { if (it.lineId in awaitingLines) it.copy(awaitingDirections = true) else it }
+                .map { status -> plannedFor[status.lineId]?.let { status.copy(planned = it) } ?: status }
         }
         // Each stop's closure notices; asking about one in [failDisruptions] fails. Each request's stops, in order.
         var disruptions = emptyMap<String, List<StopDisruption>>()
@@ -1281,6 +1296,25 @@ class TripViewModelTest {
         // The one ride as the Planner gave it, final walk and all.
         assertEquals(listOf(changingToPlace, direct), trip.state.value.routes)
         assertTrue(warnings.contains("trip plan via the fastest route's last stop: 1 of 2 routes ride fewer times"))
+    }
+
+    @Test
+    fun `a route via the fastest route's last stop can be the soonest the delays are judged on`() = runTest(dispatcher) {
+        // The one bus via S gets there first, and its line has severe delays; the Planner's own routes are clear.
+        val walkOn = changingToPlace.legs.last().copy(departure = at(28), arrival = at(34))
+        val direct = TripRoute(listOf(leg("green", "A", "S", 6, 28).copy(mode = "bus"), walkOn))
+        val planner = FakePlanner(emptyList()).apply {
+            byDestination = mapOf("Home" to listOf(changingToPlace))
+            byVia = mapOf("S" to listOf(direct))
+        }
+        val client = FakeClient(mutableMapOf()).apply { disruptedLines = setOf("green") }
+        val trip = TripViewModel(
+            planner, client, "A", listOf(TripDestination.Place(Coordinates(51.5, -0.12), "Home")),
+            clock = { now }, plans = TripPlans(), io = dispatcher,
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf(setOf("bus")), planner.withoutAsked)
     }
 
     // A Direct row's ride as the Planner routes it via its stop G: a walk there, green to S, a walk on.
@@ -2839,6 +2873,22 @@ class TripViewModelTest {
         assertTrue("T" in client.asked)
     }
 
+    @Test
+    fun `hiding a mode compares the routes timed off the caller`() = runTest(dispatcher) {
+        // The screen sets the hidden modes from composition: their routes are walked on the worker, never in the setter.
+        val wire = Tripwire(route.legs, "setHiddenModes")
+        var walked = false
+        val trip = TripViewModel(
+            FakePlanner(listOf(TripRoute(wire))), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")), clock = { now }, plans = TripPlans(), io = dispatcher,
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        wire.onWalk = { walked = true }
+        trip.hiddenModes = setOf("bus")
+        advanceUntilIdle()
+        assertFalse(walked)
+    }
+
     // Six bus routes fill the routes timed; the tube, seventh, is open on screen: its stop is fetched
     // though it's past the cap, so an open route is never left without live times.
     @Test
@@ -2854,6 +2904,19 @@ class TripViewModelTest {
         trip.refresh()
         advanceUntilIdle()
         assertTrue("T" in client.asked)
+    }
+
+    @Test
+    fun `a route on a severely delayed line counts later against the cap`() {
+        // Six routes on a delayed line, each a minute or two sooner than one clear of it: the clear one
+        // makes the cut, the delayed one arriving last doesn't.
+        val delayed = (0 until TripViewModel.MAX_ROUTES).map { i -> TripRoute(listOf(leg("red", "A$i", "C", 5, 10L + i))) }
+        val clear = TripRoute(listOf(leg("blue", "A", "C", 5, 17)))
+        val routes = delayed + clear
+        assertFalse(clear in TripViewModel.bestOf(routes))
+        val capped = TripViewModel.bestOf(routes, delayed = setOf("red"))
+        assertTrue(clear in capped)
+        assertFalse(delayed.last() in capped)
     }
 
     @Test
@@ -2958,6 +3021,20 @@ class TripViewModelTest {
         assertEquals(emptyList<TripRoute>(), trip.state.value.routes)
         assertTrue(trip.state.value.planIncomplete)
         assertNull(trip.state.value.planError)
+    }
+
+    @Test
+    fun `routes rank by the delays in the statuses shown, not only those held`() {
+        val red = TripRoute(listOf(leg("red", "A", "C", 5, 25)))
+        val blue = TripRoute(listOf(leg("blue", "A", "C", 5, 30)))
+        // Red's severe delays shown (a planned alert begun since, say) though the held set doesn't name them.
+        val statuses = mapOf(
+            "red" to app.stopdash.domain.LineStatus("red", 6, "Severe Delays"),
+            "blue" to app.stopdash.domain.LineStatus("blue", app.stopdash.domain.LineStatus.GOOD_SERVICE, "Good Service"),
+        )
+        val state = TripViewModel.State(routes = listOf(red, blue), statuses = statuses)
+        assertEquals(emptySet<String>(), state.delayedLines)
+        assertEquals(listOf(blue, red), tripEstimates(state, now, Duration.ZERO, emptyMap())?.map { it.route })
     }
 
     @Test
@@ -3125,9 +3202,151 @@ class TripViewModelTest {
         trip.refresh()
         advanceUntilIdle()
         // The queued refresh ran: its statuses were checked again, but the two boarding stops,
-        // fetched just now, weren't.
-        assertEquals(2, client.statusChecks)
+        // fetched just now, weren't. The first plan checked its soonest route's lines once more, with
+        // none held yet ([AroundDelays]).
+        assertEquals(3, client.statusChecks)
         assertEquals(2, client.asked.size)
+    }
+
+    @Test
+    fun `a soonest route on a line with severe delays is planned around once, without its mode`() = runTest(dispatcher) {
+        val warnings = mutableListOf<String>()
+        val bus = TripRoute(listOf(leg("red", "A", "B", 5, 15).copy(mode = "bus", lineId = "43", lineName = "43"), leg("blue", "B", "C", 20, 40)))
+        val planner = FakePlanner(listOf(route)).apply { withoutRoutes = listOf(bus) }
+        val client = FakeClient(mutableMapOf()).apply { disruptedLines = setOf("red") }
+        val trip = TripViewModel(
+            planner, client, "A", listOf(TripDestination.Stop("C")),
+            clock = { now }, plans = TripPlans(), io = dispatcher, warn = { warnings += it },
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf(setOf("tube")), planner.withoutAsked)
+        assertEquals(listOf(route, bus), trip.state.value.routes)
+        // The trip holds the delay, so its cap and ranking count it.
+        assertEquals(setOf("red"), trip.state.value.delayedLines)
+        // Logged by the modes left out and how many routes, never a stop or either end.
+        assertEquals(listOf("trip plan around delays: 1 routes without tube"), warnings.filter { "around delays" in it })
+    }
+
+    @Test
+    fun `the statuses asked for around delays are the trip's before its first refresh`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route))
+        val client = FakeClient(mutableMapOf()).apply { disruptedLines = setOf("red") }
+        val trip = model(planner, client)
+        val seen = mutableListOf<Set<String>>()
+        val watch = backgroundScope.launch { trip.state.collect { seen += it.delayedLines } }
+        trip.refresh()
+        advanceUntilIdle()
+        watch.cancel()
+        // Held from the plan's own check, with its statuses: the first refresh caps by it.
+        assertTrue(setOf("red") in seen)
+        assertEquals(setOf("red", "blue"), trip.state.value.statuses.keys)
+        // Then a refresh answering red in good service lets it go.
+        client.disruptedLines = emptySet()
+        now = now.plusSeconds(120)
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(emptySet<String>(), trip.state.value.delayedLines)
+    }
+
+    @Test
+    fun `the statuses asked for around delays keep the day they were sorted on`() = runTest(dispatcher) {
+        // The plan's own check answers; the refresh's after it fails.
+        val client = FakeClient(mutableMapOf()).apply { statusChecksAnswered = 1 }
+        val trip = model(FakePlanner(listOf(route)), client)
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(setOf("red", "blue"), trip.state.value.statuses.keys)
+        // So a planned alert held with them is promoted once its day comes.
+        assertEquals(now.atZone(app.stopdash.domain.AlertStart.ZONE).toLocalDate(), trip.state.value.statusesSortedOn)
+    }
+
+    @Test
+    fun `route data loads for the routes capped by the delays shown`() {
+        // As [a route on a severely delayed line counts later against the cap]: the clear route makes the
+        // cut only by the delays in the statuses shown, though the trip holds none.
+        val delayed = (0 until TripViewModel.MAX_ROUTES).map { i -> TripRoute(listOf(leg("red", "A$i", "C", 5, 10L + i))) }
+        val clear = TripRoute(listOf(leg("blue", "A", "C", 5, 17)))
+        val state = TripViewModel.State(routes = delayed + clear)
+        assertFalse("blue" in sequenceLineIds(state, emptySet(), emptyList()))
+        val shown = state.copy(statuses = mapOf("red" to LineStatus("red", 6, "Severe Delays")))
+        assertTrue("blue" in sequenceLineIds(shown, emptySet(), emptyList()))
+    }
+
+    @Test
+    fun `delays found after the plan plan it again once, around them`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route))
+        val client = FakeClient(mutableMapOf())
+        val trip = model(planner, client)
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(1, planner.calls)
+        assertEquals(emptyList<Set<String>>(), planner.withoutAsked)
+        // Red's delays begin: the next refresh finds them on the plan's soonest route, well inside its reuse.
+        client.disruptedLines = setOf("red")
+        now = now.plusSeconds(120)
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(2, planner.calls)
+        assertEquals(listOf(setOf("tube")), planner.withoutAsked)
+        // Once: later refreshes leave it be.
+        now = now.plusSeconds(120)
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(2, planner.calls)
+        assertEquals(1, planner.withoutAsked.size)
+    }
+
+    @Test
+    fun `planned severe delays begun today are planned around`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route))
+        val today = now.atZone(app.stopdash.domain.AlertStart.ZONE).toLocalDate()
+        val client = FakeClient(mutableMapOf()).apply {
+            plannedFor = mapOf("red" to listOf(app.stopdash.domain.PlannedAlert("Severe Delays", "Severe delays.", today, severity = 6)))
+        }
+        val trip = model(planner, client)
+        trip.refresh()
+        advanceUntilIdle()
+        // Answered as good service with the delays planned from today: they're under way, so planned around.
+        assertEquals(listOf(setOf("tube")), planner.withoutAsked)
+        // And the trip holds them, so its cap counts them too.
+        assertTrue("red" in trip.state.value.delayedLines)
+    }
+
+    @Test
+    fun `a complex's stops plan around delays once, for the soonest`() = runTest(dispatcher) {
+        val toD = TripRoute(listOf(leg("red", "A", "B", 5, 15), leg("blue", "B", "D", 20, 35)))
+        val planner = FakePlanner(listOf(route)).apply { byDestination = mapOf("C" to listOf(route), "D" to listOf(toD)) }
+        val client = FakeClient(mutableMapOf()).apply { disruptedLines = setOf("red") }
+        val trip = model(planner, client, toIds = listOf("C", "D"))
+        trip.refresh()
+        advanceUntilIdle()
+        // Both stops' soonest routes ride the delayed line: one request, to the stop reached soonest.
+        assertEquals(listOf(setOf("tube")), planner.withoutAsked)
+        assertEquals(listOf<TripDestination>(TripDestination.Stop("C")), planner.withoutTo)
+    }
+
+    @Test
+    fun `a hidden mode's route isn't the soonest the delays are judged on`() = runTest(dispatcher) {
+        // The soonest route rides a bus, hidden; the one shown rides the delayed red line.
+        val bus = TripRoute(listOf(leg("red", "A", "C", 5, 12).copy(mode = "bus", lineId = "43", lineName = "43")))
+        val planner = FakePlanner(listOf(bus, route))
+        val client = FakeClient(mutableMapOf()).apply { disruptedLines = setOf("red") }
+        val trip = model(planner, client)
+        trip.hiddenModes = setOf("bus")
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf(setOf("tube")), planner.withoutAsked)
+    }
+
+    @Test
+    fun `a plan clear of severe delays isn't asked again`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route)).apply { withoutRoutes = listOf(route) }
+        val client = FakeClient(mutableMapOf()).apply { disruptedLines = setOf("green") }
+        val trip = model(planner, client)
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(emptyList<Set<String>>(), planner.withoutAsked)
     }
 
     @Test

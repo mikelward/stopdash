@@ -434,6 +434,54 @@ class TripTimingTest {
     }
 
     @Test
+    fun `a route on a line with severe delays ranks as if ten minutes later`() {
+        val red = TripRoute(listOf(leg("red", "A", "C", departs = 5, arrives = 30)))
+        val blue = TripRoute(listOf(leg("blue", "A", "C", departs = 5, arrives = 30)))
+        fun timed(route: TripRoute, delayed: Set<String>) =
+            TripTiming.estimate(route, now, Duration.ZERO, { listOf(train(route.legs[it].lineId, 5)) }, delayed = delayed)
+        // Red's ride is on the delayed line: the estimate says so; blue's isn't.
+        assertTrue(timed(red, setOf("red")).delayed)
+        assertFalse(timed(blue, setOf("red")).delayed)
+        fun estimate(route: TripRoute, arrival: Long, delayed: Boolean) =
+            TripTiming.Estimate(route, TripTiming.Basis.LIVE, at(arrival), emptyList(), false, now, delayed = delayed)
+        // Five minutes sooner on the delayed line: the clear route goes first.
+        val delayedSooner = estimate(red, 25, delayed = true)
+        val clear = estimate(blue, 30, delayed = false)
+        assertEquals(listOf(clear, delayedSooner), TripTiming.rank(listOf(delayedSooner, clear)))
+        // Fifteen minutes sooner still leads.
+        val delayedMuchSooner = estimate(red, 15, delayed = true)
+        assertEquals(listOf(delayedMuchSooner, clear), TripTiming.rank(listOf(clear, delayedMuchSooner)))
+        // An estimate beating a delayed live route only once the delay counts goes ahead of it.
+        val liveDelayed = estimate(red, 30, delayed = true)
+        val estimated = TripTiming.Estimate(
+            blue, TripTiming.Basis.ESTIMATED, at(33), listOf(TripTiming.LegTiming(at(5), at(33), train("blue", 5), live = true)), false, now,
+        )
+        assertEquals(listOf(estimated, liveDelayed), TripTiming.rank(listOf(liveDelayed, estimated)))
+        // One clear of the delays on its timetable alone passes it too: the delayed route's predictions don't stand for much.
+        val timetabled = TripTiming.Estimate(
+            blue, TripTiming.Basis.ESTIMATED, at(30), listOf(TripTiming.LegTiming(at(5), at(30), null, live = false)), false, now,
+        )
+        val liveDelayedSooner = estimate(red, 25, delayed = true)
+        assertEquals(listOf(timetabled, liveDelayedSooner), TripTiming.rank(listOf(liveDelayedSooner, timetabled)))
+        // But not a live route clear of them.
+        val liveSooner = estimate(red, 25, delayed = false)
+        assertEquals(listOf(liveSooner, timetabled), TripTiming.rank(listOf(liveSooner, timetabled)))
+    }
+
+    @Test
+    fun `a clear route with a change isn't left off for a delayed one riding once`() {
+        val delayedDirect = TripTiming.Estimate(
+            TripRoute(listOf(leg("red", "A", "C", departs = 5, arrives = 25))), TripTiming.Basis.LIVE, at(25), emptyList(), false, now, delayed = true,
+        )
+        val clearChanging = TripTiming.Estimate(twoLegs, TripTiming.Basis.LIVE, at(30), emptyList(), false, now)
+        // Five minutes later by its trains, but ten sooner than the delayed route counts: both stay.
+        assertEquals(listOf(delayedDirect, clearChanging), TripTiming.withoutSlowerChanges(listOf(delayedDirect, clearChanging)))
+        // Not delayed, the direct route beats it on every count.
+        val direct = delayedDirect.copy(delayed = false)
+        assertEquals(listOf(direct), TripTiming.withoutSlowerChanges(listOf(direct, clearChanging)))
+    }
+
+    @Test
     fun `a route with more changes is kept when it walks clearly less`() {
         fun estimate(route: TripRoute, arrival: Long) = TripTiming.Estimate(route, TripTiming.Basis.LIVE, at(arrival), emptyList(), false, now)
         // Twelve minutes on foot to a train straight there, or a bus to the station and the same train.

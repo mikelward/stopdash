@@ -32,7 +32,7 @@ internal fun withThroughRoutes(
     open: TripRoute? = null,
 ): TripViewModel.State {
     val routes = state.routes ?: return state
-    val timed = TripViewModel.bestOf(state.shownRoutes(hidden).orEmpty(), direct = state.directKeys)
+    val timed = TripViewModel.bestOf(state.shownRoutes(hidden).orEmpty(), direct = state.directKeys, delayed = state.delayedLines)
     val keys = routes.mapTo(HashSet(), ::routeKey)
     val through = RideLines.through(timed, state.live.mapValues { it.value.departures }, state.areaPoles, sequences, hidden)
         .filter { routeKey(it) !in keys }
@@ -65,7 +65,7 @@ internal fun openRoutesOf(
     val planned = shown.mapTo(HashSet(), ::routeKey)
     val keys = routes.map(::routeKey).distinct()
     val ways by lazy {
-        RideLines.throughWays(TripViewModel.bestOf(shown, direct = state.directKeys), state.live.mapValues { it.value.departures }, state.areaPoles, sequences, hidden)
+        RideLines.throughWays(TripViewModel.bestOf(shown, direct = state.directKeys, delayed = state.delayedLines), state.live.mapValues { it.value.departures }, state.areaPoles, sequences, hidden)
             .associateBy { routeKey(it.route) }
     }
     return keys.associateWith { key ->

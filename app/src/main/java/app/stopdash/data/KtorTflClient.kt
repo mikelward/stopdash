@@ -174,6 +174,20 @@ class KtorTflClient(
         plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = LEAST_INTERCHANGE, via = via)
             .between(from, to)
 
+    // One request, for the quickest routes with [leaveOut]'s modes left out ([AroundDelays]): its failure is
+    // the caller's to handle.
+    override suspend fun quickestWithout(
+        from: TripOrigin,
+        to: TripDestination,
+        leaveOut: Set<String>,
+        speed: WalkingSpeed,
+        maxWalk: MaxWalk,
+        stepFree: StepFree,
+        modes: TripModes,
+    ): List<TripRoute> =
+        plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = null, leaveOut = leaveOut)
+            .between(from, to)
+
     // From here, the rider's own coordinate ("lat,lon"): TfL walks from it to the stop that serves the
     // trip best, the same position the nearby lookup already sends (SPEC *Trips with a change*). Never
     // logged, as neither end is.
@@ -222,8 +236,10 @@ class KtorTflClient(
         preference: String?,
         // A stop every route passes ([FinalStop]); none for the plan's own two requests.
         via: String? = null,
+        // Planner modes left out of [modes]' own ([AroundDelays]); none for every other request.
+        leaveOut: Set<String> = emptySet(),
     ): List<TripRoute> {
-        val source = planSource(preference, via)
+        val source = planSource(preference, via, leaveOut)
         // How long the Planner took, logged once for every request whatever its outcome (it can take
         // seconds, so a slow trip page says whether its plan or what follows held it up; a failed one
         // can be the slow one, Codex, #563), from before the request waits for a slot and the rate
@@ -233,7 +249,7 @@ class KtorTflClient(
         var outcome: String? = null
         var offered = ""
         try {
-            return planRequest(source, fromParam, toParam, speed, maxWalk, stepFree, modes, preference, via) { status ->
+            return planRequest(source, fromParam, toParam, speed, maxWalk, stepFree, plannerModes(modes, leaveOut), preference, via) { status ->
                 if (waited == null) waited = asked.elapsedNow().inWholeMilliseconds
                 status?.let { outcome = it }
             }.also { routes ->
@@ -264,7 +280,8 @@ class KtorTflClient(
         speed: WalkingSpeed,
         maxWalk: MaxWalk,
         stepFree: StepFree,
-        modes: TripModes,
+        // The Planner's `mode` list ([plannerModes]).
+        modeList: String,
         preference: String?,
         via: String?,
         progress: (String?) -> Unit,
@@ -281,7 +298,7 @@ class KtorTflClient(
                     // The Planner applies that pace to a route's walks only when the request names its
                     // modes, walking among them; left to its default modes, every walk comes back at the
                     // average whatever the speed ([TripModes.PLANNER_MODES]). Less any the rider turned off.
-                    parameter("mode", modes.plannerModes)
+                    parameter("mode", modeList)
                     preference?.let { parameter("journeyPreference", it) }
                     via?.let { parameter("via", it) }
                     // Only routes as step-free as the rider chose ([StepFree]); none sent for any.
@@ -310,8 +327,14 @@ class KtorTflClient(
             routes
         }
 
-    // What a Planner request is called in the log: which of a plan's requests it was.
-    private fun planSource(preference: String?, via: String?): String = when {
+    // The Planner's `mode` list: [modes]' own, less [leaveOut].
+    private fun plannerModes(modes: TripModes, leaveOut: Set<String>): String =
+        if (leaveOut.isEmpty()) modes.plannerModes else modes.plannerModes.split(',').filterNot { it in leaveOut }.joinToString(",")
+
+    // What a Planner request is called in the log: which of a plan's requests it was. The modes left out
+    // around delays are named, coarse as a line id is.
+    private fun planSource(preference: String?, via: String?, leaveOut: Set<String> = emptySet()): String = when {
+        leaveOut.isNotEmpty() -> "journey planner (without ${leaveOut.sorted().joinToString("+")})"
         via != null -> "journey planner (fewest changes via a stop)"
         preference == LEAST_INTERCHANGE -> "journey planner (fewest changes)"
         preference == LEAST_WALKING -> "journey planner (least walking)"
