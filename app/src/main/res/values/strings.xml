@@ -593,7 +593,7 @@
     <string name="settings_hidden_show_description">Show %1$s</string>
     <!-- Settings' list of the lines trips avoid (maintainer, 2026-10-01), shown while any are: its
          title, what avoiding does, and each line's button that stops avoiding it. -->
-    <string name="settings_avoided_title">Avoided lines</string>
+    <string name="settings_avoided_title">Avoided</string>
     <string name="settings_avoided_summary">Left out of trips</string>
     <string name="settings_avoided_remove">Remove</string>
     <!-- The favorite-places editor screen (SPEC D9): a list of saved places with add/edit/delete. -->
@@ -870,6 +870,9 @@
          closed. Avoids that line and plans again. The argument names it as it reads alone ("Central line"). -->
     <!-- TODO: translate -->
     <string name="on_the_way_line_closed" tools:ignore="MissingTranslation">%1$s closed</string>
+    <!-- Under a missed change: the stop gone past is closed, so it's avoided and the trip planned again ("Bank closed"). -->
+    <!-- TODO: translate -->
+    <string name="on_the_way_stop_closed" tools:ignore="MissingTranslation">%1$s closed</string>
     <!-- A train on the trip's board that leaves the plan: its heading, in brackets, and its times. -->
     <string name="on_the_way_off_plan_heading" tools:ignore="MissingTranslation">(%1$s)</string>
     <string name="on_the_way_off_plan_times" tools:ignore="MissingTranslation">%1$s min</string>

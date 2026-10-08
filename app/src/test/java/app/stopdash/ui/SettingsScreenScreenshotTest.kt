@@ -1010,7 +1010,9 @@ class SettingsScreenScreenshotTest {
     fun settings_avoided_lines() {
         val northern = AvoidedLines.key("northern", "Northern line")
         val central = AvoidedLines.key("central", "Central line")
-        var avoided by mutableStateOf(linkedSetOf(northern, central) as Set<String>)
+        // A station found closed, avoided beside the lines.
+        val bank = AvoidedLines.stopKey("940GZZLUBNK", "Bank")
+        var avoided by mutableStateOf(linkedSetOf(northern, central, bank) as Set<String>)
         composeRule.setContent {
             StopDashTheme {
                 SettingsScreen(
@@ -1024,19 +1026,21 @@ class SettingsScreenScreenshotTest {
         }
         composeRule.waitForIdle()
 
-        // Each line trips avoid, in the order avoided, with its own Remove.
-        composeRule.onNodeWithText("Avoided lines").performScrollTo().assertIsDisplayed()
+        // Each line and stop trips avoid, in the order avoided, with its own Remove.
+        composeRule.onNodeWithText("Avoided").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Left out of trips").assertIsDisplayed()
         composeRule.onNodeWithText("Northern line").assertIsDisplayed()
         composeRule.onNodeWithText("Central line").assertIsDisplayed()
+        composeRule.onNodeWithText("Bank").assertIsDisplayed()
         captureSnapshot("settings-avoided.png")
 
         // Remove stops avoiding just that one.
         composeRule.onNodeWithContentDescription("Stop avoiding Northern line").performClick()
         composeRule.waitForIdle()
-        assertEquals(setOf(central), avoided)
+        assertEquals(setOf(central, bank), avoided)
         composeRule.onNodeWithText("Northern line").assertDoesNotExist()
         composeRule.onNodeWithContentDescription("Stop avoiding Central line").performClick()
+        composeRule.onNodeWithContentDescription("Stop avoiding Bank").performClick()
         composeRule.waitForIdle()
         // None avoided: no list at all.
         composeRule.onNodeWithTag("avoidedList").assertDoesNotExist()

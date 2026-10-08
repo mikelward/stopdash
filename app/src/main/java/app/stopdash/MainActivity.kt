@@ -161,7 +161,6 @@ import app.stopdash.domain.PlanTargets
 import app.stopdash.domain.RailAwareTflClient
 import app.stopdash.domain.RecentPositions
 import app.stopdash.domain.ReplanOrigin
-import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.SavedTrip
 import app.stopdash.domain.SnapshotStore
@@ -1458,19 +1457,19 @@ class MainActivity : ComponentActivity() {
                                     notes = stationNotes?.at(now).orEmpty(),
                                     replanFrom = replanFrom,
                                     onPlanAgain = onTheWayTrip?.let { { stop: ReplanOrigin.Stop -> planAgainFrom(stop) } },
-                                    // The line on from a stop gone past is closed (maintainer, 2026-10-08): avoided as a
-                                    // route card's Avoid does, sticky until its chip or Settings clears it, then planned
+                                    // The stop gone past, or the line on from it, is closed (maintainer, 2026-10-08): avoided
+                                    // as a route card's Avoid does, sticky until its chip or Settings clears it, then planned
                                     // again as above, so the list opens already without it.
-                                    onLineClosed = onTheWayTrip?.let {
-                                        { missed: RouteDisruption.Signal.Missed, stop: ReplanOrigin.Stop ->
-                                            // The entry avoiding the line, worked out with the signal: the tap only reads it.
-                                            missed.onwardAvoid.takeIf { it.isNotEmpty() }?.let { AvoidedLinesSetting.setAvoided(it, avoided = true) }
+                                    onClosed = onTheWayTrip?.let {
+                                        { avoid: String, stop: ReplanOrigin.Stop ->
+                                            // The entry avoiding it, worked out with the signal: the tap only reads it.
+                                            AvoidedLinesSetting.setAvoided(avoid, avoided = true)
                                             // At once: the trip holds its plan and its list until the line is avoided
                                             // ([AvoidedLinesSetting.editsPending]), so no route on it shows first (Codex, #695).
                                             planAgainFrom(stop)
                                         }
                                     },
-                                    lineClosedEnabled = AvoidedLinesSetting.isLoaded.collectAsStateWithLifecycle().value,
+                                    closedEnabled = AvoidedLinesSetting.isLoaded.collectAsStateWithLifecycle().value,
                                     // Read and kept going: in the app's scope, so a rotation can't cut the save short.
                                     onDismissDisruptions = { shown ->
                                         ((application as? StopdashApp)?.applicationScope ?: onTheWayScope).launch { tracker.dismissDisruptions(shown) }
@@ -3948,8 +3947,10 @@ class MainActivity : ComponentActivity() {
             // Built bare, not remembered: remember's keys compare contents, the model compares identities.
             // Its stops near the place are those within the rider's max walk at their pace, as the routes' own
             // last walk is held to (maintainer, 2026-10-07).
+            // It waits while an avoided line or stop is still being saved, as the routes do, so a closed
+            // stop's row never shows before the edit lands.
             val walkMeters = PlaceStops.walkMeters(maxWalk, walkingSpeed)
-            val inputs = PlaceDirectViewModel.Inputs(origin, distanceMeters, hiddenModes, avoidedLines, stepFree, tripModes, walkMeters, planOptionsLoaded)
+            val inputs = PlaceDirectViewModel.Inputs(origin, distanceMeters, hiddenModes, avoidedLines, stepFree, tripModes, walkMeters, planOptionsLoaded && !avoidedSaving)
             rememberPlaceDirect(owner, place, inputs, lifecycleOwner)
         }
         val directState = direct?.state?.collectByIdentityWithLifecycle()?.value

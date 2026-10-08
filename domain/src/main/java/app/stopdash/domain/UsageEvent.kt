@@ -270,11 +270,12 @@ sealed class UsageEvent(val name: String, val params: Map<String, String>) {
                 ModeGroups.ALL.filter { after.rides(it) != before.rides(it) }
                     .map { SettingChanged("trip_mode", "${it.key}_${if (after.rides(it)) "on" else "off"}") }
 
-            /** A line avoided or no longer avoided, never which. */
+            /** A line or a stop avoided or no longer avoided, never which. */
             @WorkerThread
-            fun avoidedLines(before: Set<String>, after: Set<String>): List<SettingChanged> =
-                List((after - before).size) { SettingChanged("avoided_line", "added") } +
-                    List((before - after).size) { SettingChanged("avoided_line", "removed") }
+            fun avoidedLines(before: Set<String>, after: Set<String>): List<SettingChanged> {
+                fun kind(entry: String) = if (AvoidedLines.isStopKey(entry)) "avoided_stop" else "avoided_line"
+                return (after - before).map { SettingChanged(kind(it), "added") } + (before - after).map { SettingChanged(kind(it), "removed") }
+            }
 
             /**
              * Each group (or, unnamed, line) hidden or shown again; several shown at once, leaving none

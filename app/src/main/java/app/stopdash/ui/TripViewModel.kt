@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.stopdash.domain.AlertStart
 import app.stopdash.domain.ArrivalsCache
+import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
@@ -351,7 +352,7 @@ class TripViewModel(
          * what it beat.
          */
         fun shownRoutes(hidden: Set<String>): List<TripRoute>? = routes
-            ?.filterNot { route -> route.rides.any { HiddenModes.isHidden(it.mode, it.lineId, hidden) } }
+            ?.filterNot { route -> AvoidedLines.drops(route, hidden) }
             ?.let { withoutDetours(it, destinationStops.keys, destinationStops) }
     }
 
@@ -1161,7 +1162,7 @@ class TripViewModel(
         // A route to one of the destination's stops that rides through another and comes back isn't
         // shown when another route gets off there no later: the rider would get off the first time.
         val visible = State(routes = routes, destinationStops = _state.value.destinationStops).shownRoutes(hiddenModes).orEmpty()
-        val shown = routes.count { route -> route.rides.none { HiddenModes.isHidden(it.mode, it.lineId, hiddenModes) } }
+        val shown = routes.count { route -> !AvoidedLines.drops(route, hiddenModes) }
         if (shown > visible.size) warn("journey planner: ${shown - visible.size} of $shown routes pass the destination")
         countPlan(failed, answered, visible.size, viaFailed || directFailedNow, from, planAgain)
         val at = clock()

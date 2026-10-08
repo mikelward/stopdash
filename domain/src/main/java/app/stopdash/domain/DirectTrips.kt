@@ -10,7 +10,9 @@ import androidx.annotation.WorkerThread
  */
 object DirectTrips {
     /** One of the destination station's stops: its TfL id, name and interchange (blank if none). */
-    data class End(val id: String, val name: String, val hubId: String = "")
+    // [area]: the stop's own cluster ([StopLocation.clusterId], a bus stop's pair of poles), so an avoided
+    // stop area leaves out both poles ([PlaceDirect.rows]).
+    data class End(val id: String, val name: String, val hubId: String = "", val area: String = "")
 
     /**
      * What a trip filter kept: the [stops] with only the departures that reach the destination (a

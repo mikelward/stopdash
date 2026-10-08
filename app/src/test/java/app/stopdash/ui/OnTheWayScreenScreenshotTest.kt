@@ -46,6 +46,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.OnTheWay
+import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.ReplanOrigin
 import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.TripLeg
@@ -104,8 +105,8 @@ class OnTheWayScreenScreenshotTest {
         cards: List<RouteDisruption.Signal> = RouteDisruption.cards(disruptions),
         replanFrom: ReplanOrigin.Stop? = null,
         onPlanAgain: ((ReplanOrigin.Stop) -> Unit)? = null,
-        onLineClosed: ((RouteDisruption.Signal.Missed, ReplanOrigin.Stop) -> Unit)? = null,
-        lineClosedEnabled: Boolean = true,
+        onClosed: ((String, ReplanOrigin.Stop) -> Unit)? = null,
+        closedEnabled: Boolean = true,
         onDismissDisruptions: ((List<RouteDisruption.Signal>) -> Unit)? = null,
         notes: List<RouteDisruption.StationNote> = emptyList(),
         onDismissNote: ((RouteDisruption.StationNote) -> Unit)? = null,
@@ -120,7 +121,7 @@ class OnTheWayScreenScreenshotTest {
                 OnTheWayScreen(
                     trip, progress, failed, now, onEnd, onBack, current = current, notKept = notKept, endFailed = endFailed, alertsOff = alertsOff,
                     appOpenOnly = appOpenOnly, nextTrains = nextTrains, onGoTo = onGoTo, disruptions = disruptions, cards = cards,
-                    replanFrom = replanFrom, onPlanAgain = onPlanAgain, onLineClosed = onLineClosed, lineClosedEnabled = lineClosedEnabled, onDismissDisruptions = onDismissDisruptions, notes = notes,
+                    replanFrom = replanFrom, onPlanAgain = onPlanAgain, onClosed = onClosed, closedEnabled = closedEnabled, onDismissDisruptions = onDismissDisruptions, notes = notes,
                     onDismissNote = onDismissNote, onTake = onTake, asOf = asOf, lineChecks = lineChecks,
                     dismissed = dismissed, lineDismissal = lineDismissal,
                 )
@@ -239,9 +240,9 @@ class OnTheWayScreenScreenshotTest {
     }
 
     @Test
-    fun a_missed_change_offers_to_plan_again_without_a_closed_line_on() {
+    fun a_missed_change_offers_to_plan_again_without_a_closed_stop_or_line_on() {
         // As above: off the Elizabeth line at Liverpool Street for the Central line, seen on at Whitechapel.
-        // Stayed on because the Central line is closed (maintainer, 2026-10-08). Times made up.
+        // Stayed on because the station or the Central line is closed (maintainer, 2026-10-08). Times made up.
         val elizabeth = TripLeg("elizabeth-line", "elizabeth", "Elizabeth line", "910GTOTCTRD", "Tottenham Court Road", "910GLIVSTLL", "Liverpool Street", at(0), at(6))
         val toTube = TripLeg(TripLeg.WALKING, "", "", "910GLIVSTLL", "Liverpool Street", "940GZZLULVT", "Liverpool Street", at(6), at(10))
         val central = TripLeg("tube", "central", "Central", "940GZZLULVT", "Liverpool Street", "940GZZLUBNK", "Bank", at(11), at(13))
@@ -250,20 +251,26 @@ class OnTheWayScreenScreenshotTest {
             pastLeg = 0, pastAtId = "910GWCHAPXR", pastAtName = "Whitechapel",
         )
         val missed = checkNotNull(RouteDisruption.missed(past, TripProgress.Walking(toTube, at(10))))
-        val closed = mutableListOf<Pair<TripLeg?, ReplanOrigin.Stop>>()
+        val closed = mutableListOf<Pair<String, ReplanOrigin.Stop>>()
         show(
             past, TripProgress.Walking(toTube, at(10)), disruptions = listOf(missed),
             replanFrom = ReplanOrigin.Stop("910GWCHAPXR", "Whitechapel"), onPlanAgain = {},
-            onLineClosed = { signal, from -> closed += signal.onward to from }, onDismissDisruptions = {},
+            onClosed = { avoid, from -> closed += avoid to from }, onDismissDisruptions = {},
         )
         composeRule.onNodeWithText("Missed Liverpool Street").assertIsDisplayed()
         captureSnapshot("on-the-way-missed-line-closed.png")
+        val from = ReplanOrigin.Stop("910GWCHAPXR", "Whitechapel")
+        // The station gone past, avoided by its id, then the line on from it.
+        composeRule.onNodeWithTag("onTheWayStopClosed").assertTextEquals("Liverpool Street closed").performClick()
         composeRule.onNodeWithTag("onTheWayLineClosed").assertTextEquals("Central line closed").performClick()
-        assertEquals(listOf(central to ReplanOrigin.Stop("910GWCHAPXR", "Whitechapel")), closed)
+        assertEquals(
+            listOf(AvoidedLines.stopKey("910GLIVSTLL", "Liverpool Street") to from, AvoidedLines.key("central", "Central line") to from),
+            closed,
+        )
     }
 
     @Test
-    fun line_closed_waits_for_the_avoided_lines_to_be_read() {
+    fun closed_waits_for_what_is_avoided_to_be_read() {
         val elizabeth = TripLeg("elizabeth-line", "elizabeth", "Elizabeth line", "910GTOTCTRD", "Tottenham Court Road", "910GLIVSTLL", "Liverpool Street", at(0), at(6))
         val toTube = TripLeg(TripLeg.WALKING, "", "", "910GLIVSTLL", "Liverpool Street", "940GZZLULVT", "Liverpool Street", at(6), at(10))
         val central = TripLeg("tube", "central", "Central", "940GZZLULVT", "Liverpool Street", "940GZZLUBNK", "Bank", at(11), at(13))
@@ -276,19 +283,21 @@ class OnTheWayScreenScreenshotTest {
         show(
             past, TripProgress.Walking(toTube, at(10)), disruptions = listOf(missed),
             replanFrom = ReplanOrigin.Stop("910GWCHAPXR", "Whitechapel"), onPlanAgain = {},
-            onLineClosed = { _, _ -> }, lineClosedEnabled = false, onDismissDisruptions = {},
+            onClosed = { _, _ -> }, closedEnabled = false, onDismissDisruptions = {},
         )
+        composeRule.onNodeWithTag("onTheWayStopClosed").assertIsDisplayed().assertIsNotEnabled()
         composeRule.onNodeWithTag("onTheWayLineClosed").assertIsDisplayed().assertIsNotEnabled()
     }
 
     @Test
-    fun line_closed_is_offered_only_for_a_missed_change_with_a_ride_on() {
+    fun closed_is_offered_only_for_a_missed_change() {
         // A line's own trouble ahead is answered by Plan again and Keep going alone.
         val signal = RouteDisruption.Signal.Line(0, "mildmay", "Mildmay", LineStatus("mildmay", 20, "Suspended"), RouteDisruption.Tier.HIGH)
         show(
             trip, TripProgress.Waiting(mildmay, at(4)), disruptions = listOf(signal),
-            replanFrom = ReplanOrigin.Stop("910GHGHI", "Highbury & Islington"), onPlanAgain = {}, onLineClosed = { _, _ -> },
+            replanFrom = ReplanOrigin.Stop("910GHGHI", "Highbury & Islington"), onPlanAgain = {}, onClosed = { _, _ -> },
         )
+        composeRule.onAllNodes(hasTestTag("onTheWayStopClosed")).assertCountEquals(0)
         composeRule.onAllNodes(hasTestTag("onTheWayLineClosed")).assertCountEquals(0)
     }
 

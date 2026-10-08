@@ -1666,6 +1666,13 @@ hidden lines: avoiding a line leaves it out of trips only, not the list, the wid
 the "hidden" banner never counts it. The settings wait takes it in too, so a route on an avoided line
 isn't shown first.
 
+**Avoiding a stop** (maintainer, 2026-10-08) works the same way, for a station found closed (*Stop
+closed* under a missed change): sticky, a chip ("Avoiding" · **Bank ×**) and a Settings row (**Avoided**,
+now listing stops beside lines) to clear it, kept in the same set. A route boarding, getting off or
+changing on foot there is dropped on the phone, since the Planner can't leave out a stop either; one
+riding through it isn't, as a train runs through a closed station. A bus stop is avoided by its stop
+area, both its poles. A place's Direct trains neither board nor get off there.
+
 **Three requests per plan.** The Planner answers with about three routes, often one route at three
 departures, so each plan asks it three times at once: for the quickest routes (its default), for the
 **fewest changes**, which finds the walk to a station or the one bus the whole way that the quickest
@@ -2049,7 +2056,9 @@ as it was.
   their train reaches), the plan's own stops being behind them. Under it, **‹line› closed** (maintainer,
   2026-10-08) names the line they were to change onto: for a rider who stayed on because it's closed, it
   avoids that line as a route card's Avoid does (*Avoiding a line*: sticky, until its chip or Settings
-  clears it) and plans again from the same stop, so the list opens without it. Where they went past is kept, through a
+  clears it) and plans again from the same stop, so the list opens without it. Beside it, **‹stop› closed**
+  (maintainer, 2026-10-08: sticky) avoids the stop they went past (*Avoiding a stop*), for a rider who
+  couldn't get off there, and plans again the same way. Where they went past is kept, through a
   restart, until they're seen back where they got off or at the next ride's stop, or board on (seen or said);
   fixes go on being asked for until then, or until the rider taps Keep going on it, which lets it go for
   that ride (a battery cost only while it stands); its alert,
@@ -3551,10 +3560,10 @@ shortcut), each trip plan (how it went: routes, none, partly or wholly failed an
 count in ranges; from here or a stop, to a stop or a place; first or again), each route opened from
 its card and each started (by the card's label: Fastest, Simplest, Least walking, a combination,
 Other, or none; its rank or its changes in ranges), and each setting changed with its new value as a
-category or band (a line avoided, hidden or added to the disruptions row counts only that one was).
+category or band (a line or stop avoided, hidden or added to the disruptions row counts only that one was).
 And **user properties**, sent as the opt-in lands, when a setting changes and each time the app
 comes to the front, so each event reads against the rider's setup: the trip options (walking speed,
-longest walk, step-free level, modes off, avoided lines as a count), hidden modes by group with
+longest walk, step-free level, modes off, avoided lines and stops as a count), hidden modes by group with
 hidden lines as a count, distance units, text size in bands, the Settings switches, whether there's
 an own TfL or National Rail key (never the key), widgets placed, a paired watch with the app or a
 connected one without it, starred rows, saved places and favorite journeys as counts in ranges, and whether notifications

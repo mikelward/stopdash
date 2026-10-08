@@ -58,7 +58,8 @@ object PlaceDirect {
     /**
      * The lines in [stops] (their fresh arrivals) whose route reaches one of [ends] after boarding, each
      * once from its nearest stop by [distanceMeters], with its next [TRAINS] trains not yet gone at
-     * [now]; rows nearest first, then soonest. [hidden] modes are left out unchecked.
+     * [now]; rows nearest first, then soonest. [hidden] modes are left out unchecked, and a stop it avoids
+     * ([AvoidedLines.stopKey], a station found closed) is neither boarded at nor got off at.
      */
     @WorkerThread
     fun rows(
@@ -71,6 +72,26 @@ object PlaceDirect {
         // The rider's step-free level for a trip's routes, and the stations' access to judge it by.
         stepFree: StepFree = StepFree.ANY,
         access: StepFreeAccess? = null,
+    ): Result {
+        val avoided = AvoidedLines.stopIds(hidden)
+        if (avoided.isEmpty()) return rowsOf(stops, ends, sequences, distanceMeters, now, hidden, stepFree, access)
+        // Its arrivals emptied rather than the stop dropped, so it still counts as answered. A bus stop is
+        // avoided by its area, so both its poles (its cluster here).
+        val open = stops.map { if (it.stopId in avoided || it.hubId in avoided || it.clusterId in avoided) it.copy(departures = emptyList()) else it }
+        val reachable = ends.filterNot { it.id in avoided || it.hubId in avoided || it.area in avoided }
+        return rowsOf(open, reachable, sequences, distanceMeters, now, hidden, stepFree, access)
+    }
+
+    @WorkerThread
+    private fun rowsOf(
+        stops: List<StopArrivals>,
+        ends: List<DirectTrips.End>,
+        sequences: Map<String, LineSequence?>,
+        distanceMeters: Map<String, Double>,
+        now: Instant,
+        hidden: Set<String>,
+        stepFree: StepFree,
+        access: StepFreeAccess?,
     ): Result {
         if (ends.isEmpty()) return Result(emptyList(), pending = false, unresolved = false)
         val misses = LinkedHashSet<RouteMiss>()

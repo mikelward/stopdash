@@ -34,7 +34,7 @@ object PlaceStops {
             .filter { (_, meters) -> meters <= walkMeters }
             .sortedBy { (_, meters) -> meters }
             .distinctBy { (stop, _) -> stop.id }
-            .map { (stop, _) -> DirectTrips.End(stop.id, stop.name, stop.hubId) }
+            .map { (stop, _) -> DirectTrips.End(stop.id, stop.name, stop.hubId, stop.clusterId) }
             .toList()
 }
 

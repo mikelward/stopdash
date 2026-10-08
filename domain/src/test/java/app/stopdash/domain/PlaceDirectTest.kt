@@ -39,6 +39,33 @@ class PlaceDirectTest {
     }
 
     @Test
+    fun `an avoided stop is neither boarded at nor got off at`() {
+        val top = stop("TOP", "Top", departure("Bottom", 60))
+        val mid = stop("MID", "Mid", departure("Bottom", 120))
+        // Top closed: the line is boarded at Mid instead, though Top is nearer.
+        val row = PlaceDirect.rows(
+            listOf(mid, top), ends, mapOf("rail" to rail), mapOf("TOP" to 100.0, "MID" to 400.0), now,
+            hidden = setOf(AvoidedLines.stopKey("TOP", "Top")),
+        ).rows.single()
+        assertEquals("MID", row.fromId)
+        // Bottom closed: nowhere near the place to get off, so no row.
+        val none = PlaceDirect.rows(listOf(top), ends, mapOf("rail" to rail), emptyMap(), now, hidden = setOf(AvoidedLines.stopKey("BOT", "Bottom")))
+        assertTrue(none.rows.isEmpty())
+    }
+
+    @Test
+    fun `a bus stop avoided by its area leaves out both its poles, to board or to get off`() {
+        val area = AvoidedLines.stopKey("490GEXAMPLE", "Example Stop")
+        // Boarding at a pole of the area: its departures are left out.
+        val top = stop("TOP", "Top", departure("Bottom", 60)).copy(clusterId = "490GEXAMPLE")
+        assertTrue(PlaceDirect.rows(listOf(top), ends, mapOf("rail" to rail), emptyMap(), now, hidden = setOf(area)).rows.isEmpty())
+        // Getting off at a pole of the area: nowhere near the place to get off.
+        val atArea = listOf(DirectTrips.End("BOT", "Bottom", area = "490GEXAMPLE"))
+        val board = stop("TOP", "Top", departure("Bottom", 60))
+        assertTrue(PlaceDirect.rows(listOf(board), atArea, mapOf("rail" to rail), emptyMap(), now, hidden = setOf(area)).rows.isEmpty())
+    }
+
+    @Test
     fun `a train going the other way, or a line that never gets there, is left out`() {
         val mid = stop("MID", "Mid", departure("Top", 60))
         val near = stop("NEAR", "Near", departure("Far", 60, lineId = "bus", mode = "bus"))

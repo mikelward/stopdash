@@ -124,8 +124,9 @@ object RouteDisruption {
          * plan again from ([ActiveTrip.pastLeg]; maintainer, 2026-10-06: the one to say loudest). Heard
          * once for that ride's stop. [onward] is the ride they were to board on from it ([missedOnward]),
          * [onwardLabel] its line as it reads alone ("Central line"), and [onwardAvoid] the entry that
-         * avoids that line ([AvoidedLines.key]), all worked out with the signal so the card and its button
-         * only read them.
+         * avoids that line ([AvoidedLines.key]); [stopAvoid] the entry that avoids the stop gone past
+         * ([AvoidedLines.stopKey]), should it be closed. All worked out with the signal so the card and its
+         * buttons only read them.
          */
         data class Missed(
             override val legIndex: Int,
@@ -138,6 +139,7 @@ object RouteDisruption {
             val onward: TripLeg? = null,
             val onwardLabel: String = "",
             val onwardAvoid: String = "",
+            val stopAvoid: String = "",
         ) : Signal {
             override val tier: Tier get() = Tier.HIGH
             override val key: String get() = missedKey(legIndex, stopId)
@@ -228,7 +230,17 @@ object RouteDisruption {
         val missed = Signal.Missed(trip.pastLeg, ride.lineId, ride.lineName, ride.toId, ride.toName.ifBlank { ride.toId }, trip.pastAtId, trip.pastAtName.ifBlank { trip.pastAtId })
         val onward = missedOnward(trip, missed)
         val label = onward?.let { lineLabel(it.lineName.ifBlank { it.lineId }, it.mode) }.orEmpty()
-        return missed.copy(onward = onward, onwardLabel = label, onwardAvoid = onward?.let { AvoidedLines.key(it.lineId, label) }.orEmpty())
+        return missed.copy(
+            onward = onward,
+            onwardLabel = label,
+            onwardAvoid = onward?.let { AvoidedLines.key(it.lineId, label) }.orEmpty(),
+            // A bus stop by its area, so both its poles are left out: the planned leg's when the ride was another
+            // line's, whose leg doesn't carry it (Codex, #701).
+            stopAvoid = AvoidedLines.stopKey(
+                ride.toArea.ifBlank { trip.route.legs[trip.pastLeg].toArea }.ifBlank { ride.toId },
+                missed.stopName,
+            ),
+        )
     }
 
     /**

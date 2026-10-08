@@ -313,13 +313,17 @@ class PlaceDirectViewModel(
         // The trip's modes turned off count as hidden here, as they leave the routes.
         val modesOff = ModeGroups.ALL.filterNot(chosen.tripModes::rides).flatMap { it.modes }
         val hidden = AvoidedLines.excluded(chosen.hidden, chosen.avoided) + modesOff
+        // A stop avoided (found closed) isn't asked about at all, so it neither costs a fetch nor, failing,
+        // makes the rest look unsure. Held in [heldOrigin] all the same, so the reach stays steady.
+        val avoidedStops = AvoidedLines.stopIds(hidden)
+        val open = if (avoidedStops.isEmpty()) stops else stops.filterNot { it.id in avoidedStops || it.clusterId in avoidedStops || it.hubId in avoidedStops }
         val level = chosen.stepFree
         if (level != StepFree.ANY && access == null) access = withContext(io) { stepFreeAccess() }
         // With a level to meet, the table as of the lifts out now: the same outages keep the same table.
         val table = if (level == StepFree.ANY) access else withLifts(access, liftsOut())
         // When asked: what a fetch is stamped with.
         val askedAt = clock()
-        val fetched = coroutineScope { stops.map { stop -> async { arrivalsOf(stop, askedAt, pulled) } }.awaitAll() }
+        val fetched = coroutineScope { open.map { stop -> async { arrivalsOf(stop, askedAt, pulled) } }.awaitAll() }
         // Every shown line's status asked for while its route loads, not after: either can take TfL a
         // couple of seconds, and a row waits on both. A line that turns out to go elsewhere costs only a
         // place in a batched status request.
@@ -355,7 +359,7 @@ class PlaceDirectViewModel(
         // change overtook never seeds the next one's order with rows the rider never saw.
         var heldNext: List<String>? = null
         var verdictNext: String? = null
-        val next = if (ends.isNotEmpty() && stops.isNotEmpty() && fresh.isEmpty()) {
+        val next = if (ends.isNotEmpty() && open.isNotEmpty() && fresh.isEmpty()) {
             State.Failed
         } else {
             val result = PlaceDirect.rows(fresh, ends, sequences, chosen.distanceMeters, now, hidden, level, table)
@@ -378,7 +382,7 @@ class PlaceDirectViewModel(
             heldNext = ordered.map { it.lineId }
             // What the section says, and why it says it couldn't check, to the debug log when either changes:
             // a row come or gone, or a caveat, is then traceable to the line and the reason. Ids only.
-            val missing = stops.map { it.id } - fresh.mapTo(HashSet()) { it.stopId }
+            val missing = open.map { it.id } - fresh.mapTo(HashSet()) { it.stopId }
             val why = listOfNotNull(
                 "train unplaced (${result.misses.map { it.lineId }.distinct().sorted().joinToString(",")})".takeIf { result.unresolved },
                 "no arrivals (${missing.sorted().joinToString(",")})".takeIf { missing.isNotEmpty() },
@@ -406,10 +410,10 @@ class PlaceDirectViewModel(
                 },
                 checking = result.pending,
                 // A row whose line's status, or a stop's closures, couldn't be had isn't vouched for either.
-                uncertain = result.unresolved || fresh.size < stops.size || rowsUnvouched,
+                uncertain = result.unresolved || fresh.size < open.size || rowsUnvouched,
                 // A train no Retry can tell (past its board's calling points, a line TfL has no route for)
                 // leaves it uncertain but not failed (maintainer, 2026-10-07).
-                retryable = routesFailed || fresh.size < stops.size || rowsUnvouched,
+                retryable = routesFailed || fresh.size < open.size || rowsUnvouched,
             )
         }
         // Checked again as it's written: a change since the check above stands, never this look's rows.
@@ -494,7 +498,7 @@ class PlaceDirectViewModel(
     private suspend fun arrivalsOf(stop: StopRef, now: Instant, pulled: Boolean): StopArrivals? {
         val source = client.arrivalsSource()
         if (!pulled) arrivals.recent(stop.id, now, source)?.let { entry ->
-            return StopArrivals(stop.id, stop.name, entry.departures, entry.fetchedAt, hubId = stop.hubId)
+            return StopArrivals(stop.id, stop.name, entry.departures, entry.fetchedAt, clusterId = stop.clusterId, hubId = stop.hubId)
         }
         return try {
             // Stamped when asked, as the list stamps its fetches (SPEC D4).
@@ -506,7 +510,7 @@ class PlaceDirectViewModel(
             }
             val fetchedAt = client.fetchedAt(stop.id) ?: at
             if (shared) arrivals.put(stop.id, departures, fetchedAt, client.railFeed(stop.id), generation, source, client.untimed(stop.id))
-            StopArrivals(stop.id, stop.name, departures, fetchedAt, hubId = stop.hubId)
+            StopArrivals(stop.id, stop.name, departures, fetchedAt, clusterId = stop.clusterId, hubId = stop.hubId)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
