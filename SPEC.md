@@ -1627,6 +1627,11 @@ opens the same menu as its Settings row; the row scrolls sideways when it doesn'
 the plain text color, not the accent: they're choices, not alerts. Each step-free level says what it's
 for in its menu, Any included ("Stairs are OK").
 
+**The choices scroll with the routes** (maintainer, 2026-10-08). Everything above a trip's routes
+(the choices, the modes, the lines avoided, a place's Direct trains and the banners) scrolls away as
+the routes scroll, rather than staying fixed over them. A phone turned on its side has room for the
+routes too. They come back only with the top of the list, so a scroll back up never covers the routes.
+
 **Modes.** A row of chips under the walk choices says which kinds of transport a trip may
 ride: one per group the list already hides modes by, under the same names
 (**Underground**, **Overground**, **National Rail**, **Bus**, **Tram**, **Boat**), selected while the trip rides it.
