@@ -65,6 +65,7 @@ import app.stopdash.R
 import app.stopdash.data.TflRouteSequenceDto
 import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.Departure
+import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Countdown
 import app.stopdash.domain.PlaceDirect
 import app.stopdash.domain.DepartureRows
@@ -4320,13 +4321,13 @@ class TripScreenScreenshotTest {
     )
 
     // A line's own page off the lines page, its map drawn from [sequence]; waits until [shown] is drawn.
-    private fun showLinePage(line: TripLine, sequence: LineSequence, shown: String, starred: Set<String> = emptySet()) {
+    private fun showLinePage(line: TripLine, sequence: LineSequence, shown: String, starred: Set<String> = emptySet(), here: Coordinates? = null) {
         val repository = RouteStopsRepository(object : RouteSequenceSource {
             override suspend fun routeSequence(lineId: String, direction: String): LineSequence = sequence
         })
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
-                CompositionLocalProvider(LocalRouteStops provides repository) {
+                CompositionLocalProvider(LocalRouteStops provides repository, LocalRiderPosition provides here) {
                     Surface { TripLineReason(line, starred = starred) }
                 }
             }
@@ -4481,6 +4482,27 @@ class TripScreenScreenshotTest {
         lineMapRow("1 station \u26D4")
         composeRule.onNode(hasScrollAction()).performScrollToNode(hasText("King's Cross St. Pancras"))
         captureSnapshot("line-page-nearest.png")
+    }
+
+    @Test
+    fun a_searched_line_marks_its_stop_nearest_the_rider_with_how_far() {
+        // Opened from Lines…, no near-me pick: the line's own stop nearest the rider's fix, a few steps from
+        // King's Cross St. Pancras (a big interchange standing in for where they are), says how far it is.
+        val sequence = northernLine.copy(stopPositions = northernLine.stopPositions + ("940GZZLUKSX" to (51.5308 to -0.1238)))
+        showLinePage(TripLine(northernLeg(), northernPartSuspended), sequence, shown = "King's Cross St. Pancras", here = Coordinates(51.5302, -0.1238))
+        lineMapRow("King's Cross St. Pancras").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Nearest \u00B7 70 m"))
+        lineMapRow("Nearest \u00B7 70 m")
+    }
+
+    @Test
+    fun a_ridden_stop_nearest_the_rider_says_both() {
+        // A trip boarding at King's Cross St. Pancras, the rider a few steps from it: their stop says it's
+        // theirs and how far it is, never one hiding the other.
+        val sequence = northernLine.copy(stopPositions = northernLine.stopPositions + ("940GZZLUKSX" to (51.5308 to -0.1238)))
+        val line = TripLine(northernLeg("940GZZLUKSX" to "King's Cross St. Pancras", "940GZZLUBNK" to "Bank"), LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service"))
+        showLinePage(line, sequence, shown = "King's Cross St. Pancras", here = Coordinates(51.5302, -0.1238))
+        lineMapRow("King's Cross St. Pancras").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your stop, Nearest \u00B7 70 m"))
+        lineMapRow("Nearest \u00B7 70 m")
     }
 
     @Test

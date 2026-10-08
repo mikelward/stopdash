@@ -46,4 +46,20 @@ class NearestByLineTest {
     fun `a list with no position keeps none`() {
         assertEquals(emptyMap<String, String>(), NearestByLine.merged(listOf(arrivals(kingsCross, "victoria")), mapOf("northern" to euston), emptyMap()))
     }
+
+    @Test
+    fun `a line's stop nearest the rider is found however far, with its distance`() {
+        // Euston and King's Cross's published positions, about 750 m apart; the rider at Euston's doorstep.
+        val positions = mapOf(euston to (51.5282 to -0.1337), kingsCross to (51.5308 to -0.1238))
+        val (id, meters) = NearestByLine.onLine(positions, Coordinates(51.5283, -0.1337))!!
+        assertEquals(euston, id)
+        assertEquals(11.0, meters, 2.0)
+        // Miles off, it's still the nearer of them: the distance, not a cutoff, says how near.
+        val far = NearestByLine.onLine(positions, Coordinates(51.5, -0.3))!!
+        assertEquals(euston, far.first)
+        assertEquals(true, far.second > 10_000)
+        // Equally near, the lower id: stable whatever order the positions came in.
+        assertEquals(euston, NearestByLine.onLine(mapOf(kingsCross to (0.0 to 0.0), euston to (0.0 to 0.0)), Coordinates(0.0, 0.0))!!.first)
+        assertEquals(null, NearestByLine.onLine(emptyMap(), Coordinates(0.0, 0.0)))
+    }
 }

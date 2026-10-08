@@ -348,7 +348,9 @@ class LineMap internal constructor(
          * where that can't be laid out, or would draw a station twice that the outbound routes draw once
          * (the way back calling in another order), the outbound routes alone are. A station two branches call at without
          * meeting there (TfL lists both under one stop, as the Northern line's two Euston platforms) is
-         * drawn once on each, since no train goes from one to the other there.
+         * drawn once on each, since no train goes from one to the other there. With no [nearby] stop
+         * given, the one kept as the rider's nearest is the stop the map draws nearest [here], however far:
+         * chosen among its own rows, so a pole drawn as another stop, or not drawn, is never the pick.
          */
         @WorkerThread
         fun of(
@@ -360,16 +362,17 @@ class LineMap internal constructor(
             placed: List<PartClosure> = emptyList(),
             rides: List<List<String>> = emptyList(),
             nearby: Set<String> = emptySet(),
+            here: Coordinates? = null,
         ): LineMap? {
             val alone = oneWay(sequence, otherWay = false)
             val both = oneWay(sequence, otherWay = true)
             // The way back drawn on the outbound way's own tracks: one map, its arrows from both ways.
-            if (both.routes == alone.routes) return laidOut(sequence, alone, closures, alertText, placed, starred, riding, rides, nearby)
+            if (both.routes == alone.routes) return laidOut(sequence, alone, closures, alertText, placed, starred, riding, rides, nearby, here)
             // Else the outbound way alone where the way back can't be drawn, with no arrows: the way back runs
             // somewhere the map doesn't show, so its tracks can't say which way buses run them.
             val unknownWay = OneWay(alone.routes, alone.same, alone.through)
-            val outbound = laidOut(sequence, unknownWay, closures, alertText, placed, starred, riding, rides, nearby)
-            val drawn = laidOut(sequence, both, closures, alertText, placed, starred, riding, rides, nearby) ?: return outbound
+            val outbound = laidOut(sequence, unknownWay, closures, alertText, placed, starred, riding, rides, nearby, here)
+            val drawn = laidOut(sequence, both, closures, alertText, placed, starred, riding, rides, nearby, here) ?: return outbound
             fun LineMap.twice() = rows.size - rows.mapTo(HashSet()) { it.stopId }.size
             return if (outbound != null && drawn.twice() > outbound.twice()) outbound else drawn
         }
@@ -384,6 +387,7 @@ class LineMap internal constructor(
             riding: Set<String>,
             rides: List<List<String>>,
             nearby: Set<String>,
+            here: Coordinates?,
         ): LineMap? {
             fun same(id: String) = way.same[id] ?: id
             // A section's stops as the map has them: the way back's poles as the outbound stops, and a hop
@@ -415,7 +419,13 @@ class LineMap internal constructor(
                 }
             }
             val starredPlaces = places(starred.mapTo(HashSet(starred)) { same(it) }, sequence)
-            val nearbyPlaces = places(nearby.mapTo(HashSet(nearby)) { same(it) }, sequence)
+            // No nearby stop given: the stop the map draws nearest the rider's fix, however far.
+            val near = nearby.ifEmpty {
+                if (here == null) return@ifEmpty emptySet()
+                val drawnAt = graph.nodes.mapNotNull { node -> base(node).let { id -> sequence.stopPositions[id]?.let { id to it } } }.toMap()
+                NearestByLine.onLine(drawnAt, here)?.let { setOf(it.first) }.orEmpty()
+            }
+            val nearbyPlaces = places(near.mapTo(HashSet(near)) { same(it) }, sequence)
             val ridingPlaces = places(riding.mapTo(HashSet(riding)) { same(it) }, sequence)
             val nodePlaces = graph.nodes.associateWith { places(setOf(base(it)), sequence) }
             // The stretches the trip rides, each through the stops it calls at in order, so it takes the
@@ -517,7 +527,8 @@ class LineMap internal constructor(
          * where it already is drawn, and the stations it sends riders to instead, which no alert is at.
          * A [quieted] alert, worse than [status] but dismissed, which the page still names, has its
          * closures drawn too (Codex, #606). [rides] are the stretches the rider's trip rides, each the
-         * stops it calls at in order, and [nearby] the line's station nearest the rider.
+         * stops it calls at in order, and [nearby] the line's station nearest the rider; with none, the
+         * station the map draws nearest [here], however far ([of]).
          */
         @WorkerThread
         fun forStatus(
@@ -528,9 +539,10 @@ class LineMap internal constructor(
             quieted: LineStatus? = null,
             rides: List<List<String>> = emptyList(),
             nearby: Set<String> = emptySet(),
+            here: Coordinates? = null,
         ): LineMap? {
             val placed = (placed(status) + placed(quieted)).distinct()
-            return of(sequence, placed.flatMap { it.sections }.distinct(), shown(status, placed), starred, riding, placed, rides, nearby)
+            return of(sequence, placed.flatMap { it.sections }.distinct(), shown(status, placed), starred, riding, placed, rides, nearby, here)
         }
 
         /**

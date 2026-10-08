@@ -44,5 +44,17 @@ object NearestByLine {
         return nearest
     }
 
+    /**
+     * The stop of a line nearest [here], however far, by the line's own published [positions], with how
+     * far it is in meters: a line page opened from a search, with no near-me list behind it, still says
+     * which of its stops is the rider's nearest and lets the distance say whether that's near (maintainer,
+     * 2026-10-08). Ties break by id, so the pick is stable. Null with no positions.
+     */
+    @WorkerThread
+    fun onLine(positions: Map<String, Pair<Double, Double>>, here: Coordinates): Pair<String, Double>? =
+        positions.entries
+            .map { (id, at) -> id to NearestStops.distanceMeters(here.latitude, here.longitude, at.first, at.second) }
+            .minWithOrNull(compareBy<Pair<String, Double>> { it.second }.thenBy { it.first })
+
     private fun within(stopId: String, distances: Map<String, Double>) = distances[stopId]?.let { it <= WITHIN_METERS } == true
 }
