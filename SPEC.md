@@ -297,8 +297,8 @@ The app finds stops two ways:
   of favorite journeys, then the places holding a starred row, each recorded when starred), less
   any picked lately. *From…* and *To…* keep **separate recent lists** — where the rider looks from
   and where they go — so each search lists its own history. As the user types, those and every place the app has lately shown near them (the
-  widget's last departures and the nearby-lookup cache) match on the device alongside the
-  bundled stations, so a starred bus stop appears at once; a bus stop (a journey's end
+  widget's last departures and the nearby-lookup cache, less any stop TfL lists with no lines,
+  which would open to nothing) match on the device alongside the bundled stations, so a starred bus stop appears at once; a bus stop (a journey's end
   included) lists as its stop area, whose page holds its poles. A recently picked or starred place leads its matching tier, the most recently picked first. All
   of it is read from the device and sent nowhere; the recent list stays on the device and out
   of backups (*Privacy*).
