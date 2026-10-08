@@ -624,14 +624,14 @@ class HomeLinesTest {
 
     @Test
     fun `a line's tap is counted as that one line, even under an older build's network`() {
-        fun counted(before: Set<String>, lineId: String) = HomeLines.lineChanges(before, HomeLines.toggle(before, lineId)).map { it.params["value"] }
+        fun counted(before: Set<String>, lineId: String) = HomeLines.lineChanges(before, HomeLines.toggle(before, lineId)).map { it.params["setting_value"] }
         assertEquals(listOf("added"), counted(emptySet(), "victoria"))
         assertEquals(listOf("removed"), counted(setOf("victoria"), "victoria"))
         // The tube's key turned into its other lines one by one: one line off, not ten on.
         assertEquals(listOf("removed"), counted(setOf("tube"), "central"))
         assertEquals(listOf("removed"), counted(setOf("dlr"), "dlr"))
         // A key or id no network has isn't a line.
-        assertEquals(emptyList<String>(), HomeLines.lineChanges(setOf("tram"), setOf("tram", "73")).map { it.params["value"] })
+        assertEquals(emptyList<String>(), HomeLines.lineChanges(setOf("tram"), setOf("tram", "73")).map { it.params["setting_value"] })
     }
 
     @Test

@@ -255,10 +255,11 @@ sealed class UsageEvent(val name: String, val params: Map<String, String>) {
     /**
      * A setting changed, from Settings or atop a trip: which one, and its new value as a category or a
      * band. A line is never named: avoiding one, hiding one or adding one to the disruptions row says
-     * only that one was.
+     * only that one was. The new value goes as `setting_value`, not `value`: Analytics keeps that name for a
+     * number (with `currency`), so a category sent in it would be lost.
      */
     class SettingChanged private constructor(setting: String, value: String) :
-        UsageEvent("setting_change", mapOf("setting" to setting, "value" to value)) {
+        UsageEvent("setting_change", mapOf("setting" to setting, "setting_value" to value)) {
         companion object {
             fun walkingSpeed(speed: WalkingSpeed) = SettingChanged("walking_speed", walkingSpeedValue(speed))
             fun maxWalk(maxWalk: MaxWalk) = SettingChanged("max_walk", "${maxWalk.minutes}")
