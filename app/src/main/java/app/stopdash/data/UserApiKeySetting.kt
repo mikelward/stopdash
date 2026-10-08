@@ -4,8 +4,10 @@ import androidx.annotation.WorkerThread
 import app.stopdash.domain.AppSettings
 import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.DistanceUnits
+import app.stopdash.domain.HiddenModesChoice
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.ModeGroups
+import app.stopdash.domain.RailKeyDefault
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripModes
 import app.stopdash.domain.UsageEvent
@@ -23,9 +25,12 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -278,15 +283,27 @@ open class StoredSettingHolder<T>(
      * #642). It waits for the stored value first, so an edit is never made to [initial] standing in
      * for it.
      */
-    fun update(@WorkerThread edit: (T) -> T) {
+    fun update(awaitFirst: (suspend () -> Unit)? = null, @WorkerThread edit: (T) -> T) {
         scope.launch(editing) {
             edits.withLock {
                 loaded()
+                // Anything else the edit reads, read before it in its turn (the National Rail key).
+                awaitFirst?.invoke()
                 // Already on [editing]; the hop names where [edit] runs, as lint's WorkerThreadCall reads
                 // it, which it can't see through `withLock`.
                 set(withContext(editing) { edit(current) })
             }
         }
+    }
+
+    /**
+     * [loaded], and then once every [update] asked for before this call has been applied, for a
+     * caller acting on the value a tap just changed (a re-pick after showing a mode again).
+     */
+    suspend fun settled(): T {
+        loaded()
+        withContext(editing) { edits.withLock {} }
+        return current
     }
 
     private companion object {
@@ -318,6 +335,9 @@ object RailApiKeySetting {
     /** Whether the stored key has been read (or one set since), so [current] is the rider's own. */
     val isLoaded: StateFlow<Boolean> get() = holder.isLoaded
 
+    /** [current] once the stored key has been read (see [StoredSettingHolder.loaded]). */
+    suspend fun loaded(): String? = holder.loaded()
+
     /** Begins reading the stored key into [current]. Idempotent. */
     fun warm(appSettings: AppSettings) = holder.warm(appSettings)
 
@@ -329,42 +349,121 @@ object RailApiKeySetting {
  * The transport modes the user has hidden from the near-me list (SPEC *Finding stops → Hiding a
  * mode*), in force right now for the nearby lookup, the list and the widget: the same process-wide
  * cache as [UserApiKeySetting], so each reads it without a disk read.
+ *
+ * In force means the rider's own hides plus National Rail's while no National Rail key is set and
+ * they haven't chosen it themselves ([RailKeyDefault]). That default is worked out here, never
+ * stored, so a key added brings National Rail back at once; [chosen] is the rider's own set, which
+ * the near-me banner names.
  */
 object HiddenModesSetting {
-    private val holder = StoredSettingHolder<Set<String>>(
-        CoroutineScope(SupervisorJob() + Dispatchers.Default),
-        initial = emptySet(),
-        read = AppSettings::hiddenModes,
-        write = { settings, modes -> settings.setHiddenModes(modes) },
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    // The rider's own hides and whether they chose National Rail themselves, held and saved together
+    // so a process death between them can't lose the choice ([HiddenModesChoice]).
+    private val holder = StoredSettingHolder(
+        scope,
+        initial = HiddenModesChoice(),
+        read = AppSettings::hiddenModesChoice,
+        write = { settings, choice -> settings.setHiddenModesChoice(choice) },
         label = "hidden modes",
-        changed = { before, after -> UsageEvents.settingChanged(UsageEvent.SettingChanged.hiddenModes(before, after)) },
+        changed = { before, after ->
+            if (before.modes != after.modes) {
+                UsageEvents.settingChanged(UsageEvent.SettingChanged.hiddenModes(before.modes, after.modes))
+            }
+        },
     )
 
-    /** The hidden modes right now; empty (everything shows) until [warm] reads the stored set. */
-    val current: Set<String> get() = holder.current
+    private fun railDefault(choice: HiddenModesChoice, key: String?): Boolean =
+        RailKeyDefault.applies(keySet = key != null, chosen = choice.railChosen, stored = choice.modes)
 
-    /** The hidden modes once the stored set has been read (see [StoredSettingHolder.loaded]). */
-    suspend fun loaded(): Set<String> = holder.loaded()
+    @WorkerThread
+    private fun effective(choice: HiddenModesChoice, key: String?): Set<String> =
+        RailKeyDefault.effective(choice.modes, railDefault(choice, key))
 
-    /** [current] as a flow, for the list and its banner. */
-    val changes: StateFlow<Set<String>> get() = holder.changes
+    /** [current] as a flow, for the list and its banner; worked out off the main thread. */
+    val changes: StateFlow<Set<String>> =
+        combine(holder.changes, RailApiKeySetting.changes, ::effective)
+            .stateIn(scope, SharingStarted.Eagerly, RailKeyDefault.effective(emptySet(), applies = true))
 
-    /** Whether the stored set has been read (or one set since), so [current] is the rider's own. */
-    val isLoaded: StateFlow<Boolean> get() = holder.isLoaded
+    /**
+     * Whether no National Rail key is set, once the stored key has been read (false until then, so one
+     * still loading isn't taken for none): ticking National Rail asks for a key while it holds, however
+     * it came to be hidden.
+     */
+    val railKeyMissing: StateFlow<Boolean> =
+        combine(RailApiKeySetting.changes, RailApiKeySetting.isLoaded) { key, loaded -> loaded && key == null }
+            .stateIn(scope, SharingStarted.Eagerly, false)
+
+    /** The hidden modes right now, as [changes] last worked them out: a read, no work. */
+    val current: Set<String> get() = changes.value
+
+    /**
+     * The hidden modes once the stored set and the key have been read and every change asked for has
+     * been applied (see [StoredSettingHolder.settled]), worked out here rather than read from
+     * [changes], which may not have caught up yet.
+     */
+    suspend fun loaded(): Set<String> {
+        val choice = holder.settled()
+        val key = RailApiKeySetting.loaded()
+        return withContext(Dispatchers.Default) { effective(choice, key) }
+    }
+
+    /**
+     * [chosen] as the holder has it right now, for a reader that has waited for [isLoaded]: set before
+     * the holder says it's loaded, where [chosen] may still be catching up.
+     */
+    val chosenNow: Set<String> get() = holder.current.modes
+
+    /** The modes the rider hid themselves, without the keyless default: what the near-me banner names and Settings lists. */
+    val chosen: StateFlow<Set<String>> =
+        holder.changes.map { it.modes }.stateIn(scope, SharingStarted.Eagerly, emptySet())
+
+    /**
+     * Whether the stored set and the National Rail key have both been read, so [current] is the rider's
+     * own and the keyless default is known: the menu's mode checkboxes wait for it.
+     */
+    val isLoaded: StateFlow<Boolean> =
+        combine(holder.isLoaded, RailApiKeySetting.isLoaded) { a, b -> a && b }.stateIn(scope, SharingStarted.Eagerly, false)
 
     /** Begins reading the stored set into [current]. Idempotent. */
     fun warm(appSettings: AppSettings) = holder.warm(appSettings)
 
-    /** Hides [mode] (or shows it again when [hidden] is false). Applied at once, persisted in order. */
+    // A change of the set in force by [change], worked out on the holder's own thread after any change
+    // asked before it ([StoredSettingHolder.update]): stored as the rider's own, with National Rail
+    // marked chosen when it moved or the change was aimed at it, in one write.
+    // It waits for the key too, so one still loading is never taken for none (Codex, #693).
+    private fun apply(railTargeted: Boolean, @WorkerThread change: (current: Set<String>, railDefault: Boolean) -> Set<String>) =
+        holder.update(awaitFirst = { RailApiKeySetting.loaded() }) { choice ->
+            // A key read that timed out still reads as none: then the edit acts as before the default
+            // existed and records no choice of National Rail, rather than taking the key for missing.
+            val keyKnown = RailApiKeySetting.isLoaded.value
+            val key = RailApiKeySetting.current
+            val applies = keyKnown && railDefault(choice, key)
+            val before = RailKeyDefault.effective(choice.modes, applies)
+            val write = RailKeyDefault.write(before, change(before, applies), applies, railTargeted)
+            HiddenModesChoice(write.stored, choice.railChosen || (keyKnown && write.choseRail))
+        }
+
+    /** Hides [mode] (or shows it again when [hidden] is false). Applied off the main thread, persisted in order. */
     fun setHidden(mode: String, hidden: Boolean) =
-        holder.set(if (hidden) current + mode else current.filterNot { it.equals(mode, ignoreCase = true) }.toSet())
+        apply(railTargeted = ModeGroups.of(mode) == RailKeyDefault.GROUP) { current, _ ->
+            if (hidden) current + mode else current.filterNot { it.equals(mode, ignoreCase = true) }.toSet()
+        }
 
     /** Hides all of [group] (or shows it again when [hidden] is false). */
     fun setGroupHidden(group: ModeGroups.Group, hidden: Boolean) =
-        holder.set(ModeGroups.withGroup(current, group, hidden))
+        apply(railTargeted = group == RailKeyDefault.GROUP) { current, _ -> ModeGroups.withGroup(current, group, hidden) }
 
-    /** Shows every mode again. */
-    fun showAll() = holder.set(emptySet())
+    /**
+     * Shows every mode the rider hid again. National Rail stays as the keyless default has it when
+     * [keepRailDefault] (the near-me banner doesn't name it), or shows too, as the rider's choice, from a
+     * banner that named it (a trip's).
+     */
+    fun showAll(keepRailDefault: Boolean = true) = apply(railTargeted = false) { _, railDefault ->
+        // Through the same write as any change, so showing a National Rail hide of the rider's own (one
+        // stored before the default existed included) is recorded as their choice.
+        if (keepRailDefault && railDefault) RailKeyDefault.effective(emptySet(), applies = true) else emptySet()
+    }
 
     /** True while the latest change failed to save (cleared by a later successful save); see [writeFailureShown]. */
     val writeFailed: StateFlow<Boolean> get() = holder.writeFailed

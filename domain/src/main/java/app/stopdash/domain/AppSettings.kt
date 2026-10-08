@@ -2,6 +2,7 @@ package app.stopdash.domain
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 
 /**
  * The user's app-level settings, behind a seam (interface) so a surface depends on the
@@ -104,6 +105,18 @@ interface AppSettings {
 
     /** Set [hiddenModes] to [modes]. Suspending, off the main thread; best-effort. */
     suspend fun setHiddenModes(modes: Set<String>) {}
+
+    /**
+     * [hiddenModes] with whether the rider has shown or hidden National Rail themselves
+     * ([RailKeyDefault]): until then it counts as hidden while no National Rail key is set.
+     */
+    fun hiddenModesChoice(): Flow<HiddenModesChoice> = hiddenModes().map { HiddenModesChoice(it) }
+
+    /**
+     * Set [hiddenModesChoice], both halves in one write, so a process death between them can't leave
+     * National Rail chosen with the hide that chose it unsaved. Suspending, off the main thread; best-effort.
+     */
+    suspend fun setHiddenModesChoice(choice: HiddenModesChoice) = setHiddenModes(choice.modes)
 
     /**
      * The units the near-me distances are written in (SPEC *Finding stops*): follow the phone's

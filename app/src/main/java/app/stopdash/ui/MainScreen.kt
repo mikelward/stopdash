@@ -151,6 +151,7 @@ import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.ModeGroups
+import app.stopdash.domain.RailKeyDefault
 import app.stopdash.domain.NATIONAL_RAIL_MODE
 import app.stopdash.domain.NoTimes
 import app.stopdash.domain.NoticePlan
@@ -375,6 +376,15 @@ fun MainScreen(
     // [ModeGroups.ALL] group, ticked when shown; also the Undo a long press's hide offers, for the
     // group or line just hidden. Null leaves the menu without them, and a hide without Undo.
     onSetModeGroupShown: ((ModeGroups.Group, Boolean) -> Unit)? = null,
+    // No National Rail key is set: ticking National Rail asks for one ([RailKeyDialog]) rather than
+    // showing rows with no times, however it came to be hidden.
+    railKeyMissing: Boolean = false,
+    // Whether the hidden modes and the National Rail key are read: the mode checkboxes wait for it, so a
+    // tap can't act on a key still loading taken for none.
+    modesLoaded: Boolean = true,
+    // The modes the rider hid themselves, for the banner that names them: [hiddenModes] without the
+    // keyless default. Null when the two are the same.
+    ownHiddenModes: Set<String>? = null,
     // A change of hidden modes failed to save: a snackbar says so, then [onHiddenModesWriteFailureShown].
     hiddenModesWriteFailed: Boolean = false,
     onHiddenModesWriteFailureShown: () -> Unit = {},
@@ -419,6 +429,8 @@ fun MainScreen(
     )
     // Overflow-menu and About-dialog visibility. Saved so an open dialog survives rotation.
     var showAbout by rememberSaveable { mutableStateOf(false) }
+    // National Rail ticked with no key set: asks for one first ([RailKeyDialog]).
+    var railKeyAsked by rememberSaveable { mutableStateOf(false) }
     val starWriteFailedMessage = stringResource(R.string.star_write_failed)
     // The rows the screen renders, grouped against the live clock (SPEC D4) — computed once here so
     // both the list and the route-detail page below read the SAME rows. Empty for any non-Loaded
@@ -1334,8 +1346,16 @@ fun MainScreen(
                                                 }
                                             }
                                         },
-                                        leadingIcon = { Checkbox(checked = shown, onCheckedChange = null) },
-                                        onClick = { onSetModeGroupShown(group, !shown) },
+                                        leadingIcon = { Checkbox(checked = shown, onCheckedChange = null, enabled = modesLoaded) },
+                                        enabled = modesLoaded,
+                                        onClick = {
+                                            if (railKeyMissing && !shown && group == RailKeyDefault.GROUP) {
+                                                close()
+                                                railKeyAsked = true
+                                            } else {
+                                                onSetModeGroupShown(group, !shown)
+                                            }
+                                        },
                                         modifier = Modifier.semantics {
                                             toggleableState = ToggleableState(shown)
                                             role = Role.Checkbox
@@ -1476,6 +1496,7 @@ fun MainScreen(
                         onToggleStar = onToggleStar,
                         starringAvailable = starringAvailable,
                         hiddenModes = hiddenModes,
+                        ownHiddenModes = ownHiddenModes,
                         onHideMode = hideMode,
                         modesByPlace = drawnFrom?.placeModes.orEmpty(),
                         onShowAllModes = onShowAllModes,
@@ -1571,6 +1592,19 @@ fun MainScreen(
                     }
             }
         }
+    }
+    if (railKeyAsked) {
+        RailKeyDialog(
+            onAddKey = {
+                railKeyAsked = false
+                onOpenSettings()
+            },
+            onShowAnyway = {
+                railKeyAsked = false
+                onSetModeGroupShown?.invoke(RailKeyDefault.GROUP, true)
+            },
+            onDismiss = { railKeyAsked = false },
+        )
     }
     if (showAbout) {
         AboutDialog(
@@ -1676,6 +1710,8 @@ private fun LoadedContent(
     // The modes hidden from this list, their banner's "Show all", and the long-press "Hide ‹mode›"
     // (null on a list that doesn't offer it). See [MainScreen].
     hiddenModes: Set<String> = emptySet(),
+    // The rider's own hides, which the banner names ([MainScreen]).
+    ownHiddenModes: Set<String>? = null,
     onHideMode: ((String) -> Unit)? = null,
     onShowAllModes: () -> Unit = {},
     // Each place's modes not yet hidden (by cluster), for a header's "Hide ‹mode›" items.
@@ -1729,11 +1765,13 @@ private fun LoadedContent(
             }
             // Modes the user hid (SPEC *Finding stops → Hiding a mode*): one line saying which, so a
             // shorter list never passes for all there is, with "Show all" to bring them back.
-            if (hiddenModes.isNotEmpty()) {
+            // National Rail hidden for want of a key isn't named: the menu says why when it's ticked.
+            val bannerModes = ownHiddenModes ?: hiddenModes
+            if (bannerModes.isNotEmpty()) {
                 ActionBanner(
                     text = stringResource(
                         R.string.modes_hidden,
-                        hiddenGroupsLabel(hiddenModes),
+                        hiddenGroupsLabel(bannerModes),
                     ),
                     actionLabel = stringResource(R.string.modes_show_all),
                     onAction = onShowAllModes,

@@ -453,7 +453,16 @@ The app finds stops two ways:
   National Rail. A coach counts as a **Bus**: TfL lists no coach routes
   or stops, and riders don't tell the two apart (maintainer, 2026-10-08; until then Coach was a sixth
   group, empty in practice). The overflow menu lists all six, always the
-  same, each with a checkbox ticked while it shows. A long press on a near-me
+  same, each with a checkbox ticked while it shows. **National Rail starts unticked while no
+  National Rail key is set** (maintainer, 2026-10-08): without one its rows have no times and flood a
+  big station. Ticking it while no key is set, however it came to be hidden, opens a dialog saying a free Rail Data Marketplace key gives its
+  times, with **Get a key** (the sign-up page), **Add key** (Settings) and **Show anyway**. Adding a
+  key shows it by itself. The default is never stored: once the rider shows or hides National Rail
+  themselves, their choice stands, key or none. The near-me banner and Settings' Hidden list leave
+  the default out (an empty list still names it). A trip follows it like any hide (maintainer,
+  2026-10-08): no routes riding National Rail without a key, its banner naming National Rail, whose
+  Show all shows it. Exempting trips meant a stop pick of their own, since the near-me pick leaves out
+  a station only National Rail serves. A long press on a near-me
   row opens a small menu, pinning or unpinning it and **"Hide all ‹group› services"** (a bare "Hide
   Train" read as hiding that one train); a long press on a place's header offers it for each group
   it serves. Starring a near-me row therefore takes the

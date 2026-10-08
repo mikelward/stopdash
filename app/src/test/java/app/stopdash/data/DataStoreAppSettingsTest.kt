@@ -3,6 +3,7 @@ package app.stopdash.data
 import androidx.datastore.core.DataStore
 import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.DistanceUnits
+import app.stopdash.domain.HiddenModesChoice
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripModes
@@ -37,6 +38,18 @@ class DataStoreAppSettingsTest {
         assertTrue(store.hiddenModes().first().isEmpty())
         store.setHiddenModes(setOf("tram", "river-bus"))
         assertEquals(setOf("tram", "river-bus"), store.hiddenModes().first())
+    }
+
+    @Test
+    fun `the hidden modes and the National Rail choice are saved together`() = runTest {
+        val store = DataStoreAppSettings(FakeDataStore(null))
+        assertEquals(HiddenModesChoice(), store.hiddenModesChoice().first())
+        store.setHiddenModesChoice(HiddenModesChoice(setOf("national-rail", "international-rail"), railChosen = true))
+        assertEquals(
+            HiddenModesChoice(setOf("national-rail", "international-rail"), railChosen = true),
+            store.hiddenModesChoice().first(),
+        )
+        assertEquals(setOf("national-rail", "international-rail"), store.hiddenModes().first())
     }
 
     @Test

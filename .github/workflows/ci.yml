@@ -236,6 +236,8 @@ jobs:
         run: ./gradlew :app:testDebugUnitTest --tests "app.stopdash.ui.SettingsScreenScreenshotTest" -Proborazzi.test.record=true
       - name: Run BugReportConsentDialog screenshot tests
         run: ./gradlew :app:testDebugUnitTest --tests "app.stopdash.ui.BugReportConsentDialogScreenshotTest" -Proborazzi.test.record=true
+      - name: Run RailKeyDialog screenshot tests
+        run: ./gradlew :app:testDebugUnitTest --tests "app.stopdash.ui.RailKeyDialogScreenshotTest" -Proborazzi.test.record=true
       - name: Run RouteDetailScreen screenshot tests
         run: ./gradlew :app:testDebugUnitTest --tests "app.stopdash.ui.RouteDetailScreenScreenshotTest" -Proborazzi.test.record=true
       - name: Run StationSearch screenshot tests

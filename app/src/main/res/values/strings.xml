@@ -742,6 +742,13 @@
     <string name="settings_api_key_title">TfL API key</string>
     <string name="settings_api_key_summary">Optional. Paste your own free TfL API key for a higher refresh limit.</string>
     <string name="settings_api_key_label">API key</string>
+    <!-- Ticking National Rail with no key set (SPEC *Finding stops → Hiding a mode*). -->
+    <string name="rail_key_title">National Rail needs a key</string>
+    <string name="rail_key_body">Its times come with a free Rail Data Marketplace key. Get one, then paste it in Settings.</string>
+    <string name="rail_key_get">Get a key</string>
+    <string name="rail_key_add">Add key</string>
+    <string name="rail_key_show_anyway">Show anyway</string>
+    <string name="rail_key_link_failed">No app to open the page</string>
     <string name="settings_rail_key_title">National Rail API key</string>
     <string name="settings_rail_key_summary">Optional. Paste your free Rail Data Marketplace key to show National Rail times.</string>
     <string name="settings_api_key_save">Save</string>
