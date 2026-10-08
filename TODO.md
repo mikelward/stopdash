@@ -102,8 +102,10 @@ exercises the whole spine the widget later renders from.
       `nextBoard`, `routeDisruptions` and `stationNotes` with `collectByIdentityWithLifecycle`, as it does
       `lineChecks` (Codex, #627): the `StateFlow` has already compared each value where it was written, so a
       reference check is all the main thread does with it.
-  - [ ] Sweep the other screens' collections of data classes holding collections the same way: each
+  - [x] Sweep the other screens' collections of data classes holding collections the same way: each
         `collectAsStateWithLifecycle` of one compares it with the last by `equals` on the main thread.
+        Plain classes (`SavedPlaces`, `ShownFarther`, `HomeLines.Always`/`PlaceLines`, the Lines page's
+        `State`/`Check`/`Links`) already compare by identity and stay as they are; the watch has no helper.
 - [x] Clear the `WorkerThreadCall` lint baseline (`app/lint-baseline.xml`): every screen now works out
       what its composition used to with the data it comes from, on the worker (the route page's
       `routeDetailWork`, a trip's open ride `rideLegView` and card notices `TripCardView.rideClosures`,

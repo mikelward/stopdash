@@ -85,7 +85,7 @@ internal fun FollowActiveTrip(
             while (!tracker.restore()) delay(ON_THE_WAY_REFRESH.toMillis())
         }
     }
-    val trip by tracker.trip.collectAsStateWithLifecycle()
+    val trip by tracker.trip.collectByIdentityWithLifecycle()
     val service by serviceFollowing.collectAsStateWithLifecycle()
     if (trip != null) {
         LaunchedEffect(tracker, lifecycleOwner) {
