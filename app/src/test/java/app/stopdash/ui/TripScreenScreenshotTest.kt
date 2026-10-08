@@ -29,11 +29,14 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.filter
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
@@ -1618,6 +1621,114 @@ class TripScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Couldn't save that", substring = true).assertIsDisplayed()
         assertEquals(1, shown)
+    }
+
+    // A phone on its side: the choices over the routes scroll away with them rather than stay fixed and
+    // leave the routes a sliver (maintainer, 2026-10-08).
+    @Test
+    @Config(qualifiers = "en-rGB-w914dp-h300dp-420dpi")
+    fun on_a_short_screen_the_choices_scroll_away_with_the_routes() {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf",
+                    state = planned,
+                    now = now,
+                    access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source),
+                    onBack = {},
+                    onRetry = {},
+                    ends = TripEnds(fromStation = null, toName = "Canary Wharf", onChangeFrom = {}, onChangeTo = {}),
+                    onWalkingSpeedChange = {},
+                    onTripModesChange = {},
+                    hiddenModes = setOf("bus"),
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        fun routesHeight() = composeRule.onNodeWithTag("tripRoutes").getBoundsInRoot().let { (it.bottom - it.top).value }
+        val before = routesHeight()
+        // The choices and banner leave the routes a sliver, as on a phone turned on its side.
+        assertTrue("routes $before", before < 60f)
+        // Dragged from just inside the window's bottom edge, where the routes end, a few times over.
+        repeat(5) {
+            composeRule.onNodeWithTag("tripRoutes").performTouchInput { swipeUp(startY = bottom - 4f, endY = top) }
+            composeRule.waitForIdle()
+        }
+        // The choices went with the scroll: the routes have everything under the From/To bar.
+        assertTrue("routes $before -> ${routesHeight()}", routesHeight() > 180f)
+    }
+
+    // A route opened from a list scrolled past its choices starts with its own warnings in view.
+    @Test
+    @Config(qualifiers = "en-rGB-w914dp-h300dp-420dpi")
+    fun a_route_opened_from_a_scrolled_list_shows_its_banners() {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf",
+                    state = planned,
+                    now = now,
+                    access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source),
+                    onBack = {},
+                    onRetry = {},
+                    ends = TripEnds(fromStation = null, toName = "Canary Wharf", onChangeFrom = {}, onChangeTo = {}),
+                    onWalkingSpeedChange = {},
+                    onTripModesChange = {},
+                    hiddenModes = setOf("bus"),
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        val banner = composeRule.activity.getString(R.string.modes_show_all)
+        repeat(5) {
+            composeRule.onNodeWithTag("tripRoutes").performTouchInput { swipeUp(startY = bottom - 4f, endY = top) }
+            composeRule.waitForIdle()
+        }
+        composeRule.onNodeWithText(banner).assertIsNotDisplayed()
+        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(banner).assertIsDisplayed()
+    }
+
+    // A new plan starts its list at the top, with its choices and banners in view over it.
+    @Test
+    @Config(qualifiers = "en-rGB-w914dp-h300dp-420dpi")
+    fun a_new_plan_brings_the_choices_back() {
+        val speed = mutableStateOf(WalkingSpeed.AVERAGE)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf",
+                    state = planned,
+                    now = now,
+                    access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source),
+                    onBack = {},
+                    onRetry = {},
+                    ends = TripEnds(fromStation = null, toName = "Canary Wharf", onChangeFrom = {}, onChangeTo = {}),
+                    walkingSpeed = speed.value,
+                    onWalkingSpeedChange = { speed.value = it },
+                    onTripModesChange = {},
+                    hiddenModes = setOf("bus"),
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        val banner = composeRule.activity.getString(R.string.modes_show_all)
+        repeat(5) {
+            composeRule.onNodeWithTag("tripRoutes").performTouchInput { swipeUp(startY = bottom - 4f, endY = top) }
+            composeRule.waitForIdle()
+        }
+        composeRule.onNodeWithText(banner).assertIsNotDisplayed()
+        speed.value = WalkingSpeed.FAST
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(banner).assertIsDisplayed()
+        // The whole header, its choices included, sits right under the From/To bar again.
+        val options = composeRule.onNodeWithTag("tripPlanOptions").getUnclippedBoundsInRoot().top
+        val bar = composeRule.onNodeWithTag("tripEndsBar").getUnclippedBoundsInRoot().bottom
+        assertTrue("choices at $options under a bar ending at $bar", options >= bar)
     }
 
     // Three rides whose Planner train on the last is missed with no live one known, on a narrow

@@ -56,7 +56,9 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.pullToRefresh
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.rememberCoroutineScope
@@ -1681,31 +1683,6 @@ private fun TripContent(
             // Which trains the banner means, logged once per distinct set, off composition.
             val misses = framing?.misses.orEmpty()
             LaunchedEffect(routeStops, misses) { routeStops?.reportMisses(misses) }
-            // The search's choices head the routes only: an opened route is the one chosen, so its page
-            // shows its own legs, not the pickers and chips that choose among routes (maintainer,
-            // 2026-10-04). By the route held open, not only the one found: while a new plan runs none is
-            // found, and the choices mustn't flash back above it (Codex, #545).
-            if (open == null && openRef == null) {
-                // The walking speed, the walk limit and step-free, one row: each pick plans again.
-                TripPlanOptionChips(
-                    walkingSpeed = walkingSpeed,
-                    onWalkingSpeedChange = onWalkingSpeedChange,
-                    maxWalk = maxWalk,
-                    onMaxWalkChange = onMaxWalkChange,
-                    stepFree = stepFree,
-                    onStepFreeChange = onStepFreeChange,
-                    enabled = planOptionsLoaded,
-                )
-                // The kinds of transport the routes may ride, last: chips, a tap each, rather than a menu.
-                if (onTripModesChange != null) {
-                    TripModeChips(tripModes, onTripModesChange, enabled = planOptionsLoaded)
-                }
-                // The lines avoided, under the modes: each a chip a tap stops avoiding.
-                avoided.onStopAvoiding?.let { AvoidedLineChips(avoided.lines, it) }
-                // A place's direct trains, under every choice: they don't depend on them.
-                aboveRoutes?.invoke()
-            }
-            TripBanners(framing?.failed.orEmpty(), locationBanner, onRelocate, hiddenModes, onShowAllModes)
             // Hold still (SPEC *Engineering quality bar*): the list appears once, after its plan, its live
             // refresh and its routes' checks have landed, rather than settle under the rider's
             // thumb as each lands (maintainer, 2026-10-04). Never longer than [REVEAL_CAP_MILLIS].
@@ -1771,47 +1748,98 @@ private fun TripContent(
                 settledAround = headed != null && widthsIn && rowIn && loads.loading.isEmpty(),
             )
             val revealed = revealedState.value
-            Box(Modifier.fillMaxSize()) {
-                when {
-                    // The plan in, its routes still being worked out ([tripFrame]): checking, as the list's
-                    // own wait says, rather than the placeholder that waits for a plan.
-                    cards == null && frame == null && state.routes != null && state.planError == null -> RoutesChecking()
-                    cards == null -> TripPlaceholder(state, onRetry)
-                    open == null && !revealed -> RoutesChecking()
-                    // Both from the frame, which worked out the open route ([TripFrame.openView]) and the list's cards ([TripFrame.list]).
-                    open != null && frame?.openView != null -> RouteLegs(open, frame.openView, rideLines, state, now, frame.access, sequences, onRetry, alerts.dismissed, alerts.onDismiss, hideMode, ::openDetail, loads.loading, check == TripMessage.CHECKING)
-                    else -> {
-                        val routes = @Composable {
-                            RouteList(
-                                frame?.list ?: TripListView(TripFraming(null, emptySet(), emptyList()), emptyList(), emptyMap(), ListedCards(emptyList(), emptyList(), CardOrder(emptyList(), emptyList()))), rideLines, state, now, onRetry,
-                                // What the card opens, worked out with the frame it's drawn from: a train through a
-                                // change keeps the planned route it's made from, though newer arrivals no longer
-                                // list it, and the tap only reads (Codex, #529).
-                                onOpen = { estimate, choice ->
-                                    val opening = frame?.list?.opens?.get(routeKey(estimate.route)) ?: OpenRoute(routeKey(estimate.route))
-                                    openedChoice.value = opening.plan to choice
-                                    setOpen(opening)
-                                },
-                                onHideMode = hideMode,
-                                onAvoidLine = avoided.onAvoid,
-                                row = row ?: TripRow.CHECKING,
-                                pillWidths = widths?.px.orEmpty(),
+            // The list's own branch below: the only one a pull refreshes.
+            val listShown = cards != null && open == null && revealed
+            // The choices and banners scroll away with the routes under them rather than stay fixed over
+            // them, so a short window (a phone on its side, a large font) still has room for the routes
+            // (maintainer, 2026-10-08).
+            val page = @Composable {
+                // Afresh whenever what's under it starts afresh at its top: between the list and a route
+                // opened from it, and with each plan (a relocation, a pick among the choices), so a route's
+                // warnings or a new plan's choices never open scrolled away (Codex, #694).
+                val awayState = key(open != null || openRef != null, planKey) { rememberScrollAwayState() }
+                ScrollAwayHeader(
+                    modifier = Modifier.fillMaxSize(),
+                    state = awayState,
+                    header = {
+                        // The search's choices head the routes only: an opened route is the one chosen, so its page
+                        // shows its own legs, not the pickers and chips that choose among routes (maintainer,
+                        // 2026-10-04). By the route held open, not only the one found: while a new plan runs none is
+                        // found, and the choices mustn't flash back above it (Codex, #545).
+                        if (open == null && openRef == null) {
+                            // The walking speed, the walk limit and step-free, one row: each pick plans again.
+                            TripPlanOptionChips(
+                                walkingSpeed = walkingSpeed,
+                                onWalkingSpeedChange = onWalkingSpeedChange,
+                                maxWalk = maxWalk,
+                                onMaxWalkChange = onMaxWalkChange,
+                                stepFree = stepFree,
+                                onStepFreeChange = onStepFreeChange,
+                                enabled = planOptionsLoaded,
                             )
+                            // The kinds of transport the routes may ride, last: chips, a tap each, rather than a menu.
+                            if (onTripModesChange != null) {
+                                TripModeChips(tripModes, onTripModesChange, enabled = planOptionsLoaded)
+                            }
+                            // The lines avoided, under the modes: each a chip a tap stops avoiding.
+                            avoided.onStopAvoiding?.let { AvoidedLineChips(avoided.lines, it) }
+                            // A place's direct trains, under every choice: they don't depend on them.
+                            aboveRoutes?.invoke()
                         }
-                        // Pulled down, the routes are planned again and every stop fetched afresh, from
-                        // the same ends at the same pace (maintainer, 2026-09-29).
-                        if (onPullRefresh == null) {
-                            routes()
-                        } else {
-                            PullToRefreshBox(pullRefreshing, onPullRefresh, Modifier.fillMaxSize().testTag("tripRoutesPull")) { routes() }
+                        TripBanners(framing?.failed.orEmpty(), locationBanner, onRelocate, hiddenModes, onShowAllModes)
+                    },
+                ) {
+                    Box(Modifier.fillMaxSize()) {
+                        when {
+                            // The plan in, its routes still being worked out ([tripFrame]): checking, as the list's
+                            // own wait says, rather than the placeholder that waits for a plan.
+                            cards == null && frame == null && state.routes != null && state.planError == null -> RoutesChecking()
+                            cards == null -> TripPlaceholder(state, onRetry)
+                            open == null && !revealed -> RoutesChecking()
+                            // Both from the frame, which worked out the open route ([TripFrame.openView]) and the list's cards ([TripFrame.list]).
+                            open != null && frame?.openView != null -> RouteLegs(open, frame.openView, rideLines, state, now, frame.access, sequences, onRetry, alerts.dismissed, alerts.onDismiss, hideMode, ::openDetail, loads.loading, check == TripMessage.CHECKING)
+                            else -> {
+                                RouteList(
+                                    frame?.list ?: TripListView(TripFraming(null, emptySet(), emptyList()), emptyList(), emptyMap(), ListedCards(emptyList(), emptyList(), CardOrder(emptyList(), emptyList()))), rideLines, state, now, onRetry,
+                                    // What the card opens, worked out with the frame it's drawn from: a train through a
+                                    // change keeps the planned route it's made from, though newer arrivals no longer
+                                    // list it, and the tap only reads (Codex, #529).
+                                    onOpen = { estimate, choice ->
+                                        val opening = frame?.list?.opens?.get(routeKey(estimate.route)) ?: OpenRoute(routeKey(estimate.route))
+                                        openedChoice.value = opening.plan to choice
+                                        setOpen(opening)
+                                    },
+                                    onHideMode = hideMode,
+                                    onAvoidLine = avoided.onAvoid,
+                                    row = row ?: TripRow.CHECKING,
+                                    pillWidths = widths?.px.orEmpty(),
+                                )
+                            }
                         }
+                    }
+                }
+            }
+            // Pulled down, the routes are planned again and every stop fetched afresh, from the same ends
+            // at the same pace (maintainer, 2026-09-29). Around the header too, so a pull at the top first
+            // brings the header back; always there, so the page isn't rebuilt as the list comes and goes.
+            if (onPullRefresh == null) {
+                page()
+            } else {
+                val pullState = rememberPullToRefreshState()
+                Box(
+                    Modifier.fillMaxSize()
+                        .pullToRefresh(pullRefreshing, pullState, enabled = listShown, onRefresh = onPullRefresh)
+                        .let { if (listShown) it.testTag("tripRoutesPull") else it },
+                ) {
+                    page()
+                    if (listShown) {
+                        PullToRefreshDefaults.Indicator(pullState, pullRefreshing, Modifier.align(Alignment.TopCenter))
                     }
                 }
             }
         }
     }
 }
-
 /**
  * What frames every route, as the list's banners frame its stops: a location that isn't current,
  * boarding stops whose arrivals couldn't be refreshed (their times age out rather than pass as
