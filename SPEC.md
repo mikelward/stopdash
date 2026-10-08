@@ -815,7 +815,12 @@ for every disruption text the app shows in full (maintainer, 2026-10-07: Nationa
 its page alone): a line's page off the disruptions row or a trip, and the On the way screen's disruption
 and station notices. Below that it lists **every station from the boarding stop to where the soonest train
 terminates** (a short-working ends where it does, not at the line's end), on a rail in the line's
-color. **A tap on a station opens its own page** (maintainer, 2026-10-06), by its stop area where TfL
+color. **Where the line's sequence is in hand it is drawn as the line page's map** (maintainer,
+2026-10-06; *Line page*): that stretch held open whatever is placed on it, the rest of the line folded to
+the ends it leads to, a closure's ⛔ and the work to come's calendar marked as on the line page. It is
+drawn from the route data the page already holds for the train's way, never a second request for the
+line's other way. Its folds open one at a time, the last folding again as the next opens, with no "Show all stations". The list below stays wherever that map can't be drawn (a route still loading or
+failed, a line the map can't lay out): the train's stops in hand are never replaced by a note. **A tap on a station opens its own page** (maintainer, 2026-10-06), by its stop area where TfL
 gives one, so a bus stop opens as the whole place; Back returns to the route page (from a station's
 own page, the opened one takes its place). A trip's route pages leave their stations inert for now. The boarding stop is marked with a blue "you are here" dot (map-location blue, ringed to
 stand off a blue line's rail), announced to a screen reader as "Your stop"; every other stop, the terminus included, is hollow,

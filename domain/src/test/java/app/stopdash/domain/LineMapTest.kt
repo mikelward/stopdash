@@ -359,6 +359,15 @@ class LineMapTest {
         )
 
     @Test
+    fun `a way back's poles drawn as the outbound ones say which they were drawn as`() {
+        // What a route page naming the way back's own poles maps a drawn row back to its stop by.
+        val map = LineMap.of(spread(listOf("D2", "C2", "B2", "A3")))!!
+        assertEquals("A1", map.drawnAs["A3"])
+        assertEquals(map.rows.map { it.stopId }.toSet(), map.rows.map { it.stopId }.filterNot { it in map.drawnAs }.toSet())
+        assertTrue("a line drawn one way only maps nothing", LineMap.of(northern())!!.drawnAs.isEmpty())
+    }
+
+    @Test
     fun `the way back's stops at the same place are one row, not a fork`() {
         // Ending at Alpha's other stand, in no stop area with the outbound one: the same name, yards away.
         val stand = LineMap.of(spread(listOf("D2", "C2", "B2", "A3")))!!
@@ -836,6 +845,27 @@ class LineMapTest {
         assertTrue(opened.none { it.startsWith("[") })
         assertEquals(listOf("Edgware", "Burnt Oak", "Colindale"), opened.take(3))
         assertEquals("Euston on each trunk", north.count + 1, opened.size)
+    }
+
+    @Test
+    fun `a status carries what its map draws, the same for the same alert fetched again`() {
+        val closure = ids("Angel", "Old Street", "Moorgate")
+        fun status(text: String) = LineStatus("northern", 3, "Part Suspended", closures = listOf(PartClosure(3, "Part Suspended", text, listOf(closure))))
+        // A new status in the same words: the same key, so a page keeps its map up.
+        assertEquals(status("No service Angel to Moorgate.").mapKey, status("No service Angel to Moorgate.").mapKey)
+        assertEquals(LineMap.alertKey(status("x")), status("x").mapKey)
+        // Another alert: another key.
+        assertNotEquals(status("No service Angel to Moorgate.").mapKey, LineStatus("northern", 10, "Good Service").mapKey)
+    }
+
+    @Test
+    fun `a route page's train keeps every station it takes open, and nothing else changes`() {
+        val rides = listOf(ids("Euston", "Angel", "Old Street", "Moorgate", "Bank"))
+        val held = LineMap.of(northern(), riding = setOf(rides[0].first()), rides = rides, ridesOpen = true)!!.folded(emptySet()).labels()
+        assertTrue(held.containsAll(listOf("Euston", "King's Cross St. Pancras", "Angel", "Old Street", "Moorgate", "Bank")))
+        assertTrue("the rest still folds", held.any { it.startsWith("[") })
+        val plain = LineMap.of(northern(), riding = setOf(rides[0].first()), rides = rides)!!.folded(emptySet()).labels()
+        assertFalse("off by default", plain.containsAll(listOf("Angel", "Old Street", "Moorgate")))
     }
 
     @Test

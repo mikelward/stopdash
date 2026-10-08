@@ -237,6 +237,13 @@ data class LineStatus(
 
     private fun hasDue(today: LocalDate): Boolean =
         planned.any { !it.startsOn.isAfter(today) } || byDirection.values.any { it.hasDue(today) }
+
+    /**
+     * What a line's map draws of this status ([LineMap.alertKey]), worked out as the status is built (off any render
+     * path): a page keys its map by it, so the same alert fetched again as a new status keeps the map up. Last in the
+     * body, so every field it reads is set; not part of [equals], as it follows from them.
+     */
+    val mapKey: String = LineMap.alertKey(this)
 }
 
 /**

@@ -3,6 +3,16 @@ package app.stopdash.ui
 import androidx.compose.foundation.layout.fillMaxSize
 import app.stopdash.domain.PlannedAlert
 import androidx.compose.ui.unit.em
+import androidx.compose.runtime.key
+import app.stopdash.domain.StepFreeLevel
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.foundation.text.appendInlineContent
@@ -140,11 +150,24 @@ internal fun rememberLineMap(
     upcoming: List<PlannedAlert> = emptyList(),
     // Marked instead of [upcoming] where given: the work to come as a page last showed it, read on the worker.
     upcomingHeld: SavedPlanned? = null,
+    // Every station [rides] take kept open, as a route page's train's are ([LineMap.forStatus]).
+    ridesOpen: Boolean = false,
+    // The route data the page already holds (a route page's train's direction), drawn instead of fetching the
+    // line's both ways: no second request for what the page has in hand.
+    seed: LineSequence? = null,
+    // Whether the rider's own fix keeps the station nearest it open: not where the map is about a train's path.
+    nearMe: Boolean = true,
+    // Told, as it composes, whether the map drawn was laid out for the inputs given ([LineMapSectionState.current]).
+    reportCurrent: ((Boolean) -> Unit)? = null,
 ): LineMapUi? {
     val repository = LocalRouteStops.current ?: return null
     val worker = LocalWorker.current
     // The route data, from the cache in the first frame where it's there.
-    val source by produceState<Any?>(repository.cached(lineId, ""), repository, lineId, retry) {
+    val source by produceState<Any?>(seed ?: repository.cached(lineId, ""), repository, lineId, retry, ByIdentity(seed)) {
+        if (seed != null) {
+            value = seed
+            return@produceState
+        }
         if (value is LineSequence) return@produceState
         value = null
         value = try {
@@ -162,15 +185,16 @@ internal fun rememberLineMap(
     val sequence = source as? LineSequence
     // Kept above the page where it's given one ([LocalLineMapWork]), so a page come back draws its map at once.
     val held = LocalLineMapWork.current
-    val here = LocalRiderPosition.current
+    val here = LocalRiderPosition.current.takeIf { nearMe }
     val ownLaid = remember { mutableStateOf<Worked<Inputs, Laid>?>(null) }
     val laidSlot = held?.laid ?: ownLaid
-    val laid = rememberWorked(laidSlot, Inputs(sequence, status, statusKey, starred, riding, quieted, rides, nearby, here, upcoming, upcomingHeld), keep = { _, _ -> true }) {
+    val laidKey = Inputs(sequence, status, statusKey, starred, riding, quieted, rides, nearby, here, upcoming, upcomingHeld, ridesOpen)
+    val laid = rememberWorked(laidSlot, laidKey, keep = { _, _ -> true }) {
         Laid(
             sequence,
             statusKey,
             // No near-me list's pick: the stop the map draws nearest the rider's fix, however far.
-            sequence?.let { LineMap.forStatus(it, status, starred, riding, quieted, rides, nearby, here, upcomingHeld?.alerts() ?: upcoming) },
+            sequence?.let { LineMap.forStatus(it, status, starred, riding, quieted, rides, nearby, here, upcomingHeld?.alerts() ?: upcoming, ridesOpen) },
         )
     }
     // A map laid out for this route data and this status, for starred or ridden stops since changed
@@ -181,7 +205,11 @@ internal fun rememberLineMap(
     val viewSlot = held?.view ?: ownView
     val map = current?.map
     val positions = current?.from?.stopPositions.orEmpty()
-    val ready = rememberWorked(viewSlot, Inputs(map, opened, all, statusKey, here), keep = { _, _ -> true }) {
+    val viewKey = Inputs(map, opened, all, statusKey, here)
+    // Whether what's drawn was laid out for these inputs, not stood in from the last ones meanwhile: its marks
+    // (a star) are then the current ones.
+    reportCurrent?.invoke(laidSlot.value?.key == laidKey && viewSlot.value?.key == viewKey)
+    val ready = rememberWorked(viewSlot, viewKey, keep = { _, _ -> true }) {
         map?.let {
             val nearestMeters = if (here == null) {
                 emptyMap()
@@ -279,6 +307,9 @@ internal class LineMapSectionState(
     val open: (String) -> Unit,
     val toggleAll: () -> Unit,
     val retry: () -> Unit,
+    // The map drawn was laid out for the stars and rides given, not the last ones standing in while it is: what
+    // acts on a station's star waits for it.
+    val current: Boolean = true,
 )
 
 /**
@@ -288,19 +319,51 @@ internal class LineMapSectionState(
  * where there's no route data to be had (none wired, as in a test of the page alone): no map at all.
  */
 @Composable
-internal fun rememberLineMapSection(line: TripLine, starred: Set<String>, upcomingHeld: SavedPlanned? = null): LineMapSectionState? {
-    val leg = line.leg
-    var retry by remember(leg.lineId) { mutableIntStateOf(0) }
-    // Kept above the page where it's given somewhere to keep them ([LocalLineMapWork]), else saved here.
-    val held = LocalLineMapWork.current
-    val ownOpened = rememberSaveable(leg.lineId, stateSaver = OpenedFoldsSaver) { mutableStateOf<OpenedFolds?>(null) }
-    val ownAll = rememberSaveable(leg.lineId) { mutableStateOf(false) }
-    var opened by (held?.opened ?: ownOpened)
-    var all by (held?.all ?: ownAll)
+internal fun rememberLineMapSection(line: TripLine, starred: Set<String>, upcomingHeld: SavedPlanned? = null): LineMapSectionState? =
     // The work to come marks the map but isn't what it's keyed by: as it comes in or changes, the map laid out
     // before stands in until the marks are worked in, never a loading note in its place (Codex, #707). While the
     // page works its week ahead in again, the work to come as last shown ([upcomingHeld]).
-    val ui = rememberLineMap(leg.lineId, line.status, starred, line.riding, opened, all, retry, line.mapKey ?: line.status, line.quieted, line.rides, line.nearby, line.planned, upcomingHeld)
+    rememberLineMapSection(
+        line.leg.lineId, line.status, starred, line.riding, line.mapKey ?: line.status, line.quieted, line.rides, line.nearby,
+        line.planned, upcomingHeld,
+    )
+
+/**
+ * The line [lineId]'s map for a page that isn't a line's own ([rememberLineMapSection] for one): laid out for
+ * [status] as [statusKey] stands for it, with the rider's [riding] stops and the stretches they [rides] open.
+ */
+@Composable
+internal fun rememberLineMapSection(
+    lineId: String,
+    status: LineStatus?,
+    starred: Set<String>,
+    riding: Set<String>,
+    statusKey: Any?,
+    quieted: LineStatus? = null,
+    rides: List<List<String>> = emptyList(),
+    nearby: Set<String> = emptySet(),
+    planned: List<PlannedAlert> = emptyList(),
+    upcomingHeld: SavedPlanned? = null,
+    ridesOpen: Boolean = false,
+    seed: LineSequence? = null,
+    singleOpen: Boolean = false,
+    // What else the folds opened belong to beside the line (a route page's train): another resets them, as the
+    // rows a fold holds depend on the path kept open.
+    foldsFor: String = "",
+    nearMe: Boolean = true,
+): LineMapSectionState? {
+    var retry by remember(lineId) { mutableIntStateOf(0) }
+    // Kept above the page where it's given somewhere to keep them ([LocalLineMapWork]), else saved here.
+    val held = LocalLineMapWork.current
+    val ownOpened = rememberSaveable(lineId, foldsFor, stateSaver = OpenedFoldsSaver) { mutableStateOf<OpenedFolds?>(null) }
+    val ownAll = rememberSaveable(lineId, foldsFor) { mutableStateOf(false) }
+    var opened by (held?.opened ?: ownOpened)
+    var all by (held?.all ?: ownAll)
+    var current = true
+    val ui = rememberLineMap(
+        lineId, status, starred, riding, opened, all, retry, statusKey, quieted, rides, nearby, planned, upcomingHeld, ridesOpen, seed,
+        nearMe, reportCurrent = { current = it },
+    )
     val atFirst = opened == null && !all
     return if (ui == null) {
         null
@@ -308,7 +371,9 @@ internal fun rememberLineMapSection(line: TripLine, starred: Set<String>, upcomi
         LineMapSectionState(
             ui,
             atFirst,
-            open = { key -> opened = OpenedFolds(key, opened) },
+            // A route page's map opens one fold at a time, the last folding as the next opens: drawn in the page's
+            // column, it never grows past one stretch beyond the train's path.
+            open = { key -> opened = OpenedFolds(key, if (singleOpen) null else opened) },
             toggleAll = {
                 if (atFirst) {
                     all = true
@@ -318,6 +383,7 @@ internal fun rememberLineMapSection(line: TripLine, starred: Set<String>, upcomi
                 }
             },
             retry = { retry++ },
+            current = current,
         )
     }
 }
@@ -329,48 +395,84 @@ internal fun rememberLineMapSection(line: TripLine, starred: Set<String>, upcomi
  */
 internal fun LazyListScope.lineMapSection(state: LineMapSectionState, railColor: Color) {
     val ui = state.ui
-    item(key = "lineMap") {
-        Column(Modifier.fillMaxWidth().padding(top = 16.dp).testTag("lineMap")) {
-            HorizontalDivider()
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                Text(
-                    stringResource(R.string.line_map_title),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f),
-                )
-                if (ui is LineMapUi.Ready && ui.foldable) {
-                    TextButton(onClick = state.toggleAll) {
-                        Text(stringResource(if (state.atFirst) R.string.line_map_show_all else R.string.line_map_fold))
-                    }
+    item(key = "lineMap") { LineMapHeading(state) }
+    when (ui) {
+        is LineMapUi.Ready -> {
+            if (!ui.map.closurePlaced) item(key = "lineMapNotPlaced") { LineMapNotPlaced() }
+            items(ui.items, key = { "lineMap:${it.key}" }) { item -> LineMapItemRow(item, ui, railColor, state) }
+        }
+        else -> item(key = "lineMapNote") { LineMapStateNote(ui, state.retry) }
+    }
+}
+
+/**
+ * [state]'s map drawn in place, for a page that scrolls as a whole (the route page, SPEC *Route detail*):
+ * the same heading, notes and rows as [lineMapSection]. Folded, it's a handful of rows; "Show all stations"
+ * on a long line draws them all at once.
+ */
+@Composable
+internal fun LineMapColumn(state: LineMapSectionState, railColor: Color, modifier: Modifier = Modifier, offerAll: Boolean = true) {
+    val ui = state.ui
+    Column(modifier.fillMaxWidth()) {
+        LineMapHeading(state, offerAll)
+        when (ui) {
+            is LineMapUi.Ready -> {
+                if (!ui.map.closurePlaced) LineMapNotPlaced()
+                ui.items.forEach { item -> key("lineMap:${item.key}") { LineMapItemRow(item, ui, railColor, state) } }
+            }
+            else -> LineMapStateNote(ui, state.retry)
+        }
+    }
+}
+
+@Composable
+private fun LineMapHeading(state: LineMapSectionState, offerAll: Boolean = true) {
+    val ui = state.ui
+    Column(Modifier.fillMaxWidth().padding(top = 16.dp).testTag("lineMap")) {
+        HorizontalDivider()
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+            Text(
+                stringResource(R.string.line_map_title),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            if (ui is LineMapUi.Ready && ui.foldable && (offerAll || !state.atFirst)) {
+                TextButton(onClick = state.toggleAll) {
+                    Text(stringResource(if (state.atFirst) R.string.line_map_show_all else R.string.line_map_fold))
                 }
             }
         }
     }
+}
+
+// The closure shown can't be put on the map: said, so the map isn't read as unaffected.
+@Composable
+private fun LineMapNotPlaced() = LineMapNote(stringResource(R.string.line_map_closure_not_placed))
+
+@Composable
+private fun LineMapStateNote(ui: LineMapUi, retry: () -> Unit) {
     when (ui) {
-        LineMapUi.Loading -> item(key = "lineMapLoading") { LineMapNote(stringResource(R.string.line_map_loading)) }
-        LineMapUi.Unavailable -> item(key = "lineMapUnavailable") { LineMapNote(stringResource(R.string.line_map_unavailable)) }
-        is LineMapUi.Failed -> item(key = "lineMapFailed") {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(lineMapFailureMessage(ui.kind)),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = state.retry) { Text(stringResource(R.string.route_stops_retry)) }
-            }
+        LineMapUi.Loading -> LineMapNote(stringResource(R.string.line_map_loading))
+        LineMapUi.Unavailable -> LineMapNote(stringResource(R.string.line_map_unavailable))
+        is LineMapUi.Failed -> Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stringResource(lineMapFailureMessage(ui.kind)),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = retry) { Text(stringResource(R.string.route_stops_retry)) }
         }
-        is LineMapUi.Ready -> {
-            // The closure shown can't be put on the map: said, so the map isn't read as unaffected.
-            if (!ui.map.closurePlaced) item(key = "lineMapNotPlaced") { LineMapNote(stringResource(R.string.line_map_closure_not_placed)) }
-            items(ui.items, key = { "lineMap:${it.key}" }) { item ->
-                when (item) {
-                    is LineMap.Item.Station -> StationRow(item.row, ui.map.columns, railColor, ui.positions[item.row.stopId], ui.nearestMeters[item.row.stopId])
-                    is LineMap.Item.Fold -> FoldRow(item, ui.map.columns, railColor) { state.open(item.key) }
-                }
-            }
-        }
+        is LineMapUi.Ready -> Unit
+    }
+}
+
+@Composable
+private fun LineMapItemRow(item: LineMap.Item, ui: LineMapUi.Ready, railColor: Color, state: LineMapSectionState) {
+    when (item) {
+        is LineMap.Item.Station -> StationRow(item.row, ui.map.columns, railColor, ui.positions[item.row.stopId], ui.nearestMeters[item.row.stopId])
+        is LineMap.Item.Fold -> FoldRow(item, ui.map.columns, railColor) { state.open(item.key) }
     }
 }
 
@@ -542,9 +644,44 @@ val LocalOpenLineMapStop = compositionLocalOf<((stopId: String, name: String, po
  */
 val LocalOpenLineStop = compositionLocalOf<((line: LineRef, stopId: String, name: String, position: Pair<Double, Double>?) -> Unit)?> { null }
 
+/**
+ * What a page drawing a line's map shows on its stations beyond the map's own marks (SPEC *Route detail*):
+ * each station's [connections] (the other lines there) and [stepFree] level for the line, and a long press
+ * that saves or removes the favorite journey to a station ([onLongPress], with [longPressReady] false while
+ * the page's journeys are still worked out). Each map, worked out on the worker by the page. Null, as on a
+ * line's own page, shows none of them.
+ */
+internal class LineMapExtras(
+    val connections: Map<String, List<LineRef>> = emptyMap(),
+    val stepFree: Map<String, StepFreeLevel> = emptyMap(),
+    val onLongPress: ((stopId: String, name: String) -> Unit)? = null,
+    val longPressReady: Boolean = true,
+    // The stations a long press can save a journey to (a route page's train's stops past the rider's): no other
+    // station offers one that would do nothing.
+    val longPressStops: Set<String> = emptySet(),
+    // Where the page's train ends, as its stop list bolds it: one short of the line's end too.
+    val terminus: String? = null,
+)
+
+private const val STEP_FREE_INLINE = "stepFree"
+
+internal val LocalLineMapExtras = staticCompositionLocalOf<LineMapExtras?> { null }
+
 @Composable
 private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, position: Pair<Double, Double>?, nearestMeters: Double?) {
     val openStop = LocalOpenLineMapStop.current
+    val extras = LocalLineMapExtras.current
+    val connections = extras?.connections?.get(row.stopId).orEmpty()
+    val stepFree = extras?.stepFree?.get(row.stopId)
+    val stepFreeLabel = when (stepFree) {
+        StepFreeLevel.LEVEL -> stringResource(R.string.route_stop_step_free_train)
+        StepFreeLevel.PLATFORM, StepFreeLevel.RAMP -> stringResource(R.string.route_stop_step_free_platform)
+        StepFreeLevel.NONE, null -> null
+    }
+    // Not at the rider's own stop: no journey ends where it starts.
+    val longPress = extras?.onLongPress?.takeIf { extras.longPressReady && !row.riding && row.stopId in extras.longPressStops }
+    val longPressLabel = stringResource(if (row.starred) R.string.action_unstar_journey else R.string.action_star_journey)
+    val haptics = LocalHapticFeedback.current
     val openLabel = stringResource(R.string.line_stop_open)
     val surface = MaterialTheme.colorScheme.surface
     val closedColor = MaterialTheme.colorScheme.error
@@ -569,13 +706,29 @@ private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, positio
         stringResource(R.string.line_map_one_way_down).takeIf { row.oneWayDown },
         stringResource(R.string.line_map_one_way_up).takeIf { row.oneWayUp },
     ).joinToString(", ")
+    val open = openStop?.takeIf { row.stopId.isNotBlank() }?.let { { it(row.stopId, row.name, position) } }
     Row(
         modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)
             .then(
-                if (openStop != null && row.stopId.isNotBlank()) {
-                    Modifier.clickable(onClickLabel = openLabel, role = Role.Button) { openStop(row.stopId, row.name, position) }
-                } else {
-                    Modifier
+                when {
+                    // A tap opens the station; saving the journey is a long press, so a stray tap while
+                    // scrolling can't save one, as on the route page's list (maintainer, 2026-10-05).
+                    longPress != null -> Modifier
+                        .pointerInput(open, longPress) {
+                            detectTapGestures(
+                                onTap = open?.let { o -> { o() } },
+                                onLongPress = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    longPress(row.stopId, row.name)
+                                },
+                            )
+                        }
+                        .semantics {
+                            if (open != null) onClick(label = openLabel) { open(); true }
+                            onLongClick(label = longPressLabel) { longPress(row.stopId, row.name); true }
+                        }
+                    open != null -> Modifier.clickable(onClickLabel = openLabel, role = Role.Button) { open() }
+                    else -> Modifier
                 },
             )
             .semantics(mergeDescendants = true) { if (state.isNotEmpty()) stateDescription = state },
@@ -601,13 +754,38 @@ private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, positio
             Text(
                 buildAnnotatedString {
                     append(row.name)
+                    if (stepFreeLabel != null) {
+                        append(" ")
+                        // The symbol's words are its text, so a screen reader reads the level where the eye sees it.
+                        appendInlineContent(STEP_FREE_INLINE, alternateText = stepFreeLabel)
+                    }
                     // The same glyphs and colors as the route page's stop list.
                     if (row.marked) withStyle(SpanStyle(color = closedColor)) { append(" ⚠") }
                     if (row.starred) withStyle(SpanStyle(color = starColor)) { append(" ★") }
                 },
                 style = MaterialTheme.typography.bodyLarge,
-                fontWeight = if (row.end) FontWeight.SemiBold else FontWeight.Normal,
+                // The train's terminus on its own path: a station drawn on two branches is bold only where it's ridden.
+                fontWeight = if (row.end || row.onPath && row.stopId == extras?.terminus) FontWeight.SemiBold else FontWeight.Normal,
+                inlineContent = if (stepFree != null && stepFreeLabel != null) {
+                    mapOf(
+                        STEP_FREE_INLINE to InlineTextContent(Placeholder(1.15.em, 1.15.em, PlaceholderVerticalAlign.TextCenter)) {
+                            StepFreeMark(stepFree, Modifier.fillMaxSize())
+                        },
+                    )
+                } else {
+                    emptyMap()
+                },
             )
+            // The other lines there, as the route page's list shows them: 4dp apart, a tight group.
+            if (connections.isNotEmpty()) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.padding(top = 4.dp),
+                ) {
+                    connections.forEach { line -> LinePill(lineName = line.name, lineId = line.id, mode = line.mode) }
+                }
+            }
             val upcoming = row.upcomingFrom
             when {
                 row.unserved -> Text(stringResource(R.string.line_map_no_service), style = MaterialTheme.typography.bodySmall, color = closedColor)
