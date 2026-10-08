@@ -460,8 +460,9 @@ class ActiveTripTrackerTest {
         assertNull(tracker.replanFrom.value)
         known = listOf(line(0, 6, "Severe Delays"))
         tracker.refresh()
-        // Waiting at A with no fix: the next stop ahead, as the route names it.
-        assertEquals(app.stopdash.domain.ReplanOrigin.Stop("A", "A"), tracker.replanFrom.value)
+        // Waiting at A with no fix: the next stop ahead, as the route names it, with where the trip goes worked
+        // out with it, so planning again only reads it.
+        assertEquals(app.stopdash.domain.ReplanOrigin.Stop("A", "A", to = app.stopdash.domain.ToChoice(stopId = "C", name = "C")), tracker.replanFrom.value)
         known = emptyList()
         tracker.refresh()
         assertNull(tracker.replanFrom.value)
@@ -581,7 +582,7 @@ class ActiveTripTrackerTest {
         slow.complete(Unit)
         first.join()
         second.join()
-        assertEquals(app.stopdash.domain.ReplanOrigin.Stop("E", "E"), tracker.replanFrom.value)
+        assertEquals(app.stopdash.domain.ReplanOrigin.Stop("E", "E"), tracker.replanFrom.value?.copy(to = app.stopdash.domain.ToChoice.NONE))
     }
 
     @Test
@@ -1793,14 +1794,14 @@ class ActiveTripTrackerTest {
         assertEquals(Triple(0, "C", "C"), Triple(past.pastLeg, past.pastAtId, past.pastAtName))
         assertEquals(past, kept)
         assertTrue(disruptionAlerts.any { it == "new missed/0/B" })
-        assertEquals(app.stopdash.domain.ReplanOrigin.Stop("C", "C"), tracker.replanFrom.value)
+        assertEquals(app.stopdash.domain.ReplanOrigin.Stop("C", "C"), tracker.replanFrom.value?.copy(to = app.stopdash.domain.ToChoice.NONE))
         // The log names the ride and a stop, never where the rider is.
         assertTrue(logged.contains("on the way: seen past the stop of ride 0, by stop C"))
         // Further on, at D: planned again from there, not from C behind them, and not sounded again (Codex, #635).
         now = at(12)
         tracker.refresh(fixAt(51.53))
         assertEquals("D", tracker.trip.value?.pastAtId)
-        assertEquals(app.stopdash.domain.ReplanOrigin.Stop("D", "D"), tracker.replanFrom.value)
+        assertEquals(app.stopdash.domain.ReplanOrigin.Stop("D", "D"), tracker.replanFrom.value?.copy(to = app.stopdash.domain.ToChoice.NONE))
         assertEquals(1, disruptionAlerts.count { it.startsWith("new") })
         // Back at B: no longer.
         now = at(16)
@@ -1882,16 +1883,16 @@ class ActiveTripTrackerTest {
         now = at(11)
         tracker.restore()
         tracker.refresh(fixAt(51.52))
-        assertEquals(app.stopdash.domain.ReplanOrigin.Stop("C", "C"), tracker.replanFrom.value)
+        assertEquals(app.stopdash.domain.ReplanOrigin.Stop("C", "C"), tracker.replanFrom.value?.copy(to = app.stopdash.domain.ToChoice.NONE))
         // Kept going while another alert is up: plan again isn't from C at once, not only after a refresh.
         known = listOf(line(0, 6, "Severe Delays"))
         tracker.refresh(fixAt(51.52))
         tracker.dismissDisruptions(tracker.routeDisruptions.value?.signals.orEmpty().filterIsInstance<RouteDisruption.Signal.Missed>())
         assertTrue(tracker.routeDisruptions.value?.signals.orEmpty().isNotEmpty())
-        assertNotEquals(app.stopdash.domain.ReplanOrigin.Stop("C", "C"), tracker.replanFrom.value)
+        assertNotEquals(app.stopdash.domain.ReplanOrigin.Stop("C", "C"), tracker.replanFrom.value?.copy(to = app.stopdash.domain.ToChoice.NONE))
         tracker.refresh(fixAt(51.52))
         assertTrue(tracker.routeDisruptions.value?.signals.orEmpty().isNotEmpty())
-        assertNotEquals(app.stopdash.domain.ReplanOrigin.Stop("C", "C"), tracker.replanFrom.value)
+        assertNotEquals(app.stopdash.domain.ReplanOrigin.Stop("C", "C"), tracker.replanFrom.value?.copy(to = app.stopdash.domain.ToChoice.NONE))
         // Let go of, and not marked again on that ride by a fix still past it: no fixes asked for to follow it (Codex, #635).
         assertEquals("", tracker.trip.value?.pastAtId)
         assertFalse(app.stopdash.domain.OnTheWay.wantsFix(checkNotNull(tracker.trip.value), at(40)))

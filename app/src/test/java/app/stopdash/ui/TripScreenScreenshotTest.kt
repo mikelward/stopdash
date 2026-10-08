@@ -1694,6 +1694,39 @@ class TripScreenScreenshotTest {
         composeRule.onNodeWithText(banner).assertIsDisplayed()
     }
 
+    // A line being avoided as the trip opens (a closed line after a missed change) holds the list until it's
+    // in, so no route on that line shows first (Codex, #695).
+    @Test
+    fun the_list_waits_for_a_line_being_avoided() {
+        val saving = mutableStateOf(true)
+        // The clock held, so the list's own cap ([REVEAL_CAP_MILLIS]) doesn't run out meanwhile.
+        composeRule.mainClock.autoAdvance = false
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf",
+                    state = planned,
+                    now = now,
+                    access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source),
+                    onBack = {},
+                    onRetry = {},
+                    avoidedLinesSaving = saving.value,
+                )
+            }
+        }
+        repeat(20) {
+            composeRule.mainClock.advanceTimeBy(100)
+            composeRule.waitForIdle()
+        }
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.trip_checking)).assertExists()
+        composeRule.onNodeWithTag("tripRoutes").assertDoesNotExist()
+        saving.value = false
+        composeRule.mainClock.autoAdvance = true
+        composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodesWithTag("tripRoutes").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.trip_checking)).assertDoesNotExist()
+    }
+
     // A new plan starts its list at the top, with its choices and banners in view over it.
     @Test
     @Config(qualifiers = "en-rGB-w914dp-h300dp-420dpi")

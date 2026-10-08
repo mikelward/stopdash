@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -284,6 +285,8 @@ open class StoredSettingHolder<T>(
      * for it.
      */
     fun update(awaitFirst: (suspend () -> Unit)? = null, @WorkerThread edit: (T) -> T) {
+        // Counted from the ask, not the start: a screen reading [editsPending] right after the tap sees it.
+        _editsPending.update { it + 1 }
         scope.launch(editing) {
             edits.withLock {
                 loaded()
@@ -293,8 +296,17 @@ open class StoredSettingHolder<T>(
                 // it, which it can't see through `withLock`.
                 set(withContext(editing) { edit(current) })
             }
-        }
+        }.invokeOnCompletion { _editsPending.update { it - 1 } }
     }
+
+    private val _editsPending = MutableStateFlow(0)
+
+    /**
+     * How many [update]s are asked for and not yet in force: nonzero from the tap until its edit is in
+     * [current], for a screen that mustn't show what the value was (a trip opened as a line is avoided).
+     * Cancelled ones count down too.
+     */
+    val editsPending: StateFlow<Int> get() = _editsPending
 
     /**
      * [loaded], and then once every [update] asked for before this call has been applied, for a
@@ -632,9 +644,19 @@ object AvoidedLinesSetting {
     /** Whether the stored lines have been read, so a trip can hold until then. */
     val isLoaded: StateFlow<Boolean> get() = holder.isLoaded
 
-    /** Avoid the line [entry] ([AvoidedLines.key]), or stop avoiding it: applied at once, persisted in order. */
+    /**
+     * Avoid the line [entry] ([AvoidedLines.key]), or stop avoiding it, persisted in order. Made to the
+     * stored set once it's read, off the caller's thread ([StoredSettingHolder.update]): a tap never copies
+     * the set on the main thread, nor, made before the set is read, stands in for it (Codex, #695).
+     */
     fun setAvoided(entry: String, avoided: Boolean) =
-        holder.set(if (avoided) holder.current + entry else holder.current - entry)
+        holder.update { current -> AvoidedLines.changed(current, entry, avoided) }
+
+    /**
+     * How many [setAvoided]s are still being applied: while any is, a trip neither plans nor first shows
+     * its list, so a line avoided as the trip opens never shows on it (Codex, #695).
+     */
+    val editsPending: StateFlow<Int> get() = holder.editsPending
 
     /** True while the latest change failed to save (a later successful save clears it); the screen says so. */
     val writeFailed: StateFlow<Boolean> get() = holder.writeFailed

@@ -122,7 +122,10 @@ object RouteDisruption {
          * The rider was seen past [stopName] ([stopId]), where they got off ride [legIndex] on the line
          * [lineId] (named [lineName]), still on its line, at or heading for [atName] ([atId]), the stop to
          * plan again from ([ActiveTrip.pastLeg]; maintainer, 2026-10-06: the one to say loudest). Heard
-         * once for that ride's stop.
+         * once for that ride's stop. [onward] is the ride they were to board on from it ([missedOnward]),
+         * [onwardLabel] its line as it reads alone ("Central line"), and [onwardAvoid] the entry that
+         * avoids that line ([AvoidedLines.key]), all worked out with the signal so the card and its button
+         * only read them.
          */
         data class Missed(
             override val legIndex: Int,
@@ -132,6 +135,9 @@ object RouteDisruption {
             val stopName: String,
             val atId: String,
             val atName: String,
+            val onward: TripLeg? = null,
+            val onwardLabel: String = "",
+            val onwardAvoid: String = "",
         ) : Signal {
             override val tier: Tier get() = Tier.HIGH
             override val key: String get() = missedKey(legIndex, stopId)
@@ -213,13 +219,26 @@ object RouteDisruption {
      * The stop the rider was seen past ([Signal.Missed], [ActiveTrip.pastLeg]) while they're yet to board
      * on from it, or null: none seen, on board the next ride, or arrived.
      */
+    @WorkerThread
     fun missed(trip: ActiveTrip, progress: TripProgress?): Signal.Missed? {
         if (progress == TripProgress.Arrived || trip.pastAtId.isBlank()) return null
         if (trip.route.legs.getOrNull(trip.pastLeg)?.isWalk != false || OnTheWay.lastRideOff(trip) != trip.pastLeg) return null
         // As the line ridden runs it, which is where they were seen past it (Codex, #635).
         val ride = OnTheWay.offRide(trip, trip.pastLeg)
-        return Signal.Missed(trip.pastLeg, ride.lineId, ride.lineName, ride.toId, ride.toName.ifBlank { ride.toId }, trip.pastAtId, trip.pastAtName.ifBlank { trip.pastAtId })
+        val missed = Signal.Missed(trip.pastLeg, ride.lineId, ride.lineName, ride.toId, ride.toName.ifBlank { ride.toId }, trip.pastAtId, trip.pastAtName.ifBlank { trip.pastAtId })
+        val onward = missedOnward(trip, missed)
+        val label = onward?.let { lineLabel(it.lineName.ifBlank { it.lineId }, it.mode) }.orEmpty()
+        return missed.copy(onward = onward, onwardLabel = label, onwardAvoid = onward?.let { AvoidedLines.key(it.lineId, label) }.orEmpty())
     }
+
+    /**
+     * The ride the rider was to board on from the stop they went past ([missed]): the first after it
+     * that isn't a walk, or null where the trip ends there. Its line is the one a "line closed" leaves
+     * out of the trip planned again (maintainer, 2026-10-08): what kept the rider on board.
+     */
+    @WorkerThread
+    fun missedOnward(trip: ActiveTrip, missed: Signal.Missed): TripLeg? =
+        trip.route.legs.drop(missed.legIndex + 1).firstOrNull { !it.isWalk }
 
     /**
      * The trip's branch taken by itself ([Signal.NoneDirect]) while the rider is still short of the ride's

@@ -959,12 +959,28 @@ class RouteDisruptionTest {
     }
 
     @Test
+    fun `the ride on from a stop gone past is the next one that isn't a walk`() {
+        val past = trip.copy(legIndex = 1, pastLeg = 0, pastAtId = "X", pastAtName = "X")
+        val missed = checkNotNull(RouteDisruption.missed(past, TripProgress.Walking(walk, at(20))))
+        // Past the walk to D, the second ride: its line is what a "line closed" leaves out.
+        assertEquals(second, RouteDisruption.missedOnward(past, missed))
+        assertEquals(second, missed.onward)
+        // Named as the line reads alone, worked out with the signal so the card only reads it.
+        assertEquals(lineLabel("Blue", "tube"), missed.onwardLabel)
+        // And the entry that avoids it, likewise, so the button's tap only reads it.
+        assertEquals(AvoidedLines.key(second.lineId, lineLabel("Blue", "tube")), missed.onwardAvoid)
+        // A trip that ends at the stop gone past has no ride on from it.
+        val last = ActiveTrip(TripRoute(listOf(ride)), "C", startedAt = t0)
+        assertNull(RouteDisruption.missedOnward(last, missed))
+    }
+
+    @Test
     fun `a stop the rider was seen past is heard, high, until they board on`() {
         // Off the first ride at C, seen past it, by D (maintainer, 2026-10-06).
         val past = trip.copy(legIndex = 1, pastLeg = 0, pastAtId = "X", pastAtName = "X")
         val walking = TripProgress.Walking(walk, at(20))
         val missed = RouteDisruption.missed(past, walking)
-        assertEquals(Signal.Missed(0, "red", "Red", "C", "C", "X", "X"), missed)
+        assertEquals(Signal.Missed(0, "red", "Red", "C", "C", "X", "X", onward = second, onwardLabel = lineLabel("Blue", "tube"), onwardAvoid = AvoidedLines.key(second.lineId, lineLabel("Blue", "tube"))), missed)
         assertEquals(Tier.HIGH, missed?.tier)
         assertEquals("missed/0/C", missed?.key)
         // A card, with the ride it's on, and a plan again from where they are.

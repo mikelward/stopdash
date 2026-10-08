@@ -50,8 +50,11 @@ object ReplanOrigin {
         return accuracy <= OnTheWay.AT_STOP_WITHIN_METERS && age <= OnTheWay.FIX_FRESH_WITHIN_MILLIS
     }
 
-    /** A stop to plan again from, by [id], named [name] as the route names it. */
-    data class Stop(val id: String, val name: String)
+    /**
+     * A stop to plan again from, by [id], named [name] as the route names it, [to] where the trip goes
+     * ([ToChoice.of]): worked out with the stop, off the main thread, so a tap planning again only reads it.
+     */
+    data class Stop(val id: String, val name: String, val to: ToChoice = ToChoice.NONE)
 
     /** [of] with the stop's name, as [trip]'s route names it. */
     fun stopOf(trip: ActiveTrip, rider: LocationFix?, positions: Map<String, Coordinates>, rideAhead: Int?): Stop? =

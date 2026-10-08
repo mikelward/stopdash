@@ -115,6 +115,20 @@ class StoredSettingUpdateTest {
     }
 
     @Test
+    fun `an edit counts as pending from the ask until it is in force`() = runTest {
+        val stored = MutableSharedFlow<Set<String>>(replay = 1)
+        val written = mutableListOf<Set<String>>()
+        val holder = holder(onScheduler(), stored, written)
+        holder.update { HomeLines.toggle(it, "victoria") }
+        // Pending at once, before the stored value is read and the edit can run.
+        assertEquals(1, holder.editsPending.value)
+        stored.emit(setOf("tram"))
+        runCurrent()
+        assertEquals(setOf("tram", "victoria"), holder.current)
+        assertEquals(0, holder.editsPending.value)
+    }
+
+    @Test
     fun `a tap is worked out on the holder's own thread, not the caller's`() {
         val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "settings-worker") }
         val scope = CoroutineScope(SupervisorJob() + executor.asCoroutineDispatcher())

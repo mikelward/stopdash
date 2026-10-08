@@ -2046,7 +2046,10 @@ as it was.
   off, at least 500 m beyond the stop (the fix's uncertainty counted against it), at or between the line's
   next few stops, and faster than walking pace since getting off, so on a train; never at a stop the trip
   goes on to anyway. Its card offers **Plan again from** where they are (the stop they're at, or the next
-  their train reaches), the plan's own stops being behind them. Where they went past is kept, through a
+  their train reaches), the plan's own stops being behind them. Under it, **‹line› closed** (maintainer,
+  2026-10-08) names the line they were to change onto: for a rider who stayed on because it's closed, it
+  avoids that line as a route card's Avoid does (*Avoiding a line*: sticky, until its chip or Settings
+  clears it) and plans again from the same stop, so the list opens without it. Where they went past is kept, through a
   restart, until they're seen back where they got off or at the next ride's stop, or board on (seen or said);
   fixes go on being asked for until then, or until the rider taps Keep going on it, which lets it go for
   that ride (a battery cost only while it stands); its alert,

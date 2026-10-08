@@ -152,6 +152,13 @@ internal fun OnTheWayScreen(
     // ([onPlanAgain], maintainer 2026-10-02). Null leaves it out.
     replanFrom: ReplanOrigin.Stop? = null,
     onPlanAgain: ((ReplanOrigin.Stop) -> Unit)? = null,
+    // The rider went past their change because the line on from it is closed (maintainer, 2026-10-08):
+    // that line is avoided, as a route card's Avoid does (sticky until cleared), and the trip planned
+    // again from [replanFrom] as [onPlanAgain] does. Null leaves the button out.
+    onLineClosed: ((missed: RouteDisruption.Signal.Missed, from: ReplanOrigin.Stop) -> Unit)? = null,
+    // Whether the lines already avoided have been read: until then the button waits, so avoiding one more
+    // never stands in for the whole stored set (Codex, #695).
+    lineClosedEnabled: Boolean = true,
     // The rider read [disruptions] and keeps going ([ActiveTripTracker.dismissDisruptions], maintainer
     // 2026-10-03), as shown. Null leaves Keep going out.
     onDismissDisruptions: ((List<RouteDisruption.Signal>) -> Unit)? = null,
@@ -311,16 +318,30 @@ internal fun OnTheWayScreen(
                 }
             }
             if (trip != null) {
-                // Each thing known once, as the alert has it: two legs on one line read as one ([cards]).
-                // Registered by count, not walked here: each card is read only as it's drawn (Codex on #519).
-                items(cards, key = { signal -> "disruption/${signal.key}" }) { signal ->
-                    DisruptionCard(signal, trip.route.legs.getOrNull(signal.legIndex)?.let { RouteDisruption.rideAt(trip, signal.legIndex, it) })
-                }
                 // Only while it's still ahead of the trip as shown: worked out by the last check, it can lag
                 // a step the trip has since taken, and a stop now behind the rider is never offered (Codex on #479).
                 // Or the stop the rider was seen past theirs at, off the plan's way (maintainer, 2026-10-06).
                 val planFrom = replanFrom?.takeIf { it.id == trip.pastAtId || it.id in ReplanOrigin.stopsAhead(trip, ReplanOrigin.rideAhead(trip, progress)) }
                 val planAgain = planFrom?.takeIf { onPlanAgain != null }
+                // Each thing known once, as the alert has it: two legs on one line read as one ([cards]).
+                // Registered by count, not walked here: each card is read only as it's drawn (Codex on #519).
+                items(cards, key = { signal -> "disruption/${signal.key}" }) { signal ->
+                    // Gone past the change because the line on from it is closed: plan again without that line,
+                    // under the card that says so.
+                    val missed = (signal as? RouteDisruption.Signal.Missed)?.takeIf { it.onward != null }
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        DisruptionCard(signal, trip.route.legs.getOrNull(signal.legIndex)?.let { RouteDisruption.rideAt(trip, signal.legIndex, it) })
+                        if (planAgain != null && onLineClosed != null && missed != null) {
+                            OutlinedButton(
+                                onClick = { onLineClosed(missed, planAgain) },
+                                enabled = lineClosedEnabled,
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("onTheWayLineClosed"),
+                            ) {
+                                Text(stringResource(R.string.on_the_way_line_closed, missed.onwardLabel))
+                            }
+                        }
+                    }
+                }
                 // Only under a card: a branch the trip took by itself is said under the step, and neither a new
                 // plan (the Planner offers the same train) nor Keep going answers it (Codex, #633).
                 if (cards.isNotEmpty() && (planAgain != null || onDismissDisruptions != null)) {
