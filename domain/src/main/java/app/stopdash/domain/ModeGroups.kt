@@ -1,10 +1,13 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
+
 /**
  * The groups a rider hides modes by (SPEC *Finding stops → Hiding a mode*, maintainer 2026-09-24):
  * TfL's mode ids folded into what a rider calls them. The DLR rides with the Tube (turn up and go,
- * on the Tube map); the Overground, the Elizabeth line and National Rail are all "Train". Hiding a
- * group hides every mode in it; a mode no group names (the cable car) is a group of its own.
+ * on the Tube map); the Overground, the Elizabeth line and National Rail are all "Train"; a coach is a
+ * "Bus" (TfL lists no coach routes or stops, and a rider doesn't draw the line). Hiding a group hides
+ * every mode in it; a mode no group names (the cable car) is a group of its own.
  */
 object ModeGroups {
     /** One group: its stable [key] and the TfL mode ids it holds. */
@@ -14,10 +17,9 @@ object ModeGroups {
     val ALL: List<Group> = listOf(
         Group("tube", setOf("tube", "dlr")),
         Group("train", setOf("overground", "elizabeth-line", "national-rail")),
-        Group("bus", setOf("bus")),
+        Group("bus", setOf("bus", "coach")),
         Group("tram", setOf("tram")),
         Group("boat", setOf("river-bus")),
-        Group("coach", setOf("coach")),
     )
 
     /**
@@ -45,6 +47,22 @@ object ModeGroups {
      */
     fun hiddenItems(hidden: Set<String>): List<Group> =
         hiddenGroups(hidden) + hidden.filter(HiddenModes::isLineKey).map(::of)
+
+    /**
+     * A stored hidden set read back, with each group hidden or shown whole: Coach was a group of its
+     * own until 2026-10-08, so a stored "coach" follows "bus" (hidden with it, dropped without it)
+     * rather than leaving Bus half hidden.
+     */
+    @WorkerThread
+    fun fromStored(hidden: Set<String>): Set<String> {
+        val busHidden = HiddenModes.isHidden("bus", hidden)
+        val coachHidden = HiddenModes.isHidden("coach", hidden)
+        return when {
+            busHidden && !coachHidden -> hidden + "coach"
+            !busHidden && coachHidden -> hidden.filterNotTo(LinkedHashSet()) { it.equals("coach", ignoreCase = true) }
+            else -> hidden
+        }
+    }
 
     /** [hidden] with all of [group] hidden (or shown again when [hide] is false). */
     fun withGroup(hidden: Set<String>, group: Group, hide: Boolean): Set<String> =

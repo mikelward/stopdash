@@ -103,7 +103,7 @@ class UsageEventTest {
         )
         val event = UsageEvent.NearbyStops(stops)
         assertEquals(
-            mapOf("tube" to "2-3", "train" to "1", "bus" to "4+", "tram" to "0", "boat" to "0", "coach" to "0"),
+            mapOf("tube" to "2-3", "train" to "1", "bus" to "4+", "tram" to "0", "boat" to "0"),
             event.params,
         )
         assertClosed(event)

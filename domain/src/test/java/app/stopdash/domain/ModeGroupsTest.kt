@@ -11,8 +11,19 @@ class ModeGroupsTest {
         assertEquals("tube", ModeGroups.of("dlr").key)
         assertEquals(setOf("train"), setOf("overground", "elizabeth-line", "national-rail").map { ModeGroups.of(it).key }.toSet())
         assertEquals("boat", ModeGroups.of("river-bus").key)
+        assertEquals("bus", ModeGroups.of("coach").key)
         // A mode no group names is a group of its own.
         assertEquals(setOf("cable-car"), ModeGroups.of("cable-car").modes)
+    }
+
+    @Test
+    fun `a stored coach hide follows the bus one, so Bus is never half hidden`() {
+        assertEquals(setOf("tram"), ModeGroups.fromStored(setOf("coach", "tram")))
+        assertEquals(setOf("bus", "coach"), ModeGroups.fromStored(setOf("bus")))
+        assertEquals(setOf("bus", "coach"), ModeGroups.fromStored(setOf("bus", "coach")))
+        assertEquals(emptySet<String>(), ModeGroups.fromStored(emptySet()))
+        val line = HiddenModes.lineKey("northern", "Northern line")
+        assertEquals(setOf(line), ModeGroups.fromStored(setOf(line, "Coach")))
     }
 
     @Test

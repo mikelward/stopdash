@@ -46,20 +46,21 @@ class ModeMenuTest {
             }
         }
         composeRule.onNodeWithContentDescription("More options").performClick()
-        for (name in listOf("Tube & DLR", "Bus", "Tram", "Boat", "Coach")) {
+        for (name in listOf("Tube & DLR", "Bus", "Tram", "Boat")) {
             composeRule.onNodeWithText(name).assertIsOn()
         }
         composeRule.onNodeWithText("Train").assertIsOff().performClick()
         assertEquals("train" to true, toggled)
         composeRule.onNodeWithText("Bus").performClick()
         assertEquals("bus" to false, toggled)
-        assertEquals(6, ModeGroups.ALL.size)
+        assertEquals(5, ModeGroups.ALL.size)
+        composeRule.onNodeWithText("Coach").assertDoesNotExist()
     }
 
     @Test
     fun `the hide item names every group mid-sentence, keeping the Tube and DLR capitalized`() {
         assertEquals(
-            listOf("Tube & DLR", "train", "bus", "tram", "boat", "coach"),
+            listOf("Tube & DLR", "train", "bus", "tram", "boat"),
             ModeGroups.ALL.map { groupNameInSentence(it) },
         )
     }

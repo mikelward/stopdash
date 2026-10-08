@@ -23,14 +23,15 @@ class TripModesTest {
     fun `a group turned off drops its modes and no other`() {
         val noBus = TripModes.DEFAULT.with(group("bus"), ride = false)
         assertFalse(noBus.rides(group("bus")))
-        assertEquals(TripModes.PLANNER_MODES.toSet() - "bus", noBus.planned())
+        // A coach rides with the bus.
+        assertEquals(TripModes.PLANNER_MODES.toSet() - "bus" - "coach", noBus.planned())
         // Train is three modes to TfL, and the Tube group holds the DLR too.
         val noTrainOrTube = noBus.with(group("train"), ride = false).with(group("tube"), ride = false)
         val planned = noTrainOrTube.planned()
         assertTrue(planned.none { it in setOf("bus", "overground", "elizabeth-line", "national-rail", "tube", "dlr") })
-        assertTrue(planned.containsAll(listOf("tram", "river-bus", "coach")))
+        assertTrue(planned.containsAll(listOf("tram", "river-bus")))
         // Turned on again, it rides again.
-        assertEquals(TripModes.PLANNER_MODES.toSet() - "bus", noBus.with(group("bus"), ride = true).with(group("bus"), ride = false).planned())
+        assertEquals(TripModes.PLANNER_MODES.toSet() - "bus" - "coach", noBus.with(group("bus"), ride = true).with(group("bus"), ride = false).planned())
         assertEquals(TripModes.DEFAULT, noBus.with(group("bus"), ride = true))
     }
 
