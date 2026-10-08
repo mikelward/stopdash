@@ -6,6 +6,7 @@ import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.LineMap
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.NearbySelection
 import app.stopdash.domain.NearestByLine
 import app.stopdash.domain.FavoriteJourney
@@ -94,17 +95,20 @@ object HomeLines {
         Network.entries.flatMap { network -> if (network.key in chosen) network.lines else network.lines.filter { it.id in chosen } }
 
     /**
-     * The Disruptions summary page's chips, under their headers (maintainer, 2026-10-07): the Tube's and
-     * the Overground's lines under the network's name, then the single-line networks' under "Other"
-     * (a null network). Fixed, and built from the networks' own lists without walking them, so the page
-     * draws every chip where it will stay on its first frame; only which ones show selected is worked out
-     * ([covered]).
+     * The Disruptions summary page's chips, under their headers: each under the mode group the near-me
+     * list hides it by (maintainer, 2026-10-08): the DLR and the Elizabeth line under Underground with
+     * the Tube. Fixed, and built from the networks' own lists without walking them, so the
+     * page draws every chip where it will stay on its first frame; only which ones show selected is
+     * worked out ([covered]).
      */
-    val PICKER: List<Pair<Network?, List<LineRef>>> = listOf(
-        Network.TUBE to Network.TUBE.lines,
-        Network.OVERGROUND to Network.OVERGROUND.lines,
-        null to listOf(Network.ELIZABETH.lines[0], Network.DLR.lines[0], Network.TRAM.lines[0]),
+    val PICKER: List<Pair<ModeGroups.Group, List<LineRef>>> = listOf(
+        ModeGroups.of("tube") to Network.TUBE.lines + Network.DLR.lines + Network.ELIZABETH.lines,
+        ModeGroups.of("overground") to Network.OVERGROUND.lines,
+        ModeGroups.of("tram") to Network.TRAM.lines,
     )
+
+    /** Each [PICKER] chip's network, by line id, for a choice an older build stored by network key. */
+    private val NETWORK_KEYS: Map<String, String> = Network.entries.flatMap { network -> network.lines.map { it.id to network.key } }.toMap()
 
     /**
      * Which of [PICKER]'s chips show selected for what's [chosen], group by group in its order: a line
@@ -113,9 +117,8 @@ object HomeLines {
      * and their favorites'). On a worker only (AGENTS.md *Main thread: read and dispatch only*).
      */
     @WorkerThread
-    fun covered(chosen: Set<String>): List<List<Boolean>> = PICKER.map { (network, lines) ->
-        // A single-line network's key is its line's id, so "Other" needs only the ids.
-        lines.map { line -> line.id in chosen || (network != null && network.key in chosen) }
+    fun covered(chosen: Set<String>): List<List<Boolean>> = PICKER.map { (_, lines) ->
+        lines.map { line -> line.id in chosen || NETWORK_KEYS[line.id] in chosen }
     }
 
     /**

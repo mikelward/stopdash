@@ -575,12 +575,6 @@
     <string name="settings_summary_networks_title">Always include</string>
     <string name="settings_summary_networks_summary">Favorite places and lines near you are always included</string>
     <!-- The header over the networks of one line each (Elizabeth line, DLR, Tram). -->
-    <string name="settings_summary_other">Other</string>
-    <string name="network_tube">Tube</string>
-    <string name="network_overground">Overground</string>
-    <string name="network_elizabeth">Elizabeth line</string>
-    <string name="network_dlr">DLR</string>
-    <string name="network_tram">Tram</string>
     <string name="settings_disruptions_row_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
     <!-- Settings' list of the modes and lines hidden from the near-me list, shown only while
          something is; each has a Show action that brings just that one back. -->
