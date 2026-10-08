@@ -35,10 +35,14 @@ class UsageEventTest {
         ) +
         (ModeGroups.ALL.map { it.key } + "line" + "other").flatMap { listOf("${it}_hidden", "${it}_shown", "${it}_on", "${it}_off") }
 
+    // Analytics' own numeric parameters: a category sent in one would be lost.
+    private val numericOnly = setOf("value", "currency")
+
     private fun assertClosed(event: UsageEvent) {
         assertTrue(event.name, name.matches(event.name))
         for ((key, value) in event.params) {
             assertTrue(key, name.matches(key))
+            assertTrue("$key is Analytics' numeric parameter", key !in numericOnly)
             assertTrue("$key=$value", value in vocabulary)
         }
     }
@@ -208,18 +212,18 @@ class UsageEventTest {
             listOf(0.8f, 1f, 1.2f, 1.6f, Float.NaN).map(UsageEvent.SettingChanged::textSize) +
             UsageEvent.SettingChanged.bugReportConsentSkipped()
         changes.forEach(::assertClosed)
-        assertEquals(mapOf("setting" to "walking_speed", "value" to "slow"), UsageEvent.SettingChanged.walkingSpeed(WalkingSpeed.SLOW).params)
-        assertEquals(mapOf("setting" to "step_free", "value" to "fully"), UsageEvent.SettingChanged.stepFree(StepFree.FULLY).params)
-        assertEquals(mapOf("setting" to "max_walk", "value" to "45"), UsageEvent.SettingChanged.maxWalk(MaxWalk.FORTY_FIVE).params)
-        assertEquals(mapOf("setting" to "tfl_key", "value" to "cleared"), UsageEvent.SettingChanged.tflKey(false).params)
+        assertEquals(mapOf("setting" to "walking_speed", "setting_value" to "slow"), UsageEvent.SettingChanged.walkingSpeed(WalkingSpeed.SLOW).params)
+        assertEquals(mapOf("setting" to "step_free", "setting_value" to "fully"), UsageEvent.SettingChanged.stepFree(StepFree.FULLY).params)
+        assertEquals(mapOf("setting" to "max_walk", "setting_value" to "45"), UsageEvent.SettingChanged.maxWalk(MaxWalk.FORTY_FIVE).params)
+        assertEquals(mapOf("setting" to "tfl_key", "setting_value" to "cleared"), UsageEvent.SettingChanged.tflKey(false).params)
     }
 
     @Test
     fun `a change of trip modes names each group turned on or off`() {
         val busOff = TripModes.DEFAULT.with(ModeGroups.ALL.first { it.key == "bus" }, ride = false)
         val off = UsageEvent.SettingChanged.tripModes(TripModes.DEFAULT, busOff)
-        assertEquals(listOf(mapOf("setting" to "trip_mode", "value" to "bus_off")), off.map { it.params })
-        assertEquals(listOf("bus_on"), UsageEvent.SettingChanged.tripModes(busOff, TripModes.DEFAULT).map { it.params["value"] })
+        assertEquals(listOf(mapOf("setting" to "trip_mode", "setting_value" to "bus_off")), off.map { it.params })
+        assertEquals(listOf("bus_on"), UsageEvent.SettingChanged.tripModes(busOff, TripModes.DEFAULT).map { it.params["setting_value"] })
         assertEquals(emptyList<UsageEvent>(), UsageEvent.SettingChanged.tripModes(busOff, busOff))
         off.forEach(::assertClosed)
     }
@@ -227,17 +231,17 @@ class UsageEventTest {
     @Test
     fun `a line avoided, hidden or added to the disruptions row is never named`() {
         val avoided = UsageEvent.SettingChanged.avoidedLines(emptySet(), setOf("victoria"))
-        assertEquals(listOf(mapOf("setting" to "avoided_line", "value" to "added")), avoided.map { it.params })
-        assertEquals(listOf("removed"), UsageEvent.SettingChanged.avoidedLines(setOf("victoria"), emptySet()).map { it.params["value"] })
+        assertEquals(listOf(mapOf("setting" to "avoided_line", "setting_value" to "added")), avoided.map { it.params })
+        assertEquals(listOf("removed"), UsageEvent.SettingChanged.avoidedLines(setOf("victoria"), emptySet()).map { it.params["setting_value"] })
         // A stop avoided counts as one, never which.
         val stop = UsageEvent.SettingChanged.avoidedLines(emptySet(), setOf(AvoidedLines.stopKey("940GZZLUBNK", "Bank")))
-        assertEquals(listOf(mapOf("setting" to "avoided_stop", "value" to "added")), stop.map { it.params })
+        assertEquals(listOf(mapOf("setting" to "avoided_stop", "setting_value" to "added")), stop.map { it.params })
         stop.forEach(::assertClosed)
         val row = UsageEvent.SettingChanged.disruptionLines(setOf("central"), setOf("central", "jubilee"))
-        assertEquals(listOf(mapOf("setting" to "disruption_line", "value" to "added")), row.map { it.params })
+        assertEquals(listOf(mapOf("setting" to "disruption_line", "setting_value" to "added")), row.map { it.params })
         val line = HiddenModes.lineKey("victoria", "Victoria")
         val hidden = UsageEvent.SettingChanged.hiddenModes(emptySet(), setOf(line))
-        assertEquals(listOf(mapOf("setting" to "hidden_mode", "value" to "line_hidden")), hidden.map { it.params })
+        assertEquals(listOf(mapOf("setting" to "hidden_mode", "setting_value" to "line_hidden")), hidden.map { it.params })
         (avoided + row + hidden).forEach(::assertClosed)
         assertTrue((avoided + row + hidden).none { event -> event.params.values.any { "victoria" in it || "jubilee" in it } })
     }
@@ -246,13 +250,13 @@ class UsageEventTest {
     fun `hiding a group says the group once, and showing every one again says so once`() {
         val train = ModeGroups.ALL.first { it.key == "rail" }
         val hidden = UsageEvent.SettingChanged.hiddenModes(emptySet(), train.modes)
-        assertEquals(listOf("rail_hidden"), hidden.map { it.params["value"] })
+        assertEquals(listOf("rail_hidden"), hidden.map { it.params["setting_value"] })
         // The one group shown again is that group, not "all".
-        assertEquals(listOf("rail_shown"), UsageEvent.SettingChanged.hiddenModes(train.modes, emptySet()).map { it.params["value"] })
+        assertEquals(listOf("rail_shown"), UsageEvent.SettingChanged.hiddenModes(train.modes, emptySet()).map { it.params["setting_value"] })
         val several = train.modes + "bus" + HiddenModes.lineKey("central", "Central")
-        assertEquals(listOf("all_shown"), UsageEvent.SettingChanged.hiddenModes(several, emptySet()).map { it.params["value"] })
+        assertEquals(listOf("all_shown"), UsageEvent.SettingChanged.hiddenModes(several, emptySet()).map { it.params["setting_value"] })
         // A mode no group names is "other", never TfL's id.
-        assertEquals(listOf("other_hidden"), UsageEvent.SettingChanged.hiddenModes(emptySet(), setOf("cable-car")).map { it.params["value"] })
+        assertEquals(listOf("other_hidden"), UsageEvent.SettingChanged.hiddenModes(emptySet(), setOf("cable-car")).map { it.params["setting_value"] })
         (hidden + UsageEvent.SettingChanged.hiddenModes(several, emptySet())).forEach(::assertClosed)
     }
 }

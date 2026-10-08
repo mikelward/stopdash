@@ -37,7 +37,7 @@ register the final one.
    properties below reach only DebugView and BigQuery, never the reports. **Event-scoped** custom
    dimensions, one per parameter name: `kind`, `what`, `mode`, `grant`, `outcome`, `accuracy`,
    `time_to_fix`, `tube`, `overground`, `rail`, `bus`, `tram`, `boat`, `from`, `routes`, `to`, `plan`,
-   `choice`, `rank`, `changes`, `setting`, `value` (`screen_name` is built in). **User-scoped**, one
+   `choice`, `rank`, `changes`, `setting`, `setting_value` (`screen_name` is built in). **User-scoped**, one
    per user property: `walking_speed`, `max_walk`, `step_free`, `trip_modes_off`, `avoided_lines`,
    `hidden_modes`, `hidden_lines`, `distance_units`, `disruptions_row`, `live_widget`, `text_size`,
    `pinch_resize`, `own_tfl_key`, `rail_key`, `widgets`, `watch`, `starred_rows`, `favorite_places`,
@@ -59,7 +59,7 @@ register the final one.
 | `trip_plan` | `outcome`, `routes`, `from` (`here`/`stop`), `to` (`stop`/`place`), `plan` (`first`/`again`) | Each plan the Journey Planner answers |
 | `route_open` | `choice` (the card's label), `rank` | A trip's card tapped |
 | `trip_start` | `choice`, `changes` | Start (or Replace) on an open route |
-| `setting_change` | `setting`, `value` | A setting changed, in Settings or atop a trip |
+| `setting_change` | `setting`, `setting_value` | A setting changed, in Settings or atop a trip |
 
 User properties (`usageProperties`, pinned by `UsagePropertiesTest`) are sent by
 `UsagePropertiesPublisher`: as the opt-in lands, after each `setting_change`, and on each
