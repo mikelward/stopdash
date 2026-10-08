@@ -1,0 +1,47 @@
+# The Analytics custom definitions for StopDash's usage events and user properties (dev-docs/firebase.md
+# step 6): one per event parameter (scope "event") and per user property (scope "user"), each with its
+# display name. scripts/register_analytics_definitions.py registers them; AnalyticsDefinitionsTest (:domain)
+# fails when this list and what the app sends drift apart. Tab-separated: scope, name, display name.
+event	kind	Tap kind
+event	what	Reveal
+event	mode	Reveal mode
+event	grant	Location grant
+event	outcome	Outcome
+event	accuracy	Fix accuracy
+event	time_to_fix	Time to fix
+event	tube	Nearby tube stops
+event	overground	Nearby Overground stops
+event	rail	Nearby rail stops
+event	bus	Nearby bus stops
+event	tram	Nearby tram stops
+event	boat	Nearby boat stops
+event	from	From
+event	routes	Routes shown
+event	to	To
+event	plan	Plan
+event	choice	Route choice
+event	rank	Route rank
+event	changes	Changes
+event	setting	Setting
+event	setting_value	Setting value
+user	walking_speed	Walking speed
+user	max_walk	Max walk
+user	step_free	Step free
+user	trip_modes_off	Trip modes off
+user	avoided_lines	Avoided lines
+user	hidden_modes	Hidden modes
+user	hidden_lines	Hidden lines
+user	distance_units	Distance units
+user	disruptions_row	Disruptions row
+user	live_widget	Live widget
+user	text_size	Text size
+user	pinch_resize	Pinch resize
+user	own_tfl_key	Own TfL key
+user	rail_key	Rail key
+user	widgets	Widgets
+user	watch	Watch
+user	starred_rows	Starred rows
+user	favorite_places	Favorite places
+user	favorite_journeys	Favorite journeys
+user	notifications	Notifications
+user	location	Location permission

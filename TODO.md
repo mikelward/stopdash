@@ -335,8 +335,9 @@ exercises the whole spine the widget later renders from.
           properties for the rider's setup (trip options, hidden modes, widgets, watch, favorites
           counts, own key yes/no, notifications, location). Events raised before the stored choice
           loads are now held and follow it. `dev-docs/firebase.md` lists them all.
-      - [ ] **Register the custom definitions** in Google Analytics once the project exists
-            (`dev-docs/firebase.md` step 6), or the new parameters stay out of the reports.
+      - [ ] **Register the custom definitions** in Google Analytics once the project exists: run
+            `scripts/register_analytics_definitions.py` (`dev-docs/firebase.md` step 6), or the new
+            parameters stay out of the reports. Again whenever `analytics-definitions.tsv` changes.
       - [ ] Next candidates, each categories only: how a trip on the way ended (arrived, ended by
             the rider, replaced), each alert shown (get off soon, time to board, disruption), and
             how often a refresh failed and why (offline, rate-limited).

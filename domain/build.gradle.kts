@@ -19,3 +19,9 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
 }
+
+// AnalyticsDefinitionsTest reads the definitions the registration script registers: a change to them alone
+// runs the tests again rather than passing as up to date.
+tasks.test {
+    inputs.file(rootProject.file("dev-docs/analytics-definitions.tsv"))
+}
