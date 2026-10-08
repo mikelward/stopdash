@@ -20,6 +20,7 @@ import app.stopdash.domain.TflException
 import app.stopdash.domain.UkPostcode
 import app.stopdash.domain.Workers
 import app.stopdash.domain.YourStops
+import app.stopdash.domain.sameStationIds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineStart
@@ -428,6 +429,9 @@ class StationStopsViewModel(
     // Centers and maps the stops TfL returns, off the main thread (AGENTS.md *Main thread*).
     private val compute: CoroutineDispatcher = Workers.compute,
     private val warn: (String) -> Unit = {},
+    // The bundled index, for the other ids TfL lists this same station under (Weybridge's two records, no
+    // interchange to open instead): asked for too, so none of its stops is left out. Read on [io].
+    private val loadIndex: () -> StationIndex = { StationIndex.EMPTY },
 ) : ViewModel() {
     sealed interface State {
         data object Loading : State
@@ -452,8 +456,11 @@ class StationStopsViewModel(
         _state.value = State.Loading
         load = viewModelScope.launch {
             _state.value = try {
-                val stops = withContext(io) { finder.stationStops(stationId) }
+                val ids = withContext(io) { listOf(stationId) + loadIndex().sameStationIds(stationId) }
+                // Every id or none: a page missing one record's stops would look whole (SPEC *Finding stops*).
+                val found = withContext(io) { ids.flatMap { finder.stationStops(it) } }
                 withContext(compute) {
+                    val stops = found.distinctBy { it.id }
                     if (stops.isEmpty()) State.NoStops else State.Ready(stops.map(StopLocation::toStopRef), FixedLocation.centerOf(stops))
                 }
             } catch (e: CancellationException) {

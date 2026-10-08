@@ -705,6 +705,47 @@ class StationViewModelsTest {
         assertEquals(listOf("victoria"), ready.stops.single().lines.map { it.id })
     }
 
+    // Weybridge's two records: one place, one name and mode, no interchange (public TfL stations).
+    private val weybridge = StationIndex(
+        listOf(
+            IndexedStation("910GWEYBDGB", "Weybridge Rail Station", listOf("national-rail"), "", 51.36176, -0.45772),
+            IndexedStation("910GWEYBDGE", "Weybridge Rail Station", listOf("national-rail"), "", 51.36176, -0.45772),
+        ),
+    )
+
+    @Test
+    fun `a station under two ids opens both records' stops`() = runTest {
+        // Weybridge's two records, no interchange: the page asks for each, once per stop.
+        fun stop(id: String) = StopLocation(id, "Weybridge", 0.0, 0.0, listOf(LineRef("swr", "South Western Railway", "national-rail")), clusterId = id)
+        val asked = mutableListOf<String>()
+        val finder = FakeFinder(stops = { id ->
+            asked += id
+            listOf(stop(id), stop("910GWEYBDGB"))
+        })
+        val vm = StationStopsViewModel(
+            finder, "910GWEYBDGB", io = dispatcher, compute = dispatcher,
+            loadIndex = { weybridge },
+        )
+        advanceUntilIdle()
+        assertEquals(listOf("910GWEYBDGB", "910GWEYBDGE"), asked)
+        val ready = vm.state.value as StationStopsViewModel.State.Ready
+        assertEquals(listOf("910GWEYBDGB", "910GWEYBDGE"), ready.stops.map { it.id })
+    }
+
+    @Test
+    fun `one record failing fails the page, not a page missing its stops`() = runTest {
+        val finder = FakeFinder(stops = { id ->
+            if (id == "910GWEYBDGE") throw TflException.RateLimited(null)
+            listOf(StopLocation(id, "Weybridge", 0.0, 0.0, emptyList(), clusterId = id))
+        })
+        val vm = StationStopsViewModel(
+            finder, "910GWEYBDGB", io = dispatcher, compute = dispatcher,
+            loadIndex = { weybridge },
+        )
+        advanceUntilIdle()
+        assertEquals(StationStopsViewModel.State.Failed(DeparturesUiState.Error.Kind.RATE_LIMITED), vm.state.value)
+    }
+
     @Test
     fun `a station with no departure stops says so, and a failed lookup can retry`() = runTest {
         assertEquals(

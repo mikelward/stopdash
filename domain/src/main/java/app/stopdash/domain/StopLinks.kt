@@ -77,6 +77,19 @@ private fun merged(stations: List<NearStation>): List<NearStation> =
     }
 
 /**
+ * The other ids TfL lists the station [id] under ([sameStation]: Weybridge's two records), for a page that
+ * opens it to ask for them too. Empty for an interchange, a stop the index doesn't hold, or a station
+ * under one id. Walks every station: on a worker only.
+ */
+@WorkerThread
+fun StationIndex.sameStationIds(id: String): List<String> {
+    val ownId = station(id)?.id ?: stationOf(id) ?: return emptyList()
+    if (ownId.startsWith("HUB", ignoreCase = true)) return emptyList()
+    val own = stations.firstOrNull { it.id == ownId } ?: return emptyList()
+    return stations.filter { it.id != ownId && it.id != id && sameStation(own, it) }.map { it.id }
+}
+
+/**
  * [StopLinks] for the stop [id]: a listed station, a platform listed under one ([StationIndex.stationOf]),
  * or an interchange (its members' lines, its members as [StopLinks.sameHub]). Nearby takes at most
  * [nearbyLimit] stations within [nearbyMeters], leaving out the stop's own interchange. [StopLinks.NONE] for a stop the index doesn't hold (a bus stop). Walks every station:

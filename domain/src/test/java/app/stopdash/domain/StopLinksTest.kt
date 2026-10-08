@@ -95,6 +95,23 @@ class StopLinksTest {
     }
 
     @Test
+    fun a_station_page_finds_the_other_ids_of_one_station() {
+        // Weybridge's two records: each names the other, so its page asks for both.
+        val a = IndexedStation("910GWEYBDGB", "Weybridge Rail Station", listOf("national-rail"), "", 51.36176, -0.45772)
+        val b = IndexedStation("910GWEYBDGE", "Weybridge Rail Station", listOf("national-rail"), "", 51.36176, -0.45772)
+        val weybridge = StationIndex(listOf(a, b))
+        assertEquals(listOf("910GWEYBDGE"), weybridge.sameStationIds("910GWEYBDGB"))
+        assertEquals(listOf("910GWEYBDGB"), weybridge.sameStationIds("910GWEYBDGE"))
+        // One id, an interchange, and a stop the index doesn't hold: nothing more to ask for.
+        assertEquals(emptyList<String>(), index.sameStationIds("940GZZLUEUS"))
+        assertEquals(emptyList<String>(), index.sameStationIds("HUBKGX"))
+        assertEquals(emptyList<String>(), index.sameStationIds("490000000X"))
+        // St Pancras's other record, from either one or a platform of the tube station beside it (none).
+        assertEquals(listOf("910GSTPADOM"), index.sameStationIds("910GSTPX"))
+        assertEquals(emptyList<String>(), index.sameStationIds("9400ZZLUKSX1"))
+    }
+
+    @Test
     fun a_platform_resolves_to_its_station() {
         assertEquals(listOf("northern", "victoria", "piccadilly"), index.linksOf("9400ZZLUKSX1").lines.map { it.id })
     }

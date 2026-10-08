@@ -167,6 +167,32 @@ class SearchResultsOffMainTest {
         assertTrue(vm.state.value is StationStopsViewModel.State.Ready)
     }
 
+    @Test
+    fun aStationsOtherRecordsAreFoundOnIo() {
+        // One station under two ids, no interchange: reading and walking the index waits on io, held here,
+        // so the main thread run to idle hasn't asked TfL for anything yet.
+        val twin = (1..2).map { IndexedStation("910GTWIN$it", "Upper Bezeta Rail Station", listOf("national-rail"), "", 51.5, -0.12) }
+        val ioScheduler = TestCoroutineScheduler()
+        val io = StandardTestDispatcher(ioScheduler)
+        val asked = mutableListOf<String>()
+        var indexRead = false
+        val vm = StationStopsViewModel(
+            Finder(stops = { id -> asked += id; listOf(StopLocation(id, "Upper Bezeta", 51.5, -0.12)) }),
+            "910GTWIN1", io = io, compute = compute, loadIndex = { indexRead = true; StationIndex(twin) },
+        )
+        mainIdle()
+        computeScheduler.advanceUntilIdle()
+        assertFalse("index read with io held", indexRead)
+        assertEquals(emptyList<String>(), asked)
+        assertEquals(StationStopsViewModel.State.Loading, vm.state.value)
+        repeat(3) {
+            ioScheduler.advanceUntilIdle()
+            releaseCompute()
+        }
+        assertEquals(listOf("910GTWIN1", "910GTWIN2"), asked)
+        assertTrue(vm.state.value is StationStopsViewModel.State.Ready)
+    }
+
     private val store = object : FavoritePlacesStore {
         override fun places(): Flow<FavoritePlacesSet> = flowOf(FavoritePlacesSet.Loaded(emptyList<FavoritePlace>()))
         override suspend fun save(place: FavoritePlace) {}

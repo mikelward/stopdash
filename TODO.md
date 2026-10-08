@@ -2721,10 +2721,10 @@ Builds on Phase 1's minimal line-status marking.
         bundled index.
     - [x] Back from a station opened from another's details returns to the station before it, as it was left
           (the last ten kept), and from the first to the line.
-    - [ ] **A station under several ids in no interchange opens them all** (Codex on #664): Weybridge is two
-          records, one place, no hub. Its details' board asks for both, but From and To open one id, as
-          the station search does (it folds the pair into one match). The station page and trip planning
-          would need to take several ids; an interchange's (St Pancras) already open its hub.
+    - [x] **A station under several ids in no interchange opens them all** (Codex on #664): Weybridge is two
+          records, one place, no hub. Its station page (From, a search) now asks for every id's stops.
+      - [ ] A trip planned **to** such a station still plans to the one id picked; the planner takes one
+            id per station, so the second record's platforms are reached only if TfL routes through it.
   - [x] **Favorite it**: a star on the stop's details adds it as a favorite place, through the editor
         filled in with the stop (maintainer, 2026-10-07: a favorite place, not its services pinned).
     - [ ] The star doesn't show a stop that is already a favorite place; matching one by position is open.

@@ -3202,7 +3202,14 @@ class MainActivity : ComponentActivity() {
             }
             val stopsModel: StationStopsViewModel = viewModel(
                 factory = viewModelFactory {
-                    initializer { StationStopsViewModel(stationFinder, stationId, warn = ::logDepartureWarning) }
+                    initializer {
+                        StationStopsViewModel(
+                            stationFinder,
+                            stationId,
+                            warn = ::logDepartureWarning,
+                            loadIndex = { StationIndexStore.load(applicationContext) },
+                        )
+                    }
                 },
             )
             val stops by stopsModel.state.collectAsStateWithLifecycle()
