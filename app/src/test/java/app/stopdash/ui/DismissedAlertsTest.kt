@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import app.stopdash.ThreadRecorder
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.LineAlert
@@ -43,7 +44,7 @@ class DismissedAlertsTest {
         val caller = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "caller") }.asCoroutineDispatcher()
         val worker = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }.asCoroutineDispatcher()
         try {
-            val read = mutableListOf<String>()
+            val read = ThreadRecorder()
             val status = LineStatus("99", 3, "Part Suspended", shown.fullText, underWay = Watched(listOf(shown, behind), read))
             val ended = DismissedAlert.ofLineStatus(LineStatus("99", 6, "Diversion", "Bus stop 'Gamma Road' will not be served."))
             val gone = mutableListOf<Set<DismissedAlert>>()
@@ -55,8 +56,8 @@ class DismissedAlertsTest {
             // The store lets go of only what the check saw, so one dismissed since stays stored too.
             assertEquals(listOf(setOf(identity(behind), ended)), written)
             assertEquals(listOf(app.stopdash.domain.DismissalMarks(7)), marks)
-            assertTrue(read.isNotEmpty())
-            assertEquals(setOf("worker"), read.toSet())
+            assertTrue(read.threads().isNotEmpty())
+            assertEquals(setOf("worker"), read.threads().toSet())
         } finally {
             caller.close()
             worker.close()
@@ -96,14 +97,14 @@ class DismissedAlertsTest {
     fun `a line alert's signature is built on the worker, never the caller's thread`() {
         // Its signature joins TfL's text, which grows with the alert (Codex, #603): built after the hop.
         val status = LineStatus("99", shown.severity, shown.description, shown.fullText)
-        val built = mutableListOf<String>()
+        val built = ThreadRecorder()
         val caller = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "caller") }.asCoroutineDispatcher()
         val worker = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }.asCoroutineDispatcher()
         val into = kotlinx.coroutines.flow.MutableStateFlow<Set<DismissedAlert>>(emptySet())
         try {
             runBlocking(caller) {
                 dismissAlertOf(store, worker, kotlinx.coroutines.flow.MutableStateFlow(false), {}, into) {
-                    built += Thread.currentThread().name.substringBefore(" @")
+                    built.note()
                     DismissedAlert.ofLineStatus(status)
                 }
             }
@@ -111,7 +112,7 @@ class DismissedAlertsTest {
             caller.close()
             worker.close()
         }
-        assertEquals(listOf("worker"), built)
+        assertEquals(listOf("worker"), built.threads())
         assertEquals(setOf(DismissedAlert.ofLineStatus(status)), into.value)
     }
 
@@ -126,7 +127,7 @@ class DismissedAlertsTest {
         )
         val alert = DismissedAlert.ofStopClosure(row)
         val other = DismissedAlert("HUBKGX", "No step-free access")
-        val read = mutableListOf<String>()
+        val read = ThreadRecorder()
         val into = kotlinx.coroutines.flow.MutableStateFlow<Set<DismissedAlert>>(ReadSet(setOf(other), read))
         val caller = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "caller") }.asCoroutineDispatcher()
         val worker = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }.asCoroutineDispatcher()
@@ -139,8 +140,8 @@ class DismissedAlertsTest {
             worker.close()
         }
         assertEquals(setOf(other, alert), into.value)
-        assertTrue(read.isNotEmpty())
-        assertEquals(setOf("worker"), read.toSet())
+        assertTrue(read.threads().isNotEmpty())
+        assertEquals(setOf("worker"), read.threads().toSet())
     }
 
     @Test
@@ -211,8 +212,8 @@ class DismissedAlertsTest {
 }
 
 // [items], noting the thread of each read in [read].
-private class ReadSet<T>(private val items: Set<T>, private val read: MutableList<String>) : AbstractSet<T>() {
-    private fun seen() { synchronized(read) { read += Thread.currentThread().name.substringBefore(" @") } }
+private class ReadSet<T>(private val items: Set<T>, private val read: ThreadRecorder) : AbstractSet<T>() {
+    private fun seen() { read.note() }
 
     override val size: Int get() = items.size.also { seen() }
 

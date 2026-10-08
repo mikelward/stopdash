@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import app.stopdash.ThreadRecorder
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.LineMap
@@ -447,7 +448,7 @@ class HomeLinesTest {
             lineNames = mapOf("northern" to "Northern"),
         )
         val place = app.stopdash.domain.FavoritePlace("p", app.stopdash.domain.FavoriteKind.CUSTOM, "Place", app.stopdash.domain.Coordinates(51.5308, -0.1238))
-        val readOn = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val readOn = ThreadRecorder()
         val warned = mutableListOf<String>()
         val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }
         try {
@@ -460,7 +461,7 @@ class HomeLinesTest {
                 app.stopdash.domain.FavoritePlacesSet.Discarded,
             )
             val lines = kotlinx.coroutines.runBlocking {
-                HomeLines.placeLines(sets, { index.also { readOn += Thread.currentThread().name } }, executor.asCoroutineDispatcher(), warned::add).toList()
+                HomeLines.placeLines(sets, { index.also { readOn.note() } }, executor.asCoroutineDispatcher(), warned::add).toList()
             }
             val northern = listOf(LineRef("northern", "Northern", "tube"))
             // Unreadable before any were read: none, marked unread. Read: the station's line. Unreadable again: the
@@ -475,8 +476,8 @@ class HomeLinesTest {
             }
             assertEquals(listOf(true), noIndex.map { it.unread })
             assertEquals(2, warned.size) // the two unreadable reads
-            assertTrue(readOn.isNotEmpty())
-            assertTrue(readOn.all { it.startsWith("worker") })
+            assertTrue(readOn.threads().isNotEmpty())
+            assertTrue(readOn.threads().all { it.startsWith("worker") })
         } finally {
             executor.shutdown()
         }
@@ -489,10 +490,10 @@ class HomeLinesTest {
         val journey = app.stopdash.domain.FavoriteJourney(
             app.stopdash.domain.JourneyEnd("a", "A"), app.stopdash.domain.JourneyEnd("b", "B"), "elizabeth", "Elizabeth line", "elizabeth-line",
         )
-        val readOn = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val readOn = ThreadRecorder()
         val journeys = object : AbstractList<app.stopdash.domain.FavoriteJourney>() {
             override val size get() = 2
-            override fun get(index: Int) = journey.also { readOn += Thread.currentThread().name }
+            override fun get(index: Int) = journey.also { readOn.note() }
         }
         val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }
         try {
@@ -500,8 +501,8 @@ class HomeLinesTest {
                 HomeLines.journeyLineIds(flowOf(journeys, null), executor.asCoroutineDispatcher()).toList()
             }
             assertEquals(listOf(setOf("elizabeth"), emptySet()), ids)
-            assertTrue(readOn.isNotEmpty())
-            assertTrue(readOn.all { it.startsWith("worker") })
+            assertTrue(readOn.threads().isNotEmpty())
+            assertTrue(readOn.threads().all { it.startsWith("worker") })
         } finally {
             executor.shutdown()
         }
@@ -510,11 +511,11 @@ class HomeLinesTest {
     @Test
     fun `the rider's stops are walked on the worker, and an unreadable set counts as none`() {
         // A trip's lines page collects this in composition; the walk over the starred set runs on the worker.
-        val readOn = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val readOn = ThreadRecorder()
         val row = app.stopdash.domain.StarredRow("940GZZLUKSX", "victoria", "southbound")
         val starred = object : AbstractSet<app.stopdash.domain.StarredRow>() {
             override val size get() = 1
-            override fun iterator(): Iterator<app.stopdash.domain.StarredRow> = listOf(row).iterator().also { readOn += Thread.currentThread().name }
+            override fun iterator(): Iterator<app.stopdash.domain.StarredRow> = listOf(row).iterator().also { readOn.note() }
         }
         val journey = app.stopdash.domain.FavoriteJourney(
             app.stopdash.domain.JourneyEnd("940GZZLUEUS", "Euston"), app.stopdash.domain.JourneyEnd("940GZZLUWLO", "Waterloo"), "northern",
@@ -526,8 +527,8 @@ class HomeLinesTest {
             }
             assertEquals(listOf(setOf("940GZZLUKSX", "940GZZLUEUS", "940GZZLUWLO")), stopsOf(app.stopdash.domain.StarredRowSet.Loaded(starred)))
             assertEquals(listOf(setOf("940GZZLUEUS", "940GZZLUWLO")), stopsOf(app.stopdash.domain.StarredRowSet.Unavailable))
-            assertTrue(readOn.isNotEmpty())
-            assertTrue(readOn.all { it.startsWith("worker") })
+            assertTrue(readOn.threads().isNotEmpty())
+            assertTrue(readOn.threads().all { it.startsWith("worker") })
         } finally {
             executor.shutdown()
         }

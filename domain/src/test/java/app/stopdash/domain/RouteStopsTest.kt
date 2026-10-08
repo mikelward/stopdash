@@ -768,14 +768,14 @@ class RouteStopsTest {
         val caller = Executors.newSingleThreadExecutor { Thread(it, "test-caller") }.asCoroutineDispatcher()
         val worker = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }.asCoroutineDispatcher()
         try {
-            val ranOn = mutableListOf<String>()
+            val ranOn = ThreadRecorder()
             val source = object : RouteSequenceSource, StopAreaSource {
                 override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
-                    ranOn += Thread.currentThread().name
+                    ranOn.note()
                     return bus
                 }
                 override suspend fun stopAreaPoles(areaId: String): List<StopLocation> {
-                    ranOn += Thread.currentThread().name
+                    ranOn.note()
                     return listOf(pole)
                 }
             }
@@ -783,7 +783,7 @@ class RouteStopsTest {
                 source,
                 compute = worker,
                 stations = {
-                    ranOn += Thread.currentThread().name
+                    ranOn.note()
                     emptyList()
                 },
                 io = kotlinx.coroutines.Dispatchers.Unconfined,
@@ -794,9 +794,9 @@ class RouteStopsTest {
                 repository.loadPoles("490G00000001")
             }
             // The station index, both directions of the line, and the stop area.
-            assertEquals(4, ranOn.size)
+            assertEquals(4, ranOn.threads().size)
             // Debug coroutines append " @coroutine#n" to the name; the thread is what matters.
-            assertEquals(setOf("test-worker"), ranOn.mapTo(HashSet()) { it.substringBefore(" @") })
+            assertEquals(setOf("test-worker"), ranOn.threads().toSet())
         } finally {
             caller.close()
             worker.close()
@@ -810,20 +810,20 @@ class RouteStopsTest {
         val caller = Executors.newSingleThreadExecutor { Thread(it, "test-caller") }.asCoroutineDispatcher()
         val worker = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }.asCoroutineDispatcher()
         try {
-            val loggedOn = mutableListOf<String>()
+            val loggedOn = ThreadRecorder()
             val repository = RouteStopsRepository(
                 source = object : RouteSequenceSource {
                     override suspend fun routeSequence(lineId: String, direction: String) = labeledBus
                 },
-                warn = { loggedOn += Thread.currentThread().name },
+                warn = { loggedOn.note() },
                 compute = worker,
             )
             runBlocking(caller) {
                 repository.reportUnresolved("43", "P", RouteStops.Resolution.NoMatch, "Elsewhere")
                 repository.reportMisses(listOf(RouteMiss("43", "P", RouteStops.Resolution.NoMatch, "Elsewhere")))
             }
-            assertEquals(2, loggedOn.size)
-            assertEquals(setOf("test-worker"), loggedOn.mapTo(HashSet()) { it.substringBefore(" @") })
+            assertEquals(2, loggedOn.threads().size)
+            assertEquals(setOf("test-worker"), loggedOn.threads().toSet())
         } finally {
             caller.close()
             worker.close()

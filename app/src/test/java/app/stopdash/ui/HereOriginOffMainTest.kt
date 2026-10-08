@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createComposeRule
+import app.stopdash.ThreadRecorder
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.NearbySelection
@@ -64,12 +65,12 @@ class HereOriginOffMainTest {
     @Test
     fun the_stops_are_only_weighed_on_the_worker_thread() {
         // The hidden modes are read once per line weighed: each read notes its thread.
-        val reads = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val reads = ThreadRecorder()
         val hidden = object : AbstractSet<String>() {
             private val modes = setOf("bus")
             override val size: Int get() = modes.size
             override fun iterator(): Iterator<String> {
-                reads += Thread.currentThread().name.substringBefore(" @")
+                reads.note()
                 return modes.iterator()
             }
         }
@@ -83,8 +84,8 @@ class HereOriginOffMainTest {
         }
         // Buses hidden: only the tube stop starts the trip.
         assertEquals(listOf("B"), result?.map { it.id })
-        assertTrue(reads.isNotEmpty())
-        assertEquals(setOf("origin-worker"), reads.toSet())
+        assertTrue(reads.threads().isNotEmpty())
+        assertEquals(setOf("origin-worker"), reads.threads().toSet())
     }
 
     @Test

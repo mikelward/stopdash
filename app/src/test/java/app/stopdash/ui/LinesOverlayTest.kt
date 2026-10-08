@@ -21,6 +21,7 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performScrollToNode
+import app.stopdash.ThreadRecorder
 import app.stopdash.data.TflRouteSequenceDto
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.LineSequence
@@ -723,8 +724,8 @@ class LinesOverlayTest {
     /** A made-up bus line whose stop 490X sits in area 490G0, with [poles] there. */
     private fun poleRepository(
         poles: List<app.stopdash.domain.StopLocation>,
-        asked: MutableList<String> = mutableListOf(),
-        zones: MutableList<String> = mutableListOf(),
+        asked: ThreadRecorder = ThreadRecorder(),
+        zones: ThreadRecorder = ThreadRecorder(),
     ) = RouteStopsRepository(
         object : RouteSequenceSource, app.stopdash.domain.StopAreaSource, app.stopdash.domain.StopZoneSource {
             override suspend fun routeSequence(lineId: String, direction: String) = LineSequence(
@@ -733,11 +734,11 @@ class LinesOverlayTest {
                 stopAreas = mapOf("490X" to "490G0"),
             )
             override suspend fun stopAreaPoles(areaId: String): List<app.stopdash.domain.StopLocation> {
-                synchronized(asked) { asked += Thread.currentThread().name }
+                asked.note()
                 return poles
             }
             override suspend fun stopZone(stopId: String): String {
-                synchronized(zones) { zones += Thread.currentThread().name }
+                zones.note()
                 return "1"
             }
         },
@@ -797,7 +798,7 @@ class LinesOverlayTest {
         val worker = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
             .asCoroutineDispatcher()
         try {
-            val asked = mutableListOf<String>()
+            val asked = ThreadRecorder()
             showStop(
                 poleRepository(
                     listOf(app.stopdash.domain.StopLocation("490X", "Somewhere Road", 51.5, -0.12, stopLetter = "H")),
@@ -808,7 +809,8 @@ class LinesOverlayTest {
             composeRule.waitUntil(timeoutMillis = 5_000) {
                 composeRule.onAllNodesWithTag("lineStopPole").fetchSemanticsNodes().isNotEmpty()
             }
-            assertTrue("asked on $asked", asked.isNotEmpty() && asked.all { it.startsWith("test-worker") })
+            val askedOn = asked.threads()
+            assertTrue("asked on $askedOn", askedOn.isNotEmpty() && askedOn.all { it.startsWith("test-worker") })
         } finally {
             worker.close()
         }
@@ -819,8 +821,8 @@ class LinesOverlayTest {
         val worker = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
             .asCoroutineDispatcher()
         try {
-            val poles = mutableListOf<String>()
-            val zones = mutableListOf<String>()
+            val poles = ThreadRecorder()
+            val zones = ThreadRecorder()
             showStop(
                 poleRepository(emptyList(), poles, zones),
                 line = LineRef("victoria", "Victoria", "tube"),
@@ -835,8 +837,9 @@ class LinesOverlayTest {
             // Its step-free line is held, blank where no table says how step-free it is.
             composeRule.onNodeWithTag("lineStopAccessSlot").assertExists()
             // A station has no letters, so its poles aren't asked for; its zone is, on the worker.
-            assertTrue("poles asked on $poles", poles.isEmpty())
-            assertTrue("zone asked on $zones", zones.size == 1 && zones.all { it.startsWith("test-worker") })
+            assertTrue("poles asked on ${poles.threads()}", poles.threads().isEmpty())
+            val zonedOn = zones.threads()
+            assertTrue("zone asked on $zonedOn", zonedOn.size == 1 && zonedOn.all { it.startsWith("test-worker") })
         } finally {
             worker.close()
         }
@@ -844,21 +847,21 @@ class LinesOverlayTest {
 
     @Test
     fun a_pier_asks_for_no_fare_zone() {
-        val zones = mutableListOf<String>()
-        val poles = mutableListOf<String>()
+        val zones = ThreadRecorder()
+        val poles = ThreadRecorder()
         showStop(
             poleRepository(emptyList(), poles, zones),
             line = LineRef("rb1", "RB1", "river-bus"),
             stop = LineStopRef("930GWMP", "Westminster Pier"),
         )
         composeRule.onNodeWithTag("lineStopZone").assertDoesNotExist()
-        assertTrue("zone asked on $zones", zones.isEmpty())
-        assertTrue("poles asked on $poles", poles.isEmpty())
+        assertTrue("zone asked on ${zones.threads()}", zones.threads().isEmpty())
+        assertTrue("poles asked on ${poles.threads()}", poles.threads().isEmpty())
     }
 
     @Test
     fun a_tube_station_opened_beside_a_pier_shows_its_zone() {
-        val zones = mutableListOf<String>()
+        val zones = ThreadRecorder()
         showStop(
             poleRepository(emptyList(), zones = zones),
             line = LineRef("rb1", "RB1", "river-bus"),
@@ -868,7 +871,7 @@ class LinesOverlayTest {
             composeRule.onAllNodesWithTag("lineStopZone").fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithTag("lineStopZone").assertTextEquals("Zone 1")
-        assertEquals(1, zones.size)
+        assertEquals(1, zones.threads().size)
     }
 
     @Test
@@ -911,7 +914,7 @@ class LinesOverlayTest {
 
     @Test
     fun a_bus_stop_asks_for_no_fare_zone() {
-        val zones = mutableListOf<String>()
+        val zones = ThreadRecorder()
         showStop(
             poleRepository(
                 listOf(app.stopdash.domain.StopLocation("490X", "Somewhere Road", 51.5, -0.12, stopLetter = "H")),
@@ -920,7 +923,7 @@ class LinesOverlayTest {
         )
         composeRule.onNodeWithTag("lineStopPole").assertTextContains("Stop H", substring = true)
         composeRule.onNodeWithTag("lineStopZone").assertDoesNotExist()
-        assertTrue("zone asked on $zones", zones.isEmpty())
+        assertTrue("zone asked on ${zones.threads()}", zones.threads().isEmpty())
     }
 
     @Test

@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import app.stopdash.ThreadRecorder
 import app.stopdash.domain.LiftMap
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LiftStop
@@ -44,16 +45,16 @@ class StopAccessTest {
         val pool = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
         try {
             val base = pool.asCoroutineDispatcher()
-            val ranOn = mutableSetOf<String>()
+            val ranOn = ThreadRecorder()
             val worker = object : CoroutineDispatcher() {
                 override fun dispatch(context: CoroutineContext, block: Runnable) =
-                    base.dispatch(context) { synchronized(ranOn) { ranOn += Thread.currentThread().name }; block.run() }
+                    base.dispatch(context) { ranOn.note(); block.run() }
             }
             val access = runBlocking { stopAccessOn(worker, table, setOf("HUBX-Lift-A"), "940GX", StopLinks(bothLines, emptyList(), emptyList()), "somewhere", "tube") }
             // Opened under an id the index files under the station, it reads the station's own ids.
             val links = StopLinks(bothLines, emptyList(), emptyList(), linesById = mapOf("940GX" to setOf("somewhere", "elsewhere")))
             assertEquals(StepFreeLevel.LEVEL, runBlocking { stopAccessOn(worker, table, emptySet(), "9400ZZX1", links, "somewhere", "tube") }.level)
-            assertEquals(setOf("test-worker"), synchronized(ranOn) { ranOn.toSet() })
+            assertEquals(setOf("test-worker"), ranOn.threads().toSet())
             assertEquals(StepFreeLevel.NONE, access.level)
         } finally {
             pool.shutdown()

@@ -1,5 +1,6 @@
 package app.stopdash.watch
 
+import app.stopdash.ThreadRecorder
 import java.io.IOException
 import java.util.concurrent.Executors
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -18,21 +19,21 @@ class WatchInstallOfferTest {
         val unreachable: Set<String> = emptySet(),
     ) : WatchNodes {
         val opened = mutableListOf<String>()
-        val threads = mutableListOf<String>()
+        val threads = ThreadRecorder()
 
         override suspend fun connected(): Set<String> {
-            threads += Thread.currentThread().name
+            threads.note()
             if (failRead) throw IOException("no Data Layer")
             return connected
         }
 
         override suspend fun withApp(): Set<String> {
-            threads += Thread.currentThread().name
+            threads.note()
             return withApp
         }
 
         override suspend fun openPlayStore(nodeId: String) {
-            threads += Thread.currentThread().name
+            threads.note()
             if (nodeId in unreachable) throw IOException("out of reach")
             opened += nodeId
         }
@@ -53,8 +54,7 @@ class WatchInstallOfferTest {
                 offer.refresh()
                 assertTrue(offer.install())
             }
-            // Debug coroutines append " @coroutine#n" to the name; the thread is what matters.
-            assertEquals(List(5) { "test-worker" }, nodes.threads.map { it.substringBefore(" @") })
+            assertEquals(List(5) { "test-worker" }, nodes.threads.threads())
         } finally {
             caller.close()
             worker.close()

@@ -1,5 +1,6 @@
 package app.stopdash.data
 
+import app.stopdash.ThreadRecorder
 import app.stopdash.domain.AppSettings
 import app.stopdash.domain.FontSizeSettings
 import app.stopdash.ui.HomeLines
@@ -89,10 +90,10 @@ class StoredSettingUpdateTest {
         try {
             val stored = MutableSharedFlow<Set<String>>(replay = 1).also { it.tryEmit(emptySet()) }
             val holder = holder(scope, stored, mutableListOf())
-            val ranOn = mutableListOf<String>()
-            holder.update { ranOn += Thread.currentThread().name; HomeLines.toggle(it, "dlr") }
+            val ranOn = ThreadRecorder()
+            holder.update { ranOn.note(); HomeLines.toggle(it, "dlr") }
             runBlocking { withTimeout(5_000) { holder.changes.first { "dlr" in it } } }
-            assertEquals(listOf("settings-worker"), ranOn.map { it.substringBefore(" @") })
+            assertEquals(listOf("settings-worker"), ranOn.threads())
         } finally {
             scope.cancel()
             executor.shutdown()

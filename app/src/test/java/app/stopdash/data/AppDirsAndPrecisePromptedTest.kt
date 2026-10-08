@@ -2,6 +2,7 @@ package app.stopdash.data
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import app.stopdash.ThreadRecorder
 import java.io.File
 import java.util.concurrent.Executors
 import kotlin.coroutines.CoroutineContext
@@ -43,31 +44,31 @@ class AppDirsAndPrecisePromptedTest {
         dir.deleteRecursively()
     }
 
-    private fun recordingWorker(ranOn: MutableSet<String>): Pair<CoroutineDispatcher, () -> Unit> {
+    private fun recordingWorker(ranOn: ThreadRecorder): Pair<CoroutineDispatcher, () -> Unit> {
         val pool = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
         val base = pool.asCoroutineDispatcher()
         val worker = object : CoroutineDispatcher() {
             override fun dispatch(context: CoroutineContext, block: Runnable) =
-                base.dispatch(context) { ranOn += Thread.currentThread().name; block.run() }
+                base.dispatch(context) { ranOn.note(); block.run() }
         }
         return worker to { pool.shutdown() }
     }
 
     @Test
     fun `the precise flag is read and written on the worker, and a mark is seen at once`() {
-        val ranOn = mutableSetOf<String>()
-        val readOn = mutableSetOf<String>()
+        val ranOn = ThreadRecorder()
+        val readOn = ThreadRecorder()
         val (worker, stop) = recordingWorker(ranOn)
         try {
-            val prefs = { readOn += Thread.currentThread().name.substringBefore(" @"); context.getSharedPreferences("test.precise", Context.MODE_PRIVATE) }
+            val prefs = { readOn.note(); context.getSharedPreferences("test.precise", Context.MODE_PRIVATE) }
             prefs().edit().clear().commit()
             readOn.clear()
             val flag = PrecisePrompted(prefs, worker)
             assertFalse(runBlocking { flag.get() })
             runBlocking { flag.mark() }
             assertTrue(runBlocking { flag.get() })
-            assertEquals(setOf("test-worker"), readOn)
-            assertEquals(setOf("test-worker"), ranOn)
+            assertEquals(setOf("test-worker"), readOn.threads().toSet())
+            assertEquals(setOf("test-worker"), ranOn.threads().toSet())
             // Kept: a new process reads it back.
             assertTrue(runBlocking { PrecisePrompted(prefs, worker).get() })
         } finally {

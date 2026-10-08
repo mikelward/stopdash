@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import app.stopdash.R
+import app.stopdash.ThreadRecorder
 import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.CallingPortion
@@ -282,7 +283,7 @@ class TripViewModelTest {
         // a worker resuming onto Main after this test reset it broke whichever test ran next.
         val store = ViewModelStore()
         try {
-            val threads = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val threads = ThreadRecorder()
             val trip = ViewModelProvider.create(
                 store,
                 viewModelFactory {
@@ -291,7 +292,7 @@ class TripViewModelTest {
                             FakePlanner(listOf(onFootRoute)), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
                             clock = { now }, plans = TripPlans(), io = worker,
                             stations = {
-                                threads += Thread.currentThread().name.substringBefore(" @")
+                                threads.note()
                                 onFootIndex(150.0)
                             },
                         )
@@ -300,8 +301,8 @@ class TripViewModelTest {
             )[TripViewModel::class]
             trip.refresh()
             assertEquals(setOf(onFootWalk), trip.state.first { it.changesOnFoot.isNotEmpty() }.changesOnFoot)
-            assertTrue(threads.isNotEmpty())
-            assertEquals(setOf("worker"), threads.toSet())
+            assertTrue(threads.threads().isNotEmpty())
+            assertEquals(setOf("worker"), threads.threads().toSet())
         } finally {
             // Cancel the model, let the worker finish what it holds, then drain what it handed back to
             // Main while this test's Main is still set.

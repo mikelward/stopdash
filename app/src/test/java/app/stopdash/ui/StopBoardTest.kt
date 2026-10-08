@@ -9,6 +9,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.junit4.createComposeRule
+import app.stopdash.ThreadRecorder
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.StopArrivals
@@ -202,7 +203,7 @@ class StopBoardTest {
         val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "board-worker") }
         val worker = executor.asCoroutineDispatcher()
         try {
-            val reads = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val reads = ThreadRecorder()
             val departures = StopDepartures(loaded(NotingList(board, reads)), now, onRefresh = {})
             var view: StopBoardView? = null
             composeRule.setContent {
@@ -212,8 +213,8 @@ class StopBoardTest {
             }
             composeRule.waitUntilWorked(executor) { view != null }
             assertEquals(2, view!!.line.size)
-            assertTrue(reads.isNotEmpty())
-            assertEquals(setOf("board-worker"), reads.toSet())
+            assertTrue(reads.threads().isNotEmpty())
+            assertEquals(setOf("board-worker"), reads.threads().toSet())
         } finally {
             executor.shutdown()
         }
@@ -475,11 +476,11 @@ class StopBoardTest {
     }
 
     /** [items], noting the thread of each pass over it in [reads]. */
-    private class NotingList<T>(private val items: List<T>, private val reads: MutableList<String>) : AbstractList<T>() {
+    private class NotingList<T>(private val items: List<T>, private val reads: ThreadRecorder) : AbstractList<T>() {
         override val size: Int get() = items.size
         override fun get(index: Int): T = items[index]
         override fun iterator(): Iterator<T> {
-            reads += Thread.currentThread().name.substringBefore(" @")
+            reads.note()
             return items.iterator()
         }
     }

@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import app.stopdash.ThreadRecorder
 import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.Departure
 import kotlinx.coroutines.CoroutineDispatcher
@@ -1047,7 +1048,7 @@ class MainViewModelTest {
         val worker = TestWorker("worker")
         val store = androidx.lifecycle.ViewModelStore()
         try {
-            val read = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val read = ThreadRecorder()
             val alerts = listOf(
                 app.stopdash.domain.LineAlert(6, "Severe Delays", "Severe delays northbound."),
                 app.stopdash.domain.LineAlert(9, "Minor Delays", "Minor delays southbound."),
@@ -1064,12 +1065,12 @@ class MainViewModelTest {
             vm.state.first { it is DeparturesUiState.Loaded && !it.statusPending && it.pendingStops.isEmpty() }
             // Let the worker and Main hand the load's settling back and forth until it has run.
             repeat(50) {
-                if (read.isNotEmpty()) return@repeat
+                if (read.threads().isNotEmpty()) return@repeat
                 worker.flush()
                 advanceUntilIdle()
             }
-            assertTrue(read.isNotEmpty())
-            assertEquals(setOf("worker"), read.toSet())
+            assertTrue(read.threads().isNotEmpty())
+            assertEquals(setOf("worker"), read.threads().toSet())
         } finally {
             store.clear()
             worker.close(this)
@@ -6921,7 +6922,7 @@ class MainViewModelTest {
         val worker = TestWorker("reconcile-worker")
         val store = androidx.lifecycle.ViewModelStore()
         try {
-            val reads = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val reads = ThreadRecorder()
             val newEager = NotingList(eagerOf("E" to "bus"), reads)
             val client = twoStopClient()
             val vm = androidx.lifecycle.ViewModelProvider.create(
@@ -6941,8 +6942,8 @@ class MainViewModelTest {
                 advanceUntilIdle()
             }
             assertEquals(listOf("E"), shownIds(vm))
-            assertTrue(reads.isNotEmpty())
-            assertEquals(setOf("reconcile-worker"), reads.toSet())
+            assertTrue(reads.threads().isNotEmpty())
+            assertEquals(setOf("reconcile-worker"), reads.threads().toSet())
         } finally {
             store.clear()
             worker.close(this)
@@ -6979,7 +6980,7 @@ class MainViewModelTest {
             }
             val opened = cards.picked.value.loads[fartherPlace.key] as FartherLoad.Open
             assertEquals(0.0, opened.distanceMeters.getValue("MA"), 0.001)
-            val reads = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val reads = ThreadRecorder()
             cards.retain(NotingList(listOf(fartherPlace), reads), Coordinates(0.001, 0.0))
             // Nothing is worked out on the caller's thread: the card stands as it was until the worker answers.
             assertSame(opened, cards.picked.value.loads[fartherPlace.key])
@@ -6990,8 +6991,8 @@ class MainViewModelTest {
             }
             val moved = cards.picked.value.loads[fartherPlace.key] as FartherLoad.Open
             assertTrue("measured from the new fix: ${moved.distanceMeters}", moved.distanceMeters.getValue("MA") > 100.0)
-            assertTrue(reads.isNotEmpty())
-            assertEquals(setOf("retain-worker"), reads.toSet())
+            assertTrue(reads.threads().isNotEmpty())
+            assertEquals(setOf("retain-worker"), reads.threads().toSet())
         } finally {
             store.clear()
             worker.close(this)
@@ -7005,7 +7006,7 @@ class MainViewModelTest {
         val worker = TestWorker("remeasure-worker")
         val store = androidx.lifecycle.ViewModelStore()
         try {
-            val reads = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val reads = ThreadRecorder()
             val stops = NotingList(listOf(StopRef("E", "E"), StopRef("MA", "MA")), reads)
             val vm = androidx.lifecycle.ViewModelProvider.create(
                 store,
@@ -7036,8 +7037,8 @@ class MainViewModelTest {
             worker.flush()
             advanceUntilIdle()
             assertEquals(mapOf("E" to 900.0, "MA" to 100.0), vm.distanceMeters)
-            assertTrue(reads.isNotEmpty())
-            assertEquals(setOf("remeasure-worker"), reads.toSet())
+            assertTrue(reads.threads().isNotEmpty())
+            assertEquals(setOf("remeasure-worker"), reads.threads().toSet())
         } finally {
             store.clear()
             worker.close(this)
@@ -7082,11 +7083,11 @@ class MainViewModelTest {
     }
 
     /** [items], noting the thread of each pass over it in [reads]. */
-    private class NotingList<T>(private val items: List<T>, private val reads: MutableList<String>) : AbstractList<T>() {
+    private class NotingList<T>(private val items: List<T>, private val reads: ThreadRecorder) : AbstractList<T>() {
         override val size: Int get() = items.size
         override fun get(index: Int): T = items[index]
         override fun iterator(): Iterator<T> {
-            reads += Thread.currentThread().name.substringBefore(" @")
+            reads.note()
             return items.iterator()
         }
     }

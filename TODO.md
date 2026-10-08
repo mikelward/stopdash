@@ -139,11 +139,14 @@ exercises the whole spine the widget later renders from.
       work; smaller loops the UI still calls in composition (a row's `Countdown.entries`, and the like)
       aren't marked yet, so `WorkerThreadCall` can't see them. Mark each as its screen moves off the
       main thread, its calls joining the baseline until then.
-- [ ] **One thread-safe recorder for the off-main tests.** About twenty tests note the thread their
-      work ran on in a plain list the worker writes and the test thread reads (`reads +=
-      Thread.currentThread().name`), which can throw `ConcurrentModificationException` when the read
-      catches a write: `ShownJourneysOffMainTest` did on CI (#676's run). It was fixed with a guard; a
-      shared recorder (a synchronized list with a `threads()` read) would close the rest at once.
+- [x] **One thread-safe recorder for the off-main tests.** The tests that note the thread their work
+      ran on share one `ThreadRecorder` (app and domain test sources): notes and reads under one lock, so
+      a read never catches a write (`ShownJourneysOffMainTest` threw `ConcurrentModificationException` on
+      CI, #676's run).
+  - [ ] A few tests still collect `Thread` objects rather than names in a list a worker writes
+        (`MainViewModelTest`'s `walked`, `TripViewModelTest`'s `ranOn`, `LinkedTextOffMainTest`,
+        `KtorDarwinClientTest`, `JourneyPlannerTest`, the domain's `StopClosureCacheTest`): the same race,
+        for the same recorder, noting the name instead, once each is read.
 - [ ] **Decode Lines…'s saved state off the main thread** (Codex on #678, #679). Compose runs
       `Saver.save`/`restore` on the main thread with no dispatcher to hop to, and two savers walk what they
       hold there: `LineStopRefSaver` splits each saved stop's fields (and maps a v3 save's modes to a cue),

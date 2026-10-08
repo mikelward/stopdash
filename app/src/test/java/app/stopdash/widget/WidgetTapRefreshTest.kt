@@ -8,6 +8,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.testing.TestListenableWorkerBuilder
 import androidx.work.testing.WorkManagerTestInitHelper
+import app.stopdash.ThreadRecorder
 import app.stopdash.data.WatchRefreshOutcome
 import java.time.Instant
 import java.util.concurrent.Executors
@@ -132,14 +133,14 @@ class WidgetTapRefreshTest {
         val pool = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
         try {
             val worker = pool.asCoroutineDispatcher()
-            val redrawnOn = mutableListOf<String>()
-            val redraw: suspend (Context) -> Unit = { redrawnOn += Thread.currentThread().name.substringBefore(" @") }
+            val redrawnOn = ThreadRecorder()
+            val redraw: suspend (Context) -> Unit = { redrawnOn.note() }
             runBlocking { requestWidgetRefresh(context, worker, redraw) }
             // One refresh enqueued, whatever state it's reached: the test WorkManager may already have
             // run it (with no stored snapshot it ends at once and drops "Refreshing…"), so neither its
             // state nor the note is asserted here; the note's own tests cover it.
             assertEquals(1, WorkManager.getInstance(context).getWorkInfosForUniqueWork(WIDGET_TAP_REFRESH_WORK).get().size)
-            assertEquals(listOf("test-worker"), redrawnOn)
+            assertEquals(listOf("test-worker"), redrawnOn.threads())
         } finally {
             pool.shutdown()
         }

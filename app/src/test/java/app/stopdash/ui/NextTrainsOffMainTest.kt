@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createComposeRule
+import app.stopdash.ThreadRecorder
 import app.stopdash.domain.Departure
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
@@ -224,7 +225,7 @@ class NextTrainsOffMainTest {
         val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "trains-worker") }
         val worker = executor.asCoroutineDispatcher()
         try {
-            val reads = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val reads = ThreadRecorder()
             val shown = ActiveTripTracker.NextBoard(ride, NotingList(listOf(train(3), train(5)), reads), fetchedAt = now)
             val repository = repository()
             var next: NextTrains? = null
@@ -235,19 +236,19 @@ class NextTrainsOffMainTest {
             }
             composeRule.waitUntilWorked(executor) { next?.trains?.isNotEmpty() == true }
             assertEquals(listOf(at(3), at(5)), times(next!!))
-            assertTrue(reads.isNotEmpty())
-            assertEquals(setOf("trains-worker"), reads.toSet())
+            assertTrue(reads.threads().isNotEmpty())
+            assertEquals(setOf("trains-worker"), reads.threads().toSet())
         } finally {
             executor.shutdown()
         }
     }
 
     /** [items], noting the thread of each pass over it in [reads]. */
-    private class NotingList<T>(private val items: List<T>, private val reads: MutableList<String>) : AbstractList<T>() {
+    private class NotingList<T>(private val items: List<T>, private val reads: ThreadRecorder) : AbstractList<T>() {
         override val size: Int get() = items.size
         override fun get(index: Int): T = items[index]
         override fun iterator(): Iterator<T> {
-            reads += Thread.currentThread().name.substringBefore(" @")
+            reads.note()
             return items.iterator()
         }
     }

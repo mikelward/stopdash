@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import app.stopdash.ThreadRecorder
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DismissedAlert
@@ -251,7 +252,7 @@ class RouteDisruptionChecksTest {
                     mapOf("b1" to "Alpha Road", "b2" to "Example Street", "b3" to "Gamma Road", "b4" to "Beta Road"),
                 ),
             )
-            val read = mutableListOf<String>()
+            val read = ThreadRecorder()
             val alerts = listOf(
                 app.stopdash.domain.LineAlert(6, "Diversion", "Bus stop 'Alpha Road' will not be served."),
                 app.stopdash.domain.LineAlert(6, "Diversion", "Bus stop 'Beta Road' will not be served."),
@@ -261,8 +262,8 @@ class RouteDisruptionChecksTest {
             dismissed = WatchedSet(setOf(DismissedAlert("line:elsewhere", "Minor Delays")), read)
             val found = kotlinx.coroutines.runBlocking(caller) { checks.check(busTrip, TripProgress.Waiting(bus, at(5)), emptyMap()) }
             assertEquals(listOf("Bus stop 'Beta Road' will not be served."), found.signals.filterIsInstance<RouteDisruption.Signal.Line>().map { it.status.fullText })
-            assertTrue(read.isNotEmpty())
-            assertEquals(setOf("worker"), read.toSet())
+            assertTrue(read.threads().isNotEmpty())
+            assertEquals(setOf("worker"), read.threads().toSet())
         } finally {
             caller.close()
             worker.close()
@@ -523,8 +524,8 @@ class RouteDisruptionChecksTest {
 }
 
 // [items], noting the thread of each read in [read], as [Watched] does for a list.
-private class WatchedSet<T>(private val items: Set<T>, private val read: MutableList<String>) : AbstractSet<T>() {
-    private fun seen() { synchronized(read) { read += Thread.currentThread().name.substringBefore(" @") } }
+private class WatchedSet<T>(private val items: Set<T>, private val read: ThreadRecorder) : AbstractSet<T>() {
+    private fun seen() { read.note() }
 
     override val size: Int get() = items.size.also { seen() }
 

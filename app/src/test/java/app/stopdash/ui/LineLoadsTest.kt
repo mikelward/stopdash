@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createComposeRule
+import app.stopdash.ThreadRecorder
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.RouteSequenceSource
@@ -110,13 +111,13 @@ class LineLoadsTest {
         val worker = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }.asCoroutineDispatcher()
         try {
             // The repository's clock is read as a held route is judged current: recorded wherever it runs.
-            val threads = mutableListOf<String>()
+            val threads = ThreadRecorder()
             val at = Instant.parse("2026-09-30T08:00:00Z")
             val source = object : RouteSequenceSource {
                 override suspend fun routeSequence(lineId: String, direction: String) = route
             }
             val repository = RouteStopsRepository(source, clock = {
-                synchronized(threads) { threads += Thread.currentThread().name }
+                threads.note()
                 at
             })
             var now by mutableStateOf(at)
@@ -127,13 +128,14 @@ class LineLoadsTest {
                 }
             }
             composeRule.waitUntilWorked(worker.executor) { loads?.sequences?.get("1") != null }
-            synchronized(threads) { threads.clear() }
+            threads.clear()
             // The hourly recheck judges the held route; it's still current, so nothing loads again.
             now = now.plus(Duration.ofHours(1))
             composeRule.waitForIdle()
-            composeRule.waitUntil("recheck", timeoutMillis = 5_000) { synchronized(threads) { threads.isNotEmpty() } }
+            composeRule.waitUntil("recheck", timeoutMillis = 5_000) { threads.threads().isNotEmpty() }
             composeRule.waitForIdle()
-            assertTrue("judged on $threads", synchronized(threads) { threads.all { it.startsWith("test-worker") } })
+            val judged = threads.threads()
+            assertTrue("judged on $judged", judged.all { it.startsWith("test-worker") })
             assertTrue(loads!!.loading.isEmpty())
         } finally {
             worker.close()
@@ -145,14 +147,14 @@ class LineLoadsTest {
         val worker = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }.asCoroutineDispatcher()
         try {
             val at = Instant.parse("2026-09-30T08:00:00Z")
-            val reads = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val reads = ThreadRecorder()
             val leg = app.stopdash.domain.TripLeg("tube", "red", "Red", "A", "A", "C", "C", at, at.plusSeconds(600))
             val routes = object : AbstractList<app.stopdash.domain.TripRoute>() {
                 private val items = listOf(app.stopdash.domain.TripRoute(listOf(leg)))
                 override val size: Int get() = items.size
                 override fun get(index: Int) = items[index]
                 override fun iterator(): Iterator<app.stopdash.domain.TripRoute> {
-                    reads += Thread.currentThread().name.substringBefore(" @")
+                    reads.note()
                     return items.iterator()
                 }
             }
@@ -166,8 +168,8 @@ class LineLoadsTest {
             }
             composeRule.waitUntilWorked(worker.executor) { lines?.isNotEmpty() == true }
             assertEquals(listOf("red"), lines)
-            assertTrue(reads.isNotEmpty())
-            assertEquals(setOf("test-worker"), reads.toSet())
+            assertTrue(reads.threads().isNotEmpty())
+            assertEquals(setOf("test-worker"), reads.threads().toSet())
         } finally {
             worker.close()
         }
