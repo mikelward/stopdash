@@ -52,7 +52,7 @@ class UsageEventTest {
     @Test
     fun `a reveal names its mode group, never a mode id outside them`() {
         assertEquals(mapOf("what" to "farther_place", "mode" to "tube"), UsageEvent.FartherPlace(listOf("dlr")).params)
-        assertEquals(mapOf("what" to "farther_place", "mode" to "train"), UsageEvent.FartherPlace(listOf("Elizabeth-Line", "tube")).params)
+        assertEquals(mapOf("what" to "farther_place", "mode" to "tube"), UsageEvent.FartherPlace(listOf("Elizabeth-Line", "tube")).params)
         // A mode no group names, or none at all, is "other", not TfL's id.
         assertEquals("other", UsageEvent.FartherPlace(listOf("cable-car")).params["mode"])
         assertEquals("other", UsageEvent.FartherPlace(listOf("HIDDEN-LINE:central")).params["mode"])
@@ -103,7 +103,7 @@ class UsageEventTest {
         )
         val event = UsageEvent.NearbyStops(stops)
         assertEquals(
-            mapOf("tube" to "2-3", "train" to "1", "bus" to "4+", "tram" to "0", "boat" to "0"),
+            mapOf("tube" to "2-3", "overground" to "1", "rail" to "0", "bus" to "4+", "tram" to "0", "boat" to "0"),
             event.params,
         )
         assertClosed(event)
@@ -240,11 +240,11 @@ class UsageEventTest {
 
     @Test
     fun `hiding a group says the group once, and showing every one again says so once`() {
-        val train = ModeGroups.ALL.first { it.key == "train" }
+        val train = ModeGroups.ALL.first { it.key == "rail" }
         val hidden = UsageEvent.SettingChanged.hiddenModes(emptySet(), train.modes)
-        assertEquals(listOf("train_hidden"), hidden.map { it.params["value"] })
+        assertEquals(listOf("rail_hidden"), hidden.map { it.params["value"] })
         // The one group shown again is that group, not "all".
-        assertEquals(listOf("train_shown"), UsageEvent.SettingChanged.hiddenModes(train.modes, emptySet()).map { it.params["value"] })
+        assertEquals(listOf("rail_shown"), UsageEvent.SettingChanged.hiddenModes(train.modes, emptySet()).map { it.params["value"] })
         val several = train.modes + "bus" + HiddenModes.lineKey("central", "Central")
         assertEquals(listOf("all_shown"), UsageEvent.SettingChanged.hiddenModes(several, emptySet()).map { it.params["value"] })
         // A mode no group names is "other", never TfL's id.

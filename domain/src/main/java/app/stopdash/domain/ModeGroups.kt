@@ -4,19 +4,24 @@ import androidx.annotation.WorkerThread
 
 /**
  * The groups a rider hides modes by (SPEC *Finding stops → Hiding a mode*, maintainer 2026-09-24):
- * TfL's mode ids folded into what a rider calls them. The DLR rides with the Tube (turn up and go,
- * on the Tube map); the Overground, the Elizabeth line and National Rail are all "Train"; a coach is a
- * "Bus" (TfL lists no coach routes or stops, and a rider doesn't draw the line). Hiding a group hides
- * every mode in it; a mode no group names (the cable car) is a group of its own.
+ * TfL's mode ids folded into how a rider rides them (maintainer, 2026-10-08): "Underground" is
+ * TfL's turn-up-and-go metro, the Tube, the DLR and the Elizabeth line; "Overground" its suburban
+ * trains; "National Rail" other operators' timetabled trains, Eurostar with them. A coach is a "Bus": TfL lists no coach routes or stops, and a rider
+ * doesn't draw the line. Hiding a group hides every mode in it; a mode no group names (the cable
+ * car) is a group of its own.
  */
 object ModeGroups {
-    /** One group: its stable [key] and the TfL mode ids it holds. */
+    /**
+     * One group: its stable [key] and the TfL mode ids it holds, the first its anchor: a group a stored
+     * set hides only in part reads as its anchor does ([fromStored]).
+     */
     data class Group(val key: String, val modes: Set<String>)
 
     /** The groups the near-me search can return a stop for, in the order the menu lists them. */
     val ALL: List<Group> = listOf(
-        Group("tube", setOf("tube", "dlr")),
-        Group("train", setOf("overground", "elizabeth-line", "national-rail")),
+        Group("tube", setOf("tube", "dlr", "elizabeth-line")),
+        Group("overground", setOf("overground")),
+        Group("rail", setOf("national-rail", "international-rail")),
         Group("bus", setOf("bus", "coach")),
         Group("tram", setOf("tram")),
         Group("boat", setOf("river-bus")),
@@ -49,19 +54,22 @@ object ModeGroups {
         hiddenGroups(hidden) + hidden.filter(HiddenModes::isLineKey).map(::of)
 
     /**
-     * A stored hidden set read back, with each group hidden or shown whole: Coach was a group of its
-     * own until 2026-10-08, so a stored "coach" follows "bus" (hidden with it, dropped without it)
-     * rather than leaving Bus half hidden.
+     * A stored hidden set read back, with each group hidden or shown whole, as its anchor (its first
+     * mode) is: the groups were regrouped on 2026-10-08 (Coach into Bus, the Elizabeth line from Train
+     * into Underground), so a mode stored under its old group follows its new one's anchor rather than
+     * leaving that group half hidden. Hidden lines and modes no group has are kept as they are.
      */
     @WorkerThread
     fun fromStored(hidden: Set<String>): Set<String> {
-        val busHidden = HiddenModes.isHidden("bus", hidden)
-        val coachHidden = HiddenModes.isHidden("coach", hidden)
-        return when {
-            busHidden && !coachHidden -> hidden + "coach"
-            !busHidden && coachHidden -> hidden.filterNotTo(LinkedHashSet()) { it.equals("coach", ignoreCase = true) }
-            else -> hidden
+        val out = LinkedHashSet(hidden)
+        for (group in ALL) {
+            if (HiddenModes.isHidden(group.modes.first(), hidden)) {
+                out += group.modes
+            } else {
+                out.removeAll { m -> group.modes.any { it.equals(m, ignoreCase = true) } }
+            }
         }
+        return out
     }
 
     /** [hidden] with all of [group] hidden (or shown again when [hide] is false). */

@@ -1416,17 +1416,17 @@ class TripScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithTag("tripMode-tube").assertTextEquals("Tube & DLR").assertIsSelected()
-        composeRule.onNodeWithTag("tripMode-train").assertTextEquals("Train").assertIsSelected()
+        composeRule.onNodeWithTag("tripMode-tube").assertTextEquals("Underground").assertIsSelected()
+        composeRule.onNodeWithTag("tripMode-rail").assertTextEquals("National Rail").assertIsSelected()
         composeRule.onNodeWithTag("tripMode-bus").assertTextEquals("Bus").assertIsNotSelected()
         ModeGroups.ALL.forEach { composeRule.onNodeWithTag("tripMode-${it.key}").assertExists() }
         captureSnapshot("trip-routes-modes.png")
         // Off, then on again.
-        composeRule.onNodeWithTag("tripMode-train").performClick()
-        assertEquals(TripModes(setOf("bus", "train")), modes)
-        composeRule.onNodeWithTag("tripMode-train").assertIsNotSelected()
+        composeRule.onNodeWithTag("tripMode-rail").performClick()
+        assertEquals(TripModes(setOf("bus", "rail")), modes)
+        composeRule.onNodeWithTag("tripMode-rail").assertIsNotSelected()
         composeRule.onNodeWithTag("tripMode-bus").performClick()
-        assertEquals(TripModes(setOf("train")), modes)
+        assertEquals(TripModes(setOf("rail")), modes)
         composeRule.onNodeWithTag("tripMode-bus").assertIsSelected()
         // Down to one: a tap on it changes nothing, since a trip riding nothing has no route.
         modes = ModeGroups.ALL.filter { it.key != "tram" }.fold(TripModes.DEFAULT) { m, g -> m.with(g, ride = false) }
@@ -1819,8 +1819,8 @@ class TripScreenScreenshotTest {
         // The first card rides the Windrush then the Jubilee: both groups, not just the first leg's.
         menus.onFirst().performSemanticsAction(SemanticsActions.OnLongClick)
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Hide all train services").assertIsDisplayed()
-        composeRule.onNodeWithText("Hide all Tube & DLR services").performClick()
+        composeRule.onNodeWithText("Hide all Overground services").assertIsDisplayed()
+        composeRule.onNodeWithText("Hide all Underground services").performClick()
         composeRule.waitForIdle()
         assertEquals(listOf("tube"), hidden)
         // Each leg's line too, by itself.
@@ -3207,10 +3207,10 @@ class TripScreenScreenshotTest {
             hasAnyDescendant(hasContentDescription("Jubilee")) and
                 SemanticsMatcher("long-presses to its menu") { it.config.getOrElseNullable(SemanticsActions.OnLongClick) { null }?.label == more },
         ).performSemanticsAction(SemanticsActions.OnLongClick)
-        composeRule.onNodeWithText("Hide all Tube & DLR services").performClick()
+        composeRule.onNodeWithText("Hide all Underground services").performClick()
         composeRule.waitForIdle()
         assertEquals("tube", hidden)
-        composeRule.onNodeWithText("Tube & DLR hidden").assertExists()
+        composeRule.onNodeWithText("Underground hidden").assertExists()
         composeRule.onNodeWithText("Undo").performClick()
         composeRule.waitForIdle()
         assertEquals("tube", unhidden)

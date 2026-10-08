@@ -18,6 +18,6 @@ class HiddenGroupsLabelTest {
     @Test
     fun `several hidden lines are counted`() {
         assertEquals("2 lines", hiddenGroupsLabel(setOf(northern, central)))
-        assertEquals("Tube & DLR, 2 lines", hiddenGroupsLabel(setOf("tube", "dlr", northern, central)))
+        assertEquals("Underground, 2 lines", hiddenGroupsLabel(setOf("tube", "dlr", northern, central)))
     }
 }

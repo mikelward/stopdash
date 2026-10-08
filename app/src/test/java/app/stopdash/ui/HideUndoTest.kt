@@ -73,7 +73,7 @@ class HideUndoTest {
         composeRule.onNodeWithText("Hide on trip").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Hide on list").assertExists()
-        composeRule.onNodeWithText("Tube & DLR hidden").assertExists()
+        composeRule.onNodeWithText("Underground hidden").assertExists()
         composeRule.onNodeWithText("Undo").performClick()
         composeRule.waitForIdle()
         assertEquals("tube", listShown)

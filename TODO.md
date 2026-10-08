@@ -932,6 +932,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
   - [x] **Fold Coach into Bus** (maintainer, 2026-10-08): TfL lists no coach routes or stops, so the
         group never filtered anything, and riders don't tell a coach from a bus. A
         stored Coach hide follows Bus.
+  - [x] **Regroup the trains as Underground, Overground, National Rail** (maintainer, 2026-10-08):
+        Underground is the Tube, the DLR and the Elizabeth line; Eurostar goes with National Rail;
+        the menu says what a name doesn't in a short subtitle. The Disruptions page's chips follow.
   - [ ] **Hide one line at a place** ("Hide Thameslink here") and **hide one platform/pole** (its
         card collapses to the header; a stop none of whose cards show isn't fetched).
   - [x] **Hide an individual line everywhere** (maintainer, 2026-09-27), e.g. the Northern or
@@ -3649,13 +3652,14 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   rest now sit under one "Other" header: the maintainer's call, 2026-09-30, not autopilot's.)
   **Reversible:** `routeLabels` in `:domain` and `RouteLabelHeader`.
   **To confirm:** on a device, that the headers read well over the cards.
-- [ ] **Trip mode toggles: which groups, and where (autopilot, 2026-09-30).** Taken: chips under the
+- [ ] **Trip mode toggles: where (autopilot, 2026-09-30).** Taken: chips under the
   step-free dropdown atop a trip only (not in Settings), one per `ModeGroups` group under the list's
-  names (Tube & DLR, Train, Bus, Tram, Boat, Coach), all on by default and stored as the groups turned
-  off; a trip setting of its own rather than the list's hidden modes; walking, the cable car and
-  replacement buses always sent; the last group riding can't be turned off (a tap on it does
-  nothing). *Alternatives:* a finer split (Overground, Elizabeth line, DLR each their own chip), a
-  row in Settings too, sharing the list's hidden modes, or a disabled look for the last chip.
+  names, all on by default and stored as the groups turned off; a trip setting of its own rather
+  than the list's hidden modes; walking, the cable car and replacement buses always sent; the last
+  group riding can't be turned off (a tap on it does nothing). Which groups is settled: the
+  maintainer's six (Underground, Overground, National Rail, Bus, Tram, Boat; 2026-10-08).
+  *Alternatives:* a row in Settings too, sharing the list's hidden modes, or a disabled look for the
+  last chip.
   **Reversible:** `TripModes` in `:domain` and `TripModeChips`. **To confirm:** on a device, that
   the chip row reads well under the three dropdowns.
 - [ ] **What the step-free menu says under each level (autopilot, 2026-09-30; Codex, #408).** Taken:

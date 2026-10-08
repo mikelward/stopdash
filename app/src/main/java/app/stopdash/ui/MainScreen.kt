@@ -1253,7 +1253,18 @@ fun MainScreen(
                                 ModeGroups.ALL.forEach { group ->
                                     val shown = !ModeGroups.isHidden(group, hiddenModes)
                                     DropdownMenuItem(
-                                        text = { Text(groupName(group)) },
+                                        text = {
+                                            Column {
+                                                Text(groupName(group))
+                                                groupSubtitle(group)?.let { subtitle ->
+                                                    Text(
+                                                        subtitle,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    )
+                                                }
+                                            }
+                                        },
                                         leadingIcon = { Checkbox(checked = shown, onCheckedChange = null) },
                                         onClick = { onSetModeGroupShown(group, !shown) },
                                         modifier = Modifier.semantics {
@@ -3573,7 +3584,7 @@ internal fun HideModeMenu(
 ) {
     StopDashMenu(expanded = expanded, onDismissRequest = onDismiss) {
         leading?.invoke()
-        // One item per group the modes fall in ("Hide all train services" for Thameslink or the Overground);
+        // One item per group the modes fall in ("Hide all National Rail services" for Thameslink);
         // hiding it hides the whole group, as the overflow menu's checkbox does.
         modes.map(ModeGroups::of).distinctBy { it.key }.forEach { group ->
             DropdownMenuItem(
