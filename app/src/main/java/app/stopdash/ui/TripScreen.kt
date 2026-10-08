@@ -137,6 +137,7 @@ import app.stopdash.domain.LineMap
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.AlertStart
+import app.stopdash.domain.AroundDelays
 import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.PlannedAlert
@@ -757,6 +758,7 @@ internal fun shownTrains(
  * isn't confirmed ([originUnconfirmed]: a re-locate in flight, failed, or approximate), no route is
  * presented as live-confirmed: each reads "est." at best.
  */
+@WorkerThread
 internal fun tripEstimates(
     state: TripViewModel.State,
     now: Instant,
@@ -771,7 +773,11 @@ internal fun tripEstimates(
     // such a leg is timed only by a live train ([TripTiming.estimate]'s timetabled). Null: all are.
     planned: Set<TripLeg>? = null,
 ): List<TripTiming.Estimate>? {
-    val routes = state.shownRoutes(hidden)?.let { TripViewModel.bestOf(it, keep, state.directKeys) } ?: return null
+    // A route on a line with severe delays ranks, and is capped, lower ([TripTiming.DELAYED_BY]): judged on the
+    // statuses as shown now, a planned alert begun since the last check among them (Codex, #703). On the worker
+    // ([tripFrame]).
+    val delayed = AroundDelays.delayed(state.statuses.values)
+    val routes = state.shownRoutes(hidden)?.let { TripViewModel.bestOf(it, keep, state.directKeys, delayed) } ?: return null
     val notRunning = TripTiming.notRunning(state.statuses.values)
     // A line with no status known (left out of TfL's answer, or a failed check) can't be vouched
     // for as running.
@@ -792,6 +798,7 @@ internal fun tripEstimates(
             stops = TripClosures.standing(route, state.closures, state.closuresUnknown, now) { end -> endPole(route, end, sequences) },
             // A ride another running line can take and time isn't sunk by its Planner line's status.
             otherLine = { index -> otherLineRuns(state, route.legs[index], now, lines) },
+            delayed = delayed,
         )
             .let { if (originUnconfirmed && it.basis == TripTiming.Basis.LIVE) it.copy(basis = TripTiming.Basis.ESTIMATED) else it }
     }
@@ -843,8 +850,10 @@ internal fun sequenceLineIds(state: TripViewModel.State, hidden: Set<String>, se
     val shown = state.shownRoutes(hidden).orEmpty()
     // And every other line at a timed ride's boarding stop, to tell whether it serves the ride's
     // stops too ([rideLines]): a route each, loaded once a day like the rest.
-    val timed = TripViewModel.bestOf(shown.filterNot { route -> AvoidedLines.drops(route, hidden) }, keep, state.directKeys)
-    val lines = timedLineIds(shown, hidden, keep, state.directKeys) + rideLineIds(timed, state, hidden)
+    // Capped by the delays in the statuses shown, as the page's frame is ([tripFrame]; Codex, #703).
+    val delayed = AroundDelays.delayed(state.statuses.values)
+    val timed = TripViewModel.bestOf(shown.filterNot { route -> AvoidedLines.drops(route, hidden) }, keep, state.directKeys, delayed)
+    val lines = timedLineIds(shown, hidden, keep, state.directKeys, delayed) + rideLineIds(timed, state, hidden)
     return (if (landing) settled + lines else lines).distinct()
 }
 
@@ -859,7 +868,7 @@ internal fun rememberTripLineIds(planned: TripViewModel.State, excluded: Set<Str
     // The set last worked out, kept apart from [slot] for the worker to read: runs go one at a time, so
     // it's the newest, and the worker never reads the state itself off the main thread.
     val last = remember { java.util.concurrent.atomic.AtomicReference(emptyList<String>()) }
-    return rememberWorked(slot, Inputs(planned.routes, excluded, planned.planning, planned.live, planned.areaPoles, open), keep = { _, _ -> true }) {
+    return rememberWorked(slot, Inputs(planned.routes, excluded, planned.planning, planned.live, planned.areaPoles, planned.statuses, open), keep = { _, _ -> true }) {
         (sequenceLineIds(planned, excluded, last.get(), open?.keys.orEmpty()) + listOfNotNull(open?.ride?.lineId)).distinct()
             .also(last::set)
     } ?: emptyList()
@@ -869,8 +878,14 @@ internal fun rememberTripLineIds(planned: TripViewModel.State, excluded: Set<Str
  * The lines of the routes a trip times: not riding a [hidden] mode, and within the cap, or the open
  * route ([keep]) past it ([TripViewModel.bestOf]).
  */
-internal fun timedLineIds(routes: List<TripRoute>, hidden: Set<String>, keep: Collection<String> = emptyList(), direct: Set<String> = emptySet()): List<String> =
-    TripViewModel.bestOf(routes.filterNot { route -> AvoidedLines.drops(route, hidden) }, keep, direct)
+internal fun timedLineIds(
+    routes: List<TripRoute>,
+    hidden: Set<String>,
+    keep: Collection<String> = emptyList(),
+    direct: Set<String> = emptySet(),
+    delayed: Set<String> = emptySet(),
+): List<String> =
+    TripViewModel.bestOf(routes.filterNot { route -> AvoidedLines.drops(route, hidden) }, keep, direct, delayed)
         .flatMap { route -> route.rides.map { it.lineId } }.distinct()
 
 /**
@@ -925,14 +940,25 @@ internal fun rememberLastPull(destKey: String): MutableState<Instant?> =
  * shown, so each line reads as still being checked rather than as sorted on a day gone by (Codex on #519).
  */
 @Composable
-internal fun rememberStatusesAsOf(statuses: Map<String, LineStatus>, sortedOn: LocalDate?, now: Instant): Map<String, LineStatus> {
+internal fun rememberStatusesAsOf(statuses: Map<String, LineStatus>, sortedOn: LocalDate?, now: Instant): Map<String, LineStatus> =
+    rememberStatusesAndDelaysAsOf(statuses, sortedOn, now).statuses
+
+/**
+ * [statuses] as of today ([rememberStatusesAsOf]) and the lines with severe delays among them ([delayed],
+ * [AroundDelays]; null when they're as held), worked out with them on [LocalWorker]: a planned alert begun
+ * since counts wherever the screen caps or ranks by delays (Codex, #703).
+ */
+internal class StatusesAsOf(val statuses: Map<String, LineStatus>, val delayed: Set<String>?)
+
+@Composable
+internal fun rememberStatusesAndDelaysAsOf(statuses: Map<String, LineStatus>, sortedOn: LocalDate?, now: Instant): StatusesAsOf {
     val today = now.atZone(AlertStart.ZONE).toLocalDate()
-    val slot = remember { mutableStateOf<Worked<Inputs, Map<String, LineStatus>>?>(null) }
+    val slot = remember { mutableStateOf<Worked<Inputs, StatusesAsOf>?>(null) }
     val current = sortedOn == null || !sortedOn.isBefore(today)
     val worked = rememberWorked(slot, Inputs(statuses, if (current) null else today)) {
-        if (current) statuses else LineStatus.asOf(statuses, now)
+        if (current) StatusesAsOf(statuses, null) else LineStatus.asOf(statuses, now).let { StatusesAsOf(it, AroundDelays.delayed(it.values)) }
     }
-    return if (current) statuses else worked ?: emptyMap()
+    return remember(statuses, current, worked) { if (current) StatusesAsOf(statuses, null) else worked ?: StatusesAsOf(emptyMap(), null) }
 }
 
 @Composable
@@ -1048,8 +1074,9 @@ internal fun TripScreen(
     // trip's lines page as the home screen's keeps them.
     starredStops: Set<String> = emptySet(),
 ) {
-    val statuses = rememberStatusesAsOf(state.statuses, state.statusesSortedOn, now)
-    val state = remember(state, statuses) { state.copy(statuses = statuses) }
+    val asOf = rememberStatusesAndDelaysAsOf(state.statuses, state.statusesSortedOn, now)
+    // With the delays as of today, so every cap on the page counts the same ones (Codex, #703).
+    val state = remember(state, asOf) { state.copy(statuses = asOf.statuses, delayedLines = asOf.delayed ?: state.delayedLines) }
     val linesPagesOpen = remember { mutableIntStateOf(0) }
     val lineDismissal = onDismissLineAlert?.let { LineAlertDismissal(it, dismissWriteFailed, onDismissWriteFailureShown, linesPagesOpen, onDismissPlannedAlert, dismissed) }
     CompositionLocalProvider(
@@ -1269,6 +1296,9 @@ private fun TripContent(
     // A bus station's stand a bus boards at in place of the Planner's is placed only once the trip
     // has fetched it ([onPoles]), so it's handed to the trip to fetch ([placedStands]).
     val stands = remember(planned, routeSequences, excluded, openRef) {
+        // The cap as it was before delays counted (no delayed lines): delay-aware, it would add a pass over every
+        // route here in composition (Codex, #703). A route the delays alone bring into the cap has no stand
+        // placed, so its bus is timed at the Planner's own stop.
         placedStands(TripViewModel.bestOf(planned.shownRoutes(excluded).orEmpty(), openRef?.keys.orEmpty(), planned.directKeys), routeSequences)
     }
     LaunchedEffect(stands) { onPlacedStands(stands) }

@@ -1365,6 +1365,17 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             - [x] **"Other" over the rest** (maintainer, 2026-09-30): one header over the cards
                   neither Fastest nor Simplest, after those two (`headedCards`), so Simplest moves
                   up beside Fastest; no Other where neither of those is shown.
+      - [x] **Around severe delays** (maintainer, 2026-10-08): when the Planner's soonest route rides
+            a line with severe delays, it's asked once more with that line's mode left out (TfL can't
+            leave out one line), merged (`AroundDelays`); a route on a severely delayed line ranks as
+            if 10 min later (`TripTiming.DELAYED_BY`). Costs one status request on a trip's first plan,
+            and one Planner request only on a disrupted day. Needs a device check on a disrupted day.
+            - [ ] **The cap judges a delayed ride by its Planner line** (Codex, #703): `bestOf` sets a route
+                  riding a severely delayed line 10 min later by its Planner line, before live trains are in;
+                  `TripTiming.estimate` treats a ride another running line can take (`otherLineRuns`) as
+                  clear. With 6+ routes sooner, such a route can miss the cap. Rare (a delayed line whose
+                  ride another line runs, on a plan of 7+ routes); closing it means the cap knowing the
+                  ride's other lines, which it doesn't until the routes load.
       - [x] **Least walking** (maintainer, 2026-10-03): a third Planner request per plan
             (`journeyPreference=leastwalking`), merged; a "Least walking" header over every card
             tied for the least walking, the first included (2026-10-04); a route walking 5+ min

@@ -56,6 +56,9 @@ object TripTiming {
         // The walk to the first stop the route was timed with: the rider is ready for its first leg
         // only after it ([readyAt]).
         val access: Duration = Duration.ZERO,
+        // A ride is on a line with severe delays ([AroundDelays]): [rank] sets it as if it got there
+        // [DELAYED_BY] later, so a route clear of the delays arriving about as soon goes first.
+        val delayed: Boolean = false,
     ) {
         /** Door-to-door time from now, or null when the arrival is withheld. */
         val duration: Duration? get() = arrival?.let { Duration.between(start, it) }
@@ -164,6 +167,8 @@ object TripTiming {
         // Planner line's status, so a route isn't sunk below the others by a closed or unchecked
         // Planner line that another running line stands in for (Codex on #309).
         otherLine: (Int) -> Boolean = { false },
+        // The lines with severe delays ([AroundDelays.delayed]): a route riding one ranks lower ([Estimate.delayed]).
+        delayed: Set<String> = emptySet(),
     ): Estimate {
         // Each ride by its index among the legs, as [otherLine] takes it; a walk has no line.
         val rides = route.legs.withIndex().filterNot { it.value.isWalk }
@@ -242,7 +247,8 @@ object TripTiming {
             // The last leg's change time isn't part of the arrival.
             late?.minus(route.legs.lastOrNull()?.changeAfter ?: Duration.ZERO)?.let { Duration.between(arrival, it).coerceAtLeast(Duration.ZERO) }
         }
-        return Estimate(route, basis, arrival, legs, blocked, now, unchecked, slack, withheld.takeIf { basis == Basis.UNKNOWN }, access)
+        val onDelayed = rides.any { (index, leg) -> decides(index, leg.lineId, delayed) }
+        return Estimate(route, basis, arrival, legs, blocked, now, unchecked, slack, withheld.takeIf { basis == Basis.UNKNOWN }, access, onDelayed)
     }
 
     // One leg timed by [estimate]: its [timing], the [basis] behind it, and whether it boards a
@@ -303,6 +309,9 @@ object TripTiming {
      * of a live route it beats even at its latest ([beatsEvenLate]): a route faster however its waits
      * fall isn't buried under a slower one because part of it is only estimated (maintainer,
      * 2026-09-30: a live ride then a frequent bus sat below a slower live route even at its worst).
+     * A route on a line with severe delays ([Estimate.delayed]) is ranked as if it got there
+     * [DELAYED_BY] later: its trains' predictions don't stand for much then, so one clear of the delays
+     * arriving about as soon goes first, but one much sooner still leads (maintainer, 2026-10-08).
      */
     fun rank(estimates: List<Estimate>): List<Estimate> =
         estimates.groupBy { it.blocked to it.doubted }.toSortedMap(compareBy<Pair<Boolean, Boolean>>({ it.first }, { it.second }))
@@ -312,8 +321,17 @@ object TripTiming {
                 merge(live, estimated) + tier.filter { it.basis == Basis.UNKNOWN }.sortedWith(WITHIN_BASIS)
             }
 
-    // Within one basis: the earliest arrival, then checked before unchecked, then the fewest changes.
-    private val WITHIN_BASIS = compareBy<Estimate>({ it.arrival ?: Instant.MAX }, { it.unchecked }, { it.route.rides.size })
+    // Within one basis: the earliest arrival (a delayed route's set later, [rankedArrival]), then checked
+    // before unchecked, then the fewest changes.
+    private val WITHIN_BASIS = compareBy<Estimate>({ rankedArrival(it) ?: Instant.MAX }, { it.unchecked }, { it.route.rides.size })
+
+    /** How much later [rank] sets a route on a line with severe delays ([Estimate.delayed]). */
+    val DELAYED_BY: Duration = Duration.ofMinutes(10)
+
+    // [estimate]'s arrival as [rank] orders it: [DELAYED_BY] later on a severely delayed line.
+    private fun rankedArrival(estimate: Estimate): Instant? =
+        if (estimate.delayed) estimate.arrival?.plus(DELAYED_BY) else estimate.arrival
+
 
     // [live] and [estimated], each already in order, as one list: the next estimate goes ahead of the
     // next live route only when it beats that route even at its latest. Each list keeps its own order,
@@ -332,12 +350,15 @@ object TripTiming {
     /**
      * Whether [estimate] gets there before [live] even at its latest ([Estimate.latest]): timed from at
      * least one live train, so it isn't a timetable alone, and with a latest to give. One whose latest
-     * ties or passes the live route's arrival, or that has none, stays below it.
+     * ties or passes the live route's arrival, or that has none, stays below it. Each side's severe
+     * delays count as [rank] counts them ([Estimate.delayed]); and a live route with severe delays is
+     * passed by one clear of them on its timetable alone, since its own trains' predictions don't stand
+     * for much then (Codex, #703).
      */
     fun beatsEvenLate(estimate: Estimate, live: Estimate): Boolean {
-        val latest = estimate.latest ?: return false
-        val arrival = live.arrival ?: return true
-        return estimate.legs.any { it.live } && latest.isBefore(arrival)
+        val latest = estimate.latest?.let { if (estimate.delayed) it.plus(DELAYED_BY) else it } ?: return false
+        val arrival = rankedArrival(live) ?: return true
+        return (estimate.legs.any { it.live } || (live.delayed && !estimate.delayed)) && latest.isBefore(arrival)
     }
 
     /**
@@ -351,7 +372,9 @@ object TripTiming {
      * faster or walks clearly less. A withheld arrival can't be compared, so it neither beats nor is
      * beaten. The route walking least is always kept when it walks clearly less than the first
      * ([walksLess]): a chain of routes each walking a little less than the last would otherwise drop
-     * it, though it's the one the *Least walking* header is for. In [estimates]' order.
+     * it, though it's the one the *Least walking* header is for. Arrivals compare as [rank] orders them,
+     * a severely delayed route's [DELAYED_BY] later, so one clear of the delays isn't left off for it
+     * (Codex, #703). In [estimates]' order.
      */
     fun withoutSlowerChanges(estimates: List<Estimate>): List<Estimate> {
         // Of routes walking as little, the first: the one ranked best.
@@ -359,11 +382,11 @@ object TripTiming {
             ?.takeIf { walksLess(it.route, estimates.first().route) }
         return estimates.filter { route ->
             if (route === leastWalking) return@filter true
-            val arrival = route.arrival ?: return@filter true
+            val arrival = rankedArrival(route) ?: return@filter true
             estimates.none { other ->
                 other !== route &&
                     other.route.rides.size < route.route.rides.size &&
-                    other.arrival?.let { !it.isAfter(arrival) } == true &&
+                    rankedArrival(other)?.let { !it.isAfter(arrival) } == true &&
                     !walksLess(route.route, other.route) &&
                     STANDING.compare(other, route) <= 0
             }

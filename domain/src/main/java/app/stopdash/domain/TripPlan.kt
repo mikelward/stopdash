@@ -214,6 +214,21 @@ interface JourneyPlanner {
         stepFree: StepFree = StepFree.DEFAULT,
         modes: TripModes = TripModes.DEFAULT,
     ): List<TripRoute> = emptyList()
+
+    /**
+     * The quickest routes of [journeys] with the Planner modes [leaveOut] left out, for a trip whose
+     * soonest route rides a line with severe delays ([AroundDelays]). A planner that can't leave a mode
+     * out has nothing to add.
+     */
+    suspend fun quickestWithout(
+        from: TripOrigin,
+        to: TripDestination,
+        leaveOut: Set<String>,
+        speed: WalkingSpeed = WalkingSpeed.AVERAGE,
+        maxWalk: MaxWalk = MaxWalk.DEFAULT,
+        stepFree: StepFree = StepFree.DEFAULT,
+        modes: TripModes = TripModes.DEFAULT,
+    ): List<TripRoute> = emptyList()
 }
 
 /**

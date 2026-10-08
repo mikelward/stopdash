@@ -632,6 +632,24 @@ class JourneyPlannerTest {
     }
 
     @Test
+    fun `around delays the quickest routes are asked for once without the delayed mode`() = runTest {
+        val requests = mutableListOf<HttpRequestData>()
+        val warnings = mutableListOf<String>()
+        val noBus = TripModes.DEFAULT.with(ModeGroups.ALL.single { it.key == "bus" }, ride = false)
+        client(fixture, capture = { synchronized(requests) { requests += it } }, warn = { warnings += it })
+            .quickestWithout(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"), setOf("tube"), modes = noBus)
+        val request = requests.single()
+        val modes = checkNotNull(request.url.parameters["mode"]).split(",")
+        // The tube left out, and what the rider turned off stays off; the rest of the Underground still rides.
+        assertTrue("tube" !in modes && "bus" !in modes)
+        assertTrue(modes.containsAll(listOf("walking", "dlr", "elizabeth-line", "national-rail")))
+        // The quickest: no preference sent.
+        assertTrue("journeyPreference" !in request.url.parameters.names())
+        // Its timing line names the mode left out, never a stop.
+        assertTrue(warnings.any { it.startsWith("journey planner (without tube): ") })
+    }
+
+    @Test
     fun `the fewest-changes routes follow the quickest, a route both offer once`() = runTest {
         val routes = clientBy { request ->
             // The fewest-changes answer adds a longer route and repeats the quickest's.

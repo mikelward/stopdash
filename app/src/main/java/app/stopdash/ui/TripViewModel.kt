@@ -6,6 +6,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.stopdash.domain.AlertStart
+import app.stopdash.domain.AroundDelays
 import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.SteadyClock
@@ -344,6 +345,10 @@ class TripViewModel(
         val directKeys: Set<String> = emptySet(),
         // The last re-plan couldn't ask again for the Direct route open ([openDirect]): said with a Retry.
         val directFailed: Boolean = false,
+        // The lines of [statuses] with severe delays ([AroundDelays]), as of the day they were set (a planned alert
+        // begun counts): a route riding one is capped later. Set where [statuses] are, from each answer worked out
+        // off the main thread, so neither a frame nor a copy walks the statuses (Codex, #703).
+        val delayedLines: Set<String> = emptySet(),
     ) {
         /**
          * [routes] as shown: without those riding a [hidden] mode, then without the detours
@@ -373,11 +378,21 @@ class TripViewModel(
     var hiddenModes: Set<String> = emptySet()
         set(value) {
             if (value == field) return
-            // The routes timed and fetched for: those shown, within the cap ([bestOf]), since a
-            // hidden mode can also move a route already shown into the soonest few.
-            val before = bestOf(_state.value.shownRoutes(field).orEmpty(), openKeys(), _state.value.directKeys)
+            val was = field
             field = value
-            if (_state.value.routes != null && bestOf(_state.value.shownRoutes(value).orEmpty(), openKeys(), _state.value.directKeys).any { route -> before.none { it === route } }) refresh()
+            val s = _state.value
+            if (s.routes == null) return
+            val keys = openKeys()
+            // The routes timed and fetched for: those shown, within the cap ([bestOf]), since a
+            // hidden mode can also move a route already shown into the soonest few. Compared on [compute]:
+            // the screen sets this from composition (AGENTS.md *Main thread*; Codex, #703).
+            viewModelScope.launch {
+                val added = withContext(compute) {
+                    val before = bestOf(s.shownRoutes(was).orEmpty(), keys, s.directKeys, s.delayedLines)
+                    bestOf(s.shownRoutes(value).orEmpty(), keys, s.directKeys, s.delayedLines).any { route -> before.none { it === route } }
+                }
+                if (added) refresh()
+            }
         }
 
     /**
@@ -406,7 +421,7 @@ class TripViewModel(
 
     // The routes a refresh fetches for and checks ([refreshLive]): those shown, less a hidden mode's,
     // the soonest few and the open one ([bestOf]).
-    private fun timedRoutes(): List<TripRoute>? = _state.value.let { s -> s.shownRoutes(hiddenModes)?.let { bestOf(it, openKeys(), s.directKeys) } }
+    private fun timedRoutes(): List<TripRoute>? = _state.value.let { s -> s.shownRoutes(hiddenModes)?.let { bestOf(it, openKeys(), s.directKeys, s.delayedLines) } }
 
     // The saved handle can outlive this trip (it's the activity's, by the model's key): a trip
     // planned afresh must not open this one's route.
@@ -993,6 +1008,41 @@ class TripViewModel(
         val beforePull = pulledAt?.let { pull -> plannedAt == null || plannedAt.isBefore(pull) } == true
         if (replan || (!failed && (expired || _state.value.routes == null || beforePull))) plan()
         refreshLive()
+        replanAroundDelays()
+    }
+
+    // Each set of modes this trip has planned around delays without ([planAroundDelays]), or re-planned for:
+    // each set re-plans at most once a trip, so a status check that fails on the re-plan can't loop it. A new
+    // plan asks around its own by itself.
+    private var plannedAround: Set<Set<String>> = emptySet()
+
+    /**
+     * After a refresh, a plan whose soonest route rides a line it found newly severely delayed (a plan reused
+     * from before the delays, or one they began after) is planned again at once, so the request around them
+     * is made (Codex, #703): once a trip for those modes, as [plannedAround] then holds them. Not while a plan is
+     * failed or in flight, nor during a re-locate, as [replanWithheld].
+     */
+    private suspend fun replanAroundDelays() {
+        val state = _state.value
+        if (state.statuses.isEmpty() || state.planError != null || state.planning || relocating()) return
+        if (state.routes == null) return
+        val hidden = hiddenModes
+        val modes = tripModes
+        val now = clock()
+        // Every route walked on [compute], the shown ones picked there too (AGENTS.md *Main thread*; Codex, #703),
+        // and the delays judged on the statuses as of today, as the trip shows them: a planned alert begun
+        // since the last check counts (Codex, #703).
+        val leaveOut = withContext(compute) {
+            val delayed = AroundDelays.delayed(LineStatus.asOf(state.statuses, now).values)
+            if (delayed.isEmpty()) return@withContext emptySet()
+            state.shownRoutes(hidden)?.let(AroundDelays::soonest)?.let { AroundDelays.modesToLeaveOut(it, delayed, modes) }.orEmpty()
+        }
+        // The same modes asked around before: a mode recovered since makes another set, asked again (Codex, #703).
+        if (leaveOut.isEmpty() || leaveOut in plannedAround) return
+        // Marked before it runs, so a refresh landing meanwhile doesn't ask again.
+        plannedAround = plannedAround + setOf(leaveOut)
+        warn("trip re-planned around delays without ${leaveOut.sorted().joinToString("+")}")
+        start(replan = true)
     }
 
     private suspend fun plan() {
@@ -1007,9 +1057,12 @@ class TripViewModel(
         // For the usage stats: a plan after one already counted, or over a plan kept from before.
         val planAgain = planCounted || !progressive
         val gathered = mutableListOf<TripRoute>()
+        // Each destination's own answer, for the one request around delays the plan makes ([planAroundDelays]).
+        val answers = mutableListOf<Pair<TripDestination, List<TripRoute>>>()
         var answered = 0
         var failure: TflException? = null
-        // The extra request to a place via its fastest route's last stop failed: the plan stands, in part.
+        // An extra request (to a place via its fastest route's last stop, or around delays) failed: the
+        // plan stands, in part.
         var viaFailed = false
         // The rider's own options, not the defaults, once read: "Planning…" meanwhile.
         if (!optionsLoaded) {
@@ -1071,6 +1124,7 @@ class TripViewModel(
                         answered++
                         gathered += routes
                         showGathered()
+                        answers += destination to routes
                         // To a place, asked once more for the fewest changes via where the fastest
                         // route gets off its last ride ([FinalStop]): the one bus the whole way,
                         // which the Planner can pass over for a long walk.
@@ -1088,9 +1142,30 @@ class TripViewModel(
                         warn("trip plan via the fastest route's last stop: ${fewer.size} of ${answer.size} routes ride fewer times")
                         // A route already planned (the same legs at the same times) stays once.
                         gathered += mergedRoutes(gathered.toList(), fewer).drop(gathered.size)
+                        // Shown with the rest, so the soonest the delays are judged on may be one of these (Codex, #703).
+                        answers += destination to fewer
                         showGathered()
                     }
                 }
+            }
+            // The route arriving soonest of every stop's answer on a line with severe delays: the Planner is
+            // asked once more, for that stop alone, without that line's mode ([AroundDelays]). Once a plan,
+            // however many stops a complex has (Codex, #703).
+            // Of the routes the trip shows: one riding a hidden mode or an avoided line isn't the rider's
+            // soonest (Codex, #703).
+            val hidden = hiddenModes
+            val destinationStops = _state.value.destinationStops
+            val soonest = withContext(compute) {
+                // As the trip shows them ([State.shownRoutes]): less the hidden and avoided, and the detours the rest
+                // beat (Codex, #703); each by the destination it was planned to.
+                val shown = State(routes = answers.flatMap { it.second }, destinationStops = destinationStops).shownRoutes(hidden).orEmpty()
+                val to = java.util.IdentityHashMap<TripRoute, TripDestination>()
+                answers.forEach { (destination, routes) -> routes.forEach { to[it] = destination } }
+                AroundDelays.soonest(shown)?.let { route -> to[route]?.let { it to route } }
+            }
+            if (soonest != null) {
+                val (destination, route) = soonest
+                if (!planAroundDelays(route, from, destination, speed, limit, access, modes, gathered) { showGathered() }) viaFailed = true
             }
         } catch (e: CancellationException) {
             _state.update { it.copy(planning = false) }
@@ -1231,6 +1306,96 @@ class TripViewModel(
         if (!published) _state.update { it.copy(planning = false) }
     }
 
+    /**
+     * When [soonest], the plan's route arriving soonest, rides a line with severe delays, the Planner is
+     * asked once more to [destination] with that line's mode left out, and what it adds joins [gathered] ([AroundDelays];
+     * maintainer, 2026-10-08): TfL plans as if trains ran to the timetable. The statuses held for the trip
+     * are used where there are any, the rest asked for. False when a request failed: the plan stands
+     * without it. Neither end nor any stop is logged, only the modes and how many routes.
+     */
+    private suspend fun planAroundDelays(
+        soonest: TripRoute,
+        from: TripOrigin,
+        destination: TripDestination,
+        speed: WalkingSpeed,
+        limit: MaxWalk,
+        access: StepFree,
+        modes: TripModes,
+        gathered: MutableList<TripRoute>,
+        show: suspend () -> Unit,
+    ): Boolean {
+        val held = _state.value.statuses
+        val (lines, missing) = withContext(compute) {
+            val lines = AroundDelays.linesOf(soonest)
+            lines to lines.filterNot { it in held }
+        }
+        if (lines.isEmpty()) return true
+        val check = if (missing.isEmpty()) {
+            null
+        } else {
+            fetchStatuses(missing) ?: run {
+                warn("trip plan around delays: line status not answered")
+                return false
+            }
+        }
+        val fetched = check?.statuses.orEmpty()
+        val now = clock()
+        // What the trip holds now, to merge into on [compute]: the write is then a plain assignment, made only while
+        // nothing has moved these since (a refresh landing meanwhile is newer; AGENTS.md *Main thread*; Codex, #703).
+        val base = _state.value
+        val worked = withContext(compute) {
+            // As of today, as the trip shows them: a planned alert begun since it was fetched counts.
+            val known = LineStatus.asOf(held.filterKeys { it in lines } + fetched, now)
+            val delayed = AroundDelays.delayed(known.values)
+            // Kept for the trip, the fetched statuses and the delays found, held ones as of today among them, so
+            // its first refresh already caps and ranks by them (Codex, #703): only lines it holds none for.
+            val fresh = fetched.keys.filterTo(HashSet()) { it !in base.statuses }
+            val keep = fresh.isNotEmpty() || !base.delayedLines.containsAll(delayed)
+            AroundWork(
+                AroundDelays.modesToLeaveOut(soonest, delayed, modes),
+                if (keep) base.statuses + fetched.filterKeys { it in fresh } else null,
+                check?.answeredAt()?.filterKeys { it in fresh }?.let { base.statusesAt + it } ?: base.statusesAt,
+                base.delayedLines + delayed,
+                // The day the fetched ones were sorted on, kept with them, so a planned alert is promoted when its day comes.
+                check?.takeIf { fresh.isNotEmpty() }?.let { earlier(base.statusesSortedOn, it.sortedOn) } ?: base.statusesSortedOn,
+            )
+        }
+        val leaveOut = worked.leaveOut
+        worked.statuses?.let { statuses ->
+            _state.update { s ->
+                if (s.statuses !== base.statuses || s.delayedLines !== base.delayedLines || s.statusesAt !== base.statusesAt || s.statusesSortedOn != base.statusesSortedOn) {
+                    s
+                } else {
+                    s.copy(statuses = statuses, statusesAt = worked.statusesAt, delayedLines = worked.delayedLines, statusesSortedOn = worked.statusesSortedOn)
+                }
+            }
+        }
+        if (leaveOut.isEmpty()) return true
+        plannedAround = plannedAround + setOf(leaveOut)
+        val answer = try {
+            withContext(io) { planner.quickestWithout(from, destination, leaveOut, speed, limit, access, modes) }
+        } catch (e: TflException) {
+            warn("trip plan around delays failed: ${e::class.simpleName}")
+            return false
+        }
+        warn("trip plan around delays: ${answer.size} routes without ${leaveOut.sorted().joinToString("+")}")
+        // A route already planned (the same legs at the same times) stays once.
+        val added = withContext(compute) { mergedRoutes(gathered.toList(), answer).drop(gathered.size) }
+        gathered += added
+        show()
+        return true
+    }
+
+    // What [planAroundDelays] worked out on [compute]: the modes to leave out, and the trip's statuses, their
+    // times and delayed lines with what it found kept (statuses null when nothing is new).
+    private class AroundWork(
+        val leaveOut: Set<String>,
+        val statuses: Map<String, LineStatus>?,
+        val statusesAt: Map<String, Instant>,
+        val delayedLines: Set<String>,
+        val statusesSortedOn: LocalDate?,
+    )
+
     // The Direct route open, planned other than [asked] (the rider has moved, or chosen otherwise), let go when
     // a plan for [asked] couldn't be had: closed with its notice, its row kept for the Retry ([directAwaitingRetry]).
     // Only the row open when the failed plan started ([rideAt]): a newer one stands.
@@ -1336,6 +1501,8 @@ class TripViewModel(
                 val held = _state.value
                 // The lines asked that the answer left out, worked out on [io] too (AGENTS.md *Main thread*).
                 val omitted = fetched?.let { answer -> withContext(io) { (lines + others).filterTo(HashSet()) { it !in answer.statuses && it !in answer.failed } } }
+                // The answered lines with severe delays, on [io] too.
+                val answeredDelayed = fetched?.let { answer -> withContext(io) { AroundDelays.delayed(LineStatus.asOf(answer.statuses, clock()).values) } }
                 val newVerdict = withContext(io) {
                     (fetched != null && (fetched.statuses.any { (id, status) -> held.statuses[id] != status } ||
                         held.statuses.keys.any { it !in fetched.statuses && it !in fetched.failed })) ||
@@ -1353,6 +1520,8 @@ class TripViewModel(
                         live = if (!current || source != sourceGeneration) state.live else state.live + live.associate { (id, stop) -> id to (stop ?: state.live[id]?.copy(failed = true) ?: StopLive(emptyList(), Instant.EPOCH, failed = true)) },
                         // A failed request's lines keep their older statuses; the answered ones replace.
                         statuses = fetched?.let { it.statuses + state.statuses.filterKeys { id -> id in it.failed } } ?: state.statuses,
+                        // As [statuses]: the answer's, and a failed line's held one.
+                        delayedLines = fetched?.let { f -> answeredDelayed.orEmpty() + state.delayedLines.filter { id -> id in f.failed } } ?: state.delayedLines,
                         statusesAt = fetched?.let { state.statusesAt + it.answeredAt() } ?: state.statusesAt,
                         // A failed request's lines keep theirs, sorted when they were.
                         statusesSortedOn = fetched?.let { if (it.failed.isEmpty()) it.sortedOn else earlier(state.statusesSortedOn, it.sortedOn) } ?: state.statusesSortedOn,
@@ -1392,6 +1561,7 @@ class TripViewModel(
                 // A status answered differently, or one held before that TfL now leaves out, judged on [io]
                 // as in the refresh's own check (Codex, #529).
                 val heldNow = _state.value
+                val lateDelayed = found?.let { f -> withContext(io) { AroundDelays.delayed(LineStatus.asOf(f.statuses, clock()).values) } }
                 // The late lines' verdict on what was left out, against the state as it stood, on [io].
                 val lateOmitted = found?.let { f ->
                     withContext(io) { heldNow.statusOmitted - late.toSet() + late.filter { id -> id !in f.statuses && id !in f.failed } }
@@ -1406,6 +1576,7 @@ class TripViewModel(
                     it.copy(
                         failures = if (newlyFailed) it.failures + 1 else it.failures,
                         statuses = found?.let { f -> judged(it.statuses, f) + f.statuses } ?: it.statuses,
+                        delayedLines = found?.let { f -> it.delayedLines.filter { id -> id !in late || id in f.failed }.toSet() + lateDelayed.orEmpty() } ?: it.delayedLines,
                         statusesAt = found?.let { f -> judged(it.statusesAt, f) + f.answeredAt() } ?: it.statusesAt,
                         statusesSortedOn = found?.let { f -> earlier(it.statusesSortedOn, f.sortedOn) } ?: it.statusesSortedOn,
                         statusFailedLines = it.statusFailedLines - late.toSet() + (found?.failed ?: late.toSet()),
@@ -1815,9 +1986,25 @@ class TripViewModel(
          * cards walk least on the live ranking ([routeLabels]), with no threshold, so it's kept
          * whatever it saves. One route more at most, so the cap still bounds the requests.
          */
-        internal fun bestOf(routes: List<TripRoute>, keep: Collection<String>, direct: Set<String> = emptySet()): List<TripRoute> {
+        internal fun bestOf(
+            routes: List<TripRoute>,
+            keep: Collection<String>,
+            direct: Set<String> = emptySet(),
+            delayed: Set<String> = emptySet(),
+        ): List<TripRoute> {
             // A Direct row's route ([State.directKeys]) is never one of the soonest few: timed only kept, open.
-            val soonest = routes.filterNot { direct.isNotEmpty() && routeKey(it) in direct }.sortedBy { it.legs.lastOrNull()?.arrival ?: Instant.MAX }
+            // One riding a [delayed] line counts as [TripTiming.DELAYED_BY] later, as it ranks, so a route
+            // clear of the delays isn't cut before it can be timed (Codex, #703): judged once a route, and only
+            // when a line is delayed.
+            val candidates = routes.filterNot { direct.isNotEmpty() && routeKey(it) in direct }
+            val soonest = if (delayed.isEmpty()) {
+                candidates.sortedBy { it.legs.lastOrNull()?.arrival ?: Instant.MAX }
+            } else {
+                candidates.map { route ->
+                    val arrival = route.legs.lastOrNull()?.arrival
+                    route to (arrival?.let { if (route.legs.any { leg -> !leg.isWalk && leg.lineId in delayed }) it.plus(TripTiming.DELAYED_BY) else it } ?: Instant.MAX)
+                }.sortedBy { it.second }.map { it.first }
+            }
             // Of routes walking as little, the soonest: so a plan with no walks adds none past the cap.
             val leastWalking = soonest.minByOrNull { it.walking }
             val keys = soonest.map(::routeKey).distinct().take(MAX_ROUTES).toSet() + keep + listOfNotNull(leastWalking?.let(::routeKey))
@@ -1825,8 +2012,8 @@ class TripViewModel(
         }
 
         /** [bestOf], keeping the one route [keep] names. */
-        internal fun bestOf(routes: List<TripRoute>, keep: String? = null, direct: Set<String> = emptySet()): List<TripRoute> =
-            bestOf(routes, listOfNotNull(keep), direct)
+        internal fun bestOf(routes: List<TripRoute>, keep: String? = null, direct: Set<String> = emptySet(), delayed: Set<String> = emptySet()): List<TripRoute> =
+            bestOf(routes, listOfNotNull(keep), direct, delayed)
 
         /** How many distinct routes a trip times at most. */
         const val MAX_ROUTES = 6
