@@ -2714,7 +2714,14 @@ Only a line page opened from Lines… opens stops so far (`TODO.md`).
 **Every line opens a page of its own from the lines page, its map on it whatever its status**
 (maintainer, 2026-10-06: "tapping on any line should show the line name and the route map, even ones
 with good service"). The page is the line's row as the lines page shows it, TfL's reason where it's
-disrupted, then the map. A route page opens its line's page too, from its overflow's **View line**
+disrupted, the line's work that hasn't started yet under **Coming up**, then the map. Coming up
+looks different from what's under way (maintainer, 2026-10-08): muted, each alert in a neutral
+outlined chip with the day it starts ("From 10 Oct"), as a route page lists it, and only where
+there's work to come. Each is dismissible on its own there, as on a route page, and one dismissed
+anywhere stays off every line page; a route page's line page lists the work to come the route page
+does, a good service's included. A page restored after a rotation keeps it as last shown; after the app was closed and came back it
+waits for the line, the work having maybe started or been called off meanwhile. It is no verdict: changed, it
+comes in with the line's row, never taking the page down meanwhile as a changed alert does. A route page opens its line's page too, from its overflow's **View line**
 (maintainer, 2026-10-06), over the route page, which Back returns to: the line's status as the route
 page has it (an alert behind the stop included, the page being about the whole line; "Couldn't
 check" where the line's own check failed or has gone stale, beside a status kept from before too,

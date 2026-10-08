@@ -255,14 +255,18 @@ internal fun LinesOverlay(
         // a clean line claimed for want of one (SPEC D4); the next tick asks.
         val checking = held == null || held.checking || (held.status == null && !held.unknown)
         val dismissed by viewModel.lineDismissed.collectAsStateWithLifecycle()
-        val row = rememberWorked(slot, Inputs(line.id, line.name, line.mode, status, dismissed, unknown, checking), keep = ::sameVerdict) {
+        val dismissals by viewModel.dismissed.collectByIdentityWithLifecycle()
+        val row = rememberWorked(slot, Inputs(line.id, line.name, line.mode, dismissals, status, dismissed, unknown, checking), keep = ::sameVerdict) {
             // No stop of the rider's: the map draws the whole line, none of it marked as theirs.
-            lineRow(line.mode, line.id, line.name, "", "", status, dismissed = dismissed, ride = null, unknown = unknown, checking = checking)
+            lineRow(
+                line.mode, line.id, line.name, "", "", status, dismissed = dismissed, ride = null, unknown = unknown, checking = checking,
+                planned = plannedShown(line.id, status, dismissals),
+            )
         }
         // Its alert dismissible here as on any line's page (SPEC *Disruptions*), into the shared store.
         val dismissFailed by viewModel.dismissWriteFailed.collectAsStateWithLifecycle()
         val pagesOpen = remember { mutableIntStateOf(0) }
-        val dismissal = LineAlertDismissal(viewModel::dismiss, dismissFailed, viewModel::dismissWriteFailureShown, pagesOpen)
+        val dismissal = LineAlertDismissal(viewModel::dismiss, dismissFailed, viewModel::dismissWriteFailureShown, pagesOpen, viewModel::dismissPlanned)
         val system = LocalDistanceSystem.current
         // How far [position] is from the rider's last fix, as a label; null with either unknown.
         fun distanceTo(position: Coordinates?): String? =
@@ -460,15 +464,18 @@ internal fun LinesOverlay(
                                 onBack = back,
                             )
                             routeKey?.let { key ->
-                                // Its star and dismiss through the board's own model, as on a station's page.
-                                StopRoutePage(
-                                    view,
-                                    key,
-                                    routeDestination?.let { RouteFocus(it, routeBranch) },
-                                    routeLineOpen,
-                                    onBack = { routeKey = null },
-                                    actions = board,
-                                )
+                                // Its star and dismiss through the board's own model, as on a station's page; its
+                                // line's page ("View line") dismisses as the line's own page above does (Codex on #689).
+                                CompositionLocalProvider(LocalDismissLineAlert provides dismissal) {
+                                    StopRoutePage(
+                                        view,
+                                        key,
+                                        routeDestination?.let { RouteFocus(it, routeBranch) },
+                                        routeLineOpen,
+                                        onBack = { routeKey = null },
+                                        actions = board,
+                                    )
+                                }
                             }
                         }
                     }

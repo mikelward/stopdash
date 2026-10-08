@@ -11,6 +11,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -612,6 +613,63 @@ class LinesOverlayTest {
         } finally {
             app.stopdash.telemetry.UsageEvents.resetForTest()
         }
+    }
+
+    @Test
+    fun a_stop_s_route_page_opens_its_line_with_its_work_to_come_dismissible() {
+        // Lines…, a stop on the map, a train, then "View line": its Coming up keeps its ×, as on the line's own
+        // page under it (Codex on #689).
+        val line = LineRef("victoria", "Victoria", "tube")
+        val model = LinesViewModel(
+            loadLines = { listOf(line) },
+            loadRecent = { emptyList() },
+            recordOpen = { listOf(it) },
+            lineStatus = { LineStatus(lineId = "victoria", severity = LineStatus.GOOD_SERVICE, description = "Good Service") },
+            io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
+            saved = SavedStateHandle(),
+        )
+        // Oxford Circus, a public interchange, with a made-up Victoria line train and made-up work to come.
+        val now = java.time.Instant.parse("2026-10-07T09:00:00Z")
+        val closure = app.stopdash.domain.PlannedAlert("Part Closure", "Saturday 10 October, no service between Victoria and Brixton.", java.time.LocalDate.of(2026, 10, 10))
+        val board = DeparturesUiState.Loaded(
+            stops = listOf(
+                app.stopdash.domain.StopArrivals(
+                    "940GZZLUOXC", "Oxford Circus",
+                    listOf(
+                        app.stopdash.domain.Departure(
+                            "victoria", "Victoria", "outbound", "Brixton", "Southbound - Platform 6", now.plusSeconds(180), "tube",
+                        ),
+                    ),
+                    fetchedAt = now,
+                ),
+            ),
+            fetchedAt = now,
+            lineStatuses = mapOf("victoria" to LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(closure))),
+            determinedLineIds = setOf("victoria"),
+        )
+        val menu = AppMenuActions(updateAvailable = false, onOpenAppListing = {}, onSendBugReport = {}, onOpenLicenses = {})
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides Dispatchers.Unconfined, LocalAppMenu provides menu) {
+                    LinesOverlay(
+                        model, open = line, onOpen = {}, onBack = {},
+                        stop = LineStopRef("940GZZLUOXC", "Oxford Circus"),
+                        departures = { _, _, _ -> StopDepartures(board, now, onRefresh = {}) },
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Brixton").performClick()
+        composeRule.waitForIdle()
+        // The route page's overflow, over the stop's and the line's own.
+        composeRule.onAllNodesWithContentDescription(composeRule.activity.getString(app.stopdash.R.string.menu_more)).onLast().performClick()
+        composeRule.onNodeWithText(composeRule.activity.getString(app.stopdash.R.string.route_detail_view_line)).performClick()
+        composeRule.waitForIdle()
+        val onLinePage = androidx.compose.ui.test.hasAnyAncestor(androidx.compose.ui.test.hasTestTag("tripLinesPage"))
+        composeRule.onNode(hasText("From 10 Oct") and onLinePage).assertExists()
+        composeRule.onNode(androidx.compose.ui.test.hasContentDescription("Dismiss", substring = true) and onLinePage).assertExists()
     }
 
     @Test

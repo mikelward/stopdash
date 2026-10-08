@@ -445,6 +445,7 @@ object HomeLines {
                 checking = id in checking,
                 unknown = id !in known && id !in checking,
                 nearby = nearest[id]?.let { setOf(it) }.orEmpty(),
+                planned = plannedShown(id, was ?: status, dismissed),
             )
         // The page: worst first as a trip's orders them, then, as bad as each other, the rider's own lines
         // ahead of a network's far away (maintainer, 2026-10-05).

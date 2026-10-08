@@ -2886,6 +2886,7 @@ class MainActivity : ComponentActivity() {
                 // The disruptions row's lines page dismisses a line's alert (maintainer, 2026-10-06).
                 LocalDismissLineAlert provides LineAlertDismissal(
                     viewModel::dismissLineAlert, dismissWriteFailed, viewModel::dismissWriteFailureShown, linesPagesOpen,
+                    viewModel::dismissPlannedAlert,
                 ),
             ) {
                 MainScreen(
@@ -3947,6 +3948,7 @@ class MainActivity : ComponentActivity() {
             dismissed = trip.dismissed.collectByIdentityWithLifecycle().value,
             onDismissAlert = trip::dismissAlert,
             onDismissLineAlert = trip::dismissLineAlert,
+            onDismissPlannedAlert = trip::dismissPlannedAlert,
             dismissWriteFailed = trip.dismissWriteFailed.collectAsStateWithLifecycle().value,
             onDismissWriteFailureShown = trip::dismissWriteFailureShown,
             // Start: followed from here to [toName], the rider at the first stop once they've walked there,
@@ -4157,9 +4159,15 @@ class MainActivity : ComponentActivity() {
                 returning = true
             }
         }
+        // A searched station's line pages dismiss as the near-me list's do, its work to come included (Codex, #689).
+        val linesPagesOpen = remember { mutableIntStateOf(0) }
         CompositionLocalProvider(
             LocalRouteTopology provides routeTopology.value,
             LocalRouteStops provides routeStops(appContext),
+            LocalDismissLineAlert provides LineAlertDismissal(
+                viewModel::dismissLineAlert, dismissWriteFailed, viewModel::dismissWriteFailureShown, linesPagesOpen,
+                viewModel::dismissPlannedAlert,
+            ),
         ) {
             val now = tickingNow()
             MainScreen(

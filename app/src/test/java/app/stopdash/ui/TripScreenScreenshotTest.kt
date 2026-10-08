@@ -71,6 +71,7 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Countdown
 import app.stopdash.domain.PlaceDirect
+import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.ModeGroups
@@ -100,6 +101,7 @@ import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import kotlinx.coroutines.CoroutineDispatcher
@@ -4508,6 +4510,124 @@ class TripScreenScreenshotTest {
         showLinePage(TripLine(leg, status), northernLine, shown = "Old Street")
         composeRule.onAllNodesWithText("No service").assertCountEquals(1)
         lineMapRow("Edgware · High Barnet · Mill Hill East")
+    }
+
+    @Test
+    fun a_lines_work_to_come_is_listed_apart_under_coming_up() {
+        // Good service today, a weekend closure ahead: the page lists it muted under its own heading, with the
+        // day it starts, apart from anything under way (maintainer, 2026-10-08).
+        val closure = PlannedAlert(
+            "Part Closure", "Saturday 10 and Sunday 11 October, no service between Kennington and Morden.", LocalDate.of(2026, 10, 10),
+        )
+        val line = TripLine(northernLeg(), LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(closure)))
+        showLinePage(line, northernLine, shown = "Coming up")
+        composeRule.onNodeWithText("Part Closure").assertExists()
+        composeRule.onNodeWithText("From 10 Oct").assertExists()
+        captureSnapshot("trip-line-coming-up.png")
+    }
+
+    @Test
+    fun work_to_come_is_dismissed_one_by_one_from_a_lines_page() {
+        // Every service alert is dismissible, planned work on a line's page too (Codex, #689).
+        val closure = PlannedAlert("Part Closure", "Saturday 10 and Sunday 11 October, no service between Kennington and Morden.", LocalDate.of(2026, 10, 10))
+        val row = TripRow(
+            checking = false,
+            every = listOf(TripLine(northernLeg(), LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(closure)))),
+        )
+        val dismissed = mutableListOf<Pair<String, PlannedAlert>>()
+        val dismissal = LineAlertDismissal({}, false, {}, androidx.compose.runtime.mutableIntStateOf(0), dismissPlanned = { id, alert -> dismissed += id to alert })
+        composeRule.setContent { StopDashTheme(dynamicColor = false) { TripLinesPage(row, onClose = {}, dismissal = dismissal, alone = true) } }
+        composeRule.onNodeWithText("Part Closure").assertExists()
+        composeRule.onNodeWithContentDescription("Dismiss", substring = true).performClick()
+        assertEquals(listOf("northern" to closure), dismissed)
+    }
+
+    @Test
+    fun work_to_come_read_back_from_the_stored_snapshot_offers_no_dismiss() {
+        // Its words left out, only its fingerprint kept: a dismissal can't be keyed to match it, so no × until the
+        // line's check brings the words back (Codex, #689).
+        val live = PlannedAlert("Part Closure", "Saturday 10 and Sunday 11 October, no service between Kennington and Morden.", LocalDate.of(2026, 10, 10))
+        val stored = live.copy(fullText = "", fingerprint = app.stopdash.domain.plannedAlertFingerprint(live))
+        val row = TripRow(
+            checking = false,
+            every = listOf(TripLine(northernLeg(), LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(stored)))),
+        )
+        val dismissal = LineAlertDismissal({}, false, {}, androidx.compose.runtime.mutableIntStateOf(0), dismissPlanned = { _, _ -> })
+        composeRule.setContent { StopDashTheme(dynamicColor = false) { TripLinesPage(row, onClose = {}, dismissal = dismissal, alone = true) } }
+        composeRule.onNodeWithText("From 10 Oct").assertExists()
+        composeRule.onNodeWithContentDescription("Dismiss", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun a_lines_work_to_come_stays_up_through_a_rotation() {
+        // Rotated, with the worker that brings the line back held: Coming up stays as the rider was reading it,
+        // as the reason does (Codex, #689).
+        val closure = PlannedAlert("Part Closure", "Saturday 10 and Sunday 11 October, no service between Kennington and Morden.", LocalDate.of(2026, 10, 10))
+        val row = TripRow(
+            checking = false,
+            every = listOf(TripLine(northernLeg(), LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(closure)))),
+        )
+        val held = java.util.concurrent.Executor { }.asCoroutineDispatcher()
+        val restoration = StateRestorationTester(composeRule)
+        var worker: CoroutineDispatcher by mutableStateOf(java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
+        restoration.setContent { StopDashTheme { CompositionLocalProvider(LocalWorker provides worker) { TripLinesPage(row, onClose = {}) } } }
+        composeRule.onNodeWithText("Good service").performClick()
+        composeRule.onNodeWithText("From 10 Oct").assertExists()
+        worker = held
+        restoration.emulateSavedInstanceStateRestore()
+        composeRule.onNodeWithText("Coming up").assertExists()
+        composeRule.onNodeWithText("From 10 Oct").assertExists()
+    }
+
+    @Test
+    fun a_one_line_pages_work_to_come_stays_up_through_a_rotation() {
+        // A route page's line, rotated: its row is worked out again, the page meanwhile its stand-in, which knows
+        // no work to come; Coming up stays as last shown (Codex, #689).
+        val closure = PlannedAlert("Part Closure", "Saturday 10 and Sunday 11 October, no service between Kennington and Morden.", LocalDate.of(2026, 10, 10))
+        val worked = TripRow(
+            checking = false,
+            every = listOf(TripLine(northernLeg(), LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(closure)))),
+        )
+        var row by mutableStateOf<TripRow?>(worked)
+        val restoration = StateRestorationTester(composeRule)
+        restoration.setContent { StopDashTheme { OneLinePage(row, "northern", "Northern", "tube", onClose = {}) } }
+        composeRule.onNodeWithText("From 10 Oct").assertExists()
+        row = null
+        restoration.emulateSavedInstanceStateRestore()
+        composeRule.onNodeWithText("Coming up").assertExists()
+        composeRule.onNodeWithText("From 10 Oct").assertExists()
+    }
+
+    @Test
+    fun a_one_line_pages_work_to_come_waits_for_the_line_after_a_relaunch() {
+        // Closed and come back: the work may have started or been called off meanwhile, so Coming up waits for
+        // the line rather than show the saved list as current (Codex, #689).
+        val closure = PlannedAlert("Part Closure", "Saturday 10 and Sunday 11 October, no service between Kennington and Morden.", LocalDate.of(2026, 10, 10))
+        val worked = TripRow(
+            checking = false,
+            every = listOf(TripLine(northernLeg(), LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(closure)))),
+        )
+        var row by mutableStateOf<TripRow?>(worked)
+        val restoration = StateRestorationTester(composeRule)
+        restoration.setContent { StopDashTheme { OneLinePage(row, "northern", "Northern", "tube", onClose = {}) } }
+        composeRule.onNodeWithText("From 10 Oct").assertExists()
+        row = null
+        val was = ThisProcess.id
+        try {
+            ThisProcess.id = "relaunched"
+            restoration.emulateSavedInstanceStateRestore()
+            composeRule.onNodeWithText("From 10 Oct").assertDoesNotExist()
+            row = worked
+            composeRule.onNodeWithText("From 10 Oct").assertExists()
+        } finally {
+            ThisProcess.id = was
+        }
+    }
+
+    @Test
+    fun a_line_with_no_work_to_come_has_no_coming_up() {
+        showLinePage(TripLine(northernLeg(), northernPartSuspended), northernLine, shown = "Burnt Oak to Chalk Farm")
+        assertFalse(hasLine("Coming up"))
     }
 
     @Test

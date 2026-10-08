@@ -2759,9 +2759,12 @@ Builds on Phase 1's minimal line-status marking.
   - [ ] **Open a stop from every line page**: the home screen's lines row and a trip's lines page draw
         the same map, its stations inert there for now.
   - [x] **Back from To's trip** returns to the stop it was planned from, not the near-me list.
-- [ ] **Coming-up closures on a line's page** (discussed 2026-10-06). TfL's future statuses
-      (`/Line/{id}/Status/{from}/to/{to}`) for the next week, each drawn on the map like a closure in
-      force: one free request when the page opens, cached for hours, a failure saying so with a retry.
+- [ ] **Coming-up closures on a line's page** (discussed 2026-10-06; maintainer, 2026-10-08: coming up
+      should look different from what's under way). The page lists the work to come the line's status
+      already carries under **Coming up**, muted, each with the day it starts.
+  - [ ] TfL's future statuses (`/Line/{id}/Status/{from}/to/{to}`) for the next week, added to it:
+        one free request when the page opens, cached for hours, a failure saying so with a retry.
+  - [ ] Each on the map too, drawn apart from a closure in force (lighter, or dashed).
 - [x] **A trip's lines page keeps the rider's starred stops on the map too.** The trip reads the starred
       rows and journeys as they change, walked on the worker, and its lines page keeps their stops as
       the home screen's does.

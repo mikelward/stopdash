@@ -46,6 +46,7 @@ import app.stopdash.domain.WidgetJourneys
 import app.stopdash.domain.WidgetJourneysReport
 import app.stopdash.domain.WidgetRefresh
 import app.stopdash.domain.Workers
+import app.stopdash.domain.PlannedAlert
 import app.stopdash.telemetry.UsageEvents
 import java.time.Duration
 import java.time.Instant
@@ -2738,6 +2739,11 @@ class MainViewModel(
     /** Dismisses a line's [status] as its lines page shows it, as a row's × does its line alert. */
     fun dismissLineAlert(status: LineStatus) {
         viewModelScope.launch { dismissAlertOf(dismissedStore, io, _dismissWriteFailed, warn, _dismissed) { DismissedAlert.ofLineStatus(status) } }
+    }
+
+    /** Dismisses one of [lineId]'s alerts still to come, as a line's page shows it. */
+    fun dismissPlannedAlert(lineId: String, alert: PlannedAlert) {
+        viewModelScope.launch { dismissAlertOf(dismissedStore, io, _dismissWriteFailed, warn, _dismissed) { DismissedAlert.ofPlanned(lineId, alert) } }
     }
 
     /**

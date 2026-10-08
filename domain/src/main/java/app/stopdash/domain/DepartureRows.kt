@@ -955,10 +955,11 @@ object DepartureRows {
         }
     }
 
-    // [this] less the planned alerts the user dismissed: each is its own alert, dismissed on its own.
+    // [this] less the planned alerts the user dismissed: each is its own alert, dismissed on its own. One read
+    // back from the stored snapshot, its prose left out, still is ([plannedDismissed]; Codex, #689).
     fun DepartureRow.withoutDismissedPlanned(dismissed: Set<DismissedAlert>): DepartureRow {
-        if (plannedAlerts.isEmpty()) return this
-        val kept = plannedAlerts.filterNot { DismissedAlert.ofPlanned(lineId, it) in dismissed }
+        if (plannedAlerts.isEmpty() || dismissed.isEmpty()) return this
+        val kept = plannedAlerts.filterNot { plannedDismissed(dismissed, lineId, it) }
         return if (kept.size == plannedAlerts.size) this else copy(plannedAlerts = kept)
     }
 

@@ -12,6 +12,7 @@ import app.stopdash.domain.Workers
 import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StopLinks
 import app.stopdash.domain.linksOf
+import app.stopdash.domain.PlannedAlert
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -100,6 +101,9 @@ internal class LinesViewModel(
 
     private val _dismissed = MutableStateFlow<Set<DismissedAlert>>(emptySet())
 
+    /** The service alerts the user dismissed, for the page's work to come to leave theirs out. */
+    val dismissed: StateFlow<Set<DismissedAlert>> = _dismissed.asStateFlow()
+
     /** A stop's links ([linksOf]) and the stop they're for; null until the first is worked out. */
     class Links(val stopId: String, val links: StopLinks)
 
@@ -142,6 +146,11 @@ internal class LinesViewModel(
     /** Dismisses [status]'s alert, as a line's page does elsewhere (SPEC *Disruptions*). */
     fun dismiss(status: LineStatus) {
         viewModelScope.launch { dismissAlertOf(dismissedStore, io, _dismissWriteFailed, warn, _dismissed) { DismissedAlert.ofLineStatus(status) } }
+    }
+
+    /** Dismisses one of [lineId]'s alerts still to come, as a line's page shows it. */
+    fun dismissPlanned(lineId: String, alert: PlannedAlert) {
+        viewModelScope.launch { dismissAlertOf(dismissedStore, io, _dismissWriteFailed, warn, _dismissed) { DismissedAlert.ofPlanned(lineId, alert) } }
     }
 
     /** The page has said a dismiss failed. */

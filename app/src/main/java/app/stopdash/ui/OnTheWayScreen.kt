@@ -929,7 +929,12 @@ private fun BoardLinePage(
         Inputs(lineId, lineName, mode, stopId, stopName, tapped, found.status, false, found.unknown, found.checking),
         keep = ::sameVerdict,
     ) {
-        lineRow(mode, lineId, lineName, stopId, stopName, found.status, dismissed = false, ride = tapped, unknown = found.unknown, checking = found.checking)
+        lineRow(
+            mode, lineId, lineName, stopId, stopName, found.status, dismissed = false, ride = tapped, unknown = found.unknown, checking = found.checking,
+            // The trip's own check, as its status is: On the way doesn't apply the near-me list's
+            // dismissals, having its own (SPEC *On the way*), so its work to come is all of it.
+            planned = found.status?.planned.orEmpty(),
+        )
     }
     OneLinePage(worked, lineId, lineName, mode, onClose)
 }

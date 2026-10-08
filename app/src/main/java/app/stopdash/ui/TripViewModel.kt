@@ -42,6 +42,7 @@ import app.stopdash.domain.TripTiming
 import app.stopdash.domain.mergedRoutes
 import app.stopdash.domain.withoutDetours
 import app.stopdash.domain.Workers
+import app.stopdash.domain.PlannedAlert
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -792,6 +793,11 @@ class TripViewModel(
     /** Dismisses a line's [status] as its lines page shows it, as a row's × does its line alert. */
     fun dismissLineAlert(status: LineStatus) {
         viewModelScope.launch { dismissAlertOf(dismissedStore, io, _dismissWriteFailed, warn, _dismissed) { DismissedAlert.ofLineStatus(status) } }
+    }
+
+    /** Dismisses one of [lineId]'s alerts still to come, as a line's page shows it. */
+    fun dismissPlannedAlert(lineId: String, alert: PlannedAlert) {
+        viewModelScope.launch { dismissAlertOf(dismissedStore, io, _dismissWriteFailed, warn, _dismissed) { DismissedAlert.ofPlanned(lineId, alert) } }
     }
 
     fun dismissWriteFailureShown() {
