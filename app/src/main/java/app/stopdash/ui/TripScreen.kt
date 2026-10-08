@@ -1,5 +1,10 @@
 package app.stopdash.ui
 
+import kotlinx.coroutines.delay
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.ui.layout.Layout
@@ -1046,7 +1051,7 @@ internal fun TripScreen(
     val statuses = rememberStatusesAsOf(state.statuses, state.statusesSortedOn, now)
     val state = remember(state, statuses) { state.copy(statuses = statuses) }
     val linesPagesOpen = remember { mutableIntStateOf(0) }
-    val lineDismissal = onDismissLineAlert?.let { LineAlertDismissal(it, dismissWriteFailed, onDismissWriteFailureShown, linesPagesOpen, onDismissPlannedAlert) }
+    val lineDismissal = onDismissLineAlert?.let { LineAlertDismissal(it, dismissWriteFailed, onDismissWriteFailureShown, linesPagesOpen, onDismissPlannedAlert, dismissed) }
     CompositionLocalProvider(
         LocalRouteStops provides routeStops,
         LocalTripJourney provides journey,
@@ -3576,6 +3581,28 @@ internal fun plannedDismissed(lineId: String, alert: PlannedAlert, dismissed: Se
     app.stopdash.domain.plannedDismissed(dismissed, lineId, alert)
 
 /**
+ * This line with [ahead], its week ahead (TfL's date-range status), added to its work to come as
+ * [LineStatus.withWorkAhead] adds it: what's under way or already listed isn't added again, its own dismissed
+ * alerts included, matched against the status's whole work to come so one dismissed in other dates stays off;
+ * then what [dismissed] holds a dismissal of left out. [failed] when the week couldn't be asked: its page
+ * says so. Unchanged with no status to add it to.
+ */
+@WorkerThread
+internal fun TripLine.withWorkAhead(ahead: List<PlannedAlert>?, failed: Boolean, dismissed: Set<DismissedAlert>): TripLine {
+    val status = status
+    val unknown = aheadUnknown || failed
+    if (ahead.isNullOrEmpty() || status == null) return if (unknown == aheadUnknown) this else copy(aheadUnknown = unknown)
+    val base = status.copy(planned = (status.planned + planned).distinctBy { plannedAlertFingerprint(it) })
+    val merged = base.withWorkAhead(ahead)
+    if (merged === base) return if (unknown == aheadUnknown) this else copy(aheadUnknown = unknown)
+    val listed = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<PlannedAlert, Boolean>())
+    listed.addAll(base.planned)
+    val added = merged.planned.filter { it !in listed && !plannedDismissed(leg.lineId, it, dismissed) }
+    if (added.isEmpty()) return if (unknown == aheadUnknown) this else copy(aheadUnknown = unknown)
+    return copy(planned = (planned + added).sortedBy { it.startsOn }, aheadUnknown = unknown)
+}
+
+/**
  * Worst first: a disruption over a good service, then a line not running over one running worse than
  * usual, as a trip ranks them ([RouteDisruption.tierOf]: TfL's numbers alone put severe delays, 6, ahead
  * of a closure, 20; Codex, #559), then TfL's graded statuses over a catch-all, then by severity.
@@ -3844,6 +3871,9 @@ internal class LineAlertDismissal(
     val pagesOpen: MutableIntState,
     // Dismisses one of a line's alerts still to come ([TripLine.planned]); null offers no × on them.
     val dismissPlanned: ((String, PlannedAlert) -> Unit)? = null,
+    // The dismissals as this screen holds them, a dismiss in it at once, before it's saved: what a line's week
+    // ahead is filtered by, so one dismissed there goes at once (Codex, #704). Null for the shared ones.
+    val dismissed: Set<DismissedAlert>? = null,
 )
 
 /**
@@ -3916,12 +3946,25 @@ internal fun TripLinesPage(
     // The process it was saved in: shown again only in the same one (a rotation), never after the app was
     // closed and came back, when the work may have started or been called off meanwhile (Codex, #689).
     var plannedSavedIn by rememberSaveable { mutableStateOf<String?>(null) }
+    // And the line it was saved for: another line opened since never shows it.
+    var plannedSavedFor by rememberSaveable { mutableStateOf<String?>(null) }
+    // And the week-ahead answer it was worked out with ([WorkAheadCache.Held.at]); null with none.
+    var plannedSavedAhead by rememberSaveable { mutableStateOf<Long?>(null) }
     val plannedKept = plannedSaved.takeIf { plannedSavedIn == ThisProcess.id }
     // Alone, the row's one line as it is now: no order to hold, nor an old line to hold over a newer row.
-    val reasonLine = if (alone) {
+    val listed = if (alone) {
         row.every.firstOrNull()?.takeIf { it.leg.lineId == reasonId }
     } else {
         reasonAt?.let { lines?.getOrNull(it) }?.takeIf { it.leg.lineId == reasonId }
+    }
+    // Its week ahead added, from TfL's own date-range status (SPEC *Line page*). Alone, the page lists the
+    // work to come its route page does, so nothing more.
+    val withAhead = listed?.let { rememberWorkAhead(it, LocalLineWorkAhead.current.takeIf { !alone }, dismissal?.dismissed) }
+    val reasonLine = withAhead?.line
+    // While its week is worked in again (a rotation), Coming up as last shown for this line, not the line
+    // without it (Codex, #704); kept by the page, so no other page's line stands in.
+    val aheadHeld = plannedKept?.takeIf {
+        withAhead?.pending == true && plannedSavedFor == reasonLine?.leg?.lineId && plannedSavedAhead == withAhead.aheadAt
     }
     if (reasonLine != null) {
         SideEffect {
@@ -3930,9 +3973,11 @@ internal fun TripLinesPage(
             quietedText = reasonLine.quietedReason
             // A one-line page's stand-in while its row is worked out again ([lineStandIn], after a rotation)
             // knows no work to come: what was saved stays until the line is back (Codex, #689).
-            if (!reasonLine.restoring) {
+            if (!reasonLine.restoring && !withAhead.pending) {
                 plannedSaved = reasonLine.plannedSaved
                 plannedSavedIn = ThisProcess.id
+                plannedSavedFor = reasonLine.leg.lineId
+                plannedSavedAhead = withAhead.aheadAt
             }
         }
     }
@@ -4007,6 +4052,8 @@ internal fun TripLinesPage(
                         // The stand-in shows the work to come as last shown: no verdict, so kept however the
                         // page came back (SPEC *Line page*).
                         restoredPlanned = plannedKept.takeIf { reasonLine.restoring },
+                        aheadHeld = aheadHeld,
+                        aheadFailed = withAhead?.failed == true,
                     )
                 } else {
                     // Restoring: the line's pill and the reason as last shown, in their places, until the
@@ -4048,6 +4095,73 @@ internal fun TripLinesPage(
 }
 
 /**
+ * [line] with its week ahead added ([TripLine.withWorkAhead]): asked from [ahead]'s cache as its page opens
+ * and again as the answer runs out, while the page is up, and worked in on the worker. [line] as it is where
+ * there's no [ahead], and until the first is worked out.
+ */
+@Composable
+private fun rememberWorkAhead(line: TripLine, ahead: LineWorkAhead?, own: Set<DismissedAlert>?): WithWorkAhead {
+    if (ahead == null) return WithWorkAhead(line, pending = false, aheadAt = null, failed = false)
+    val id = line.leg.lineId
+    // Not for a stand-in, nor a line gone from the trip: its page says no more of it.
+    if (!line.restoring && !line.gone) {
+        val lifecycle = LocalLifecycleOwner.current.lifecycle
+        LaunchedEffect(ahead, id, lifecycle) {
+            lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                val recheck = WorkAheadCache.RECHECK.toMillis()
+                while (true) {
+                    if (ahead.cache.fresh(id) == null) ahead.cache.ask(id)
+                    // Back as the answer runs out, the work starting then, or at the next look for a failed one.
+                    delay(ahead.cache.holdsForMillis(id)?.coerceIn(1L, recheck) ?: recheck)
+                }
+            }
+        }
+    }
+    val answer by remember(ahead, id) { ahead.cache.answer(id) }.collectAsStateWithLifecycle()
+    val shared by ahead.dismissed.collectByIdentityWithLifecycle()
+    // The screen's own where it gives them, as a dismiss there takes effect at once.
+    val dismissed = own ?: shared
+    // Never one past its hold, as a page reopened after it comes back: the effect above asks again.
+    val held = ahead.cache.current(answer.held)
+    val failed = answer.failed
+    val slot = remember(id) { mutableStateOf<Worked<Inputs, TripLine>?>(null) }
+    // Its verdict last, so a new answer for the same alert keeps the page up while it's worked out.
+    val worked = rememberWorked(slot, Inputs(line, held, failed, dismissed, line.status, line.dismissed, line.unknown, line.checking), keep = ::sameWorkAhead) {
+        line.withWorkAhead(held?.alerts, failed, dismissed)
+    }
+    // Until it's in, the line without its week: pending only where nothing has been worked out on this page yet
+    // (it came back from a rotation) and a fresh answer with work in it is held, the one the page's saved Coming
+    // up must have been worked out with ([WithWorkAhead.aheadAt]). A change once anything has (an alert
+    // dismissed, a new answer), a lapsed week or a failed ask never brings the saved list back: the line
+    // without it, its failure said, until it's worked in (Codex, #704).
+    val pending = slot.value == null && held?.alerts?.isNotEmpty() == true
+    val aheadAt = if (worked != null) held?.at else null
+    return worked?.let { WithWorkAhead(it, pending = false, aheadAt = aheadAt, failed = false) }
+        ?: WithWorkAhead(line, pending = pending, aheadAt = held?.at, failed = failed)
+}
+
+/** A lines page's line with its week ahead ([rememberWorkAhead]); [pending] while the week is still to be worked in. */
+internal class WithWorkAhead(
+    val line: TripLine,
+    val pending: Boolean,
+    // When the week-ahead answer [line] was worked out with was asked ([WorkAheadCache.Held.at]): what the page's
+    // saved Coming up is tagged with, and pending is matched against. Null with none.
+    val aheadAt: Long?,
+    // The week couldn't be asked, said on the page before it's worked in, rather than the line without it
+    // passing for a clean week meanwhile (Codex, #704).
+    val failed: Boolean,
+)
+
+/**
+ * Whether a lines page's line worked out with its week ahead for [held] may stand in for [wanted]'s while
+ * that's worked out ([rememberWorkAhead]): the line's verdict the same, and the week ahead, its failure and
+ * the rider's dismissals unchanged, so a week that ran out, an alert just dismissed, or a new answer never
+ * stays up for want of the worker (Codex, #704).
+ */
+internal fun sameWorkAhead(held: Inputs, wanted: Inputs): Boolean =
+    sameVerdict(held, wanted) && (1..3).all { Inputs.same(held.parts[it], wanted.parts[it]) }
+
+/**
  * A line's page off the trip's lines: its row as the lines show it, then TfL's reason for its
  * disruption in full, then the line's map with the alert placed on it and the rider's [starred] stops
  * kept ([LineMapSection]). Live: a disruption that clears says so, as the row does, and the reason
@@ -4064,6 +4178,11 @@ internal fun TripLineReason(
     restoring: Boolean = false,
     // A restored page's work to come as last shown ([TripLine.plannedSaved]), until the line is back.
     restoredPlanned: SavedPlanned? = null,
+    // The work to come as last shown while the line's week ahead is worked in again ([WithWorkAhead.pending]):
+    // shown in place of [line]'s own, which lacks it.
+    aheadHeld: SavedPlanned? = null,
+    // The line's week ahead couldn't be asked, before that's worked into [line] ([TripLine.aheadUnknown]).
+    aheadFailed: Boolean = false,
     // Dismisses one alert of the work to come; null offers no ×.
     onDismissPlanned: ((PlannedAlert) -> Unit)? = null,
 ) {
@@ -4093,9 +4212,10 @@ internal fun TripLineReason(
         // The line's work that hasn't started, muted and apart from what's under way (maintainer, 2026-10-08:
         // coming up should look different), each with the day it starts.
         val planned = line.planned
-        val saved = restoredPlanned.takeIf { planned.isEmpty() && line.status == null } ?: SavedPlanned.NONE
-        val count = if (planned.isNotEmpty()) planned.size else saved.size
-        if (count > 0 || line.aheadUnknown) {
+        val saved = aheadHeld ?: restoredPlanned.takeIf { planned.isEmpty() && line.status == null } ?: SavedPlanned.NONE
+        val count = if (planned.isNotEmpty() && aheadHeld == null) planned.size else saved.size
+        val aheadUnknown = line.aheadUnknown || aheadFailed
+        if (count > 0 || aheadUnknown) {
             item(key = "comingUp") {
                 Text(
                     stringResource(R.string.line_coming_up),
@@ -4106,11 +4226,11 @@ internal fun TripLineReason(
             }
             // Keyed by place: two alerts can share a day and words, and a key must be unique.
             items(count, key = { "planned:$it" }) { index ->
-                val alert = planned.getOrNull(index) ?: saved[index]
+                val alert = if (aheadHeld != null) saved[index] else planned.getOrNull(index) ?: saved[index]
                 PlannedAlertBlock(alert, Modifier.padding(top = 8.dp), onDismiss = onDismissPlanned?.let { { it(alert) } })
             }
             // Never a clean week claimed for want of an answer (SPEC D4): the page asks again at its next tick.
-            if (line.aheadUnknown) {
+            if (aheadUnknown) {
                 item(key = "aheadUnknown") {
                     Text(
                         stringResource(R.string.line_coming_up_unknown),

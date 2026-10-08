@@ -2733,8 +2733,9 @@ with good service"). The page is the line's row as the lines page shows it, TfL'
 disrupted, the line's work that hasn't started yet under **Coming up**, then the map. Coming up
 looks different from what's under way (maintainer, 2026-10-08): muted, each alert in a neutral
 outlined chip with the day it starts ("From 10 Oct"), as a route page lists it, and only where
-there's work to come. From the lines page it also carries the week ahead's closures from TfL's
-own date-range status, which the line's current status doesn't list: asked once as the page opens,
+there's work to come. From the lines page, the home screen's and a trip's, it also carries the week
+ahead's closures from TfL's own date-range status, which the line's current status doesn't list: one
+answer per line for every page, asked once as a line's page opens,
 kept three hours or until the soonest of it starts, whichever is sooner, and "Couldn't check the week
 ahead" where that ask failed or its answer couldn't be read, asked again at the page's next check. Each is dismissible on its own there, as on a route page, and one dismissed
 anywhere stays off every line page; a route page's line page lists the work to come the route page

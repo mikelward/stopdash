@@ -4701,6 +4701,61 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun a_lines_page_off_the_lines_asks_for_its_week_ahead_and_lists_it() {
+        // The home screen's and a trip's lines pages carry the week ahead too, asked as a line's page opens.
+        val closure = PlannedAlert("Part Closure", "Saturday 10 and Sunday 11 October, no service between Kennington and Morden.", LocalDate.of(2026, 10, 10))
+        val asked = mutableListOf<String>()
+        val cache = WorkAheadCache({ asked += it; app.stopdash.data.WorkAhead(listOf(closure), null) }, kotlinx.coroutines.Dispatchers.Unconfined, { 0L })
+        val ahead = LineWorkAhead(cache, kotlinx.coroutines.flow.MutableStateFlow(emptySet()))
+        val row = TripRow(checking = false, every = listOf(TripLine(northernLeg(), LineStatus("northern", 6, "Severe Delays", fullText = "Northern line: severe delays."))))
+        val inline = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher()
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalLineWorkAhead provides ahead, LocalWorker provides inline) { TripLinesPage(row, onClose = {}) }
+            }
+        }
+        // The lines alone ask nothing.
+        composeRule.waitForIdle()
+        assertEquals(emptyList<String>(), asked)
+        composeRule.onNodeWithText("Severe Delays").performClick()
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithText("Part Closure").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithText("From 10 Oct").assertExists()
+        assertEquals(listOf("northern"), asked)
+    }
+
+    @Test
+    fun a_lines_page_off_the_lines_says_when_its_week_ahead_could_not_be_asked() {
+        val cache = WorkAheadCache({ throw java.io.IOException("offline") }, kotlinx.coroutines.Dispatchers.Unconfined, { 0L })
+        val ahead = LineWorkAhead(cache, kotlinx.coroutines.flow.MutableStateFlow(emptySet()))
+        val row = TripRow(checking = false, every = listOf(TripLine(northernLeg(), LineStatus("northern", 6, "Severe Delays", fullText = "Northern line: severe delays."))))
+        val inline = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher()
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalLineWorkAhead provides ahead, LocalWorker provides inline) { TripLinesPage(row, onClose = {}) }
+            }
+        }
+        composeRule.onNodeWithText("Severe Delays").performClick()
+        val unknown = composeRule.activity.getString(R.string.line_coming_up_unknown)
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithText(unknown).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    @Test
+    fun a_line_opened_alone_lists_only_what_its_route_page_does() {
+        // A route page's "View line": its work to come is the route page's, so no week ahead is asked.
+        val asked = mutableListOf<String>()
+        val cache = WorkAheadCache({ asked += it; app.stopdash.data.WorkAhead(emptyList(), null) }, kotlinx.coroutines.Dispatchers.Unconfined, { 0L })
+        val ahead = LineWorkAhead(cache, kotlinx.coroutines.flow.MutableStateFlow(emptySet()))
+        val row = TripRow(checking = false, every = listOf(TripLine(northernLeg(), LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service"))))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalLineWorkAhead provides ahead) { TripLinesPage(row, onClose = {}, alone = true) }
+            }
+        }
+        composeRule.waitForIdle()
+        assertEquals(emptyList<String>(), asked)
+    }
+
+    @Test
     fun work_to_come_read_back_from_the_stored_snapshot_offers_no_dismiss() {
         // Its words left out, only its fingerprint kept: a dismissal can't be keyed to match it, so no × until the
         // line's check brings the words back (Codex, #689).
@@ -4735,6 +4790,103 @@ class TripScreenScreenshotTest {
         restoration.emulateSavedInstanceStateRestore()
         composeRule.onNodeWithText("Coming up").assertExists()
         composeRule.onNodeWithText("From 10 Oct").assertExists()
+    }
+
+    @Test
+    fun a_lines_week_ahead_stays_up_through_a_rotation() {
+        // Rotated, with the worker held: the week ahead worked in before stays up while it's worked out again
+        // (Codex, #704), rather than Coming up dropping until then.
+        val closure = PlannedAlert("Part Closure", "Saturday 10 and Sunday 11 October, no service between Kennington and Morden.", LocalDate.of(2026, 10, 10))
+        val cache = WorkAheadCache({ app.stopdash.data.WorkAhead(listOf(closure), null) }, kotlinx.coroutines.Dispatchers.Unconfined, { 0L })
+        val ahead = LineWorkAhead(cache, kotlinx.coroutines.flow.MutableStateFlow(emptySet()))
+        val row = TripRow(checking = false, every = listOf(TripLine(northernLeg(), LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service"))))
+        val restoration = StateRestorationTester(composeRule)
+        var worker: CoroutineDispatcher by mutableStateOf(java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
+        restoration.setContent {
+            StopDashTheme { CompositionLocalProvider(LocalWorker provides worker, LocalLineWorkAhead provides ahead) { TripLinesPage(row, onClose = {}) } }
+        }
+        composeRule.onNodeWithText("Good service").performClick()
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithText("From 10 Oct").fetchSemanticsNodes().isNotEmpty() }
+        // The worker stepped a job at a time: the line's order comes back first, its week after.
+        val queued = ArrayDeque<Runnable>()
+        worker = java.util.concurrent.Executor { queued.addLast(it) }.asCoroutineDispatcher()
+        restoration.emulateSavedInstanceStateRestore()
+        var steps = 0
+        while (true) {
+            composeRule.waitForIdle()
+            composeRule.onNodeWithText("From 10 Oct").assertExists()
+            val next = queued.removeFirstOrNull() ?: break
+            next.run()
+            assertTrue("the worker settles", ++steps < 50)
+        }
+        composeRule.onNodeWithText("Coming up").assertExists()
+    }
+
+    @Test
+    fun a_week_ahead_alert_dismissed_goes_at_once() {
+        // Dismissed, it goes from the page straight away, never held up by Coming up as last saved (Codex, #704).
+        val closure = PlannedAlert("Part Closure", "Saturday 10 and Sunday 11 October, no service between Kennington and Morden.", LocalDate.of(2026, 10, 10))
+        val cache = WorkAheadCache({ app.stopdash.data.WorkAhead(listOf(closure), null) }, kotlinx.coroutines.Dispatchers.Unconfined, { 0L })
+        // The shared dismissals never hear of it (its write is still under way): the screen's own do at once.
+        val ahead = LineWorkAhead(cache, kotlinx.coroutines.flow.MutableStateFlow(emptySet()))
+        var own by mutableStateOf(emptySet<app.stopdash.domain.DismissedAlert>())
+        val row = TripRow(checking = false, every = listOf(TripLine(northernLeg(), LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service"))))
+        val queued = ArrayDeque<Runnable>()
+        var stepped by mutableStateOf(false)
+        val worker = java.util.concurrent.Executor { if (stepped) queued.addLast(it) else it.run() }.asCoroutineDispatcher()
+        composeRule.setContent {
+            StopDashTheme { CompositionLocalProvider(LocalWorker provides worker, LocalLineWorkAhead provides ahead) {
+                TripLinesPage(row, onClose = {}, dismissal = LineAlertDismissal({}, false, {}, androidx.compose.runtime.mutableIntStateOf(0), dismissed = own))
+            } }
+        }
+        composeRule.onNodeWithText("Good service").performClick()
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithText("From 10 Oct").fetchSemanticsNodes().isNotEmpty() }
+        // The worker held: the dismissal is worked in later, and the alert is off the page meanwhile.
+        stepped = true
+        own = setOf(app.stopdash.domain.DismissedAlert.ofPlanned("northern", closure))
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Part Closure").assertDoesNotExist()
+        while (true) { (queued.removeFirstOrNull() ?: break).run(); composeRule.waitForIdle() }
+        composeRule.onNodeWithText("Part Closure").assertDoesNotExist()
+    }
+
+    @Test
+    fun a_lapsed_week_that_could_not_be_asked_again_is_not_brought_back_by_a_rotation() {
+        // Its week ran out and asking again failed, then a rotation: the page says it couldn't check, never the
+        // saved Coming up, whose work may have started (Codex, #704).
+        val closure = PlannedAlert("Part Closure", "Saturday 10 and Sunday 11 October, no service between Kennington and Morden.", LocalDate.of(2026, 10, 10))
+        var clock = 0L
+        var answer: () -> app.stopdash.data.WorkAhead = { app.stopdash.data.WorkAhead(listOf(closure), null) }
+        val cache = WorkAheadCache({ answer() }, kotlinx.coroutines.Dispatchers.Unconfined, { clock }, java.time.Duration.ofHours(3))
+        val ahead = LineWorkAhead(cache, kotlinx.coroutines.flow.MutableStateFlow(emptySet()))
+        val row = TripRow(checking = false, every = listOf(TripLine(northernLeg(), LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service"))))
+        val restoration = StateRestorationTester(composeRule)
+        var worker: CoroutineDispatcher by mutableStateOf(java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
+        restoration.setContent {
+            StopDashTheme { CompositionLocalProvider(LocalWorker provides worker, LocalLineWorkAhead provides ahead) { TripLinesPage(row, onClose = {}) } }
+        }
+        composeRule.onNodeWithText("Good service").performClick()
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithText("Part Closure").fetchSemanticsNodes().isNotEmpty() }
+        // The week lapses, and asking again fails.
+        clock += java.time.Duration.ofHours(4).toMillis()
+        answer = { throw java.io.IOException("offline") }
+        kotlinx.coroutines.runBlocking { cache.ask("northern") }
+        val queued = ArrayDeque<Runnable>()
+        worker = java.util.concurrent.Executor { queued.addLast(it) }.asCoroutineDispatcher()
+        restoration.emulateSavedInstanceStateRestore()
+        val unknown = composeRule.activity.getString(R.string.line_coming_up_unknown)
+        var steps = 0
+        while (true) {
+            composeRule.waitForIdle()
+            composeRule.onNodeWithText("Part Closure").assertDoesNotExist()
+            if (composeRule.onAllNodesWithText("Good service").fetchSemanticsNodes().isNotEmpty()) {
+                composeRule.onNodeWithText(unknown).assertExists()
+            }
+            val next = queued.removeFirstOrNull() ?: break
+            next.run()
+            assertTrue("the worker settles", ++steps < 50)
+        }
+        composeRule.onNodeWithText(unknown).assertExists()
     }
 
     @Test

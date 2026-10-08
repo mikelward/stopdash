@@ -68,7 +68,10 @@ internal class LinesViewModel(
     // *Coming up*: asked once as its page opens and kept for [aheadReuse], or until the soonest of it starts,
     // whichever comes first. Throws when it couldn't be asked.
     private val workAhead: suspend (String) -> WorkAhead = { WorkAhead(emptyList(), null) },
-    private val aheadReuse: java.time.Duration = WORK_AHEAD_REUSE,
+    private val aheadReuse: java.time.Duration = WorkAheadCache.REUSE,
+    // Where that's kept: one shared with every lines page in the app, so a line asked for on one isn't asked
+    // again on another; built from the above where none is given.
+    private val aheadCache: WorkAheadCache = WorkAheadCache(workAhead, io, elapsedMillis, aheadReuse, warn),
 ) : ViewModel() {
     /**
      * What the search shows. Compared by identity, never as a data class: the state flow compares each
@@ -107,16 +110,6 @@ internal class LinesViewModel(
         // The week ahead couldn't be asked: its *Coming up* says so, and the page's next tick asks again.
         val aheadUnknown: Boolean = false,
     )
-
-    // Each line's work ahead as last answered, when ([elapsedMillis]), and how long it holds: no longer than
-    // until the soonest of it starts, as it's under way then and asked again (Codex, #697). Read and written
-    // on the main thread.
-    private class Ahead(val alerts: List<PlannedAlert>, val at: Long, val holdsFor: java.time.Duration)
-
-    private val ahead = HashMap<String, Ahead>()
-
-    // The lines whose week ahead couldn't be asked last time: still said so while it's asked again.
-    private val aheadFailed = HashSet<String>()
 
     private val _state = MutableStateFlow(State(query = saved.get<String>(QUERY_KEY).orEmpty().take(MAX_QUERY)))
     val state: StateFlow<State> = _state.asStateFlow()
@@ -243,16 +236,19 @@ internal class LinesViewModel(
         val kept = held?.takeIf { !it.unknown && it.younger(reuse) }
         _check.value = Check(line.id, checking = true, status = kept?.status, unknown = false, checkedAt = kept?.checkedAt)
         checkJob = viewModelScope.launch {
-            val kept = ahead[line.id]?.takeIf { it.younger(it.holdsFor) }
+            var kept: List<PlannedAlert>? = null
             var status: LineStatus? = null
             val answer = try {
                 // No status at all is no answer: the page says it couldn't check, and asks again.
                 status = withContext(io) { lineStatus(line.id) }
                 if (status == null) warn("line status for ${line.id}: none given")
+                // Read once the status is in, never before: one that ran out while it was asked is asked again
+                // rather than shown (Codex, #704).
+                kept = aheadCache.fresh(line.id)
                 // The week ahead as last asked added to it, on the worker: it walks both.
                 // An empty week has nothing to add, so no hop.
-                val shown = kept?.alerts?.takeIf { it.isNotEmpty() }?.let { alerts -> status?.let { withContext(compute) { it.withWorkAhead(alerts) } } } ?: status
-                Check(line.id, checking = false, status = shown, unknown = status == null, checkedAt = elapsedMillis(), aheadUnknown = line.id in aheadFailed)
+                val shown = kept?.takeIf { it.isNotEmpty() }?.let { alerts -> status?.let { withContext(compute) { it.withWorkAhead(alerts) } } } ?: status
+                Check(line.id, checking = false, status = shown, unknown = status == null, checkedAt = elapsedMillis(), aheadUnknown = aheadCache.failed(line.id))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -272,37 +268,13 @@ internal class LinesViewModel(
      * is still up; one that couldn't be asked is said so on the page, and asked again at its next tick.
      */
     private suspend fun addWorkAhead(lineId: String, checked: LineStatus, answer: Check) {
-        // Its hold counted from the ask, before the request and anything that can delay its answer reaching
-        // here: the client measures [WorkAhead.startsIn] later than this, so it can only expire early, never
-        // keep work past its start (Codex, #697).
-        val asked = elapsedMillis()
-        val week = try {
-            withContext(io) { workAhead(lineId) }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            warn("work ahead failed for $lineId: ${e::class.simpleName}")
-            null
-        }
-        if (week != null) {
-            val holds = week.startsIn?.takeIf { it < aheadReuse } ?: aheadReuse
-            ahead[lineId] = Ahead(week.alerts, asked, holds)
-            aheadFailed -= lineId
-        } else {
-            aheadFailed += lineId
-        }
-        val alerts = week?.alerts
+        val alerts = aheadCache.ask(lineId)
         val shown = alerts?.takeIf { it.isNotEmpty() }?.let { withContext(compute) { checked.withWorkAhead(it) } } ?: answer.status
         _check.update { now ->
             if (now != null && now.lineId == lineId && now.checkedAt == answer.checkedAt && now.status != null) {
                 Check(now.lineId, now.checking, shown, now.unknown, now.checkedAt, aheadUnknown = alerts == null)
             } else now
         }
-    }
-
-    private fun Ahead.younger(limit: java.time.Duration): Boolean {
-        val age = elapsedMillis() - at
-        return age >= 0 && age < limit.toMillis()
     }
 
     /**
@@ -391,9 +363,6 @@ internal class LinesViewModel(
     }
 
     companion object {
-        // How long a line's week ahead stands before its page asks again: planned work moves slowly.
-        val WORK_AHEAD_REUSE: java.time.Duration = java.time.Duration.ofHours(3)
-
         private const val QUERY_KEY = "query"
 
         /** The longest query taken: past any line's name or number, and short enough that the main thread's own reads of it stay trivial. */
