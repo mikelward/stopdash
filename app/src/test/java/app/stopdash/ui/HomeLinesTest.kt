@@ -508,6 +508,32 @@ class HomeLinesTest {
     }
 
     @Test
+    fun `the rider's stops are walked on the worker, and an unreadable set counts as none`() {
+        // A trip's lines page collects this in composition; the walk over the starred set runs on the worker.
+        val readOn = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val row = app.stopdash.domain.StarredRow("940GZZLUKSX", "victoria", "southbound")
+        val starred = object : AbstractSet<app.stopdash.domain.StarredRow>() {
+            override val size get() = 1
+            override fun iterator(): Iterator<app.stopdash.domain.StarredRow> = listOf(row).iterator().also { readOn += Thread.currentThread().name }
+        }
+        val journey = app.stopdash.domain.FavoriteJourney(
+            app.stopdash.domain.JourneyEnd("940GZZLUEUS", "Euston"), app.stopdash.domain.JourneyEnd("940GZZLUWLO", "Waterloo"), "northern",
+        )
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }
+        try {
+            fun stopsOf(set: app.stopdash.domain.StarredRowSet) = kotlinx.coroutines.runBlocking {
+                HomeLines.riderStops(flowOf(set), flowOf(listOf(journey)), executor.asCoroutineDispatcher()).toList()
+            }
+            assertEquals(listOf(setOf("940GZZLUKSX", "940GZZLUEUS", "940GZZLUWLO")), stopsOf(app.stopdash.domain.StarredRowSet.Loaded(starred)))
+            assertEquals(listOf(setOf("940GZZLUEUS", "940GZZLUWLO")), stopsOf(app.stopdash.domain.StarredRowSet.Unavailable))
+            assertTrue(readOn.isNotEmpty())
+            assertTrue(readOn.all { it.startsWith("worker") })
+        } finally {
+            executor.shutdown()
+        }
+    }
+
+    @Test
     fun `as bad as each other, lines go by name last, a route by its number`() {
         // The 134 and the 43 near the rider, and the Bakerloo and Central lines, all closed for the night: the
         // rider's own first, each group by name, the 43 ahead of the 134 (maintainer, 2026-10-07).

@@ -10,12 +10,16 @@ import app.stopdash.domain.NearbySelection
 import app.stopdash.domain.NearestByLine
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.StarredRow
+import app.stopdash.domain.StarredRowSet
 import app.stopdash.domain.StationIndex
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.UsageEvent
+import app.stopdash.domain.riderStopIds
 import java.time.Instant
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -148,6 +152,16 @@ object HomeLines {
      */
     fun journeyLineIds(journeys: Flow<List<FavoriteJourney>?>, compute: CoroutineDispatcher): Flow<Set<String>> =
         journeys.map { list -> list.orEmpty().mapNotNullTo(HashSet()) { it.lineId.takeIf(String::isNotBlank) } }.flowOn(compute)
+
+    /**
+     * The rider's own stops ([riderStopIds]) as the [starred] rows and favorite [journeys] change, for a lines
+     * page the home screen doesn't build (a trip's) to keep them on a line's map: walked on [compute], never
+     * the collector's thread. A set this build can't read, or journeys not yet read, count as none.
+     */
+    fun riderStops(starred: Flow<StarredRowSet>, journeys: Flow<List<FavoriteJourney>?>, compute: CoroutineDispatcher): Flow<Set<String>> =
+        combine(starred, journeys) { set, list -> riderStopIds((set as? StarredRowSet.Loaded)?.starred.orEmpty(), list.orEmpty()) }
+            .distinctUntilChanged()
+            .flowOn(compute)
 
     /**
      * The lines near the favorite places ([placeLines]): [lines], and [unread] while they can't be named, the
@@ -444,15 +458,7 @@ object HomeLines {
             unknownLines = unknown,
             unknownStops = unknownStops,
             every = every,
-            starredStops = buildSet {
-                starred.forEach { add(it.stopId) }
-                journeys.forEach { journey ->
-                    for (end in listOf(journey.from, journey.to)) {
-                        add(end.stopId)
-                        if (end.areaId.isNotBlank()) add(end.areaId)
-                    }
-                }
-            },
+            starredStops = riderStopIds(starred, journeys),
         )
     }
 

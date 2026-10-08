@@ -1,5 +1,7 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
+
 /**
  * The stable identity of a **starred row** — the three parts that uniquely identify a
  * [DepartureRow] (SPEC D8): the [stopId], the [lineId] (a *service* is a line at a stop),
@@ -35,4 +37,19 @@ object Starred {
     /** [current] with [row]'s star flipped: removed if present, added if not. */
     fun toggle(current: Set<StarredRow>, row: StarredRow): Set<StarredRow> =
         if (row in current) current - row else current + row
+}
+
+/**
+ * The rider's own stops: each starred row's, and each favorite journey's ends (a station's area id
+ * too), which a line's map never folds away. Walks both: on a worker only.
+ */
+@WorkerThread
+fun riderStopIds(starred: Set<StarredRow>, journeys: List<FavoriteJourney>): Set<String> = buildSet {
+    starred.forEach { add(it.stopId) }
+    journeys.forEach { journey ->
+        for (end in listOf(journey.from, journey.to)) {
+            add(end.stopId)
+            if (end.areaId.isNotBlank()) add(end.areaId)
+        }
+    }
 }

@@ -2750,7 +2750,8 @@ Chalk Farm", "8 stations"), any alert among them folding its run as above. A tap
 it is, below what's above it, which doesn't move, showing every station it holds in one tap, never its
 ends alone with the rest folded again (maintainer, 2026-10-06). "Show all stations" opens everything
 and "Fold" puts it back as it opened. **The rider's own stops never fold** (maintainer,
-2026-10-06): their starred stops (a starred row's or journey's end, starred), the stops of the
+2026-10-06): their starred stops (a starred row's or journey's end, starred), on a trip's lines page as on
+the home screen's, the stops of the
 trip they're riding the line on (the route page's blue dot), and, opened from the home screen, the
 line's station nearest them within walking reach, reading "Nearest" (maintainer, 2026-10-06).
 
