@@ -3820,8 +3820,13 @@ internal fun TripLineReason(
     // A stand-in line ([TripLine.restoring]) has no map either: its status isn't in.
     val map = if (restoring || line.restoring) null else rememberLineMapSection(line, starred)
     val railColor = lineRailColor(line.leg.lineId, line.leg.mode, line.leg.lineName)
-    // A list, so a long line's map draws only the stations on screen.
-    LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
+    // A list, so a long line's map draws only the stations on screen; where it was scrolled kept with the
+    // map's work where the page has one kept for it ([LocalLineMapWork]).
+    val ownList = rememberLazyListState()
+    val held = LocalLineMapWork.current
+    // A restored page goes back to where it was once its map is in, the rows it was scrolled among there.
+    if (held != null && map?.ui is LineMapUi.Ready) SideEffect { held.restoreScroll() }
+    LazyColumn(modifier.fillMaxSize(), state = held?.list ?: ownList, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
         item(key = "line") { TripLineRow(line) }
         if (reason != null) {
             // Its web links tappable: National Rail's reason is often a page and nothing else (maintainer, 2026-10-07).

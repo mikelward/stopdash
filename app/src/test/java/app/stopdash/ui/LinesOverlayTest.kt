@@ -4,6 +4,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -244,6 +245,127 @@ class LinesOverlayTest {
         stop = null
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Euston").assertIsDisplayed()
+    }
+
+    @Test
+    fun the_line_s_map_is_where_it_was_after_from() {
+        val northern: LineSequence = Json { ignoreUnknownKeys = true }
+            .decodeFromString<TflRouteSequenceDto>(checkNotNull(javaClass.getResource("/fixtures/route_sequence_northern_outbound.json")).readText())
+            .toLineSequence()
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence = northern
+            },
+            io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
+        )
+        val line = LineRef("northern", "Northern", "tube")
+        val model = LinesViewModel(
+            loadLines = { listOf(line) },
+            loadRecent = { emptyList() },
+            recordOpen = { listOf(it) },
+            lineStatus = { LineStatus(lineId = "northern", severity = LineStatus.GOOD_SERVICE, description = "Good Service") },
+            io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
+            saved = SavedStateHandle(),
+        )
+        // From's station page takes Lines…'s place: the overlay leaves composition, the activity's holders stay.
+        var shown by mutableStateOf(true)
+        composeRule.setContent {
+            val holder = rememberSaveableStateHolder()
+            val work = remember { LinePageWorkHolder() }
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides Dispatchers.Unconfined, LocalRouteStops provides repository) {
+                    if (shown) LinesOverlay(model, open = line, onOpen = {}, onBack = {}, saveable = holder, lineWork = work)
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Show all stations"))
+        composeRule.onNodeWithText("Show all stations").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Euston"))
+        composeRule.onNodeWithText("Euston").assertIsDisplayed()
+        shown = false
+        composeRule.waitForIdle()
+        shown = true
+        composeRule.waitForIdle()
+        // Back on the line as it was left: every station still shown, Euston still in view (Codex on #659).
+        composeRule.onNodeWithText("Euston").assertIsDisplayed()
+    }
+
+    @Test
+    fun a_line_page_s_work_is_kept_for_that_line_alone() {
+        val holder = LinePageWorkHolder()
+        val northern = holder.workFor("northern")
+        // The same line come back: the same work, its map and scroll with it.
+        assertTrue(northern === holder.workFor("northern"))
+        // Another line starts afresh, and so does the first opened again after it.
+        assertTrue(northern !== holder.workFor("victoria"))
+        assertTrue(northern !== holder.workFor("northern"))
+        // Closed, the line opened again starts at its top.
+        val again = holder.workFor("northern")
+        holder.clear()
+        assertTrue(again !== holder.workFor("northern"))
+    }
+
+    @Test
+    fun a_line_page_s_folds_and_scroll_survive_a_restore() {
+        // A line's page saved with two folds open, "Show all" on, and scrolled down.
+        val saved = listOf("northern", arrayListOf("fold-b", "fold-a"), true, 12, 30)
+        val restored = LinePageWorkHolder.Saver.restore(saved)!!
+        // The same line's page: its folds, "Show all" and scroll as saved (Codex on #679).
+        val back = restored.workFor("northern").map
+        assertEquals(listOf("fold-b", "fold-a"), generateSequence(back.opened.value) { it.rest }.map { it.key }.toList())
+        assertTrue(back.all.value)
+        // Its scroll waits for the map: the list starts at its top.
+        assertEquals(12 to 30, back.pendingScroll)
+        // And saved again as it was.
+        assertEquals(saved, with(LinePageWorkHolder.Saver) { androidx.compose.runtime.saveable.SaverScope { true }.save(restored) })
+        // Nothing of it for another line.
+        assertEquals(null, LinePageWorkHolder.Saver.restore(saved)!!.workFor("victoria").map.opened.value)
+        // A fresh holder saves an empty page, restoring to none.
+        val empty = with(LinePageWorkHolder.Saver) { androidx.compose.runtime.saveable.SaverScope { true }.save(LinePageWorkHolder()) }!!
+        assertEquals(null, LinePageWorkHolder.Saver.restore(empty)!!.workFor("northern").map.opened.value)
+    }
+
+    @Test
+    fun a_restored_line_page_scrolls_back_once_its_map_is_in() {
+        val northern: LineSequence = Json { ignoreUnknownKeys = true }
+            .decodeFromString<TflRouteSequenceDto>(checkNotNull(javaClass.getResource("/fixtures/route_sequence_northern_outbound.json")).readText())
+            .toLineSequence()
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence = northern
+            },
+            io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
+        )
+        val line = LineRef("northern", "Northern", "tube")
+        val model = LinesViewModel(
+            loadLines = { listOf(line) },
+            loadRecent = { emptyList() },
+            recordOpen = { listOf(it) },
+            lineStatus = { LineStatus(lineId = "northern", severity = LineStatus.GOOD_SERVICE, description = "Good Service") },
+            io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
+            saved = SavedStateHandle(),
+        )
+        // A rotation with every station shown, scrolled twelve rows down: the map isn't saved, so it's laid
+        // out again, and the list goes back once it's in rather than stopping at the short list's end
+        // (Codex on #679).
+        val holder = LinePageWorkHolder.Saver.restore(listOf("northern", arrayListOf<String>(), true, 12, 0))!!
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides Dispatchers.Unconfined, LocalRouteStops provides repository) {
+                    LinesOverlay(model, open = line, onOpen = {}, onBack = {}, lineWork = holder)
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        val map = holder.workFor("northern").map
+        assertEquals(null, map.pendingScroll)
+        assertEquals(12, map.list.firstVisibleItemIndex)
     }
 
     @Test

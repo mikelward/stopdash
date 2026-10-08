@@ -81,6 +81,7 @@ import app.stopdash.data.DataStoreFavoritePlacesStore
 import app.stopdash.ui.LocalOpenLines
 import app.stopdash.ui.LinesViewModel
 import app.stopdash.ui.LinesOverlay
+import app.stopdash.ui.LinePageWorkHolder
 import app.stopdash.ui.LineRefSaver
 import app.stopdash.ui.LineStopRefSaver
 import app.stopdash.ui.StationMatchSaver
@@ -763,6 +764,9 @@ class MainActivity : ComponentActivity() {
                 var linesLine by rememberSaveable(stateSaver = LineRefSaver) { mutableStateOf<LineRef?>(null) }
                 // And the search's scroll, and each open stop page's, for the same reason.
                 val linesSaveable = rememberSaveableStateHolder()
+                // And the open line's page's worked-out map, so it's drawn at once when the page comes back.
+                // Its folds and scroll saved for a rotation or the process coming back.
+                val linesLineWork = rememberSaveable(saver = LinePageWorkHolder.Saver) { LinePageWorkHolder() }
                 // A stop tapped on that line's map, its details up; its From opens the stop's page over
                 // Lines…, whose Back returns here.
                 var linesStop by rememberSaveable(stateSaver = LineStopRefSaver) { mutableStateOf<LineStopRef?>(null) }
@@ -774,6 +778,7 @@ class MainActivity : ComponentActivity() {
                 // Null [model]: the search is cleared when Lines… next shows ([linesQueryReset]).
                 val closeLines = { model: LinesViewModel? ->
                     linesPresence = linesPresence.closed()
+                    linesLineWork.clear()
                     linesLine = null
                     // The stop pages' scrolls go with them.
                     linesStop?.pageKeys()?.forEach(linesSaveable::removeState)
@@ -1662,6 +1667,7 @@ class MainActivity : ComponentActivity() {
                                         open = linesLine,
                                         onOpen = { linesLine = it },
                                         saveable = linesSaveable,
+                                        lineWork = linesLineWork,
                                         stop = linesStop,
                                         onStop = { linesStop = it },
                                         here = fix,

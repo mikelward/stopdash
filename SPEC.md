@@ -2656,7 +2656,8 @@ position (the index's, else where the line's map placed it), never the rider's f
 near-me header's distance does; with no maps app it says so. The pin waits on the stop's links, so the
 index's position wins over the map's, and is greyed for a stop placed by neither. The star waits on the stop's links, which carry its position. Back from a station opened from another's details returns to that one, as it
 was left, and so back through the stations opened (the last ten); Back from the first returns to the line, its map just as it was,
-scrolled and unfolded (after From's station page, the line's page comes back at its top, `TODO.md`).
+scrolled and unfolded, Back from From's station page included; closing the line forgets it, so the line
+opened again starts at its top.
 Only a line page opened from Lines… opens stops so far (`TODO.md`).
 
 ### Line page

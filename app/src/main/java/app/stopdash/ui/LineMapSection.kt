@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -86,7 +87,7 @@ internal sealed interface LineMapUi {
 
 // The map laid out from [from] for the status [statusKey] stands for, or none where it can't be: kept
 // apart from "not laid out yet" (null).
-private class Laid(val from: LineSequence?, val statusKey: Any?, val map: LineMap?)
+internal class Laid(val from: LineSequence?, val statusKey: Any?, val map: LineMap?)
 
 /**
  * [lineId]'s map for its page (SPEC *Line page → Map*): its route data from the route pages' own
@@ -134,7 +135,10 @@ internal fun rememberLineMap(
         }
     }
     val sequence = source as? LineSequence
-    val laidSlot = remember { mutableStateOf<Worked<Inputs, Laid>?>(null) }
+    // Kept above the page where it's given one ([LocalLineMapWork]), so a page come back draws its map at once.
+    val held = LocalLineMapWork.current
+    val ownLaid = remember { mutableStateOf<Worked<Inputs, Laid>?>(null) }
+    val laidSlot = held?.laid ?: ownLaid
     val laid = rememberWorked(laidSlot, Inputs(sequence, status, statusKey, starred, riding, quieted, rides, nearby), keep = { _, _ -> true }) {
         Laid(sequence, statusKey, sequence?.let { LineMap.forStatus(it, status, starred, riding, quieted, rides, nearby) })
     }
@@ -142,7 +146,8 @@ internal fun rememberLineMap(
     // standing in until the new one is in; never one laid out before the data came, which would read
     // "no map" for a moment, nor for another status.
     val current = laid?.takeIf { it.from === sequence && Inputs.same(it.statusKey, statusKey) }
-    val viewSlot = remember { mutableStateOf<Worked<Inputs, LineMapUi.Ready?>?>(null) }
+    val ownView = remember { mutableStateOf<Worked<Inputs, LineMapUi.Ready?>?>(null) }
+    val viewSlot = held?.view ?: ownView
     val map = current?.map
     val positions = current?.from?.stopPositions.orEmpty()
     val ready = rememberWorked(viewSlot, Inputs(map, opened, all, statusKey), keep = { _, _ -> true }) {
@@ -155,6 +160,40 @@ internal fun rememberLineMap(
         else -> ready?.takeIf { Inputs.same(it.statusKey, statusKey) } ?: LineMapUi.Loading
     }
 }
+
+/**
+ * A line map's work ([rememberLineMap]: the map laid out, then folded for the page) kept by whoever shows
+ * the page, where the page itself can leave composition and come back: Lines… under From's station page.
+ * Its first frame back is the map as it was, so its saved scroll lands where it was left (Codex on #659).
+ */
+internal class LineMapWork(
+    opened: OpenedFolds? = null,
+    all: Boolean = false,
+    list: LazyListState = LazyListState(),
+    // Where a restored page was scrolled to (item, offset), applied once its map is laid out again: the list
+    // starts short (the line, then "Loading"), and a position past its end would be lost (Codex on #679).
+    internal var pendingScroll: Pair<Int, Int>? = null,
+) {
+    internal val laid = mutableStateOf<Worked<Inputs, Laid>?>(null)
+    internal val view = mutableStateOf<Worked<Inputs, LineMapUi.Ready?>?>(null)
+
+    // The folds opened and "Show all stations", and where the page was scrolled to: the page is a dialog
+    // window of its own, whose saved state doesn't outlive it, so these are kept here too, and saved with
+    // whoever keeps this ([LinePageWorkHolder]) for a rotation or the process coming back.
+    internal val opened = mutableStateOf(opened)
+    internal val all = mutableStateOf(all)
+    internal val list = list
+
+    /** Scrolls to where a restored page was, once its map is in ([pendingScroll]); a read, then a request. */
+    internal fun restoreScroll() {
+        val (index, offset) = pendingScroll ?: return
+        pendingScroll = null
+        list.requestScrollToItem(index, offset)
+    }
+}
+
+/** The [LineMapWork] the line map below keeps its work in; null keeps its own. */
+internal val LocalLineMapWork = compositionLocalOf<LineMapWork?> { null }
 
 /**
  * The folds opened on a line's map, the last opened first: a tap adds one link, the same work however
@@ -174,7 +213,7 @@ internal class OpenedFolds(val key: String, val rest: OpenedFolds?) {
 }
 
 // Kept as their keys when the page's state is saved, as the activity stops, never on a tap.
-private val OpenedFoldsSaver = Saver<OpenedFolds?, ArrayList<String>>(
+internal val OpenedFoldsSaver = Saver<OpenedFolds?, ArrayList<String>>(
     save = { folds ->
         folds?.let {
             val keys = ArrayList<String>()
@@ -212,8 +251,12 @@ internal class LineMapSectionState(
 internal fun rememberLineMapSection(line: TripLine, starred: Set<String>): LineMapSectionState? {
     val leg = line.leg
     var retry by remember(leg.lineId) { mutableIntStateOf(0) }
-    var opened by rememberSaveable(leg.lineId, stateSaver = OpenedFoldsSaver) { mutableStateOf<OpenedFolds?>(null) }
-    var all by rememberSaveable(leg.lineId) { mutableStateOf(false) }
+    // Kept above the page where it's given somewhere to keep them ([LocalLineMapWork]), else saved here.
+    val held = LocalLineMapWork.current
+    val ownOpened = rememberSaveable(leg.lineId, stateSaver = OpenedFoldsSaver) { mutableStateOf<OpenedFolds?>(null) }
+    val ownAll = rememberSaveable(leg.lineId) { mutableStateOf(false) }
+    var opened by (held?.opened ?: ownOpened)
+    var all by (held?.all ?: ownAll)
     val ui = rememberLineMap(leg.lineId, line.status, starred, line.riding, opened, all, retry, line.mapKey ?: line.status, line.quieted, line.rides, line.nearby)
     val atFirst = opened == null && !all
     return if (ui == null) {
