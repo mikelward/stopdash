@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Surface
@@ -1648,17 +1649,58 @@ class TripScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        fun routesHeight() = composeRule.onNodeWithTag("tripRoutes").getBoundsInRoot().let { (it.bottom - it.top).value }
-        val before = routesHeight()
-        // The choices and banner leave the routes a sliver, as on a phone turned on its side.
-        assertTrue("routes $before", before < 60f)
-        // Dragged from just inside the window's bottom edge, where the routes end, a few times over.
+        // The choices and banner head the routes, first rows of their list, filling most of a short window.
+        val banner = composeRule.activity.getString(R.string.modes_show_all)
+        composeRule.onNodeWithTag("tripPlanOptions").assertIsDisplayed()
+        composeRule.onNodeWithText(banner).assertIsDisplayed()
+        // Dragged from just inside the window's bottom edge, a few times over.
         repeat(5) {
             composeRule.onNodeWithTag("tripRoutes").performTouchInput { swipeUp(startY = bottom - 4f, endY = top) }
             composeRule.waitForIdle()
         }
-        // The choices went with the scroll: the routes have everything under the From/To bar.
-        assertTrue("routes $before -> ${routesHeight()}", routesHeight() > 180f)
+        // They went with the scroll, and the routes have the room.
+        composeRule.onNodeWithTag("tripPlanOptions").assertIsNotDisplayed()
+        composeRule.onNodeWithText(banner).assertIsNotDisplayed()
+        composeRule.onNodeWithText("28 min · ~08:30").assertIsDisplayed()
+    }
+
+    // A header partly scrolled off that grows (a banner landing) grows off the top: the routes under the
+    // finger hold still (Codex, #698).
+    @Test
+    @Config(qualifiers = "en-rGB-w914dp-h300dp-420dpi")
+    fun a_header_growing_while_partly_scrolled_off_leaves_the_routes_still() {
+        var grown by mutableStateOf(false)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf",
+                    state = planned,
+                    now = now,
+                    access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source),
+                    onBack = {},
+                    onRetry = {},
+                    ends = TripEnds(fromStation = null, toName = "Canary Wharf", onChangeFrom = {}, onChangeTo = {}),
+                    onWalkingSpeedChange = {},
+                    onTripModesChange = {},
+                    hiddenModes = setOf("bus"),
+                    aboveRoutes = { if (grown) Box(Modifier.height(48.dp).width(48.dp).testTag("grownBanner")) },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        val list = composeRule.onNodeWithTag("tripRoutes").getBoundsInRoot()
+        // Dragged a little, so the choices are partly off the top and a route is in view.
+        composeRule.onNodeWithTag("tripRoutes").performTouchInput { swipeUp(startY = bottom - 4f, endY = bottom - 120f) }
+        composeRule.waitForIdle()
+        val options = composeRule.onNodeWithTag("tripPlanOptions").getUnclippedBoundsInRoot()
+        assertTrue("the choices are partly scrolled off", options.top < list.top && options.bottom > list.top)
+        val route = composeRule.onAllNodesWithTag("routeLabel")[0]
+        val before = route.getUnclippedBoundsInRoot().top
+        grown = true
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("grownBanner").assertExists()
+        assertEquals(before, route.getUnclippedBoundsInRoot().top)
     }
 
     // A route opened from a list scrolled past its choices starts with its own warnings in view.
@@ -1725,6 +1767,77 @@ class TripScreenScreenshotTest {
         composeRule.mainClock.autoAdvance = true
         composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodesWithTag("tripRoutes").fetchSemanticsNodes().isNotEmpty() }
         composeRule.onNodeWithText(composeRule.activity.getString(R.string.trip_checking)).assertDoesNotExist()
+    }
+
+    // A header growing while "Planning…" is partly scrolled grows off the top: the wait's message holds still
+    // under the finger, as the routes do (Codex, #698).
+    @Test
+    @Config(qualifiers = "en-rGB-w914dp-h300dp-420dpi")
+    fun a_header_growing_over_a_scrolled_wait_leaves_its_message_still() {
+        var grown by mutableStateOf(false)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf",
+                    state = planned.copy(routes = null, planning = true),
+                    now = now,
+                    access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source),
+                    onBack = {},
+                    onRetry = {},
+                    ends = TripEnds(fromStation = null, toName = "Canary Wharf", onChangeFrom = {}, onChangeTo = {}),
+                    onWalkingSpeedChange = {},
+                    onTripModesChange = {},
+                    hiddenModes = setOf("bus"),
+                    aboveRoutes = { if (grown) Box(Modifier.height(48.dp).width(48.dp).testTag("grownBanner")) },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("tripWait").performTouchInput { swipeUp(startY = bottom - 4f, endY = bottom - 120f) }
+        composeRule.waitForIdle()
+        val bar = composeRule.onNodeWithTag("tripEndsBar").getUnclippedBoundsInRoot().bottom
+        assertTrue("the choices are partly scrolled off", composeRule.onNodeWithTag("tripPlanOptions").getUnclippedBoundsInRoot().top < bar)
+        val planning = composeRule.onNodeWithText(composeRule.activity.getString(R.string.trip_planning))
+        val before = planning.getUnclippedBoundsInRoot().top
+        grown = true
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("grownBanner").assertExists()
+        assertEquals(before, planning.getUnclippedBoundsInRoot().top)
+    }
+
+    // Choices scrolled while the plan is worked out stay where they are when its routes land (Codex, #698).
+    @Test
+    @Config(qualifiers = "en-rGB-w914dp-h300dp-420dpi")
+    fun routes_landing_leave_the_scrolled_choices_where_they_are() {
+        val state = mutableStateOf(planned.copy(routes = null, planning = true))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf",
+                    state = state.value,
+                    now = now,
+                    access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source),
+                    onBack = {},
+                    onRetry = {},
+                    ends = TripEnds(fromStation = null, toName = "Canary Wharf", onChangeFrom = {}, onChangeTo = {}),
+                    onWalkingSpeedChange = {},
+                    onTripModesChange = {},
+                    hiddenModes = setOf("bus"),
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("tripWait").performTouchInput { swipeUp(startY = bottom - 4f, endY = bottom - 120f) }
+        composeRule.waitForIdle()
+        val bar = composeRule.onNodeWithTag("tripEndsBar").getUnclippedBoundsInRoot().bottom
+        val before = composeRule.onNodeWithTag("tripPlanOptions").getUnclippedBoundsInRoot().top
+        assertTrue("the choices are partly scrolled off", before < bar)
+        state.value = planned
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("tripRoutes").assertExists()
+        assertEquals(before, composeRule.onNodeWithTag("tripPlanOptions").getUnclippedBoundsInRoot().top)
     }
 
     // A new plan starts its list at the top, with its choices and banners in view over it.

@@ -1,5 +1,11 @@
 package app.stopdash.ui
 
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.Constraints
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.annotation.WorkerThread
@@ -56,11 +62,10 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
-import androidx.compose.material3.pulltorefresh.pullToRefresh
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.compositionLocalOf
@@ -71,7 +76,6 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -1682,6 +1686,10 @@ private fun TripContent(
             // The plan the list shows: its options. Another (a cached one switched to included) starts
             // the list afresh, never under the last one's order, disruptions or banner (Codex, #543).
             val planKey = listOf(LocalTripJourney.current, walkingSpeed, maxWalk, stepFree, tripModes)
+            // One scroll position for the plan, shared by its waits ("Planning…", "Checking…") and its list, so
+            // routes landing under choices the rider has scrolled leave them where they are (Codex, #698); a
+            // new plan starts at the top, its choices in view.
+            val listState = key(planKey) { rememberLazyListState() }
             // The list's own check, every card's: it gates the list kept behind an open route (its row
             // and its reveal), so a route restored open never lets the list show on a check of that route
             // alone (Codex, #543). The frame works the list out even with a route open, on the worker
@@ -1757,92 +1765,76 @@ private fun TripContent(
                 settledAround = headed != null && widthsIn && rowIn && loads.loading.isEmpty() && !avoided.saving,
             )
             val revealed = revealedState.value
-            // The list's own branch below: the only one a pull refreshes.
-            val listShown = cards != null && open == null && revealed
-            // The choices and banners scroll away with the routes under them rather than stay fixed over
-            // them, so a short window (a phone on its side, a large font) still has room for the routes
-            // (maintainer, 2026-10-08).
-            val page = @Composable {
-                // Afresh whenever what's under it starts afresh at its top: between the list and a route
-                // opened from it, and with each plan (a relocation, a pick among the choices), so a route's
-                // warnings or a new plan's choices never open scrolled away (Codex, #694).
-                val awayState = key(open != null || openRef != null, planKey) { rememberScrollAwayState() }
-                ScrollAwayHeader(
-                    modifier = Modifier.fillMaxSize(),
-                    state = awayState,
-                    header = {
-                        // The search's choices head the routes only: an opened route is the one chosen, so its page
-                        // shows its own legs, not the pickers and chips that choose among routes (maintainer,
-                        // 2026-10-04). By the route held open, not only the one found: while a new plan runs none is
-                        // found, and the choices mustn't flash back above it (Codex, #545).
-                        if (open == null && openRef == null) {
-                            // The walking speed, the walk limit and step-free, one row: each pick plans again.
-                            TripPlanOptionChips(
-                                walkingSpeed = walkingSpeed,
-                                onWalkingSpeedChange = onWalkingSpeedChange,
-                                maxWalk = maxWalk,
-                                onMaxWalkChange = onMaxWalkChange,
-                                stepFree = stepFree,
-                                onStepFreeChange = onStepFreeChange,
-                                enabled = planOptionsLoaded,
-                            )
-                            // The kinds of transport the routes may ride, last: chips, a tap each, rather than a menu.
-                            if (onTripModesChange != null) {
-                                TripModeChips(tripModes, onTripModesChange, enabled = planOptionsLoaded)
-                            }
-                            // The lines avoided, under the modes: each a chip a tap stops avoiding.
-                            avoided.onStopAvoiding?.let { AvoidedLineChips(avoided.lines, it) }
-                            // A place's direct trains, under every choice: they don't depend on them.
-                            aboveRoutes?.invoke()
+            // The choices and banners head whatever's under them as its first rows, so they scroll away with
+            // the routes rather than stay fixed over them, and come back only with the top of the list: a
+            // short window (a phone on its side, a large font) still has room for the routes (maintainer,
+            // 2026-10-08). Being rows of the list, they keep its place through a rotation, a route opened
+            // and a new plan without a scroll position of their own to keep in step.
+            val header = @Composable {
+                Column {
+                    // The search's choices head the routes only: an opened route is the one chosen, so its page
+                    // shows its own legs, not the pickers and chips that choose among routes (maintainer,
+                    // 2026-10-04). By the route held open, not only the one found: while a new plan runs none is
+                    // found, and the choices mustn't flash back above it (Codex, #545).
+                    if (open == null && openRef == null) {
+                        // The walking speed, the walk limit and step-free, one row: each pick plans again.
+                        TripPlanOptionChips(
+                            walkingSpeed = walkingSpeed,
+                            onWalkingSpeedChange = onWalkingSpeedChange,
+                            maxWalk = maxWalk,
+                            onMaxWalkChange = onMaxWalkChange,
+                            stepFree = stepFree,
+                            onStepFreeChange = onStepFreeChange,
+                            enabled = planOptionsLoaded,
+                        )
+                        // The kinds of transport the routes may ride, last: chips, a tap each, rather than a menu.
+                        if (onTripModesChange != null) {
+                            TripModeChips(tripModes, onTripModesChange, enabled = planOptionsLoaded)
                         }
-                        TripBanners(framing?.failed.orEmpty(), locationBanner, onRelocate, hiddenModes, onShowAllModes)
-                    },
-                ) {
-                    Box(Modifier.fillMaxSize()) {
-                        when {
-                            // The plan in, its routes still being worked out ([tripFrame]): checking, as the list's
-                            // own wait says, rather than the placeholder that waits for a plan.
-                            cards == null && frame == null && state.routes != null && state.planError == null -> RoutesChecking()
-                            cards == null -> TripPlaceholder(state, onRetry)
-                            open == null && !revealed -> RoutesChecking()
-                            // Both from the frame, which worked out the open route ([TripFrame.openView]) and the list's cards ([TripFrame.list]).
-                            open != null && frame?.openView != null -> RouteLegs(open, frame.openView, rideLines, state, now, frame.access, sequences, onRetry, alerts.dismissed, alerts.onDismiss, hideMode, ::openDetail, loads.loading, check == TripMessage.CHECKING)
-                            else -> {
-                                RouteList(
-                                    frame?.list ?: TripListView(TripFraming(null, emptySet(), emptyList()), emptyList(), emptyMap(), ListedCards(emptyList(), emptyList(), CardOrder(emptyList(), emptyList()))), rideLines, state, now, onRetry,
-                                    // What the card opens, worked out with the frame it's drawn from: a train through a
-                                    // change keeps the planned route it's made from, though newer arrivals no longer
-                                    // list it, and the tap only reads (Codex, #529).
-                                    onOpen = { estimate, choice ->
-                                        val opening = frame?.list?.opens?.get(routeKey(estimate.route)) ?: OpenRoute(routeKey(estimate.route))
-                                        openedChoice.value = opening.plan to choice
-                                        setOpen(opening)
-                                    },
-                                    onHideMode = hideMode,
-                                    onAvoidLine = avoided.onAvoid,
-                                    row = row ?: TripRow.CHECKING,
-                                    pillWidths = widths?.px.orEmpty(),
-                                )
-                            }
-                        }
+                        // The lines avoided, under the modes: each a chip a tap stops avoiding.
+                        avoided.onStopAvoiding?.let { AvoidedLineChips(avoided.lines, it) }
+                        // A place's direct trains, under every choice: they don't depend on them.
+                        aboveRoutes?.invoke()
                     }
+                    TripBanners(framing?.failed.orEmpty(), locationBanner, onRelocate, hiddenModes, onShowAllModes)
                 }
             }
-            // Pulled down, the routes are planned again and every stop fetched afresh, from the same ends
-            // at the same pace (maintainer, 2026-09-29). Around the header too, so a pull at the top first
-            // brings the header back; always there, so the page isn't rebuilt as the list comes and goes.
-            if (onPullRefresh == null) {
-                page()
-            } else {
-                val pullState = rememberPullToRefreshState()
-                Box(
-                    Modifier.fillMaxSize()
-                        .pullToRefresh(pullRefreshing, pullState, enabled = listShown, onRefresh = onPullRefresh)
-                        .let { if (listShown) it.testTag("tripRoutesPull") else it },
-                ) {
-                    page()
-                    if (listShown) {
-                        PullToRefreshDefaults.Indicator(pullState, pullRefreshing, Modifier.align(Alignment.TopCenter))
+            Box(Modifier.fillMaxSize()) {
+                when {
+                    // The plan in, its routes still being worked out ([tripFrame]): checking, as the list's
+                    // own wait says, rather than the placeholder that waits for a plan.
+                    cards == null && frame == null && state.routes != null && state.planError == null -> RoutesChecking(header, listState)
+                    cards == null -> TripPlaceholder(state, onRetry, header, listState)
+                    open == null && !revealed -> RoutesChecking(header, listState)
+                    // Both from the frame, which worked out the open route ([TripFrame.openView]) and the list's cards ([TripFrame.list]).
+                    open != null && frame?.openView != null -> RouteLegs(open, frame.openView, rideLines, state, now, frame.access, sequences, onRetry, alerts.dismissed, alerts.onDismiss, hideMode, ::openDetail, loads.loading, check == TripMessage.CHECKING, header)
+                    else -> {
+                        val routes = @Composable {
+                            RouteList(
+                                frame?.list ?: TripListView(TripFraming(null, emptySet(), emptyList()), emptyList(), emptyMap(), ListedCards(emptyList(), emptyList(), CardOrder(emptyList(), emptyList()))), rideLines, state, now, onRetry,
+                                // What the card opens, worked out with the frame it's drawn from: a train through a
+                                // change keeps the planned route it's made from, though newer arrivals no longer
+                                // list it, and the tap only reads (Codex, #529).
+                                onOpen = { estimate, choice ->
+                                    val opening = frame?.list?.opens?.get(routeKey(estimate.route)) ?: OpenRoute(routeKey(estimate.route))
+                                    openedChoice.value = opening.plan to choice
+                                    setOpen(opening)
+                                },
+                                onHideMode = hideMode,
+                                onAvoidLine = avoided.onAvoid,
+                                row = row ?: TripRow.CHECKING,
+                                pillWidths = widths?.px.orEmpty(),
+                                header = header,
+                                listState = listState,
+                            )
+                        }
+                        // Pulled down, the routes are planned again and every stop fetched afresh, from
+                        // the same ends at the same pace (maintainer, 2026-09-29).
+                        if (onPullRefresh == null) {
+                            routes()
+                        } else {
+                            PullToRefreshBox(pullRefreshing, onPullRefresh, Modifier.fillMaxSize().testTag("tripRoutesPull")) { routes() }
+                        }
                     }
                 }
             }
@@ -2002,23 +1994,100 @@ internal class RevealLog(private val started: kotlin.time.TimeMark = kotlin.time
 
 /** In place of a trip's list while what it shows lands ([rememberRevealed]). */
 @Composable
-private fun RoutesChecking() {
-    Column(
-        Modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
+private fun RoutesChecking(header: @Composable () -> Unit, listState: LazyListState) {
+    UnderHeader(header, listState) {
         Text(stringResource(R.string.trip_checking), style = MaterialTheme.typography.bodyLarge)
     }
 }
 
+/**
+ * Lays this out [by] wider on each side than the list's padding allows, so a row of the list (the trip's
+ * header) runs edge to edge as it did above the list: its chips scroll from the screen's edge and its
+ * banners fill the width.
+ */
+private fun Modifier.bleedHorizontally(by: Dp): Modifier = layout { measurable, constraints ->
+    val extra = (by * 2).roundToPx()
+    val placeable = measurable.measure(
+        constraints.copy(minWidth = constraints.minWidth + extra, maxWidth = constraints.maxWidth + extra),
+    )
+    layout(placeable.width - extra, placeable.height) { placeable.place(-extra / 2, 0) }
+}
+
+/**
+ * Keeps the rows under a list's first row (the trip's header) still when that row changes height while
+ * partly scrolled off the top, a Direct result or a banner landing, say: the list holds its place from the
+ * top of its first visible row, so without this every route under the finger would move by the change
+ * (Codex, #698). The list scrolls by the change at once, so the change goes off the top instead. A header
+ * scrolled right to the top grows down in view, as it did above the list; one scrolled wholly off moves
+ * nothing.
+ */
 @Composable
-private fun TripPlaceholder(state: TripViewModel.State, onRetry: () -> Unit) {
-    Column(
-        Modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
+private fun Modifier.holdingRowsBelow(state: LazyListState): Modifier {
+    val height = remember { IntArray(1) { -1 } }
+    return onSizeChanged { size ->
+        val before = height[0]
+        height[0] = size.height
+        if (before >= 0 && size.height != before && state.firstVisibleItemIndex == 0 && state.firstVisibleItemScrollOffset > 0) {
+            // Asked for as a position, not a scroll: the list may not know yet that it's grown, and would refuse a
+            // scroll past what it thinks is its end.
+            state.requestScrollToItem(0, state.firstVisibleItemScrollOffset + size.height - before)
+        }
+    }
+}
+
+/**
+ * A trip's [header] over [content] centered in the room it leaves, the two scrolling together: a header
+ * taller than a short window still lets the rider reach what's under it. The pair is the list's first row,
+ * keyed as the routes' header is, on the [listState] the routes go on to use: choices scrolled while the
+ * routes are worked out stay where they are when the routes land.
+ */
+@Composable
+private fun UnderHeader(header: @Composable () -> Unit, listState: LazyListState, content: @Composable ColumnScope.() -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val room = constraints.maxHeight
+        LazyColumn(Modifier.fillMaxSize().testTag("tripWait"), state = listState) {
+            item(key = "tripHeader", contentType = "tripWait") { HeaderOver(header, room, listState, content) }
+        }
+    }
+}
+
+/**
+ * [header] over [content], the latter centered in what the header leaves of [room]. The header holds
+ * [content] still as it changes height partly scrolled off, as the routes' header holds them ([holdingRowsBelow]).
+ */
+@Composable
+private fun HeaderOver(header: @Composable () -> Unit, room: Int, listState: LazyListState, content: @Composable ColumnScope.() -> Unit) {
+    Layout(
+        contents = listOf(
+            { Box(Modifier.holdingRowsBelow(listState)) { header() } },
+            {
+                Column(
+                    Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    content = content,
+                )
+            },
+        ),
+        modifier = Modifier.fillMaxWidth(),
+    ) { (headerMeasurables, contentMeasurables), constraints ->
+        val loose = constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity)
+        val headerPlaceables = headerMeasurables.map { it.measure(loose) }
+        val headerHeight = headerPlaceables.sumOf { it.height }
+        // Centered in what the header leaves of the window, as the list's own wait was before.
+        val rest = if (room == Constraints.Infinity) 0 else (room - headerHeight).coerceAtLeast(0)
+        val contentPlaceables = contentMeasurables.map { it.measure(loose.copy(minWidth = constraints.maxWidth, minHeight = rest)) }
+        val height = headerHeight + contentPlaceables.sumOf { it.height }
+        layout(constraints.maxWidth, height) {
+            var y = 0
+            (headerPlaceables + contentPlaceables).forEach { it.place(0, y); y += it.height }
+        }
+    }
+}
+
+@Composable
+private fun TripPlaceholder(state: TripViewModel.State, onRetry: () -> Unit, header: @Composable () -> Unit, listState: LazyListState) {
+    UnderHeader(header, listState) {
         val error = state.planError
         if (error == null || state.planning) {
             Text(stringResource(R.string.trip_planning), style = MaterialTheme.typography.bodyLarge)
@@ -2069,6 +2138,10 @@ private fun RouteList(
     row: TripRow,
     // Each card's pill column in pixels, by its key ([cardPillWidths]); a card not measured yet takes a lone pill's.
     pillWidths: Map<String, Int?> = emptyMap(),
+    // The trip's choices and banners, the list's first row ([TripContent]).
+    header: @Composable () -> Unit = {},
+    // The plan's scroll position, shared with its waits ([UnderHeader]).
+    listState: LazyListState = rememberLazyListState(),
 ) {
     val cards = view.cards
     // Which card gets there soonest, which rides fewest and which walks least, over each, then
@@ -2082,10 +2155,15 @@ private fun RouteList(
     // moved under the finger. Each card watches its own place ([rememberSliding]), whatever moved it.
     val density = LocalDensity.current
     LazyColumn(
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        state = listState,
+        // No top padding: the header row comes first, edge to edge, and the spacing after it stands in.
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxSize().testTag("tripRoutes"),
     ) {
+        item(key = "tripHeader", contentType = "tripHeader") {
+            Box(Modifier.bleedHorizontally(16.dp).holdingRowsBelow(listState)) { header() }
+        }
         state.planError?.let { error -> item(key = "error") { PlanFailure(error, state.planning, onRetry) } }
         if (state.planError == null && state.planIncomplete) item(key = "incomplete") { PlanIncomplete(state.planning, onRetry) }
         // A Direct route that couldn't be planned again ([TripViewModel.openDirect]): kept or closed, said.
@@ -2779,6 +2857,8 @@ private fun RouteLegs(
     loading: Set<String> = emptySet(),
     // Whether a line's route is still loading ([tripCheckState]), as the list's.
     routesChecking: Boolean = false,
+    // The route's banners, its first row ([TripContent]).
+    header: @Composable () -> Unit = {},
 ) {
     // The row over the route's legs, as the list's ([rememberTripRow]).
     // One list per estimate, not one per composition: the row's worker is keyed by it.
@@ -2789,11 +2869,20 @@ private fun RouteLegs(
     val row = rememberTripRow(asCards, rideLines, state, now, sequences, dismissed, loading, routesChecking, rowWork, firstAtOnce = true)
     // The route's stops' closure notices, worked out with the frame ([TripOpenView]).
     val closures = view.closures
+    val listState = rememberLazyListState()
     LazyColumn(
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        state = listState,
+        // No top padding: the header row comes first, edge to edge, and 8dp after it as the padding was.
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 8.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
         modifier = Modifier.fillMaxSize().testTag("tripLegs"),
     ) {
+        item(key = "tripHeader", contentType = "tripHeader") {
+            Column(Modifier.bleedHorizontally(16.dp).holdingRowsBelow(listState)) {
+                header()
+                Spacer(Modifier.height(4.dp))
+            }
+        }
         // A re-plan that failed says so over the open route too, with its Retry, as the list does.
         state.planError?.let { error -> item(key = "error") { PlanFailure(error, state.planning, onRetry) } }
         if (state.planError == null && state.planIncomplete) item(key = "incomplete") { PlanIncomplete(state.planning, onRetry) }
