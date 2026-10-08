@@ -1,6 +1,8 @@
 package app.stopdash.ui
 
 import androidx.annotation.WorkerThread
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DismissalMarks
@@ -8,6 +10,7 @@ import app.stopdash.domain.Dismissed
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopDisruption
@@ -18,7 +21,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 
@@ -228,3 +234,43 @@ internal suspend fun settledBack(store: DismissedAlertsStore, gone: Set<Dismisse
     store.dismissedAgain(gone, since)
 
 private fun reason(e: Throwable): String = (e as? TflException)?.message ?: e::class.simpleName.orEmpty()
+
+/**
+ * The shared store's dismissals for a line page whose screen has no model of its own following them (the
+ * On the way board's): the set as it changes, and a line's alert or its work to come dismissed into it.
+ * Nothing else: opening it asks nothing of TfL (Codex, #696).
+ */
+internal class LineDismissalsViewModel(
+    private val store: DismissedAlertsStore,
+    private val io: CoroutineDispatcher,
+    private val warn: (String) -> Unit,
+) : ViewModel() {
+    private val _dismissed = MutableStateFlow<Set<DismissedAlert>>(emptySet())
+
+    /** The service alerts the user dismissed, as they change. */
+    val dismissed: StateFlow<Set<DismissedAlert>> = _dismissed.asStateFlow()
+
+    private val _writeFailed = MutableStateFlow(false)
+
+    /** Whether a dismiss couldn't be written, for the screen to say so. */
+    val writeFailed: StateFlow<Boolean> = _writeFailed.asStateFlow()
+
+    init {
+        viewModelScope.launch(io) { followDismissed(store, _dismissed, warn) }
+    }
+
+    /** Dismisses [status]'s alert, as a line's page does elsewhere (SPEC *Disruptions*). */
+    fun dismiss(status: LineStatus) {
+        viewModelScope.launch { dismissAlertOf(store, io, _writeFailed, warn, _dismissed) { DismissedAlert.ofLineStatus(status) } }
+    }
+
+    /** Dismisses one of [lineId]'s alerts still to come. */
+    fun dismissPlanned(lineId: String, alert: PlannedAlert) {
+        viewModelScope.launch { dismissAlertOf(store, io, _writeFailed, warn, _dismissed) { DismissedAlert.ofPlanned(lineId, alert) } }
+    }
+
+    /** The failed write has been said. */
+    fun writeFailureShown() {
+        _writeFailed.value = false
+    }
+}

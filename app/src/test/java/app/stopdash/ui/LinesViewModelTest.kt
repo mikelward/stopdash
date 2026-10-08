@@ -407,4 +407,15 @@ class LinesViewModelTest {
         val model = vm(saved = SavedStateHandle(mapOf("query" to "9".repeat(LinesViewModel.MAX_QUERY + 10))))
         assertEquals(LinesViewModel.MAX_QUERY, model.state.value.query.length)
     }
+
+    @Test
+    fun a_lines_alert_is_dismissed_line_wide_or_every_way_it_is_disrupted() {
+        val delays = LineStatus("jubilee", 9, "Minor Delays")
+        assertFalse(lineAlertDismissed(null, emptySet()))
+        assertFalse(lineAlertDismissed(delays, emptySet()))
+        assertTrue(lineAlertDismissed(delays, setOf(DismissedAlert.ofLineStatus(delays))))
+        // A good service has no alert to dismiss.
+        val good = LineStatus("jubilee", LineStatus.GOOD_SERVICE, "Good Service")
+        assertFalse(lineAlertDismissed(good, setOf(DismissedAlert.ofLineStatus(good))))
+    }
 }

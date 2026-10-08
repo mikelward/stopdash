@@ -2777,12 +2777,12 @@ Builds on Phase 1's minimal line-status marking.
       fold, ⛔ on the fold for no service, ⚠ for a station an alert's words name. Each closure TfL places
       is taken on its own, so the map no longer works out which one the page shows. Starred stops stand
       in for a ride from the home screen.
-- [ ] **"View line" wherever a stop or departure is shown** (maintainer, 2026-10-06), opening the line's
+- [x] **"View line" wherever a stop or departure is shown** (maintainer, 2026-10-06), opening the line's
       page with its map. The route page's overflow has it, a trip's ride's route page included. On the
       way, no menu item: tapping a train on the board opens its line's page instead (maintainer,
       2026-10-06), done. No long-press item either: a tap on a departure or a trip's ride already opens
-      its route page, which has it. Still to do on the way: a line page there marks an alert the rider
-      dismissed elsewhere as dismissed, and offers its dismiss, as the list's line pages do.
+      its route page, which has it. The page on the way marks an alert the rider dismissed elsewhere as
+      dismissed, and offers its dismiss, as the list's line pages do (maintainer, 2026-10-08).
 - [ ] **A line page drops its last row when a closure's stretch changes, not only its count** (Codex,
       PR #623). While a line's own page (a route page's, or a train's on the way) works out its next
       row, it keeps the last one up only while the alert reads the same (`sameVerdict`/`sameAlert`):
