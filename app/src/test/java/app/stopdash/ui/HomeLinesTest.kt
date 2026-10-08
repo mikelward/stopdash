@@ -564,10 +564,11 @@ class HomeLinesTest {
 
     @Test
     fun `the summary page's chips pick lines one by one, grouped, none a whole network`() {
-        // The Tube and the Overground under their names, the single-line networks together under Other,
-        // every line once.
-        assertEquals(listOf(HomeLines.Network.TUBE, HomeLines.Network.OVERGROUND, null), HomeLines.PICKER.map { it.first })
-        assertEquals(listOf("elizabeth", "dlr", "tram"), HomeLines.PICKER.last().second.map { it.id })
+        // Under the near-me list's mode groups, the DLR and the Elizabeth line with the Tube, every
+        // line once.
+        assertEquals(listOf("tube", "overground", "tram"), HomeLines.PICKER.map { it.first.key })
+        assertEquals(listOf("dlr", "elizabeth"), HomeLines.PICKER[0].second.takeLast(2).map { it.id })
+        assertEquals(HomeLines.Network.OVERGROUND.lines, HomeLines.PICKER[1].second)
         assertEquals(HomeLines.Network.entries.flatMap { it.lines }.toSet(), HomeLines.PICKER.flatMap { it.second }.toSet())
         assertEquals(HomeLines.PICKER.sumOf { it.second.size }, HomeLines.PICKER.flatMap { it.second }.toSet().size)
         fun shown(chosen: Set<String>, id: String): Boolean {

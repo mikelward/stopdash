@@ -2336,8 +2336,8 @@ covers is set and seen there. The lines page's menu opens Settings on that page 
 to Settings. There a **Show on home screen** switch turns the row off (on by default;
 the banner comes back with it off); the row waits for the stored choice, so one turned off never
 flashes up. Under it, **Always include** picks the lines
-covered whatever's near (maintainer, 2026-10-05; lines one by one 2026-10-06): a chip per line, the Tube's and Overground's each under the network's name, then Elizabeth line,
-DLR and Tram under **Other**; no chip picks a whole network (maintainer, 2026-10-07: the row leans on the lines near the rider and their favorites', so nobody should need every line), and one turned off under a network an older build chose leaves the rest picked; none on by default (maintainer, 2026-10-06: every one was, which filled the row with lines far from the rider's own) (the chosen lines ride the list's one status request, splitting it
+covered whatever's near (maintainer, 2026-10-05; lines one by one 2026-10-06): a chip per line, under the near-me list's mode groups (maintainer, 2026-10-08): **Underground** (the Tube's lines,
+the DLR and the Elizabeth line), **Overground** and **Tram**; no chip picks a whole network (maintainer, 2026-10-07: the row leans on the lines near the rider and their favorites', so nobody should need every line), and one turned off under a network an older build chose leaves the rest picked; none on by default (maintainer, 2026-10-06: every one was, which filled the row with lines far from the rider's own) (the chosen lines ride the list's one status request, splitting it
 only when many nearby lines push it past TfL's length limit); the lines near the rider and near their favorite places are always included, a choice of none leaving them alone, and the page says so
 ("Favorite places and lines near you are always included") with a **Favorite places** button that opens them, Back returning to this page. A
 line chosen with no current check reads "Checking…" while it's asked about, at once

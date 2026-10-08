@@ -969,9 +969,9 @@ private fun SummaryNetworksRow(selected: Set<String>, onToggle: (String) -> Unit
         }
         // Every chip is drawn from the first frame, none selected or tappable until which are selected is
         // worked out (Codex, #642).
-        HomeLines.PICKER.forEachIndexed { g, (network, lines) ->
+        HomeLines.PICKER.forEachIndexed { g, (group, lines) ->
             Text(
-                stringResource(network?.let(::networkName) ?: R.string.settings_summary_other),
+                groupName(group),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 12.dp),
@@ -991,12 +991,4 @@ private fun SummaryNetworksRow(selected: Set<String>, onToggle: (String) -> Unit
             }
         }
     }
-}
-
-private fun networkName(network: HomeLines.Network): Int = when (network) {
-    HomeLines.Network.TUBE -> R.string.network_tube
-    HomeLines.Network.OVERGROUND -> R.string.network_overground
-    HomeLines.Network.ELIZABETH -> R.string.network_elizabeth
-    HomeLines.Network.DLR -> R.string.network_dlr
-    HomeLines.Network.TRAM -> R.string.network_tram
 }
