@@ -39,9 +39,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -69,6 +72,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
+import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Countdown
@@ -162,6 +166,10 @@ internal fun OnTheWayScreen(
     // The lines' statuses the trip's last check found ([ActiveTripTracker.lineChecks]), the board's among
     // them: a train tapped on the board opens its line's page with its status (maintainer, 2026-10-06).
     lineChecks: RouteDisruption.LinesChecked? = null,
+    // The service alerts the rider dismissed on the near-me list, which a board line's page honors as every
+    // line page does (maintainer, 2026-10-08), and how its page dismisses one. Null offers no dismiss.
+    dismissed: Set<DismissedAlert> = emptySet(),
+    lineDismissal: LineAlertDismissal? = null,
 ) {
     BackHandler(onBack = onBack)
     // A train tapped on the board: its line's page over this one, instead of a "View line" item
@@ -175,10 +183,26 @@ internal fun OnTheWayScreen(
     // For the usage stats, the board's line page while it's open over the trip, else the trip.
     ReportScreen(if (boardLine != null) UsageEvent.Screen.LINE else UsageEvent.Screen.ON_THE_WAY)
     boardLine?.let { line ->
-        BoardLinePage(line, boardRide, lineChecks, now, onClose = { boardLine = null; boardRide = null })
+        CompositionLocalProvider(LocalDismissLineAlert provides lineDismissal) {
+            BoardLinePage(line, boardRide, lineChecks, dismissed, now, onClose = { boardLine = null; boardRide = null })
+        }
+    }
+    // A dismiss on a train's line page that couldn't be written: that page says so while it's open, and this
+    // screen once it's closed, as every host of a line page does (Codex, #696).
+    val snackbars = remember { SnackbarHostState() }
+    val dismissFailedMessage = stringResource(R.string.dismiss_write_failed)
+    val dismissFailed = lineDismissal?.failed == true
+    val linePagesOpen = lineDismissal?.pagesOpen?.intValue ?: 0
+    LaunchedEffect(dismissFailed, linePagesOpen == 0) {
+        if (dismissFailed && linePagesOpen == 0) {
+            // Cleared, then shown, so a second failure while this one shows is said too.
+            lineDismissal?.onFailureShown?.invoke()
+            snackbars.showSnackbar(dismissFailedMessage)
+        }
     }
     val destination = trip?.destinationName
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbars) },
         topBar = {
             TopAppBar(
                 navigationIcon = {
@@ -918,22 +942,33 @@ private fun BoardLinePage(
     line: List<String>,
     tapped: TripLeg?,
     checks: RouteDisruption.LinesChecked?,
+    dismissed: Set<DismissedAlert>,
     now: Instant,
     onClose: () -> Unit,
 ) {
     val (lineId, lineName, mode, stopId, stopName) = line
     val found = boardLineStatus(checks, lineId, now)
     val slot = remember { mutableStateOf<Worked<Inputs, TripRow>?>(null) }
+    // Whether its alert is one dismissed, worked out on the worker (its key is built from its text), and held
+    // while the dismissals change until the answer is in: a dismissal of work to come, no verdict, never takes
+    // the page down (Lines… does the same, [LinesViewModel.lineDismissed]). Unknown, the page says it's checking.
+    val alertSlot = remember { mutableStateOf<Worked<Inputs, Boolean>?>(null) }
+    val alertDismissed = rememberWorked(
+        alertSlot,
+        Inputs(found.status, dismissed),
+        keep = { held, wanted -> sameAlert(held.parts[0] as LineStatus?, wanted.parts[0] as LineStatus?) },
+    ) { lineAlertDismissed(found.status, dismissed) }
     val worked = rememberWorked(
         slot,
-        Inputs(lineId, lineName, mode, stopId, stopName, tapped, found.status, false, found.unknown, found.checking),
+        Inputs(lineId, lineName, mode, stopId, stopName, tapped, dismissed, found.status, alertDismissed == true, found.unknown, found.checking || alertDismissed == null),
         keep = ::sameVerdict,
     ) {
+        // The near-me list's dismissals, as every line page honors them (maintainer, 2026-10-08): the alert
+        // named dismissed, and its work to come less what was dismissed.
         lineRow(
-            mode, lineId, lineName, stopId, stopName, found.status, dismissed = false, ride = tapped, unknown = found.unknown, checking = found.checking,
-            // The trip's own check, as its status is: On the way doesn't apply the near-me list's
-            // dismissals, having its own (SPEC *On the way*), so its work to come is all of it.
-            planned = found.status?.planned.orEmpty(),
+            mode, lineId, lineName, stopId, stopName, found.status,
+            dismissed = alertDismissed == true, ride = tapped, unknown = found.unknown, checking = found.checking || alertDismissed == null,
+            planned = plannedShown(lineId, found.status, dismissed),
         )
     }
     OneLinePage(worked, lineId, lineName, mode, onClose)

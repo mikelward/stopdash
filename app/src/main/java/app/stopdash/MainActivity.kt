@@ -80,6 +80,7 @@ import app.stopdash.data.DataStoreDismissedAlertsStore
 import app.stopdash.data.DataStoreFavoritePlacesStore
 import app.stopdash.ui.LocalOpenLines
 import app.stopdash.ui.LinesViewModel
+import app.stopdash.ui.LineDismissalsViewModel
 import app.stopdash.ui.LinesOverlay
 import app.stopdash.ui.LinePageWorkHolder
 import app.stopdash.ui.LineRefSaver
@@ -1411,6 +1412,10 @@ class MainActivity : ComponentActivity() {
                                         onTheWayOpen = false
                                     }
                                 }
+                                // The shared store's dismissals, which every line page honors, and nothing else: no
+                                // line list asked for just to show a trip (Codex, #696).
+                                val boardDismissals = lineDismissalsModel()
+                                val boardLinesPagesOpen = remember { mutableIntStateOf(0) }
                                 // The next ride's trains, checked against the same route data as the trip's cards.
                                 CompositionLocalProvider(LocalRouteStops provides routeStops(applicationContext)) {
                                 OnTheWayScreen(
@@ -1470,6 +1475,13 @@ class MainActivity : ComponentActivity() {
                                     },
                                     // A train tapped on the board opens its line's page with its status (maintainer, 2026-10-06).
                                     lineChecks = lineChecks,
+                                    // Its page honors and makes the near-me list's dismissals, as every line page
+                                    // does (maintainer, 2026-10-08).
+                                    dismissed = boardDismissals.dismissed.collectByIdentityWithLifecycle().value,
+                                    lineDismissal = LineAlertDismissal(
+                                        boardDismissals::dismiss, boardDismissals.writeFailed.collectAsStateWithLifecycle().value,
+                                        boardDismissals::writeFailureShown, boardLinesPagesOpen, boardDismissals::dismissPlanned,
+                                    ),
                                 )
                                 }
                             } else if (top == TopOverlay.FAVORITE_PLACES) {
@@ -3134,6 +3146,19 @@ class MainActivity : ComponentActivity() {
      * fetch stops with it. Its departures are never saved for the widget (no snapshot store): the
      * widget shows the near-me set, and a station looked up once isn't one the user watches.
      */
+    // The shared dismissals alone, for a line page whose screen keeps no model following them (Codex, #696).
+    @Composable
+    private fun lineDismissalsModel(): LineDismissalsViewModel = viewModel(
+        key = "line-dismissals",
+        factory = viewModelFactory {
+            initializer {
+                LineDismissalsViewModel(
+                    DataStoreDismissedAlertsStore.from(applicationContext, warn = ::logDepartureWarning), Dispatchers.IO, ::logDepartureWarning,
+                )
+            }
+        },
+    )
+
     // The Lines… search's model, the activity's one instance whichever overlay asks for it.
     @Composable
     private fun linesModel(): LinesViewModel = viewModel(

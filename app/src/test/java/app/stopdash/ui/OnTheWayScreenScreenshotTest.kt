@@ -110,6 +110,8 @@ class OnTheWayScreenScreenshotTest {
         onTake: ((TripLeg, OffPlan.Branch) -> Unit)? = null,
         asOf: java.time.Instant? = null,
         lineChecks: RouteDisruption.LinesChecked? = null,
+        dismissed: Set<app.stopdash.domain.DismissedAlert> = emptySet(),
+        lineDismissal: LineAlertDismissal? = null,
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -118,6 +120,7 @@ class OnTheWayScreenScreenshotTest {
                     appOpenOnly = appOpenOnly, nextTrains = nextTrains, onGoTo = onGoTo, disruptions = disruptions, cards = cards,
                     replanFrom = replanFrom, onPlanAgain = onPlanAgain, onDismissDisruptions = onDismissDisruptions, notes = notes,
                     onDismissNote = onDismissNote, onTake = onTake, asOf = asOf, lineChecks = lineChecks,
+                    dismissed = dismissed, lineDismissal = lineDismissal,
                 )
             }
         }
@@ -776,6 +779,88 @@ class OnTheWayScreenScreenshotTest {
         composeRule.onNode(androidx.compose.ui.test.hasContentDescription(composeRule.activity.getString(app.stopdash.R.string.action_back)) and onLinePage).performClick()
         composeRule.onNodeWithTag("tripLinesPage").assertDoesNotExist()
         assertEquals(0, back)
+    }
+
+    @Test
+    fun a_train_on_the_boards_line_page_honors_and_makes_the_near_me_dismissals() {
+        // The near-me list's dismissals hold on a board line's page as on every line page (maintainer,
+        // 2026-10-08): the alert dismissed says so, its work to come dismissed is left out, and the rest is
+        // dismissible there.
+        val walking = trip.copy(legIndex = 1)
+        val weekend = app.stopdash.domain.PlannedAlert("Part Closure", "Saturday, no service between Baker Street and Stanmore.", java.time.LocalDate.of(2026, 10, 10))
+        val later = app.stopdash.domain.PlannedAlert("Part Closure", "Saturday 17 October, no service between Stratford and West Ham.", java.time.LocalDate.of(2026, 10, 17))
+        val delays = LineStatus("jubilee", 9, "Minor Delays", planned = listOf(weekend, later))
+        val dismissedPlanned = mutableListOf<Pair<String, app.stopdash.domain.PlannedAlert>>()
+        show(
+            walking, TripProgress.Walking(walk, at(24)),
+            nextTrains = NextTrains(jubilee, listOf(jubileeTrain("Stanmore", 21)), readyAt = at(24)).withGroups(now),
+            lineChecks = RouteDisruption.LinesChecked(setOf("jubilee"), mapOf("jubilee" to delays), app.stopdash.domain.SteadyClock.stamp(now)),
+            dismissed = setOf(
+                app.stopdash.domain.DismissedAlert.ofLineStatus(delays),
+                app.stopdash.domain.DismissedAlert.ofPlanned("jubilee", weekend),
+            ),
+            lineDismissal = LineAlertDismissal({}, false, {}, androidx.compose.runtime.mutableIntStateOf(0), dismissPlanned = { id, alert -> dismissedPlanned += id to alert }),
+        )
+        composeRule.onNodeWithText("Stanmore").performClick()
+        val onLinePage = androidx.compose.ui.test.hasAnyAncestor(hasTestTag("tripLinesPage"))
+        composeRule.waitUntil(10_000) { composeRule.onAllNodes(hasText("Minor Delays · dismissed") and onLinePage).fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNode(hasText("From 10 Oct") and onLinePage).assertDoesNotExist()
+        composeRule.onNode(hasText("From 17 Oct") and onLinePage).assertExists()
+        composeRule.onNode(androidx.compose.ui.test.hasContentDescription(composeRule.activity.getString(app.stopdash.R.string.alert_dismiss)) and onLinePage).performClick()
+        assertEquals(listOf("jubilee" to later), dismissedPlanned)
+    }
+
+    @Test
+    fun a_dismiss_that_could_not_be_written_is_said_once_the_line_page_is_closed() {
+        // The line's page says it while it's open; closed, On the way does, as every host of a line page does
+        // (Codex, #696).
+        var acknowledged = 0
+        val open = androidx.compose.runtime.mutableIntStateOf(1)
+        show(
+            trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)),
+            lineDismissal = LineAlertDismissal({}, true, { acknowledged++ }, open),
+        )
+        val message = composeRule.activity.getString(app.stopdash.R.string.dismiss_write_failed)
+        composeRule.onNodeWithText(message).assertDoesNotExist()
+        assertEquals(0, acknowledged)
+        open.intValue = 0
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(message).assertExists()
+        assertEquals(1, acknowledged)
+    }
+
+    @Test
+    fun dismissing_work_to_come_on_the_boards_line_page_keeps_the_page_up() {
+        // Work to come is no verdict (SPEC *Line page*): one dismissed there keeps the page as it was, never its
+        // stand-in, while the line is worked out again (Lines… holds it the same way).
+        val walking = trip.copy(legIndex = 1)
+        val weekend = app.stopdash.domain.PlannedAlert("Part Closure", "Saturday, no service between Baker Street and Stanmore.", java.time.LocalDate.of(2026, 10, 10))
+        val delays = LineStatus("jubilee", 9, "Minor Delays", planned = listOf(weekend))
+        val checks = RouteDisruption.LinesChecked(setOf("jubilee"), mapOf("jubilee" to delays), app.stopdash.domain.SteadyClock.stamp(now))
+        val trains = NextTrains(jubilee, listOf(jubileeTrain("Stanmore", 21)), readyAt = at(24)).withGroups(now)
+        var dismissed by androidx.compose.runtime.mutableStateOf(emptySet<app.stopdash.domain.DismissedAlert>())
+        val held = java.util.concurrent.Executor { }.asCoroutineDispatcher()
+        var worker: kotlinx.coroutines.CoroutineDispatcher by androidx.compose.runtime.mutableStateOf(java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalWorker provides worker) {
+                    OnTheWayScreen(
+                        walking, TripProgress.Walking(walk, at(24)), false, now, {}, {},
+                        nextTrains = trains, lineChecks = checks, dismissed = dismissed,
+                        lineDismissal = LineAlertDismissal({}, false, {}, androidx.compose.runtime.mutableIntStateOf(0), dismissPlanned = { _, _ -> }),
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("Stanmore").performClick()
+        val onLinePage = androidx.compose.ui.test.hasAnyAncestor(hasTestTag("tripLinesPage"))
+        composeRule.waitUntil(10_000) { composeRule.onAllNodes(hasText("From 10 Oct") and onLinePage).fetchSemanticsNodes().isNotEmpty() }
+        // The worker held: the dismissal's answer never comes, so only the hold keeps the page.
+        worker = held
+        dismissed = setOf(app.stopdash.domain.DismissedAlert.ofPlanned("jubilee", weekend))
+        composeRule.waitForIdle()
+        composeRule.onNode(hasText("Minor Delays") and onLinePage).assertExists()
+        composeRule.onNode(hasText("From 10 Oct") and onLinePage).assertExists()
     }
 
     @Test

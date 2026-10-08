@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import androidx.annotation.WorkerThread
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -120,13 +121,7 @@ internal class LinesViewModel(
      * key is built from its text), never on the main thread. False with no alert, or none checked.
      */
     val lineDismissed: StateFlow<Boolean> = combine(_check, _dismissed) { check, dismissed ->
-        val status = check?.status
-        status != null && status.disrupted && (
-            DismissedAlert.ofLineStatus(status) in dismissed ||
-                // Dismissed every way it's disrupted, as a row's own way's alert is on the list (HomeLines).
-                status.byDirection.values.filter { it.disrupted }
-                    .let { ways -> ways.isNotEmpty() && ways.all { DismissedAlert.ofLineStatus(it) in dismissed } }
-            )
+        lineAlertDismissed(check?.status, dismissed)
     }.flowOn(compute).stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     private var searchJob: Job? = null
@@ -336,3 +331,16 @@ internal class LinesViewModel(
         const val SEARCH_STATE_KEY = "search"
     }
 }
+
+/**
+ * Whether [status]'s alert is one the user [dismissed]: the line-wide one, or every way it's disrupted, as
+ * a row's own way's alert is on the list (HomeLines). False with no alert. Its key is built from the
+ * alert's text, so on the worker.
+ */
+@WorkerThread
+internal fun lineAlertDismissed(status: LineStatus?, dismissed: Set<DismissedAlert>): Boolean =
+    status != null && status.disrupted && (
+        DismissedAlert.ofLineStatus(status) in dismissed ||
+            status.byDirection.values.filter { it.disrupted }
+                .let { ways -> ways.isNotEmpty() && ways.all { DismissedAlert.ofLineStatus(it) in dismissed } }
+        )

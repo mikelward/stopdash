@@ -1900,7 +1900,10 @@ as it was.
   says "Couldn't check every line" rather than drop its trains. **A train tapped on the board opens
   its line's page** (*Line page*), with its status and its map, the ride's stretch marked where it's
   the ride's line (the ride it was tapped for, whatever the trip has done since), else the board's stop
-  (maintainer, 2026-10-06: a tap rather than a "View line" item). Its status is the trip's own disruption check's, which asks about the board's lines (of the
+  (maintainer, 2026-10-06: a tap rather than a "View line" item). It honors and makes the near-me
+  list's dismissals as every line page does (maintainer, 2026-10-08): an alert dismissed there is named
+  dismissed, its work to come dismissed is left out, and the page's own dismiss lands in the same store.
+  Its status is the trip's own disruption check's, which asks about the board's lines (of the
   ride's mode, as the board shows) in the same request as the trip's, so it costs no request of its own: "Checking…" while a check under way
   asks about it, and "Couldn't check" where that check failed, left the line out or has gone stale, or
   where no check asks about it any more (the board failed, or moved on to the next ride), never a good
