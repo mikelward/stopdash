@@ -64,6 +64,7 @@ import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.LineMap
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.NearestStops
@@ -533,6 +534,13 @@ private fun DrawScope.drawOneWayArrow(
  * details (a line page opened from *Lines…*, SPEC *Finding a line*); null leaves the map's stations inert.
  */
 val LocalOpenLineMapStop = compositionLocalOf<((stopId: String, name: String, position: Pair<Double, Double>?) -> Unit)?> { null }
+
+/**
+ * Opens a station tapped on any line's map, by the line it was tapped on: the home screen's and a trip's line
+ * pages, which have no stop details of their own, open *Lines…*'s over them (SPEC *Finding a line*). Null where
+ * that can't show over the page (another screen is open above it): their stations stay inert there.
+ */
+val LocalOpenLineStop = compositionLocalOf<((line: LineRef, stopId: String, name: String, position: Pair<Double, Double>?) -> Unit)?> { null }
 
 @Composable
 private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, position: Pair<Double, Double>?, nearestMeters: Double?) {

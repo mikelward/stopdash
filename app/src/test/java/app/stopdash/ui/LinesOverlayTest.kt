@@ -461,6 +461,41 @@ class LinesOverlayTest {
     }
 
     @Test
+    fun back_from_a_stop_opened_from_another_pages_map_goes_back_to_that_page() {
+        // Opened on a station tapped on the home screen's or a trip's line page: Back from it closes Lines… to that
+        // page, never to this line's own; a station opened from it still comes back to it first.
+        val line = LineRef("victoria", "Victoria", "tube")
+        val model = LinesViewModel(
+            loadLines = { listOf(line) },
+            loadRecent = { emptyList() },
+            recordOpen = { listOf(it) },
+            lineStatus = { LineStatus(lineId = "victoria", severity = LineStatus.GOOD_SERVICE, description = "Good Service") },
+            io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
+            saved = SavedStateHandle(),
+        )
+        val kx = LineStopRef("940GZZLUKSX", "King's Cross St. Pancras")
+        var stop by mutableStateOf<LineStopRef?>(LineStopRef("940GZZLUEUS", "Euston", onLine = false).openedFrom(kx))
+        var closed = 0
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides Dispatchers.Unconfined) {
+                    LinesOverlay(model, open = line, onOpen = {}, onBack = {}, stop = stop, onStop = { stop = it }, onStopClosed = { closed++ })
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        Espresso.pressBack()
+        composeRule.waitForIdle()
+        assertEquals(kx, stop)
+        assertEquals(0, closed)
+        Espresso.pressBack()
+        composeRule.waitForIdle()
+        assertEquals("the page it was tapped on, not the line", 1, closed)
+        assertEquals(kx, stop)
+    }
+
+    @Test
     fun a_stop_s_position_survives_a_restore_and_older_saves_still_restore() {
         val scope = androidx.compose.runtime.saveable.SaverScope { true }
         val kx = LineStopRef("940GZZLUKSX", "King's Cross St. Pancras", "350 m", position = Coordinates(51.5302, -0.1238))

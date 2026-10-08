@@ -2788,8 +2788,12 @@ Builds on Phase 1's minimal line-status marking.
   - [x] **Show it on a map**: a pin on the stop's details hands its position to the phone's maps app.
     - [ ] Walking directions there, not just the pin (a `google.navigation:` or Maps directions URL).
   - [x] **A bus stop's letter and direction** ("Stop H, towards Oxford Circus"), from its pole data.
-  - [ ] **Open a stop from every line page**: the home screen's lines row and a trip's lines page draw
-        the same map, its stations inert there for now.
+  - [x] **Open a stop from every line page**: a station tapped on the home screen's or a trip's line page
+        opens Lines…'s details on it, by that line, Back closing them back to that page.
+    - [ ] A line page opened over another screen still leaves its stations inert, Lines… showing under those:
+          a trip started from a searched station, a favorite place or a stop's From (the station flow, Codex
+          on #708), a route page's "View line" there, and a train tapped on the way. Lines… would have to show
+          over that flow and keep its pages' state under it, as it keeps the home screen's.
   - [x] **Back from To's trip** returns to the stop it was planned from, not the near-me list.
 - [ ] **Coming-up closures on a line's page** (discussed 2026-10-06; maintainer, 2026-10-08: coming up
       should look different from what's under way). The page lists the work to come the line's status

@@ -2685,6 +2685,11 @@ kept with it so the title never changes under the buttons, with
 page over Lines…, its Back returning to the stop; To plans a trip there from the stops near the rider,
 Lines… stepping aside for it with the trip's Back returning to the stop, and is offered only where
 To… is (the near-me list has stops to plan from).
+The same details open from a station tapped on the home screen's or a near-me trip's line page, by that line: Lines…
+comes up on the stop with the line's page under it, and Back from the stop (or from a line its pills open)
+closes Lines… back to the page it was tapped on, as it was left. Over a trip's line page it offers no To, as a
+trip from there would take the place of the one under it. Where something else is already open over that page,
+its stations stay inert.
 A bus stop shows its **letter and the way its buses go** under From and To ("Stop H, towards Oxford
 Circus"), or its compass heading where TfL gives no letter or "towards", as the near-me list heads its
 poles: from its stop area's poles, the area as the line's route data places the stop, both from the
