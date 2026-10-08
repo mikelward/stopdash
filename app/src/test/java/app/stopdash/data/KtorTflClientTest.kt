@@ -381,14 +381,18 @@ class KtorTflClientTest {
         val client = client(
             """[{"id": "299", "name": "299", "modeName": "bus", "serviceTypes": []},
                {"id": "victoria", "name": "Victoria", "modeName": "tube"},
+               {"id": "elizabeth", "name": "Elizabeth line", "modeName": "elizabeth-line"},
                {"id": "", "name": "Unnamed", "modeName": "bus"},
                {"id": "299", "name": "299", "modeName": "bus"}]""",
             capture = { captured = it },
         )
         val lines = client.lines(listOf("tube", "bus"))
         assertEquals("/Line/Mode/tube,bus", checkNotNull(captured).url.encodedPath)
-        // A line with no id is left out, and one TfL lists twice is kept once.
-        assertEquals(listOf(LineRef("299", "299", "bus"), LineRef("victoria", "Victoria", "tube")), lines)
+        // A line with no id is left out, one TfL lists twice is kept once, and each is named as riders say it.
+        assertEquals(
+            listOf(LineRef("299", "299", "bus"), LineRef("victoria", "Victoria", "tube"), LineRef("elizabeth", "Elizabeth", "elizabeth-line")),
+            lines,
+        )
     }
 
     private fun client(

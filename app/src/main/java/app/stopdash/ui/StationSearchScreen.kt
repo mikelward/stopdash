@@ -638,7 +638,7 @@ private val KNOWN_MODE_NAMES = mapOf(
     "bus" to "Bus",
     "dlr" to "DLR",
     "overground" to "Overground",
-    "elizabeth-line" to "Elizabeth line",
+    "elizabeth-line" to "Elizabeth",
     "national-rail" to "National Rail",
     "tram" to "Tram",
     "river-bus" to "River Bus",

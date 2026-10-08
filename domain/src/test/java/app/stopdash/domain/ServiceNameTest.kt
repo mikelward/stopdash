@@ -13,7 +13,7 @@ class ServiceNameTest {
         assertEquals("London Northwestern Railway", serviceName("London Northwestern Railway", "national-rail"))
         assertEquals("Avanti West Coast", serviceName("Avanti West Coast", "national-rail"))
         assertEquals("Hammersmith & City", serviceName("Hammersmith & City", "tube"))
-        assertEquals("Elizabeth line", serviceName("Elizabeth line", "elizabeth-line"))
+        assertEquals("Elizabeth", serviceName("Elizabeth line", "elizabeth-line"))
     }
 
     @Test
@@ -75,7 +75,7 @@ class ServiceNameTest {
     fun `a line is named alone as its riders say it`() {
         assertEquals("Northern line", lineLabel("Northern", "tube"))
         assertEquals("Mildmay line", lineLabel("Mildmay", "overground"))
-        assertEquals("Elizabeth line", lineLabel("Elizabeth line", "elizabeth-line"))
+        assertEquals("Elizabeth", lineLabel("Elizabeth line", "elizabeth-line"))
         assertEquals("134", lineLabel("134", "bus"))
     }
 }

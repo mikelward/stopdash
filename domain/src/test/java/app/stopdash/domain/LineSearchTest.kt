@@ -6,7 +6,8 @@ import org.junit.Test
 class LineSearchTest {
     private fun bus(n: String) = LineRef(n.lowercase(), n, "bus")
     private val victoria = LineRef("victoria", "Victoria", "tube")
-    private val elizabeth = LineRef("elizabeth", "Elizabeth line", "elizabeth-line")
+    // As the app names it ([riderLineName]), not as TfL does.
+    private val elizabeth = LineRef("elizabeth", riderLineName("Elizabeth line", "elizabeth-line"), "elizabeth-line")
     private val lines = listOf("29", "290", "299", "129", "209", "249", "N29", "2").map(::bus) + victoria + elizabeth
 
     private fun names(query: String) = LineSearch.search(query, lines).map { it.name }
@@ -35,7 +36,15 @@ class LineSearchTest {
     @Test
     fun a_line_is_found_by_name_whatever_the_case() {
         assertEquals(listOf("Victoria"), names("vic"))
-        assertEquals(listOf("Elizabeth line"), names("elizabeth"))
+        assertEquals(listOf("Elizabeth"), names("elizabeth"))
+    }
+
+    @Test
+    fun a_line_is_found_by_its_full_name_with_line_too() {
+        assertEquals(listOf("Elizabeth"), names("Elizabeth line"))
+        assertEquals(listOf("Victoria"), names("victoria LINE "))
+        // "line" alone is still searched as typed.
+        assertEquals(LineSearch.search("line", lines), LineSearch.search(" line", lines))
     }
 
     @Test

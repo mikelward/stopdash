@@ -770,7 +770,7 @@ class StationViewModelsTest {
 
     @Test
     fun `modes read as a rider says them`() {
-        assertEquals("Tube · Elizabeth line · National Rail", modesLabel(listOf("tube", "elizabeth-line", "national-rail")))
+        assertEquals("Tube · Elizabeth · National Rail", modesLabel(listOf("tube", "elizabeth-line", "national-rail")))
         assertEquals("Some mode", modesLabel(listOf("some-mode", "")))
     }
 }

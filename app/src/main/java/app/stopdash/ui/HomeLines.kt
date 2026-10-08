@@ -60,7 +60,7 @@ object HomeLines {
             listOf("liberty" to "Liberty", "lioness" to "Lioness", "mildmay" to "Mildmay", "suffragette" to "Suffragette", "weaver" to "Weaver", "windrush" to "Windrush")
                 .map { (id, name) -> LineRef(id, name, "overground") },
         ),
-        ELIZABETH("elizabeth", listOf(LineRef("elizabeth", "Elizabeth line", "elizabeth-line"))),
+        ELIZABETH("elizabeth", listOf(LineRef("elizabeth", "Elizabeth", "elizabeth-line"))),
         DLR("dlr", listOf(LineRef("dlr", "DLR", "dlr"))),
         TRAM("tram", listOf(LineRef("tram", "Tram", "tram"))),
         ;

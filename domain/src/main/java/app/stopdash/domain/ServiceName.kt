@@ -19,20 +19,19 @@ fun serviceName(lineName: String, mode: String, lineId: String = ""): String? {
  * publicly branded London Northwestern Railway, and its pill reads LNR (maintainer, 2026-09-30;
  * SPEC *Line pill colors*). For National Rail, or a line whose mode TfL didn't say (an interchange
  * lists its lines without one, and a hidden line's entry keeps none): no line of any other mode
- * carries either name.
+ * carries either name. And the Elizabeth line is "Elizabeth", as the Tube's lines go by their names
+ * alone, to keep every label short (maintainer, 2026-10-08).
  */
-fun riderLineName(lineName: String, mode: String): String =
-    if ((mode.isBlank() || mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true)) &&
-        lineName.lowercase().filter { it.isLetterOrDigit() } in LONDON_NORTHWESTERN_NAMES
-    ) {
-        "London Northwestern Railway"
-    } else {
-        lineName
-    }
+fun riderLineName(lineName: String, mode: String): String = when {
+    lineName.trim().equals(ELIZABETH_LINE, ignoreCase = true) -> "Elizabeth"
+    (mode.isBlank() || mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true)) &&
+        lineName.lowercase().filter { it.isLetterOrDigit() } in LONDON_NORTHWESTERN_NAMES -> "London Northwestern Railway"
+    else -> lineName
+}
 
 /**
  * Whether [serviceName] reads as "<name> line" — a tube or named Overground line, which TfL names
- * bare ("Victoria", "Mildmay"). A name that already says "line" (Elizabeth line) or is the network
+ * bare ("Victoria", "Mildmay"). A name that already says "line" or is the network
  * itself (London Overground) doesn't take it.
  */
 fun takesLineSuffix(lineName: String, mode: String): Boolean {
@@ -41,6 +40,9 @@ fun takesLineSuffix(lineName: String, mode: String): Boolean {
         !name.endsWith("line", ignoreCase = true) &&
         !name.contains("Overground", ignoreCase = true)
 }
+
+/** TfL's name for the Elizabeth line. */
+private const val ELIZABETH_LINE = "Elizabeth line"
 
 /** West Midlands Trains' line under TfL's name and the rail feed's, normalized. */
 private val LONDON_NORTHWESTERN_NAMES = setOf("westmidlandstrains", "lnrwmr")
@@ -51,7 +53,7 @@ private val TRAILING_ALIAS = Regex("""\s*\([^()]*\)$""")
 /**
  * How a line is named on its own in a sentence, as "Hide ‹line›" and its banner say it: a tube or
  * named Overground line as "Northern line" ([takesLineSuffix]), anything else by its TfL name ("134",
- * "Elizabeth line", "Thameslink").
+ * "Elizabeth", "Thameslink").
  */
 fun lineLabel(lineName: String, mode: String): String {
     val name = riderLineName(lineName, mode).trim()
