@@ -376,9 +376,29 @@ private val COLUMN_PITCH = 24.dp
 private val DOT_RADIUS = 6.dp
 private val RAIL_WIDTH = 4.dp
 
-// A one-way track's arrowhead: twice the rail's width across, so it reads over the rail.
+// A one-way track's arrow: a head twice the rail's width across and a tail down the rail's middle, in the
+// inverse surface color so it stands out from a rail in the line's own color (maintainer, 2026-10-08).
 private val ARROW_LENGTH = 8.dp
 private val ARROW_WIDTH = 12.dp
+private val ARROW_TAIL_LENGTH = 12.dp
+private val ARROW_TAIL_WIDTH = 2.dp
+
+// The least space between two arrows on one fold rail, one each way.
+private val ARROW_GAP = 8.dp
+
+/** Where a fold rail [length] long draws its arrows, as fractions along it, and whether they keep their tails. */
+internal data class FoldArrows(val downAt: Float, val upAt: Float, val tails: Boolean)
+
+/**
+ * A fold rail's arrows ([LineMap.FoldRail]'s one-way flags), a [whole] arrow long each: one alone at a third
+ * (down) or two thirds (up), whole. [both] ways on one rail spread to a quarter and three quarters where the
+ * two fit whole with a [gap] between, else are drawn as heads alone at a third and two thirds, so the two
+ * never overlap.
+ */
+internal fun foldArrows(length: Float, both: Boolean, whole: Float, gap: Float): FoldArrows {
+    val roomy = length / 2 >= whole + gap
+    return if (both && roomy) FoldArrows(1f / 4, 3f / 4, tails = true) else FoldArrows(1f / 3, 2f / 3, tails = !both || roomy)
+}
 
 // The first rail's middle: its edge 16dp in, as the last rail's edge is 16dp from the names.
 private val COLUMN_INSET = 16.dp + RAIL_WIDTH / 2
@@ -390,7 +410,7 @@ private fun DrawScope.columnX(column: Int): Float = (COLUMN_INSET + COLUMN_PITCH
 // A closed track's dashes, in the error color: the closure the alert names, drawn where it is.
 private fun DrawScope.closedDashes() = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 5.dp.toPx()))
 
-private fun DrawScope.drawRails(rails: List<LineMap.Rail>, top: Boolean, railColor: Color, closedColor: Color) {
+private fun DrawScope.drawRails(rails: List<LineMap.Rail>, top: Boolean, railColor: Color, closedColor: Color, arrowColor: Color) {
     val middle = size.height / 2
     val y0 = if (top) 0f else middle
     val y1 = if (top) middle else size.height
@@ -409,27 +429,61 @@ private fun DrawScope.drawRails(rails: List<LineMap.Rail>, top: Boolean, railCol
         }
         val color = if (rail.closed) closedColor else railColor
         drawPath(path, color, style = Stroke(RAIL_WIDTH.toPx(), pathEffect = if (rail.closed) closedDashes() else null))
-        // A track the line runs one way only: an arrowhead the way it runs, once, on the way into the row
-        // it ends at.
-        if (top && rail.arrives && rail.oneWay) drawOneWayArrow(path, down = rail.runsDown, color)
+        // A track the line runs one way only: an arrow the way it runs, once, centered where it comes into the
+        // row it ends at, so head and tail sit in the gap between the two stations, clear of both their dots.
+        // Drawn on the rail carried on straight up into the row above (a rail always arrives upright), whose
+        // track it is too: this row is drawn after that one, so it lands on top.
+        if (top && rail.arrives && rail.oneWay) {
+            val reach = ARROW_TAIL_LENGTH.toPx()
+            val carried = Path().apply {
+                moveTo(from, y0 - reach)
+                lineTo(from, y0)
+                if (from == to) {
+                    lineTo(to, y1)
+                } else {
+                    val bend = (y1 - y0) / 2
+                    cubicTo(from, y0 + bend, to, y1 - bend, to, y1)
+                }
+            }
+            drawOneWayArrow(carried, down = rail.runsDown, arrowColor, center = reach)
+        }
     }
 }
 
-// An arrowhead [along] the way along [path] (a third for the rail into a row, so clear of its station's dot),
-// pointing the way it's drawn ([down]) or back up it, wider than the rail so it reads over it.
-private fun DrawScope.drawOneWayArrow(path: Path, down: Boolean, color: Color, along: Float = 1f / 3) {
+// An arrow centered [center] along [path] (else [along] the way), pointing the way it's drawn ([down]) or
+// back up it: a head wider than the rail so it reads over it, and a tail following the rail back from it,
+// curve and all, the two together the same length either way; without [tail], the head alone, centered there.
+private fun DrawScope.drawOneWayArrow(
+    path: Path,
+    down: Boolean,
+    color: Color,
+    along: Float = 1f / 2,
+    center: Float? = null,
+    tail: Boolean = true,
+) {
     val measure = PathMeasure().apply { setPath(path, false) }
-    val distance = measure.length * along
+    val length = ARROW_LENGTH.toPx()
+    val tailLength = if (tail) ARROW_TAIL_LENGTH.toPx() else 0f
+    val middle = center ?: (measure.length * along)
+    // The head's own middle: the arrow's front end the way it points.
+    val distance = if (down) middle + tailLength / 2 else middle - tailLength / 2
     val at = measure.getPosition(distance)
     val tangent = measure.getTangent(distance)
     val (dx, dy) = if (down) tangent.x to tangent.y else -tangent.x to -tangent.y
-    val length = ARROW_LENGTH.toPx()
     val halfWidth = ARROW_WIDTH.toPx() / 2
     val arrow = Path().apply {
         moveTo(at.x + dx * length / 2, at.y + dy * length / 2)
         lineTo(at.x - dx * length / 2 - dy * halfWidth, at.y - dy * length / 2 + dx * halfWidth)
         lineTo(at.x - dx * length / 2 + dy * halfWidth, at.y - dy * length / 2 - dx * halfWidth)
         close()
+    }
+    // The tail, from the head's base back along the rail, cut short only where a rail is too short for it.
+    val base = if (down) distance - length / 2 else distance + length / 2
+    val (from, to) = if (down) (base - tailLength).coerceAtLeast(0f) to base else base to (base + tailLength).coerceAtMost(measure.length)
+    if (to > from) {
+        val tailPath = Path()
+        measure.getSegment(from, to, tailPath, true)
+        drawPath(tailPath, color, style = Stroke(ARROW_TAIL_WIDTH.toPx(), cap = StrokeCap.Butt))
     }
     drawPath(arrow, color)
 }
@@ -446,6 +500,7 @@ private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, positio
     val openLabel = stringResource(R.string.line_stop_open)
     val surface = MaterialTheme.colorScheme.surface
     val closedColor = MaterialTheme.colorScheme.error
+    val arrowColor = MaterialTheme.colorScheme.inverseSurface
     val starColor = MaterialTheme.colorScheme.primary
     val system = LocalDistanceSystem.current
     // "Nearest", with how far where the rider's fix gives it, so they judge how near that is.
@@ -478,8 +533,8 @@ private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, positio
             .semantics(mergeDescendants = true) { if (state.isNotEmpty()) stateDescription = state },
     ) {
         Canvas(Modifier.width(gutterWidth(columns)).fillMaxHeight()) {
-            drawRails(row.top, top = true, railColor, closedColor)
-            drawRails(row.bottom, top = false, railColor, closedColor)
+            drawRails(row.top, top = true, railColor, closedColor, arrowColor)
+            drawRails(row.bottom, top = false, railColor, closedColor, arrowColor)
             val center = Offset(columnX(row.column), size.height / 2)
             val radius = DOT_RADIUS.toPx()
             if (row.riding) {
@@ -524,6 +579,7 @@ private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color, positio
 @Composable
 private fun FoldRow(fold: LineMap.Item.Fold, columns: Int, railColor: Color, onOpen: () -> Unit) {
     val closedColor = MaterialTheme.colorScheme.error
+    val arrowColor = MaterialTheme.colorScheme.inverseSurface
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val stations = pluralStringResource(R.plurals.line_map_stations, fold.count, fold.count)
     // Where a stretch leads, by the line's ends folded into it; else its first and last stations, or the
@@ -576,9 +632,14 @@ private fun FoldRow(fold: LineMap.Item.Fold, columns: Int, railColor: Color, onO
                 // them, one each way where they disagree.
                 if (rail.oneWayDown || rail.oneWayUp) {
                     val path = Path().apply { moveTo(x, y0); lineTo(x, y1) }
-                    val color = if (rail.closed) closedColor else railColor
-                    if (rail.oneWayDown) drawOneWayArrow(path, down = true, color, along = 1f / 3)
-                    if (rail.oneWayUp) drawOneWayArrow(path, down = false, color, along = 2f / 3)
+                    val placed = foldArrows(
+                        y1 - y0,
+                        both = rail.oneWayDown && rail.oneWayUp,
+                        whole = (ARROW_LENGTH + ARROW_TAIL_LENGTH).toPx(),
+                        gap = ARROW_GAP.toPx(),
+                    )
+                    if (rail.oneWayDown) drawOneWayArrow(path, down = true, arrowColor, along = placed.downAt, tail = placed.tails)
+                    if (rail.oneWayUp) drawOneWayArrow(path, down = false, arrowColor, along = placed.upAt, tail = placed.tails)
                 }
             }
         }
