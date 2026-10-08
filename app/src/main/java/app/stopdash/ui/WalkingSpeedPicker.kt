@@ -173,7 +173,7 @@ internal fun AvoidedLineChips(
 
 /**
  * Which kinds of transport a trip may ride, atop its routes: one chip per mode group, by the names
- * the list's hide-mode menu uses ("Tube & DLR", "Train", "Bus"…), selected while the trip rides it.
+ * the list's hide-mode menu uses ("Underground", "Overground", "Bus"…), selected while the trip rides it.
  * A tap turns a group off or on and plans again ([TripViewModel.tripModes]); the last group riding
  * stays on, since a trip riding nothing has no route. The row scrolls sideways when the chips don't
  * fit. Until the stored choice is read ([enabled] false) none shows selected and none responds.

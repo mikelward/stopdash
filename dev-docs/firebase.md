@@ -36,7 +36,7 @@ register the final one.
    Create custom dimension; the Firebase console's Analytics links there), or the parameters and user
    properties below reach only DebugView and BigQuery, never the reports. **Event-scoped** custom
    dimensions, one per parameter name: `kind`, `what`, `mode`, `grant`, `outcome`, `accuracy`,
-   `time_to_fix`, `tube`, `train`, `bus`, `tram`, `boat`, `coach`, `from`, `routes`, `to`, `plan`,
+   `time_to_fix`, `tube`, `overground`, `rail`, `bus`, `tram`, `boat`, `from`, `routes`, `to`, `plan`,
    `choice`, `rank`, `changes`, `setting`, `value` (`screen_name` is built in). **User-scoped**, one
    per user property: `walking_speed`, `max_walk`, `step_free`, `trip_modes_off`, `avoided_lines`,
    `hidden_modes`, `hidden_lines`, `distance_units`, `disruptions_row`, `live_widget`, `text_size`,

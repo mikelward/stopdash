@@ -963,7 +963,7 @@ class SettingsScreenScreenshotTest {
 
         // Under the places: each group in menu order, then the lines, each with its own Show.
         composeRule.onNodeWithText("Hidden").assertIsDisplayed()
-        composeRule.onNodeWithText("Tube & DLR").assertIsDisplayed()
+        composeRule.onNodeWithText("Underground").assertIsDisplayed()
         composeRule.onNodeWithText("Bus").assertIsDisplayed()
         composeRule.onNodeWithText("Northern line").assertIsDisplayed()
         captureSnapshot("settings-hidden.png")
@@ -974,7 +974,7 @@ class SettingsScreenScreenshotTest {
         assertEquals(listOf(northern), shown)
         composeRule.onNodeWithText("Northern line").assertDoesNotExist()
         composeRule.onNodeWithText("Bus").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Show Tube & DLR").performClick()
+        composeRule.onNodeWithContentDescription("Show Underground").performClick()
         composeRule.onNodeWithContentDescription("Show Bus").performClick()
         composeRule.waitForIdle()
         assertEquals(listOf(northern, "tube", "bus"), shown)

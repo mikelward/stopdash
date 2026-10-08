@@ -85,10 +85,10 @@ class UsagePropertiesTest {
 
     @Test
     fun `hidden modes are their groups and hidden lines a count, never a line`() {
-        val hidden = ModeGroups.ALL.first { it.key == "train" }.modes + "bus" + "cable-car" +
+        val hidden = ModeGroups.ALL.first { it.key == "rail" }.modes + "bus" + "cable-car" +
             HiddenModes.lineKey("victoria", "Victoria") + HiddenModes.lineKey("central", "Central")
         val properties = usageProperties(defaults.copy(hiddenModes = hidden))
-        assertEquals("train+bus+other", properties["hidden_modes"])
+        assertEquals("rail+bus+other", properties["hidden_modes"])
         assertEquals("2-3", properties["hidden_lines"])
         assertTrue(properties.values.none { "victoria" in it.lowercase() || "central" in it.lowercase() })
     }

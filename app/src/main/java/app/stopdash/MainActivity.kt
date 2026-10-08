@@ -3033,7 +3033,7 @@ class MainActivity : ComponentActivity() {
                     // from the next re-locate. Showing them again re-picks the set from the same
                     // fix, so they come back now (SPEC *Finding stops → Hiding a mode*).
                     hiddenModes = hiddenModes,
-                    // A long press hides the mode's whole group ("Train" for Thameslink), as its
+                    // A long press hides the mode's whole group ("National Rail" for Thameslink), as its
                     // overflow checkbox does.
                     onHideMode = { mode -> HiddenModesSetting.setGroupHidden(ModeGroups.of(mode), hidden = true) },
                     onShowAllModes = onShowAllModes,

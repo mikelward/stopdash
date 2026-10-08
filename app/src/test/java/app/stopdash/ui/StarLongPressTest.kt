@@ -116,7 +116,7 @@ class StarLongPressTest {
         // The menu opens; nothing is pinned or hidden until an item is picked.
         assertNull(toggled)
         composeRule.onNodeWithText("Pin to top").assertExists()
-        composeRule.onNodeWithText("Hide all Tube & DLR services").performClick()
+        composeRule.onNodeWithText("Hide all Underground services").performClick()
         assertEquals("tube", hidden)
         assertNull(toggled)
 
@@ -153,14 +153,14 @@ class StarLongPressTest {
         composeRule.onNodeWithText("Victoria line hidden").assertExists()
         // A second hide takes the first one's offer away: Undo is for the latest.
         composeRule.onNodeWithText("Brixton").performTouchInput { longClick() }
-        composeRule.onNodeWithText("Hide all Tube & DLR services").performClick()
+        composeRule.onNodeWithText("Hide all Underground services").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Victoria line hidden").assertDoesNotExist()
-        composeRule.onNodeWithText("Tube & DLR hidden").assertExists()
+        composeRule.onNodeWithText("Underground hidden").assertExists()
         composeRule.onNodeWithText("Undo").performClick()
         composeRule.waitForIdle()
         assertEquals(listOf("tube" to true), shown)
-        composeRule.onNodeWithText("Tube & DLR hidden").assertDoesNotExist()
+        composeRule.onNodeWithText("Underground hidden").assertDoesNotExist()
     }
 
     @Test
@@ -195,7 +195,7 @@ class StarLongPressTest {
         }
         composeRule.onNodeWithContentDescription("King's Cross St. Pancras", substring = true)
             .performTouchInput { longClick() }
-        composeRule.onNodeWithText("Hide all Tube & DLR services").assertExists()
+        composeRule.onNodeWithText("Hide all Underground services").assertExists()
         // No bus is due, but the place serves one, so it can still be hidden.
         composeRule.onNodeWithText("Hide all bus services").performClick()
         assertEquals("bus", hidden)

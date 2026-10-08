@@ -256,7 +256,7 @@
     <string name="status_no_rail_key">No key</string>
     <!-- Long-press menu of a near-me row or header: hides every stop and route of that mode from the
          near-me list (SPEC *Finding stops → Hiding a mode*). The argument is the group's name as it
-         reads mid-sentence ("bus", "Tube & DLR"); "all … services" says the whole group goes, not
+         reads mid-sentence ("bus", "Underground"); "all … services" says the whole group goes, not
          just this row (maintainer, 2026-09-25). -->
     <string name="hide_mode">Hide all %1$s services</string>
     <!-- The same menu's item hiding just this line everywhere, beside hiding its whole mode

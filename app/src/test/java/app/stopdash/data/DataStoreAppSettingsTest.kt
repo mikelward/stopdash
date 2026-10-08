@@ -35,8 +35,8 @@ class DataStoreAppSettingsTest {
     fun `hidden modes read none by default and persist a change`() = runTest {
         val store = DataStoreAppSettings(FakeDataStore(null))
         assertTrue(store.hiddenModes().first().isEmpty())
-        store.setHiddenModes(setOf("tube", "national-rail"))
-        assertEquals(setOf("tube", "national-rail"), store.hiddenModes().first())
+        store.setHiddenModes(setOf("tram", "river-bus"))
+        assertEquals(setOf("tram", "river-bus"), store.hiddenModes().first())
     }
 
     @Test

@@ -51,11 +51,14 @@ data class TripModes(
         )
 
         /**
-         * A stored set read back. A key no group has (a newer build's) is dropped, and a set turning
-         * every group off, which [with] never writes, reads as [DEFAULT] rather than planning no route.
+         * A stored set read back. A key no group has (a newer build's) is dropped, the old Train is
+         * both its halves, and a set turning every group off, which [with] never writes, reads as
+         * [DEFAULT] rather than planning no route.
          */
         fun fromStored(off: Set<String>?): TripModes {
-            val known = off.orEmpty().filterTo(LinkedHashSet()) { key -> ModeGroups.ALL.any { it.key == key } }
+            // Train was one group until 2026-10-08: off, it turns both its trains' groups off.
+            val split = off.orEmpty().flatMapTo(LinkedHashSet()) { if (it == "train") listOf("overground", "rail") else listOf(it) }
+            val known = split.filterTo(LinkedHashSet()) { key -> ModeGroups.ALL.any { it.key == key } }
             return if (ModeGroups.ALL.all { it.key in known }) DEFAULT else TripModes(known)
         }
     }

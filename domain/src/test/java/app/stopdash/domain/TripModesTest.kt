@@ -25,8 +25,8 @@ class TripModesTest {
         assertFalse(noBus.rides(group("bus")))
         // A coach rides with the bus.
         assertEquals(TripModes.PLANNER_MODES.toSet() - "bus" - "coach", noBus.planned())
-        // Train is three modes to TfL, and the Tube group holds the DLR too.
-        val noTrainOrTube = noBus.with(group("train"), ride = false).with(group("tube"), ride = false)
+        // The trains are three modes to TfL, and the Tube group holds the DLR too.
+        val noTrainOrTube = noBus.with(group("overground"), ride = false).with(group("rail"), ride = false).with(group("tube"), ride = false)
         val planned = noTrainOrTube.planned()
         assertTrue(planned.none { it in setOf("bus", "overground", "elizabeth-line", "national-rail", "tube", "dlr") })
         assertTrue(planned.containsAll(listOf("tram", "river-bus")))
@@ -65,6 +65,8 @@ class TripModesTest {
     fun `reads back what was stored, dropping a group this build doesn't have`() {
         assertEquals(TripModes(setOf("bus")), TripModes.fromStored(setOf("bus")))
         assertEquals(TripModes(setOf("bus")), TripModes.fromStored(setOf("bus", "hovercraft")))
+        // Train was one group until it split: off, both halves are.
+        assertEquals(TripModes(setOf("overground", "rail", "bus")), TripModes.fromStored(setOf("train", "bus")))
         assertEquals(TripModes.DEFAULT, TripModes.fromStored(null))
         assertEquals(TripModes.DEFAULT, TripModes.fromStored(emptySet()))
     }

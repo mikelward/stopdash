@@ -9,7 +9,10 @@ class ModeGroupsTest {
     @Test
     fun `the DLR rides with the Tube, and every heavy-rail mode is Train`() {
         assertEquals("tube", ModeGroups.of("dlr").key)
-        assertEquals(setOf("train"), setOf("overground", "elizabeth-line", "national-rail").map { ModeGroups.of(it).key }.toSet())
+        // The Elizabeth line rides with the Tube as Underground; National Rail, Eurostar with it, is apart.
+        assertEquals(setOf("tube"), setOf("tube", "dlr", "elizabeth-line").map { ModeGroups.of(it).key }.toSet())
+        assertEquals("overground", ModeGroups.of("overground").key)
+        assertEquals(setOf("rail"), setOf("national-rail", "international-rail").map { ModeGroups.of(it).key }.toSet())
         assertEquals("boat", ModeGroups.of("river-bus").key)
         assertEquals("bus", ModeGroups.of("coach").key)
         // A mode no group names is a group of its own.
@@ -21,6 +24,12 @@ class ModeGroupsTest {
         assertEquals(setOf("tram"), ModeGroups.fromStored(setOf("coach", "tram")))
         assertEquals(setOf("bus", "coach"), ModeGroups.fromStored(setOf("bus")))
         assertEquals(setOf("bus", "coach"), ModeGroups.fromStored(setOf("bus", "coach")))
+        // The Elizabeth line, once a Train mode, follows the Tube now.
+        assertEquals(setOf("tube", "dlr", "elizabeth-line"), ModeGroups.fromStored(setOf("tube", "dlr")))
+        assertEquals(
+            setOf("overground", "national-rail", "international-rail"),
+            ModeGroups.fromStored(setOf("overground", "elizabeth-line", "national-rail")),
+        )
         assertEquals(emptySet<String>(), ModeGroups.fromStored(emptySet()))
         val line = HiddenModes.lineKey("northern", "Northern line")
         assertEquals(setOf(line), ModeGroups.fromStored(setOf(line, "Coach")))
@@ -30,7 +39,7 @@ class ModeGroupsTest {
     fun `hiding a group hides every mode in it, and showing it brings them all back`() {
         val train = ModeGroups.of("national-rail")
         val hidden = ModeGroups.withGroup(setOf("bus"), train, hide = true)
-        assertEquals(setOf("bus", "overground", "elizabeth-line", "national-rail"), hidden)
+        assertEquals(setOf("bus", "national-rail", "international-rail"), hidden)
         assertTrue(ModeGroups.isHidden(train, hidden))
         assertEquals(setOf("bus"), ModeGroups.withGroup(hidden, train, hide = false))
     }

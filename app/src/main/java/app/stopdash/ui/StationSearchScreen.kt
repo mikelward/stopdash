@@ -570,7 +570,7 @@ internal fun modesLabel(modes: List<String>): String =
         modeName(mode)
     }
 
-/** A hiding group's display name ("tube" → "Tube & DLR"), else its mode's name. */
+/** A hiding group's display name ("tube" → "Underground"), else its mode's name. */
 internal fun groupName(group: ModeGroups.Group): String = GROUP_NAMES[group.key] ?: modeName(group.key)
 
 /**
@@ -581,15 +581,16 @@ internal fun hiddenItemName(group: ModeGroups.Group): String =
     if (HiddenModes.isLineKey(group.key)) HiddenModes.hiddenLineLabels(setOf(group.key)).single() else groupName(group)
 
 /**
- * A group's name as it reads mid-sentence ("Hide all train services"): the common nouns lowercase,
- * the Tube and the DLR, being names, as they are.
+ * A group's name as it reads mid-sentence ("Hide all bus services"): the common nouns lowercase,
+ * the Underground, the Overground and National Rail, being names, as they are.
  */
 internal fun groupNameInSentence(group: ModeGroups.Group): String =
     GROUP_NAMES_IN_SENTENCE[group.key] ?: groupName(group)
 
 private val GROUP_NAMES_IN_SENTENCE = mapOf(
-    "tube" to "Tube & DLR",
-    "train" to "train",
+    "tube" to "Underground",
+    "overground" to "Overground",
+    "rail" to "National Rail",
     "bus" to "bus",
     "tram" to "tram",
     "boat" to "boat",
@@ -608,9 +609,21 @@ internal fun hiddenGroupsLabel(hidden: Set<String>): String {
     return (ModeGroups.hiddenGroups(hidden).map { groupName(it) } + linesPart).joinToString(", ")
 }
 
+/**
+ * What a group holds that its name doesn't say, under it in the list's menu (maintainer,
+ * 2026-10-08), kept short; null for a group whose name says it all.
+ */
+internal fun groupSubtitle(group: ModeGroups.Group): String? = GROUP_SUBTITLES[group.key]
+
+private val GROUP_SUBTITLES = mapOf(
+    "tube" to "Tube, DLR, Elizabeth",
+    "rail" to "Thameslink, Southern, …",
+)
+
 private val GROUP_NAMES = mapOf(
-    "tube" to "Tube & DLR",
-    "train" to "Train",
+    "tube" to "Underground",
+    "overground" to "Overground",
+    "rail" to "National Rail",
     "bus" to "Bus",
     "tram" to "Tram",
     "boat" to "Boat",

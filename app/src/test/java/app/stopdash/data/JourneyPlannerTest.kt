@@ -616,7 +616,7 @@ class JourneyPlannerTest {
     @Test
     fun `asks every request for only the modes the rider rides`() = runTest {
         val requests = mutableListOf<HttpRequestData>()
-        val noBusOrTrain = listOf("bus", "train").fold(TripModes.DEFAULT) { modes, key ->
+        val noBusOrTrain = listOf("bus", "overground", "rail").fold(TripModes.DEFAULT) { modes, key ->
             modes.with(ModeGroups.ALL.single { it.key == key }, ride = false)
         }
         client(fixture, capture = { synchronized(requests) { requests += it } })
@@ -624,10 +624,10 @@ class JourneyPlannerTest {
         assertEquals(3, requests.size)
         requests.forEach { request ->
             val modes = checkNotNull(request.url.parameters["mode"]).split(",")
-            assertTrue(modes.none { it in setOf("bus", "overground", "elizabeth-line", "national-rail") })
-            // Still walking, so the rider's pace applies, and the Tube, tram and the rest.
+            assertTrue(modes.none { it in setOf("bus", "overground", "national-rail") })
+            // Still walking, so the rider's pace applies, and the Underground (the Elizabeth line too), tram and the rest.
             assertTrue("coach" !in modes)
-            assertTrue(modes.containsAll(listOf("walking", "tube", "dlr", "tram", "river-bus", "replacement-bus")))
+            assertTrue(modes.containsAll(listOf("walking", "tube", "dlr", "elizabeth-line", "tram", "river-bus", "replacement-bus")))
         }
     }
 

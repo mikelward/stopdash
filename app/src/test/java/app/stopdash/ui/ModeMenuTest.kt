@@ -40,27 +40,31 @@ class ModeMenuTest {
                     state = DeparturesUiState.Loading,
                     now = now,
                     onRefresh = {},
-                    hiddenModes = setOf("overground", "elizabeth-line", "national-rail"),
+                    hiddenModes = setOf("overground", "national-rail", "international-rail"),
                     onSetModeGroupShown = { group, shown -> toggled = group.key to shown },
                 )
             }
         }
         composeRule.onNodeWithContentDescription("More options").performClick()
-        for (name in listOf("Tube & DLR", "Bus", "Tram", "Boat")) {
+        for (name in listOf("Underground", "Bus", "Tram", "Boat")) {
             composeRule.onNodeWithText(name).assertIsOn()
         }
-        composeRule.onNodeWithText("Train").assertIsOff().performClick()
-        assertEquals("train" to true, toggled)
+        // What a group's name doesn't say is under it, kept short.
+        composeRule.onNodeWithText("Tube, DLR, Elizabeth").assertExists()
+        composeRule.onNodeWithText("Thameslink, Southern, …").assertExists()
+        composeRule.onNodeWithText("Overground").assertIsOff()
+        composeRule.onNodeWithText("National Rail").assertIsOff().performClick()
+        assertEquals("rail" to true, toggled)
         composeRule.onNodeWithText("Bus").performClick()
         assertEquals("bus" to false, toggled)
-        assertEquals(5, ModeGroups.ALL.size)
+        assertEquals(6, ModeGroups.ALL.size)
         composeRule.onNodeWithText("Coach").assertDoesNotExist()
     }
 
     @Test
     fun `the hide item names every group mid-sentence, keeping the Tube and DLR capitalized`() {
         assertEquals(
-            listOf("Tube & DLR", "train", "bus", "tram", "boat"),
+            listOf("Underground", "Overground", "National Rail", "bus", "tram", "boat"),
             ModeGroups.ALL.map { groupNameInSentence(it) },
         )
     }
