@@ -384,7 +384,8 @@ The app finds stops two ways:
   takes TfL's fuller copy of itself in place, and one TfL's answer shows to be a duplicate of another
   (the same station twice) leaves. Only coming back from a station re-ranks the whole list. A name in parts — a stop with
   its cross street ("Foo Street/Bar Road"), a place after its area ("City of Westminster, Tate
-  Britain") — matches a query starting **any part** as a prefix. Best-effort: a geocode failure yields
+  Britain"), an interchange after its stations ("King's Cross & St Pancras International") —
+  matches a query starting **any part** as a prefix, so "st pa" finds St Pancras. Best-effort: a geocode failure yields
   no places and the stops still stand. A better geocoder is a later option (`TODO.md`). A place
   picked is **remembered under *To…*'s *Recent*** with the stops picked there, in the order picked
   (maintainer, 2026-10-02), its name and coordinate kept on the device as the stops are (*Privacy*);

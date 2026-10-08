@@ -39,7 +39,7 @@ object StationMatcher {
     fun tier(query: String, name: String, id: String = "", hubId: String = ""): StationMatchTier? {
         val q = normalize(query).replace(" ", "")
         if (q.isEmpty()) return null
-        val nameTier = namesOf(name).mapNotNull { nameTier(q, it) }.minOrNull()
+        val nameTier = namesOf(name, interchange = id.startsWith("HUB", ignoreCase = true)).mapNotNull { nameTier(q, it) }.minOrNull()
         val codeTier = listOf(id, hubId).filter { it.isNotBlank() }.mapNotNull { codeTier(q, it) }.minOrNull()
         return listOfNotNull(nameTier, codeTier).minOrNull()
     }
@@ -60,10 +60,15 @@ object StationMatcher {
      * of its parts when it has several: a stop named with its cross street ("Foo Street / Bar Road")
      * or a place named after its area ("City of Westminster, Tate Britain") matches a query that
      * starts any part as a prefix, so "ba" finds "Bar Road" and "tate" finds "Tate Britain" as
-     * readily as a query that starts the whole name (maintainer, 2026-09-28).
+     * readily as a query that starts the whole name (maintainer, 2026-09-28). An [interchange] named
+     * for its stations ("King's Cross & St Pancras International") has a part each side of the "&",
+     * so "st pa" finds it as readily as the St Paul's stops (maintainer, 2026-10-08). Only an
+     * interchange: a place or a line with an "&" ("Ace & Tate") is one name, and splitting it would
+     * rank it above a place that starts with the query.
      */
-    internal fun namesOf(name: String): List<String> {
-        val parts = name.split(SUB_LABEL).map { it.trim() }.filter { it.isNotEmpty() }
+    internal fun namesOf(name: String, interchange: Boolean = false): List<String> {
+        val separators = if (interchange) INTERCHANGE_SUB_LABEL else SUB_LABEL
+        val parts = name.split(separators).map { it.trim() }.filter { it.isNotEmpty() }
         val wholes = if (parts.size > 1) listOf(name) + parts else listOf(name)
         return wholes.flatMap { whole ->
             val normalized = normalize(whole)
@@ -157,8 +162,10 @@ object StationMatcher {
     private val PUNCTUATION = Regex("[^\\p{L}\\p{N} ]")
     private val SPACES = Regex(" +")
     // Between a name's parts: a stop's cross street ("Aldwych / Somerset House") or a place's
-    // area ("City of Westminster, Tate Britain").
+    // area ("City of Westminster, Tate Britain"); for an interchange also its stations ("King's
+    // Cross & St Pancras International").
     private val SUB_LABEL = Regex("""\s*/\s*|,\s*""")
+    private val INTERCHANGE_SUB_LABEL = Regex("""\s*/\s*|,\s*|\s+&\s+""")
     private val CROSS_WORD = Regex("\\bCross\\b", RegexOption.IGNORE_CASE)
 
     // TfL id prefixes ahead of a station's code: interchanges (HUB…); a NaPTAN area code (910G
