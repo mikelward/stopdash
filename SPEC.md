@@ -318,7 +318,10 @@ The app finds stops two ways:
   shorter name. A station whose interchange also matches is folded into it, since the
   interchange's page holds it. TfL lists a place's bus stop areas one by one, so results **of
   the same name within 250 m of a better-ranked one fold into it** (maintainer, 2026-09-25):
-  "Archway" is listed once, not once per stand, and its page takes in the stops around it.
+  "Archway" is listed once, not once per stand, and its page takes in the stops around it. A
+  station TfL lists under **two ids with no interchange** to stand for both (Weybridge) opens both:
+  its page asks for each id's stops, and fails with a retry if either lookup does rather than
+  showing half the station as if it were whole.
   Same-named places farther apart ("Church Street" in two boroughs) both stay, and a
   result TfL gives no position for is never folded. If TfL's search fails but the list matched, the list's matches
   stand, with a line saying bus stops weren't searched.
