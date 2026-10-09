@@ -129,6 +129,33 @@ class RouteTopology(val patternsByLine: Map<String, List<RoutePattern>>) {
     }
 
     /**
+     * The grouping for a train on [lineId] boarded at [stopId] by a rider getting off at
+     * [alightingId], via [branch]: a trip's board, where only the ride matters (maintainer,
+     * 2026-10-09: which trunk a train came up behind, or runs on to past the rider's stop, is "not
+     * relevant to the rider's destination"). Where every pattern of the line that runs from here to
+     * there calls at the same stops between, the rows merge and the branch drops; where they part
+     * between (Bank or Charing Cross to Camden Town), each keeps its label, as that's the ride. A
+     * branch no such pattern carries, or a line the asset doesn't model, falls back to [grouping].
+     */
+    fun rideGrouping(lineId: String, stopId: String, alightingId: String, destination: String, branch: String?): BranchGrouping {
+        val patterns = byLine[lineId] ?: return grouping(lineId, stopId, destination, branch)
+        val rides = patterns.mapNotNull { pattern -> ride(pattern, stopId, alightingId)?.let { pattern.branch to it } }
+        val mine = rides.firstOrNull { it.first == branch }?.second ?: return grouping(lineId, stopId, destination, branch)
+        val distinct = rides.mapTo(HashSet()) { it.second }
+        return BranchGrouping(mergeKey = "ride:" + mine.joinToString(","), label = branch.takeIf { distinct.size >= 2 })
+    }
+
+    // The stops [pattern] calls at from [from] to [to] inclusive, the way it runs, or null when it
+    // doesn't run from one to the other.
+    private fun ride(pattern: Pattern, from: String, to: String): List<String>? {
+        val i = pattern.stops.indexOf(from)
+        if (i < 0) return null
+        val j = pattern.stops.indexOf(to)
+        if (j < 0 || j == i) return null
+        return if (j > i) pattern.stops.subList(i, j + 1) else pattern.stops.subList(j, i + 1).reversed()
+    }
+
+    /**
      * The stop-set from the stop **one before** [stopId] (toward [destination]) through to
      * [destination] on [pattern], or null if [pattern] doesn't serve that leg. Including the
      * approach stop is what keeps the branch at a junction: two trunks reach the junction stop

@@ -53,6 +53,40 @@ class RouteTopologyTest {
         assertEquals("Charing X", label(KNG, "Morden", "Charing X"))
     }
 
+    private fun rideGrouping(stopId: String, alightingId: String, destination: String, branch: String?) =
+        topology.rideGrouping("northern", stopId, alightingId, destination, branch)
+
+    @Test
+    fun `a trip's board drops the branch where it doesn't change the ride`() {
+        // Boarding at Camden Town for Highgate: a train up via Bank and one via Charing X ride the same
+        // stops to Highgate, so which trunk they came up isn't the rider's concern (maintainer, 2026-10-09).
+        assertNull(rideGrouping(CTN, HGT, "High Barnet", "Bank").label)
+        assertNull(rideGrouping(CTN, HGT, "High Barnet", "Charing X").label)
+        assertEquals(rideGrouping(CTN, HGT, "High Barnet", "Bank").mergeKey, rideGrouping(CTN, HGT, "High Barnet", "Charing X").mergeKey)
+        // The same board as a stop's board still tells them apart at the junction.
+        assertEquals("Bank", label(CTN, "High Barnet", "Bank"))
+    }
+
+    @Test
+    fun `a trip's board keeps the branch where it changes the ride`() {
+        // Boarding at Kennington for Camden Town: the two trunks call at different stops on the way.
+        assertEquals("Bank", rideGrouping(KNG, CTN, "High Barnet", "Bank").label)
+        assertEquals("Charing X", rideGrouping(KNG, CTN, "High Barnet", "Charing X").label)
+        assertNotEquals(rideGrouping(KNG, CTN, "High Barnet", "Bank").mergeKey, rideGrouping(KNG, CTN, "High Barnet", "Charing X").mergeKey)
+        // Getting off on the shared stretch past the junction: no difference to the ride, so no label,
+        // whichever trunk ahead the train runs on to (Highgate to Camden Town, southbound).
+        assertNull(rideGrouping(HGT, CTN, "Morden", "Bank").label)
+        assertNull(rideGrouping(HGT, CTN, "Morden", "Charing X").label)
+    }
+
+    @Test
+    fun `a trip's board falls back to the stop's grouping for a branch it can't place`() {
+        // No pattern carries "Bank" from Euston to Mornington Crescent (only Charing X calls there).
+        assertEquals(topology.grouping("northern", EUS, "High Barnet", "Bank"), rideGrouping(EUS, MTC, "High Barnet", "Bank"))
+        // An unmodeled line keeps TfL's label.
+        assertEquals("Bank", topology.rideGrouping("other", CTN, HGT, "High Barnet", "Bank").label)
+    }
+
     @Test
     fun `branches stay labeled where the trunk is a choice ahead`() {
         // Camden southbound to Morden: the trunks diverge ahead (different central stations).

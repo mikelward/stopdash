@@ -890,7 +890,7 @@ internal fun NextTrains.withGroups(now: Instant, topology: RouteTopology = Route
     val listed = offPlan.filter { it.trains.isNotEmpty() }
     val fork = listed.map { it.branch.forkName }.distinct().singleOrNull()?.takeIf { it.isNotBlank() }
     val heading = ride.headings.firstOrNull()?.let { DepartureLabels.destinationLabel(it, "") ?: it } ?: ride.toName
-    return copy(groups = groups, cards = groups.map { stopCard(it, topology) }, offPlanListed = listed.isNotEmpty(), offPlanFork = fork, plannedHeading = heading)
+    return copy(groups = groups, cards = groups.map { stopCard(it, topology, ride.toId) }, offPlanListed = listed.isNotEmpty(), offPlanFork = fork, plannedHeading = heading)
 }
 
 /** [next]'s trains as the board draws them at [now]: the ride's own pole first, then the pair's others, each its own header ("Stop N"). */

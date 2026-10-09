@@ -262,4 +262,27 @@ class WatchTripsTest {
         // Shortened as the widget shortens a branch (Codex on #612).
         assertEquals(listOf("Morden/Bank", "Morden/Charing X"), sent.departures.map { it.destination })
     }
+
+    // Only where it changes the ride to where they get off, as the trip's board names it (maintainer, 2026-10-09):
+    // from Camden Town to Highgate every High Barnet train rides the same way, whichever trunk it came up.
+    @Test
+    fun `a train's branch isn't named where it doesn't change the ride`() {
+        val topology = app.stopdash.domain.RouteTopology(
+            mapOf(
+                "northern" to listOf(
+                    app.stopdash.domain.RoutePattern("Bank", listOf("HGT", "CTN", "EUS", "BNK", "KNG", "MDN"), "High Barnet", "Morden"),
+                    app.stopdash.domain.RoutePattern("Charing Cross", listOf("HGT", "CTN", "MTC", "EUS", "CHX", "KNG", "MDN"), "High Barnet", "Morden"),
+                ),
+            ),
+        )
+        val walkThere = TripLeg(TripLeg.WALKING, "", "", "", "", "CTN", "Camden Town", at(0), at(5))
+        val northern = TripLeg("tube", "northern", "Northern", "CTN", "Camden Town", "HGT", "Highgate", at(6), at(15))
+        val toHighgate = ActiveTrip(TripRoute(listOf(walkThere, northern)), "Highgate", startedAt = t0)
+        fun highBarnet(minutes: Long, branch: String) =
+            Departure("northern", "Northern", "inbound", "High Barnet Underground Station", null, at(minutes), "tube", branch = branch)
+        val sent = runBlocking {
+            WatchTrips.build(toHighgate, "Walk to Camden Town", "4 min", listOf(highBarnet(6, "Bank"), highBarnet(8, "Charing Cross")), t0, topology = topology) { leg, _ -> leg.toName }
+        }
+        assertEquals(listOf("High Barnet", "High Barnet"), sent.departures.map { it.destination })
+    }
 }

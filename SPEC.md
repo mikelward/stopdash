@@ -692,6 +692,15 @@ sets of stops on both trunks ⇒ merge and drop the label; different ⇒ keep bo
 approach stop is what keeps the branch at the junction (the trunks reach it by different
 approaches) while still merging once past it (the approach is then shared).
 
+A **trip's board** (the trains for a ride on the way, and the watch's copy of it) asks a
+narrower question: does the branch change **the ride to where the rider gets off**? Which trunk a
+train came up behind, or runs on to past their stop, is "not relevant to the rider's destination"
+(maintainer, 2026-10-09). So there the rows merge only where the route data proves every pattern
+of the line from the boarding stop to that stop calls at the same stops between (boarding at
+Camden Town for Highgate: one "High Barnet"), and keep their labels where the branches part on
+the way (Kennington to Camden Town, via Bank or via Charing Cross). Anything the data can't prove
+that way falls back to the stop's rule above.
+
 Resolution requires an **exact branch match** — the arrival's branch must name a route
 pattern that actually serves this leg. Anything the asset doesn't model that way keeps TfL's
 raw label and merges nothing: an unknown line, a stop or terminus off every pattern, or a
