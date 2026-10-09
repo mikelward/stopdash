@@ -6,7 +6,7 @@ sealed interface SearchEntry {
     val key: String
 
     data class Stop(val match: StationMatch) : SearchEntry {
-        override val key: String get() = match.id
+        override val key: String get() = match.key
     }
 
     data class Place(val hit: PlaceHit) : SearchEntry {
@@ -25,7 +25,8 @@ object SearchResults {
      */
     fun merge(query: String, stops: List<StationMatch>, places: List<PlaceHit>): List<SearchEntry> {
         val unplaced = StationMatchTier.entries.size
-        fun tierOf(stop: StationMatch) = StationMatcher.tier(query, stop.name, stop.id)?.ordinal ?: unplaced
+        // An interchange's station name by its name alone, as the index ranks it ([StationIndex.search]).
+        fun tierOf(stop: StationMatch) = StationMatcher.tier(query, stop.name, stop.id.takeIf { stop.lead.isEmpty() }.orEmpty())?.ordinal ?: unplaced
         fun tierOf(place: PlaceHit) =
             if (place.kind == PlaceKind.POSTCODE) unplaced else StationMatcher.tier(query, place.name)?.ordinal ?: unplaced
         val merged = ArrayList<SearchEntry>(stops.size + places.size)

@@ -31,6 +31,16 @@ class FileRecentStationsStoreTest {
     }
 
     @Test
+    fun `an interchange's station name is kept apart from the interchange, with its modes`() {
+        val file = File(tmp.root, "recent-stations.json")
+        val hub = StationMatch("HUBKGX", "King's Cross & St Pancras International", listOf("national-rail", "tube"))
+        val stPancras = StationMatch("HUBKGX", "St Pancras International", listOf("national-rail"), lead = listOf("national-rail"))
+        FileRecentStationsStore(file).add(hub)
+        FileRecentStationsStore(file).add(stPancras)
+        assertEquals(listOf(stPancras, hub), FileRecentStationsStore(file).load())
+    }
+
+    @Test
     fun `a picked place is kept among the stops, in the order picked, across a reload`() {
         val file = File(tmp.root, "recent-destinations.json")
         val gallery = PlaceHit("Example Gallery", Coordinates(51.5, -0.12), PlaceKind.PLACE)

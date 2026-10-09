@@ -22,7 +22,7 @@ data class YourStops(
     val recentPicks: List<SearchEntry> = recent.map(SearchEntry::Stop),
 ) {
     /** Every stop here once, the user's own first. */
-    val all: List<StationMatch> get() = (recent + favorites + known).distinctBy { it.id }
+    val all: List<StationMatch> get() = (recent + favorites + known).distinctBy { it.key }
 
     /**
      * These lists with each [unnamedStarred] stop that [index] holds (a station, not a bus stop)
@@ -37,9 +37,10 @@ data class YourStops(
 
     /**
      * The stops the user chose — picked or starred — by last use: the recent, most recent first, then
-     * the favorites not picked lately. Each leads its tier in a search, in this order.
+     * the favorites not picked lately. Each leads its tier in a search, in this order. By
+     * [StationMatch.key], so an interchange's station name is its own.
      */
-    val own: List<String> get() = (recent + favorites).map { it.id }.distinct()
+    val own: List<String> get() = (recent + favorites).map { it.key }.distinct()
 
     companion object {
         val EMPTY = YourStops()
@@ -70,9 +71,9 @@ data class YourStops(
                 }
             }.distinctBy { it.key }
             val picked = picks.filterIsInstance<SearchEntry.Stop>().map { it.match }
-            val pickedIds = picked.mapTo(HashSet()) { it.id }
+            val pickedKeys = picked.mapTo(HashSet()) { it.key }
             return YourStops(
-                favorites = (journeyEnds + starred.sortedBy { cleanStopName(it.name) }).cleaned().filter { it.id !in pickedIds },
+                favorites = (journeyEnds + starred.sortedBy { cleanStopName(it.name) }).cleaned().filter { it.key !in pickedKeys },
                 recent = picked,
                 // A stop shown lately with no lines (TfL lists some stands that way) has no departures to
                 // open: it would list with no mode and open to an empty page, so it isn't offered.
@@ -83,7 +84,7 @@ data class YourStops(
         }
 
         private fun List<StationMatch>.cleaned(): List<StationMatch> =
-            map { it.copy(name = cleanStopName(it.name)) }.filter { it.name.isNotBlank() }.distinctBy { it.id }
+            map { it.copy(name = cleanStopName(it.name)) }.filter { it.name.isNotBlank() }.distinctBy { it.key }
     }
 }
 
@@ -105,7 +106,7 @@ object RecentStations {
 
     /** [current] with [opened] moved (or added) to the front, capped at [max]. */
     fun add(current: List<StationMatch>, opened: StationMatch, max: Int = MAX): List<StationMatch> =
-        (listOf(opened) + current.filter { it.id != opened.id }).take(max)
+        (listOf(opened) + current.filter { it.key != opened.key }).take(max)
 
     /**
      * [current] with [picked], a stop or a geocoded place, moved (or added) to the front, capped at

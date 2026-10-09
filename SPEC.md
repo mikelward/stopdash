@@ -316,7 +316,14 @@ The app finds stops two ways:
   Abbreviations are **generated, never listed**: a word "Cross" also reads "X", so "KX" and
   "CX" (Charing Cross) need no alias table. Within a tier an interchange leads, then the
   shorter name. A station whose interchange also matches is folded into it, since the
-  interchange's page holds it. TfL lists a place's bus stop areas one by one, so results **of
+  interchange's page holds it. An interchange whose stations go by different names also lists
+  **each name as a row of its own**, beside the interchange's row (maintainer, 2026-10-09):
+  King's Cross & St Pancras is found as "King's Cross" (Tube · National Rail) and "St Pancras
+  International" (National Rail). Names are compared without what only tells TfL's records apart
+  ("London …" unless the interchange is so named, "… LL", a line in brackets), so Paddington and
+  Waterloo stay one row; a station named for two others (the tube's "King's Cross St. Pancras")
+  joins the first. Each name row opens the interchange under that name, its modes Underground
+  first. TfL lists a place's bus stop areas one by one, so results **of
   the same name within 250 m of a better-ranked one fold into it** (maintainer, 2026-09-25):
   "Archway" is listed once, not once per stand, and its page takes in the stops around it. A
   station TfL lists under **two ids with no interchange** to stand for both (Weybridge) opens both:

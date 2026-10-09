@@ -1167,14 +1167,18 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           undecided): a trailing icon, shown only with text in the field, that empties the query
           in one tap, in both the From… and To… searches. Needs approved copy for its content
           description (proposed: "Clear search") before it's built.
-    - [ ] **A row per station name for King's Cross & St Pancras** (maintainer, 2026-10-08): list
-          the one hub as "St Pancras Intl", opening with National Rail first, and as "King's
-          Cross", opening with the Underground first, so either name finds a row that leads with
-          what that station is for. Today the page orders a hub's rows by distance, then stop id
-          (every member is 0 m), so it needs a lead mode carried from the row to the page. Only
-          King's Cross needs it: the other "&" hubs (Elephant & Castle, Highbury & Islington, …)
-          are one place, and Paddington's members share one name, so a short explicit list beats
-          deriving rows from names. Matching either half of the hub's name already works (#705).
+    - [x] **A row per station name for an interchange** (maintainer, 2026-10-08/09): the one
+          hub is also listed as "King's Cross" and "St Pancras International", each a row of its
+          own beside the interchange's. Derived from the members' names, cleaned of what tells
+          records apart ("London …", "… LL", a bracketed line, "Tram Stop"), rather than a fixed
+          list (maintainer, 2026-10-09: "take each station, clean up noise suffixes … merge same
+          name entries"). The bundled index gives name rows to King's Cross, West Hampstead,
+          North Greenwich and Royal Victoria; a hub whose members share one name (Paddington)
+          gets none. Matching either half of the hub's name works too (#705).
+    - [ ] **Open a station name with its own modes first**: "St Pancras International" leads
+          with National Rail and St Pancras's own trains, "King's Cross" with the Underground.
+          The page now orders a hub's members by distance, then stop id (every member is 0 m), so
+          it needs the name row's lead carried to the page.
     - [ ] **Rank by use**: TypeLauncher breaks ties by how often each item is opened. Here that
           would store which stations a user looks at (user data, on device, riding backup), so it
           waits for a decision and a *Privacy* line.

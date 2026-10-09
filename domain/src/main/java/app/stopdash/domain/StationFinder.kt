@@ -13,7 +13,17 @@ data class StationMatch(
     val modes: List<String> = emptyList(),
     val latitude: Double? = null,
     val longitude: Double? = null,
-)
+    // Set on one of an interchange's station names listed as its own row ([StationIndex.hubNames]):
+    // the modes that name stands for, Underground first. [id] is still the interchange's, so the row
+    // opens the interchange; the list tells it which modes lead.
+    val lead: List<String> = emptyList(),
+) {
+    /**
+     * This row's identity in a list: the [id], or for an interchange's station name, the id and
+     * name, so "King's Cross" and "St Pancras International" are two rows beside the interchange's own.
+     */
+    val key: String get() = if (lead.isEmpty()) id else "$id|$name"
+}
 
 /**
  * Finds a station by name and resolves the stops that carry its departures — the in-app "Find a
