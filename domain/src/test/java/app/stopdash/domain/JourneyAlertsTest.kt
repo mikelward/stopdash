@@ -409,4 +409,39 @@ class JourneyAlertsTest {
         // "b" gained a pin; "gone" is no longer watched, so needs no check of its own.
         assertEquals(setOf("b"), JourneyAlerts.moved(asked, now))
     }
+
+    @Test
+    fun `alerts are held back only on a mobile network known to be abroad`() {
+        assertTrue(JourneyAlerts.abroad("fr"))
+        assertTrue(JourneyAlerts.abroad("ES"))
+        assertFalse(JourneyAlerts.abroad("gb"))
+        assertFalse(JourneyAlerts.abroad("GB"))
+        // The Crown Dependencies' networks are home too.
+        assertFalse(JourneyAlerts.abroad("je"))
+        assertFalse(JourneyAlerts.abroad("im"))
+        // No network to say (Wi-Fi only, no SIM, airplane mode): alerts fire as they would anyway.
+        assertFalse(JourneyAlerts.abroad(null))
+        assertFalse(JourneyAlerts.abroad(""))
+        assertFalse(JourneyAlerts.abroad("  "))
+    }
+
+    @Test
+    fun `only a network the phone is registered on gives its country`() {
+        assertEquals("fr", JourneyAlerts.registeredCountry("fr", simReady = true, networkOperator = "20801"))
+        // A nearby cell's country, with no SIM or no registration, says nothing of the rider's network.
+        assertNull(JourneyAlerts.registeredCountry("fr", simReady = false, networkOperator = "20801"))
+        assertNull(JourneyAlerts.registeredCountry("fr", simReady = true, networkOperator = ""))
+        assertNull(JourneyAlerts.registeredCountry("fr", simReady = true, networkOperator = null))
+        assertNull(JourneyAlerts.registeredCountry("", simReady = true, networkOperator = "23410"))
+    }
+
+    @Test
+    fun `a swipe outlasts an alert only held back`() {
+        val dismissed = mapOf("k" to "fp")
+        val clear = listOf(JourneyAlertAction.Clear("k"))
+        // Held back (abroad, its window still open): the swipe is kept for the return.
+        assertEquals(dismissed, JourneyAlerts.dismissedAfter(dismissed, clear, heldBack = setOf("k")))
+        // Cleared for good (window closed, lines clear): forgotten, so the next swipe counts.
+        assertEquals(emptyMap<String, String>(), JourneyAlerts.dismissedAfter(dismissed, clear))
+    }
 }

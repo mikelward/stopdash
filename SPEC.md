@@ -1137,6 +1137,18 @@ lines a check asks about come from the pins worked out for the direction it trav
 for the other way: the widget keeps only the direction last shown, and a direct line between two
 stops almost always runs both ways.
 
+**Not abroad** (maintainer, 2026-10-09). A check holds its alerts back while the phone's mobile network
+is outside the UK (the Crown Dependencies' count as home): it asks TfL nothing and takes down any alert
+up, so a holiday doesn't bring London's disruptions. The network's country is what Android reports for
+the cell network the phone's mobile-data SIM is registered on (on a dual-SIM phone, the one carrying
+data right now, not the one for calls), with that SIM ready: no permission, no request, nothing new
+leaving the device, and no battery cost. Android can name a nearby cell's country with no SIM or no
+registration, which says nothing of the rider's network, so that counts as no answer. Where it can't say
+(Wi-Fi only, no SIM, airplane mode), alerts fire as before: a check
+never goes quiet for want of an answer. It tells only the UK from abroad, not London from Manchester;
+a finer line needs location in the background, a Play-restricted permission (#711). The debug log
+notes only that a check was held back, never the country.
+
 One notification per journey, on its own **low-importance channel** (no sound, vibration or
 heads-up), titled the way the open window travels ("Euston ➔ Waterloo") and naming each disrupted
 line with TfL's label and words. It is posted once for a disruption: kept up to date silently while

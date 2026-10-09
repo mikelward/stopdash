@@ -166,6 +166,32 @@ internal object JourneyAlertChecks {
     }
 
     /**
+     * The country of the mobile network the phone's data SIM is registered on ([JourneyAlerts.registeredCountry]),
+     * or null when it can't say (Wi-Fi only, no SIM, airplane mode, or only a nearby cell's country). Needs no
+     * permission and makes no request; only ever compared with the UK on the device ([JourneyAlerts.abroad]), never kept, logged or sent.
+     */
+    internal fun networkCountry(context: Context): String? = try {
+        // The SIM carrying mobile data now, not the default (voice) one, nor the default data one where
+        // Android has switched data to another: a traveler keeping a UK SIM for calls and a local eSIM for
+        // data is abroad (Codex on #712). None carrying data is no answer.
+        val data = android.telephony.SubscriptionManager.getActiveDataSubscriptionId()
+        context.getSystemService(android.telephony.TelephonyManager::class.java)
+            ?.takeIf { data != android.telephony.SubscriptionManager.INVALID_SUBSCRIPTION_ID }
+            ?.createForSubscriptionId(data)
+            ?.let { phone ->
+                JourneyAlerts.registeredCountry(
+                    phone.networkCountryIso,
+                    simReady = phone.simState == android.telephony.TelephonyManager.SIM_STATE_READY,
+                    networkOperator = phone.networkOperator,
+                )
+            }
+    } catch (e: RuntimeException) {
+        // Some builds throw rather than answer with no network; unknown, so alerts fire as before.
+        logJourneyAlertWarning("network country unreadable: ${e::class.simpleName}")
+        null
+    }
+
+    /**
      * Whether a journey is watched at [at] for directions other than those the check [asked] about: a
      * direction opened since, while the check waited, which only a check run at once will cover.
      */
@@ -510,7 +536,12 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
         val active = JourneyAlerts.active(journeys, schedules, at)
         // A close check asks nothing: it clears what closed, and leaves the rest to the main check.
         val closeOnly = inputData.getBoolean(JourneyAlertChecks.CLOSE_ONLY, false)
-        val answer = if (closeOnly || active.isEmpty() || !JourneyAlertNotification.canAlert(context)) null else results(context, active, schedules, now)
+        val asking = !closeOnly && active.isNotEmpty() && JourneyAlertNotification.canAlert(context)
+        // Alerts are held back abroad (maintainer, 2026-10-09): TfL isn't asked, and what's up comes down.
+        val abroad = asking && JourneyAlerts.abroad(JourneyAlertChecks.networkCountry(context))
+        // Coarse by design (no country named): it's what says why alerts went quiet (SPEC principle 2).
+        if (abroad) logJourneyAlertWarning("abroad: no alerts this check")
+        val answer = if (!asking || abroad) null else results(context, active, schedules, now)
         val answers = answer?.results.orEmpty()
         // Decided as of when the answer came back, not when it was asked for: a request that outlived its
         // window posts nothing, and an alert's timeout runs from now (Codex on #700).
@@ -523,7 +554,13 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
         val journeysNow = store.journeys().first() ?: throw java.io.IOException("journeys unreadable")
         val schedulesNow = store.alertSchedules().first() ?: throw java.io.IOException("schedules unreadable")
         val canAlertNow = JourneyAlertNotification.canAlert(context)
-        val stillActive = if (canAlertNow) JourneyAlerts.active(journeysNow, schedulesNow, atAnswer) else emptyList()
+        // Abroad nothing counts as watched, so any alert up is taken down. Read again as the answer is: a
+        // phone that crossed a border while TfL was asked posts nothing, and takes down what's up (Codex on #712).
+        val abroadNow = abroad || (answer != null && JourneyAlerts.abroad(JourneyAlertChecks.networkCountry(context)))
+        if (abroadNow && !abroad) logJourneyAlertWarning("abroad: no alerts this check")
+        val stillActive = if (canAlertNow && !abroadNow) JourneyAlerts.active(journeysNow, schedulesNow, atAnswer) else emptyList()
+        // The journeys only held back, their windows still open: their swipes are kept for the rider's return.
+        val heldBack = if (abroadNow) JourneyAlerts.active(journeysNow, schedulesNow, atAnswer).mapTo(HashSet()) { it.key } else emptySet()
         // What each journey is watched for as these settings stand, as a sync would find it.
         val watchesNow = if (canAlertNow) JourneyAlertChecks.watches(journeysNow, schedulesNow, atAnswer) else emptyMap()
         // An answer about lines chosen for one direction says nothing about another: a journey whose
@@ -595,7 +632,7 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
                 }
                 AnnouncedJourneyAlerts.recordDone(context, done)
                 // Applied to the swipes as they stand now, so one landing during this check isn't overwritten.
-                AnnouncedJourneyAlerts.updateDismissed(context) { JourneyAlerts.dismissedAfter(it, done) }
+                AnnouncedJourneyAlerts.updateDismissed(context) { JourneyAlerts.dismissedAfter(it, done, heldBack) }
             }
         }
     }

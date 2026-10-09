@@ -206,6 +206,11 @@ backup and device transfer (it describes this phone's notifications), and is del
 disruption clears, when the alert's time window closes, when you turn that direction's alerts off or
 remove the journey, or when notifications are turned off.
 
+Journey alerts are held back while your phone is on a mobile network outside the UK. Each check reads
+the country of the network your phone is connected to, which Android reports without any permission,
+and compares it with the UK on the phone. It is never kept, logged or sent anywhere; the on-device debug
+log notes only that a check was held back.
+
 **Held in memory only:** the last precise (GPS) position, for up to 10 minutes, so a rough
 network position that comes in while you haven't moved doesn't replace it. It is never written to
 storage or logged, is sent only as the position of a nearby-stop lookup or as the start of a trip
