@@ -246,6 +246,9 @@ fun MainScreen(
     // Each line's stop nearest the rider within walking reach, both tiers' (line id → stop id), which a
     // line's map keeps on the page. Empty for a location-free list.
     nearestStops: Map<String, String> = emptyMap(),
+    // How far each line's nearest stop is, both tiers', however far (line id → meters), which ranks the
+    // disruptions row's equally bad lines nearest first. Empty for a location-free list.
+    lineMeters: Map<String, Double> = emptyMap(),
     // Shows a near-me stop (`stopId`, place name) in the maps app, from a tap on its header's
     // distance; null leaves the distance inert.
     onOpenStopMap: ((String, String) -> Unit)? = null,
@@ -910,7 +913,7 @@ fun MainScreen(
             rememberWorked(
                 homeWork,
                 // Compared part by part, a snapshot by identity, never by its contents (Codex, #598).
-                Inputs(loaded, stopDistanceMeters, always, alwaysNetworks, dismissed, now, refreshing, starred, journeys, shown, cardJourneys, nearestStops, placeLines),
+                Inputs(loaded, stopDistanceMeters, always, alwaysNetworks, dismissed, now, refreshing, starred, journeys, shown, cardJourneys, nearestStops, lineMeters, placeLines),
                 keep = { _, _ -> true },
             ) {
                 // A journey card still checking may yet show another line it rides: the last row (or
@@ -928,7 +931,7 @@ fun MainScreen(
                 val journeyLines = HashSet<String>()
                 journeys.forEach { journeyLines += it.lineId }
                 journeyCards.forEach { card -> (card.state as? JourneyCardState.Trains)?.rows?.forEach { journeyLines += it.lineId } }
-                HomeLines.row(loaded, stopDistanceMeters, always, dismissed, now, refreshing, alwaysNetworks, starred, journeyLines, journeys, nearestStops, placeLines?.lines.orEmpty(), placeLines?.unread == true)
+                HomeLines.row(loaded, stopDistanceMeters, always, dismissed, now, refreshing, alwaysNetworks, starred, journeyLines, journeys, nearestStops, placeLines?.lines.orEmpty(), placeLines?.unread == true, lineMeters)
             } ?: TripRow.CHECKING
         }
     }

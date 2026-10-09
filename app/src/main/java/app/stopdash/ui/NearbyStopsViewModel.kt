@@ -165,6 +165,9 @@ class NearbyStopsViewModel(
              */
             val nearestStopByLine: Map<String, String> = NearestByLine.byLine((eager + more).flatMap { it.stops }, distanceMeters)
 
+            /** How far each line's nearest stop is, both tiers, however far ([NearestByLine.metersByLine]). */
+            val nearestMetersByLine: Map<String, Double> = NearestByLine.metersByLine((eager + more).flatMap { it.stops }, distanceMeters)
+
             /**
              * Order-independent identity of the WHOLE nearby set (both tiers), so a relocation that
              * only reorders the same clusters — or shifts one across the eager/more boundary while

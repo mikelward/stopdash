@@ -3171,6 +3171,7 @@ class MainActivity : ComponentActivity() {
                     // Plus an opened farther station's stops, so its departures show beside its card.
                     stopDistanceMeters = ready.distanceMeters + fartherDistanceMeters,
                     nearestStops = ready.nearestStopByLine,
+                    lineMeters = ready.nearestMetersByLine,
                     journeys = shownJourneys,
                     // Null until worked out: the row holds meanwhile.
                     placeLines = placeLinesOf(applicationContext).collectAsStateWithLifecycle().value,

@@ -62,4 +62,10 @@ class NearestByLineTest {
         assertEquals(euston, NearestByLine.onLine(mapOf(kingsCross to (0.0 to 0.0), euston to (0.0 to 0.0)), Coordinates(0.0, 0.0))!!.first)
         assertEquals(null, NearestByLine.onLine(emptyMap(), Coordinates(0.0, 0.0)))
     }
+
+    @Test
+    fun `each line's nearest distance counts every stop however far, and none without a distance`() {
+        val stops = listOf(station(kingsCross, "northern", "victoria"), station(euston, "northern"), station(waterloo, "jubilee"), station("unmeasured", "central"))
+        assertEquals(mapOf("northern" to 150.0, "victoria" to 300.0, "jubilee" to 600.0), NearestByLine.metersByLine(stops, distances))
+    }
 }

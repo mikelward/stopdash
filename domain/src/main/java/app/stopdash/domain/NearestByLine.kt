@@ -56,5 +56,21 @@ object NearestByLine {
             .map { (id, at) -> id to NearestStops.distanceMeters(here.latitude, here.longitude, at.first, at.second) }
             .minWithOrNull(compareBy<Pair<String, Double>> { it.second }.thenBy { it.first })
 
+    /**
+     * How far each line's nearest stop is, however far within the [stops] given (both tiers of the near-me
+     * lookup), in meters by their [distances]: what ranks equally disrupted lines nearest first, a farther
+     * card's line too, which [byLine]'s walking reach leaves out (Codex, #710). A stop with no distance never
+     * counts.
+     */
+    @WorkerThread
+    fun metersByLine(stops: List<StopLocation>, distances: Map<String, Double>): Map<String, Double> {
+        val meters = HashMap<String, Double>()
+        for (stop in stops) {
+            val d = distances[stop.id] ?: continue
+            stop.lines.forEach { if (it.id.isNotBlank() && d < (meters[it.id] ?: Double.MAX_VALUE)) meters[it.id] = d }
+        }
+        return meters
+    }
+
     private fun within(stopId: String, distances: Map<String, Double>) = distances[stopId]?.let { it <= WITHIN_METERS } == true
 }
