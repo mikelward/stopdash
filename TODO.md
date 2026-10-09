@@ -3058,6 +3058,12 @@ Builds on Phase 1's minimal line-status marking.
         minute, mostly the radio staying up after each refresh) is unmeasured.
   - [ ] **Check the London-only alerts on a device**: the "all the time" grant flow on Android 11+ (it
         sends the rider to settings), and a check's location read under Doze.
+  - [ ] **Run the check inside the alarm's receiver if checks still come late** (maintainer,
+        2026-10-09; Codex on #716). The alarm starts the check as an expedited job, which falls back to
+        an ordinary deferred job once the app's daily expedited quota is spent, losing the 10-minute
+        bound. Kept as is for now: a commute day uses about 16 short runs. If bug reports show alarms
+        on time but checks running late, run the check in the receiver itself (`goAsync`, ~10 s
+        budget for one line-status request), keeping the job as the fallback.
   - [ ] **Only the alerts for the way traveled**, where TfL scopes an alert to a direction (bus
         diversions): needs the alert's direction looked up in the background, and which TfL direction
         the journey's line runs between its ends.
