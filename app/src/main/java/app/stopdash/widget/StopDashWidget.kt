@@ -308,6 +308,14 @@ class StopDashWidget : GlanceAppWidget() {
         // location grant the app never finds stops, so "open the app" alone can't.
         val locationNeeded = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
             .none { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
+        WidgetLocationPrompt.record(
+            context,
+            when {
+                models.all.all { it.hasData } -> WidgetLocationPrompt.Drawn.NOT_EMPTY
+                locationNeeded -> WidgetLocationPrompt.Drawn.ASKS_FOR_LOCATION
+                else -> WidgetLocationPrompt.Drawn.OPEN_THE_APP
+            },
+        )
         return DeparturesDrawing(models, now, fontScale, generation, locationNeeded)
     }
 

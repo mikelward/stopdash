@@ -326,6 +326,8 @@
     <string name="try_again">Try again</string>
     <!-- Shown after a permanent permission denial, where re-requesting can't prompt again. -->
     <string name="location_denied">Turn on location access in Settings to see nearby stops.</string>
+    <!-- A favorite place or place shortcut tapped with no location grant: a trip from here needs one. -->
+    <string name="route_needs_location">Allow location to plan a trip from here</string>
     <string name="open_settings">Open settings</string>
 
     <!-- Top banner over the departures list when the shown stops are backed by a low-confidence

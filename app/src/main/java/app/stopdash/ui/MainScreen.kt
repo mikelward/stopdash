@@ -1296,8 +1296,11 @@ fun MainScreen(
                     FreshnessStamp(drawnState ?: state, drawnNow, onRefresh)
                     // Crosshairs: "use my location" (SPEC *Finding stops*). Near me it re-locates, as
                     // pull-to-refresh does; on a From… station page it goes back to the near-me list.
-                    IconButton(onClick = onLocate ?: onRefresh) {
-                        Icon(CrosshairIcon, contentDescription = stringResource(R.string.locate_here))
+                    // None without a grant: it could only lead back to the location gate.
+                    if (LocalLocationAllowed.current) {
+                        IconButton(onClick = onLocate ?: onRefresh) {
+                            Icon(CrosshairIcon, contentDescription = stringResource(R.string.locate_here))
+                        }
                     }
                     // A station's "To…": pick where to, and plan the trip there.
                     if (stationTitle != null && onPlanTo != null && platformRows == null && !journeyViewOpen) {

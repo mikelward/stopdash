@@ -1,6 +1,8 @@
 package app.stopdash.ui
 
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
@@ -84,5 +86,39 @@ class MainScreenLocateTest {
 
         composeRule.onNodeWithContentDescription("Use my location").performClick()
         composeRule.runOnIdle { assertEquals(1, located) }
+    }
+
+    @Test
+    fun crosshairs_withoutLocationGrant_areNotOffered() {
+        // Without a grant every crosshair could only lead back to the location gate (SPEC *Without
+        // location*), so none shows, on a station's departures or its placeholder alike.
+        var page by androidx.compose.runtime.mutableStateOf(true)
+        composeRule.setContent {
+            StopDashTheme {
+                androidx.compose.runtime.CompositionLocalProvider(LocalLocationAllowed provides false) {
+                    if (page) {
+                        MainScreen(
+                            state = DeparturesUiState.Loading,
+                            now = now,
+                            onRefresh = {},
+                            onLocate = {},
+                            stationTitle = "Example Station",
+                            onCloseStation = {},
+                        )
+                    } else {
+                        StationPlaceholderScreen(
+                            title = "Example Station",
+                            state = StationStopsViewModel.State.NoStops,
+                            onRetry = {},
+                            onBack = {},
+                            onLocate = {},
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.onNodeWithContentDescription("Use my location").assertDoesNotExist()
+        composeRule.runOnIdle { page = false }
+        composeRule.onNodeWithContentDescription("Use my location").assertDoesNotExist()
     }
 }
