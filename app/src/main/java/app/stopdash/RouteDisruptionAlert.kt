@@ -90,7 +90,7 @@ internal object RouteDisruptionAlert {
             .putExtra(GetOffSoonAlert.EXTRA_OPEN_ON_THE_WAY, true)
         val pending = PendingIntent.getActivity(context, 2, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_appbar_route_arrow)
+            .setSmallIcon(R.drawable.ic_stat_route_arrow)
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(body?.let { NotificationCompat.BigTextStyle().bigText(it) })

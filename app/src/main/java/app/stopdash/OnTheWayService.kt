@@ -411,7 +411,7 @@ internal object OnTheWayNotification {
         // An alert takes the title, and its channel, so it's heard (once) and muted as its own notification
         // was; its text where it has more to say than the step, which otherwise stays below it.
         val builder = NotificationCompat.Builder(context, alert?.kind?.channelId ?: CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_appbar_route_arrow)
+            .setSmallIcon(R.drawable.ic_stat_route_arrow)
             .setContentTitle(alert?.title ?: title)
             .setContentText(alert?.text ?: stepText)
             .setSubText(trip?.let { context.getString(R.string.on_the_way_title, it.destinationName) })

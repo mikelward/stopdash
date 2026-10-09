@@ -1028,7 +1028,7 @@ internal object JourneyAlertNotification {
                 .joinToString("\n")
         }
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_appbar_route_arrow)
+            .setSmallIcon(R.drawable.ic_stat_route_arrow)
             .setContentTitle(context.getString(R.string.journey_title, journey.from.name, journey.to.name))
             .setContentText(heading)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
