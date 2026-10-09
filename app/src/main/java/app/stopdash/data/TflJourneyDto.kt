@@ -1,6 +1,7 @@
 package app.stopdash.data
 
 import app.stopdash.domain.Coordinates
+import app.stopdash.domain.TripFare
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.cleanStopName
@@ -16,8 +17,8 @@ import kotlinx.serialization.Serializable
 /**
  * TfL Journey Planner's `/Journey/JourneyResults/{from}/to/{to}` response, trimmed to what a trip
  * needs (SPEC *Trips with a change*): each journey's legs, with their line, ends, timetable times,
- * the stops each ride calls at, and the change time after it. Fares, geometry and instructions are
- * ignored ([kotlinx.serialization.json.Json] `ignoreUnknownKeys`).
+ * the stops each ride calls at, and the change time after it, and each journey's fare. Geometry and
+ * instructions are ignored ([kotlinx.serialization.json.Json] `ignoreUnknownKeys`).
  */
 @Serializable
 data class TflJourneyResultsDto(val journeys: List<TflJourneyDto> = emptyList()) {
@@ -30,7 +31,7 @@ data class TflJourneyResultsDto(val journeys: List<TflJourneyDto> = emptyList())
 }
 
 @Serializable
-data class TflJourneyDto(val legs: List<TflJourneyLegDto> = emptyList()) {
+data class TflJourneyDto(val legs: List<TflJourneyLegDto> = emptyList(), val fare: TflJourneyFareDto? = null) {
     /** Null for a journey with a leg that can't be read, so a half-understood route is never shown. */
     fun toRouteOrNull(now: Instant = Instant.now(), stationOf: (String) -> String? = { null }): TripRoute? {
         // Each time is read after the one before it (and its change time), so a journey across the
@@ -39,9 +40,52 @@ data class TflJourneyDto(val legs: List<TflJourneyLegDto> = emptyList()) {
         val legs = legs.map { dto ->
             dto.toLegOrNull(now, after, stationOf)?.also { after = it.arrival.plus(it.changeAfter) } ?: return null
         }
-        return TripRoute(legs).takeIf { legs.isNotEmpty() }
+        return TripRoute(legs, fare?.toFareOrNull()).takeIf { legs.isNotEmpty() }
     }
 }
+
+/**
+ * A journey's `fare`: [totalCost] in pence for the whole journey, Hopper discounts already taken off,
+ * each part's [fares] and the Planner's [caveats] about them. Absent where the Planner can't price the
+ * journey (one leaving the pay as you go area).
+ */
+@Serializable
+data class TflJourneyFareDto(
+    val totalCost: Int? = null,
+    val fares: List<TflFareDto> = emptyList(),
+    val caveats: List<TflFareCaveatDto> = emptyList(),
+) {
+    /**
+     * The route's [TripFare], or null where there's no price to stand behind: none given, or 0, which
+     * StopDash won't show as a free ride it can't vouch for.
+     */
+    fun toFareOrNull(): TripFare? {
+        val pence = totalCost?.takeIf { it > 0 } ?: return null
+        // A level only where every part of the route is charged at it: a bus part has none, and a route
+        // charged peak on one part and off-peak on another has no one level to name.
+        val levels = fares.map { it.chargeLevel.trim().lowercase().replace('-', ' ') }.distinct()
+        val level = when (levels.singleOrNull()) {
+            "peak" -> TripFare.Level.PEAK
+            "off peak" -> TripFare.Level.OFF_PEAK
+            else -> null
+        }
+        return TripFare(
+            pence = pence,
+            level = level,
+            pinkReader = caveats.any { it.type.equals(PINK_READER, ignoreCase = true) },
+        )
+    }
+
+    private companion object {
+        const val PINK_READER = "pinkReader"
+    }
+}
+
+@Serializable
+data class TflFareDto(val chargeLevel: String = "")
+
+@Serializable
+data class TflFareCaveatDto(val type: String = "")
 
 @Serializable
 data class TflJourneyLegDto(

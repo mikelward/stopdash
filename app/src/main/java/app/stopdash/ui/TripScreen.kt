@@ -160,6 +160,7 @@ import app.stopdash.domain.StopGrouping
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripClosures
 import app.stopdash.domain.TripLeg
+import app.stopdash.domain.TripFare
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.UsageEvent
 import app.stopdash.domain.TripTiming
@@ -404,8 +405,8 @@ internal fun placed(state: TripViewModel.State, sequences: Map<String, LineSeque
     fun fetched(leg: TripLeg, pole: String) = pole in state.live || pole in state.areaPoles[leg.fromArea].orEmpty()
     var placement = 1
     val placed = routes.map { route ->
-        TripRoute(
-            route.legs.map { leg ->
+        route.copy(
+            legs = route.legs.map { leg ->
                 (onPoles(leg, sequences).takeIf { it.fromId == leg.fromId || fetched(leg, it.fromId) } ?: leg)
                     .also { placement = placeLeg(placement, it) }
             },
@@ -2276,6 +2277,9 @@ private fun RouteList(
                                 // list shows ([cardPillWidths]).
                                 val columnPx = pillWidths[cardKey(card.first().route)]
                                 RideStops(card, rideLines, shown.statuses, shown.rideClosures, shown.times, now, shown.walk, columnPx?.let { with(density) { it.toDp() } })
+                                // What the best route costs, where the Planner priced it: in with the route, so it
+                                // never moves the card once shown.
+                                card.first().route.fare?.let { CardFare(it) }
                             }
                         }
                         if (onHideMode != null) {
@@ -2927,6 +2931,7 @@ private fun RouteLegs(
             item(key = "directFailed") { PlanNotice(stringResource(R.string.trip_direct_replan_failed), state.planning, onRetry) }
         }
         item(key = "summary") { RouteSummary(listOf(estimate), rideLines, view.statuses, Modifier.padding(vertical = 8.dp)) }
+        estimate.route.fare?.let { fare -> item(key = "fare") { RouteFare(fare) } }
         item(key = "status") { DisruptionsRow(row) }
         val firstStop = estimate.route.legs.firstOrNull()?.fromName
         if (access > Duration.ZERO && firstStop != null) {
@@ -4530,6 +4535,46 @@ internal fun TripLinesContent(
         // so it coming or going never moves a line (Codex, #559).
         if (row.linesUnknown) {
             item(key = "unknown") { Text(stringResource(R.string.trip_lines_unknown_note), style = style, color = error) }
+        }
+    }
+}
+
+/**
+ * A card's fare ([TripFare]), at its foot under the arrival: the price alone, as the route's own page
+ * says the rest (SPEC *Trips with a change → Fare*).
+ */
+@Composable
+private fun CardFare(fare: TripFare) {
+    Text(
+        text = fare.label,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.End,
+        maxLines = 1,
+        modifier = Modifier.fillMaxWidth().testTag("tripFare"),
+    )
+}
+
+/**
+ * An open route's fare ([TripFare]) under its summary: the price, whether it's the peak or off-peak
+ * fare where the Planner says, and the pink reader to touch where the Planner warns of one.
+ */
+@Composable
+private fun RouteFare(fare: TripFare) {
+    val price = when (fare.level) {
+        TripFare.Level.PEAK -> stringResource(R.string.trip_fare_peak, fare.label)
+        TripFare.Level.OFF_PEAK -> stringResource(R.string.trip_fare_off_peak, fare.label)
+        null -> fare.label
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.testTag("routeFare")) {
+        Text(text = price, style = MaterialTheme.typography.bodyLarge)
+        if (fare.pinkReader) {
+            Text(
+                text = stringResource(R.string.trip_fare_pink_reader),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.testTag("routeFarePinkReader"),
+            )
         }
     }
 }
