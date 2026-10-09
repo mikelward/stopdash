@@ -225,14 +225,21 @@ object DepartureRows {
         row: DepartureRow,
         maxTimes: Int,
         topology: RouteTopology = RouteTopology.EMPTY,
+        // Where a trip's rider gets off the train this row is boarded for: then a branch is only told
+        // apart where it changes the ride there ([RouteTopology.rideGrouping]). Null for a stop's board.
+        alightingId: String? = null,
     ): List<DestinationGroup> {
-        fun keyOf(departure: Departure) =
-            departure.destination to topology.grouping(row.lineId, row.stopId, departure.destination, departure.branch).mergeKey
+        fun grouping(departure: Departure) = if (alightingId != null) {
+            topology.rideGrouping(row.lineId, row.stopId, alightingId, departure.destination, departure.branch)
+        } else {
+            topology.grouping(row.lineId, row.stopId, departure.destination, departure.branch)
+        }
+        fun keyOf(departure: Departure) = departure.destination to grouping(departure).mergeKey
         // A train with no time joins its destination's line among the timed trains; a destination
         // whose every train has none is a line of its own.
         val untimed = row.untimed.groupBy { keyOf(it.train) }
         val timed = row.upcoming
-            .map { it to topology.grouping(row.lineId, row.stopId, it.destination, it.branch) }
+            .map { it to grouping(it) }
             .groupBy { (departure, grouping) -> departure.destination to grouping.mergeKey }
             .map { (key, entries) ->
                 // The group's times and its trains with no time in one order, capped together, so a
@@ -255,7 +262,7 @@ object DepartureRows {
             val soonest = trains.first().train
             DestinationGroup(
                 key.first,
-                topology.grouping(row.lineId, row.stopId, soonest.destination, soonest.branch).label,
+                grouping(soonest).label,
                 emptyList(),
                 trains.take(maxTimes),
             )

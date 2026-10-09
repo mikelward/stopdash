@@ -2254,6 +2254,33 @@ class DepartureRowsTest {
     }
 
     @Test
+    fun `destinationLines on a trip's board merges branches that ride the same way to its stop`() {
+        // Boarding at Camden Town for Highgate: up via Bank or via Charing X, the ride is the same, so
+        // one line with no label, where a stop's board keeps both (maintainer, 2026-10-09).
+        val row = rowAt(
+            CTN,
+            departure("northern", "Northern", "northbound", "High Barnet", 120, branch = "Bank"),
+            departure("northern", "Northern", "northbound", "High Barnet", 300, branch = "Charing X"),
+        )
+        val lines = DepartureRows.destinationLines(row, maxTimes = 3, topology = northernTopology, alightingId = HGT)
+        assertEquals(1, lines.size)
+        assertNull(lines[0].branch)
+        assertEquals(2, lines[0].times.size)
+        assertEquals(2, DepartureRows.destinationLines(row, maxTimes = 3, topology = northernTopology).size)
+    }
+
+    @Test
+    fun `destinationLines on a trip's board keeps branches that ride different stops to its stop`() {
+        val row = rowAt(
+            KNG,
+            departure("northern", "Northern", "northbound", "High Barnet", 120, branch = "Bank"),
+            departure("northern", "Northern", "northbound", "High Barnet", 300, branch = "Charing X"),
+        )
+        val lines = DepartureRows.destinationLines(row, maxTimes = 3, topology = northernTopology, alightingId = CTN)
+        assertEquals(listOf("Bank", "Charing X"), lines.map { it.branch })
+    }
+
+    @Test
     fun `destinationLines with the empty topology keeps every raw branch, merging nothing`() {
         // The default: no topology, so the pre-topology behavior — each branch is its own line.
         val row = rowAt(

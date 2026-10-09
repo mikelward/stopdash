@@ -4157,12 +4157,12 @@ class StopCard(val group: StopGroup, val lines: List<List<DestinationGroup>>)
 
 /**
  * [group] as its card draws it: each row's trains grouped by destination and branch under [topology]
- * ([DepartureRows.destinationLines]). Walks every row's trains, so on the worker with the group
+ * ([DepartureRows.destinationLines]), on a trip's board by the ride to [alightingId]. Walks every row's trains, so on the worker with the group
  * itself, never in composition (AGENTS.md *Main thread*).
  */
 @WorkerThread
-internal fun stopCard(group: StopGroup, topology: RouteTopology): StopCard =
-    StopCard(group, group.rows.map { row -> if (row.hasTrains) DepartureRows.destinationLines(row, MAX_TIMES, topology) else emptyList() })
+internal fun stopCard(group: StopGroup, topology: RouteTopology, alightingId: String? = null): StopCard =
+    StopCard(group, group.rows.map { row -> if (row.hasTrains) DepartureRows.destinationLines(row, MAX_TIMES, topology, alightingId) else emptyList() })
 
 @Composable
 internal fun StopGroupCard(

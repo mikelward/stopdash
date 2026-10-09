@@ -90,7 +90,9 @@ internal object WatchTrips {
             // With its branch where it's a choice from this stop ("Morden/Bank"), as the tile, the
             // widget and the trip's screen name it: two branches' trains read apart (maintainer, 2026-10-06).
             val stop = poleOf(it)?.key?.ifBlank { null } ?: ride?.fromId.orEmpty()
-            val branch = topology.grouping(it.lineId, stop, it.destination, it.branch).label
+            // As the trip's board labels it: only where it changes the ride to where they get off.
+            val branch = (ride?.toId?.let { to -> topology.rideGrouping(it.lineId, stop, to, it.destination, it.branch) }
+                ?: topology.grouping(it.lineId, stop, it.destination, it.branch)).label
             // Shortened as the widget shortens it ("Newbury Pk"): the watch and the trip widget are narrow too.
             val destination = if (branch != null) "$label/${abbreviateBranch(branch)}" else label
             val missed = readyAt != null && it.expectedArrival.isBefore(readyAt)
