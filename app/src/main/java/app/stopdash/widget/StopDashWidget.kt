@@ -585,7 +585,12 @@ internal fun widgetModel(
     // nearest-first order the app saved: a snapshot with none (an older one) keeps every stop's rows.
     // The watch folds by the same order with the same function ([DepartureRows.glanceFolded]).
     val folded = DepartureRows.glanceFolded(ordered, snapshot.nearestFirst, snapshot.nearbyChoices) { Staleness.isStale(it.fetchedAt, now) }
-    val nearby = withoutJourneys(folded, snapshot)
+    // Closest stop first, as the app's near-me list orders, soonest breaking a same-stop tie
+    // (maintainer, 2026-10-09): a widget that follows the rider leads with where they are. By the
+    // order the app saved, never distances; a snapshot with none keeps the soonest-first order.
+    val nearby = withoutJourneys(folded, snapshot).let { rows ->
+        if (snapshot.nearestFirst.isEmpty()) rows else DepartureRows.byStopDistance(rows, DepartureRows.rankDistances(snapshot.nearestFirst))
+    }
     val shownNearby = HiddenModes.rows(nearby, hiddenModes)
     val pinned = journeyRows + DepartureRows.pinStarred(shownNearby, starred)
     val onlyHidden = hiddenModes.takeIf { pinned.isEmpty() && nearby.isNotEmpty() }?.let(::hiddenGroupsLabel)
