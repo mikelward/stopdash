@@ -64,7 +64,7 @@ internal object RouteDisruptionAlert {
         val top = signals.firstOrNull() ?: return false
         val lasts = Duration.between(now, until)
         if (lasts <= Duration.ZERO) return false
-        if (how == DisruptionPost.KEEP && !showing(context)) return false
+        if (how == DisruptionPost.KEEP && !showing(context, now)) return false
         ensureChannel(context)
         if (!GetOffSoonAlert.canNotify(context) ||
             NotificationManagerCompat.from(context).getNotificationChannel(CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE
@@ -72,11 +72,23 @@ internal object RouteDisruptionAlert {
             log("on the way: route disruption alert not shown, notifications off")
             return false
         }
+        val (title, body) = content(context, signals)
+        // Said in the trip's own notification where it's up, so it's the only one (maintainer, 2026-10-09).
+        // Something new a more pressing alert would hide waits for a later refresh, to be heard when it
+        // shows, not counted as heard unshown (Codex on #723).
+        if (how == DisruptionPost.NEW && OnTheWayNotification.carried(context) && TripAlerts.outranked(context, TripAlerts.Kind.DISRUPTION, now)) {
+            log("on the way: route disruption alert held, a more pressing alert is showing")
+            return false
+        }
+        val alert = TripAlerts.Alert(TripAlerts.Kind.DISRUPTION, title, body, until, sound = how == DisruptionPost.NEW, keys = signals.map { it.key }.toSet())
+        if (TripAlerts.offer(context, alert)) {
+            NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
+            return true
+        }
         val open = Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             .putExtra(GetOffSoonAlert.EXTRA_OPEN_ON_THE_WAY, true)
         val pending = PendingIntent.getActivity(context, 2, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val (title, body) = content(context, signals)
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_appbar_route_arrow)
             .setContentTitle(title)
@@ -107,12 +119,19 @@ internal object RouteDisruptionAlert {
     }
 
     /** Clears a posted alert: nothing known is left, or the trip ended. */
-    fun cancel(context: Context) = NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
+    fun cancel(context: Context) {
+        TripAlerts.clear(TripAlerts.Kind.DISRUPTION)
+        NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
+    }
 
-    /** What the alert still showing was posted with, by key ([RouteDisruption.Signal.key]); empty when none is up. */
+    /**
+     * What the alert still showing was posted with, by key ([RouteDisruption.Signal.key]); empty when none
+     * is up. Said in the trip's notification, what that's saying ([TripAlerts]).
+     */
     fun shown(context: Context): Set<String> =
-        context.getSystemService(NotificationManager::class.java).activeNotifications
-            .firstOrNull { it.id == NOTIFICATION_ID }?.notification?.extras?.getStringArray(EXTRA_HEARD)?.toSet().orEmpty()
+        TripAlerts.disruptionKeys(Instant.now()).takeIf { it.isNotEmpty() && OnTheWayNotification.carried(context) }
+            ?: context.getSystemService(NotificationManager::class.java).activeNotifications
+                .firstOrNull { it.id == NOTIFICATION_ID }?.notification?.extras?.getStringArray(EXTRA_HEARD)?.toSet().orEmpty()
 
     // What one signal says: the line and its alert as the trip's chip has it, the stop and what happened to
     // it, or the line with no train predicted where the rider changes onto it.
@@ -150,7 +169,8 @@ internal object RouteDisruptionAlert {
         }
     }
 
-    // Whether the alert is still up: not swiped away, nor timed out.
-    private fun showing(context: Context): Boolean =
-        context.getSystemService(NotificationManager::class.java).activeNotifications.any { it.id == NOTIFICATION_ID }
+    // Whether the alert is still up: not swiped away, nor timed out; said in the trip's notification, while that's up.
+    private fun showing(context: Context, now: Instant): Boolean =
+        (TripAlerts.standing(TripAlerts.Kind.DISRUPTION, now) && OnTheWayNotification.carried(context)) ||
+            context.getSystemService(NotificationManager::class.java).activeNotifications.any { it.id == NOTIFICATION_ID }
 }

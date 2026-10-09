@@ -73,18 +73,27 @@ internal object GetOffSoonAlert {
             log("on the way: get-off alert not shown, notifications off")
             return false
         }
-        val open = Intent(context, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            .putExtra(EXTRA_OPEN_ON_THE_WAY, true)
-        val pending = PendingIntent.getActivity(context, 0, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val title = context.getString(R.string.get_off_soon_title, riding.leg.toName)
         val text = when (val left = riding.stopsLeft) {
             null -> riding.nextStop?.let { context.getString(R.string.on_the_way_next_is, it) }
             0, 1 -> context.getString(R.string.on_the_way_next_stop)
             else -> stopsText(context.resources, left, riding.nextStop, null)
         }
+        // Said in the trip's own notification where it's up, so it's the only one (maintainer, 2026-10-09);
+        // posted again for the same stop (its time moved), quietly, as its own notification was (Codex on #723).
+        val sound = !TripAlerts.saying(TripAlerts.Kind.GET_OFF, title)
+        if (TripAlerts.offer(context, TripAlerts.Alert(TripAlerts.Kind.GET_OFF, title, text, now.plus(lasts), sound = sound))) {
+            NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
+            log("on the way: get-off alert shown in the trip's notification, ${logged(riding)}")
+            return true
+        }
+        val open = Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            .putExtra(EXTRA_OPEN_ON_THE_WAY, true)
+        val pending = PendingIntent.getActivity(context, 0, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_appbar_route_arrow)
-            .setContentTitle(context.getString(R.string.get_off_soon_title, riding.leg.toName))
+            .setContentTitle(title)
             .setContentText(text)
             .setSubText(context.getString(R.string.on_the_way_title, trip.destinationName))
             .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
@@ -98,11 +107,7 @@ internal object GetOffSoonAlert {
             .build()
         return try {
             NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
-            // Said with no stop or place: the stops left, and what they're counted from.
-            val left = riding.stopsLeft?.let { if (it == 1) "1 stop left" else "$it stops left" } ?: "stops not counted"
-            // From where the rider was seen, else the train followed's calls, timed or not (Codex, #566).
-            val by = if (riding.byPosition) "by where seen" else "by train"
-            log("on the way: get-off alert shown, $left, $by")
+            log("on the way: get-off alert shown, ${logged(riding)}")
             true
         } catch (e: SecurityException) {
             // Permission revoked between the check and the post.
@@ -111,6 +116,17 @@ internal object GetOffSoonAlert {
         }
     }
 
+    // Said with no stop or place: the stops left, and what they're counted from.
+    private fun logged(riding: TripProgress.Riding): String {
+        val left = riding.stopsLeft?.let { if (it == 1) "1 stop left" else "$it stops left" } ?: "stops not counted"
+        // From where the rider was seen, else the train followed's calls, timed or not (Codex, #566).
+        val by = if (riding.byPosition) "by where seen" else "by train"
+        return "$left, $by"
+    }
+
     /** Clears a posted alert: the trip ended or moved on. */
-    fun cancel(context: Context) = NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
+    fun cancel(context: Context) {
+        TripAlerts.clear(TripAlerts.Kind.GET_OFF)
+        NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
+    }
 }
