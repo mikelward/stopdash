@@ -344,14 +344,19 @@ object DepartureRows {
         // warning no longer gives its pole a header of its own, so the rule keying places by header
         // has to see the list as it will be shown.
         dismissed: Set<DismissedAlert> = emptySet(),
+        // An interchange opened from one of its station names ([StationLead]): a line at two of its
+        // stations, both 0 m away, is kept at the named one rather than by stop id.
+        lead: StationLead? = null,
     ): List<DepartureRow> {
         fun distanceOf(stopId: String): Double = stopDistanceMeters[stopId] ?: Double.MAX_VALUE
+        val leadRank = if (lead == null) emptyMap() else rows.associate { it.stopId to lead.stopRank(it.stopName) }
         val (stopStatus, lineRows) = rows.partition { it.stopDisruption != null }
-        val nearestStopByKey = keptStopByKey(lineRows, stopStatus, dismissed, ::distanceOf)
+        val tieOf = { stopId: String -> leadRank[stopId] ?: 0 }
+        val nearestStopByKey = keptStopByKey(lineRows, stopStatus, dismissed, ::distanceOf, tieOf)
         // Keep every row from the nearest stop for its key, so two platforms of one service
         // at a single stop both survive; a farther stop's same-service row is dropped.
         val kept = lineRows.filter { nearestStopByKey[dedupeKeyOf(it)] == it.stopId }
-        return (foldedStopStatus(stopStatus, ::distanceOf) + kept).sortedWith(rowOrder)
+        return (foldedStopStatus(stopStatus, ::distanceOf, tieOf) + kept).sortedWith(rowOrder)
     }
 
     /**
@@ -381,19 +386,21 @@ object DepartureRows {
         stopStatus: List<DepartureRow>,
         dismissed: Set<DismissedAlert>,
         distanceOf: (String) -> Double,
+        // Breaks a tie in distance before stop id ([nearbyDeduped]'s lead).
+        tieOf: (String) -> Int = { 0 },
     ): HashMap<RowKey, String> {
         // The nearest stop serving each cross-stop (line, direction) key.
         val nearestStopByKey = HashMap<RowKey, String>()
         for (row in lineRows) {
             val key = dedupeKeyOf(row)
             val incumbent = nearestStopByKey[key]
-            if (incumbent == null || isCloserStop(row.stopId, incumbent, distanceOf)) {
+            if (incumbent == null || isCloserStop(row.stopId, incumbent, distanceOf, tieOf)) {
                 nearestStopByKey[key] = row.stopId
             }
         }
         val noticed = stopStatus.mapTo(HashSet()) { it.stopId }
-        keepDirectionsTogether(lineRows, nearestStopByKey, noticed, dismissed, distanceOf)
-        joinAnchoredPlaces(lineRows, nearestStopByKey, noticed, dismissed, distanceOf)
+        keepDirectionsTogether(lineRows, nearestStopByKey, noticed, dismissed, distanceOf, tieOf)
+        joinAnchoredPlaces(lineRows, nearestStopByKey, noticed, dismissed, distanceOf, tieOf)
         return nearestStopByKey
     }
 
@@ -419,6 +426,9 @@ object DepartureRows {
         hiddenModes: Set<String> = emptySet(),
         dismissed: Set<DismissedAlert> = emptySet(),
         disruptionUnknown: Set<String> = emptySet(),
+        // An interchange opened from one of its station names: of its stations, all 0 m away, the
+        // named one's quiet row comes first, so it's the one a line shows ([nearbyDeduped]).
+        lead: StationLead? = null,
     ): List<DepartureRow> {
         val rows = across(stops, now, lineStatuses, quietRows = true)
         val quiet = HiddenModes.rows(rows.filter { it.quiet && it.lineId in determinedLineIds }, hiddenModes)
@@ -427,13 +437,36 @@ object DepartureRows {
         val noticed = rows.filter { it.stopDisruption != null }.mapTo(HashSet()) { it.stopId }
         fun distanceOf(stopId: String): Double = stopDistanceMeters[stopId] ?: Double.MAX_VALUE
         return quiet.filter { it.lineId !in withTrains && it.stopId !in noticed && it.stopId !in disruptionUnknown }
-            .sortedWith(compareBy<DepartureRow> { distanceOf(it.stopId) }.thenBy { it.stopId })
+            .sortedWith(compareBy<DepartureRow> { distanceOf(it.stopId) }.thenBy { lead?.stopRank(it.stopName) ?: 0 }.thenBy { it.stopId })
             .map { it.withoutDismissedPlanned(dismissed) }
     }
 
+    /**
+     * [rows], a location-free list in its soonest-first order, led by [lead]'s modes and station
+     * ([StationLead.rankOf]) when an interchange was opened by one of its names: its stations have
+     * no distances to order them by when TfL placed none. Soonest-first within each; no lead, as is.
+     */
+    @WorkerThread
+    fun byLead(rows: List<DepartureRow>, lead: StationLead?): List<DepartureRow> =
+        if (lead == null) rows else rows.sortedBy { lead.rankOf(it.mode, it.stopName) }
+
+    /**
+     * A location-free list's rows ([stopStatusFolded]) led by [lead] ([byLead]). The lead goes first:
+     * the fold keeps a shared notice's first copy, which is then the named station's.
+     */
+    @WorkerThread
+    fun locationFree(rows: List<DepartureRow>, lead: StationLead? = null): List<DepartureRow> =
+        stopStatusFolded(byLead(rows, lead))
+
     /** [rows], a near-me list, with [quiet] rows added in their stops' places ([byStopDistance]). */
-    fun withQuietRows(rows: List<DepartureRow>, quiet: List<DepartureRow>, stopDistanceMeters: Map<String, Double>): List<DepartureRow> =
-        if (quiet.isEmpty()) rows else byStopDistance(rows + quiet, stopDistanceMeters)
+    fun withQuietRows(
+        rows: List<DepartureRow>,
+        quiet: List<DepartureRow>,
+        stopDistanceMeters: Map<String, Double>,
+        // The order [rows] were ranked in, kept for the merged list ([byStopDistance]).
+        lead: StationLead? = null,
+    ): List<DepartureRow> =
+        if (quiet.isEmpty()) rows else byStopDistance(rows + quiet, stopDistanceMeters, lead)
 
     /**
      * How much farther a place's stop may be than a direction's nearest for the route's directions to
@@ -466,6 +499,7 @@ object DepartureRows {
         noticed: Set<String>,
         dismissed: Set<DismissedAlert>,
         distanceOf: (String) -> Double,
+        tieOf: (String) -> Int,
     ) {
         val timed = lineRows.filter { it.upcoming.isNotEmpty() && it.lineId.isNotBlank() && it.direction.isNotBlank() }
         val kept = lineRows.filter { nearestStopByKey[dedupeKeyOf(it)] == it.stopId }
@@ -500,7 +534,7 @@ object DepartureRows {
             for (row in rows) {
                 val place = headerPlaceOf(row)
                 val incumbent = poles[place]
-                if (incumbent == null || isCloserStop(row.stopId, incumbent.stopId, distanceOf)) poles[place] = row
+                if (incumbent == null || isCloserStop(row.stopId, incumbent.stopId, distanceOf, tieOf)) poles[place] = row
             }
             val choice = poles.entries
                 .filter { (_, row) -> row.stopId !in noticed }
@@ -550,6 +584,7 @@ object DepartureRows {
         noticed: Set<String>,
         dismissed: Set<DismissedAlert>,
         distanceOf: (String) -> Double,
+        tieOf: (String) -> Int,
     ) {
         val timed = lineRows.filter { it.upcoming.isNotEmpty() && it.lineId.isNotBlank() && it.direction.isNotBlank() }
         // The header each stop will sit under, worked out by the same code the screen runs: the rows
@@ -572,7 +607,7 @@ object DepartureRows {
                 val poles = byPlace.getOrPut(headerPlaceOf(row)) { HashMap() }
                 val key = dedupeKeyOf(row)
                 val incumbent = poles[key]
-                if (incumbent == null || isCloserStop(row.stopId, incumbent, distanceOf)) poles[key] = row.stopId
+                if (incumbent == null || isCloserStop(row.stopId, incumbent, distanceOf, tieOf)) poles[key] = row.stopId
             }
             val choice = byPlace.values
                 .filter { poles -> poles.keys.containsAll(keys) }
@@ -613,7 +648,11 @@ object DepartureRows {
     }
 
     /** [stopStatus] folded to one card per (place, notice), on the member nearest by [distanceOf]. */
-    private fun foldedStopStatus(stopStatus: List<DepartureRow>, distanceOf: (String) -> Double): List<DepartureRow> {
+    private fun foldedStopStatus(
+        stopStatus: List<DepartureRow>,
+        distanceOf: (String) -> Double,
+        tieOf: (String) -> Int = { 0 },
+    ): List<DepartureRow> {
         // Fold each disruption notice to one card **per place**, on the nearest member: TfL reports
         // one notice against several stop points — a hub-wide lift outage against every member of an
         // interchange, or a closed bus stop against each pole of one junction. Keying on the coarsest
@@ -640,7 +679,7 @@ object DepartureRows {
             statusByPlaceNotice.getOrPut(stopPlaceKey(row) to text) { mutableListOf() }.add(row)
         }
         return statusByPlaceNotice.values.map { group ->
-            val nearest = group.minWith(compareBy({ distanceOf(it.stopId) }, { it.stopId }))
+            val nearest = group.minWith(compareBy({ distanceOf(it.stopId) }, { tieOf(it.stopId) }, { it.stopId }))
             // The folded card's dismissal windows are the whole group's, not the nearest member's:
             // members can carry slightly different windows for one notice, and which member is
             // nearest changes as the user moves — that alone must not undo a dismissal (Codex).
@@ -701,6 +740,9 @@ object DepartureRows {
     fun byStopDistance(
         rows: List<DepartureRow>,
         stopDistanceMeters: Map<String, Double>,
+        // An interchange opened from one of its station names: its stations, all 0 m away, in that
+        // name's order rather than by stop id ([StationLead]).
+        lead: StationLead? = null,
     ): List<DepartureRow> {
         fun distanceOf(stopId: String): Double = stopDistanceMeters[stopId] ?: Double.MAX_VALUE
         return rows.sortedWith(
@@ -710,6 +752,7 @@ object DepartureRows {
             // place's distance (SPEC *Disruptions*).
             compareBy<DepartureRow> { if (it.stopDisruption != null) 0 else 1 }
                 .thenBy { distanceOf(it.stopId) }
+                .thenBy { lead?.rankOf(it.mode, it.stopName) ?: 0 }
                 // Group two *distinct* stops that compute an equal distance (e.g. StopPoints
                 // sharing coordinates) by stop identity BEFORE arrival time, so their rows don't
                 // interleave (A, B, A) — soonest-first stays a strictly same-stop tiebreak.
@@ -1028,15 +1071,18 @@ object DepartureRows {
         return RowKey(row.lineId, row.direction)
     }
 
-    /** True when [stopId] is nearer than [incumbent]; equal distances break by stopId. */
+    /** True when [stopId] is nearer than [incumbent]; equal distances break by [tieOf], then stopId. */
     private fun isCloserStop(
         stopId: String,
         incumbent: String,
         distanceOf: (String) -> Double,
+        tieOf: (String) -> Int,
     ): Boolean {
         val here = distanceOf(stopId)
         val there = distanceOf(incumbent)
-        return here < there || (here == there && stopId < incumbent)
+        if (here != there) return here < there
+        val tie = tieOf(stopId).compareTo(tieOf(incumbent))
+        return tie < 0 || (tie == 0 && stopId < incumbent)
     }
 
     /**

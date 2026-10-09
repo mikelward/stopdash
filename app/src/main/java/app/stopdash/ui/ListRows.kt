@@ -11,6 +11,7 @@ import app.stopdash.domain.LineStatus
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.StarredRow
+import app.stopdash.domain.StationLead
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopGroup
 import app.stopdash.domain.StopGrouping
@@ -140,6 +141,8 @@ internal fun listRowsOf(
     alertSequences: Map<String, LineSequence?>,
     journeyDestinationStops: List<StopArrivals>,
     journeyDestinationsUnknown: Set<String> = emptySet(),
+    // A station opened from one of its interchange's names ([StationLead]).
+    stationLead: StationLead? = null,
 ): ListRows {
     val stops = source.stops
     val lineStatuses = source.lineStatuses
@@ -155,9 +158,10 @@ internal fun listRowsOf(
         if (stopDistanceMeters.isEmpty()) {
             // No line dedupe without distances (a station's page shows every stop), but a notice TfL
             // reports against each member of a hub is still one card per place.
-            DepartureRows.stopStatusFolded(across)
+            // A station name opened with no stop TfL placed still leads with that name's own.
+            DepartureRows.locationFree(across, stationLead)
         } else {
-            DepartureRows.byStopDistance(DepartureRows.nearbyDeduped(across, stopDistanceMeters, dismissed), stopDistanceMeters)
+            DepartureRows.byStopDistance(DepartureRows.nearbyDeduped(across, stopDistanceMeters, dismissed, stationLead), stopDistanceMeters, stationLead)
         }
     // The notices TfL filed against more than one stop of a place, seen before the fold keeps one
     // copy: such a notice is about the place, so it heads the place's own group, even when the copy

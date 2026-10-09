@@ -20,6 +20,7 @@ import app.stopdash.domain.LineStatus
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.Staleness
+import app.stopdash.domain.StationLead
 import app.stopdash.domain.TimetableRepository
 import java.time.Instant
 import kotlin.coroutines.CoroutineContext
@@ -131,10 +132,12 @@ internal class QuietInputs(
     val hiddenModes: Set<String>,
     val dismissed: Set<DismissedAlert> = emptySet(),
     val disruptionUnknown: Set<String> = emptySet(),
+    // A station opened from one of its interchange's names: the order its rows were ranked in.
+    val stationLead: StationLead? = null,
 ) {
     /** The quiet rows a near-me list could add. Work that grows with the stops: off the main thread only. */
     fun candidates(): List<DepartureRow> = DepartureRows.quietCandidates(
-        stops.filter { it.stopId in stopDistanceMeters }, now, lineStatuses, determinedLineIds, stopDistanceMeters, hiddenModes, dismissed, disruptionUnknown,
+        stops.filter { it.stopId in stopDistanceMeters }, now, lineStatuses, determinedLineIds, stopDistanceMeters, hiddenModes, dismissed, disruptionUnknown, stationLead,
     )
 }
 
@@ -155,6 +158,7 @@ internal fun resolveQuietRows(
     now: Instant,
     stopDistanceMeters: Map<String, Double>,
     screenNow: Instant = now,
+    stationLead: StationLead? = null,
 ): List<DepartureRow> {
     val since = now.minus(EmptyTimes.MARK_LIFETIME)
     val until = now.plus(EmptyTimes.MARK_LIFETIME)
@@ -163,7 +167,7 @@ internal fun resolveQuietRows(
         val marked = marks[quietId(row)]
         marked != null && marked.mark == EmptyTimes.Mark.UNKNOWN && !marked.at.isBefore(since) && !marked.at.isAfter(until)
     }.distinctBy { it.lineId }
-    return DepartureRows.withQuietRows(rows, shown, stopDistanceMeters)
+    return DepartureRows.withQuietRows(rows, shown, stopDistanceMeters, stationLead)
 }
 
 /**
@@ -203,7 +207,7 @@ internal fun withQuietRows(revision: RowsRevision, inputs: QuietInputs?): List<D
     if (found.rows.isEmpty()) return revision.rows
     val now = state.now
     val resolved by remember(revision, found, state.marks, now, state.worker) {
-        state.marks.map { marks -> QuietResolved(revision, found, resolveQuietRows(revision.rows, found.rows, marks, now, inputs.stopDistanceMeters, revision.now)) }
+        state.marks.map { marks -> QuietResolved(revision, found, resolveQuietRows(revision.rows, found.rows, marks, now, inputs.stopDistanceMeters, revision.now, inputs.stationLead)) }
             .flowOn(state.worker)
     }.collectAsStateWithLifecycle(initialValue = null)
     // Both keys, since either can change without the other: a new list from the same data, or a

@@ -2033,6 +2033,81 @@ class DepartureRowsTest {
     }
 
     @Test
+    fun `an interchange opened by one of its names leads with that name's modes and stations`() {
+        // King's Cross & St Pancras's stations, all 0 m away on the interchange's page; public ids.
+        val tube = rowsFor("940GZZLUKSX", "King's Cross St. Pancras", departure("victoria", "Victoria", "outbound", "Brixton", 60, mode = "tube"))
+        val kingsCross = rowsFor("910GKNGX", "London King's Cross", departure("lner", "LNER", "outbound", "Edinburgh", 120, mode = "national-rail"))
+        val stPancras = rowsFor("910GSTPX", "London St Pancras International", departure("thameslink", "Thameslink", "outbound", "Brighton", 180, mode = "national-rail"))
+        val rows = kingsCross + stPancras + tube
+        val atHub = mapOf("940GZZLUKSX" to 0.0, "910GKNGX" to 0.0, "910GSTPX" to 0.0)
+
+        val asStPancras = DepartureRows.byStopDistance(rows, atHub, StationLead("St Pancras International", listOf("national-rail")))
+        assertEquals(listOf("910GSTPX", "910GKNGX", "940GZZLUKSX"), asStPancras.map { it.stopId })
+        val asKingsCross = DepartureRows.byStopDistance(rows, atHub, StationLead("King's Cross", listOf("tube", "national-rail")))
+        assertEquals(listOf("940GZZLUKSX", "910GKNGX", "910GSTPX"), asKingsCross.map { it.stopId })
+        // Opened as the interchange itself, its stations keep the stop-id order.
+        assertEquals(listOf("910GKNGX", "910GSTPX", "940GZZLUKSX"), DepartureRows.byStopDistance(rows, atHub).map { it.stopId })
+    }
+
+    @Test
+    fun `a quiet row joins a station name's list without undoing its order`() {
+        val tube = rowsFor("940GZZLUKSX", "King's Cross St. Pancras", departure("victoria", "Victoria", "outbound", "Brixton", 60, mode = "tube"))
+        val stPancras = rowsFor("910GSTPX", "London St Pancras International", departure("thameslink", "Thameslink", "outbound", "Brighton", 180, mode = "national-rail"))
+        val quiet = rowsFor("910GKNGX", "London King's Cross", departure("lner", "LNER", "outbound", "Edinburgh", 120, mode = "national-rail"))
+        val atHub = mapOf("940GZZLUKSX" to 0.0, "910GKNGX" to 0.0, "910GSTPX" to 0.0)
+        val lead = StationLead("St Pancras International", listOf("national-rail"))
+        val ranked = DepartureRows.byStopDistance(tube + stPancras, atHub, lead)
+        assertEquals(listOf("910GSTPX", "910GKNGX", "940GZZLUKSX"), DepartureRows.withQuietRows(ranked, quiet, atHub, lead).map { it.stopId })
+    }
+
+    @Test
+    fun `a line at two of an interchange's stations is kept at the station the name opened`() {
+        // Thameslink calls at both, all 0 m away on the interchange's page; public ids.
+        val kingsCross = rowsFor("910GKNGX", "London King's Cross", departure("thameslink", "Thameslink", "outbound", "Brighton", 120, mode = "national-rail"))
+        val stPancras = rowsFor("910GSTPX", "London St Pancras International", departure("thameslink", "Thameslink", "outbound", "Brighton", 180, mode = "national-rail"))
+        val atHub = mapOf("910GKNGX" to 0.0, "910GSTPX" to 0.0)
+
+        val asStPancras = DepartureRows.nearbyDeduped(kingsCross + stPancras, atHub, lead = StationLead("St Pancras International", listOf("national-rail")))
+        assertEquals(listOf("910GSTPX"), asStPancras.map { it.stopId })
+        val asKingsCross = DepartureRows.nearbyDeduped(kingsCross + stPancras, atHub, lead = StationLead("King's Cross", listOf("tube", "national-rail")))
+        assertEquals(listOf("910GKNGX"), asKingsCross.map { it.stopId })
+        // Opened as the interchange itself, the stop id still decides.
+        assertEquals(listOf("910GKNGX"), DepartureRows.nearbyDeduped(stPancras + kingsCross, atHub).map { it.stopId })
+    }
+
+    @Test
+    fun `with no stop placed, a station name still leads with its own, soonest first within`() {
+        val tube = rowsFor("940GZZLUKSX", "King's Cross St. Pancras", departure("victoria", "Victoria", "outbound", "Brixton", 60, mode = "tube"))
+        val kingsCross = rowsFor("910GKNGX", "London King's Cross", departure("lner", "LNER", "outbound", "Edinburgh", 120, mode = "national-rail"))
+        val stPancras = rowsFor("910GSTPX", "London St Pancras International", departure("thameslink", "Thameslink", "outbound", "Brighton", 180, mode = "national-rail"))
+        val soonestFirst = tube + kingsCross + stPancras
+        val asStPancras = DepartureRows.byLead(soonestFirst, StationLead("St Pancras International", listOf("national-rail")))
+        assertEquals(listOf("910GSTPX", "910GKNGX", "940GZZLUKSX"), asStPancras.map { it.stopId })
+        val asKingsCross = DepartureRows.byLead(soonestFirst, StationLead("King's Cross", listOf("tube", "national-rail")))
+        assertEquals(listOf("940GZZLUKSX", "910GKNGX", "910GSTPX"), asKingsCross.map { it.stopId })
+        assertEquals(soonestFirst, DepartureRows.byLead(soonestFirst, null))
+    }
+
+    @Test
+    fun `with no stop placed, a notice at two stations keeps the named station's copy`() {
+        fun closed(id: String, name: String) = StopArrivals(
+            id, name, departures = emptyList(), fetchedAt = now, disruptions = listOf(StopDisruption("Lifts out of service")), hubId = "HUBKGX",
+        )
+        val rows = DepartureRows.across(listOf(closed("910GKNGX", "London King's Cross"), closed("910GSTPX", "London St Pancras International")), now)
+        val lead = StationLead("St Pancras International", listOf("national-rail"))
+        val folded = DepartureRows.locationFree(rows, lead)
+        assertEquals(listOf("910GSTPX"), folded.filter { it.stopDisruption != null }.map { it.stopId })
+    }
+
+    @Test
+    fun `a station name's lead never lifts a stop above a nearer one`() {
+        val near = rowsFor("A", "Stop A", departure("55", "55", "outbound", "X", 60, mode = "bus"))
+        val far = rowsFor("910GSTPX", "London St Pancras International", departure("thameslink", "Thameslink", "outbound", "Brighton", 60, mode = "national-rail"))
+        val ordered = DepartureRows.byStopDistance(far + near, mapOf("A" to 0.0, "910GSTPX" to 50.0), StationLead("St Pancras International", listOf("national-rail")))
+        assertEquals(listOf("A", "910GSTPX"), ordered.map { it.stopId })
+    }
+
+    @Test
     fun `byStopDistance keeps equidistant distinct stops grouped, not time-interleaved`() {
         // Two distinct stops that compute the same distance (e.g. StopPoints sharing
         // coordinates). Stop A has a soon and a late departure; stop B one in between. By
@@ -2587,6 +2662,33 @@ class DepartureRowsTest {
             DepartureRows.quietCandidates(listOf(stop), now, statuses, setOf("victoria"), distances, dismissed = dismissed).single()
         assertEquals(listOf(first, second), candidate(emptySet()).plannedAlerts)
         assertEquals(listOf(second), candidate(setOf(DismissedAlert.ofPlanned("victoria", first))).plannedAlerts)
+    }
+
+    @Test
+    fun `a quiet line at two of an interchange's stations comes first at the station the name opened`() {
+        fun stop(id: String, name: String) = StopArrivals(
+            id, name, departures = emptyList(), fetchedAt = now, lines = listOf(LineRef("elizabeth", "Elizabeth line", "elizabeth-line")),
+        )
+        // National Rail has no quiet rows; a TfL line listed at both stations does.
+        val stops = listOf(stop("910GKNGX", "London King's Cross"), stop("910GSTPX", "London St Pancras International"))
+        val atHub = mapOf("910GKNGX" to 0.0, "910GSTPX" to 0.0)
+        fun firstAs(lead: StationLead?) =
+            DepartureRows.quietCandidates(stops, now, emptyMap(), setOf("elizabeth"), atHub, lead = lead).first().stopId
+        assertEquals("910GSTPX", firstAs(StationLead("St Pancras International", listOf("national-rail"))))
+        assertEquals("910GKNGX", firstAs(StationLead("King's Cross", listOf("tube", "national-rail"))))
+        assertEquals("910GKNGX", firstAs(null))
+    }
+
+    @Test
+    fun `a notice at two of an interchange's stations keeps the named station's copy`() {
+        fun closed(id: String, name: String) = StopArrivals(
+            id, name, departures = emptyList(), fetchedAt = now, disruptions = listOf(StopDisruption("Lifts out of service")), hubId = "HUBKGX",
+        )
+        val stops = listOf(closed("910GKNGX", "London King's Cross"), closed("910GSTPX", "London St Pancras International"))
+        val rows = DepartureRows.across(stops, now)
+        val atHub = mapOf("910GKNGX" to 0.0, "910GSTPX" to 0.0)
+        val kept = DepartureRows.nearbyDeduped(rows, atHub, lead = StationLead("St Pancras International", listOf("national-rail")))
+        assertEquals(listOf("910GSTPX"), kept.filter { it.stopDisruption != null }.map { it.stopId })
     }
 
     @Test

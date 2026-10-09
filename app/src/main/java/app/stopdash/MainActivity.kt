@@ -170,6 +170,7 @@ import app.stopdash.domain.SavedTrip
 import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.StarredRowSet
+import app.stopdash.domain.StationLead
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.StepFreeAccess
@@ -839,6 +840,9 @@ class MainActivity : ComponentActivity() {
                 var replanningHere by rememberSaveable { mutableStateOf(false) }
                 var openStationId by rememberSaveable { mutableStateOf<String?>(null) }
                 var openStationName by rememberSaveable { mutableStateOf("") }
+                // The order the open station's rows lead in ([StationLead]); null for any station but one of an
+                // interchange's names. Built when it's opened, so the page only reads it.
+                var openStationLead by rememberSaveable(stateSaver = STATION_LEAD_SAVER) { mutableStateOf<StationLead?>(null) }
                 // A station tapped on a route page's stop list, and the journey there its page offers
                 // to favorite: offered only while that station is the one open.
                 var routeStopOpened by rememberSaveable(stateSaver = RouteStopOpenSaver) { mutableStateOf<RouteStopOpen?>(null) }
@@ -1243,6 +1247,7 @@ class MainActivity : ComponentActivity() {
                         stationTo = ToChoice.NONE
                         openStationId = open.stationId
                         openStationName = open.name
+                        openStationLead = null
                     }
                     !already
                 }
@@ -1461,6 +1466,7 @@ class MainActivity : ComponentActivity() {
                                                 stationSearchOpen = false
                                                 openStationId = null
                                                 openStationName = ""
+                                                openStationLead = null
                                                 stationTo = ToChoice.NONE
                                                 originChange = null
                                                 replanning = false
@@ -1476,6 +1482,7 @@ class MainActivity : ComponentActivity() {
                                                 stationSearchOpen = false
                                                 openStationId = null
                                                 openStationName = ""
+                                                openStationLead = null
                                                 stationTo = ToChoice.NONE
                                                 originChange = null
                                             }
@@ -1500,6 +1507,7 @@ class MainActivity : ComponentActivity() {
                                     originChange = null
                                     openStationId = stop.id
                                     openStationName = stop.name
+                                    openStationLead = null
                                     // Opened for the trip, not from Lines…, whatever's under it.
                                     stationFromLines = null
                                     stationTo = stop.to
@@ -1983,6 +1991,7 @@ class MainActivity : ComponentActivity() {
                                             // A station under several ids opens its interchange, as a search for it does.
                                             openStationId = stop.fromId ?: stop.id
                                             openStationName = stop.name
+                                            openStationLead = null
                                             stationFromLines = stop.fromId ?: stop.id
                                         },
                                         // A trip there from the stops near the rider, as To… plans one. The trip is
@@ -2041,11 +2050,14 @@ class MainActivity : ComponentActivity() {
                                         },
                                         stationId = openStationId,
                                         stationName = openStationName,
+                                        stationLead = openStationLead,
                                         // A change of start stays under way while the station loads: it's
                                         // done only once the station's To… search appears (below).
                                         onOpenStation = { match ->
                                             openStationId = match.id
                                             openStationName = match.name
+                                            // One of an interchange's station names opens it with that name's stations first.
+                                            openStationLead = StationLead.of(match)
                                         },
                                         // The new start's To… search is up, so the change of start is done;
                                         // a near-me trip it began from gives way to this station's.
@@ -2066,6 +2078,7 @@ class MainActivity : ComponentActivity() {
                                         onCloseStation = {
                                             openStationId = null
                                             openStationName = ""
+                                            openStationLead = null
                                             stationTo = OriginChange.toAfterStationClosed(originChange)
                                         },
                                         onCloseSearch = {
@@ -2073,6 +2086,7 @@ class MainActivity : ComponentActivity() {
                                             stationSearchOpen = false
                                             openStationId = null
                                             openStationName = ""
+                                            openStationLead = null
                                             stationTo = ToChoice.NONE
                                             originChange = null
                                         },
@@ -2095,6 +2109,7 @@ class MainActivity : ComponentActivity() {
                                                     stationSearchOpen = false
                                                     openStationId = null
                                                     openStationName = ""
+                                                    openStationLead = null
                                                     stationTo = ToChoice.NONE
                                                 }
                                                 is OriginChange.Landing.NearMe -> {
@@ -2113,11 +2128,13 @@ class MainActivity : ComponentActivity() {
                                                     stationSearchOpen = false
                                                     openStationId = null
                                                     openStationName = ""
+                                                    openStationLead = null
                                                     stationTo = ToChoice.NONE
                                                 }
                                                 is OriginChange.Landing.Station -> {
                                                     openStationId = landing.id
                                                     openStationName = landing.name
+                                                    openStationLead = landing.lead.takeIf { it.isNotEmpty() }?.let { StationLead(landing.name, it) }
                                                     stationTo = landing.to
                                                 }
                                             }
@@ -2127,12 +2144,13 @@ class MainActivity : ComponentActivity() {
                                         // trip's To… — its search, or its routes to the same destination.
                                         onChangeFrom = {
                                             val kept = OriginChange.kept(stationTo)
-                                            originChange = openStationId?.let { OriginChange.Station(it, openStationName, kept) }
+                                            originChange = openStationId?.let { OriginChange.Station(it, openStationName, kept, openStationLead?.modes.orEmpty()) }
                                             // A station opened straight from the trip on the way (Plan again) had no search
                                             // under it: it's the search that changes the start (Codex on #479).
                                             stationSearchOpen = true
                                             openStationId = null
                                             openStationName = ""
+                                            openStationLead = null
                                             stationTo = kept
                                         },
                                     )
@@ -2780,6 +2798,7 @@ class MainActivity : ComponentActivity() {
         },
         forWidget: Boolean = true,
         stationTitle: String? = null,
+        stationLead: StationLead? = null,
         onCloseStation: () -> Unit = {},
         // A precise fix that arrived after the set was shown from a coarse one and would move it
         // (SPEC *Finding stops*), and how to apply it: the same cancel-then-re-pick a refresh runs.
@@ -3236,6 +3255,7 @@ class MainActivity : ComponentActivity() {
                     // (a watched-stops view), which is shown as-is.
                     // Plus an opened farther station's stops, so its departures show beside its card.
                     stopDistanceMeters = ready.distanceMeters + fartherDistanceMeters,
+                    stationLead = stationLead,
                     nearestStops = ready.nearestStopByLine,
                     lineMeters = ready.nearestMetersByLine,
                     journeys = shownJourneys,
@@ -3469,6 +3489,8 @@ class MainActivity : ComponentActivity() {
     private fun StationSearchArea(
         stationId: String?,
         stationName: String,
+        // Opened from one of an interchange's station names: its stations in that name's order.
+        stationLead: StationLead? = null,
         onOpenStation: (StationMatch) -> Unit,
         onCloseStation: () -> Unit,
         onCloseSearch: () -> Unit,
@@ -3594,6 +3616,7 @@ class MainActivity : ComponentActivity() {
                     LookDepartures(
                         stops = ready.stops,
                         title = stationName,
+                        stationLead = stationLead,
                         onClose = closeStation,
                         onLocate = closeSearch,
                         writeFailures = viewModel<WriteFailuresHolder>().failures,
@@ -3605,6 +3628,7 @@ class MainActivity : ComponentActivity() {
                 stationName = stationName,
                 center = center,
                 stationStopIds = ready.stops.mapTo(HashSet()) { it.id },
+                stationLead = stationLead,
                 onClose = closeStation,
                 onBackToNearMe = closeSearch,
                 to = to,
@@ -3630,6 +3654,7 @@ class MainActivity : ComponentActivity() {
         stationName: String,
         center: Coordinates,
         stationStopIds: Set<String>,
+        stationLead: StationLead? = null,
         // A saved place's coordinate (From… a place): its trip plans from there, as one from Here plans
         // from the rider, walking to whichever stop serves it best. Null plans from a station's stop.
         planFrom: Coordinates? = null,
@@ -3822,6 +3847,7 @@ class MainActivity : ComponentActivity() {
                 },
                 forWidget = false,
                 stationTitle = stationName,
+                stationLead = stationLead,
                 onCloseStation = onClose,
                 onLocate = onBackToNearMe,
                 pendingTracker = listTracker,
@@ -4465,6 +4491,8 @@ class MainActivity : ComponentActivity() {
         onClose: () -> Unit,
         onLocate: () -> Unit,
         writeFailures: WriteFailures,
+        // A station opened from one of its interchange's names ([StationLead]).
+        stationLead: StationLead? = null,
     ) {
         val appContext = applicationContext
         val viewModel: MainViewModel = viewModel(
@@ -4530,6 +4558,7 @@ class MainActivity : ComponentActivity() {
                 onDismissWriteFailureShown = viewModel::dismissWriteFailureShown,
                 stationTitle = title,
                 onCloseStation = onClose,
+                stationLead = stationLead,
             )
         }
     }
@@ -4838,6 +4867,12 @@ class MainActivity : ComponentActivity() {
 
         // Where a change of start began ([OriginChange]), with the trip's To…; empty when none is under
         // way. [SavedTrip] also restores the shape the build before this one saved.
+        // The open station's lead ([StationLead]): its name, then its modes; empty for none.
+        private val STATION_LEAD_SAVER = listSaver<StationLead?, String>(
+            save = { lead -> lead?.let { listOf(it.name) + it.modes }.orEmpty() },
+            restore = { saved -> if (saved.isEmpty()) null else StationLead(saved[0], saved.subList(1, saved.size)) },
+        )
+
         private val ORIGIN_CHANGE_SAVER = listSaver<OriginChange?, Any?>(
             save = { SavedTrip.originChangeFields(it) },
             restore = { SavedTrip.originChangeOf(it) },

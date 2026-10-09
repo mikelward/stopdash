@@ -322,8 +322,9 @@ The app finds stops two ways:
   International" (National Rail). Names are compared without what only tells TfL's records apart
   ("London …" unless the interchange is so named, "… LL", a line in brackets), so Paddington and
   Waterloo stay one row; a station named for two others (the tube's "King's Cross St. Pancras")
-  joins the first. Each name row opens the interchange under that name, its modes Underground
-  first. TfL lists a place's bus stop areas one by one, so results **of
+  joins the first. Each name row opens the interchange under that name with that name's stations
+  first: its modes in order, Underground first, and within a mode the stations of that name, so
+  "St Pancras International" leads with St Pancras's trains and "King's Cross" with the Underground. TfL lists a place's bus stop areas one by one, so results **of
   the same name within 250 m of a better-ranked one fold into it** (maintainer, 2026-09-25):
   "Archway" is listed once, not once per stand, and its page takes in the stops around it. A
   station TfL lists under **two ids with no interchange** to stand for both (Weybridge) opens both:

@@ -24,11 +24,14 @@ object SavedTrip {
         return ToChoice(saved[0] as Boolean, saved[1] as String?, saved[2] as String, place)
     }
 
-    /** An [OriginChange]: the station's id and name (nulls for near me), then its To…; empty for none. */
+    /**
+     * An [OriginChange]: the station's id and name (nulls for near me), then its To…, then the
+     * station's lead ([OriginChange.Station.lead], empty for near me); empty for none.
+     */
     fun originChangeFields(change: OriginChange?): List<Any?> = when (change) {
         null -> emptyList()
-        is OriginChange.NearMe -> listOf(null, null) + toChoiceFields(change.to)
-        is OriginChange.Station -> listOf(change.id, change.name) + toChoiceFields(change.to)
+        is OriginChange.NearMe -> listOf(null, null) + toChoiceFields(change.to) + listOf(ArrayList<String>())
+        is OriginChange.Station -> listOf(change.id, change.name) + toChoiceFields(change.to) + listOf(ArrayList(change.lead))
     }
 
     /**
@@ -37,17 +40,21 @@ object SavedTrip {
      * Anything else is no change under way.
      */
     fun originChangeOf(saved: List<Any?>): OriginChange? = when (saved.size) {
-        ORIGIN_FIELDS -> {
-            val to = toChoiceOf(saved.drop(2))
+        ORIGIN_FIELDS, ORIGIN_FIELDS_WITHOUT_LEAD -> {
+            val to = toChoiceOf(saved.subList(2, ORIGIN_FIELDS_WITHOUT_LEAD))
             val id = saved[0] as String?
-            if (id == null) OriginChange.NearMe(to) else OriginChange.Station(id, saved[1] as String, to)
+            @Suppress("UNCHECKED_CAST")
+            val lead = (saved.getOrNull(ORIGIN_FIELDS_WITHOUT_LEAD) as? List<String>).orEmpty()
+            if (id == null) OriginChange.NearMe(to) else OriginChange.Station(id, saved[1] as String, to, lead)
         }
         LEGACY_STATION_FIELDS -> OriginChange.Station(saved[0] as String, saved[1] as String, ToChoice.NONE.startPicking())
         LEGACY_NEAR_ME_FIELDS -> OriginChange.NearMe(ToChoice.NONE.startPicking())
         else -> null
     }
 
-    private const val ORIGIN_FIELDS = 8
+    private const val ORIGIN_FIELDS = 9
+    // The shape before a station's lead was kept.
+    private const val ORIGIN_FIELDS_WITHOUT_LEAD = 8
     private const val LEGACY_STATION_FIELDS = 2
     private const val LEGACY_NEAR_ME_FIELDS = 1
 }

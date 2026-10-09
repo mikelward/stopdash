@@ -169,6 +169,7 @@ import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StepFreeAccess
 import app.stopdash.domain.StepFreeLevel
+import app.stopdash.domain.StationLead
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopDistance
 import app.stopdash.domain.StopGroup
@@ -243,6 +244,8 @@ fun MainScreen(
     // From "near me now" (`stopId` → meters): collapse a line served by several adjacent
     // nearby stops to its nearest stop. Empty for a location-free list, shown unchanged.
     stopDistanceMeters: Map<String, Double> = emptyMap(),
+    // A station opened from one of its interchange's names: its stations in that name's order.
+    stationLead: StationLead? = null,
     // Each line's stop nearest the rider within walking reach, both tiers' (line id → stop id), which a
     // line's map keeps on the page. Empty for a location-free list.
     nearestStops: Map<String, String> = emptyMap(),
@@ -715,12 +718,12 @@ fun MainScreen(
             listKey,
             // The snapshot itself too, so a change to its checks or loading stops alone (a canceled
             // fetch keeps the same stops) is drawn at once (Codex, #524).
-            Inputs(loaded, now, stopDistanceMeters, dismissed, hiddenModes, alertSequences, journeyDestinationStops, journeyDestinationsUnknown),
+            Inputs(loaded, now, stopDistanceMeters, dismissed, hiddenModes, alertSequences, journeyDestinationStops, journeyDestinationsUnknown, stationLead),
         ),
         keep = ListInputs.sameList,
     ) {
         loaded?.let {
-            listRowsOf(it, now, stopDistanceMeters, dismissed, hiddenModes, alertSequences, journeyDestinationStops, journeyDestinationsUnknown)
+            listRowsOf(it, now, stopDistanceMeters, dismissed, hiddenModes, alertSequences, journeyDestinationStops, journeyDestinationsUnknown, stationLead)
         }
     }
     val rowsPending = loaded != null && listRows == null
@@ -862,12 +865,12 @@ fun MainScreen(
     // From the snapshot the rows were built from, so the "?" rows join the rows of their own snapshot
     // (Codex, #524).
     val quietFrom = listRows?.source
-    val quietInputs = remember(quietFrom, quietTick, stopDistanceMeters, hiddenModes, dismissed) {
+    val quietInputs = remember(quietFrom, quietTick, stopDistanceMeters, hiddenModes, dismissed, stationLead) {
         val ld = quietFrom
         // Not while nearby stops are still loading: one of them may have trains for a line that
         // would otherwise read "?" at a stop already in. Nor while a stop's closure check is out: a
         // closed station's timetable trains aren't due, so "?" waits until it's known.
-        if (ld == null || stopDistanceMeters.isEmpty() || ld.pendingStops.isNotEmpty() || ld.closurePending.isNotEmpty()) null else QuietInputs(ld.stops, ld.lineStatuses, ld.determinedLineIds, quietTick, stopDistanceMeters, hiddenModes, dismissed, ld.stopsDisruptionUnknown)
+        if (ld == null || stopDistanceMeters.isEmpty() || ld.pendingStops.isNotEmpty() || ld.closurePending.isNotEmpty()) null else QuietInputs(ld.stops, ld.lineStatuses, ld.determinedLineIds, quietTick, stopDistanceMeters, hiddenModes, dismissed, ld.stopsDisruptionUnknown, stationLead)
     }
     val nearbyRows = withQuietRows(nearbyMarked, quietInputs)
     // The journey cards ([judgeCards]), then the rows drawn and the dismissed closures that keep a
