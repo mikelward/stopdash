@@ -292,6 +292,15 @@ class WidgetScreenshotTest {
         )
     }
 
+    @Test
+    fun `no data without location asks for it`() {
+        capture(
+            "widget-empty-no-location.png",
+            WidgetModel(hasData = false, stale = false, uncertain = false, stamp = null, rows = emptyList()),
+            locationNeeded = true,
+        )
+    }
+
     // Two places, so each row sits under its stop header, as in the in-app list — two headers and two
     // lines, the default size's four-line budget.
     @Test
@@ -623,22 +632,29 @@ class WidgetScreenshotTest {
         dark: Boolean = false,
         size: DpSize = DpSize(240.dp, 180.dp),
         fontScale: Float = 1f,
+        locationNeeded: Boolean = false,
     ) {
         if (dark) RuntimeEnvironment.setQualifiers("+night") else RuntimeEnvironment.setQualifiers("+notnight")
         // Set after the qualifiers so they can't override it; the inflated widget reads its sp sizes
         // from this context's configuration, as a real host does.
         RuntimeEnvironment.setFontScale(fontScale)
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val view = inflate(context, model, size, fontScale)
+        val view = inflate(context, model, size, fontScale, locationNeeded)
         // Capture at the widget's own size in px (420dpi), so a small size shows its real clipping.
         val density = context.resources.displayMetrics.density
         captureSnapshot(view, name, (size.width.value * density).toInt(), (size.height.value * density).toInt())
     }
 
-    private fun inflate(context: Context, model: WidgetModel, size: DpSize, fontScale: Float = 1f): View {
+    private fun inflate(
+        context: Context,
+        model: WidgetModel,
+        size: DpSize,
+        fontScale: Float = 1f,
+        locationNeeded: Boolean = false,
+    ): View {
         val result = runBlocking {
             GlanceRemoteViews().compose(context, size = size) {
-                WidgetContent(model, now, fontScale)
+                WidgetContent(model, now, fontScale, locationNeeded)
             }
         }
         return result.remoteViews.apply(context, FrameLayout(context))
