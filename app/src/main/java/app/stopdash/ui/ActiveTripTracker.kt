@@ -1350,6 +1350,16 @@ class ActiveTripTracker(
                 failed = true
             }
         }
+        // The train followed well past where the rider is seen along the ride: not theirs (a bus ahead of the
+        // one they took), so its calls neither count their stops nor end their ride. Let go, on board by where
+        // they were seen, until their own is found ([boardedAlong]) (maintainer, 2026-10-09).
+        val followedCalls = calls
+        if (followedCalls != null && seenRider != null && trip.boarded && trip.vehicleId.isNotBlank()) {
+            behindFollowed(trip, seenRider, seenAt, followedCalls, now)?.let {
+                trip = it
+                calls = null
+            }
+        }
         // On board by where they were seen, the ride is counted from location, not TfL: a failed lookup
         // for their train leaves that standing, so the step still moves on with each fix (and says "get
         // off soon"), and only the failure is said (Codex, PR #449).
@@ -1527,6 +1537,32 @@ class ActiveTripTracker(
     // against where they were last seen, which says where but not when (maintainer, 2026-10-01). Null
     // when they aren't seen along it. Seen where they get off, the ride is done, with no calls
     // ([OnTheWay.rideDone]). [rider]'s age holds at [seenAt] ([elapsed]).
+    // [trip] let go of its train followed, on board by where [rider] is seen, when that train is well past
+    // them along the ride ([OnTheWay.followedAhead]); null when it isn't, or where they are can't be told.
+    // Logged by stops, never a place.
+    private suspend fun behindFollowed(trip: ActiveTrip, rider: LocationFix, seenAt: Long, calls: List<VehicleCall>, now: Instant): ActiveTrip? {
+        val on = OnTheWay.ridden(trip) ?: return null
+        if (on.isWalk || on.path.isEmpty()) return null
+        val sequence = try {
+            lineSequence(on.lineId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: TflException) {
+            // Their train stays followed: nothing says it isn't theirs.
+            warn("on the way: route lookup failed for line ${on.lineId}: ${e::class.simpleName}")
+            null
+        } ?: return null
+        // Aged by the route's read: a fix fresh before it may be where the rider was.
+        val seen = aged(rider, Duration.ofMillis(elapsed() - seenAt)) ?: return null
+        val along = withContext(compute) { OnTheWay.placeAlong(on, seen, OnTheWay.ridePositions(on, sequence)) } ?: return null
+        if (!withContext(compute) { OnTheWay.followedAhead(trip, on, along, calls, now, sequence) }) return null
+        val trainAt = withContext(compute) { OnTheWay.followedAt(trip, on, calls, now, sequence.stopAreas) } ?: return null
+        warn("on the way: seen ${trainAt - OnTheWay.ahead(along)} stops behind the train followed on line ${on.lineId}, let go")
+        val let = OnTheWay.onBoardAlong(trip, along, now, on = on)
+        // A "get off soon" said by that train's calls named its stop, not theirs: taken back, said again in their time.
+        return if (let.warnedLeg == let.legIndex) let.copy(warnedLeg = -1, alertLeft = true) else let
+    }
+
     private suspend fun boardedAlong(trip: ActiveTrip, rider: LocationFix, seenAt: Long, now: Instant): SeenAlong? {
         // On board by where they were seen, the line they were seen along ([OnTheWay.ridden]).
         val leg = OnTheWay.waitingToBoard(trip, now) ?: OnTheWay.ridden(trip)?.takeIf { OnTheWay.ridingUnmatched(trip) } ?: return null

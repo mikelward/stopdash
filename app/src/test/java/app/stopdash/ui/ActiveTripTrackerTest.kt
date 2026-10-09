@@ -4,6 +4,7 @@ import app.stopdash.ThreadRecorder
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Departure
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.OnTheWay.Step
 import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.TflException
@@ -5274,6 +5275,62 @@ class ActiveTripTrackerTest {
         tracker.refresh(rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.5003, -0.12), isFallback = false, accuracyMeters = 5f))
         assertEquals("4", tracker.trip.value?.vehicleId)
         assertEquals(1, alertsDone)
+    }
+
+    // A bus ride of four stops about 1.1 km apart northward, A to C by B, D and F, then a walk on.
+    private val longBus = TripLeg("bus", "red", "Red", "A", "A", "C", "C", at(5), at(25), path = listOf("B", "D", "F", "C"),
+        fromAt = app.stopdash.domain.Coordinates(51.50, -0.12))
+    private val walkOn = TripLeg(TripLeg.WALKING, "", "", "C", "C", "H", "H", at(25), at(30))
+    private val longBusLine = app.stopdash.domain.LineSequence(
+        routes = listOf(app.stopdash.domain.LineRoute("A ↔ C", listOf("A", "B", "D", "F", "C"))),
+        stopNames = mapOf("A" to "A", "B" to "B", "D" to "D", "F" to "F", "C" to "C"),
+        stopPositions = mapOf("A" to (51.50 to -0.12), "B" to (51.51 to -0.12), "D" to (51.52 to -0.12), "F" to (51.53 to -0.12), "C" to (51.54 to -0.12)),
+    )
+
+    // On the bus followed, "7", due off at C at 17, seen on board or only taken to be.
+    private fun onFollowedBus(seenOn: Boolean) = OnTheWay.follow(
+        ActiveTrip(TripRoute(listOf(longBus, walkOn)), "H", startedAt = t0, legStartedAt = at(5)),
+        Departure("red", "Red", "outbound", "C", null, at(6), "bus", vehicleId = "7"),
+    ).copy(boarded = true, boardedAt = at(6), onBoardSeen = seenOn, dueOffAt = at(17))
+
+    @Test
+    fun `a followed bus well ahead of where the rider is seen doesn't end their ride`() = runTest {
+        for (seenOn in listOf(true, false)) {
+            logged.clear()
+            sequences["red"] = longBusLine
+            // That bus has reached C and gone on, while the rider is seen at B, three stops short of it
+            // (maintainer, 2026-10-09: taken off a bus still ridden to walk on).
+            trains["7"] = emptyList()
+            val tracker = tracker(StandardTestDispatcher(testScheduler), load = { onFollowedBus(seenOn) })
+            now = at(17)
+            tracker.restore()
+            tracker.refresh(rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.51, -0.12), isFallback = false, accuracyMeters = 20f))
+            assertEquals("seen on board: $seenOn", 0, tracker.trip.value?.legIndex)
+            val riding = tracker.progress.value as TripProgress.Riding
+            // Counted from where they were seen: D, F and C to go.
+            assertEquals(3, riding.stopsLeft)
+            assertTrue(riding.byPosition)
+            assertEquals("", tracker.trip.value?.vehicleId)
+        }
+    }
+
+    @Test
+    fun `a followed bus just ahead of the rider is kept, and its calls end the ride as before`() = runTest {
+        sequences["red"] = longBusLine
+        // Seen at F with that bus at C next: theirs, pulling up to it.
+        trains["7"] = listOf(call("C", 18))
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { onFollowedBus(true) })
+        now = at(17)
+        tracker.restore()
+        tracker.refresh(rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.53, -0.12), isFallback = false, accuracyMeters = 20f))
+        assertEquals("7", tracker.trip.value?.vehicleId)
+        assertEquals(1, (tracker.progress.value as TripProgress.Riding).stopsLeft)
+        assertTrue(logged.none { "stops behind the train followed" in it })
+        // With no fix, its calls past C end the ride, as ever.
+        now = at(19)
+        trains["7"] = emptyList()
+        tracker.refresh()
+        assertEquals(1, tracker.trip.value?.legIndex)
     }
 
     @Test

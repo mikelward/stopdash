@@ -2444,7 +2444,16 @@ rider arrives or ends the trip, and a process that dies takes it with it: the ne
 app starts it again from the kept trip. With location allowed, the same service **sees a rider left
 behind**: in the five minutes after the followed train leaves the boarding stop, each refresh takes
 one precise fix (used only when sure to within 50 m and taken in the last 10 s), and a rider still within 150 m of the stop a minute or more after it left didn't
-get on, so the next train they can catch is followed instead (switch when seen). It also **sees a
+get on, so the next train they can catch is followed instead (switch when seen). It **checks the
+train followed is theirs near where they get off** (maintainer, 2026-10-09: a bus followed three
+stops ahead took a rider still on board off it to walk on): from four minutes before that train is
+due there to five after, on any mode, a bus too, each refresh takes a precise fix, and while the
+trip is shown location is watched throughout, as in a train ride's last stops (a battery cost: about
+eight fixes a ride in the background, up to eighteen for a late one, and the screen's updates while
+it's open), and a rider seen along the ride two or more of its stops short of where that
+train has got to isn't on it. The trip lets it go, its "get off soon" taken back, and they're on
+board by where they were seen (below) until their own is found, so another vehicle's calls neither
+count their stops nor end their ride. It also **sees a
 rider already on their way** (maintainer, 2026-09-29): for the first ten minutes they wait for a
 ride's train, counted from the start of the wait however many trains leave without them (a clock set
 back before it ends it), each

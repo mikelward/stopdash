@@ -1240,6 +1240,95 @@ class OnTheWayTest {
         assertNull(OnTheWay.boardedOn(waiting, train("7", 5), listOf(call("Dn", 8), call("C", 11)), 1, at(8)))
     }
 
+    // A bus ride of four stops, 0.01° (about 1.1 km) apart northward: A, then B, D, F and C, where the rider gets off.
+    private val longBus = TripLeg("bus", "134", "134", "A", "A", "C", "C", at(5), at(25), path = listOf("B", "D", "F", "C"))
+    private val longBusLine = LineSequence(
+        routes = listOf(LineRoute("A ↔ C", listOf("A", "B", "D", "F", "C"))),
+        stopNames = mapOf("A" to "A", "B" to "B", "D" to "D", "F" to "F", "C" to "C"),
+        stopPositions = mapOf("A" to (51.50 to -0.12), "B" to (51.51 to -0.12), "D" to (51.52 to -0.12), "F" to (51.53 to -0.12), "C" to (51.54 to -0.12)),
+    )
+
+    @Test
+    fun `a followed bus well past where the rider is seen isn't theirs, and doesn't end their ride`() {
+        val positions = OnTheWay.ridePositions(longBus, longBusLine)
+        // Seen at B, the first stop along: their bus calls at D next.
+        val atB = checkNotNull(OnTheWay.placeAlong(longBus, fix(Coordinates(51.51, -0.12), 20f), positions))
+        assertEquals(OnTheWay.Along(0, atStop = true), atB)
+        // The bus followed, due off at C at 19.
+        val followed = OnTheWay.follow(trip.copy(route = TripRoute(listOf(longBus, walk, second))), train("7", 6))
+            .copy(boarded = true, boardedAt = at(6), dueOffAt = at(19))
+        // A bus next at F is one stop on from D: a fix's error, or theirs pulling away. Kept.
+        assertFalse(OnTheWay.followedAhead(followed, longBus, atB, listOf(call("F", 18), call("C", 21)), at(17), longBusLine))
+        // Next at C, or past every stop once due off there: another bus, ahead of theirs.
+        assertTrue(OnTheWay.followedAhead(followed, longBus, atB, listOf(call("C", 19)), at(17), longBusLine))
+        assertTrue(OnTheWay.followedAhead(followed, longBus, atB, emptyList(), at(20), longBusLine))
+        // No calls before it was due off: TfL may just have stopped predicting it for a while. Kept.
+        assertFalse(OnTheWay.followedAhead(followed, longBus, atB, emptyList(), at(16), longBusLine))
+        // Where a fast run skips F, a bus calling next at C may be theirs, still short of D: kept.
+        val fast = longBusLine.copy(routes = longBusLine.routes + LineRoute("A ↔ C fast", listOf("A", "B", "D", "C")))
+        assertFalse(OnTheWay.followedAhead(followed, longBus, atB, listOf(call("C", 19)), at(17), fast))
+        // Seen at F, with that bus at C next: theirs.
+        val atF = checkNotNull(OnTheWay.placeAlong(longBus, fix(Coordinates(51.53, -0.12), 20f), positions))
+        assertFalse(OnTheWay.followedAhead(followed, longBus, atF, listOf(call("C", 19)), at(17), longBusLine))
+        // Seen where they get off, or on a ride whose stops can't be counted: nothing claimed.
+        val atC = checkNotNull(OnTheWay.placeAlong(longBus, fix(Coordinates(51.54, -0.12), 20f), positions))
+        assertFalse(OnTheWay.followedAhead(followed, longBus, atC, emptyList(), at(20), longBusLine))
+        assertFalse(OnTheWay.followedAhead(followed, longBus.copy(path = listOf("490GB", "C")), atB, emptyList(), at(20), longBusLine))
+
+        // By its calls alone the ride is done.
+        assertEquals(1, OnTheWay.advance(followed, emptyList(), at(20)).first.legIndex)
+        // Let go, on board by where they were seen: still riding, three stops from C, not walking on.
+        val let = OnTheWay.onBoardAlong(followed, atB, at(20), on = longBus)
+        assertEquals("", let.vehicleId)
+        val (still, riding) = OnTheWay.advance(let, null, at(20))
+        assertEquals(0, still.legIndex)
+        assertEquals(3, (riding as TripProgress.Riding).stopsLeft)
+        assertTrue(riding.byPosition)
+    }
+
+    @Test
+    fun `a followed bus on a ride the Planner names by stop pairs is told ahead by its poles' pairs`() {
+        // The same ride, its stops named by pair as the Planner gives a bus's path; the route lists poles.
+        val byPair = longBus.copy(path = listOf("490GB", "490GD", "490GF", "C"))
+        val line = longBusLine.copy(
+            routes = listOf(LineRoute("A ↔ C", listOf("A", "Bp", "Dp", "Fp", "C"))),
+            stopNames = mapOf("A" to "A", "Bp" to "B", "Dp" to "D", "Fp" to "F", "C" to "C"),
+            stopPositions = mapOf("A" to (51.50 to -0.12), "Bp" to (51.51 to -0.12), "Dp" to (51.52 to -0.12), "Fp" to (51.53 to -0.12), "C" to (51.54 to -0.12)),
+            stopAreas = mapOf("Bp" to "490GB", "Dp" to "490GD", "Fp" to "490GF"),
+        )
+        val atB = checkNotNull(OnTheWay.placeAlong(byPair, fix(Coordinates(51.51, -0.12), 20f), OnTheWay.ridePositions(byPair, line)))
+        val followed = OnTheWay.follow(trip.copy(route = TripRoute(listOf(byPair, walk, second))), train("7", 6))
+            .copy(boarded = true, boardedAt = at(6), dueOffAt = at(19))
+        // Next at F's pole: one stop on from D, theirs. Next at C: another bus, ahead of theirs.
+        assertFalse(OnTheWay.followedAhead(followed, byPair, atB, listOf(call("Fp", 18), call("C", 21)), at(17), line))
+        assertTrue(OnTheWay.followedAhead(followed, byPair, atB, listOf(call("C", 19)), at(17), line))
+        assertEquals(1, OnTheWay.followedAt(followed, byPair, listOf(call("Dp", 17)), at(16), line.stopAreas))
+        // A pole whose pair isn't known before it was due off: can't be told. Kept.
+        assertNull(OnTheWay.followedAt(followed, byPair, listOf(call("Xp", 18)), at(17), line.stopAreas))
+        assertFalse(OnTheWay.followedAhead(followed, byPair, atB, listOf(call("Xp", 18)), at(17), line))
+        // On a loop meeting a stop twice, the visit its next call follows.
+        val loop = longBus.copy(path = listOf("B", "D", "A", "D", "F", "C"))
+        assertEquals(3, OnTheWay.followedAt(followed, loop, listOf(call("D", 17), call("F", 18)), at(16)))
+        assertEquals(1, OnTheWay.followedAt(followed, loop, listOf(call("D", 17), call("A", 18)), at(16)))
+        // With no pairs to match by, nothing is claimed.
+        assertFalse(OnTheWay.followedAhead(followed, byPair, atB, listOf(call("C", 19)), at(17), line, areas = emptyMap()))
+    }
+
+    @Test
+    fun `a fix is wanted while a followed train of any mode is about due where the rider gets off`() {
+        val onBus = OnTheWay.follow(trip.copy(route = TripRoute(listOf(longBus, walk, second))), train("7", 6))
+            .copy(boarded = true, boardedAt = at(6), dueOffAt = at(20))
+        // From four minutes before it's due there to five after: about eight refreshes' fixes.
+        assertFalse(OnTheWay.followedNearOff(onBus, at(15)))
+        assertTrue(OnTheWay.followedNearOff(onBus, at(16)))
+        assertTrue(OnTheWay.wantsFix(onBus, at(19)))
+        assertFalse(OnTheWay.followedNearOff(onBus, at(25)))
+        // Not before boarding, with no train followed, or no time due there.
+        assertFalse(OnTheWay.followedNearOff(onBus.copy(boarded = false), at(19)))
+        assertFalse(OnTheWay.followedNearOff(onBus.copy(vehicleId = ""), at(19)))
+        assertFalse(OnTheWay.followedNearOff(onBus.copy(dueOffAt = null), at(19)))
+    }
+
     @Test
     fun `a stop pair's poles are those its line's route puts in it`() {
         val poles = redLine.copy(stopAreas = mapOf("Cn" to "490GC", "Cs" to "490GC", "B" to "490GB"))
