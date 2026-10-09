@@ -1446,6 +1446,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         - [x] Start, the trip's on-the-way screen and End trip; the trip kept on the device and
               followed while the app is in the foreground.
         - [ ] Picking another train by hand ("I'm on this one"), until location can see it.
+        - [x] **The ongoing notification as a Live Update** (maintainer, 2026-10-09): promoted on Android
+              16 with a progress bar of the legs in their lines' colors and a status-bar chip (where to
+              stand boarding or changing, as the board heads the stop, else the train's
+              destination; stops riding; distance left walking; minutes otherwise); boarding,
+              the text names the destination and the platform or stop letter.
+          - [ ] Device check: promoted on a real phone, the chip's width for a long label, and the
+                Northern line's black segment against a dark shade.
+          - [x] The chip on a walk (maintainer, 2026-10-09): the distance left, minutes until a fix.
         - [x] **A ride is two steps, boarding it and getting off it** (maintainer, 2026-09-29): Next
               from boarding says the rider is on the train followed ("Ride to …" its own row).
           - [x] **On board by the rider's word, with the train followed still minutes away**: the
