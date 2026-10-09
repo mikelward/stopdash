@@ -2454,12 +2454,10 @@ behind**: in the five minutes after the followed train leaves the boarding stop,
 one precise fix (used only when sure to within 50 m and taken in the last 10 s), and a rider still within 150 m of the stop a minute or more after it left didn't
 get on, so the next train they can catch is followed instead (switch when seen). It **checks the
 train followed is theirs near where they get off** (maintainer, 2026-10-09: a bus followed three
-stops ahead took a rider still on board off it to walk on): from four minutes before that train is
-due there to five after, on any mode, a bus too, each refresh takes a precise fix, and while the
-trip is shown location is watched throughout, as in a train ride's last stops (a battery cost: about
-eight fixes a ride in the background, up to eighteen for a late one, and the screen's updates while
-it's open), and a rider seen along the ride two or more of its stops short of where that
-train has got to isn't on it. The trip lets it go, its "get off soon" taken back, and they're on
+stops ahead took a rider still on board off it to walk on): with the fix each refresh takes all trip (below), on any mode, a bus too, and while the trip is
+shown location is watched from four minutes before that train is due there to five after, as in a
+train ride's last stops (the screen's updates while it's open), a rider seen along the ride two or
+more of its stops short of where that train has got to isn't on it. The trip lets it go, its "get off soon" taken back, and they're on
 board by where they were seen (below) until their own is found, so another vehicle's calls neither
 count their stops nor end their ride. It also **sees a
 rider already on their way** (maintainer, 2026-09-29): for the first ten minutes they wait for a
@@ -2522,10 +2520,15 @@ stands on TfL. The ride's stops are placed from its line's route, and each train
 line's, which the trip's cards already hold. Underground, where no
 fix comes, it can't tell. The stop's position is the Planner's (or its line's route's); the fix is
 only compared with it, on the device, and never logged, kept or sent.
-Underground, where no fix comes, nothing is guessed. Outside those windows no fix is asked for; the
-battery cost is at most ten fixes per ride after boarding, and about twenty while waiting. A rider
-on board by where they were seen is the exception: one fix a refresh (about two a minute) for the
-ride's planned time and five minutes more, so about fifty on a twenty-minute ride, and then none. Following a bus above ground by location is still to do. It holds a partial wake lock (screen off) for the trip, since
+Underground, where no fix comes, nothing is guessed. Each refresh takes one fix for the whole trip,
+start to arrival (walks, waits, changes and rides; maintainer, 2026-10-09), so a ride is checked
+against the train followed all the way, not only near its ends: about two fixes a minute, sixty on a
+half-hour trip. Above ground each is a second or two of GPS; underground GPS hunts for its whole
+eight-second bound before station Wi-Fi or a cell answers, about a quarter of the time, roughly 1–2%
+of the battery a half-hour (an estimate, not yet measured on a device). Every 60 s would halve that
+but miss half the platform stops, where underground fixes come from, catching a wrong train a few
+stops later. The live updates the shown trip watches (every few seconds while moving) keep to the
+windows above. Following a bus above ground by location is still to do. It holds a partial wake lock (screen off) for the trip, since
 a sleeping phone would otherwise stall the refresh and the get-off alert: renewed for two minutes on
 each refresh, so a stalled service lets go. A trip never ended is followed in the background until
 four hours after it started; the service then stops, and the app still follows the trip whenever it's open.

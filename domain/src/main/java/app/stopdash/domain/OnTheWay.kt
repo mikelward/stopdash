@@ -821,6 +821,15 @@ object OnTheWay {
      * left the boarding stop, or it's nearly where they get off ([stationRiddenTo]). Outside those no
      * fix is asked for (battery): a walk is minutes, the other windows a few.
      */
+    /**
+     * Whether the trip's refresh asks for a one-off fix: on every refresh, for the whole trip, from start to
+     * arrival (maintainer, 2026-10-09). A ride is checked against the train followed all the way, not only near
+     * its ends, so one on another branch, or not theirs, is let go before their stop ([aheadOfTrain]). A fix a
+     * refresh, about two a minute; underground each may hold GPS for its whole bound before none comes.
+     * [wantsFix] still bounds the continuous updates the shown trip watches, which cost more.
+     */
+    fun takesFix(trip: ActiveTrip): Boolean = trip.leg != null
+
     fun wantsFix(trip: ActiveTrip, now: Instant): Boolean {
         // On the walk to the destination until seen there (maintainer, 2026-10-03): a fix about every
         // refresh for the walk's length, and up to [END_WALK_GRACE] after it.
@@ -1941,9 +1950,10 @@ object OnTheWay {
 
     /**
      * Whether [trip]'s rider is on board a train followed by its calls, about due where they get off at
-     * [now] ([AT_GET_OFF_BEFORE] before to [AT_GET_OFF_AFTER] after): a fix then checks the train is
-     * theirs ([followedAhead]) before its calls end the ride. Any mode, a bus too: one ahead of theirs
-     * reaching the stop first is the failure (maintainer, 2026-10-09). About eight fixes a ride.
+     * [now] ([AT_GET_OFF_BEFORE] before to [AT_GET_OFF_AFTER] after): the shown trip watches location then,
+     * so a fix checks the train is theirs ([followedAhead]) before its calls end the ride. Any mode, a bus
+     * too: one ahead of theirs reaching the stop first is the failure (maintainer, 2026-10-09). The
+     * refresh's own fix is taken all trip regardless ([takesFix]).
      */
     fun followedNearOff(trip: ActiveTrip, now: Instant): Boolean {
         val leg = trip.leg ?: return false
