@@ -17,6 +17,7 @@ import app.stopdash.domain.PlaceSearch
 import app.stopdash.domain.PostcodeResolution
 import app.stopdash.domain.PostcodeResolver
 import app.stopdash.domain.RouteSequenceSource
+import app.stopdash.domain.StationFacts
 import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StationPlaces
@@ -548,11 +549,11 @@ class KtorTflClient(
             dto.leaves().mapNotNull { it.toStopLocationOrNull() }
         }
 
-    override suspend fun stopZone(stopId: String): String =
+    override suspend fun stationFacts(stopId: String): StationFacts =
         tflRequest { key ->
             httpClient.get("$baseUrl/StopPoint/$stopId") {
                 applyAppKey(key)
-            }.body<TflStopPointDto>().fareZone(stopId)
+            }.body<TflStopPointDto>().stationFacts(stopId)
         }
 
     /**

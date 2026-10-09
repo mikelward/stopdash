@@ -2857,6 +2857,13 @@ index's position wins over the map's, and is greyed for a stop placed by neither
 was left, and so back through the stations opened (the last ten); Back from the first returns to the line, its map just as it was,
 scrolled and unfolded, Back from From's station page included; closing the line forgets it, so the line
 opened again starts at its top.
+A station's **facilities** close its details (maintainer, 2026-10-09), "Toilets · Waiting room · Taxi
+rank", from the same TfL record as its zone, with no request of its own. TfL's facility data is old and
+patchy, so only what it says a station has is shown, never "no toilets"; Wi-Fi isn't shown at all, as
+TfL's answer is wrong too often to stand behind (it has Tottenham Court Road without it). An accessible
+toilet carries TfL's short note on where it is ("Accessible toilet (National Rail)"). They come last, so
+coming in never moves anything above them; a station TfL names none for, or one whose record couldn't
+be fetched, shows no heading.
 Only a line page opened from Lines… opens stops so far (`TODO.md`).
 
 ### Line page

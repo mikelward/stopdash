@@ -386,6 +386,20 @@
     <string name="line_stop_zone">Zone %1$s</string>
     <!-- A station's details, under its zone, where TfL's step-free route doesn't reach the platform. -->
     <string name="line_stop_not_step_free">Not step-free</string>
+    <!-- Heading over a station's facilities, at the foot of its details. -->
+    <string name="line_stop_facilities">Facilities</string>
+    <!-- Between a station's facilities: "Restrooms · Waiting room". -->
+    <string name="facility_separator">" · "</string>
+    <!-- A facility with TfL's note on where it is: "Accessible restroom (National Rail)". -->
+    <string name="facility_with_note">%1$s (%2$s)</string>
+    <!-- A station's facilities, as TfL lists them. Each has an en-GB form where UK usage differs. -->
+    <string name="facility_toilets">Restrooms</string>
+    <string name="facility_accessible_toilet">Accessible restroom</string>
+    <string name="facility_waiting_room">Waiting room</string>
+    <string name="facility_left_luggage">Baggage storage</string>
+    <string name="facility_car_park">Parking</string>
+    <string name="facility_cash_machine">ATM</string>
+    <string name="facility_taxi_rank">Taxi stand</string>
     <!-- …and where it would, but a lift it needs is out of service now. -->
     <string name="line_stop_step_free_lift_out">Not step-free: a lift is out</string>
     <string name="line_stop_from">From</string>

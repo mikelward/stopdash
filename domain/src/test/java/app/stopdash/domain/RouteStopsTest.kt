@@ -629,16 +629,16 @@ class RouteStopsTest {
     }
 
     @Test
-    fun `a station's fare zone is fetched once a day and a failure isn't kept`() = runTest {
+    fun `a station's zone and facilities are fetched once a day and a failure isn't kept`() = runTest {
         var now = Instant.parse("2026-10-07T12:00:00Z")
         val calls = mutableListOf<String>()
         var fail = true
         val source = object : RouteSequenceSource, StopZoneSource {
             override suspend fun routeSequence(lineId: String, direction: String): LineSequence = bus
-            override suspend fun stopZone(stopId: String): String {
+            override suspend fun stationFacts(stopId: String): StationFacts {
                 calls += stopId
                 if (fail) throw TflException.Network("offline", null)
-                return "2/3"
+                return StationFacts("2/3", listOf(StationFacility.TOILETS))
             }
         }
         val warnings = mutableListOf<String>()
@@ -647,25 +647,26 @@ class RouteStopsTest {
             io = StandardTestDispatcher(testScheduler), compute = StandardTestDispatcher(testScheduler),
         )
         // A failure is logged by the stop id and thrown, and isn't cached: the next open asks again.
-        assertTrue(runCatching { repository.loadZone("HUBSRA") }.exceptionOrNull() is TflException)
+        assertTrue(runCatching { repository.loadStationFacts("HUBSRA") }.exceptionOrNull() is TflException)
         assertEquals(listOf("stop zone fetch failed for HUBSRA: Network"), warnings)
         fail = false
-        assertEquals("2/3", repository.loadZone("HUBSRA"))
-        assertEquals("2/3", repository.loadZone("HUBSRA"))
+        val facts = StationFacts("2/3", listOf(StationFacility.TOILETS))
+        assertEquals(facts, repository.loadStationFacts("HUBSRA"))
+        assertEquals(facts, repository.loadStationFacts("HUBSRA"))
         assertEquals(listOf("HUBSRA", "HUBSRA"), calls)
         // A day on, it's asked for afresh.
         now = now.plus(Duration.ofHours(25))
-        repository.loadZone("HUBSRA")
+        repository.loadStationFacts("HUBSRA")
         assertEquals(3, calls.size)
     }
 
     @Test
-    fun `a repository with no zone source gives no zone`() = runTest {
+    fun `a repository with no zone source gives no zone and no facilities`() = runTest {
         val source = object : RouteSequenceSource {
             override suspend fun routeSequence(lineId: String, direction: String): LineSequence = bus
         }
         val repository = RouteStopsRepository(source, io = StandardTestDispatcher(testScheduler), compute = StandardTestDispatcher(testScheduler))
-        assertEquals("", repository.loadZone("940GZZLUOXC"))
+        assertEquals(StationFacts(), repository.loadStationFacts("940GZZLUOXC"))
     }
 
     @Test

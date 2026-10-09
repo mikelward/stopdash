@@ -2,6 +2,8 @@ package app.stopdash.data
 
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.LineRef
+import app.stopdash.domain.StationFacility
+import app.stopdash.domain.StationFacts
 import app.stopdash.domain.StationPlaces
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.cleanStopName
@@ -66,7 +68,10 @@ data class TflStopPointDto(
     val children: List<TflStopPointDto> = emptyList(),
 )
 
-/** One TfL `additionalProperties` entry — stopdash reads the `CompassPoint` and `Towards` [key]s. */
+/**
+ * One TfL `additionalProperties` entry — stopdash reads the `CompassPoint` and `Towards` [key]s, the
+ * `Zone`, and a station's facilities ([stationFacts]).
+ */
 @Serializable
 data class TflAdditionalPropertyDto(
     val category: String = "",
@@ -88,6 +93,47 @@ fun TflStopPointDto.fareZone(stopId: String): String {
     val zone = find(stopId)?.zoneProperty() ?: zoneProperty() ?: return ""
     return if (zone.equals("NA", ignoreCase = true)) "" else zone
 }
+
+/**
+ * What TfL's `/StopPoint/{stopId}` record says about station [stopId]: its [fareZone], and the
+ * facilities it says the station has ([StationFacts]), from the asked station's own `Facility` and
+ * `Accessibility` entries, else, where it has none, the record's own (the interchange TfL answers for).
+ * Only a "yes" (or, for cash machines, a count above none) makes a facility: TfL's data is old, so a
+ * "no" is never taken as an answer, and Wi-Fi is left out entirely (maintainer, 2026-10-09).
+ */
+fun TflStopPointDto.stationFacts(stopId: String): StationFacts {
+    val station = find(stopId)?.takeIf { it.hasFacilities() } ?: this
+    fun says(category: String, vararg keys: String): String =
+        station.additionalProperties.firstOrNull { p -> p.category.equals(category, ignoreCase = true) && keys.any { p.key.equals(it, ignoreCase = true) } }
+            ?.value?.trim().orEmpty()
+    fun yes(category: String, vararg keys: String) = says(category, *keys).startsWith("yes", ignoreCase = true)
+    val cash = says(FACILITY, "Cash Machines")
+    val facilities = buildList {
+        if (yes(FACILITY, "Toilets")) add(StationFacility.TOILETS)
+        if (yes(ACCESSIBILITY, "Toilet")) add(StationFacility.ACCESSIBLE_TOILET)
+        if (yes(FACILITY, "Waiting Room")) add(StationFacility.WAITING_ROOM)
+        if (yes(FACILITY, "Left Luggage")) add(StationFacility.LEFT_LUGGAGE)
+        if (yes(FACILITY, "Car park")) add(StationFacility.CAR_PARK)
+        if (cash.startsWith("yes", ignoreCase = true) || (cash.toIntOrNull() ?: 0) > 0) add(StationFacility.CASH_MACHINE)
+        if (yes(ACCESSIBILITY, "TaxiRankOutsideStation")) add(StationFacility.TAXI_RANK)
+    }
+    // TfL's note on the accessible toilet ("(National Rail)": the tube station has none, the rail one
+    // does), its brackets dropped as the details put their own round it. A long one is left out rather
+    // than run on: it's a place to look, not a paragraph.
+    val note = if (StationFacility.ACCESSIBLE_TOILET in facilities) {
+        says(ACCESSIBILITY, "ToiletNote").trim().removePrefix("(").removeSuffix(")").trim().takeIf { it.length <= MAX_NOTE }.orEmpty()
+    } else {
+        ""
+    }
+    return StationFacts(zone = fareZone(stopId), facilities = facilities, toiletNote = note)
+}
+
+private fun TflStopPointDto.hasFacilities(): Boolean =
+    additionalProperties.any { it.category.equals(FACILITY, ignoreCase = true) || it.category.equals(ACCESSIBILITY, ignoreCase = true) }
+
+private const val FACILITY = "Facility"
+private const val ACCESSIBILITY = "Accessibility"
+private const val MAX_NOTE = 32
 
 // The record's own `Zone` as TfL gave it ("NA" included), or null where it has none.
 private fun TflStopPointDto.zoneProperty(): String? = additionalProperty("Zone").trim().ifEmpty { null }
