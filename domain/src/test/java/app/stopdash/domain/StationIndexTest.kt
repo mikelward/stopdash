@@ -83,6 +83,85 @@ class StationIndexTest {
         assertEquals(listOf("HUBKGX", "490000225T"), kingsCross.rank("st pa", local, listOf(stPauls)).map { it.id })
     }
 
+    // Public station names and ids from the bundled list.
+    private val hubs = StationIndex(
+        listOf(
+            IndexedStation("HUBKGX", "King's Cross & St Pancras International", listOf("national-rail", "tube")),
+            IndexedStation("910GKNGX", "London King's Cross Rail Station", listOf("national-rail"), hubId = "HUBKGX"),
+            IndexedStation("910GSTPADOM", "London St Pancras International Rail Station", listOf("national-rail"), hubId = "HUBKGX"),
+            IndexedStation("910GSTPX", "London St Pancras International Rail Station", listOf("national-rail"), hubId = "HUBKGX"),
+            IndexedStation("910GSTPXBOX", "London St Pancras International LL Rail Station", listOf("national-rail"), hubId = "HUBKGX"),
+            IndexedStation("940GZZLUKSX", "King's Cross St. Pancras Underground Station", listOf("tube"), hubId = "HUBKGX"),
+            IndexedStation("HUBPAD", "Paddington", listOf("national-rail", "elizabeth-line", "tube")),
+            IndexedStation("910GPADTON", "London Paddington Rail Station", listOf("national-rail"), hubId = "HUBPAD"),
+            IndexedStation("910GPADTLL", "Paddington", listOf("elizabeth-line"), hubId = "HUBPAD"),
+            IndexedStation("940GZZLUPAC", "Paddington Underground Station", listOf("tube"), hubId = "HUBPAD"),
+            IndexedStation("940GZZLUPAH", "Paddington (H&C Line)-Underground", listOf("tube"), hubId = "HUBPAD"),
+            IndexedStation("HUBWHD", "West Hampstead", listOf("overground", "tube", "national-rail")),
+            IndexedStation("910GWHMDSTD", "West Hampstead Rail Station", listOf("overground"), hubId = "HUBWHD"),
+            IndexedStation("940GZZLUWHP", "West Hampstead Underground Station", listOf("tube"), hubId = "HUBWHD"),
+            IndexedStation("910GWHMPSTM", "West Hampstead Thameslink Rail Station", listOf("national-rail"), hubId = "HUBWHD"),
+            IndexedStation("HUBLBG", "London Bridge", listOf("national-rail", "tube")),
+            IndexedStation("910GLNDNBDC", "London Bridge Rail Station", listOf("national-rail"), hubId = "HUBLBG"),
+            IndexedStation("940GZZLULNB", "London Bridge Underground Station", listOf("tube"), hubId = "HUBLBG"),
+        ),
+    )
+
+    @Test
+    fun `an interchange's differently named stations each get a row, Underground first`() {
+        assertEquals(
+            listOf(
+                StationMatch("HUBKGX", "King's Cross", listOf("tube", "national-rail"), lead = listOf("tube", "national-rail")),
+                StationMatch("HUBKGX", "St Pancras International", listOf("national-rail"), lead = listOf("national-rail")),
+                StationMatch("HUBWHD", "West Hampstead Thameslink", listOf("national-rail"), lead = listOf("national-rail")),
+            ),
+            hubs.hubNames,
+        )
+    }
+
+    @Test
+    fun `an interchange whose stations share one name lists no names of its own`() {
+        // Paddington's four records, "London" and the H&C's bracket aside, are one Paddington; London
+        // Bridge keeps its "London", as its interchange does.
+        assertTrue(hubs.hubNames.none { it.id == "HUBPAD" || it.id == "HUBLBG" })
+        assertEquals("London Bridge", StationIndex.memberName("London Bridge Rail Station", keepLondon = true))
+        assertEquals("Paddington", StationIndex.memberName("Paddington (H&C Line)-Underground"))
+        assertEquals("St Pancras International", StationIndex.memberName("London St Pancras International LL Rail Station"))
+        // A tram stop's or pier's type, and a place in brackets, tell records apart, not stations.
+        assertEquals("Beckenham Junction", StationIndex.memberName("Beckenham Junction Tram Stop"))
+        assertEquals("Abbey Wood", StationIndex.memberName("Abbey Wood (London) Rail Station"))
+    }
+
+    @Test
+    fun `either station name finds King's Cross & St Pancras, beside the interchange's own row`() {
+        val stPancras = hubs.search("st pa")
+        assertEquals(listOf("HUBKGX|St Pancras International", "HUBKGX"), stPancras.map { it.key })
+        val kingsCross = hubs.search("kings")
+        assertEquals(listOf("HUBKGX|King's Cross", "HUBKGX"), kingsCross.map { it.key })
+        // TfL's copy of the interchange is the interchange's row, not a third.
+        val ranked = hubs.rank("st pa", stPancras, listOf(StationMatch("HUBKGX", "King's Cross & St Pancras International")))
+        assertEquals(listOf("HUBKGX|St Pancras International", "HUBKGX"), ranked.map { it.key })
+        // TfL placing the interchange folds nothing into or out of a station name's row.
+        val placedHub = StationMatch("HUBWHD", "West Hampstead", latitude = 51.5, longitude = -0.12)
+        val westHampstead = hubs.rank("west h", hubs.search("west h"), listOf(placedHub))
+        assertEquals(listOf("HUBWHD", "HUBWHD|West Hampstead Thameslink"), westHampstead.map { it.key })
+    }
+
+    @Test
+    fun `a station name opened lately leads its interchange's row, and the interchange's leads it`() {
+        val thameslink = hubs.hubNames.single { it.id == "HUBWHD" }
+        val pickedName = hubs.withYours(YourStops(recent = listOf(thameslink)))
+        assertEquals(listOf("HUBWHD|West Hampstead Thameslink", "HUBWHD"), pickedName.search("west h").map { it.key })
+        val pickedHub = hubs.withYours(YourStops(recent = listOf(StationMatch("HUBWHD", "West Hampstead"))))
+        assertEquals(listOf("HUBWHD", "HUBWHD|West Hampstead Thameslink"), pickedHub.search("west h").map { it.key })
+    }
+
+    @Test
+    fun `a station code finds the interchange first, and no name it doesn't spell`() {
+        // "kgx" is the interchange's code; "King's X" also holds its letters, "St Pancras" doesn't.
+        assertEquals(listOf("HUBKGX", "HUBKGX|King's Cross"), hubs.search("kgx").map { it.key })
+    }
+
     @Test
     fun `KX, KGX and KC all find King's Cross first`() {
         for (query in listOf("kx", "kgx", "kc")) {

@@ -93,6 +93,9 @@ private data class PersistedRecentStation(
     val longitude: Double? = null,
     // A place's [PlaceKind] by name; one this build doesn't know reads as a place.
     val placeKind: String? = null,
+    // An interchange's station name's modes ([StationMatch.lead]); empty for any other stop, and in a
+    // list written before names were listed.
+    val lead: List<String> = emptyList(),
 )
 
 private fun PersistedRecentStation.toDomain(): SearchEntry =
@@ -100,11 +103,11 @@ private fun PersistedRecentStation.toDomain(): SearchEntry =
         val kind = PlaceKind.entries.firstOrNull { it.name == placeKind } ?: PlaceKind.PLACE
         SearchEntry.Place(PlaceHit(name, Coordinates(latitude, longitude), kind))
     } else {
-        SearchEntry.Stop(StationMatch(id, name, modes))
+        SearchEntry.Stop(StationMatch(id, name, modes, lead = lead))
     }
 
 private fun SearchEntry.toPersisted(): PersistedRecentStation = when (this) {
-    is SearchEntry.Stop -> PersistedRecentStation(match.id, match.name, match.modes)
+    is SearchEntry.Stop -> PersistedRecentStation(match.id, match.name, match.modes, lead = match.lead)
     is SearchEntry.Place -> PersistedRecentStation(
         id = "", name = hit.name, latitude = hit.coordinate.latitude, longitude = hit.coordinate.longitude, placeKind = hit.kind.name,
     )

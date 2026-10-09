@@ -33,9 +33,10 @@ data class IndexedStation(
  */
 class StationIndex(
     val stations: List<IndexedStation>,
-    // The user's own stops by last use ([YourStops.own]): each leads its tier in this order, and so
-    // does the interchange it folds into, so a stop picked lately ranks above an equally good one
-    // picked before it, and both above a stranger.
+    // The user's own stops by last use, by [StationMatch.key] ([YourStops.own]): each leads its tier in
+    // this order, and so does the interchange it folds into, so a stop picked lately ranks above an
+    // equally good one picked before it, and both above a stranger. An interchange's station name
+    // leads as itself, apart from the interchange's own row.
     own: List<String> = emptyList(),
     // Each line's name as TfL spells it ("Hammersmith & City"), by id, for a line the index carries
     // by id alone. Empty in an older index.
@@ -48,16 +49,70 @@ class StationIndex(
      */
     fun search(query: String, limit: Int = DEFAULT_LIMIT): List<StationMatch> {
         val scored = stations.mapNotNull { station ->
-            StationMatcher.tier(query, station.name, station.id, station.hubId)?.let { station to it }
+            StationMatcher.tier(query, station.name, station.id, station.hubId)?.let {
+                Scored(StationMatch(station.id, station.name, station.modes), station.hubId, it)
+            }
+        } + hubNames.mapNotNull { name ->
+            // By its name alone: a station code ("kgx") is the interchange's, and finds that row.
+            StationMatcher.tier(query, name.name)?.let { Scored(name, "", it) }
         }
-        val matchedIds = scored.mapTo(HashSet()) { it.first.id }
+        val matchedIds = scored.mapTo(HashSet()) { it.match.id }
         return scored
-            .filter { (station, _) -> station.hubId.isBlank() || station.hubId !in matchedIds }
+            .filter { it.hubId.isBlank() || it.hubId !in matchedIds }
             .sortedWith(
-                compareBy({ it.second }, { leadOf(it.first.id) }, { !it.first.isHub }, { it.first.name.length }, { it.first.name }),
+                compareBy({ it.tier }, { leadOf(it.match) }, { !it.match.id.startsWith("HUB", ignoreCase = true) }, { it.match.name.length }, { it.match.name }),
             )
             .take(limit)
-            .map { (station, _) -> StationMatch(station.id, station.name, station.modes) }
+            .map { it.match }
+    }
+
+    private class Scored(val match: StationMatch, val hubId: String, val tier: StationMatchTier)
+
+    /**
+     * Each interchange's station names, as rows of their own beside the interchange's (maintainer,
+     * 2026-10-09), so a rider finds King's Cross & St Pancras by either name: "King's Cross" (Tube ·
+     * National Rail) and "St Pancras International" (National Rail). A member's name is cleaned of
+     * what tells its records apart rather than places ("London …", "… LL", a line in brackets), and
+     * members of one name are one row; a member named for two others ("King's Cross St. Pancras",
+     * the tube station) joins the first; a name the interchange itself goes by is left to its row
+     * (West Hampstead lists "West Hampstead Thameslink" only). An interchange whose members come to
+     * one name lists none:
+     * Paddington, Waterloo and Victoria stay one row each. Each row's modes put the Underground
+     * first ([MODE_ORDER]), and are its [StationMatch.lead].
+     */
+    // Built on first read from the whole index: a worker's work.
+    @get:WorkerThread
+    val hubNames: List<StationMatch> by lazy {
+        stations.filter { it.hubId.isNotBlank() && it.hubId in byId }
+            .groupBy { it.hubId }
+            .flatMap { (hub, members) -> namesIn(hub, members) }
+    }
+
+    private fun namesIn(hub: String, members: List<IndexedStation>): List<StationMatch> {
+        // Display name and modes, by the name as compared, in the members' order.
+        val groups = LinkedHashMap<String, Pair<String, MutableList<String>>>()
+        // "London" is the place's own name where the interchange says so (London Bridge).
+        val keepLondon = byId.getValue(hub).name.startsWith("London ")
+        for (member in members) {
+            val display = memberName(member.name, keepLondon)
+            if (display.isBlank()) continue
+            groups.getOrPut(StationMatcher.normalize(display).lowercase()) { display to mutableListOf() }.second += member.modes
+        }
+        for (joint in groups.keys.toList()) {
+            val base = groups.keys.firstOrNull { base ->
+                base != joint && joint.startsWith("$base ") &&
+                    groups.keys.any { other -> other != base && other != joint && other.startsWith(joint.removePrefix("$base ")) }
+            } ?: continue
+            groups.remove(joint)?.let { (_, modes) -> groups.getValue(base).second += modes }
+        }
+        if (groups.size < 2) return emptyList()
+        // A name the interchange already goes by is its own row ("West Hampstead"): not a second one.
+        val hubName = StationMatcher.normalize(memberName(byId.getValue(hub).name, keepLondon)).lowercase()
+        groups.remove(hubName)
+        return groups.values.map { (display, modes) ->
+            val ordered = modes.filter { it.isNotBlank() }.distinct().sortedBy { MODE_ORDER.indexOf(it).let { i -> if (i < 0) MODE_ORDER.size else i } }
+            StationMatch(hub, display, ordered, lead = ordered)
+        }
     }
 
     /**
@@ -91,8 +146,10 @@ class StationIndex(
     fun rank(query: String, local: List<StationMatch>, remote: List<StationMatch>, limit: Int = DEFAULT_LIMIT): List<StationMatch> {
         // A bundled station has no position of its own; TfL's copy of it lends one, for the fold below.
         val placed = remote.filter { it.latitude != null && it.longitude != null }.associateBy { it.id }
-        val candidates = (local.map { match -> placed[match.id]?.let { match.copy(latitude = it.latitude, longitude = it.longitude) } ?: match } + remote)
-            .distinctBy { it.id }
+        // An interchange's station name stays unplaced, so it never folds into the interchange's own row
+        // of the same place, nor anything into it: a row once listed stays where it is.
+        val candidates = (local.map { match -> placed[match.id]?.takeIf { match.lead.isEmpty() }?.let { match.copy(latitude = it.latitude, longitude = it.longitude) } ?: match } + remote)
+            .distinctBy { it.key }
         val matchedIds = candidates.mapTo(HashSet()) { it.id }
         // One ranking over both sources, by the same rules as [search] — tier, the user's own stops
         // first, then interchanges, shorter name, then name — so a TfL bus stop that matches as well
@@ -103,8 +160,8 @@ class StationIndex(
             .withIndex()
             .sortedWith(
                 compareBy(
-                    { StationMatcher.tier(query, it.value.name, it.value.id, hubOf[it.value.id].orEmpty())?.ordinal ?: StationMatchTier.entries.size },
-                    { leadOf(it.value.id) },
+                    { tierOf(query, it.value)?.ordinal ?: StationMatchTier.entries.size },
+                    { leadOf(it.value) },
                     { !it.value.id.startsWith("HUB", ignoreCase = true) },
                     { it.value.name.length },
                     { it.value.name },
@@ -116,19 +173,25 @@ class StationIndex(
             .take(limit)
     }
 
+    // An interchange's station name matches by its name alone, as in [search].
+    private fun tierOf(query: String, match: StationMatch): StationMatchTier? =
+        if (match.lead.isNotEmpty()) StationMatcher.tier(query, match.name)
+        else StationMatcher.tier(query, match.name, match.id, hubOf[match.id].orEmpty())
+
     // Each indexed station's interchange, for folding TfL's matches the way [search] folds its own.
     private val hubOf: Map<String, String> =
         stations.filter { it.hubId.isNotBlank() }.associate { it.id to it.hubId }
 
-    // Each own stop's place in [own], and its interchange's (the earliest of its members').
+    // Each own stop's place in [own], by key, and its interchange's (the earliest of its members').
+    // A station name's key isn't a member's id, so it lends the interchange's row nothing.
     private val leads: Map<String, Int> = buildMap {
-        own.forEachIndexed { i, id ->
-            putIfAbsent(id, i)
-            hubOf[id]?.let { putIfAbsent(it, i) }
+        own.forEachIndexed { i, key ->
+            putIfAbsent(key, i)
+            hubOf[key]?.let { putIfAbsent(it, i) }
         }
     }
 
-    private fun leadOf(id: String): Int = leads[id] ?: Int.MAX_VALUE
+    private fun leadOf(match: StationMatch): Int = leads[match.key] ?: Int.MAX_VALUE
 
     private val byId: Map<String, IndexedStation> by lazy { stations.associateBy { it.id } }
 
@@ -209,6 +272,33 @@ class StationIndex(
 
     companion object {
         const val DEFAULT_LIMIT = 20
+
+        // The order a station name's modes lead in: the Underground first, then the rest of TfL's
+        // metro-like services, then National Rail and the rarer modes.
+        private val MODE_ORDER = listOf(
+            "tube", "elizabeth-line", "overground", "dlr", "tram", "national-rail", "international-rail", "river-bus", "cable-car", "bus",
+        )
+
+        /**
+         * An interchange member's name as a rider says it: [cleanStopName], less what only tells
+         * TfL's records apart — a leading "London" (unless [keepLondon]: London Bridge), a trailing
+         * "LL" (St Pancras's low level), anything in brackets ("Paddington (H&C Line)", "Abbey Wood
+         * (London)"), a tram stop's or pier's type.
+         */
+        internal fun memberName(raw: String, keepLondon: Boolean = false): String =
+            matchStopName(raw)
+                .replace(RECORD_SUFFIX, "")
+                .replace(QUALIFIER, "")
+                .replace(LOW_LEVEL, "")
+                .let { if (keepLondon) it else it.replace(LONDON, "") }
+                .trim()
+
+        // What [matchStopName] leaves that only tells TfL's records of one station apart: a tram stop's
+        // or pier's type ("Beckenham Junction Tram Stop"), a place in brackets ("Abbey Wood (London)").
+        private val RECORD_SUFFIX = Regex("""\s+(Tram Stop|Pier)$""", RegexOption.IGNORE_CASE)
+        private val QUALIFIER = Regex("""\s*\([^)]*\)$""")
+        private val LOW_LEVEL = Regex("""\s+LL$""")
+        private val LONDON = Regex("""^London\s+""")
 
         // NaPTAN's prefixes: a rail access area and its station, a metro one and its station.
         private const val RAIL_PLATFORM = "9100"
