@@ -437,7 +437,7 @@ class FavoriteJourneysScreenshotTest {
     }
 
     @Test
-    fun the_location_disclosure_says_it_runs_while_closed_and_continues_or_not() {
+    fun the_location_disclosure_uses_plays_wording_and_continues_or_not() {
         var continued = 0
         var dismissed = 0
         composeRule.setContent {
@@ -446,9 +446,14 @@ class FavoriteJourneysScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        // Google Play's disclosure: location, used while the app is closed, kept on the phone.
-        composeRule.onNodeWithText("Allow all the time").assertIsDisplayed()
-        composeRule.onNodeWithText("even while it's closed", substring = true).assertIsDisplayed()
+        // Google Play's disclosure: location used when the app is not open, each feature, who it's shared
+        // with, and the choice Android offers next. Play rejected an earlier version that blurred these.
+        composeRule.onNodeWithText("Background location permission").assertIsDisplayed()
+        composeRule.onNodeWithText("access your location when the app is not open", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("show nearby stops on your widget and watch", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("not in London", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("sent to the transport operator, TfL", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("choose Allow all the time", substring = true).assertIsDisplayed()
         if (capturing()) {
             composeRule.onNode(isDialog()).captureRoboImage(filePath = "src/test/snapshots/images/location-disclosure.png")
         }
@@ -456,6 +461,20 @@ class FavoriteJourneysScreenshotTest {
         assertEquals(1, continued)
         composeRule.onNodeWithText("Not now").performClick()
         assertEquals(1, dismissed)
+    }
+
+    @Test
+    fun the_location_disclosure_names_the_while_in_use_step_when_location_isnt_allowed_yet() {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                LocationRationaleDialog(onContinue = {}, onDismiss = {}, foregroundGranted = false)
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("choose While using the app, then Allow all the time", substring = true).assertIsDisplayed()
+        if (capturing()) {
+            composeRule.onNode(isDialog()).captureRoboImage(filePath = "src/test/snapshots/images/location-disclosure-no-location.png")
+        }
     }
 
     @Test
