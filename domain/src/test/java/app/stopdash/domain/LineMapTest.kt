@@ -869,6 +869,20 @@ class LineMapTest {
     }
 
     @Test
+    fun `a train ending where it's boarded keeps that one station open, the rest folded`() {
+        // Morden as the terminus a southbound train ends at: its route page draws it alone, on the path.
+        val rides = listOf(ids("Morden"))
+        val map = LineMap.of(northern(), riding = setOf(rides[0].single()), rides = rides, ridesOpen = true)!!
+        assertTrue(map.row("Morden").onPath)
+        assertEquals(1, map.rows.count { it.onPath })
+        assertTrue("the rest still folds", map.folded(emptySet()).labels().any { it.startsWith("[") })
+        // Euston is a row on each Northern line trunk: with no track to say which, none opens.
+        val euston = listOf(ids("Euston"))
+        val ambiguous = LineMap.of(northern(), riding = setOf(euston[0].single()), rides = euston, ridesOpen = true)!!
+        assertEquals(0, ambiguous.rows.count { it.onPath })
+    }
+
+    @Test
     fun `a starred station a closure shuts shows it, and a stretch leading nowhere shows its runs`() {
         // A made-up closure through King's Cross St. Pancras, both of the rider's starred stops big interchanges.
         val shut = ids("Euston", "King's Cross St. Pancras", "Angel")

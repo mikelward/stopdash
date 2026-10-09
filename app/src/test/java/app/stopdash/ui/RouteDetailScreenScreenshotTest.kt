@@ -102,6 +102,20 @@ class RouteDetailScreenScreenshotTest {
         return DepartureRows.across(listOf(stop), now, statuses).first { it.upcoming.isNotEmpty() }
     }
 
+    // A Victoria line train ending at Victoria, where it's boarded: named by its destination alone, as a
+    // row that reaches the route page is (one TfL ids as ending here is hidden from the list).
+    private fun endingHereRow(): DepartureRow {
+        val stop = StopArrivals(
+            stopId = "940GZZLUVIC",
+            stopName = "Victoria",
+            departures = listOf(
+                Departure("victoria", "Victoria", "", "Victoria", "Southbound - Platform 1", now.plusSeconds(120), "tube"),
+            ),
+            fetchedAt = now,
+        )
+        return DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
+    }
+
     private fun healthyRow(platform: String? = null): DepartureRow {
         val stop = StopArrivals(
             stopId = "940GZZLUVIC",
@@ -878,6 +892,86 @@ class RouteDetailScreenScreenshotTest {
         composeRule.onNodeWithContentDescription("Lioness").assertIsDisplayed()
 
         captureSnapshot("route-detail-stops.png")
+    }
+
+    @Test
+    fun stopList_aTrainEndingHereSaysSo() {
+        // A train that ends where it's boarded: its one station, headed "Terminates here" rather than the
+        // platform's compass (maintainer, 2026-10-09). The list form: no route data to draw a map from.
+        setDetail {
+            StopDashTheme {
+                RouteDetailScreen(
+                    row = endingHereRow(),
+                    isStarred = false,
+                    starrable = true,
+                    disruptionUnknown = false,
+                    stale = false,
+                    now = now,
+                    onToggleStar = {},
+                    onBack = {},
+                    routeStops = RouteStopsUi.Loaded(listOf(RouteStop("940GZZLUVIC", "Victoria")), endsHere = true),
+                )
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Terminates here").assertIsDisplayed()
+        composeRule.onNodeWithText("Southbound").assertDoesNotExist()
+        composeRule.onNodeWithText("Stop list unavailable").assertDoesNotExist()
+        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your stop")).assertIsDisplayed()
+
+        captureSnapshot("route-detail-terminates-here.png")
+    }
+
+    @Test
+    fun theRouteMap_aTrainEndingHereSaysSo_withItsOneStationOpen() {
+        // The map form of a train ending where it's boarded: the line drawn, only this station open, headed
+        // "Terminates here", and no journey tip, since nothing past it can be favorited. Public stations.
+        val line = listOf(
+            "940GZZLUBXN" to "Brixton", "940GZZLUSKW" to "Stockwell", "940GZZLUVXL" to "Vauxhall", "940GZZLUPCO" to "Pimlico",
+            "940GZZLUVIC" to "Victoria", "940GZZLUGPK" to "Green Park", "940GZZLUOXC" to "Oxford Circus",
+            "940GZZLUWRR" to "Warren Street", "940GZZLUEUS" to "Euston",
+        )
+        val sequence = LineSequence(
+            routes = listOf(LineRoute("Brixton - Euston", line.map { it.first }, "outbound")),
+            stopNames = line.toMap(),
+        )
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence = sequence
+            },
+            io = kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+        setDetail {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalRouteStops provides repository, LocalStepFree provides stepFreeTable) {
+                    RouteDetailScreen(
+                        row = endingHereRow(),
+                        isStarred = false,
+                        starrable = true,
+                        disruptionUnknown = false,
+                        stale = false,
+                        now = now,
+                        onToggleStar = {},
+                        onBack = {},
+                        routeStops = RouteStopsUi.Loaded(listOf(RouteStop("940GZZLUVIC", "Victoria")), sequence = sequence, endsHere = true),
+                        onToggleJourney = {},
+                        onDismissJourneyTip = {},
+                    )
+                }
+            }
+        }
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("lineMap").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Terminates here").assertIsDisplayed()
+        composeRule.onNodeWithText("Southbound").assertDoesNotExist()
+        composeRule.onNodeWithText("Long-press a stop to favourite the journey there").assertDoesNotExist()
+        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your stop")).assertExists()
+        // Only its own station open: the line beyond folded (a run of one is drawn, so the fixture runs on to Euston).
+        composeRule.onNodeWithText("Green Park", useUnmergedTree = true).assertDoesNotExist()
+
+        captureSnapshot("route-detail-terminates-here-map.png")
     }
 
     // TfL's bundled step-free table, as the app ships it (SPEC *Step-free access*).

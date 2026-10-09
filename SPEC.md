@@ -896,7 +896,10 @@ of Train"** keeps TfL's wording on the list, as the platform board has it, but n
 has no stop list, and a trip or journey counts it only where every way it may run from its platform
 agrees (all pass the rider's stop, at least as far as where they part, or none does); otherwise it's
 one of the routes that couldn't be checked. **A service ending at the stop it's listed at** (a bus
-arriving at its stand, a train turned short there during engineering works) has no stop list, and a
+arriving at its stand, a train turned short there during engineering works) has no stops ahead: should
+its page be opened at all, it reads **"Terminates here"** over the line's map with only that station
+open, the rest of the line — the way on from there included — folded to open (maintainer,
+2026-10-09). A
 trip or journey counts it as not going there, never as a route that couldn't be checked: TfL lists
 it among the stop's arrivals, but it takes no one anywhere from there. It's matched as the
 near-me list matches a terminus — by TfL's destination id against the stop and its stop area, by
