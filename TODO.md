@@ -3095,9 +3095,14 @@ Builds on Phase 1's minimal line-status marking.
   - [ ] **Open the journey from its notification**, not just the app.
   - [ ] **Play declaration for background location** before release: alerts fire only in London, and the
         widget follows the rider (SPEC D1), both of which need `ACCESS_BACKGROUND_LOCATION`; Play asks for
-        a declaration and a demo video of the features that use it, and may refuse it. The video: the
-        disclosure, the prompt, then the widget moving stops with a mock-location app (the
-        `widget-follow-before/after` screenshots show the two states).
+        a declaration and a demo video of the features that use it, and may refuse it. The video, from
+        a fresh install with no location permission, so every grant is on camera:
+        1. Open StopDash; at its location prompt (for stops near you) choose **While using the app**.
+        2. Tap **Yes please** on the "Alerts only in London?" card (or turn on "Widget follows you").
+        3. The disclosure dialog, held long enough to read, then **Continue**.
+        4. Android's background step (Settings on Android 11+): choose **Allow all the time**.
+        5. The widget and the watch's tile moving stops with a mock-location app (the
+           `widget-follow-before/after` screenshots show the two states).
   - [ ] **Device check: the widget following the rider** — tap the header after moving (a mock-location
         app will do) and see the stops change; and with "every minute" on, that the move lands within a
         refresh or two of the phone's last known position updating.
