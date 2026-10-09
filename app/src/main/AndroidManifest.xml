@@ -12,6 +12,10 @@
          after boarding, never sending it (SPEC On the way). -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Journey alerts fire only in London (SPEC *Journeys → Alerts*): a background check sees where the
+         phone is only with location allowed all the time. Asked for from the favorite journeys list, and
+         only once some journey's alerts are on. -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <!-- "Get off soon" on a trip on the way (SPEC On the way): asked for when the rider taps
          Start, the one time an alert is wanted; a denial leaves the trip running, its screen saying
          alerts are off. VIBRATE, granted at install, lets the alert be felt in a pocket. -->

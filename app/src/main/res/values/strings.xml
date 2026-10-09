@@ -605,6 +605,18 @@
     <!-- On a journey's alerts screen when Android won't show StopDash's notifications. -->
     <string name="journey_alerts_notifications_off">Notifications are off, so alerts won\'t show</string>
     <string name="journey_alerts_notifications_allow">Allow</string>
+    <!-- Card atop the favorite journeys list (and at the foot of a journey's Alerts screen) when some
+         journey's alerts are on but location isn't allowed all the time: an offer, as Snoozemo's is. -->
+    <string name="journey_alerts_london_title">Alerts only in London?</string>
+    <string name="journey_alerts_london_body">Journey alerts can stay quiet when you\'re far from London.</string>
+    <string name="journey_alerts_london_allow">Yes please</string>
+    <string name="journey_alerts_london_decline">No thanks</string>
+    <!-- The disclosure before the background-location prompt, which Google Play's declaration requires precede it:
+         what location is used for, that it runs while the app is closed, and that it never leaves the phone. -->
+    <string name="journey_alerts_location_rationale_title">Allow all the time</string>
+    <string name="journey_alerts_location_rationale_body">StopDash uses your location to check you\'re in London before showing a journey alert, even while it\'s closed. It only runs during your alert times, and stays on your phone — nothing is collected or shared.</string>
+    <string name="journey_alerts_location_rationale_continue">Continue</string>
+    <string name="journey_alerts_location_rationale_dismiss">Not now</string>
     <!-- A direction's days, summarized. -->
     <string name="journey_alerts_days_every">Every day</string>
     <string name="journey_alerts_days_weekdays">Mon–Fri</string>

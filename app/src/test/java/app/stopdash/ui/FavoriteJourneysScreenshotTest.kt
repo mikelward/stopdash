@@ -15,6 +15,8 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -462,6 +464,80 @@ class FavoriteJourneysScreenshotTest {
         composeRule.onNodeWithTag("journeyAlertsNotificationsOff").assertIsDisplayed()
         composeRule.onNodeWithText("Allow").performClick()
         assertEquals(true, allowed)
+    }
+
+    @Test
+    fun the_list_asks_for_location_all_the_time_at_its_top_once_alerts_are_on() {
+        var asked = 0
+        var declined = 0
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                FavoriteJourneysScreen(
+                    state = FavoriteJourneysUi(listOf(northern, victoriaLine), askLocation = true),
+                    onBack = {},
+                    onRemove = {},
+                    onAllowLocation = { asked++ },
+                    onDeclineLocation = { declined++ },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Alerts only in London?").assertIsDisplayed()
+        captureSnapshot("favorite-journeys-location.png")
+        composeRule.onNodeWithTag("allowJourneyAlertsLocation").performClick()
+        assertEquals(1, asked)
+        composeRule.onNodeWithTag("declineJourneyAlertsLocation").performClick()
+        assertEquals(1, declined)
+    }
+
+    @Test
+    fun the_location_disclosure_says_it_runs_while_closed_and_continues_or_not() {
+        var continued = 0
+        var dismissed = 0
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                LocationRationaleDialog(onContinue = { continued++ }, onDismiss = { dismissed++ })
+            }
+        }
+        composeRule.waitForIdle()
+        // Google Play's disclosure: location, used while the app is closed, kept on the phone.
+        composeRule.onNodeWithText("Allow all the time").assertIsDisplayed()
+        composeRule.onNodeWithText("even while it's closed", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("continueJourneyAlertsLocation").performClick()
+        assertEquals(1, continued)
+        composeRule.onNodeWithText("Not now").performClick()
+        assertEquals(1, dismissed)
+    }
+
+    @Test
+    fun the_list_asks_nothing_while_location_is_allowed_or_no_alert_is_on() {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                FavoriteJourneysScreen(state = FavoriteJourneysUi(listOf(northern)), onBack = {}, onRemove = {})
+            }
+        }
+        composeRule.waitForIdle()
+        assertEquals(0, composeRule.onAllNodesWithTag("journeyAlertsLocation").fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun a_journeys_alerts_ask_for_location_all_the_time_at_their_foot() {
+        var asked = 0
+        val out = JourneyAlerts.directionKey(northern, northern.from.stopId)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                JourneyAlertsScreen(
+                    state = JourneyAlertsUi(northern, mapOf(out to JourneyAlerts.defaultsFor(northern).getValue(out)), askLocation = true),
+                    onBack = {},
+                    onUpdate = { _, _ -> },
+                    onAllowLocation = { asked++ },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("allowJourneyAlertsLocation").performScrollTo().performClick()
+        assertEquals(1, asked)
+        captureSnapshot("journey-alerts-location.png")
     }
 
     private fun captureSnapshot(name: String, widthPx: Int = 1080, heightPx: Int = 1920) {

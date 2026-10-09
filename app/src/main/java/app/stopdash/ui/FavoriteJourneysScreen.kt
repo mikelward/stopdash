@@ -15,6 +15,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -74,6 +77,9 @@ data class FavoriteJourneysUi(
     // off the main thread): one line per watched direction, or none for "Alerts off". A journey
     // missing (not worked out yet, or the schedules unreadable) says nothing of alerts.
     val alertSummaries: Map<String, List<String>> = emptyMap(),
+    // Some journey's alerts are on but location isn't allowed all the time, so they can't tell when the
+    // phone is away from London: a card at the top asks for it (maintainer, 2026-10-09).
+    val askLocation: Boolean = false,
 )
 
 /**
@@ -221,6 +227,9 @@ fun FavoriteJourneysScreen(
     onDismissAddNote: () -> Unit = {},
     // Opens a journey's alerts (SPEC *Journeys → Alerts*); null leaves rows inert.
     onOpenAlerts: ((FavoriteJourney) -> Unit)? = null,
+    // Asks for location all the time, so alerts fire only in London; or puts the card away for good.
+    onAllowLocation: () -> Unit = {},
+    onDeclineLocation: () -> Unit = {},
 ) {
     BackHandler(onBack = onBack)
     Surface(modifier = Modifier.fillMaxSize()) {
@@ -246,6 +255,9 @@ fun FavoriteJourneysScreen(
                         AppMenuOverflow()
                     }
                 }
+                // At the top, outside the scroll: worked out with the list, so it never pushes rows down after
+                // they appear.
+                if (state.askLocation) LondonOnlyCard(onAllowLocation, onDecline = onDeclineLocation)
                 // Outside the scroll, so a failed removal says so wherever the list is scrolled.
                 if (state.writeFailed) {
                     Row(
@@ -484,4 +496,63 @@ internal fun journeyAlertSummaries(
             }
         }
     }
+}
+
+/**
+ * Offers alerts only in London, which needs location all the time: atop the favorite journeys list, and at
+ * the foot of a journey's Alerts screen. An offer rather than a warning, as Snoozemo's location banner is;
+ * Yes please opens [LocationRationaleDialog] before Android's prompt.
+ */
+@Composable
+internal fun LondonOnlyCard(
+    onAllow: () -> Unit,
+    modifier: Modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+    // Null offers no No thanks: the Alerts screen's card is the way back to it after the list's was put away.
+    onDecline: (() -> Unit)? = null,
+) {
+    Card(modifier = modifier.fillMaxWidth().testTag("journeyAlertsLocation")) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = stringResource(R.string.journey_alerts_london_title),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = stringResource(R.string.journey_alerts_london_body),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+                if (onDecline != null) {
+                    TextButton(onClick = onDecline, modifier = Modifier.testTag("declineJourneyAlertsLocation")) {
+                        Text(stringResource(R.string.journey_alerts_london_decline))
+                    }
+                }
+                Button(onClick = onAllow, modifier = Modifier.testTag("allowJourneyAlertsLocation")) {
+                    Text(stringResource(R.string.journey_alerts_london_allow))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The disclosure before the background-location prompt, which Google Play's declaration requires precede
+ * it: what location is used for, that it runs while the app is closed, and that it never leaves the phone.
+ * Snoozemo's, in shape and wording; Continue opens Android's prompt.
+ */
+@Composable
+internal fun LocationRationaleDialog(onContinue: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.journey_alerts_location_rationale_title)) },
+        text = { Text(stringResource(R.string.journey_alerts_location_rationale_body)) },
+        confirmButton = {
+            TextButton(onClick = onContinue, modifier = Modifier.testTag("continueJourneyAlertsLocation")) {
+                Text(stringResource(R.string.journey_alerts_location_rationale_continue))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.journey_alerts_location_rationale_dismiss)) }
+        },
+    )
 }

@@ -255,6 +255,7 @@ import app.stopdash.ui.SettingsScreen
 import app.stopdash.ui.FavoriteJourneysUi
 import app.stopdash.ui.FavoriteJourneyPicker
 import app.stopdash.ui.FavoriteJourneysScreen
+import app.stopdash.ui.LocationRationaleDialog
 import app.stopdash.ui.JourneyAlertsScreen
 import app.stopdash.ui.journeyAlertSummaries
 import app.stopdash.ui.JourneyAlertsUi
@@ -1703,11 +1704,18 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 }
+                                // Whether location is allowed all the time, which alerts need to fire only in London; null
+                                // until first read. Read again on every return, since it's granted in Android's settings.
+                                var locationAllTime by remember { mutableStateOf<Boolean?>(null) }
+                                // And whether the list's card was put away with Not now.
+                                var locationDeclined by remember { mutableStateOf(false) }
                                 LifecycleResumeEffect(Unit) {
                                     // Asked off the main thread: a notification-manager call.
                                     // The check itself is re-armed app-wide on resume; this only keeps the screen's note true.
                                     val asking = removeScope.launch {
                                         journeyNotificationsOff = withContext(Dispatchers.IO) { !JourneyAlertNotification.canAlert(applicationContext) }
+                                        locationDeclined = withContext(Dispatchers.IO) { JourneyAlertState.locationDeclined(applicationContext) }
+                                        locationAllTime = withContext(Dispatchers.IO) { JourneyAlertLocation.allowedAllTheTime(applicationContext) }
                                     }
                                     onPauseOrDispose { asking.cancel() }
                                 }
@@ -1721,16 +1729,83 @@ class MainActivity : ComponentActivity() {
                                 // The list and what each row says of its alerts, worked out off the main thread from the
                                 // two stores and shown together, so a row never grows its summary after it appears
                                 // (Codex on #700). The previous pair stays up while the next is worked out.
-                                val journeysShown by produceState<Pair<List<FavoriteJourney>?, Map<String, List<String>>>?>(null, read, alertSchedules) {
+                                // And whether to ask for location all the time, with them, so its card never pushes the rows down.
+                                val journeysShown by produceState<FavoriteJourneysList?>(null, read, alertSchedules, locationAllTime, locationDeclined) {
                                     val loaded = read ?: return@produceState
                                     val alerts = alertSchedules ?: return@produceState
+                                    val allTime = locationAllTime ?: return@produceState
                                     val journeys = loaded.journeys
                                     val schedules = alerts.schedules
-                                    value = journeys to if (journeys == null || schedules == null) {
-                                        emptyMap()
-                                    } else {
-                                        withContext(Workers.compute) { journeyAlertSummaries(applicationContext, journeys, schedules) }
+                                    value = FavoriteJourneysList(
+                                        journeys,
+                                        if (journeys == null || schedules == null) {
+                                            emptyMap()
+                                        } else {
+                                            withContext(Workers.compute) { journeyAlertSummaries(applicationContext, journeys, schedules) }
+                                        },
+                                        askLocation = !allTime && !locationDeclined && !schedules.isNullOrEmpty(),
+                                    )
+                                }
+                                // Asks for location all the time: the while-using grant first where it's missing, since
+                                // Android offers "all the time" only on top of it. A refusal Android answers at once (asked
+                                // before and refused for good) opens the app's settings, where it can still be allowed.
+                                val locationScope = rememberCoroutineScope()
+                                val reopenLocation: () -> Unit = {
+                                    locationScope.launch {
+                                        locationDeclined = withContext(Dispatchers.IO) { JourneyAlertState.locationDeclined(applicationContext) }
+                                        locationAllTime = withContext(Dispatchers.IO) { JourneyAlertLocation.allowedAllTheTime(applicationContext) }
                                     }
+                                }
+                                var locationAskedAt by rememberSaveable { mutableLongStateOf(0L) }
+                                val openAppSettings = {
+                                    startActivity(
+                                        Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", packageName, null)),
+                                    )
+                                }
+                                val backgroundLocation = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                                    if (!granted && SystemClock.elapsedRealtime() - locationAskedAt < JourneyAlertState.AT_ONCE_MILLIS) openAppSettings()
+                                    reopenLocation()
+                                }
+                                val foregroundLocation = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+                                    when {
+                                        result.values.none { it } -> {
+                                            if (SystemClock.elapsedRealtime() - locationAskedAt < JourneyAlertState.AT_ONCE_MILLIS) openAppSettings()
+                                        }
+                                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
+                                            locationAskedAt = SystemClock.elapsedRealtime()
+                                            backgroundLocation.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                                        }
+                                    }
+                                    reopenLocation()
+                                }
+                                // Which grant is missing is read off the main thread; only the prompt opens here, in this
+                                // composition's scope, which owns the launchers. Opened from the disclosure dialog below,
+                                // never straight from a card (Google Play: the disclosure precedes the prompt).
+                                val requestLocation: () -> Unit = {
+                                    locationScope.launch {
+                                        val foreground = withContext(Dispatchers.IO) {
+                                            listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+                                                .any { ContextCompat.checkSelfPermission(applicationContext, it) == PackageManager.PERMISSION_GRANTED }
+                                        }
+                                        locationAskedAt = SystemClock.elapsedRealtime()
+                                        if (!foreground || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                                            foregroundLocation.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                                        } else {
+                                            backgroundLocation.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                                        }
+                                    }
+                                }
+                                // The disclosure, shown when a card's Yes please is tapped; kept through a rotation.
+                                var locationRationale by rememberSaveable { mutableStateOf(false) }
+                                val askLocation: () -> Unit = { locationRationale = true }
+                                if (locationRationale) {
+                                    LocationRationaleDialog(
+                                        onContinue = {
+                                            locationRationale = false
+                                            requestLocation()
+                                        },
+                                        onDismiss = { locationRationale = false },
+                                    )
                                 }
                                 // Whether Android was offering a rationale when the prompt was asked for: with what it
                                 // offers after, it tells a final refusal from a swiped-away prompt ([JourneyAlertState.recordPrompt]).
@@ -1793,7 +1868,14 @@ class MainActivity : ComponentActivity() {
                                 val shownAlerts = alertsJourney
                                 if (shownAlerts != null) {
                                     JourneyAlertsScreen(
-                                        state = JourneyAlertsUi(shownAlerts, alertSchedules?.schedules, journeyNotificationsOff == true, alertWriteFailed, loading = alertSchedules == null || journeyNotificationsOff == null),
+                                        state = JourneyAlertsUi(
+                                            shownAlerts,
+                                            alertSchedules?.schedules,
+                                            journeyNotificationsOff == true,
+                                            alertWriteFailed,
+                                            loading = alertSchedules == null || journeyNotificationsOff == null,
+                                            askLocation = locationAllTime == false && !alertSchedules?.schedules.isNullOrEmpty(),
+                                        ),
                                         onBack = { alertsJourney = null },
                                         onUpdate = { key, change ->
                                             // Asked for when a direction is turned on, the one time an alert is wanted.
@@ -1815,6 +1897,7 @@ class MainActivity : ComponentActivity() {
                                         },
                                         onAllowNotifications = askNotifications,
                                         onDismissWriteError = JourneyAlertWrites::dismiss,
+                                        onAllowLocation = askLocation,
                                     )
                                 } else if (journeyPicking) {
                                     val appContext = applicationContext
@@ -1869,7 +1952,7 @@ class MainActivity : ComponentActivity() {
                                 } else {
                                     val listAlertWriteFailed by JourneyAlertWrites.failed.collectAsStateWithLifecycle()
                                     FavoriteJourneysScreen(
-                                        state = FavoriteJourneysUi(journeysShown?.first, loaded = journeysShown != null, writeFailed = journeyRemoveFailed, alertWriteFailed = listAlertWriteFailed, adding = journeyAdding, alertSummaries = journeysShown?.second.orEmpty()),
+                                        state = FavoriteJourneysUi(journeysShown?.journeys, loaded = journeysShown != null, writeFailed = journeyRemoveFailed, alertWriteFailed = listAlertWriteFailed, adding = journeyAdding, alertSummaries = journeysShown?.summaries.orEmpty(), askLocation = journeysShown?.askLocation == true),
                                         onBack = { favoriteJourneysOpen = false },
                                         onAdd = {
                                             JourneyAdds.dismiss()
@@ -1885,6 +1968,11 @@ class MainActivity : ComponentActivity() {
                                         onDismissAlertWriteError = { JourneyAlertWrites.failed.value = false },
                                         onRetry = { journeysAttempt++ },
                                         onOpenAlerts = { journey -> alertsJourney = journey },
+                                        onAllowLocation = askLocation,
+                                        onDeclineLocation = {
+                                            locationDeclined = true
+                                            removeScope.launch(Dispatchers.IO) { JourneyAlertState.declineLocation(applicationContext) }
+                                        },
                                     )
                                 }
                             } else if (top == TopOverlay.LINES) {
@@ -5776,6 +5864,13 @@ internal object StopJourneyWrites {
  * for the process, not the Alerts screen: the write runs on the app's scope so a change followed at
  * once by Back still lands, and its failure has to reach whichever screen is up when it ends.
  */
+/** The favorite journeys list as shown: the journeys, each one's alert summary, and whether to ask for location. */
+internal data class FavoriteJourneysList(
+    val journeys: List<FavoriteJourney>?,
+    val summaries: Map<String, List<String>>,
+    val askLocation: Boolean,
+)
+
 internal object JourneyAlertWrites {
     val failed = MutableStateFlow(false)
     private val latest = java.util.concurrent.atomic.AtomicLong()

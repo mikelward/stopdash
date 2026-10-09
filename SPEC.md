@@ -1146,8 +1146,29 @@ leaving the device, and no battery cost. Android can name a nearby cell's countr
 registration, which says nothing of the rider's network, so that counts as no answer. Where it can't say
 (Wi-Fi only, no SIM, airplane mode), alerts fire as before: a check
 never goes quiet for want of an answer. It tells only the UK from abroad, not London from Manchester;
-a finer line needs location in the background, a Play-restricted permission (#711). The debug log
+the finer line below needs location in the background. The debug log
 notes only that a check was held back, never the country.
+
+**Only in London** (maintainer, 2026-10-09). A check fires only while the phone is in or around London:
+within **120 km of Charing Cross**, which takes in the commuter belt (Brighton, Cambridge, Oxford,
+Peterborough) so a rider hears at home before setting out, and stays quiet in Birmingham, Bristol or
+anywhere further (maintainer, 2026-10-09: "people commute from Brighton too"). Away from it a check asks TfL nothing and takes down any alert up. A background check sees
+where the phone is only with location **allowed all the time**, so the app asks for it with a card atop
+the favorite journeys list and at the foot of a journey's Alerts screen, shown only while some
+direction's alerts are on and the permission isn't held (the while-using grant first, where it's
+missing; a refusal Android answers at once opens the app's settings). The card is an offer, as
+Snoozemo's location banner is ("Alerts only in London?", **Yes please** / **No thanks**); No thanks
+puts the list's card away for good, and the Alerts screen's stays as the way back. Yes please opens
+Google Play's prominent disclosure, a dialog before Android's prompt, Snoozemo's in shape and
+wording: what location is used for, that it runs while the app is closed and only during alert times,
+and that it stays on the phone (**Continue** / **Not now**). Without it, or with no fix to be
+had, alerts fire as before: a missing permission never silences them unseen. So does a fix whose
+uncertainty reaches inside the line, or that reports none, so an approximate fix near the edge never silences a rider
+who is really in range. Each check takes the last
+known position, or a fresh fix when that is too old: one location read per quarter hour inside a
+window, the battery cost this adds. The position is compared with that distance on the device and
+never kept, logged or sent (the debug log notes only that a check was held back); requesting background location is a Play policy declaration (a
+`TODO.md` item before release).
 
 One notification per journey, on its own **low-importance channel** (no sound, vibration or
 heads-up), titled the way the open window travels ("Euston ➔ Waterloo") and naming each disrupted

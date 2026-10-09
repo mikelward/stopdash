@@ -3038,6 +3038,11 @@ Builds on Phase 1's minimal line-status marking.
         gets 08:00–10:00 and the way back 16:00–18:00; the end nearer Home (a favorite place) is the
         likely signal for which is which.
   - [ ] **Open the journey from its notification**, not just the app.
+  - [ ] **Play declaration for background location** before release: alerts fire only in London, which
+        needs `ACCESS_BACKGROUND_LOCATION`; Play asks for a declaration and a demo video of the feature
+        that uses it, and may refuse it.
+  - [ ] **Check the London-only alerts on a device**: the "all the time" grant flow on Android 11+ (it
+        sends the rider to settings), and a check's location read under Doze.
   - [ ] **Only the alerts for the way traveled**, where TfL scopes an alert to a direction (bus
         diversions): needs the alert's direction looked up in the background, and which TfL direction
         the journey's line runs between its ends.
