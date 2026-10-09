@@ -204,7 +204,10 @@ the disruption. What each alert last said, and whether you swiped it away, is ke
 the same disruption isn't shown again. It is never logged or sent anywhere, stays out of your Android
 backup and device transfer (it describes this phone's notifications), and is deleted when the
 disruption clears, when the alert's time window closes, when you turn that direction's alerts off or
-remove the journey, or when notifications are turned off.
+remove the journey, or when notifications are turned off. The on-device debug log notes, for each
+check, when it was due and ran, how many journeys were being watched, the ids of the lines it asked
+about with TfL's word for each ("Severe Delays"), and how many alerts it showed or took down; and when
+the next check is due. It never names the journey's stops.
 
 Journey alerts are held back while your phone is on a mobile network outside the UK. Each check reads
 the country of the network your phone is connected to, which Android reports without any permission,
