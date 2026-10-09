@@ -143,16 +143,17 @@ object DepartureRows {
         // Planned work whose day has come shows as under way, however long ago it was fetched.
         val lineStatuses = LineStatus.asOf(lineStatuses, now)
         return stops.flatMap { stop ->
-            // A service ending no farther from the rider than this stop goes nowhere for them
-            // ([Terminating]). Hidden here, as the rows are built, rather than dropped from the
+            // A service ending at this stop, or no farther from the rider than it, goes nowhere for
+            // them ([Terminating.forStop]). Hidden here, as the rows are built, rather than dropped from the
             // stop's data, so a new location (a new [StopArrivals.nearer]) applies at once and the
             // widget, which renders through here too, hides the same ones.
             // Directions are inferred first, over the whole stop, so a hidden terminating train
             // still lends its direction to a kept one on its platform, as in [shows].
-            val shown = Terminating.drop(inferDirections(stop.departures), stop.nearer)
+            val ending = Terminating.forStop(stop)
+            val shown = Terminating.drop(inferDirections(stop.departures), ending)
             // The board's trains with no time, by the same rule: a canceled train ending here goes
             // nowhere for the rider either. One canceled goes at its scheduled time ([Countdown.stillShown]).
-            val untimed = Terminating.drop(stop.untimed.map { it.train }, stop.nearer).toHashSet()
+            val untimed = Terminating.drop(stop.untimed.map { it.train }, ending).toHashSet()
                 .let { kept -> stop.untimed.filter { it.train in kept && Countdown.stillShown(it, now) } }
             val lineModes = stop.lines.associate { it.id to it.mode }
             val timed = withUntimed(
@@ -1362,7 +1363,7 @@ object DepartureRows {
         if (line == null && lineServices.isEmpty()) return false
         val services = lineServices.filter { directionKeyOf(it) == row.directionKey }
         val judged = services.filter { it.expectedArrival > now }.ifEmpty { services }
-        val kept = Terminating.drop(judged, stop.nearer)
+        val kept = Terminating.drop(judged, Terminating.forStop(stop))
         if (judged.isNotEmpty() && kept.isEmpty()) return false
         // The mode the widget's row carries, by the same rule ([resolvedMode]): never another
         // direction's, so the two can't disagree about a row whose predictions all omit it.
