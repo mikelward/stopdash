@@ -67,6 +67,7 @@
     <string name="route_detail_status_stale">Status may be out of date</string>
     <string name="route_stops_loading">Loading stops…</string>
     <string name="route_stops_unavailable">Stop list unavailable</string>
+    <string name="route_terminates_here">Terminates here</string>
     <string name="route_stops_failed_offline">Couldn\'t load stops — you\'re offline</string>
     <string name="route_stops_failed_rate_limited">Couldn\'t load stops — TfL is rate-limiting</string>
     <string name="route_stops_failed_unreachable">Couldn\'t load stops — can\'t reach TfL</string>

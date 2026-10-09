@@ -513,6 +513,11 @@ class LineMap internal constructor(
                     from = at
                     hops = 0
                 }
+                // A one-station ride (a train ending where it's boarded) takes no track, but its station
+                // is still the trip's own, open on the map: where it's one row. A station on two
+                // branches (Euston) has no track to say which, so it opens none, and the page keeps
+                // its list (Codex, #729).
+                if (calls.size == 1) calls.single().singleOrNull()?.let { nodes += it }
                 ridden += nodes
                 nodes
             }

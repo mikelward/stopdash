@@ -5493,10 +5493,14 @@ internal fun RouteDetailScreen(
             if (mapDrawable && mapSection != null && routeMap != null) {
                 val inputs = routeMap
                 val stations = mapStations ?: if (drawnAs.isNullOrEmpty()) inputs.asDrawn else RouteMapStations.NONE
-                if (onToggleJourney != null && journeysHereFavorable && onDismissJourneyTip != null) {
+                // No tip where nothing past the boarding stop can be starred (a train ending here).
+                if (onToggleJourney != null && journeysHereFavorable && onDismissJourneyTip != null && railLoaded?.endsHere != true) {
                     JourneyTip(onDismissJourneyTip, Modifier.padding(top = 16.dp))
                 }
-                (PlatformDirection.of(followed?.platform) ?: bearingDirection(row.bearing))?.let {
+                // A train ending here heads nowhere: say so rather than its platform's compass.
+                val heading = if (railLoaded?.endsHere == true) stringResource(R.string.route_terminates_here)
+                else PlatformDirection.of(followed?.platform) ?: bearingDirection(row.bearing)
+                heading?.let {
                     Text(it, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp))
                 }
                 val toggle = onToggleJourney?.takeIf { journeysHereFavorable }

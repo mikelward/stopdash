@@ -55,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import app.stopdash.R
+import app.stopdash.domain.Connections
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.LineMap
@@ -119,11 +120,14 @@ sealed interface RouteStopsUi {
     data class Failed(val kind: DeparturesUiState.Error.Kind) : RouteStopsUi
     // [positions]: each listed stop's published (latitude, longitude), for starring a journey;
     // [sequence]: the route they came from, which places a saved journey's stops on this page (a
-    // bus's way back uses the poles across the road).
+    // bus's way back uses the poles across the road); [endsHere]: the train ends at the boarding
+    // stop ([RouteStops.Resolution.EndsHere]), so [stops] is that stop alone and the page says
+    // "Terminates here" (maintainer, 2026-10-09).
     data class Loaded(
         val stops: List<RouteStop>,
         val positions: Map<String, Pair<Double, Double>> = emptyMap(),
         val sequence: LineSequence? = null,
+        val endsHere: Boolean = false,
     ) : RouteStopsUi
 }
 
@@ -263,6 +267,21 @@ internal fun rememberRouteStops(row: DepartureRow, next: Departure?, retry: Int)
                 resolution.stops.mapNotNull { stop -> sequence.stopPositions[stop.id]?.let { stop.id to it } }.toMap(),
                 sequence,
             )
+            // It ends here: the one station, so the page draws it on the line's map with the rest folded,
+            // the way on from here among them, rather than "unavailable" (maintainer, 2026-10-09).
+            RouteStops.Resolution.EndsHere -> {
+                val here = RouteStop(
+                    row.stopId,
+                    sequence.stopNames[row.stopId].orEmpty().ifBlank { row.stopName },
+                    Connections.of(sequence.stopLines[row.stopId].orEmpty(), row.lineId),
+                )
+                RouteStopsUi.Loaded(
+                    listOf(here),
+                    sequence.stopPositions[row.stopId]?.let { mapOf(row.stopId to it) }.orEmpty(),
+                    sequence,
+                    endsHere = true,
+                )
+            }
             else -> RouteStopsUi.Unavailable(resolution)
         }
     }
@@ -379,10 +398,11 @@ internal fun RouteStopsSection(
     }
     Column(modifier = modifier.fillMaxWidth()) {
         if (state is RouteStopsUi.Loaded) {
-            if (onToggleJourneyTo != null && onDismissJourneyTip != null) {
+            // No tip where nothing past the boarding stop can be starred (a train ending here).
+            if (onToggleJourneyTo != null && onDismissJourneyTip != null && !state.endsHere) {
                 JourneyTip(onDismiss = onDismissJourneyTip, modifier = Modifier.padding(bottom = 12.dp))
             }
-            direction?.let {
+            (if (state.endsHere) stringResource(R.string.route_terminates_here) else direction)?.let {
                 Text(
                     text = it,
                     style = MaterialTheme.typography.titleSmall,
