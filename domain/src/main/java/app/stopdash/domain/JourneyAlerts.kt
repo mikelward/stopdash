@@ -449,14 +449,20 @@ object JourneyAlerts {
 
     /**
      * [dismissed] after [actions]: a clear forgets the swipe, and so does a post saying something
-     * other than what was swiped, so the next swipe is the one that counts.
+     * other than what was swiped, so the next swipe is the one that counts. A clear of a journey
+     * [heldBack] (its window still open, its alert only taken down while the rider is away) keeps the
+     * swipe, so the same alert isn't brought back on their return (Codex on #712).
      */
     @WorkerThread
-    fun dismissedAfter(dismissed: Map<String, String>, actions: List<JourneyAlertAction>): Map<String, String> {
+    fun dismissedAfter(
+        dismissed: Map<String, String>,
+        actions: List<JourneyAlertAction>,
+        heldBack: Set<String> = emptySet(),
+    ): Map<String, String> {
         val next = dismissed.toMutableMap()
         for (action in actions) when (action) {
             is JourneyAlertAction.Post -> if (next[action.key] != action.result.fingerprint) next.remove(action.key)
-            is JourneyAlertAction.Clear -> next.remove(action.key)
+            is JourneyAlertAction.Clear -> if (action.key !in heldBack) next.remove(action.key)
         }
         return next
     }
@@ -474,6 +480,30 @@ object JourneyAlerts {
         val keys = journeys.flatMapTo(HashSet()) { listOf(directionKey(it, it.from.stopId), directionKey(it, it.to.stopId)) }
         return schedules.filterKeys { it in keys }
     }
+
+    /**
+     * Whether a check should hold its alerts back because the phone is abroad: the mobile network it's on
+     * ([networkCountry], an ISO 3166 code as Android reports it) is outside the UK (maintainer, 2026-10-09).
+     * Only a network known to be elsewhere does: with none (Wi-Fi only, no SIM, airplane mode), alerts fire
+     * as they would anyway, so a phone that can't say never silences them unseen. The Crown Dependencies'
+     * networks count as home, since their riders commute into London as anyone's do.
+     */
+    fun abroad(networkCountry: String?): Boolean {
+        val country = networkCountry?.trim()?.lowercase().orEmpty()
+        return country.isNotEmpty() && country !in HOME_NETWORKS
+    }
+
+    /**
+     * The country of the mobile network the phone is registered on, from what Android reports: its
+     * [networkCountryIso], but only with a [simReady] SIM and a [networkOperator] (Android's numeric code
+     * for the registered operator, blank when the phone isn't registered). Android can answer the
+     * country from a nearby cell alone, with no SIM or no registration, which says nothing of where
+     * the rider's network is (Codex on #712); null then, so alerts fire as before.
+     */
+    fun registeredCountry(networkCountryIso: String?, simReady: Boolean, networkOperator: String?): String? =
+        networkCountryIso?.takeIf { simReady && !networkOperator.isNullOrBlank() && it.isNotBlank() }
+
+    private val HOME_NETWORKS = setOf("gb", "uk", "gg", "je", "im")
 
     /** The zone a schedule is read in: the device's, as a place's chip days are. */
     fun zone(): ZoneId = ZoneId.systemDefault()
