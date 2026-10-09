@@ -1033,6 +1033,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       by its name, so the verdict differed by surface. Alternatives to weigh: carry each place's
       confirmed member ids (TfL stop areas only) in the persisted snapshot so every surface judges
       alike; or judge it at fetch time against the stop's stop area from TfL.
+- [ ] **A trip starting at a terminus can't follow the train it shows** (Codex, #729). The trip's
+      board now lists a terminus's arriving trains as the departures they become ([Turnback]), but
+      the trip checks a train by its own calls from TfL, which until it leaves are still its inbound
+      ones, ending at the boarding station; so none passes and the trip says it can't find the train,
+      as it did before #729 (when those trains read as going nowhere). A train with no vehicle id
+      can't be asked after at all. To weigh: accept a turnback at the boarding stop by the line's route
+      out of it until its own calls show the outbound run, then follow those.
 
 ## Phase 2 — Watched stops and settings
 
