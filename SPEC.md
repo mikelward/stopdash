@@ -1339,9 +1339,9 @@ its card's widest pill, a cut pill's included, so a card's stop names line up; p
 whole list, whose width moved every card each time a status or route landed while the page loaded —
 maintainer, 2026-10-04), then the first stop, and its minutes in the
 times column, in parentheses ("(3 min)", a duration, set against the first train's) — since it's why a train too soon to reach is grayed, and it reads as the
-route's first leg (maintainer, 2026-09-27, replacing "From ‹stop›" in the top row). A first stop
-under a minute away has no walk row; the top row says **"From ‹stop›"** before the arrival instead,
-the stop's name cut before the time is. Then a
+route's first leg (maintainer, 2026-09-27, replacing "From ‹stop›" in the top row). Every card has
+it, a first stop under a minute away too (without minutes), so every card's rows read the same: the
+top row only ever duration · arrival and the fare (maintainer, 2026-10-09). Then a
 row per ride names **where it gets off** — its line pill (the first ride's lines as the same cut
 pill), the stop, and a ⚠ just before the times when that line is disrupted, where the main
 screen's rows put it (maintainer, 2026-09-28) — so cards riding the same lines but changing at different stations read apart
@@ -1351,7 +1351,7 @@ each is a way to the same change, so only when matters, not which line, and the 
 rows tall rather than growing a row per line (maintainer, 2026-09-27, replacing a live row per
 line). The stop's name gives way before the times do, and shortens as a departure's destination
 does — whole words first ("Wood Ln", "Bush Mkt"), then its floor, and only then a single "…" — as do the walk
-row's stop and "From ‹stop›" (maintainer, 2026-09-27). A **later ride's row** says instead how often
+row's stop (maintainer, 2026-09-27). A **later ride's row** says instead how often
 its line runs, **"↻ 2–4 min"** (↻ for "every", to save width; a screen reader hears "Every 2 to 4 min"): the rider isn't there yet, so its countdowns say nothing they can
 use. It is the middle half of the gaps between that leg's live trains (those along its route), so a
 bunched pair or one long gap doesn't set it, and it shows only with at least three trains known
@@ -1871,7 +1871,9 @@ covers it, for the same purpose (app functionality) and with the same handling (
 answer the request, not collected or kept by StopDash); the form is re-checked before the release
 that ships it.
 
-**Fare** (maintainer, 2026-10-09). Each card ends with what its route costs ("£3.10"), and the open
+**Fare** (maintainer, 2026-10-09). Each card's top row ends with what its route costs ("£3.10"), beside
+the arrival; where the row can't hold it whole beside the arrival, it takes a line of its own just
+under, so it never cuts the timing, which itself wraps rather than being cut where no line holds it. The open
 route says whether that's the peak or off-peak fare ("£3.10 · peak") and, where the Planner warns of
 one, to touch a pink reader where the rider changes. It's the Planner's own price for the route, which
 comes with the plan, so it costs no request and is in place from the card's first frame: the single

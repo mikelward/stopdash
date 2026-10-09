@@ -8,6 +8,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.MeasureScope
+import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.layout.Measurable
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.Constraints
@@ -2268,7 +2271,7 @@ private fun RouteList(
                                     .padding(horizontal = 16.dp, vertical = 12.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                CardHeader(card, rideLines, shown.statuses, shown.walk)
+                                CardHeader(card, rideLines, shown.statuses)
                                 // The card's pill column: its widest pill ([pillSlotWidthPx]), so its rows' stop names
                                 // start in one place, a cut pill's row too. Per card, not across the list (maintainer,
                                 // 2026-10-04): a list-wide width fell back to each card's own, then to a lone pill's,
@@ -2277,9 +2280,6 @@ private fun RouteList(
                                 // list shows ([cardPillWidths]).
                                 val columnPx = pillWidths[cardKey(card.first().route)]
                                 RideStops(card, rideLines, shown.statuses, shown.rideClosures, shown.times, now, shown.walk, columnPx?.let { with(density) { it.toDp() } })
-                                // What the best route costs, where the Planner priced it: in with the route, so it
-                                // never moves the card once shown.
-                                card.first().route.fare?.let { CardFare(it) }
                             }
                         }
                         if (onHideMode != null) {
@@ -2632,8 +2632,10 @@ private fun RideStops(
     Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.testTag("rideStops")) {
         val start = rides.firstOrNull()
         val minutes = walk.toMinutes().toInt()
-        if (start != null && minutes > 0) {
-            val description = stringResource(R.string.trip_walk_first, start.fromName, minutes)
+        // On every card, a walk too short to time included, so where the trip starts always reads in one
+        // place (maintainer, 2026-10-09).
+        if (start != null) {
+            val description = if (minutes > 0) stringResource(R.string.trip_walk_first, start.fromName, minutes) else stringResource(R.string.trip_walk_first_now, start.fromName)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.testTag("walkToStart").clearAndSetSemantics { contentDescription = description },
@@ -2650,13 +2652,15 @@ private fun RideStops(
                 ShortenedName(start.fromName, MaterialTheme.typography.bodyLarge, Modifier.weight(1f).padding(start = 8.dp).testTag("rideStopName"))
                 // In the times column, to set against the first train's; in parentheses, as how long
                 // the walk takes, not a time.
-                Text(
-                    text = stringResource(R.string.trip_walk_minutes, minutes),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    modifier = Modifier.padding(start = 12.dp),
-                )
+                if (minutes > 0) {
+                    Text(
+                        text = stringResource(R.string.trip_walk_minutes, minutes),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        modifier = Modifier.padding(start = 12.dp),
+                    )
+                }
             }
         }
         rides.forEachIndexed { index, ride ->
@@ -2748,36 +2752,61 @@ private fun linesWarning(lines: List<TripLeg>, statuses: Map<String, LineStatus>
 }
 
 /**
- * A list card's top row: the best route's duration · arrival, alone when the [walk] to its first
- * stop has a row of its own below ([RideStops]); otherwise after where the trip starts, "From
- * ‹stop›". Its lines are the ride rows below, each with its ⚠. A walk-only route reads as the open
- * route's summary does ([RouteSummary]).
+ * A list card's top row: the best route's duration · arrival, and at its end what the route costs,
+ * where the Planner priced it ([CardFare]). Where the trip starts is the walk row below it, on every
+ * card ([RideStops]), so every card's rows read the same (maintainer, 2026-10-09). Its lines are the
+ * ride rows below, each with its ⚠. A walk-only route reads as the open route's summary does
+ * ([RouteSummary]).
  */
 @Composable
-private fun CardHeader(card: List<TripTiming.Estimate>, rideLines: Map<TripLeg, RideLines>, statuses: Map<String, LineStatus>, walk: Duration) {
+private fun CardHeader(card: List<TripTiming.Estimate>, rideLines: Map<TripLeg, RideLines>, statuses: Map<String, LineStatus>) {
     val estimate = card.first()
-    val first = estimate.route.rides.firstOrNull() ?: return RouteSummary(card, rideLines, statuses)
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        if (walk.toMinutes() < 1) {
-            // "From ‹stop›" around a stand-in for the stop, so the words around it are drawn whole and
-            // only the name shortens and elides.
-            val from = stringResource(R.string.trip_from, "\u0000")
-            val style = MaterialTheme.typography.titleMedium
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                from.substringBefore('\u0000').takeIf { it.isNotEmpty() }?.let { Text(it, style = style, maxLines = 1, softWrap = false) }
-                ShortenedName(first.fromName, style, Modifier.weight(1f, fill = false))
-                from.substringAfter('\u0000', "").takeIf { it.isNotEmpty() }?.let { Text(it, style = style, maxLines = 1, softWrap = false) }
-            }
+    if (estimate.route.rides.isEmpty()) return RouteSummary(card, rideLines, statuses)
+    val fare = estimate.route.fare
+    val fareGap = with(LocalDensity.current) { 12.dp.roundToPx() }
+    val lineGap = with(LocalDensity.current) { 4.dp.roundToPx() }
+    Layout(
+        content = {
+            // As large as the first ride's times (maintainer, 2026-09-27): when the trip gets there matters
+            // as much as when it leaves. It wraps rather than being cut where no line holds it (Codex on #722).
+            Text(
+                text = arrivalText(estimate),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.testTag("tripArrival"),
+            )
+            // The fare at the row's far end (maintainer, 2026-10-09: on the timing's row, not a line of its
+            // own). In with the route, so it never moves the row once shown.
+            if (fare != null) CardFare(fare)
+        },
+    ) { measurables, constraints ->
+        cardHeaderLayout(measurables, constraints, fareGap, lineGap)
+    }
+}
+
+/**
+ * Lays out a card's top row ([CardHeader]): the arrival, then the fare (when there's a second child),
+ * [fareGap] before it at the row's end. The fare shares the row only where the arrival fits whole on
+ * one line beside it; otherwise (a narrow screen, a large font, a long arrival range) it drops to a
+ * line of its own, [lineGap] below and at the same end (Codex on #722), and the arrival takes the
+ * whole width, wrapping if even that won't hold it. Placed relative to the layout direction, so a
+ * right-to-left screen mirrors it.
+ */
+private fun MeasureScope.cardHeaderLayout(measurables: List<Measurable>, constraints: Constraints, fareGap: Int, lineGap: Int): MeasureResult {
+    val width = constraints.maxWidth
+    val arrival = measurables[0]
+    val farePlaced = measurables.getOrNull(1)?.measure(Constraints(maxWidth = width))
+    val sharesRow = farePlaced != null && arrival.maxIntrinsicWidth(Constraints.Infinity) + fareGap + farePlaced.width <= width
+    val arrivalWidth = if (sharesRow) width - fareGap - farePlaced!!.width else width
+    val arrivalPlaced = arrival.measure(Constraints(maxWidth = arrivalWidth.coerceAtLeast(0)))
+    val rowHeight = maxOf(arrivalPlaced.height, if (sharesRow) farePlaced!!.height else 0)
+    val height = if (farePlaced != null && !sharesRow) rowHeight + lineGap + farePlaced.height else rowHeight
+    return layout(width, height) {
+        arrivalPlaced.placeRelative(0, (rowHeight - arrivalPlaced.height) / 2)
+        if (farePlaced != null) {
+            val y = if (sharesRow) (rowHeight - farePlaced.height) / 2 else rowHeight + lineGap
+            farePlaced.placeRelative(width - farePlaced.width, y)
         }
-        // As large as the first ride's times (maintainer, 2026-09-27): when the trip gets there matters
-        // as much as when it leaves.
-        Text(
-            text = arrivalText(estimate),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            modifier = Modifier.testTag("tripArrival"),
-        )
     }
 }
 
@@ -4540,18 +4569,20 @@ internal fun TripLinesContent(
 }
 
 /**
- * A card's fare ([TripFare]), at its foot under the arrival: the price alone, as the route's own page
- * says the rest (SPEC *Trips with a change → Fare*).
+ * A card's fare ([TripFare]), at the end of its top row beside the arrival ([cardHeaderLayout]): the
+ * price alone, as the route's own page says the rest (SPEC *Trips with a change → Fare*). The row's
+ * size, unbolded and muted, so the arrival still reads first.
  */
 @Composable
-private fun CardFare(fare: TripFare) {
+private fun CardFare(fare: TripFare, modifier: Modifier = Modifier) {
     Text(
         text = fare.label,
-        style = MaterialTheme.typography.bodyMedium,
+        style = MaterialTheme.typography.titleMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
+        // Wraps, on its line below, only where even a whole line can't hold it (a large font, a narrow
+        // screen): never cut, and still at the row's end (Codex on #722).
         textAlign = TextAlign.End,
-        maxLines = 1,
-        modifier = Modifier.fillMaxWidth().testTag("tripFare"),
+        modifier = modifier.testTag("tripFare"),
     )
 }
 

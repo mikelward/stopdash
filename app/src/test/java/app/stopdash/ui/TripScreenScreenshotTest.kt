@@ -299,10 +299,14 @@ class TripScreenScreenshotTest {
         // Where a test swaps in a later state, as the page's loads land; [state] if none.
         held: MutableState<TripViewModel.State>? = null,
         onListShown: (String) -> Unit = {},
+        layoutDirection: LayoutDirection? = null,
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
-                CompositionLocalProvider(LocalWorker provides (worker ?: LocalWorker.current)) {
+                CompositionLocalProvider(
+                    LocalWorker provides (worker ?: LocalWorker.current),
+                    LocalLayoutDirection provides (layoutDirection ?: LocalLayoutDirection.current),
+                ) {
                     // No outer provider: the screen checks its trains against the repository it's given.
                     TripScreen(
                         title = "To Canary Wharf",
@@ -1955,20 +1959,79 @@ class TripScreenScreenshotTest {
         composeRule.onAllNodesWithText("↻", substring = true, useUnmergedTree = true).assertCountEquals(1)
         composeRule.onAllNodesWithContentDescription("Every 4 to 6 min", useUnmergedTree = true).assertCountEquals(1)
         // Above the rides, the walk to where each starts: 2 min, so a train sooner than that reads
-        // as grayed for a reason. It takes the place of "From ‹stop›" in the top row.
+        // as grayed for a reason.
         composeRule.onAllNodes(hasTestTag("walkToStart"), useUnmergedTree = true).assertCountEquals(2)
         composeRule.onAllNodesWithContentDescription("Walk to Highbury & Islington (~2 min)", useUnmergedTree = true).assertCountEquals(2)
         composeRule.onAllNodesWithText("From", substring = true, useUnmergedTree = true).assertCountEquals(0)
     }
 
-    // A first stop right there has no walk to show: the top row says where the trip starts instead.
+    // A first stop right there still has its walk row, without minutes, so every card's rows read the
+    // same: duration · arrival on top, where the trip starts under it (maintainer, 2026-10-09).
     @Test
-    fun a_route_card_with_no_walk_says_where_it_starts() {
+    fun a_route_card_with_no_walk_still_shows_where_it_starts() {
         show(planned.copy(routes = listOf(viaCanadaWater, viaWhitechapel)), access = Duration.ZERO)
-        composeRule.onAllNodes(hasTestTag("walkToStart"), useUnmergedTree = true).assertCountEquals(0)
-        // "From" drawn beside the stop, not in it, so a narrow row cuts the stop's name, never "From".
-        composeRule.onAllNodesWithText("From ", useUnmergedTree = true).assertCountEquals(2)
-        composeRule.onAllNodesWithText("Highbury & Islington", useUnmergedTree = true).assertCountEquals(2)
+        composeRule.onAllNodes(hasTestTag("walkToStart"), useUnmergedTree = true).assertCountEquals(2)
+        composeRule.onAllNodesWithContentDescription("Walk to Highbury & Islington", useUnmergedTree = true).assertCountEquals(2)
+        composeRule.onAllNodesWithText("min)", substring = true, useUnmergedTree = true).assertCountEquals(0)
+        composeRule.onAllNodesWithText("From", substring = true, useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun a_card_keeps_its_fare_on_the_arrival_row() {
+        show(planned.copy(routes = listOf(viaCanadaWater.copy(fare = TripFare(310)))), access = Duration.ZERO)
+        val arrival = composeRule.onNodeWithTag("tripArrival", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val fare = composeRule.onNodeWithTag("tripFare", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertEquals(arrival.center.y, fare.center.y, 1f)
+        assertTrue("fare at $fare starts after arrival at $arrival", fare.left >= arrival.right)
+        captureSnapshot("trip-routes-fare-no-walk.png")
+    }
+
+    @Test
+    fun the_card_header_mirrors_right_to_left() {
+        show(planned.copy(routes = listOf(viaCanadaWater.copy(fare = TripFare(310)))), layoutDirection = LayoutDirection.Rtl)
+        val arrival = composeRule.onNodeWithTag("tripArrival", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val fare = composeRule.onNodeWithTag("tripFare", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertTrue("fare at $fare sits left of arrival at $arrival", fare.right <= arrival.left)
+    }
+
+    @Test
+    @Config(qualifiers = "en-rGB-w200dp-h914dp-420dpi", fontScale = 3f)
+    fun an_arrival_too_wide_for_any_line_wraps_rather_than_being_cut() {
+        // A two-pound-figure fare, as the Planner gives for Waterloo to Gatwick: laid out whole too.
+        show(planned.copy(routes = listOf(viaCanadaWater.copy(fare = TripFare(1350)))))
+        fun layout(tag: String): androidx.compose.ui.text.TextLayoutResult {
+            val results = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+            composeRule.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode()
+                .config[SemanticsActions.GetTextLayoutResult].action!!(results)
+            return results.single()
+        }
+        val arrival = layout("tripArrival")
+        assertTrue("arrival kept to one line", arrival.lineCount > 1)
+        assertTrue("arrival cut", !arrival.hasVisualOverflow)
+        val fare = layout("tripFare")
+        assertTrue("fare cut", !fare.hasVisualOverflow)
+        // Still at the row's end, wrapped or not.
+        for (line in 0 until fare.lineCount) assertEquals(fare.size.width.toFloat(), fare.getLineRight(line), 1f)
+    }
+
+    @Test
+    @Config(qualifiers = "en-rGB-w200dp-h914dp-420dpi")
+    fun on_a_narrow_row_the_fare_drops_below_the_arrival_never_cut() {
+        // Too narrow for "27 min · ~08:29" and "£3.10" side by side (Codex on #722): the fare takes a
+        // line of its own, at the row's end, and both are laid out whole.
+        show(planned.copy(routes = listOf(viaCanadaWater.copy(fare = TripFare(310)))))
+        fun node(tag: String) = composeRule.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode()
+        fun whole(tag: String): Boolean {
+            val results = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+            node(tag).config[androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult].action?.invoke(results)
+            // Laid out at least as wide as the text's own width: nothing of it cut.
+            return results.single().let { it.multiParagraph.maxIntrinsicWidth <= it.size.width + 1f }
+        }
+        val arrival = node("tripArrival").boundsInRoot
+        val fare = node("tripFare").boundsInRoot
+        assertTrue("fare at $fare sits below arrival at $arrival", fare.top >= arrival.bottom)
+        assertTrue("fare cut", whole("tripFare"))
+        assertTrue("arrival cut", whole("tripArrival"))
     }
 
     // A trip's stop names shorten as the main screen's destinations do: whole words first, each

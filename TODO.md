@@ -1795,10 +1795,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             question (*Prune a hub-keyed dismissal only when every member was checked*).
       - [ ] **Arrows between a route's pills** if space permits (dropped for width, 2026-09-26).
       - [x] **Show a route's fare** (maintainer, 2026-09-27; built 2026-10-09). The Planner's
-            `journeys[].fare.totalCost` at a card's foot, its peak or off-peak level and the pink
+            `journeys[].fare.totalCost` at the end of a card's top row, its peak or off-peak level and the pink
             reader warning on the open route; none for a route the Planner didn't price or StopDash
             joined itself. Caps aren't counted, as the Planner doesn't count them.
-        - [ ] Needs a device check: the card's height with its fare line, and a large font.
+        - [ ] Needs a device check: the arrival and the fare at a large font, where the fare drops below
+              the arrival; and the walk row on a card whose first stop is under a minute away.
       - [x] **Shared-leg pill**: a leg several routes serve alike (buses 43 and 134 share the stops
             to Highgate station) as one diagonally cut pill carrying both routes, and a live row per
             line in the one card (maintainer, 2026-09-26).

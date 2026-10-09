@@ -545,6 +545,7 @@
     <string name="trip_change">%1$d min to change</string>
     <!-- The rider's walk to the trip's first stop, estimated on the phone. -->
     <string name="trip_walk_first">Walk to %1$s (~%2$d min)</string>
+    <string name="trip_walk_first_now">Walk to %1$s</string>
     <!-- A route leg's line isn't running. %1$s is TfL's status ("Suspended"). -->
     <string name="trip_line_not_running">%1$s: %2$s</string>
     <!-- Placeholder in the station search field. -->
