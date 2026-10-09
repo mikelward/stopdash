@@ -25,6 +25,11 @@ exercises the whole spine the widget later renders from.
 
 ### Phase 0 — remaining (follow-up PRs)
 
+- [ ] Fix the flaky `LicensesOffMainTest.a_restored_dialog_finds_its_library_on_the_worker_thread`. It
+      passes alone but failed twice in full `:app:testDebugUnitTest` runs on 2026-10-09: the restored
+      dialog was constructed on the `licenses-worker` thread ("Can't create handler inside thread …
+      that has not called Looper.prepare()"), so something resumes onto the worker that should hop
+      back to the main thread. Found while rebasing #711, which doesn't touch the licenses screen.
 - [x] Trip page: work out its per-tick values off the main thread too. Each tick's estimates, cards,
       open route, what frames them, and each card's alerts, notices and times are one frame worked out on
       the page's worker (`tripFrame`), drawn against its own state and time.
