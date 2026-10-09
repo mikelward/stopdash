@@ -1,5 +1,7 @@
 package app.stopdash.data
 
+import app.stopdash.domain.StationFacility
+import app.stopdash.domain.StationFacts
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -228,6 +230,83 @@ class TflStopPointDtoTest {
             additionalProperties = listOf(TflAdditionalPropertyDto("Direction", "Towards", "Euston")),
         )
         assertEquals("", pole.fareZone("490000129D"))
+    }
+
+    private val kingsCross by lazy {
+        kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString<TflStopPointDto>(
+            checkNotNull(javaClass.getResource("/fixtures/stoppoint_hubkgx.json")).readText(),
+        )
+    }
+
+    @Test
+    fun `a station's facilities are those TfL says it has, Wi-Fi left out`() {
+        // TfL's recorded King's Cross St. Pancras tube station: no toilets of its own, an accessible one
+        // at National Rail, nine cash machines, a taxi rank, and Wi-Fi, which isn't read.
+        val tube = kingsCross.stationFacts("940GZZLUKSX")
+        assertEquals("1", tube.zone)
+        assertEquals(
+            listOf(StationFacility.ACCESSIBLE_TOILET, StationFacility.CASH_MACHINE, StationFacility.TAXI_RANK),
+            tube.facilities,
+        )
+        assertEquals("National Rail", tube.toiletNote)
+        // The National Rail station beside it says yes to toilets, a waiting room, a car park and a cash
+        // machine, and no to left luggage.
+        assertEquals(
+            listOf(StationFacility.TOILETS, StationFacility.WAITING_ROOM, StationFacility.CAR_PARK, StationFacility.CASH_MACHINE),
+            kingsCross.stationFacts("910GKNGX").facilities,
+        )
+    }
+
+    @Test
+    fun `a "no" is never a facility, and a count of none isn't a cash machine`() {
+        val station = TflStopPointDto(
+            id = "940GZZLUTCR",
+            additionalProperties = listOf(
+                TflAdditionalPropertyDto("Facility", "Toilets", "no"),
+                TflAdditionalPropertyDto("Facility", "Waiting Room", "no"),
+                TflAdditionalPropertyDto("Facility", "Cash Machines", "0"),
+                TflAdditionalPropertyDto("Facility", "WiFi", "no"),
+                TflAdditionalPropertyDto("Accessibility", "Toilet", "No"),
+                TflAdditionalPropertyDto("Accessibility", "ToiletNote", "(National Rail)"),
+            ),
+        )
+        val facts = station.stationFacts("940GZZLUTCR")
+        assertEquals(emptyList<StationFacility>(), facts.facilities)
+        // No accessible toilet, so no note about one.
+        assertEquals("", facts.toiletNote)
+    }
+
+    @Test
+    fun `a station with no facilities of its own takes its interchange's`() {
+        val hub = TflStopPointDto(
+            id = "HUBSRA",
+            additionalProperties = listOf(TflAdditionalPropertyDto("Facility", "Toilets", "yes")),
+            children = listOf(TflStopPointDto(id = "940GZZLUSTD")),
+        )
+        assertEquals(listOf(StationFacility.TOILETS), hub.stationFacts("940GZZLUSTD").facilities)
+    }
+
+    @Test
+    fun `a long toilet note is left out`() {
+        val station = TflStopPointDto(
+            id = "940GZZLUEUS",
+            additionalProperties = listOf(
+                TflAdditionalPropertyDto("Accessibility", "Toilet", "Yes"),
+                TflAdditionalPropertyDto("Accessibility", "ToiletNote", "Located on the concourse beside the ticket office, ask staff"),
+            ),
+        )
+        val facts = station.stationFacts("940GZZLUEUS")
+        assertEquals(listOf(StationFacility.ACCESSIBLE_TOILET), facts.facilities)
+        assertEquals("", facts.toiletNote)
+    }
+
+    @Test
+    fun `a bus stop has no facilities`() {
+        val pole = TflStopPointDto(
+            id = "490000129D",
+            additionalProperties = listOf(TflAdditionalPropertyDto("Direction", "Towards", "Euston")),
+        )
+        assertEquals(StationFacts(), pole.stationFacts("490000129D"))
     }
 
     @Test

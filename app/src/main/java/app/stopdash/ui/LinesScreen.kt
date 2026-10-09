@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import android.content.res.Resources
 import app.stopdash.domain.StopDistance
 import app.stopdash.domain.StopLinks
 import app.stopdash.domain.StopAccess
@@ -76,6 +77,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
@@ -94,6 +96,8 @@ import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.StopQualifier
 import app.stopdash.domain.lineStopCue
+import app.stopdash.domain.StationFacility
+import app.stopdash.domain.StationFacts
 import app.stopdash.domain.StopCue
 import app.stopdash.domain.StepFreeLevel
 import app.stopdash.domain.StepFreeAccess
@@ -316,20 +320,23 @@ internal fun LinesOverlay(
             // Its lines and the stations beside it, from the bundled index, worked out off the main thread.
             LaunchedEffect(stop.id) { viewModel.stopLinks(stop.id) }
             // Under From and To: a bus stop's letter and the way its buses go, from its stop area's poles,
-            // else a station's fare zone, each one cached request. A bus stop asks for no zone (it has
+            // else a station's fare zone and facilities, each one cached request. A bus stop asks for no zone (it has
             // none), a station for no poles (it has no letters), and a pier or cable car station for
             // neither (Codex on #676).
             val routes = LocalRouteStops.current
             val worker = LocalWorker.current
             var pole by remember(stop.id) { mutableStateOf<StopQualifier?>(null) }
-            var zone by remember(stop.id) { mutableStateOf<String?>(null) }
-            LaunchedEffect(stop.id, routes) {
+            var facts by remember(stop.id) { mutableStateOf<StationDetails?>(null) }
+            // The app's strings as the configuration now has them: a language change words the facilities
+            // again (the station's record is cached, so that asks TfL nothing).
+            val resources = LocalResources.current
+            LaunchedEffect(stop.id, routes, resources) {
                 val repository = routes ?: return@LaunchedEffect
                 // By the stop's own modes, not the line's: a station opened from another's details can be
                 // of another mode (a tube station beside a pier) (Codex on #676).
                 when (stop.cue ?: lineStopCue(line.mode)) {
                     StopCue.POLE -> pole = withContext(worker) { stopPole(repository, line.id, stop.id) }
-                    StopCue.ZONE -> zone = withContext(worker) { stopZone(repository, stop.id) }
+                    StopCue.ZONE -> facts = withContext(worker) { stationDetails(repository, resources, stop.id) }
                     StopCue.NONE -> Unit
                 }
             }
@@ -415,7 +422,8 @@ internal fun LinesOverlay(
                                 boardPending = board == null,
                                 view = view,
                                 pole = pole,
-                                zone = zone,
+                                zone = facts?.zone,
+                                facilities = facts?.facilities,
                                 cueSlot = true,
                                 access = access,
                                 accessSlot = isStation,
@@ -540,6 +548,9 @@ internal fun LineStopPage(
     pole: StopQualifier? = null,
     // A station's fare zone ("1", "2/3"); null for a bus stop, or while it's looked up.
     zone: String? = null,
+    // A station's facilities as one line ([facilitiesLine], made on the worker), at the page's foot; null
+    // for a bus stop, while they're looked up, or where TfL names none.
+    facilities: String? = null,
     // The line under From and To is kept for [pole] or [zone] from the first frame, blank while it's
     // looked up (or if the lookup finds none), so what's under it never moves when it comes in.
     cueSlot: Boolean = false,
@@ -683,6 +694,15 @@ internal fun LineStopPage(
                 }
             }
             if (departures != null || boardPending) stopBoard(departures, view, lineName, onOpenRoute)
+            // Last, so coming in never moves anything above it (SPEC *Finding a line → A station's facilities*).
+            if (facilities != null) {
+                item(key = "facilities") {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.testTag("lineStopFacilities")) {
+                        Text(stringResource(R.string.line_stop_facilities), style = MaterialTheme.typography.titleMedium)
+                        Text(facilities, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
         }
     }
 }
@@ -1068,15 +1088,19 @@ internal suspend fun stopPole(repository: RouteStopsRepository, lineId: String, 
     }
 }
 
+/** A station's fare [zone] and its [facilities] as the details show them ([facilitiesLine]). */
+internal data class StationDetails(val zone: String, val facilities: String?)
+
 /**
- * A station's fare zone ("1", "2/3"), from its own TfL record, through the route pages' repository (one
- * request a station a day, kept in memory). Null where the lookup failed (logged by the repository), as
- * the stop's details are whole without it; blank where TfL gives none.
+ * A station's fare zone and facilities line ([StationDetails]), from its own TfL record, through the
+ * route pages' repository (one request a station a day, kept in memory), the line put into words here on
+ * the worker, so composition only reads it (AGENTS.md *Main thread*). Null where the lookup failed
+ * (logged by the repository), as the stop's details are whole without them.
  */
 @WorkerThread
-internal suspend fun stopZone(repository: RouteStopsRepository, stopId: String): String? =
+internal suspend fun stationDetails(repository: RouteStopsRepository, resources: Resources, stopId: String): StationDetails? =
     try {
-        repository.loadZone(stopId)
+        repository.loadStationFacts(stopId).let { StationDetails(it.zone, facilitiesLine(resources, it)) }
     } catch (e: CancellationException) {
         throw e
     } catch (e: TflException) {
@@ -1105,3 +1129,25 @@ internal suspend fun stopAccessOn(
     mode: String,
 ): StopAccess = withContext(worker) { stopAccessFor(table, out, stopId, links, lineId, mode) }
 
+/**
+ * A station's facilities as one line, in [StationFacts]' order: "Toilets · Waiting room · Taxi rank", the
+ * accessible toilet with TfL's note on where ("Accessible toilet (National Rail)"). Null for none. Built
+ * from a list: on the worker only.
+ */
+@WorkerThread
+internal fun facilitiesLine(resources: Resources, facts: StationFacts): String? {
+    val names = facts.facilities.map { facility ->
+        when (facility) {
+            StationFacility.TOILETS -> resources.getString(R.string.facility_toilets)
+            StationFacility.ACCESSIBLE_TOILET -> resources.getString(R.string.facility_accessible_toilet).let { name ->
+                if (facts.toiletNote.isBlank()) name else resources.getString(R.string.facility_with_note, name, facts.toiletNote)
+            }
+            StationFacility.WAITING_ROOM -> resources.getString(R.string.facility_waiting_room)
+            StationFacility.LEFT_LUGGAGE -> resources.getString(R.string.facility_left_luggage)
+            StationFacility.CAR_PARK -> resources.getString(R.string.facility_car_park)
+            StationFacility.CASH_MACHINE -> resources.getString(R.string.facility_cash_machine)
+            StationFacility.TAXI_RANK -> resources.getString(R.string.facility_taxi_rank)
+        }
+    }
+    return names.takeIf { it.isNotEmpty() }?.joinToString(resources.getString(R.string.facility_separator))
+}

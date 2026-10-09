@@ -48,6 +48,8 @@ class EnGbStringsTest {
             "behavior" to "behaviour", "neighbor" to "neighbour", "neighbors" to "neighbours",
             "catalog" to "catalogue", "meter" to "metre", "meters" to "metres",
             "percent" to "per cent", "stroller" to "buggy",
+            "restroom" to "toilet", "restrooms" to "toilets", "ATM" to "cash machine",
+            "parking" to "car park", "baggage storage" to "left luggage", "taxi stand" to "taxi rank",
         )
     }
 }

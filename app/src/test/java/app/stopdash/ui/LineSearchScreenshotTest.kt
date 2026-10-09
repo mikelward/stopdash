@@ -315,6 +315,71 @@ class LineSearchScreenshotTest {
     }
 
     @Test
+    fun a_station_lists_the_facilities_tfl_says_it_has_at_its_foot() {
+        composeRule.setContent {
+            StopDashTheme {
+                LineStopPage(
+                    name = "King's Cross St. Pancras",
+                    distance = null,
+                    onFrom = {},
+                    onTo = {},
+                    onBack = {},
+                    zone = "1",
+                    facilities = facilitiesLine(
+                        composeRule.activity.resources,
+                        app.stopdash.domain.StationFacts(
+                            zone = "1",
+                            facilities = listOf(
+                                app.stopdash.domain.StationFacility.ACCESSIBLE_TOILET,
+                                app.stopdash.domain.StationFacility.CASH_MACHINE,
+                                app.stopdash.domain.StationFacility.TAXI_RANK,
+                            ),
+                            toiletNote = "National Rail",
+                        ),
+                    ),
+                    cueSlot = true,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        captureSnapshot("line-stop-facilities.png")
+        composeRule.onNodeWithText("Facilities").assertIsDisplayed()
+        // As UK riders read them (en-GB).
+        composeRule.onNodeWithText("Accessible toilet (National Rail) · Cash machine · Taxi rank").assertIsDisplayed()
+    }
+
+    @Test
+    fun facilities_read_as_uk_riders_know_them_and_a_toilet_without_a_note_has_no_brackets() {
+        val resources = composeRule.activity.resources
+        val all = app.stopdash.domain.StationFacility.entries
+        assertEquals(
+            "Toilets · Accessible toilet · Waiting room · Left luggage · Car park · Cash machine · Taxi rank",
+            facilitiesLine(resources, app.stopdash.domain.StationFacts(facilities = all)),
+        )
+        assertEquals(null, facilitiesLine(resources, app.stopdash.domain.StationFacts()))
+    }
+
+    @Test
+    fun a_station_tfl_names_no_facilities_for_shows_no_heading() {
+        composeRule.setContent {
+            StopDashTheme {
+                LineStopPage(
+                    name = "Euston",
+                    distance = null,
+                    onFrom = {},
+                    onTo = null,
+                    onBack = {},
+                    zone = "1",
+                    facilities = facilitiesLine(composeRule.activity.resources, app.stopdash.domain.StationFacts(zone = "1")),
+                    cueSlot = true,
+                )
+            }
+        }
+        composeRule.onNodeWithText("Zone 1").assertIsDisplayed()
+        composeRule.onNodeWithText("Facilities").assertDoesNotExist()
+    }
+
+    @Test
     fun a_stop_with_no_distance_and_no_to_shows_its_name_and_from_alone() {
         composeRule.setContent {
             StopDashTheme {

@@ -149,13 +149,29 @@ interface StopAreaSource {
 }
 
 /**
- * Reads a station's fare zone from TfL (`/StopPoint/{stopId}`): "1", "2/3", blank where TfL gives none
- * (a station outside the zones, a bus stop). For a stop's details (SPEC *Finding a line*); on demand,
- * never on the refresh path. Throws a [TflException] on failure.
+ * Reads a station's own TfL record (`/StopPoint/{stopId}`) for its details (SPEC *Finding a line*): its
+ * fare zone and its facilities ([StationFacts]). On demand, never on the refresh path. Throws a
+ * [TflException] on failure.
  */
 interface StopZoneSource {
-    suspend fun stopZone(stopId: String): String
+    suspend fun stationFacts(stopId: String): StationFacts
 }
+
+/**
+ * What a station's TfL record says about it: its fare [zone] ("1", "2/3", blank where TfL gives none: a
+ * station outside the zones, a bus stop), and the [facilities] TfL says it has, in a fixed order. TfL's
+ * facility data is old and patchy (it has Tottenham Court Road without Wi-Fi), so only a facility it
+ * says is there is kept: a "no" is never shown as one, and Wi-Fi isn't read at all (maintainer,
+ * 2026-10-09). [toiletNote] is TfL's note on the accessible toilet ("National Rail"), blank for none.
+ */
+data class StationFacts(
+    val zone: String = "",
+    val facilities: List<StationFacility> = emptyList(),
+    val toiletNote: String = "",
+)
+
+/** A facility a station's details can name (SPEC *Finding a line → A station's facilities*). */
+enum class StationFacility { TOILETS, ACCESSIBLE_TOILET, WAITING_ROOM, LEFT_LUGGAGE, CAR_PARK, CASH_MACHINE, TAXI_RANK }
 
 /**
  * A departure a filter left out because it couldn't be checked against its line's route: the line,
@@ -652,7 +668,7 @@ class RouteStopsRepository(
     private val stations: (() -> List<IndexedStation>)? = null,
     // Where the merging and placing above run ([Workers]).
     private val compute: CoroutineDispatcher = Workers.compute,
-    // A station's fare zone, for its details (null: none looked up, as in a test).
+    // A station's fare zone and facilities, for its details (null: none looked up, as in a test).
     private val zones: StopZoneSource? = source as? StopZoneSource,
 ) {
     private val cache = ConcurrentHashMap<String, RouteStopsStore.Timed<LineSequence>>()
@@ -672,9 +688,9 @@ class RouteStopsRepository(
     // And each such station's interchange, by the station's id.
     @Volatile private var hubByStation: Map<String, String> = emptyMap()
     private val areaCache = ConcurrentHashMap<String, RouteStopsStore.Timed<List<StopLocation>>>()
-    // Each station's fare zone as fetched, kept in memory for [maxAge]: a zone doesn't change, and one
-    // request per station opened in a day is all it costs, so it isn't persisted.
-    private val zoneCache = ConcurrentHashMap<String, RouteStopsStore.Timed<String>>()
+    // Each station's zone and facilities as fetched, kept in memory for [maxAge]: neither changes from one
+    // hour to the next, and one request per station opened in a day is all it costs, so it isn't persisted.
+    private val zoneCache = ConcurrentHashMap<String, RouteStopsStore.Timed<StationFacts>>()
     private val storeLock = Mutex()
     // Route sequences share TfL's in-flight request pool with the live refresh, and a National Rail
     // one can take seconds: at most this many at once, so live times always find a free slot.
@@ -787,23 +803,23 @@ class RouteStopsRepository(
     }
 
     /**
-     * The fare zone of station [stopId] ("1", "2/3"), fetched once a day per station and kept in memory;
-     * blank where TfL gives none, or no zone source is wired. Throws a [TflException] on failure after
-     * logging it (sanitized: the stop id and error class).
+     * Station [stopId]'s zone and facilities ([StationFacts]), fetched once a day per station and kept in
+     * memory; none where no source is wired. Throws a [TflException] on failure after logging it
+     * (sanitized: the stop id and error class).
      */
-    suspend fun loadZone(stopId: String): String = withContext(compute) {
+    suspend fun loadStationFacts(stopId: String): StationFacts = withContext(compute) {
         zoneCache.freshValue(stopId)?.let { return@withContext it }
-        val zones = zones ?: return@withContext ""
-        val zone = try {
-            zones.stopZone(stopId)
+        val zones = zones ?: return@withContext StationFacts()
+        val facts = try {
+            zones.stationFacts(stopId)
         } catch (e: CancellationException) {
             throw e
         } catch (e: TflException) {
             warn("stop zone fetch failed for $stopId: ${e::class.simpleName}")
             throw e
         }
-        zoneCache[stopId] = RouteStopsStore.Timed(clock(), zone)
-        zone
+        zoneCache[stopId] = RouteStopsStore.Timed(clock(), facts)
+        facts
     }
 
     /**

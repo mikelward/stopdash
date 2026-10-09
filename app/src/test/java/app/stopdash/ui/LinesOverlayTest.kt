@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
@@ -830,9 +831,9 @@ class LinesOverlayTest {
                 asked.note()
                 return poles
             }
-            override suspend fun stopZone(stopId: String): String {
+            override suspend fun stationFacts(stopId: String): app.stopdash.domain.StationFacts {
                 zones.note()
-                return "1"
+                return app.stopdash.domain.StationFacts("1", listOf(app.stopdash.domain.StationFacility.TOILETS))
             }
         },
         io = Dispatchers.Unconfined,
@@ -927,6 +928,9 @@ class LinesOverlayTest {
             }
             composeRule.onNodeWithTag("lineStopZone").assertTextEquals("Zone 1")
             composeRule.onNodeWithTag("lineStopPole").assertDoesNotExist()
+            // Its facilities, put into words on the worker with the fetch, at the page's foot.
+            composeRule.onNodeWithTag("lineStopPage").performScrollToNode(hasTestTag("lineStopFacilities"))
+            composeRule.onNodeWithText("Toilets").assertIsDisplayed()
             // Its step-free line is held, blank where no table says how step-free it is.
             composeRule.onNodeWithTag("lineStopAccessSlot").assertExists()
             // A station has no letters, so its poles aren't asked for; its zone is, on the worker.

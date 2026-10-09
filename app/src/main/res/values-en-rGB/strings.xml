@@ -29,4 +29,11 @@
     <string name="route_stop_journey_starred">Favourite journey</string>
     <string name="station_journey_add">Favourite</string>
     <string name="station_journey_write_failed_away">Couldn\'t save your favourite journey</string>
+    <!-- A station's facilities as they're signed in the UK. -->
+    <string name="facility_toilets">Toilets</string>
+    <string name="facility_accessible_toilet">Accessible toilet</string>
+    <string name="facility_left_luggage">Left luggage</string>
+    <string name="facility_car_park">Car park</string>
+    <string name="facility_cash_machine">Cash machine</string>
+    <string name="facility_taxi_rank">Taxi rank</string>
 </resources>

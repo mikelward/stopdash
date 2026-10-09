@@ -2773,6 +2773,9 @@ Builds on Phase 1's minimal line-status marking.
       the stop's details, its full name and distance, with From and To doing what From… and To… do.
   - [x] **Its fare zone** (maintainer, 2026-10-07): TfL's StopPoint `additionalProperties` carry a
         tube or rail station's zone; one on-demand request per stop opened, cached.
+  - [x] **Its facilities** (maintainer, 2026-10-09): toilets, an accessible toilet with TfL's note,
+        waiting room, left luggage, car park, cash machine and taxi rank, from the same record as the
+        zone; only what TfL says is there, Wi-Fi left out as unreliable. Needs a device check.
   - [x] **Its accessibility** (maintainer, 2026-10-07): step-free from street to platform, and a lift
         out of service now, from the step-free data the route pages already read.
   - [x] **Keep the line's map where it was across From** (Codex on #659): the line page's row, laid
