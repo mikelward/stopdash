@@ -6,6 +6,7 @@ import app.stopdash.domain.ToChoice
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Workers
 import app.stopdash.domain.Departure
+import app.stopdash.domain.DoubledTrains
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LocationFix
 import app.stopdash.domain.OffPlan
@@ -2084,6 +2085,7 @@ class ActiveTripTracker(
             Result.success(boardOf(ride, SteadyClock.stamp(now)).also { board ->
                 _nextBoard.value = board
                 refollow()
+                logDoubled(board, now)
                 if (boardSeenRide != ride) {
                     boardSeenRide = ride
                     boardSeen.clear()
@@ -2104,6 +2106,23 @@ class ActiveTripTracker(
             refollow()
             Result.failure(e)
         }
+
+    // The suspects last logged of the next board ([logDoubled]), so the same ones read again aren't.
+    private var boardDoubled: Set<String> = emptySet()
+
+    // A train the next board lists twice, or two at one platform under a minute apart ([DoubledTrains]):
+    // logged as TfL sent them, so a card that then shows more trains than the platform has can be traced
+    // to TfL's answer or to the app. Logged once for the same suspects.
+    private suspend fun logDoubled(board: NextBoard, now: Instant) {
+        val found = withContext(compute) {
+            board.boards.mapNotNull { (stop, trains) ->
+                DoubledTrains.find(trains.filter { it.mode.equals(board.ride.mode, ignoreCase = true) }, now)?.let { stop to it }
+            }
+        }
+        val key = found.flatMapTo(HashSet()) { (stop, it) -> it.key.map { suspect -> "$stop/$suspect" } }
+        if (key != boardDoubled) found.forEach { (stop, it) -> warn("on the way: board at $stop lists ${it.text}") }
+        boardDoubled = key
+    }
 
     // Where [trip] stood when last kept, before any answer: on board with its stop, waiting for its
     // train when it was due, or walking. Not Lost, which only an answer can say, but for on board with

@@ -1419,6 +1419,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [ ] **On the way** (maintainer, 2026-09-26; SPEC *On the way*; autopilot): Start on an open
             route follows the rider there, assuming the next train they can catch and switching
             when another is seen (this replaces the mock's "I'm on this one" tap as the way in).
+        - [ ] **A trip's board showing more trains than the platform has** (maintainer, 2026-10-09):
+              both branches' rows on one platform showed the same minutes while the station's own
+              display listed fewer trains. The debug log now names a train the board lists twice, or two
+              under a minute apart at one platform, as TfL sent them and as the trip's screen holds them
+              (`DoubledTrains`); fix where the next report shows it doubling.
         - [x] Which train makes each departure, and one train's calls ahead (`VehicleSource`).
         - [x] Following a started trip from its train's calls (`OnTheWay`, `:domain`).
           - [x] **A loop train's boarding call jumping over five minutes at once**: a loop train still
