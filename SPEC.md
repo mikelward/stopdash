@@ -2411,6 +2411,16 @@ changing, the notification's line also names where the train goes and where to s
 Platform 2 · Due in 4 min"). With no current answer the bar and chip are left off, as the text then says it's
 checking, and so is the bar with the train lost, as where the rider is along the ride isn't known; a
 route of more than ten legs folds its shortest into a neighbor, as Android draws ten at most.
+**One notification for the trip** (maintainer, 2026-10-09): while it's up, "Get off soon", "Time to
+board" and "Route disruption" are said in it rather than as notifications of their own, since a second
+notification takes the status bar's room and can leave the chip as a bare dot. The alert takes the
+title (its text too, where it has more to say than the step), and that one showing goes on the alert's
+own channel, so it sounds and vibrates as it always did and is muted the same way; it's then kept up to
+date quietly, and the step comes back once the alert is done. More than one standing, the most pressing
+is said: getting off, then boarding, then a disruption; a new one a more pressing alert would hide
+waits until it can be shown, so it's never taken as heard unseen. "Get off soon" said again only because
+the stop's time moved stays quiet. With the trip's notification swiped away or its
+channel muted (or the service not running), each posts on its own as before.
 Swiped away, it isn't posted again for that trip, as Android asks of a Live Update, until the app is
 opened on the trip again (the service can't run without it); where Live Updates
 are off it's the same notification, unpromoted. It stops itself once the

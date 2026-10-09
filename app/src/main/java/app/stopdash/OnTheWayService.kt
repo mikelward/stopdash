@@ -100,7 +100,8 @@ class OnTheWayService : Service() {
                 // Shown again on each change, and on each tick, so its minutes count down and an answer
                 // grown old turns to Checking… (or Updating…) though nothing else changed.
                 val shown = launch {
-                    val answers = combine(tracker.updatedAt, tracker.answeredAt, tracker.nextBoard, ::Triple)
+                    // The trip's alerts too ([TripAlerts]): said in this notification, shown again as they change.
+                    val answers = combine(tracker.updatedAt, tracker.answeredAt, tracker.nextBoard, TripAlerts.alerts) { updatedAt, answeredAt, board, _ -> Triple(updatedAt, answeredAt, board) }
                     combine(tracker.trip, tracker.progress, tracker.failed, answers, ticks(NOTIFICATION_TICK)) { trip, progress, failed, (updatedAt, answeredAt, board), _ ->
                         if (trip != null) {
                             val boarding = OnTheWayLiveUpdate.boarding(trip, progress, board, Instant.now())
@@ -117,6 +118,8 @@ class OnTheWayService : Service() {
                     stop = {
                         shown.cancel()
                         onWatch.cancel()
+                        // Its alerts go with it: nothing left to say them in.
+                        TripAlerts.clearAll()
                         // Off the watch too: a trip no longer followed isn't shown there as current.
                         WatchTripSync.clear(this@OnTheWayService)
                         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -387,6 +390,8 @@ internal object OnTheWayNotification {
         boarding: OnTheWayLiveUpdate.Boarding? = null,
         // False for a plain notification with no bar or chip: work over the route kept off the main thread.
         live: Boolean = true,
+        // The trip's alert to say in place of the step's title ([TripAlerts]), on its own channel.
+        alert: TripAlerts.Alert? = null,
     ): Notification {
         val current = ActiveTripTracker.isCurrent(updatedAt, now)
         val (title, detail) = nextStepText(context.resources, progress, now, current, asOf = answeredAt)
@@ -402,14 +407,17 @@ internal object OnTheWayNotification {
         // the status bar, where Android and the rider allow it; a plain ongoing notification where not.
         // The chip and the bar say only what the text does: with no current answer, neither.
         val shown = live && !failed && (current || !fromTfl(progress))
-        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+        val stepText = if (failed) failedText else OnTheWayLiveUpdate.withBoarding(context.resources, boarding.takeIf { shown }, detail)
+        // An alert takes the title, and its channel, so it's heard (once) and muted as its own notification
+        // was; its text where it has more to say than the step, which otherwise stays below it.
+        val builder = NotificationCompat.Builder(context, alert?.kind?.channelId ?: CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_appbar_route_arrow)
-            .setContentTitle(title)
-            .setContentText(if (failed) failedText else OnTheWayLiveUpdate.withBoarding(context.resources, boarding.takeIf { shown }, detail))
+            .setContentTitle(alert?.title ?: title)
+            .setContentText(alert?.text ?: stepText)
             .setSubText(trip?.let { context.getString(R.string.on_the_way_title, it.destinationName) })
             .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
             .setOngoing(true)
-            .setOnlyAlertOnce(true)
+            .setOnlyAlertOnce(alert?.sound != true)
             .setShowWhen(false)
             .setContentIntent(pending)
             // Dismissed, it stays dismissed for the trip, as Android asks of a Live Update ([dismissedTrip]).
@@ -417,8 +425,18 @@ internal object OnTheWayNotification {
             .setRequestPromotedOngoing(true)
         if (trip != null && shown) OnTheWayLiveUpdate.style(trip, progress, now)?.let(builder::setStyle)
         if (shown) OnTheWayLiveUpdate.chipText(context.resources, progress, now, boarding, OnTheWayLiveUpdate.distanceSystem(context))?.let(builder::setShortCriticalText)
+        if (alert?.sound == true) builder.setPriority(NotificationCompat.PRIORITY_HIGH)
         return builder.build()
     }
+
+    /**
+     * Whether the trip's notification is up, so the trip's alerts are said in it ([TripAlerts]): not
+     * swiped away, and its own channel not muted. Where it isn't, each posts as a notification of its own.
+     */
+    fun carried(context: Context): Boolean =
+        GetOffSoonAlert.canNotify(context) &&
+            NotificationManagerCompat.from(context).getNotificationChannel(CHANNEL_ID)?.importance != NotificationManager.IMPORTANCE_NONE &&
+            context.getSystemService(NotificationManager::class.java).activeNotifications.any { it.id == ID }
 
     /**
      * The trip ([ActiveTrip.startedAt]) whose notification the rider swiped away: not posted again for
@@ -437,8 +455,12 @@ internal object OnTheWayNotification {
     fun show(context: Context, trip: ActiveTrip, progress: TripProgress?, failed: Boolean, updatedAt: Instant?, answeredAt: Instant? = null, boarding: OnTheWayLiveUpdate.Boarding? = null) {
         if (!GetOffSoonAlert.canNotify(context)) return
         if (dismissedTrip == trip.startedAt) return
+        val now = Instant.now()
+        val alert = TripAlerts.top(context, now)
         try {
-            NotificationManagerCompat.from(context).notify(ID, build(context, trip, progress, failed, updatedAt, Instant.now(), answeredAt, boarding))
+            NotificationManagerCompat.from(context).notify(ID, build(context, trip, progress, failed, updatedAt, now, answeredAt, boarding, alert = alert))
+            // Heard: kept quiet on every showing after this one.
+            if (alert?.sound == true) TripAlerts.heard(alert.kind, alert)
         } catch (e: SecurityException) {
             StopdashDebugLog.warning("on the way: %s", "ongoing notification refused: ${e::class.simpleName}")
         }

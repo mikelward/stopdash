@@ -73,7 +73,7 @@ internal object TimeToBoardAlert {
         // the answer's age runs from when it was had, not from now, which a slow request can make later.
         val lasts = Duration.between(now, minOf(gone, answeredAt.plus(ActiveTripTracker.CURRENT_FOR)))
         if (lasts <= Duration.ZERO) return false
-        if (how == BoardPost.KEEP && !showing(context)) return false
+        if (how == BoardPost.KEEP && !showing(context, now)) return false
         ensureChannel(context)
         if (!GetOffSoonAlert.canNotify(context) ||
             NotificationManagerCompat.from(context).getNotificationChannel(CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE
@@ -81,13 +81,25 @@ internal object TimeToBoardAlert {
             log("on the way: board alert not shown, notifications off")
             return false
         }
+        val title = context.getString(R.string.on_the_way_board, waiting.lineName, waiting.leg.fromName)
+        // Said in the trip's own notification where it's up, so it's the only one (maintainer, 2026-10-09):
+        // its chip counts the minutes the header did, and the step below says when the train's due. A new
+        // one a more pressing alert would hide waits for a later refresh, to be heard when it shows.
+        if (how == BoardPost.NEW && OnTheWayNotification.carried(context) && TripAlerts.outranked(context, TripAlerts.Kind.BOARD, now)) {
+            log("on the way: board alert held, a more pressing alert is showing")
+            return false
+        }
+        if (TripAlerts.offer(context, TripAlerts.Alert(TripAlerts.Kind.BOARD, title, null, now.plus(lasts), sound = how == BoardPost.NEW))) {
+            NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
+            return true
+        }
         val open = Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             .putExtra(GetOffSoonAlert.EXTRA_OPEN_ON_THE_WAY, true)
         val pending = PendingIntent.getActivity(context, 1, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_appbar_route_arrow)
-            .setContentTitle(context.getString(R.string.on_the_way_board, waiting.lineName, waiting.leg.fromName))
+            .setContentTitle(title)
             .setSubText(context.getString(R.string.on_the_way_title, trip.destinationName))
             // Counts down to the train in the header, live, rather than a time that goes stale.
             .setWhen(due.toEpochMilli())
@@ -115,9 +127,13 @@ internal object TimeToBoardAlert {
     }
 
     /** Clears a posted alert: the rider boarded, another train is followed, a refresh failed, or the trip ended. */
-    fun cancel(context: Context) = NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
+    fun cancel(context: Context) {
+        TripAlerts.clear(TripAlerts.Kind.BOARD)
+        NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
+    }
 
-    // Whether the alert is still up: not swiped away, nor timed out.
-    private fun showing(context: Context): Boolean =
-        context.getSystemService(NotificationManager::class.java).activeNotifications.any { it.id == NOTIFICATION_ID }
+    // Whether the alert is still up: not swiped away, nor timed out; said in the trip's notification, while that's up.
+    private fun showing(context: Context, now: Instant): Boolean =
+        (TripAlerts.standing(TripAlerts.Kind.BOARD, now) && OnTheWayNotification.carried(context)) ||
+            context.getSystemService(NotificationManager::class.java).activeNotifications.any { it.id == NOTIFICATION_ID }
 }
