@@ -32,6 +32,7 @@ import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.FavoriteJourneysStore
 import app.stopdash.domain.JourneyAlertAction
+import app.stopdash.domain.JourneyAlertLog
 import app.stopdash.domain.JourneyAlertResult
 import app.stopdash.domain.JourneyAlertSchedule
 import app.stopdash.domain.JourneyAlerts
@@ -392,7 +393,8 @@ internal object JourneyAlertChecks {
         }
         val next = JourneyAlerts.nextCheck(journeys, schedules, at)
         if (next == null || !canAlert) {
-            if (next != null) logJourneyAlertWarning("not scheduled: notifications off")
+            // Said either way: a report with no alert to explain needs to show whether one was ever armed.
+            logJourneyAlertWarning(JourneyAlertLog.notScheduled(watched = next != null))
             work.cancelUniqueWork(JOURNEY_ALERTS_WORK).await()
             work.cancelUniqueWork(JOURNEY_ALERTS_CLOSE_WORK).await()
             JourneyAlertState.clearStale(context)
@@ -413,12 +415,15 @@ internal object JourneyAlertChecks {
                 // zero: setting the clock moves that moment, so a return to the app tells a manual clock
                 // change from the pending check itself, too (Codex on #700).
                 .addTag(CLOCK_TAG + clockMinute())
+                // When it's due, so it can log how late it ran: Android defers it in Doze.
+                .setInputData(androidx.work.workDataOf(DUE to due.toEpochMilli()))
                 .setInitialDelay(delay.toMillis(), TimeUnit.MILLISECONDS)
                 // Offline, a check inside a window waits for a network rather than fail and say nothing; one
                 // that only closes a window runs anyway, since taking an alert down needs none (Codex on #700).
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(if (asks) NetworkType.CONNECTED else NetworkType.NOT_REQUIRED).build())
                 .build(),
         ).await()
+        logJourneyAlertWarning(JourneyAlertLog.scheduled(now, due, asks, at.zone))
         // The first close from now on, among windows open now or when the check is due: one closing
         // before or at that check while another stays open must not wait for the later close (Codex on #700).
         val closes = if (asks) listOfNotNull(JourneyAlerts.closesAfter(journeys, schedules, at), JourneyAlerts.closesAfter(journeys, schedules, JourneyAlerts.at(due))).minOrNull() else null
@@ -438,14 +443,18 @@ internal object JourneyAlertChecks {
             JOURNEY_ALERTS_CLOSE_WORK,
             ExistingWorkPolicy.REPLACE,
             OneTimeWorkRequestBuilder<JourneyAlertWorker>()
-                .setInputData(androidx.work.workDataOf(CLOSE_ONLY to true))
+                .setInputData(androidx.work.workDataOf(CLOSE_ONLY to true, DUE to closes.toInstant().toEpochMilli()))
                 .setInitialDelay(Duration.between(now, closes.toInstant()).coerceAtLeast(Duration.ZERO).toMillis(), TimeUnit.MILLISECONDS)
                 .build(),
         ).await()
+        logJourneyAlertWarning(JourneyAlertLog.closeScheduled(now, closes.toInstant(), closes.zone))
     }
 
     /** Input marking a close check: clean-up only, no request (Codex on #700). */
     internal const val CLOSE_ONLY = "close_only"
+
+    /** Input: when a check was due, in epoch millis, for its log line. */
+    internal const val DUE = "due"
 }
 
 /**
@@ -528,6 +537,8 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
 
     private suspend fun check() {
         val context = applicationContext
+        // How late Android ran it (Doze defers it): a check armed before this was recorded doesn't say.
+        val late = inputData.getLong(JourneyAlertChecks.DUE, 0L).takeIf { it > 0L }?.let { Duration.ofMillis(System.currentTimeMillis() - it) }
         val store = DataStoreFavoriteJourneysStore.from(context, warn = ::logJourneyAlertWarning)
         val journeys = store.journeys().first() ?: throw java.io.IOException("journeys unreadable")
         val schedules = store.alertSchedules().first() ?: throw java.io.IOException("schedules unreadable")
@@ -578,6 +589,7 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
         val showing = JourneyAlertNotification.showing(context)
         val actions = JourneyAlerts.actions(results, stillActive.mapTo(HashSet()) { it.key }, announced, showing, dismissed)
         var moved: Set<String> = emptySet()
+        var done: List<JourneyAlertAction> = emptyList()
         JourneyAlertChecks.applying(
             syncsBefore, context, journeysNow, schedulesNow, closeOnly = closeOnly,
             // As the settings stand when it runs, at the last moment before the re-arm: a direction can open while
@@ -600,7 +612,7 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
                     val linesNow = JourneyAlerts.linesFor(stillActive, schedulesNow, atAnswer, JourneyAlerts.pinnedLines(snapshot(context)))
                     moved = JourneyAlerts.moved(answer.lines, linesNow)
                 }
-                val done = actions.filter { action ->
+                done = actions.filter { action ->
                     // The rider changed this journey's alerts since the settings were read: its decision was
                     // made from old ones, so it's left to the check that change armed.
                     if (!unchanged(action.key, watchesNow[action.key])) return@filter false
@@ -635,6 +647,21 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
                 AnnouncedJourneyAlerts.updateDismissed(context) { JourneyAlerts.dismissedAfter(it, done, heldBack) }
             }
         }
+        // Every check says what it saw and did, not only a failing one: a missed alert has to be explainable
+        // from a bug report (SPEC principle 2). A post Android refused also logs "alert refused".
+        val skipped = when {
+            closeOnly -> "asks nothing"
+            active.isEmpty() -> "no window open"
+            !asking -> "notifications off"
+            abroad -> "abroad, held back"
+            else -> null
+        }
+        logJourneyAlertWarning(
+            JourneyAlertLog.check(
+                late, closeOnly, active.size, skipped,
+                answer?.lines?.values?.flatten()?.toSet().orEmpty(), answer?.statuses, done, actions.size - done.size,
+            ),
+        )
     }
 
     // The widget's pins and line names, or null when unreadable: then each journey is checked on its own
@@ -649,7 +676,7 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
     }
 
     // What TfL says of [active]'s lines now (none when it couldn't be asked), and the lines asked about.
-    private class Answer(val results: List<JourneyAlertResult>, val lines: Map<String, Set<String>>)
+    private class Answer(val results: List<JourneyAlertResult>, val lines: Map<String, Set<String>>, val statuses: Map<String, LineStatus>? = null)
 
     private suspend fun results(context: Context, active: List<FavoriteJourney>, schedules: Map<String, JourneyAlertSchedule>, now: Instant): Answer {
         val snapshot = snapshot(context)
@@ -675,7 +702,7 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
             JourneyAlerts.directionsOf(active, schedules, at),
             // The window each is found in, so a swipe holds only for it.
             active.mapNotNull { journey -> JourneyAlerts.watchedUntil(journey, schedules, at)?.let { journey.key to it.toInstant() } }.toMap(),
-        ), lines)
+        ), lines, current)
     }
 
     // The lines' statuses with the rider's key, through the shared rate budget ([JourneyAlertChecks.answered]).

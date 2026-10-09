@@ -1161,6 +1161,9 @@ offline or not. Where both directions' windows overlap, both directions' lines a
 what's shown stays until its timeout. A tap opens the app. The check asks about every alert on the
 line, either direction: which way a disruption runs is known only for some bus alerts, and only after
 a lookup the background check doesn't make.
+Each check, and each arming of the next, leaves a line in the debug log (principle 2): when it was due
+and how late it ran, the lines it asked about with TfL's status for each, and what it posted or took
+down, so an alert that never came can be explained from a bug report. Never the journey's stops.
 
 **Change at a fork.** When a line runs only one branch from the origin (a Northern line train to
 Edgware from King's Cross, none to High Barnet) and no direct train is due, the card shows the
