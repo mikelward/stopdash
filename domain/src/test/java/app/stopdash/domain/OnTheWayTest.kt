@@ -2027,6 +2027,18 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `a refresh takes a fix for the whole trip, a ride's middle too, and none once it's done`() {
+        // Mid-ride, on board and seen there, far from either end: outside every window the live updates
+        // watch, yet the refresh still takes a fix (maintainer, 2026-10-09).
+        val onBoard = ActiveTrip(TripRoute(listOf(toStop, ride, walk, second)), "E", startedAt = t0, legIndex = 1, boarded = true, boardedAt = at(5), onBoardSeen = true, vehicleId = "7")
+        assertFalse(OnTheWay.wantsFix(onBoard, at(9)))
+        assertTrue(OnTheWay.takesFix(onBoard))
+        assertTrue(OnTheWay.takesFix(onBoard.copy(legIndex = 0, boarded = false, onBoardSeen = false, vehicleId = "")))
+        assertTrue(OnTheWay.takesFix(onBoard.copy(legIndex = 3)))
+        assertFalse(OnTheWay.takesFix(onBoard.copy(legIndex = 4)))
+    }
+
+    @Test
     fun `a walk to a station the Planner left unplaced is seen at by its own point and entrances`() {
         val unplaced = ActiveTrip(TripRoute(listOf(toStop, ride, walk, second)), "E", startedAt = t0)
         // Worth a fix, and the station read: its own point and entrances can place it.
