@@ -1453,6 +1453,81 @@ object OnTheWay {
      */
     fun ahead(along: Along): Int = if (along.atStop) along.from + 1 else along.from
 
+    /**
+     * The other ways [ride]'s own line runs from its boarding stop to where it gets off, by its route
+     * ([sequence]): another branch that parts from the ride and joins it again before that stop (Bank or
+     * Charing Cross, Kennington to Camden Town). Each is the ride as that branch runs it, its own stops
+     * between, so a train taking it is checked on its own stops, as another line's is ([RideLines]);
+     * it reaches the same stop, so it's the rider's ride too (maintainer, 2026-10-09). Never a loop's other
+     * way round: a way back through the boarding stop, or through a stop the plan's own route reaches only
+     * before boarding or after where they get off (Codex, #728). None for a leg whose stops can't be matched
+     * ([checkable]), or where the line runs only the plan's way.
+     */
+    @WorkerThread
+    fun branchWays(ride: TripLeg, sequence: LineSequence): List<TripLeg> {
+        if (ride.isWalk || !checkable(ride)) return emptyList()
+        val planned = if (ride.path.lastOrNull() == ride.toId) ride.path else ride.path + ride.toId
+        val routes = rideRoutes(ride, sequence).map { it.routes.single().stopIds }
+        // Each route's runs from the boarding stop to where they get off, as (route, start, end).
+        val runs = routes.flatMap { stops ->
+            stops.indices.filter { stops[it] == ride.fromId }.mapNotNull { i ->
+                (i + 1 until stops.size).firstOrNull { stops[it] == ride.toId }?.let { j -> Triple(stops, i, j) }
+            }
+        }
+        // The stops the plan's own routes reach only before the boarding stop or after where they get off: a way
+        // through one of them is a loop's other way round, which the ride never is (SPEC *On the way*; Codex, #728).
+        val outside = runs.filter { (stops, i, j) -> stops.subList(i + 1, j + 1) == planned }
+            .flatMapTo(HashSet()) { (stops, i, j) -> stops.subList(0, i) + stops.subList(j + 1, stops.size) }
+        return runs.map { (stops, i, j) -> stops.subList(i + 1, j + 1) }.distinct().filter { path ->
+            // Nor one that passes the boarding stop again on the way: the long way round from an earlier visit.
+            path != planned && ride.fromId !in path && path.dropLast(1).none { it in outside }
+        }.map { path ->
+            ride.copy(path = path, pathNames = path.map { sequence.stopNames[it].orEmpty() })
+        }
+    }
+
+    /** Each of [lines] [train]'s line runs: the plan's first, then any other way of it ([branchWays]). */
+    @WorkerThread
+    fun waysOf(lines: List<TripLeg>, train: Departure): List<TripLeg> =
+        if (train.lineId.isBlank()) emptyList() else lines.filter { it.lineId == train.lineId }
+
+    /**
+     * Where [rider], seen along one of [ways] (the ride as each runs it, with its stops' positions), is
+     * clear of the train [trip] follows on board, its [calls] ahead: two stops or more past the next of
+     * the train's calls on that way, or at a stop of another branch the train doesn't call at, nowhere
+     * near the way it's followed on, so the train isn't theirs (maintainer,
+     * 2026-10-09: seen a stop or two on, on another branch, while the trip followed a train still short
+     * of them). The way and where they were seen, to count them on by position ([onBoardAlong]); null
+     * while the train may be theirs, or the fix doesn't place them. Two stops, not one, so a fix's
+     * error near a stop never lets their own train go.
+     */
+    @WorkerThread
+    fun aheadOfTrain(trip: ActiveTrip, rider: LocationFix, calls: List<VehicleCall>, ways: List<Pair<TripLeg, Map<String, Coordinates>>>): Pair<TripLeg, Along>? {
+        if (!trip.boarded || trip.vehicleId.isBlank() || calls.isEmpty()) return null
+        val fix = usableFix(rider) ?: return null
+        val followed = ridden(trip) ?: return null
+        // Whether they're seen along the way the train is followed on at all.
+        val onFollowed = ways.firstOrNull { it.first == followed }?.let { (way, positions) -> placeAlong(way, fix, positions) } != null
+        for ((way, positions) in ways) {
+            if (!checkable(way)) continue
+            val along = placeAlong(way, fix, positions) ?: continue
+            if (along.atEnd) continue
+            // The train's next stop on this way, short of where they get off.
+            val next = calls.asSequence().takeWhile { !callsTo(it, way) }.map { onPath(way, it) }.firstOrNull { it >= 0 }
+            if (next != null && ahead(along) - next >= TRAIN_BEHIND_STOPS) return way to along
+            // Seen at a stop of another branch, nowhere near the followed one's, that the train doesn't call at:
+            // it's on the other branch from them.
+            val at = way.path.getOrNull(along.from)
+            // Only once the train's own calls put it there: one whose next call is where they get off may be on either.
+            val elsewhere = calls.takeWhile { !callsTo(it, way) }.any { onPath(way, it) < 0 }
+            if (way != followed && !onFollowed && elsewhere && along.atStop && at != null && at !in followed.path && calls.none { it.stopId == at }) return way to along
+        }
+        return null
+    }
+
+    // How many stops past the train's next a rider must be seen for it to be behind them ([aheadOfTrain]).
+    private const val TRAIN_BEHIND_STOPS = 2
+
     /** Whether [trip]'s rider is on board its ride by where they were seen, no train yet known to be theirs. */
     fun ridingUnmatched(trip: ActiveTrip): Boolean {
         val leg = trip.leg ?: return false

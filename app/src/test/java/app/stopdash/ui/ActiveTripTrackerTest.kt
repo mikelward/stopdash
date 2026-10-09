@@ -1977,6 +1977,178 @@ class ActiveTripTrackerTest {
         assertTrue(logged.none { "51." in it })
     }
 
+    // Red with a second branch from A to C by Q, 1.4 km west of B: the ride's other way (maintainer, 2026-10-09).
+    private val forkedRed = redLine.copy(
+        routes = redLine.routes + app.stopdash.domain.LineRoute("A ↔ C by Q", listOf("A", "Q", "C")),
+        stopNames = redLine.stopNames + ("Q" to "Q"),
+        stopPositions = redLine.stopPositions + ("Q" to (51.51 to -0.14)),
+    )
+
+    @Test
+    fun `seen up the line's other branch while its train is awaited, they're on that branch's train`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = forkedRed
+        departures["A"] = listOf(train("7", 5), train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(6)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertEquals("9", tracker.trip.value?.vehicleId)
+        // 7 left A up the other branch; the rider is seen at Q, on it.
+        departures["A"] = listOf(train("9", 8))
+        trains["7"] = listOf(call("Q", 7), call("C", 12))
+        now = at(7)
+        tracker.refresh(fixAt(51.51, -0.14))
+        assertEquals("7", tracker.trip.value?.vehicleId)
+        assertEquals(listOf("Q", "C"), tracker.trip.value?.vehicleLeg?.path)
+        val riding = tracker.progress.value as TripProgress.Riding
+        assertEquals(2, riding.stopsLeft)
+        assertEquals(at(12), riding.getOffAt)
+        assertTrue(logged.none { "51." in it })
+    }
+
+    @Test
+    fun `a fix grown old over the routes' read doesn't let the train go`() = runTest {
+        // As above, but it's the line's route, read cold, that takes 15 s (Codex, #728).
+        val saved = ActiveTrip(route, "C", startedAt = t0, vehicleId = "9", boarded = true, boardedAt = at(5), onBoardSeen = true)
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { saved })
+        tracker.restore()
+        sequences["red"] = forkedRed
+        sequenceTakes = 15_000L
+        trains["9"] = listOf(call("B", 9), call("C", 14))
+        now = at(8)
+        tracker.refresh(fixAt(51.51, -0.14))
+        assertEquals("9", tracker.trip.value?.vehicleId)
+        assertTrue(logged.none { it.startsWith("on the way: seen ahead of the train followed") })
+    }
+
+    @Test
+    fun `seen on the stretch two branches share, the train that left is theirs, not its own twin`() = runTest {
+        // The plan's way A–B–M–C and the other A–B–Q–C share A to B; seen between them, the rider is along both,
+        // and the one train that left is found on each (Codex, #728).
+        val ride = TripLeg("tube", "red", "Red", "A", "A", "C", "C", at(5), at(15), path = listOf("B", "M", "C"))
+        sequences["red"] = app.stopdash.domain.LineSequence(
+            routes = listOf(
+                app.stopdash.domain.LineRoute("A-C by M", listOf("A", "B", "M", "C")),
+                app.stopdash.domain.LineRoute("A-C by Q", listOf("A", "B", "Q", "C")),
+            ),
+            stopNames = listOf("A", "B", "M", "Q", "C").associateWith { it },
+            stopPositions = mapOf(
+                "A" to (51.50 to -0.12), "B" to (51.51 to -0.12), "M" to (51.515 to -0.11), "Q" to (51.515 to -0.13), "C" to (51.52 to -0.12),
+            ),
+        )
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        // Following 9; 7, which the rider could catch too, shows up ahead of it and leaves.
+        departures["A"] = listOf(train("9", 10))
+        trains["9"] = listOf(call("A", 10), call("B", 12), call("M", 14), call("C", 16))
+        now = at(5)
+        tracker.start(TripRoute(listOf(ride)), "C", readyAt = now)
+        tracker.refresh()
+        assertEquals("9", tracker.trip.value?.vehicleId)
+        departures["A"] = listOf(train("7", 7), train("9", 10))
+        now = at(6)
+        tracker.refresh()
+        departures["A"] = listOf(train("9", 10))
+        trains["7"] = listOf(call("B", 9), call("M", 11), call("C", 13))
+        now = at(8)
+        tracker.refresh(fixAt(51.506))
+        assertEquals("7", tracker.trip.value?.vehicleId)
+    }
+
+    @Test
+    fun `a train followed on board whose later calls take the other branch is still followed`() = runTest {
+        // Followed on board while TfL predicted it only as far as the stretch both branches share; its calls now
+        // go on by Q to C: still the ride, on that branch, not a lost train (Codex, #728).
+        val saved = ActiveTrip(route, "C", startedAt = t0, vehicleId = "9", boarded = true, boardedAt = at(5))
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { saved })
+        tracker.restore()
+        sequences["red"] = forkedRed
+        trains["9"] = listOf(call("Q", 7), call("C", 12))
+        now = at(6)
+        tracker.refresh()
+        assertEquals("9", tracker.trip.value?.vehicleId)
+        assertEquals(listOf("Q", "C"), tracker.trip.value?.vehicleLeg?.path)
+        val riding = tracker.progress.value as TripProgress.Riding
+        assertEquals(at(12), riding.getOffAt)
+    }
+
+    @Test
+    fun `seen clear of the train followed, up the other branch, they're counted on by where they were seen`() = runTest {
+        // Seen on board the plan's branch's 9, which is still short of B, while they're at Q on the other.
+        val saved = ActiveTrip(route, "C", startedAt = t0, vehicleId = "9", boarded = true, boardedAt = at(5), onBoardSeen = true)
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { saved })
+        tracker.restore()
+        sequences["red"] = forkedRed
+        trains["9"] = listOf(call("B", 9), call("C", 14))
+        now = at(8)
+        tracker.refresh(fixAt(51.51, -0.14))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(TripProgress.Riding(ride, "C", 1, null, true, byPosition = true), tracker.progress.value)
+        assertTrue(logged.any { it.startsWith("on the way: seen ahead of the train followed on line red") })
+        // A "get off soon" said from that train's calls is replaced by one from where they were seen
+        // (one stop out, by position) (Codex, #728).
+        val told = tracker(StandardTestDispatcher(testScheduler), load = { saved.copy(warnedLeg = 0) })
+        told.restore()
+        alerts.clear()
+        warned.clear()
+        told.refresh(fixAt(51.51, -0.14))
+        assertEquals(listOf("said C"), alerts)
+        assertTrue(warned.single().byPosition)
+        // With no fix, or one on the train's way, it stays theirs.
+        val again = tracker(StandardTestDispatcher(testScheduler), load = { saved })
+        again.restore()
+        again.refresh(fixAt(51.505))
+        assertEquals("9", again.trip.value?.vehicleId)
+        assertTrue(logged.none { "51." in it })
+    }
+
+    @Test
+    fun `a followed train off its way with the route unread is a failed update, not lost`() = runTest {
+        // Its calls now go by Q, but the line's route can't be read to say whether that's the ride: nothing new
+        // is known, so the ride stands as it was and the update says it failed (Codex, #728).
+        val saved = ActiveTrip(route, "C", startedAt = t0, vehicleId = "9", boarded = true, boardedAt = at(5))
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { saved })
+        tracker.restore()
+        routeFails = true
+        trains["9"] = listOf(call("Q", 7), call("C", 12))
+        now = at(6)
+        tracker.refresh()
+        assertEquals("9", tracker.trip.value?.vehicleId)
+        assertTrue(tracker.failed.value)
+        assertFalse(tracker.progress.value is TripProgress.Lost)
+    }
+
+    @Test
+    fun `a fix still fresh after a 5 s train lookup lets the train go`() = runTest {
+        // Aged once by the lookup, not twice: 5 s old, still under the 10 s bound (Codex, #728).
+        val saved = ActiveTrip(route, "C", startedAt = t0, vehicleId = "9", boarded = true, boardedAt = at(5), onBoardSeen = true)
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { saved })
+        tracker.restore()
+        sequences["red"] = forkedRed
+        trains["9"] = listOf(call("B", 9), call("C", 14))
+        vehicleTakes = 5_000L
+        now = at(8)
+        tracker.refresh(fixAt(51.51, -0.14))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertTrue(logged.any { it.startsWith("on the way: seen ahead of the train followed") })
+    }
+
+    @Test
+    fun `a fix grown old over the train's lookup doesn't let the train go`() = runTest {
+        // The same sighting as above, but TfL takes 15 s to answer for the train: the fix is no longer fresh
+        // proof of where they are (Codex, #728).
+        val saved = ActiveTrip(route, "C", startedAt = t0, vehicleId = "9", boarded = true, boardedAt = at(5), onBoardSeen = true)
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { saved })
+        tracker.restore()
+        sequences["red"] = forkedRed
+        trains["9"] = listOf(call("B", 9), call("C", 14))
+        vehicleTakes = 15_000L
+        now = at(8)
+        tracker.refresh(fixAt(51.51, -0.14))
+        assertEquals("9", tracker.trip.value?.vehicleId)
+        assertTrue(logged.none { it.startsWith("on the way: seen ahead of the train followed") })
+    }
+
     @Test
     fun `a rider seen down the line while still on the walk to the train is on it, not still walking`() = runTest {
         // Walking to A, placed, for two minutes; no fix ever catches them there (underground), and a
