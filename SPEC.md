@@ -3662,7 +3662,11 @@ endpoint with every identifier left out, its connection and answer times, a fail
 address family and exception class, a wait for a request slot), or, on a ride followed by where the
 rider is seen, how far along it each fix placed them as a stop count ("stop 5 of 9") with the fix's
 accuracy, and a "get off soon" shown with its stops left and what they're counted from (maintainer,
-2026-10-04) — never a raw coordinate, anything typed, or the user's API key.
+2026-10-04), or, on a trip's next-train board, a train it may count twice — one TfL lists twice, or
+two of a line's trains due at one platform under a minute apart — by line, platform, TfL's train id,
+its destination and branch and how far off it is, as TfL sent them and as the trip screen holds
+them, so a board showing more trains than the platform has can be traced to TfL's answer or to the
+app (maintainer, 2026-10-09) — never a raw coordinate, anything typed, or the user's API key.
 
 **The Wear OS watch sync** (dev-docs/wear-os.md; maintainer, 2026-09-24): when a paired watch has
 the StopDash watch app, the phone sends it the widget's snapshot — its stops' names and IDs, their

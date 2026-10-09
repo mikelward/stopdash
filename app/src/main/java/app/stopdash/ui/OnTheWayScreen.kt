@@ -72,11 +72,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
+import app.stopdash.StopdashDebugLog
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Countdown
 import app.stopdash.domain.Departure
+import app.stopdash.domain.DoubledTrains
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.LineSequence
@@ -570,6 +572,8 @@ internal fun rememberNextTrains(
     // The ride ahead ([OnTheWay.upcomingRide]): its section shows at once, "Loading" until its first
     // board is in, rather than appear only once TfL answers.
     ride: TripLeg? = board?.ride,
+    // The suspects last logged of what the section holds ([DoubledTrains]), compared on the worker.
+    logged: LoggedSuspects = remember { LoggedSuspects() },
 ): NextTrains? {
     val worker = LocalWorker.current
     // The lines whose routes the board's trains are checked against, read off its departures on the
@@ -645,8 +649,22 @@ internal fun rememberNextTrains(
     }
     if (skipped || rewound) return NextTrains(board.ride, emptyList(), pending = true, failed = failed, readyAt = readyAt)
     // The next entry's rows came with the held one's, so a departure never waits on the worker.
-    val next = timeline.entry(if (lapsed) shown.index + 1 else shown.index)
+    val nextIndex = if (lapsed) shown.index + 1 else shown.index
+    val next = timeline.entry(nextIndex)
         ?: return NextTrains(board.ride, emptyList(), pending = true, failed = failed, readyAt = readyAt)
+    // A train the section holds twice, or two at one platform under a minute apart, logged as each entry
+    // comes on screen, beside what the board read ([ActiveTripTracker]), so more trains on the screen than
+    // at the platform can be traced to TfL's answer or to the app. Found on the worker with the entry's
+    // rows ([TrainsTimeline.around]); only read here, and logged once for the same suspects.
+    LaunchedEffect(timeline, nextIndex, worker) {
+        val found = timeline.doubled(nextIndex)
+        // Whether they're new is a comparison of sets, so it's the worker's too (Codex on #719).
+        val fresh = withContext(worker) { logged.changedTo(found?.key.orEmpty()) }
+        if (found != null && fresh) {
+            val age = shown.key.board.fetchedAt?.let { SteadyClock.age(it, now).seconds }
+            StopdashDebugLog.warning("on the way: trip board holds %s (stop cards and branch rows, shown or collapsed), board %s s old", found.text, age)
+        }
+    }
     val stale = Staleness.isStale(next.fetchedAt ?: now, now)
     // The current board's, not the held one's, and only once its own lines are read: before, the routes
     // may be the last board's, and a line it brings back, already loaded, bumps no version to work it
@@ -717,7 +735,12 @@ internal class TrainsTimeline(
     // How a stop card groups a branching line's trains ([stopCardLines]).
     private val topology: RouteTopology = RouteTopology.EMPTY,
     private val rows: Map<Int, NextTrains> = emptyMap(),
+    // What each entry with rows holds that may count a train twice ([DoubledTrains]), found with them.
+    private val doubledAt: Map<Int, DoubledTrains.Found?> = emptyMap(),
 ) {
+    /** What entry [index] (or the last) holds that may count a train twice, if its rows are worked out. */
+    fun doubled(index: Int): DoubledTrains.Found? = doubledAt[index.coerceAtMost(entries.lastIndex)]
+
     /** Entry [index] (or the last, once past it) with its rows, or null if they aren't worked out. */
     fun entry(index: Int): NextTrains? {
         val at = index.coerceAtMost(entries.lastIndex)
@@ -743,7 +766,8 @@ internal class TrainsTimeline(
         val window = (index..(index + 1).coerceAtMost(entries.lastIndex)).associateWith { i ->
             rows[i] ?: entries[i].withGroups(starts[i], topology)
         }
-        return TrainsTimeline(starts, entries, misses, topology, window)
+        val doubled = window.mapValues { (i, entry) -> if (i in doubledAt) doubledAt[i] else DoubledTrains.find(entry.heldTrains(), starts[i]) }
+        return TrainsTimeline(starts, entries, misses, topology, window, doubled)
     }
 
     /** The entry in force at [now] ([indexAt]), with its rows. */
@@ -812,6 +836,34 @@ internal fun nextTrainsAt(
         PoleTrains(other.pole.id, other.pole.name.ifBlank { board.ride.fromName }, trains.trains, other.pole.stopLetter, other.pole.towards, other.pole.bearing)
     },
 )
+
+/**
+ * The suspects ([DoubledTrains.Found.key]) a trip's section last logged, so the same ones read again aren't
+ * logged again. [changedTo] compares sets, so it's called on the worker only; [onCompare] sees each key, for a test.
+ */
+internal class LoggedSuspects(private val onCompare: (Set<String>) -> Unit = {}) {
+    private var last: Set<String> = emptySet()
+
+    /** Whether [key] differs from the last one, which it then replaces. */
+    @WorkerThread
+    @Synchronized
+    fun changedTo(key: Set<String>): Boolean {
+        onCompare(key)
+        val changed = key != last
+        last = key
+        return changed
+    }
+}
+
+/**
+ * Every train the section holds a time for, as many times as it holds it ([DoubledTrains]): its stop cards'
+ * and its rows of branches off the plan ([offPlan]), so one on both is counted twice. What the section
+ * holds, not what's in view: Other routes may be collapsed, and the log says so rather than track every way
+ * the section can hide a row (Codex on #719).
+ */
+@WorkerThread
+internal fun NextTrains.heldTrains(): List<Departure> =
+    cards.flatMap { card -> card.lines.flatten().flatMap { it.times } } + offPlan.flatMap { it.trains }
 
 /** These trains with their [NextTrains.groups] worked out at [now] ([nextTrainsGroups]), and each one's card ([NextTrains.cards]). */
 @WorkerThread

@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createComposeRule
 import app.stopdash.ThreadRecorder
 import app.stopdash.domain.Departure
+import app.stopdash.domain.DoubledTrains
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.OffPlan
@@ -78,6 +79,42 @@ class NextTrainsOffMainTest {
         assertEquals(shown.groups, shown.cards.map { it.group })
         assertEquals(listOf(listOf(listOf(at(3), at(5)))), shown.cards.map { card -> card.lines.map { row -> row.flatMap { line -> line.times.map { it.expectedArrival } } } })
         assertEquals(shown.cards.map { it.lines }, timeline.entry(0)?.cards?.map { it.lines })
+    }
+
+    @Test
+    fun the_trains_a_section_holds_are_each_counted_as_often_as_held() {
+        val spread = trainsTimeline(board(train(3).copy(vehicleId = "EXAMPLE1"), train(6).copy(vehicleId = "EXAMPLE2")), routes, now).entry(0)!!
+        assertEquals(listOf(at(3), at(6)), spread.heldTrains().map { it.expectedArrival })
+        assertNull(DoubledTrains.describe(spread.heldTrains(), now))
+        // TfL listing one train twice: the card draws it twice, and the log names it.
+        val twice = trainsTimeline(board(train(3), train(3)), routes, now).entry(0)!!
+        assertEquals(listOf(at(3), at(3)), twice.heldTrains().map { it.expectedArrival })
+        assertEquals("red: EXAMPLE C 180 s, EXAMPLE C 180 s (same train)", DoubledTrains.describe(twice.heldTrains(), now))
+    }
+
+    @Test
+    fun a_train_on_a_branch_off_the_plan_counts_as_held_too() {
+        // The same train on the board's card and on a branch row off the plan: held twice (Codex on #719).
+        val onCard = trainsTimeline(board(train(3)), routes, now).entry(0)!!
+        val off = offPlanRows(ride, listOf(OffPlan.Branch("Y", forkIndex = 0, forkName = "B", trains = listOf(train(3)))))
+        val both = onCard.copy(offPlan = off)
+        assertEquals(listOf(at(3), at(3)), both.heldTrains().map { it.expectedArrival })
+        assertEquals("red: EXAMPLE C 180 s, EXAMPLE C 180 s (same train)", DoubledTrains.describe(both.heldTrains(), now))
+        // Branch rows alone are held too, shown or collapsed.
+        assertEquals(listOf(at(3)), NextTrains(ride, emptyList(), offPlan = off).heldTrains().map { it.expectedArrival })
+    }
+
+    @Test
+    fun a_train_drawn_twice_only_once_earlier_trains_go_is_found_with_that_entry() {
+        // The card draws the next three of a destination: the doubled train first shows once those leave.
+        val board = board(
+            train(1).copy(vehicleId = "EXAMPLE1"), train(2).copy(vehicleId = "EXAMPLE2"), train(3).copy(vehicleId = "EXAMPLE3"),
+            train(4).copy(vehicleId = "EXAMPLE4"), train(4).copy(vehicleId = "EXAMPLE4"),
+        )
+        val timeline = trainsTimeline(board, routes, now)
+        assertNull(timeline.doubled(0))
+        val later = timeline.around(timeline.indexAt(at(3)))
+        assertEquals("red: EXAMPLE4 C 60 s, EXAMPLE4 C 60 s (same train)", later.doubled(later.indexAt(at(3)))?.text)
     }
 
     @Test
@@ -238,6 +275,37 @@ class NextTrainsOffMainTest {
             assertEquals(listOf(at(3), at(5)), times(next!!))
             assertTrue(reads.threads().isNotEmpty())
             assertEquals(setOf("trains-worker"), reads.threads().toSet())
+        } finally {
+            executor.shutdown()
+        }
+    }
+
+    @Test
+    fun whether_a_card_s_doubled_trains_are_new_is_decided_on_the_worker_thread() {
+        // The card draws the same train twice: whether that's new to the log compares sets, so on the
+        // worker, never the caller's thread (AGENTS.md *Main thread*; Codex on #719).
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "trains-worker") }
+        val worker = executor.asCoroutineDispatcher()
+        try {
+            val compared = ThreadRecorder()
+            // An entry with nothing doubled may be compared first: the test waits for the doubled one.
+            val keys = java.util.concurrent.CopyOnWriteArrayList<Set<String>>()
+            val logged = LoggedSuspects(onCompare = { key -> compared.note(); keys += key })
+            val shown = ActiveTripTracker.NextBoard(ride, listOf(train(3), train(3)), fetchedAt = now)
+            val repository = repository()
+            var next: NextTrains? = null
+            composeRule.setContent {
+                CompositionLocalProvider(LocalWorker provides worker, LocalRouteStops provides repository) {
+                    next = rememberNextTrains(shown, now, ride = ride, logged = logged)
+                }
+            }
+            composeRule.waitUntilWorked(executor) { next?.trains?.isNotEmpty() == true && keys.any { it.isNotEmpty() } }
+            assertEquals(setOf("trains-worker"), compared.threads().toSet())
+            // Read again, the same suspects aren't new; others are.
+            val doubled = DoubledTrains.find(listOf(train(3), train(3)), now)!!.key
+            assertEquals(doubled, keys.last { it.isNotEmpty() })
+            assertFalse(logged.changedTo(doubled))
+            assertTrue(logged.changedTo(emptySet()))
         } finally {
             executor.shutdown()
         }
