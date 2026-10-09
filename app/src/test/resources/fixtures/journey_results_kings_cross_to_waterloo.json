@@ -1,0 +1,447 @@
+{
+ "journeys": [
+  {
+   "legs": [
+    {
+     "duration": 2,
+     "departureTime": "2026-10-09T11:51:00",
+     "arrivalTime": "2026-10-09T11:53:00",
+     "departurePoint": {
+      "naptanId": "940GZZLUKSX",
+      "individualStopId": "9400ZZLUKSX2",
+      "commonName": "King's Cross St. Pancras Underground Station",
+      "lat": 51.530960898624,
+      "lon": -0.12225951825999999
+     },
+     "arrivalPoint": {
+      "naptanId": "940GZZLUEUS",
+      "individualStopId": "9400ZZLUEUS6",
+      "commonName": "Euston Underground Station",
+      "lat": 51.528501712476995,
+      "lon": -0.132697604835
+     },
+     "path": {
+      "stopPoints": [
+       {
+        "id": "940GZZLUEUS",
+        "name": "Euston Underground Station"
+       }
+      ]
+     },
+     "routeOptions": [
+      {
+       "directions": [
+        "Brixton Underground Station"
+       ],
+       "lineIdentifier": {
+        "id": "victoria",
+        "name": "Victoria",
+        "uri": "/Line/victoria",
+        "type": "Line",
+        "crowding": {},
+        "routeType": "Unknown",
+        "status": "Unknown"
+       }
+      }
+     ],
+     "mode": {
+      "id": "tube",
+      "name": "tube"
+     },
+     "interChangeDuration": "4",
+     "interChangePosition": "AFTER"
+    },
+    {
+     "duration": 9,
+     "departureTime": "2026-10-09T11:57:00",
+     "arrivalTime": "2026-10-09T12:06:00",
+     "departurePoint": {
+      "naptanId": "940GZZLUEUS",
+      "individualStopId": "9400ZZLUEUS5",
+      "commonName": "Euston Underground Station",
+      "lat": 51.528111940068,
+      "lon": -0.134198477225
+     },
+     "arrivalPoint": {
+      "naptanId": "940GZZLUWLO",
+      "individualStopId": "9400ZZLUWLO7",
+      "commonName": "Waterloo Underground Station",
+      "lat": 51.502858702770006,
+      "lon": -0.113818671132
+     },
+     "path": {
+      "stopPoints": [
+       {
+        "id": "940GZZLUWRR",
+        "name": "Warren Street Underground Station"
+       },
+       {
+        "id": "940GZZLUGDG",
+        "name": "Goodge Street Underground Station"
+       },
+       {
+        "id": "940GZZLUTCR",
+        "name": "Tottenham Court Road Underground Station"
+       },
+       {
+        "id": "940GZZLULSQ",
+        "name": "Leicester Square Underground Station"
+       },
+       {
+        "id": "940GZZLUCHX",
+        "name": "Charing Cross Underground Station"
+       },
+       {
+        "id": "940GZZLUEMB",
+        "name": "Embankment Underground Station"
+       },
+       {
+        "id": "940GZZLUWLO",
+        "name": "Waterloo Underground Station"
+       }
+      ]
+     },
+     "routeOptions": [
+      {
+       "directions": [
+        "Battersea Power Station Underground Station via Charing Cross"
+       ],
+       "lineIdentifier": {
+        "id": "northern",
+        "name": "Northern",
+        "uri": "/Line/northern",
+        "type": "Line",
+        "crowding": {},
+        "routeType": "Unknown",
+        "status": "Unknown"
+       }
+      }
+     ],
+     "mode": {
+      "id": "tube",
+      "name": "tube"
+     }
+    }
+   ],
+   "fare": {
+    "totalCost": 300,
+    "fares": [
+     {
+      "lowZone": 1,
+      "highZone": 1,
+      "cost": 300,
+      "chargeProfileName": "Normal",
+      "isHopperFare": false,
+      "chargeLevel": "Off Peak",
+      "peak": 310,
+      "offPeak": 300
+     }
+    ],
+    "caveats": [
+     {
+      "text": "<p>Fares between two stations may vary depending on the direction of travel, time of day and day of the week.</p><p>We c",
+      "type": "allRailModes"
+     },
+     {
+      "text": "The price shown is a single adult pay as you go fare.",
+      "type": "generic"
+     }
+    ]
+   }
+  },
+  {
+   "legs": [
+    {
+     "duration": 5,
+     "departureTime": "2026-10-09T11:53:00",
+     "arrivalTime": "2026-10-09T11:58:00",
+     "departurePoint": {
+      "naptanId": "940GZZLUKSX",
+      "individualStopId": "9400ZZLUKSX2",
+      "commonName": "King's Cross St. Pancras Underground Station",
+      "lat": 51.530960898624,
+      "lon": -0.12225951825999999
+     },
+     "arrivalPoint": {
+      "naptanId": "940GZZLUOXC",
+      "individualStopId": "9400ZZLUOXC6",
+      "commonName": "Oxford Circus Underground Station",
+      "lat": 51.51577881206,
+      "lon": -0.141851269513
+     },
+     "path": {
+      "stopPoints": [
+       {
+        "id": "940GZZLUEUS",
+        "name": "Euston Underground Station"
+       },
+       {
+        "id": "940GZZLUWRR",
+        "name": "Warren Street Underground Station"
+       },
+       {
+        "id": "940GZZLUOXC",
+        "name": "Oxford Circus Underground Station"
+       }
+      ]
+     },
+     "routeOptions": [
+      {
+       "directions": [
+        "Brixton Underground Station"
+       ],
+       "lineIdentifier": {
+        "id": "victoria",
+        "name": "Victoria",
+        "uri": "/Line/victoria",
+        "type": "Line",
+        "crowding": {},
+        "routeType": "Unknown",
+        "status": "Unknown"
+       }
+      }
+     ],
+     "mode": {
+      "id": "tube",
+      "name": "tube"
+     },
+     "interChangeDuration": "2",
+     "interChangePosition": "AFTER"
+    },
+    {
+     "duration": 7,
+     "departureTime": "2026-10-09T12:00:00",
+     "arrivalTime": "2026-10-09T12:07:00",
+     "departurePoint": {
+      "naptanId": "940GZZLUOXC",
+      "individualStopId": "9400ZZLUOXC3",
+      "commonName": "Oxford Circus Underground Station",
+      "lat": 51.515727173562,
+      "lon": -0.14199749916999999
+     },
+     "arrivalPoint": {
+      "naptanId": "940GZZLUWLO",
+      "individualStopId": "9400ZZLUWLO2",
+      "commonName": "Waterloo Underground Station",
+      "lat": 51.503171003871,
+      "lon": -0.114785581084
+     },
+     "path": {
+      "stopPoints": [
+       {
+        "id": "940GZZLUPCC",
+        "name": "Piccadilly Circus Underground Station"
+       },
+       {
+        "id": "940GZZLUCHX",
+        "name": "Charing Cross Underground Station"
+       },
+       {
+        "id": "940GZZLUEMB",
+        "name": "Embankment Underground Station"
+       },
+       {
+        "id": "940GZZLUWLO",
+        "name": "Waterloo Underground Station"
+       }
+      ]
+     },
+     "routeOptions": [
+      {
+       "directions": [
+        "Elephant & Castle Underground Station"
+       ],
+       "lineIdentifier": {
+        "id": "bakerloo",
+        "name": "Bakerloo",
+        "uri": "/Line/bakerloo",
+        "type": "Line",
+        "crowding": {},
+        "routeType": "Unknown",
+        "status": "Unknown"
+       }
+      }
+     ],
+     "mode": {
+      "id": "tube",
+      "name": "tube"
+     }
+    }
+   ],
+   "fare": {
+    "totalCost": 300,
+    "fares": [
+     {
+      "lowZone": 1,
+      "highZone": 1,
+      "cost": 300,
+      "chargeProfileName": "Normal",
+      "isHopperFare": false,
+      "chargeLevel": "Off Peak",
+      "peak": 310,
+      "offPeak": 300
+     }
+    ],
+    "caveats": [
+     {
+      "text": "<p>Fares between two stations may vary depending on the direction of travel, time of day and day of the week.</p><p>We c",
+      "type": "allRailModes"
+     },
+     {
+      "text": "The price shown is a single adult pay as you go fare.",
+      "type": "generic"
+     }
+    ]
+   }
+  },
+  {
+   "legs": [
+    {
+     "duration": 1,
+     "departureTime": "2026-10-09T11:56:00",
+     "arrivalTime": "2026-10-09T11:57:00",
+     "departurePoint": {
+      "naptanId": "940GZZLUKSX",
+      "individualStopId": "9400ZZLUKSX2",
+      "commonName": "King's Cross St. Pancras Underground Station",
+      "lat": 51.530960898624,
+      "lon": -0.12225951825999999
+     },
+     "arrivalPoint": {
+      "naptanId": "940GZZLUEUS",
+      "individualStopId": "9400ZZLUEUS6",
+      "commonName": "Euston Underground Station",
+      "lat": 51.528501712476995,
+      "lon": -0.132697604835
+     },
+     "path": {
+      "stopPoints": [
+       {
+        "id": "940GZZLUEUS",
+        "name": "Euston Underground Station"
+       }
+      ]
+     },
+     "routeOptions": [
+      {
+       "directions": [
+        "Brixton Underground Station"
+       ],
+       "lineIdentifier": {
+        "id": "victoria",
+        "name": "Victoria",
+        "uri": "/Line/victoria",
+        "type": "Line",
+        "crowding": {},
+        "routeType": "Unknown",
+        "status": "Unknown"
+       }
+      }
+     ],
+     "mode": {
+      "id": "tube",
+      "name": "tube"
+     },
+     "interChangeDuration": "4",
+     "interChangePosition": "AFTER"
+    },
+    {
+     "duration": 9,
+     "departureTime": "2026-10-09T12:01:00",
+     "arrivalTime": "2026-10-09T12:10:00",
+     "departurePoint": {
+      "naptanId": "940GZZLUEUS",
+      "individualStopId": "9400ZZLUEUS5",
+      "commonName": "Euston Underground Station",
+      "lat": 51.528111940068,
+      "lon": -0.134198477225
+     },
+     "arrivalPoint": {
+      "naptanId": "940GZZLUWLO",
+      "individualStopId": "9400ZZLUWLO7",
+      "commonName": "Waterloo Underground Station",
+      "lat": 51.502858702770006,
+      "lon": -0.113818671132
+     },
+     "path": {
+      "stopPoints": [
+       {
+        "id": "940GZZLUWRR",
+        "name": "Warren Street Underground Station"
+       },
+       {
+        "id": "940GZZLUGDG",
+        "name": "Goodge Street Underground Station"
+       },
+       {
+        "id": "940GZZLUTCR",
+        "name": "Tottenham Court Road Underground Station"
+       },
+       {
+        "id": "940GZZLULSQ",
+        "name": "Leicester Square Underground Station"
+       },
+       {
+        "id": "940GZZLUCHX",
+        "name": "Charing Cross Underground Station"
+       },
+       {
+        "id": "940GZZLUEMB",
+        "name": "Embankment Underground Station"
+       },
+       {
+        "id": "940GZZLUWLO",
+        "name": "Waterloo Underground Station"
+       }
+      ]
+     },
+     "routeOptions": [
+      {
+       "directions": [
+        "Battersea Power Station Underground Station via Charing Cross"
+       ],
+       "lineIdentifier": {
+        "id": "northern",
+        "name": "Northern",
+        "uri": "/Line/northern",
+        "type": "Line",
+        "crowding": {},
+        "routeType": "Unknown",
+        "status": "Unknown"
+       }
+      }
+     ],
+     "mode": {
+      "id": "tube",
+      "name": "tube"
+     }
+    }
+   ],
+   "fare": {
+    "totalCost": 300,
+    "fares": [
+     {
+      "lowZone": 1,
+      "highZone": 1,
+      "cost": 300,
+      "chargeProfileName": "Normal",
+      "isHopperFare": false,
+      "chargeLevel": "Off Peak",
+      "peak": 310,
+      "offPeak": 300
+     }
+    ],
+    "caveats": [
+     {
+      "text": "<p>Fares between two stations may vary depending on the direction of travel, time of day and day of the week.</p><p>We c",
+      "type": "allRailModes"
+     },
+     {
+      "text": "The price shown is a single adult pay as you go fare.",
+      "type": "generic"
+     }
+    ]
+   }
+  }
+ ]
+}

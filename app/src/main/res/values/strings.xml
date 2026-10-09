@@ -476,6 +476,12 @@
     </plurals>
     <!-- In place of a route's line pills when the whole route is on foot. -->
     <string name="trip_walk_only">Walk</string>
+    <!-- An open route's fare, when TfL says it's the peak one. %1$s is the price, "£3.10". -->
+    <string name="trip_fare_peak">%1$s · peak</string>
+    <!-- An open route's fare, when TfL says it's the off-peak one. %1$s is the price, "£3.00". -->
+    <string name="trip_fare_off_peak">%1$s · off-peak</string>
+    <!-- Under an open route's fare, where TfL warns the fare needs a pink reader touched when changing trains. -->
+    <string name="trip_fare_pink_reader">Touch a pink reader where you change</string>
     <!-- A leg either line serves alike, read out for its cut pill: "43 or 134". -->
     <string name="trip_lines_either">%1$s or %2$s</string>
     <!-- One of a cut pill's disrupted lines, read out with the others: "134: Severe Delays". -->

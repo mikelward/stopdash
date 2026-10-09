@@ -1,0 +1,408 @@
+{
+ "journeys": [
+  {
+   "legs": [
+    {
+     "duration": 3,
+     "departureTime": "2026-10-09T11:52:00",
+     "arrivalTime": "2026-10-09T11:55:00",
+     "departurePoint": {
+      "naptanId": "940GZZLUWLO",
+      "individualStopId": "9400ZZLUWLO4",
+      "commonName": "Waterloo Underground Station",
+      "lat": 51.503359356358,
+      "lon": -0.113077549875
+     },
+     "arrivalPoint": {
+      "naptanId": "940GZZLULNB",
+      "individualStopId": "9400ZZLULNB2",
+      "commonName": "London Bridge Underground Station",
+      "lat": 51.505079764000996,
+      "lon": -0.088265313217
+     },
+     "path": {
+      "stopPoints": [
+       {
+        "id": "940GZZLUSWK",
+        "name": "Southwark Underground Station"
+       },
+       {
+        "id": "940GZZLULNB",
+        "name": "London Bridge Underground Station"
+       }
+      ]
+     },
+     "routeOptions": [
+      {
+       "directions": [
+        "Stratford Underground Station"
+       ],
+       "lineIdentifier": {
+        "id": "jubilee",
+        "name": "Jubilee",
+        "uri": "/Line/jubilee",
+        "type": "Line",
+        "crowding": {},
+        "routeType": "Unknown",
+        "status": "Unknown"
+       }
+      }
+     ],
+     "mode": {
+      "id": "tube",
+      "name": "tube"
+     },
+     "interChangeDuration": "8",
+     "interChangePosition": "AFTER"
+    },
+    {
+     "duration": 29,
+     "departureTime": "2026-10-09T12:05:00",
+     "arrivalTime": "2026-10-09T12:34:00",
+     "departurePoint": {
+      "naptanId": "910GLNDNBDC",
+      "individualStopId": "9100LNDNBDE1",
+      "commonName": "London Bridge Rail Station",
+      "lat": 51.505132574005,
+      "lon": -0.08543882633500001
+     },
+     "arrivalPoint": {
+      "naptanId": "910GGTWK",
+      "commonName": "Gatwick Airport Rail Station",
+      "lat": 51.156489019101,
+      "lon": -0.161041533022
+     },
+     "path": {
+      "stopPoints": [
+       {
+        "id": "910GECROYDN",
+        "name": "East Croydon Rail Station"
+       },
+       {
+        "id": "910GGTWK",
+        "name": "Gatwick Airport Rail Station"
+       }
+      ]
+     },
+     "routeOptions": [
+      {
+       "directions": [
+        "Brighton Rail Station"
+       ],
+       "lineIdentifier": {
+        "id": "thameslink",
+        "name": "Thameslink",
+        "uri": "/Line/thameslink",
+        "type": "Line",
+        "crowding": {},
+        "routeType": "Unknown",
+        "status": "Unknown"
+       }
+      }
+     ],
+     "mode": {
+      "id": "national-rail",
+      "name": "national-rail"
+     }
+    }
+   ],
+   "fare": {
+    "totalCost": 1350,
+    "fares": [
+     {
+      "lowZone": 1,
+      "highZone": 14,
+      "cost": 1350,
+      "chargeProfileName": "Normal",
+      "isHopperFare": false,
+      "chargeLevel": "Off Peak",
+      "peak": 2210,
+      "offPeak": 1350
+     }
+    ],
+    "caveats": [
+     {
+      "text": "<p>Fares between two stations may vary depending on the direction of travel, time of day and day of the week.</p><p>We c",
+      "type": "allRailModes"
+     },
+     {
+      "text": "The price shown is a single adult pay as you go fare.",
+      "type": "generic"
+     }
+    ]
+   }
+  },
+  {
+   "legs": [
+    {
+     "duration": 8,
+     "departureTime": "2026-10-09T11:53:00",
+     "arrivalTime": "2026-10-09T12:01:00",
+     "departurePoint": {
+      "naptanId": "910GWATRLMN",
+      "individualStopId": "9100WATRLMN1",
+      "commonName": "London Waterloo Rail Station",
+      "lat": 51.502346048156,
+      "lon": -0.114372958897
+     },
+     "arrivalPoint": {
+      "naptanId": "910GCLPHMJC",
+      "individualStopId": "9100CLPHMJM1",
+      "commonName": "Clapham Junction Rail Station",
+      "lat": 51.464641062404,
+      "lon": -0.170044878877
+     },
+     "path": {
+      "stopPoints": [
+       {
+        "id": "910GVAUXHLM",
+        "name": "Vauxhall Rail Station"
+       },
+       {
+        "id": "910GCLPHMJC",
+        "name": "Clapham Junction Rail Station"
+       }
+      ]
+     },
+     "routeOptions": [
+      {
+       "directions": [
+        "Guildford Rail Station"
+       ],
+       "lineIdentifier": {
+        "id": "south-western-railway",
+        "name": "South Western Railway",
+        "uri": "/Line/south-western-railway",
+        "type": "Line",
+        "crowding": {},
+        "routeType": "Unknown",
+        "status": "Unknown"
+       }
+      }
+     ],
+     "mode": {
+      "id": "national-rail",
+      "name": "national-rail"
+     },
+     "interChangeDuration": "9",
+     "interChangePosition": "AFTER"
+    },
+    {
+     "duration": 26,
+     "departureTime": "2026-10-09T12:12:00",
+     "arrivalTime": "2026-10-09T12:38:00",
+     "departurePoint": {
+      "naptanId": "910GCLPHMJC",
+      "individualStopId": "9100CLPHMJC1",
+      "commonName": "Clapham Junction Rail Station",
+      "lat": 51.464228340591,
+      "lon": -0.169528718028
+     },
+     "arrivalPoint": {
+      "naptanId": "910GGTWK",
+      "commonName": "Gatwick Airport Rail Station",
+      "lat": 51.156489019101,
+      "lon": -0.161041533022
+     },
+     "path": {
+      "stopPoints": [
+       {
+        "id": "910GECROYDN",
+        "name": "East Croydon Rail Station"
+       },
+       {
+        "id": "910GGTWK",
+        "name": "Gatwick Airport Rail Station"
+       }
+      ]
+     },
+     "routeOptions": [
+      {
+       "directions": [
+        "Portsmouth Harbour Rail Station"
+       ],
+       "lineIdentifier": {
+        "id": "southern",
+        "name": "Southern",
+        "uri": "/Line/southern",
+        "type": "Line",
+        "crowding": {},
+        "routeType": "Unknown",
+        "status": "Unknown"
+       }
+      }
+     ],
+     "mode": {
+      "id": "national-rail",
+      "name": "national-rail"
+     }
+    }
+   ],
+   "fare": {
+    "totalCost": 1070,
+    "fares": [
+     {
+      "lowZone": 1,
+      "highZone": 15,
+      "cost": 1070,
+      "chargeProfileName": "Normal",
+      "isHopperFare": false,
+      "chargeLevel": "Off Peak",
+      "peak": 1920,
+      "offPeak": 1070
+     }
+    ],
+    "caveats": [
+     {
+      "text": "<p>If your journey avoids Zone 1 and you see a pink card reader when changing trains, touch your contactless or Oyster c",
+      "type": "pinkReader"
+     },
+     {
+      "text": "<p>Fares between two stations may vary depending on the direction of travel, time of day and day of the week.</p><p>We c",
+      "type": "allRailModes"
+     },
+     {
+      "text": "The price shown is a single adult pay as you go fare.",
+      "type": "generic"
+     }
+    ]
+   }
+  },
+  {
+   "legs": [
+    {
+     "duration": 8,
+     "departureTime": "2026-10-09T12:06:00",
+     "arrivalTime": "2026-10-09T12:14:00",
+     "departurePoint": {
+      "naptanId": "910GWATRLMN",
+      "individualStopId": "9100WATRLMN1",
+      "commonName": "London Waterloo Rail Station",
+      "lat": 51.502346048156,
+      "lon": -0.114372958897
+     },
+     "arrivalPoint": {
+      "naptanId": "910GCLPHMJC",
+      "individualStopId": "9100CLPHMJM1",
+      "commonName": "Clapham Junction Rail Station",
+      "lat": 51.464641062404,
+      "lon": -0.170044878877
+     },
+     "path": {
+      "stopPoints": [
+       {
+        "id": "910GVAUXHLM",
+        "name": "Vauxhall Rail Station"
+       },
+       {
+        "id": "910GCLPHMJC",
+        "name": "Clapham Junction Rail Station"
+       }
+      ]
+     },
+     "routeOptions": [
+      {
+       "directions": [
+        "Hampton Court Rail Station"
+       ],
+       "lineIdentifier": {
+        "id": "south-western-railway",
+        "name": "South Western Railway",
+        "uri": "/Line/south-western-railway",
+        "type": "Line",
+        "crowding": {},
+        "routeType": "Unknown",
+        "status": "Unknown"
+       }
+      }
+     ],
+     "mode": {
+      "id": "national-rail",
+      "name": "national-rail"
+     },
+     "interChangeDuration": "9",
+     "interChangePosition": "AFTER"
+    },
+    {
+     "duration": 26,
+     "departureTime": "2026-10-09T12:23:00",
+     "arrivalTime": "2026-10-09T12:49:00",
+     "departurePoint": {
+      "naptanId": "910GCLPHMJC",
+      "individualStopId": "9100CLPHMJC1",
+      "commonName": "Clapham Junction Rail Station",
+      "lat": 51.464228340591,
+      "lon": -0.169528718028
+     },
+     "arrivalPoint": {
+      "naptanId": "910GGTWK",
+      "commonName": "Gatwick Airport Rail Station",
+      "lat": 51.156489019101,
+      "lon": -0.161041533022
+     },
+     "path": {
+      "stopPoints": [
+       {
+        "id": "910GECROYDN",
+        "name": "East Croydon Rail Station"
+       },
+       {
+        "id": "910GGTWK",
+        "name": "Gatwick Airport Rail Station"
+       }
+      ]
+     },
+     "routeOptions": [
+      {
+       "directions": [
+        "Littlehampton Rail Station"
+       ],
+       "lineIdentifier": {
+        "id": "southern",
+        "name": "Southern",
+        "uri": "/Line/southern",
+        "type": "Line",
+        "crowding": {},
+        "routeType": "Unknown",
+        "status": "Unknown"
+       }
+      }
+     ],
+     "mode": {
+      "id": "national-rail",
+      "name": "national-rail"
+     }
+    }
+   ],
+   "fare": {
+    "totalCost": 1070,
+    "fares": [
+     {
+      "lowZone": 1,
+      "highZone": 15,
+      "cost": 1070,
+      "chargeProfileName": "Normal",
+      "isHopperFare": false,
+      "chargeLevel": "Off Peak",
+      "peak": 1920,
+      "offPeak": 1070
+     }
+    ],
+    "caveats": [
+     {
+      "text": "<p>If your journey avoids Zone 1 and you see a pink card reader when changing trains, touch your contactless or Oyster c",
+      "type": "pinkReader"
+     },
+     {
+      "text": "<p>Fares between two stations may vary depending on the direction of travel, time of day and day of the week.</p><p>We c",
+      "type": "allRailModes"
+     },
+     {
+      "text": "The price shown is a single adult pay as you go fare.",
+      "type": "generic"
+     }
+    ]
+   }
+  }
+ ]
+}

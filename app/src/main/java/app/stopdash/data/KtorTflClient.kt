@@ -348,7 +348,7 @@ class KtorTflClient(
     private fun TripRoute.fromHere(): TripRoute {
         val first = legs.firstOrNull() ?: return this
         if (first.fromId.isNotBlank() || first.fromArea.isNotBlank()) return this
-        return TripRoute(listOf(first.copy(fromName = "", fromAt = null)) + legs.drop(1))
+        return copy(legs = listOf(first.copy(fromName = "", fromAt = null)) + legs.drop(1))
     }
 
     // The route with its final leg named [name] when that leg ends at a bare coordinate (no stop id):

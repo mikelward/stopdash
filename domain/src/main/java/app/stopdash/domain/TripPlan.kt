@@ -61,8 +61,12 @@ data class TripLeg(
     }
 }
 
-/** One route the Planner offered: its [legs] in order. */
-data class TripRoute(val legs: List<TripLeg>) {
+/**
+ * One route the Planner offered: its [legs] in order, and its [fare] where the Planner priced it (null
+ * where it didn't, as for a trip beyond the pay as you go area, or for a route StopDash put together
+ * itself from the Planner's legs, which the Planner never priced).
+ */
+data class TripRoute(val legs: List<TripLeg>, val fare: TripFare? = null) {
     /** The legs ridden, walks left out: the line pills a route shows. */
     val rides: List<TripLeg> get() = legs.filterNot { it.isWalk }
 
@@ -240,6 +244,20 @@ fun mergedRoutes(first: List<TripRoute>, second: List<TripRoute>): List<TripRout
     fun key(route: TripRoute) = route.legs.map { listOf(it.mode, it.lineId, it.fromId, it.toId, it.departure, it.arrival) }
     val seen = first.mapTo(HashSet()) { key(it) }
     return first + second.filter { seen.add(key(it)) }
+}
+
+/**
+ * What the Planner says a route costs (SPEC *Trips with a change → Fare*): the single adult pay as you
+ * go fare in [pence], for the time the route was planned at, Hopper discounts included. [level] is
+ * whether that's the peak or off-peak fare, where every priced part of the route says the same; null
+ * where they differ or don't say (a bus fare has no peak). [pinkReader] where the Planner warns that
+ * the fare is only right if the rider touches a pink reader where they change.
+ */
+data class TripFare(val pence: Int, val level: Level? = null, val pinkReader: Boolean = false) {
+    enum class Level { PEAK, OFF_PEAK }
+
+    /** The fare as a price, "£3.10", always in pounds whatever the device's locale. */
+    val label: String get() = "£%d.%02d".format(java.util.Locale.ROOT, pence / 100, pence % 100)
 }
 
 /** [JourneyPlanner.journeys] from the stop [fromId]. */

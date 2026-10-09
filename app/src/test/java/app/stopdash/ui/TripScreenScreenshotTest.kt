@@ -94,6 +94,7 @@ import app.stopdash.domain.TripClosures
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.Workers
+import app.stopdash.domain.TripFare
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.UsageEvent
 import app.stopdash.telemetry.UsageEvents
@@ -1146,6 +1147,39 @@ class TripScreenScreenshotTest {
         // Screen readers hear each first-leg time with its destination.
         composeRule.onAllNodesWithContentDescription(" min to ", substring = true).onFirst().assertExists()
         captureSnapshot("trip-routes.png")
+    }
+
+    @Test
+    fun trip_routes_with_fares() {
+        // Two routes the Planner priced and one it didn't (via Stratford): that card shows no fare, never a guess.
+        val priced = planned.copy(
+            routes = listOf(
+                viaStratford,
+                viaCanadaWater.copy(fare = TripFare(310, TripFare.Level.PEAK, pinkReader = true)),
+                viaWhitechapel.copy(fare = TripFare(280, TripFare.Level.OFF_PEAK)),
+            ),
+        )
+        show(priced)
+        // The price alone (maintainer, 2026-10-09: no "Fare" before it).
+        composeRule.onNodeWithText("£2.80").assertIsDisplayed()
+        composeRule.onNodeWithText("£3.10").assertIsDisplayed()
+        composeRule.onAllNodesWithTag("tripFare", useUnmergedTree = true).assertCountEquals(2)
+        captureSnapshot("trip-routes-fares.png")
+        // Open, a route says its level and where the Planner warns of one, the pink reader.
+        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("£3.10 · peak").assertIsDisplayed()
+        composeRule.onNodeWithTag("routeFarePinkReader").assertIsDisplayed()
+        captureSnapshot("trip-route-fare.png")
+    }
+
+    @Test
+    fun an_open_route_with_no_fare_says_none() {
+        show(planned)
+        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("routeFare").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("routeFarePinkReader").assertCountEquals(0)
     }
 
     @Test

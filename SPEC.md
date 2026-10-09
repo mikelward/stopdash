@@ -1871,6 +1871,16 @@ covers it, for the same purpose (app functionality) and with the same handling (
 answer the request, not collected or kept by StopDash); the form is re-checked before the release
 that ships it.
 
+**Fare** (maintainer, 2026-10-09). Each card ends with what its route costs ("£3.10"), and the open
+route says whether that's the peak or off-peak fare ("£3.10 · peak") and, where the Planner warns of
+one, to touch a pink reader where the rider changes. It's the Planner's own price for the route, which
+comes with the plan, so it costs no request and is in place from the card's first frame: the single
+adult pay as you go fare at the time planned for, Hopper discounts taken off. Daily caps and railcards
+aren't counted, as the Planner doesn't count them. A route the Planner didn't price (one leaving the
+pay as you go area) shows no fare rather than a guess, and so does a route StopDash puts together
+itself from the Planner's rides (a train through in place of a change): the Planner never priced it.
+The level is named only where every part of the route is charged at it; a bus part has none.
+
 ### On the way
 
 *In progress* (maintainer, 2026-09-26; mocked the same day). An open trip route has a **Start**
