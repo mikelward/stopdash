@@ -32,6 +32,17 @@ interface SnapshotStore {
     suspend fun saveKeepingJourneys(snapshot: DeparturesSnapshot) = save(snapshot)
 
     /**
+     * [saveKeepingJourneys] [snapshot], the widget's refresh having followed the rider to new stops
+     * ([WidgetFollow]), but only if what's stored is still [loaded]'s stops laid out as [loaded] was:
+     * the app storing another place meanwhile wins, and so does it laying the same stops out from a
+     * newer position of its own (their order or nearer places). Unlike
+     * [saveIfStopsMatch], [snapshot]'s own order, nearer places and missing stops are stored, as the
+     * app's would be: they're from where the rider is now. Returns whether it was applied.
+     */
+    suspend fun saveFollowedIfUnchanged(snapshot: DeparturesSnapshot, loaded: DeparturesSnapshot): Boolean =
+        saveIfStopsMatch(snapshot, loaded.stops.map { it.stopId })
+
+    /**
      * Update the stored widget journeys by [report] ([WidgetJourneys.apply]), atomically with the
      * read, taking a pinned journey's origin from [origins] where it is missing or older — the one
      * write that changes the pins.

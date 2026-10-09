@@ -612,9 +612,9 @@
     <string name="journey_alerts_london_allow">Yes please</string>
     <string name="journey_alerts_london_decline">No thanks</string>
     <!-- The disclosure before the background-location prompt, which Google Play's declaration requires precede it:
-         what location is used for, that it runs while the app is closed, and that it never leaves the phone. -->
+         what location is used for, that it runs while the app is closed, and that the widget's lookup sends it to TfL. -->
     <string name="journey_alerts_location_rationale_title">Allow all the time</string>
-    <string name="journey_alerts_location_rationale_body">StopDash uses your location to check you\'re in London before showing a journey alert, even while it\'s closed. It only runs during your alert times, and stays on your phone — nothing is collected or shared.</string>
+    <string name="journey_alerts_location_rationale_body">StopDash uses your location even while it\'s closed: to show the stops where you are on your widget, and to check you\'re in London before a journey alert. To find stops near you, it sends your position to TfL, as it does when you open the app. Nothing else is collected or shared.</string>
     <string name="journey_alerts_location_rationale_continue">Continue</string>
     <string name="journey_alerts_location_rationale_dismiss">Not now</string>
     <!-- A direction's days, summarized. -->
@@ -739,6 +739,8 @@
     <string name="settings_live_widget_refresh_summary">Refreshes the home-screen widget about once a minute in the background. Uses more battery and data.</string>
     <!-- Shown under the toggle when the setting saved but the background refresh couldn't be
          scheduled (a rare storage/WorkManager error); the choice is kept and retried later. -->
+    <string name="settings_widget_follows_title">Widget follows you</string>
+    <string name="settings_widget_follows_summary">Shows the stops where you are, using your location in the background.</string>
     <string name="settings_live_widget_refresh_failed">Couldn\'t update live refresh</string>
     <string name="action_dismiss">Dismiss</string>
 

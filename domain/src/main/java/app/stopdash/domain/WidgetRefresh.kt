@@ -8,8 +8,9 @@ import kotlinx.coroutines.coroutineScope
 
 /**
  * Rebuilds the widget's persisted snapshot by re-fetching arrivals for exactly the stops it is
- * already showing (SPEC D1: the widget is location-free at refresh, so a refresh needs no
- * location — just the stop set already in the snapshot). Pure over an injected [fetchArrivals]
+ * already showing — just the stop set already in the snapshot, no location. Where the widget
+ * follows the rider (SPEC D1), the app's follow step picks that stop set first, from a last known
+ * position, and may send it to TfL to find stops; this rebuild never reads one. Pure over an injected [fetchArrivals]
  * so it is JVM-testable without Android or the network.
  *
  * A stop that fetches fresh gets its new arrivals stamped [now]; a stop whose fetch fails keeps

@@ -537,7 +537,8 @@ internal fun LondonOnlyCard(
 
 /**
  * The disclosure before the background-location prompt, which Google Play's declaration requires precede
- * it: what location is used for, that it runs while the app is closed, and that it never leaves the phone.
+ * it: what location is used for, that it runs while the app is closed, and that the widget's stop lookup
+ * sends it to TfL while the alerts check keeps it on the phone.
  * Snoozemo's, in shape and wording; Continue opens Android's prompt.
  */
 @Composable

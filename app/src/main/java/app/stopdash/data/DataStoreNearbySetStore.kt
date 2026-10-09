@@ -123,6 +123,23 @@ class DataStoreNearbySetStore internal constructor(
     }
 
     /**
+     * Make [stopIds] the current set only if the current one is still [expected], atomically with the
+     * read: the widget's background refresh, having followed the rider from [expected], mustn't replace
+     * a set the app resolved meanwhile from a fresher fix. Returns whether it was stored; a failed
+     * write throws, and nothing changes.
+     */
+    suspend fun replaceIf(expected: Set<String>?, stopIds: Set<String>): Boolean {
+        if (unsaved.value != null) return false
+        var replaced = false
+        dataStore.updateData { stored ->
+            // Set on every run, since DataStore may re-run the transform.
+            replaced = stored?.stopIds?.toSet() == expected
+            if (replaced) PersistedNearbySet(stopIds.sorted()) else stored
+        }
+        return replaced
+    }
+
+    /**
      * [save] [stopIds] and [redraw] for it, trying again after either fails (waits doubling from
      * [FIRST_RETRY_MILLIS], capped at [MAX_RETRY_MILLIS]) until both are done or the caller is canceled
      * by a newer set. Without the retry a failed write would live only in memory, and the next process

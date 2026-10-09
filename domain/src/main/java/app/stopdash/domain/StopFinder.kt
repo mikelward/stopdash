@@ -1,9 +1,9 @@
 package app.stopdash.domain
 
 /**
- * Finds stops near a point — the in-app "near me now" search (SPEC *Finding stops*, D1),
- * kept separate from [TflClient] on purpose: departures refresh is a background,
- * location-free path, while finding stops is an on-demand action that sends the user's
+ * Finds stops near a point — the in-app "near me now" search (SPEC *Finding stops*, D1), and
+ * the widget's follow when *Widget follows you* is on — kept separate from [TflClient] on
+ * purpose: departures refresh is a location-free path, while finding stops sends the user's
  * location off the device. Separating the two keeps the refresh client unable to reach a
  * location-sending call, and lets a surface depend on only the capability it uses.
  */

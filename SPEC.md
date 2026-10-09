@@ -1160,8 +1160,10 @@ missing; a refusal Android answers at once opens the app's settings). The card i
 Snoozemo's location banner is ("Alerts only in London?", **Yes please** / **No thanks**); No thanks
 puts the list's card away for good, and the Alerts screen's stays as the way back. Yes please opens
 Google Play's prominent disclosure, a dialog before Android's prompt, Snoozemo's in shape and
-wording: what location is used for, that it runs while the app is closed and only during alert times,
-and that it stays on the phone (**Continue** / **Not now**). Without it, or with no fix to be
+wording: what location is used for (the widget following the rider, D1, and this), that it runs while
+the app is closed, and that finding stops sends the position to TfL as the app does when opened,
+nothing else (**Continue** / **Not now**). Settings' "Widget
+follows you" switch opens the same disclosure. Without it, or with no fix to be
 had, alerts fire as before: a missing permission never silences them unseen. So does a fix whose
 uncertainty reaches inside the line, or that reports none, so an approximate fix near the edge never silences a rider
 who is really in range. Each check takes the last
@@ -3095,7 +3097,10 @@ the Open Government Licence v3.0. A test pins the credits so a rewording can't d
 An overflow-menu entry opens a Settings screen, hosted at the activity top level like the
 licenses screen (an overlay whose own Back closes it) rather than through a navigation graph
 — stopdash still has no nav library. Its first row opens the favorite-places editor (D9), and the third the favorite journeys (*Journeys*);
-the opt-in "refresh widget every minute" toggle (D5) follows below them. The screen composable
+the opt-in "refresh widget every minute" toggle (D5) follows below them, then "Widget follows you"
+(D1), which reads on while location is allowed all the time: turning it on opens the disclosure and
+Android's prompt, and turning it off opens Android's settings for the app, where the grant is taken
+away. The screen composable
 is UI-only for the toggle: it reflects the setting and reports a
 change, while persistence (a typed DataStore, mirroring the starred-rows store) and the
 refresh scheduler (WorkManager) are wired by the activity, so the screen stays
@@ -3436,7 +3441,7 @@ rider was. So a route's two directions kept together at a stop a few steps farth
 on the widget too. A line the saved choices don't name (one that has appeared since the app last
 worked them out) folds by the order alone, to its nearest stop. The choices follow the rider
 whether or not a refresh succeeds: at each fix, and when the app starts, they're worked out again
-from the saved rows at the new distances, never kept from where the rider was. (Reordering the widget's rows closest-first is not mirrored.) The app pushes an update whenever it fetches, so the
+from the saved rows at the new distances, never kept from where the rider was. A widget that follows the rider (below) can't work them out, having no distances, so its follow drops them and it folds by the order alone until the app next saves its own. (Reordering the widget's rows closest-first is not mirrored.) The app pushes an update whenever it fetches, so the
 widget follows the app's last refresh rather than waking on the OS's periodic schedule
 (battery). Because the widget's host never re-renders it on its own (no periodic update),
 the widget also schedules **one render-only redraw at its staleness boundary**, so a widget
@@ -3537,7 +3542,8 @@ snapshot alone: no polling and no network, and nothing runs once it leaves the s
 
 **Refresh from the watch**: tapping the tile's Refresh line, or opening
 the watch app, asks the phone for one refresh of the widget's stops. The phone does the same
-location-free fetch as a widget refresh and sends the result the usual way. Why and how:
+fetch as a widget refresh (which, with *Widget follows you* on, first follows the phone's last known
+position, D1) and sends the result the usual way. Why and how:
 
 - **Every request gets an answer** (principle 2). The phone answers with what happened:
   refreshed, partly refreshed, rate-limited, TfL unreachable, the user's key rejected (D7; it's
@@ -3820,13 +3826,27 @@ Mirrors the sibling fleet:
 - **Ticketing**, Oyster/contactless balances, and service maps.
 - **Writing to TfL.** StopDash is read-only.
 - **Continuous background location / geofencing.** Location is used on demand in the
-  app to find nearby stops, never tracked in the background. The one exception is a trip the
-  rider started: a few precise fixes just after boarding, compared on the device and never sent
-  (*On the way*).
+  app to find nearby stops, never tracked continuously and never fenced. The exceptions are
+  each the rider's own choice: a trip they started (a few precise fixes just after boarding,
+  compared on the device and never sent, *On the way*), and, with location allowed all the time,
+  a journey alert's check reading where the phone is (*Only in London*) and the widget reading the
+  phone's last known position at each of its own refreshes (D1).
 
 ## Decision log
 
 - **D1 — The widget renders watched stops; the app offers both watched and nearest.**
+  - **The widget follows the rider (maintainer, 2026-10-09).** With location allowed all the time,
+    each of the widget's own refreshes (its header tap, the live refresh, a watch's request) first
+    reads the phone's **last known position**, never asking for a fix: one at most ten minutes old
+    and accurate to 200 m. Where the stops the app would pick there differ from the widget's, the
+    widget and the watch move to them (the stops looked up through the app's own nearby cache, so
+    staying put asks TfL nothing), with the old place's trains taken off at once and a new stop not
+    fetched yet shown as missing (principle 1). A pinned journey's origin stays, for its journey. The
+    position isn't kept or logged; the lookup's place joins the nearby cache as the app's own do. A
+    set the app stores meanwhile, from a fresher fix of its own, wins. Battery: no radio for the
+    position; one stop lookup per move of more than a short walk. It reverses the part of this
+    decision below that kept location off the widget's refresh, for a rider who allows it; without
+    the grant, all below stands.
   The lock screen is a glance surface that must always have something to show without
   waiting on a location fix — and background location on the keyguard is restricted,
   often ungranted, and battery-costly. So what a surface shows is chosen ahead of time.
@@ -3870,7 +3890,7 @@ Mirrors the sibling fleet:
   app is closed (D4) — fetching new data on that schedule was the deferred part.
   - **Tap the header to refresh (2026-10-04).** The widget's header — the title, its stamp,
     and the note under them ("Tap to refresh") — refreshes the widget's stored stops in place,
-    location-free like the live refresh (D1), whatever that setting says; the departures below
+    as the live refresh does (D1: location-free, unless *Widget follows you* is on), whatever that setting says; the departures below
     open the app, which re-locates. The note says "Refreshing…" while it runs, and why a refresh
     that fetched nothing failed (rate-limited, TfL unreachable, the key rejected) for as long as
     the data it couldn't replace is still out of date (principle 2). It is an expedited one-shot
@@ -3880,7 +3900,7 @@ Mirrors the sibling fleet:
     the app.
   - **Opt-in live refresh (off by default).** A Settings toggle, "refresh widget every
     minute", drives a self-rescheduling one-shot WorkManager chain that re-fetches
-    arrivals for exactly the widget's persisted stops (location-free, D1) about once a
+    arrivals for the widget's persisted stops (location-free, or following the phone's last known position with *Widget follows you* on, D1) about once a
     minute and saves the refreshed snapshot, which pokes the widget to re-render. It is
     off by default because it costs battery and data the passive widget doesn't. A failed
     cycle keeps the last-good and still reschedules, so a transient TfL error doesn't

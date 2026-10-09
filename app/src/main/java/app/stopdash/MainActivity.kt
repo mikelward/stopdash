@@ -1756,57 +1756,8 @@ class MainActivity : ComponentActivity() {
                                         locationAllTime = withContext(Dispatchers.IO) { JourneyAlertLocation.allowedAllTheTime(applicationContext) }
                                     }
                                 }
-                                var locationAskedAt by rememberSaveable { mutableLongStateOf(0L) }
-                                val openAppSettings = {
-                                    startActivity(
-                                        Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", packageName, null)),
-                                    )
-                                }
-                                val backgroundLocation = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-                                    if (!granted && SystemClock.elapsedRealtime() - locationAskedAt < JourneyAlertState.AT_ONCE_MILLIS) openAppSettings()
-                                    reopenLocation()
-                                }
-                                val foregroundLocation = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
-                                    when {
-                                        result.values.none { it } -> {
-                                            if (SystemClock.elapsedRealtime() - locationAskedAt < JourneyAlertState.AT_ONCE_MILLIS) openAppSettings()
-                                        }
-                                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
-                                            locationAskedAt = SystemClock.elapsedRealtime()
-                                            backgroundLocation.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-                                        }
-                                    }
-                                    reopenLocation()
-                                }
-                                // Which grant is missing is read off the main thread; only the prompt opens here, in this
-                                // composition's scope, which owns the launchers. Opened from the disclosure dialog below,
-                                // never straight from a card (Google Play: the disclosure precedes the prompt).
-                                val requestLocation: () -> Unit = {
-                                    locationScope.launch {
-                                        val foreground = withContext(Dispatchers.IO) {
-                                            listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
-                                                .any { ContextCompat.checkSelfPermission(applicationContext, it) == PackageManager.PERMISSION_GRANTED }
-                                        }
-                                        locationAskedAt = SystemClock.elapsedRealtime()
-                                        if (!foreground || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-                                            foregroundLocation.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
-                                        } else {
-                                            backgroundLocation.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-                                        }
-                                    }
-                                }
-                                // The disclosure, shown when a card's Yes please is tapped; kept through a rotation.
-                                var locationRationale by rememberSaveable { mutableStateOf(false) }
-                                val askLocation: () -> Unit = { locationRationale = true }
-                                if (locationRationale) {
-                                    LocationRationaleDialog(
-                                        onContinue = {
-                                            locationRationale = false
-                                            requestLocation()
-                                        },
-                                        onDismiss = { locationRationale = false },
-                                    )
-                                }
+                                // The disclosure, then Android's prompt; the list's state read again after.
+                                val askLocation = rememberLocationAllTimeAsk(onAnswered = reopenLocation)
                                 // Whether Android was offering a rationale when the prompt was asked for: with what it
                                 // offers after, it tells a final refusal from a swiped-away prompt ([JourneyAlertState.recordPrompt]).
                                 var rationaleBeforeAsk by rememberSaveable { mutableStateOf(false) }
@@ -2188,7 +2139,34 @@ class MainActivity : ComponentActivity() {
                                 }
                             } else {
                                 ReportScreen(UsageEvent.Screen.SETTINGS)
+                                // Whether the widget follows the rider: location allowed all the time (SPEC D1). Null
+                                // until read, off the main thread, and read again on every return, since it's
+                                // granted or taken away in Android's settings.
+                                var widgetFollows by remember { mutableStateOf<Boolean?>(null) }
+                                val followsScope = rememberCoroutineScope()
+                                val readFollows: () -> Unit = {
+                                    followsScope.launch {
+                                        widgetFollows = withContext(Dispatchers.IO) { JourneyAlertLocation.allowedAllTheTime(applicationContext) }
+                                    }
+                                }
+                                LifecycleResumeEffect(Unit) {
+                                    readFollows()
+                                    onPauseOrDispose { }
+                                }
+                                val askFollows = rememberLocationAllTimeAsk(onAnswered = readFollows)
                                 SettingsScreen(
+                                    widgetFollows = widgetFollows,
+                                    onWidgetFollowsChange = { on ->
+                                        // Turned on through the disclosure and Android's prompt; off only in Android's
+                                        // settings, which is where the grant is taken away.
+                                        if (on) {
+                                            askFollows()
+                                        } else {
+                                            startActivity(
+                                                Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", packageName, null)),
+                                            )
+                                        }
+                                    },
                                     liveWidgetRefresh = liveWidgetRefresh == true,
                                     liveWidgetRefreshEnabled = liveWidgetRefresh != null,
                                     liveWidgetRefreshFailed = liveWidgetRefreshFailed,
@@ -5448,7 +5426,7 @@ private fun tickingNow(): Instant {
  * configuration changes — so a bound reference would pin each destroyed Activity in the
  * ViewModel store (Codex). A top-level function captures nothing.
  */
-private fun logLocationWarning(message: String) = StopdashDebugLog.warning("location: %s", message)
+internal fun logLocationWarning(message: String) = StopdashDebugLog.warning("location: %s", message)
 
 /**
  * The last few positions the rider's fixes and lookups placed them at (SPEC *Privacy*): in memory
@@ -5527,7 +5505,73 @@ private fun journeyEndStopsCache(context: Context): NearbyStopsCache = synchroni
 /** Journey ends kept at once: two each for more favorite journeys than a rider keeps. */
 private const val JOURNEY_END_AREAS = 40
 
-private fun nearbyStopsCache(context: Context): NearbyStopsCache = synchronized(nearbyStopsCacheLock) {
+
+/**
+ * Asks for location all the time (SPEC *Journeys*, D1): Google Play's prominent disclosure first, then
+ * Android's prompt, the while-using grant first where it's missing, since Android offers "all the
+ * time" only on top of it. A refusal Android answers at once (asked before and refused for good)
+ * opens the app's settings, where it can still be allowed. [onAnswered] after each answer, so the
+ * caller reads the grant again. Returns what opens the disclosure; the dialog is drawn here.
+ */
+@Composable
+private fun ComponentActivity.rememberLocationAllTimeAsk(onAnswered: () -> Unit): () -> Unit {
+    val locationScope = rememberCoroutineScope()
+    var locationAskedAt by rememberSaveable { mutableLongStateOf(0L) }
+    val openAppSettings = {
+        startActivity(
+            Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", packageName, null)),
+        )
+    }
+    val backgroundLocation = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted && SystemClock.elapsedRealtime() - locationAskedAt < JourneyAlertState.AT_ONCE_MILLIS) openAppSettings()
+        onAnswered()
+    }
+    val foregroundLocation = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        when {
+            result.values.none { it } -> {
+                if (SystemClock.elapsedRealtime() - locationAskedAt < JourneyAlertState.AT_ONCE_MILLIS) openAppSettings()
+            }
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
+                locationAskedAt = SystemClock.elapsedRealtime()
+                backgroundLocation.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+            }
+        }
+        onAnswered()
+    }
+    // Which grant is missing is read off the main thread; only the prompt opens here, in this
+    // composition's scope, which owns the launchers. Opened from the disclosure dialog below,
+    // never straight from a card (Google Play: the disclosure precedes the prompt).
+    val requestLocation: () -> Unit = {
+        locationScope.launch {
+            val foreground = withContext(Dispatchers.IO) {
+                listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+                    .any { ContextCompat.checkSelfPermission(applicationContext, it) == PackageManager.PERMISSION_GRANTED }
+            }
+            locationAskedAt = SystemClock.elapsedRealtime()
+            if (!foreground || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                foregroundLocation.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+            } else {
+                backgroundLocation.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+            }
+        }
+    }
+    // The disclosure, shown when a card's Yes please or the Settings switch is tapped; kept through a rotation.
+    var locationRationale by rememberSaveable { mutableStateOf(false) }
+    val askLocation: () -> Unit = { locationRationale = true }
+    if (locationRationale) {
+        LocationRationaleDialog(
+            onContinue = {
+                locationRationale = false
+                requestLocation()
+            },
+            onDismiss = { locationRationale = false },
+        )
+    }
+    return askLocation
+}
+
+/** The rider's own nearby lookups, on file: the app's near me, and the widget following the rider. */
+internal fun nearbyStopsCache(context: Context): NearbyStopsCache = synchronized(nearbyStopsCacheLock) {
     nearbyStopsCacheInstance ?: NearbyStopsCache(
         FileNearbyStopsStore(File(AppDirs.cache(context), "nearby-stops.json"), warn = ::logLocationWarning),
     ).also { nearbyStopsCacheInstance = it }

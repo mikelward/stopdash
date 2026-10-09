@@ -43,7 +43,10 @@ import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.TflClient
+import app.stopdash.domain.WidgetFollow
 import app.stopdash.domain.WidgetRefresh
+import app.stopdash.domain.CachingStopFinder
+import app.stopdash.nearbyStopsCache
 import app.stopdash.ui.ARRIVALS_REUSE
 import app.stopdash.ui.LINE_STATUS_REUSE
 import java.time.Duration
@@ -186,7 +189,8 @@ suspend fun applyWidgetRefreshSetting(context: Context, enabled: Boolean) {
 /**
  * Re-fetches arrivals for the widget's persisted stops and saves the refreshed snapshot (which
  * pokes the widget to re-render), then schedules the next tick — the opt-in "live widget" loop
- * (SPEC D5). Reads no location (D1): it refreshes exactly the stops already in the snapshot.
+ * (SPEC D5). Reads no location unless *Widget follows you* is on (D1, [WidgetFollowing]): then the
+ * phone's last known position may move the stops first; otherwise it refreshes the snapshot's stops.
  *
  * Its stops' line statuses are re-checked in the same cycle, so the widget's disruption marks stay
  * as fresh as its countdowns (SPEC D3).
@@ -357,7 +361,8 @@ internal data class SnapshotRefreshReport(
 }
 
 /**
- * One bounded, location-free refresh of the stored widget snapshot [prior]: its stops' arrivals,
+ * One bounded refresh of the stored widget snapshot [prior], after following the phone's last known
+ * position where *Widget follows you* is on ([WidgetFollowing]): its stops' arrivals,
  * fetched with the user's keys through the shared rate budget, a stop fetched moments ago reused.
  * The result is saved only if the stored stop set still matches; with nothing fresh, the widget
  * re-renders so the unchanged snapshot ages honestly. The widget's own refresh cycle and a watch's
@@ -381,6 +386,9 @@ internal suspend fun refreshStoredSnapshot(
     var saving = false
     var savedNothing = true
     var saved = false
+    // The stops this refresh is for: the followed place's once the rider is followed, so the answer is
+    // about what the widget shows now, not where it was (Codex on #711).
+    var stopCount = prior.stops.size
     try {
         // The client reads the key provider once per request and drives both the app_key and the
         // limiter's budget from that one read (rateLimiterFor), so a widget-only process needn't
@@ -399,22 +407,23 @@ internal suspend fun refreshStoredSnapshot(
                     logWidgetSnapshotWarning("widget alert direction lookup failed: ${e::class.simpleName}")
                 }
                 // Its fetches land in the shared arrivals too, so an app screen open meanwhile shows them.
+                val tfl = KtorTflClient(
+                    http,
+                    appKey = { userKey },
+                    rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
+                    requestPool = SharedTflRequestPool.pool,
+                    // The app says a refused key when it's next opened (SPEC D7).
+                    keyAnswered = RejectedApiKey.SHARED::record,
+                    // Where a failed alert-direction lookup is reported; it's caught inside the
+                    // client, so the lookup scope's handler never sees it.
+                    warn = ::logWidgetSnapshotWarning,
+                    // A row carries only the alerts for the way it's going, as in the app (SPEC
+                    // *Disruptions*).
+                    alertDirections = LineAlertDirections.shared,
+                    alertDirectionScope = directionLookups,
+                )
                 val client = CachingTflClient(RailAwareTflClient(
-                    tfl = KtorTflClient(
-                        http,
-                        appKey = { userKey },
-                        rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
-                        requestPool = SharedTflRequestPool.pool,
-                        // The app says a refused key when it's next opened (SPEC D7).
-                        keyAnswered = RejectedApiKey.SHARED::record,
-                        // Where a failed alert-direction lookup is reported; it's caught inside the
-                        // client, so the lookup scope's handler never sees it.
-                        warn = ::logWidgetSnapshotWarning,
-                        // A row carries only the alerts for the way it's going, as in the app (SPEC
-                        // *Disruptions*).
-                        alertDirections = LineAlertDirections.shared,
-                        alertDirectionScope = directionLookups,
-                    ),
+                    tfl = tfl,
                     rail = KtorDarwinClient(
                         http,
                         apiKey = { railKey },
@@ -426,10 +435,15 @@ internal suspend fun refreshStoredSnapshot(
                     boards = ArrivalsCache.SHARED,
                 ))
                 ran = true
+                // Following the rider first, where allowed (SPEC D1): the stops where they are now are
+                // the ones fetched. Through the app's own nearby cache, so staying put asks TfL nothing.
+                val followed = WidgetFollowing.follow(context, prior, CachingStopFinder(tfl, nearbyStopsCache(context)))
+                val working = followed?.snapshot ?: prior
+                stopCount = working.stops.size
                 // A station's National Rail board is left out while National Rail is hidden, since it
                 // would only fill rows the widget leaves out, but kept for a pinned journey calling on
                 // a National Rail line there (SPEC *Finding stops → Hiding a mode*).
-                val railBoards = WidgetRefresh.railBoards(prior, HiddenModesSetting.loaded())
+                val railBoards = WidgetRefresh.railBoards(working, HiddenModesSetting.loaded())
                 // The arrivals, then the lines' statuses, in as few requests as TfL accepts (lines
                 // checked moments ago reused), so a disrupted service stays marked while its
                 // countdowns are live (SPEC D3). A failed status lookup keeps the prior checks, which
@@ -445,7 +459,7 @@ internal suspend fun refreshStoredSnapshot(
                 // no-verdict check ([WidgetRefresh.refreshedLineStatuses]), so it was checked too.
                 var asked: Set<String> = emptySet()
                 val outcome = WidgetRefresh.refresh(
-                    prior,
+                    working,
                     Instant::now,
                     // Skip a stop the app fetched moments ago: same data, same shared rate budget.
                     arrivalsReuse = ARRIVALS_REUSE,
@@ -478,6 +492,22 @@ internal suspend fun refreshStoredSnapshot(
                     }
                 }
                 savedNothing = outcome !is WidgetRefresh.Outcome.Save
+                // A move followed with no arrivals fresh is stored all the same: the new place's layout, its
+                // stops unfetched listed missing and the old place's gone. Left unstored, the snapshot would
+                // keep the old place's stops, refreshed on every cycle for rows the widget no longer shows,
+                // while the nearby set says the rider moved (Codex on #711). The app storing a place of its
+                // own meanwhile wins, as for a save.
+                if (followed != null && outcome !is WidgetRefresh.Outcome.Save) {
+                    // A failed store is a failed refresh, as for a save: the nearby set has already moved
+                    // (Codex on #711).
+                    saving = true
+                    val laid = WidgetSnapshotStore(context).saveFollowedIfUnchanged(
+                        WidgetFollow.settled(followed.snapshot, followed.placeholders),
+                        prior,
+                    )
+                    saving = false
+                    if (!laid) logWidgetSnapshotWarning("widget follow layout discarded: the app stored a newer layout")
+                }
                 when (outcome) {
                     is WidgetRefresh.Outcome.Save -> {
                         // Conditional save: persist and poke the widget only if the stored stop set still
@@ -487,7 +517,14 @@ internal suspend fun refreshStoredSnapshot(
                         // departures fresh over the new set. On a discard the newer in-app snapshot is
                         // already stored and has poked the widget itself (Codex P1 on #56).
                         saving = true
-                        val applied = WidgetSnapshotStore(context).saveIfStopsMatch(outcome.snapshot, prior.stops.map { it.stopId })
+                        val expected = prior.stops.map { it.stopId }
+                        val applied = if (followed == null) {
+                            WidgetSnapshotStore(context).saveIfStopsMatch(outcome.snapshot, expected)
+                        } else {
+                            // The new place's stops, laid out from where the rider is, unless the app
+                            // stored a place of its own meanwhile.
+                            WidgetSnapshotStore(context).saveFollowedIfUnchanged(WidgetFollow.settled(outcome.snapshot, followed.placeholders), prior)
+                        }
                         saving = false
                         saved = applied
                         if (!applied) logWidgetSnapshotWarning("widget refresh result discarded: stop set changed during fetch")
@@ -524,12 +561,12 @@ internal suspend fun refreshStoredSnapshot(
         return SnapshotRefreshReport(
             // A save that threw left the store as it was (DataStore writes are atomic), so it saved
             // nothing: the outcome is cached like any all-failed one, against the unchanged snapshot.
-            prior.stops.size, 0, 0, List(prior.stops.size) { WatchRefreshOutcome.Failure.UNREACHABLE }, savedNothing = true,
+            stopCount, 0, 0, List(stopCount) { WatchRefreshOutcome.Failure.UNREACHABLE }, savedNothing = true,
         )
     }
     val tried = attempted.get()
     return SnapshotRefreshReport(
-        prior.stops.size, succeeded.get(), prior.stops.size - tried, failures.toList(), savedNothing, saved, statusKeyRejected.get(),
+        stopCount, succeeded.get(), stopCount - tried, failures.toList(), savedNothing, saved, statusKeyRejected.get(),
     )
 }
 

@@ -38,6 +38,12 @@ class WidgetSnapshotStore(context: Context) : SnapshotStore {
         pokeWidget()
     }
 
+    override suspend fun saveFollowedIfUnchanged(snapshot: DeparturesSnapshot, loaded: DeparturesSnapshot): Boolean {
+        val applied = delegate.saveFollowedIfUnchanged(snapshot, loaded)
+        if (applied) pokeWidget()
+        return applied
+    }
+
     override suspend fun updateWidgetJourneys(report: WidgetJourneysReport, origins: List<StopArrivals>) {
         delegate.updateWidgetJourneys(report, origins)
         pokeWidget()

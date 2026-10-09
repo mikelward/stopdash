@@ -182,4 +182,26 @@ class DataStoreNearbySetStoreTest {
         assertTrue(job.isCompleted)
         assertEquals(2, attempts)
     }
+
+    @Test
+    fun `replaceIf replaces only the set it followed from`() = runTest {
+        val store = DataStoreNearbySetStore(FakeDataStore(PersistedNearbySet(listOf("940GZZLUKSX"))))
+        assertTrue(store.replaceIf(setOf("940GZZLUKSX"), setOf("940GZZLUWLO")))
+        assertEquals(setOf("940GZZLUWLO"), store.nearby().first())
+        // The app stored another set meanwhile: that one stands.
+        assertFalse(store.replaceIf(setOf("940GZZLUKSX"), setOf("940GZZLUEUS")))
+        assertEquals(setOf("940GZZLUWLO"), store.nearby().first())
+    }
+
+    @Test
+    fun `replaceIf leaves a set still waiting to be written alone`() = runTest {
+        val backing = FakeDataStore(PersistedNearbySet(listOf("940GZZLUKSX")))
+        val store = DataStoreNearbySetStore(backing)
+        backing.failing = true
+        assertThrows(java.io.IOException::class.java) { kotlinx.coroutines.runBlocking { store.save(setOf("940GZZLUEUS")) } }
+        backing.failing = false
+        // The app's newer set is shown from memory; the widget's follow mustn't replace it.
+        assertFalse(store.replaceIf(setOf("940GZZLUKSX"), setOf("940GZZLUWLO")))
+        assertEquals(setOf("940GZZLUEUS"), store.nearby().first())
+    }
 }

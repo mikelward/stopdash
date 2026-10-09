@@ -1,9 +1,10 @@
 package app.stopdash.domain
 
 /**
- * A point on Earth — the device's own position, sent **only** for the on-demand nearby-stops
- * search and never on a background refresh (SPEC D1 / *Privacy*); a trip on the way also compares
- * it on the device with the boarding stop, never sending it (SPEC *On the way*). A plain
+ * A point on Earth — the device's own position, sent to TfL **only** to find nearby stops: on
+ * demand in the app, or on a widget refresh when the widget follows the rider, which needs location
+ * allowed all the time (SPEC D1 / *Privacy*). The journey alerts' London check and a trip on the
+ * way compare it on the device, never sending it (SPEC *Journeys → Alerts*, *On the way*). A plain
  * data class of two doubles so the ranking math ([NearestStops]) and the resolver stay
  * pure and JVM-testable, with no Android `Location` in the domain.
  */
