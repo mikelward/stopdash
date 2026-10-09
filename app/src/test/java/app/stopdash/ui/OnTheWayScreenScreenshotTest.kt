@@ -645,10 +645,17 @@ class OnTheWayScreenScreenshotTest {
             route = TripRoute(listOf(toFork, onFrom)), destinationName = "Morden", legIndex = 0,
             branchTakenLeg = 0, branchTakenTo = "Morden", branchTakenFork = "Kennington",
         )
-        show(rerouted, TripProgress.Waiting(toFork, at(3)))
+        // Its board's trains named by where the ride ends, not TfL's terminus, which can be wrong there
+        // (maintainer, 2026-10-09).
+        val labeled = Departure("northern", "Northern", "southbound", "Battersea Power Station", null, at(3), "tube", vehicleId = "EXAMPLE2")
+        show(
+            rerouted, TripProgress.Waiting(toFork, at(3)),
+            nextTrains = NextTrains(toFork, listOf(labeled.namedTo("Kennington")), readyAt = now).withGroups(now),
+        )
         composeRule.onNodeWithTag("onTheWayTrainsWarning").assertIsDisplayed()
         composeRule.onNodeWithText("None direct to Morden").assertIsDisplayed()
         composeRule.onNodeWithText("Change at Kennington").assertIsDisplayed()
+        composeRule.onNodeWithText("(Kennington)", substring = true).assertIsDisplayed()
     }
 
     @Test

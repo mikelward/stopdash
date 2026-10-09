@@ -214,6 +214,22 @@ object OffPlan {
             taken.copy(branchTakenLeg = rideIndex, branchTakenTo = trip.route.legs[rideIndex].toName, branchTakenFork = branch.forkName)
         }
 
+    /**
+     * Where [trip]'s upcoming ride ([OnTheWay.upcomingRide]) ends while it runs to the fork of a branch the
+     * trip took by itself (up to [ActiveTrip.branchTakenLeg], as "None direct" is said): the board's trains
+     * are then named by it, "(Camden Town)", not by TfL's terminus, which the trip has already found it can't
+     * trust there (maintainer, 2026-10-09). Null otherwise. By index alone, no walk of the route, so a screen
+     * may ask it as it draws.
+     */
+    fun boardShortTo(trip: ActiveTrip?): String? {
+        trip ?: return null
+        val leg = trip.leg ?: return null
+        if (trip.branchTakenLeg < 0 || (!leg.isWalk && trip.onBoardSeen)) return null
+        val index = if (leg.isWalk) trip.legIndex + 1 else trip.legIndex
+        if (index > trip.branchTakenLeg) return null
+        return trip.route.legs.getOrNull(index)?.takeIf { !it.isWalk }?.toName?.takeIf { it.isNotBlank() }
+    }
+
     // [ride] as two: to where [branch] leaves it, on its line, and on from there. The Planner's times are
     // shared out by stops, as no time is known for the stop between.
     private fun split(ride: TripLeg, branch: Branch): Pair<TripLeg, TripLeg> {

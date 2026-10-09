@@ -63,6 +63,18 @@ class NextTrainsOffMainTest {
     private fun times(next: NextTrains) = next.trains.map { it.expectedArrival }
 
     @Test
+    fun on_a_ride_cut_short_by_the_trip_its_trains_are_named_by_where_it_ends() {
+        // TfL labels one for a branch it may not run (an Edgware train as High Barnet via Bank): on a ride the
+        // trip cut short at a fork by itself, each is named by the ride's end, bracketed (maintainer, 2026-10-09).
+        val shown = trainsTimeline(board(train(3), train(5)), routes, now, shortTo = "C").at(now)
+        assertEquals(listOf("(C)", "(C)"), shown.trains.map { it.destination })
+        assertTrue(shown.trains.all { it.branch == null && it.via.isEmpty() })
+        assertEquals(listOf("(C)"), shown.groups.flatMap { group -> group.rows.map { it.destination } }.distinct())
+        // Otherwise, TfL's.
+        assertEquals("C", trainsTimeline(board(train(3)), routes, now).at(now).trains.single().destination)
+    }
+
+    @Test
     fun each_train_drops_off_as_it_departs_and_another_line_s_way_elsewhere_never_shows() {
         val timeline = trainsTimeline(board(train(5), train(3), train(4, "blue")), routes, now)
         assertEquals(listOf(at(3), at(5)), times(timeline.at(now)))

@@ -574,6 +574,9 @@ internal fun rememberNextTrains(
     ride: TripLeg? = board?.ride,
     // The suspects last logged of what the section holds ([DoubledTrains]), compared on the worker.
     logged: LoggedSuspects = remember { LoggedSuspects() },
+    // Where the ride ends when it's a piece of a branch the trip took by itself ([OffPlan.boardShortTo]):
+    // its trains are named by it, not by TfL's terminus.
+    shortTo: String? = null,
 ): NextTrains? {
     val worker = LocalWorker.current
     // The lines whose routes the board's trains are checked against, read off its departures on the
@@ -600,13 +603,13 @@ internal fun rememberNextTrains(
     // departures and only picks the entry for now (AGENTS.md *Main thread: read and dispatch only*).
     // Only once its own lines are read: the last board's may leave out a line it brings back, already
     // loaded, so its routes would be missed with no new load to work the board out again (Codex on #557).
-    val key = board?.takeIf { it.fetchedAt != null && lineIds.board === it && sameRide(it.ride, ride) }?.let { TrainsKey(it, loads.version, topology) }
+    val key = board?.takeIf { it.fetchedAt != null && lineIds.board === it && sameRide(it.ride, ride) }?.let { TrainsKey(it, loads.version, topology, shortTo) }
     var held by remember { mutableStateOf<HeldTrains?>(null) }
     LaunchedEffect(key, worker) {
         key ?: return@LaunchedEffect
         if (held?.key == key) return@LaunchedEffect
         val at = now
-        val timeline = withContext(worker) { trainsTimeline(key.board, currentSequences, at, key.topology) }
+        val timeline = withContext(worker) { trainsTimeline(key.board, currentSequences, at, key.topology, key.shortTo) }
         held = HeldTrains(key, timeline, index = 0)
         // A train its route couldn't place, logged where every trip filter logs it, so "Couldn't check
         // every line" can be explained. Later entries hold fewer trains, so the first has every miss.
@@ -638,7 +641,7 @@ internal fun rememberNextTrains(
         val at = now
         val rebuilt = timeline.startsAfter(0, at)
         val (index, window) = withContext(worker) {
-            val from = if (rebuilt) trainsTimeline(shown.key.board, currentSequences, at, shown.key.topology) else timeline
+            val from = if (rebuilt) trainsTimeline(shown.key.board, currentSequences, at, shown.key.topology, shown.key.shortTo) else timeline
             from.indexAt(at).let { it to from.around(it) }
         }
         if (held !== shown) return@LaunchedEffect
@@ -713,10 +716,11 @@ private class BoardLines(val board: ActiveTripTracker.NextBoard?, val ids: List<
 // What a board's trains are worked out from: the board by identity (a new one each read), so the key
 // compares no departures, its routes' [LineLoads.version], and the route topology its cards are grouped
 // under, by identity: replaced once its patterns load, the board's rows are worked out again (Codex, #588).
-private class TrainsKey(val board: ActiveTripTracker.NextBoard, val routes: Int, val topology: RouteTopology) {
+// [shortTo], where the trains are named by the ride's end ([OffPlan.boardShortTo]).
+private class TrainsKey(val board: ActiveTripTracker.NextBoard, val routes: Int, val topology: RouteTopology, val shortTo: String? = null) {
     override fun equals(other: Any?): Boolean =
-        other is TrainsKey && other.board === board && other.routes == routes && other.topology === topology
-    override fun hashCode(): Int = (System.identityHashCode(board) * 31 + routes) * 31 + System.identityHashCode(topology)
+        other is TrainsKey && other.board === board && other.routes == routes && other.topology === topology && other.shortTo == shortTo
+    override fun hashCode(): Int = ((System.identityHashCode(board) * 31 + routes) * 31 + System.identityHashCode(topology)) * 31 + shortTo.hashCode()
 }
 
 // A board's timeline and the entry of it in force when last looked up ([index]).
@@ -790,6 +794,8 @@ internal fun trainsTimeline(
     sequences: Map<String, LineSequence?>,
     at: Instant,
     topology: RouteTopology = RouteTopology.EMPTY,
+    // Where the ride ends, when its trains are named by it ([OffPlan.boardShortTo]); null for TfL's terminus.
+    shortTo: String? = null,
 ): TrainsTimeline {
     val fetchedAt = checkNotNull(board.fetchedAt) { "a board never read has no trains" }
     val own = OnTheWay.placeTrains(board.ride, board.departures, fetchedAt, sequences, at)
@@ -801,7 +807,7 @@ internal fun trainsTimeline(
     val instants = (listOf(at) + own.changes + others.flatMap { it.second.changes } + offPlan.flatMap { branch -> branch.trains.map { it.expectedArrival } })
         .filter { !it.isBefore(at) }.distinct().sorted()
     val entries = instants.map { instant ->
-        nextTrainsAt(board, own.trainsAt(instant), others.map { (other, placed) -> other to placed.trainsAt(instant) })
+        nextTrainsAt(board, own.trainsAt(instant), others.map { (other, placed) -> other to placed.trainsAt(instant) }, shortTo)
             .copy(offPlan = offPlanRows(board.ride, offPlan.map { branch -> branch.copy(trains = branch.trains.filter { !Countdown.hasDeparted(it, instant) }) }))
     }
     // Misses are reported once per board, so only the first instant's are gathered.
@@ -824,8 +830,9 @@ internal fun nextTrainsAt(
     board: ActiveTripTracker.NextBoard,
     found: OnTheWay.BoardTrains,
     others: List<Pair<ActiveTripTracker.PoleBoard, OnTheWay.BoardTrains>>,
+    shortTo: String? = null,
 ): NextTrains = NextTrains(
-    board.ride, found.trains,
+    board.ride, found.trains.map { it.namedTo(shortTo) },
     pending = found.pending || others.any { it.second.pending },
     unresolved = found.unresolved || others.any { it.second.unresolved },
     // A pole of the pair left unread is said too: a train there went unseen.
@@ -833,9 +840,19 @@ internal fun nextTrainsAt(
     fetchedAt = board.fetchedAt, stopLetter = board.pole?.stopLetter.orEmpty(), towards = board.pole?.towards.orEmpty(),
     bearing = board.pole?.bearing.orEmpty(),
     others = others.map { (other, trains) ->
-        PoleTrains(other.pole.id, other.pole.name.ifBlank { board.ride.fromName }, trains.trains, other.pole.stopLetter, other.pole.towards, other.pole.bearing)
+        PoleTrains(other.pole.id, other.pole.name.ifBlank { board.ride.fromName }, trains.trains.map { it.namedTo(shortTo) }, other.pole.stopLetter, other.pole.towards, other.pole.bearing)
     },
 )
+
+/**
+ * This train named by where the ride takes the rider, in brackets ("(Camden Town)"), not by TfL's
+ * terminus and branch: on a ride the trip cut short at a fork by itself, every train on its board takes
+ * the rider there, and TfL's label is the one thing about it the trip couldn't trust (an Edgware train
+ * as High Barnet via Bank; maintainer, 2026-10-09). Unchanged with [to] null. Only once its train is
+ * placed: its route is resolved from its own label.
+ */
+internal fun Departure.namedTo(to: String?): Departure =
+    if (to == null) this else copy(destination = "($to)", branch = null, via = "", destinationId = "")
 
 /**
  * The suspects ([DoubledTrains.Found.key]) a trip's section last logged, so the same ones read again aren't
