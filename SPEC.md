@@ -522,8 +522,11 @@ destination stop id against the nearby stops and their stop areas or stations; o
 gives no id, by name (two places can share one). The services are hidden as the rows are
 built, not dropped from the stop's data, so a new location applies at once; each stop's
 nearer places are saved with it in the snapshot, so the widget, whose own refresh has no
-location, hides the same services. A stop with no known distance (a journey's far
-origin, a searched station) keeps every departure. A line whose predictions were all left
+location, hides the same services. **A service ending at the stop it's listed at is hidden at
+every stop** (maintainer, 2026-10-09), a stop with no known distance (a journey's far origin, a
+searched station) included: it goes nowhere for anyone boarding there. Such a stop otherwise
+keeps every departure. At a terminus TfL's live list can hold only these — Walthamstow Central's
+Victoria line lists its incoming trains and nothing leaving — so the line can show no times there. A line whose predictions were all left
 out gets no "No departures" status row either, since it has departures, just none that help.
 
 **The unit of display is one card per platform or pole** (maintainer, 2026-09-22) — a

@@ -12,7 +12,8 @@ package app.stopdash.domain
  * no location, drops the same services. A terminus is recognized by TfL's `destinationNaptanId`
  * against those places' stop ids and stop areas or stations; only when TfL gives no id, by its
  * cleaned name. A stop with no known distance (a journey's far origin, a searched station) has no
- * [Nearer] and keeps every departure. Pure, so it is JVM-tested.
+ * [Nearer], but a service ending at that very stop is still dropped ([forStop]): it goes nowhere for
+ * anyone boarding there, wherever the rider is (maintainer, 2026-10-09). Pure, so it is JVM-tested.
  */
 object Terminating {
     /** A nearby stop, with its stop area or station ([clusterId]) and distance from the rider. */
@@ -32,6 +33,19 @@ object Terminating {
             names = within.mapTo(HashSet()) { nameKey(it.name) }.apply { remove("") },
         )
     }
+
+    /**
+     * [stop]'s [Nearer] places plus the stop itself — its id and its stop area or station — so a
+     * service ending where it's listed is dropped even where the rider's distance isn't known (a
+     * searched station, a journey's far end; SPEC *Departures*). By TfL's id only, never the stop's
+     * own name: a loop service can be bound for the stop it's listed at by name and still call
+     * elsewhere first (Codex, #729), and only the id says it ends here, as in [RouteStops.resolve].
+     * Not the other poles of its place (a bus ending at the pole across the road): each surface holds
+     * a different set of a place's stops, so that would hide a service on one and not another
+     * (maintainer, 2026-10-09; `TODO.md`).
+     */
+    fun forStop(stop: StopArrivals): Nearer =
+        stop.nearer.copy(ids = stop.nearer.ids + listOf(stop.stopId, stop.clusterId).filter(String::isNotBlank))
 
     /** [departures] without those terminating at one of [nearer]'s places. */
     fun drop(departures: List<Departure>, nearer: Nearer): List<Departure> {

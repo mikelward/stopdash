@@ -41,7 +41,7 @@ class TerminatingTest {
     }
 
     @Test
-    fun `a stop with no known distance keeps every departure`() {
+    fun `a stop with no known distance keeps a departure ending at a nearby place`() {
         val here = dep("Example Road", destinationId = "490000000001A")
         assertEquals(listOf(here), Terminating.drop(listOf(here), "940GZZLUOXC", places))
     }
@@ -68,6 +68,16 @@ class TerminatingTest {
         // Another "Example Road" farther away: TfL's id says it isn't the one nearby.
         val elsewhere = dep("Example Road", destinationId = "490000000077Q")
         assertEquals(listOf(elsewhere), Terminating.drop(listOf(elsewhere), "490000000003C", places))
+    }
+
+    @Test
+    fun `forStop adds the stop itself to its nearer places, by id only`() {
+        val stop = StopArrivals("940GZZLUWWL", "Walthamstow Central Underground Station", emptyList(), now, clusterId = "940GZZLUWWL")
+        val byId = Departure("victoria", "Victoria", "", "Walthamstow Central", null, now, "tube", destinationId = "940GZZLUWWL")
+        val byName = Departure("victoria", "Victoria", "", "Walthamstow Central", null, now, "tube")
+        val onward = Departure("victoria", "Victoria", "", "Brixton", null, now, "tube", destinationId = "940GZZLUBXN")
+        // A same-named service with no id may be a loop that calls elsewhere before coming back: kept.
+        assertEquals(listOf(byName, onward), Terminating.drop(listOf(byId, byName, onward), Terminating.forStop(stop)))
     }
 
     @Test

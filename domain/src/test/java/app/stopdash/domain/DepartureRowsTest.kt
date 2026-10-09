@@ -1071,6 +1071,30 @@ class DepartureRowsTest {
     }
 
     @Test
+    fun `a train ending at the station it's listed at is hidden even with no known distance`() {
+        // Walthamstow Central opened from a search: TfL lists only incoming trains bound for it.
+        val endsHere = departure("victoria", "Victoria", "", "Walthamstow Central", 60, platform = "Southbound - Platform 1")
+            .copy(destinationId = "940GZZLUWWL")
+        val alsoEndsHere = departure("victoria", "Victoria", "", "Walthamstow Central", 120, platform = "Southbound - Platform 2")
+            .copy(destinationId = "940GZZLUWWL")
+        val stop = StopArrivals(
+            "940GZZLUWWL",
+            "Walthamstow Central Underground Station",
+            departures = listOf(endsHere, alsoEndsHere),
+            fetchedAt = now,
+            lines = listOf(LineRef("victoria", "Victoria", "tube")),
+        )
+        assertEquals(emptyList<String>(), DepartureRows.across(listOf(stop), now).map { it.lineId })
+    }
+
+    @Test
+    fun `a train to another terminus stays at a stop with no known distance`() {
+        val onward = departure("victoria", "Victoria", "outbound", "Brixton", 60).copy(destinationId = "940GZZLUBXN")
+        val stop = StopArrivals("940GZZLUWWL", "Walthamstow Central Underground Station", listOf(onward), fetchedAt = now)
+        assertEquals(listOf("victoria"), DepartureRows.across(listOf(stop), now).map { it.lineId })
+    }
+
+    @Test
     fun `a disrupted declared line with no predictions becomes a status row, sorted first`() {
         val victoria = departure("victoria", "Victoria", "outbound", "Brixton", 120)
         val stop = StopArrivals(
