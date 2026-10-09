@@ -8,7 +8,7 @@ from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from build_station_index import (  # noqa: E402
-    add_route_ends, build_index, fetch, checked_hub_batch, modes_without_lines, required_points, route_ends, station_points,
+    add_route_ends, add_terminus_ends, build_index, fetch, checked_hub_batch, modes_without_lines, required_points, route_ends, station_points, terminus_ends,
 )
 
 
@@ -120,6 +120,43 @@ class BuildIndexTest(unittest.TestCase):
         entry = index["stations"][0]
         self.assertEqual({"thameslink": ["910GNORTHA", "910GSOUTH"]}, entry["routeEnds"],
                          "a service without route data is left to count by line")
+
+    def test_a_terminus_carries_the_far_ends_of_its_routes(self):
+        # The Victoria line both ways, and the Northern line's three northern ends from Morden.
+        victoria = [{"orderedLineRoutes": [
+            {"name": "Walthamstow Central - Brixton", "naptanIds": ["940GZZLUWWL", "940GZZLUSVS", "940GZZLUBXN"]},
+        ]}, {"orderedLineRoutes": [
+            {"name": "Brixton - Walthamstow Central", "naptanIds": ["940GZZLUBXN", "940GZZLUSVS", "940GZZLUWWL"]},
+        ]}]
+        ends = terminus_ends(victoria)
+        self.assertEqual({"940GZZLUBXN"}, ends["940GZZLUWWL"])
+        self.assertEqual({"940GZZLUWWL"}, ends["940GZZLUBXN"])
+        self.assertNotIn("940GZZLUSVS", ends, "a station a route runs through is no terminus")
+        northern = [{"orderedLineRoutes": [
+            {"name": "Morden - Edgware", "naptanIds": ["940GZZLUMDN", "940GZZLUKSX", "940GZZLUEGW"]},
+            {"name": "Morden - High Barnet", "naptanIds": ["940GZZLUMDN", "940GZZLUKSX", "940GZZLUHBT"]},
+            {"name": "Euston - Edgware", "naptanIds": ["940GZZLUKSX", "940GZZLUEGW"]},
+            {"name": "Loop", "naptanIds": ["940GZZLUBNK", "940GZZLUMGT", "940GZZLUBNK"]},
+        ]}, None]
+        ends = terminus_ends(northern)
+        self.assertEqual({"940GZZLUEGW", "940GZZLUHBT"}, ends["940GZZLUMDN"])
+        self.assertNotIn("940GZZLUKSX", ends, "an end of one route that another runs through is no terminus")
+        self.assertNotIn("940GZZLUBNK", ends, "a route ending where it starts names no far end")
+        self.assertNotIn("940GZZLUMGT", ends, "a circular route's interior is run through")
+        # A route ending at a stop a circular route runs through doesn't make it a terminus.
+        circle = [{"orderedLineRoutes": [
+            {"name": "Loop", "naptanIds": ["940GZZLUERC", "940GZZLUBST", "940GZZLUKSX", "940GZZLUERC"]},
+            {"name": "Spur", "naptanIds": ["940GZZLUHSC", "940GZZLUBST"]},
+        ]}]
+        ends = terminus_ends(circle)
+        self.assertNotIn("940GZZLUBST", ends)
+        self.assertNotIn("940GZZLUERC", ends)
+        self.assertEqual({"940GZZLUBST"}, ends["940GZZLUHSC"])
+
+        wwl = stop("940GZZLUWWL", "Walthamstow Central Underground Station", ["tube"], "NaptanMetroStation")
+        wwl["lineModeGroups"] = [{"modeName": "tube", "lineIdentifier": ["victoria"]}]
+        index = add_terminus_ends(build_index([wwl], []), {"victoria": terminus_ends(victoria)})
+        self.assertEqual({"victoria": ["940GZZLUBXN"]}, index["stations"][0]["terminusEnds"])
 
     def test_stations_carry_the_platforms_tfl_lists_under_them(self):
         rail = dict(stop("910GEXAMPLE", "Example Rail Station", ["national-rail"], "NaptanRailStation"), children=[

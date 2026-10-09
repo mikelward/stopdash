@@ -19,6 +19,7 @@ import app.stopdash.domain.PostcodeResolver
 import app.stopdash.domain.RouteSequenceSource
 import app.stopdash.domain.StationFacts
 import app.stopdash.domain.StationFinder
+import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StationPlaces
 import app.stopdash.domain.StopAreaSource
@@ -32,6 +33,7 @@ import app.stopdash.domain.TflRequestPool
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripModes
 import app.stopdash.domain.TripOrigin
+import app.stopdash.domain.Turnback
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.VehicleCall
@@ -124,6 +126,11 @@ class KtorTflClient(
     // the Planner names by its platform alone; it reads the bundled index, so the planner calls it off
     // the main thread. None by default (tests, the other clients): such a route is dropped as unreadable.
     private val stationOf: (String) -> String? = { null },
+    // The bundled station index, for the far ends of each line a stop is the terminus of
+    // ([StationIndex.terminusEnds]), so a train TfL lists there as arriving is relabeled as the
+    // departure it becomes ([Turnback]). Looked up here, where the answer is decoded, off the main
+    // thread. None by default (tests, the other clients): the trains stay as TfL lists them.
+    private val stationIndex: () -> StationIndex? = { null },
     // Where each request's answer is read: decoding a route's sequence (~600 KB for a National Rail
     // line) and mapping a plan (which reads the bundled station index) froze the screen for seconds
     // when it ran on a caller's main thread, as a screen's own loads do. A test swaps in its own.
@@ -421,7 +428,10 @@ class KtorTflClient(
         tflRequest { key ->
             httpClient.get("$baseUrl/StopPoint/$stopId/Arrivals") {
                 applyAppKey(key)
-            }.body<List<TflArrivalDto>>().map { it.toDeparture() }.let(DepartureRows::inferDirections)
+            }.body<List<TflArrivalDto>>().map { it.toDeparture() }
+                // Already on the decode dispatcher; the hop names it here, where lint can see it.
+                .let { withContext(decodeDispatcher) { Turnback.relabel(it, stopId, stationIndex()?.terminusEnds(stopId).orEmpty()) } }
+                .let(DepartureRows::inferDirections)
         }
 
     override suspend fun vehicleCalls(vehicleId: String, lineId: String): List<VehicleCall> =

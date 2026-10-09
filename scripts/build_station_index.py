@@ -10,7 +10,10 @@ station of a line it doesn't reach ("From …"), and the platforms TfL lists und
 ("platforms"), so a planned trip's train from a platform the Journey Planner names alone is
 read as leaving that station. A National Rail station also carries, per service,
 the ends of the routes it's on ("routeEnds"), since one service runs to different places from
-different stations — Thameslink to Bedford from one, to Cambridge from another. Bus stops are left to TfL's live search: there are ~20,000.
+different stations — Thameslink to Bedford from one, to Cambridge from another. A station at the
+end of every tube, DLR, Overground, Elizabeth line or tram route it's on carries, per line, the
+far ends of those routes ("terminusEnds"): TfL lists a train arriving there as bound for the
+station itself, and the app relabels it to where it leaves for. Bus stops are left to TfL's live search: there are ~20,000.
 
 Built from TfL's per-mode stop lists (`/StopPoint/Mode/{mode}`), one mode at a time, and its
 rail-station listing for National Rail. Every listing is required: a failed or empty one stops
@@ -40,6 +43,8 @@ HUB_BATCH = 10
 # Spacing between route requests when keyless: TfL allows ~50 a minute without a key.
 ROUTE_REQUEST_GAP = 1.5
 FORMAT_VERSION = 1
+# The modes whose trains TfL lists at a terminus as arriving there, rather than leaving ("terminusEnds").
+TERMINUS_MODES = ("tube", "dlr", "overground", "elizabeth-line", "tram")
 
 
 RETRY_DELAYS = (5, 15, 45)
@@ -264,9 +269,46 @@ def add_route_ends(index, ends_by_line):
     return index
 
 
-def fetch_route_ends(lines):
-    """Each National Rail line's route ends by station, both directions. A line TfL has no
-    route data for (404) is skipped: its stations fall back to counting the line whole."""
+def terminus_ends(sequences):
+    """Station id -> the far ends of its routes, from one line's route sequences, for a station
+    that ends every route it's on (a terminus): Walthamstow Central -> Brixton on the Victoria
+    line. A station some route runs through is left out, a circular route's stops included: it
+    names no far end, and a train runs on through every stop of it.
+    Pure, for tests."""
+    ends, through = {}, set()
+    for sequence in sequences:
+        for route in (sequence or {}).get("orderedLineRoutes") or []:
+            ids = route.get("naptanIds") or []
+            if len(ids) < 2:
+                continue
+            # A circular route's stops are all run through, its first among them, and it names no far end.
+            if ids[0] == ids[-1]:
+                through.update(ids[:-1])
+                continue
+            through.update(ids[1:-1])
+            ends.setdefault(ids[0], set()).add(ids[-1])
+            ends.setdefault(ids[-1], set()).add(ids[0])
+    return {sid: far for sid, far in ends.items() if sid not in through}
+
+
+def add_terminus_ends(index, ends_by_line):
+    """[index] with each terminus's far ends per line ("terminusEnds"), from [ends_by_line] (line
+    id -> station id -> far ends), for the [TERMINUS_MODES] lines it serves."""
+    for station in index["stations"]:
+        per_line = {}
+        for mode in TERMINUS_MODES:
+            for line in station.get("modeLines", {}).get(mode, []):
+                ends = ends_by_line.get(line, {}).get(station["id"])
+                if ends:
+                    per_line[line] = sorted(ends)
+        if per_line:
+            station["terminusEnds"] = per_line
+    return index
+
+
+def fetch_route_ends(lines, ends=route_ends):
+    """Each line's route ends by station ([ends] of its sequences), both directions. A line TfL
+    has no route data for (404) is skipped: its stations fall back to counting the line whole."""
     ends_by_line = {}
     for line in sorted(lines):
         sequences = []
@@ -279,7 +321,7 @@ def fetch_route_ends(lines):
                 if e.code != 404:
                     raise
                 print(f"no {direction} route for {line}; counting it by line", file=sys.stderr)
-        ends_by_line[line] = route_ends(sequences)
+        ends_by_line[line] = ends(sequences)
     return ends_by_line
 
 
@@ -354,6 +396,11 @@ def main(argv):
     if rail_lines and not any(s.get("routeEnds") for s in index["stations"]):
         # Every route lookup came back empty: TfL answered oddly, so keep the committed index.
         sys.exit("no National Rail station carries route ends; refusing to write the index")
+    terminus_lines = {line for s in index["stations"] for m in TERMINUS_MODES for line in s.get("modeLines", {}).get(m, [])}
+    add_terminus_ends(index, fetch_route_ends(terminus_lines, ends=terminus_ends))
+    if terminus_lines and not any(s.get("terminusEnds") for s in index["stations"]):
+        # No terminus anywhere: TfL answered oddly, so keep the committed index.
+        sys.exit("no station carries terminus ends; refusing to write the index")
     if len(index["stations"]) < 200:
         # A near-empty result means TfL answered oddly; keep the committed index rather than
         # shipping a list that can't find most stations.

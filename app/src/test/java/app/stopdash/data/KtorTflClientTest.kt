@@ -404,6 +404,7 @@ class KtorTflClientTest {
         httpTimeout: Boolean = false,
         keyAnswered: (String, Boolean) -> Unit = { _, _ -> },
         clock: () -> java.time.Instant = java.time.Instant::now,
+        stationIndex: () -> app.stopdash.domain.StationIndex? = { null },
     ): KtorTflClient {
         val engine = MockEngine { request ->
             capture(request)
@@ -418,7 +419,7 @@ class KtorTflClientTest {
             if (httpTimeout) install(HttpTimeout)
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
-        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, appKey = { appKey }, warn = warn, keyAnswered = keyAnswered, clock = clock)
+        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, appKey = { appKey }, warn = warn, keyAnswered = keyAnswered, clock = clock, stationIndex = stationIndex)
     }
 
     @Test
@@ -687,6 +688,31 @@ class KtorTflClientTest {
         assertEquals("tube", departures[0].mode)
         assertEquals("", departures[1].mode)
         assertEquals("bus", departures[2].mode)
+    }
+
+    @Test
+    fun `a terminus's arriving trains come back as the departures they become`() = runTest {
+        // Recorded at Walthamstow Central (trimmed of TfL's timing blocks): ten Victoria line trains, each
+        // listed on both Southbound platforms, all bound for the station itself. Public station data only.
+        val body = checkNotNull(javaClass.getResource("/fixtures/stoppoint_arrivals_walthamstow_central.json")).readText()
+        val index = app.stopdash.domain.StationIndex(
+            listOf(
+                app.stopdash.domain.IndexedStation("940GZZLUWWL", "Walthamstow Central", terminusEnds = mapOf("victoria" to listOf("940GZZLUBXN"))),
+                app.stopdash.domain.IndexedStation("940GZZLUBXN", "Brixton"),
+            ),
+        )
+        val departures = client(body, stationIndex = { index }).arrivals("940GZZLUWWL")
+        // Once per train, at its soonest platform's time; each now leaving for Brixton under its compass.
+        assertEquals(10, departures.size)
+        assertEquals(departures.map { it.vehicleId }.distinct(), departures.map { it.vehicleId })
+        assertEquals(setOf("Brixton"), departures.map { it.destination }.toSet())
+        assertEquals(setOf("940GZZLUBXN"), departures.map { it.destinationId }.toSet())
+        assertEquals(setOf("Southbound"), departures.map { it.platform }.toSet())
+        val first = departures.minBy { it.expectedArrival }
+        assertEquals("214", first.vehicleId)
+        assertEquals(Instant.parse("2026-10-09T19:49:12Z"), first.expectedArrival)
+        // Without the index, the same feed is left as TfL lists it.
+        assertEquals(20, client(body).arrivals("940GZZLUWWL").count { it.destinationId == "940GZZLUWWL" })
     }
 
     @Test

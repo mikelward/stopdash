@@ -4857,6 +4857,7 @@ class MainActivity : ComponentActivity() {
                 // carries alerts for the way it is going (SPEC *Disruptions*).
                 alertDirections = LineAlertDirections.shared,
                 alertDirectionScope = (context.applicationContext as? StopdashApp)?.applicationScope,
+                stationIndex = { StationIndexStore.load(context.applicationContext) },
             ),
             rail = KtorDarwinClient(
                 httpClient,
@@ -4970,6 +4971,9 @@ class MainActivity : ComponentActivity() {
                 // A train the Planner names by its platform alone leaves from the station the
                 // bundled index lists that platform under.
                 stationOf = { StationIndexStore.load(context.applicationContext).stationOf(it) },
+                // A trip's boards read a terminus's arriving trains as the departures they become,
+                // as the main screen does ([Turnback]), so a trip can take the train it shows.
+                stationIndex = { StationIndexStore.load(context.applicationContext) },
             ).also { journeyPlannerInstance = it }
         }
 

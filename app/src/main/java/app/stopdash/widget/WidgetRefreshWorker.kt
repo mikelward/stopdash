@@ -3,6 +3,7 @@ package app.stopdash.widget
 import app.stopdash.data.KtorDarwinClient
 import app.stopdash.data.logNetworkWarning
 import app.stopdash.data.RailStationCodesStore
+import app.stopdash.data.StationIndexStore
 import app.stopdash.data.RejectedApiKey
 import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.CachingTflClient
@@ -421,6 +422,8 @@ internal suspend fun refreshStoredSnapshot(
                     // *Disruptions*).
                     alertDirections = LineAlertDirections.shared,
                     alertDirectionScope = directionLookups,
+                    // A terminus's arriving trains relabeled as the departures they become, as in the app.
+                    stationIndex = { StationIndexStore.load(context) },
                 )
                 val client = CachingTflClient(RailAwareTflClient(
                     tfl = tfl,

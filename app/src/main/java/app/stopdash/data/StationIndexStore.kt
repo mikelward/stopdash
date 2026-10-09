@@ -72,6 +72,7 @@ object StationIndexStore {
                         longitude = it.lon,
                         lines = it.modeLines,
                         routeEnds = it.routeEnds,
+                        terminusEnds = it.terminusEnds,
                         platforms = it.platforms,
                     )
                 },
@@ -100,6 +101,8 @@ object StationIndexStore {
         // ignores (ignoreUnknownKeys) rather than failing the whole index on.
         val modeLines: Map<String, List<String>> = emptyMap(),
         val routeEnds: Map<String, List<String>> = emptyMap(),
+        // Absent from an older index, whose terminus lists its trains as TfL does.
+        val terminusEnds: Map<String, List<String>> = emptyMap(),
         // Absent from an older index, whose trips then drop a train named by its platform alone.
         val platforms: List<String> = emptyList(),
     )
