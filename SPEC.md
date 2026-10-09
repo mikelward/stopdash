@@ -837,9 +837,15 @@ color. **Where the line's sequence is in hand it is drawn as the line page's map
 the ends it leads to, a closure's ⛔ and the work to come's calendar marked as on the line page. It is
 drawn from the route data the page already holds for the train's way, never a second request for the
 line's other way. Its folds open one at a time, the last folding again as the next opens, with no "Show all stations". The list below stays wherever that map can't be drawn (a route still loading or
-failed, a line the map can't lay out): the train's stops in hand are never replaced by a note. **A tap on a station opens its own page** (maintainer, 2026-10-06), by its stop area where TfL
-gives one, so a bus stop opens as the whole place; Back returns to the route page (from a station's
-own page, the opened one takes its place). A trip's route pages leave their stations inert for now. The boarding stop is marked with a blue "you are here" dot (map-location blue, ringed to
+failed, a line the map can't lay out): the train's stops in hand are never replaced by a note. **A tap on a station opens its details over the route page** (maintainer, 2026-10-09; it opened the
+station's own departures page from 2026-10-06): the same page a stop tapped on a line's map opens (*Finding a
+line*), with its lines, step-free access, zone, the stations beside it and its board, but headed by the
+departure tapped ("From Victoria, towards Walthamstow Central", behind the line's pill) and with **Go** in
+place of From and To. Go starts the trip there on the way (*On the way*) on that line from the boarding stop,
+along the route page's own stop list, no Planner asked; the trip follows the soonest of the line's trains
+the rider can catch, as a planned ride does. A trip already on the way is replaced only once the rider says
+so. National Rail, which can't be followed, offers no Go. The top bar's star saves the journey there
+(*Journeys*). Back returns to the route page. A trip's route pages leave their stations inert for now. The boarding stop is marked with a blue "you are here" dot (map-location blue, ringed to
 stand off a blue line's rail), announced to a screen reader as "Your stop"; every other stop, the terminus included, is hollow,
 so the one filled dot is the rider's (the terminus keeps a bold name). **A station step-free for the line
 carries TfL's own symbol after its name** (maintainer, 2026-10-02), from the bundled table (*Data
@@ -1029,11 +1035,11 @@ A rider can **favorite a journey** — a segment between two stops, rail or bus 
 called *starred* until 2026-10-06, when the maintainer renamed them *favorite journeys*, en-GB
 *favourite*): on a route page, a long press on a stop on the stop list (after the boarding stop) saves
 the segment from the boarding stop to it — both directions — and marks the stop with a star; another
-long press removes it. **A tap on the stop opens its page** (*Route detail*), headed by the same
-journey ("Victoria ➔ Warren Street") with **Favorite**, or **Remove favorite** once saved (maintainer,
-2026-10-06): the discoverable path, the long press the shortcut. It waits on the saved journeys
+long press removes it. **A tap on the stop opens its details** (*Route detail*), whose top bar's star
+saves the same journey, filled once saved, a tap then removing it (maintainer, 2026-10-09; a row of
+its own atop the stop's page from 2026-10-06): the discoverable path, the long press the shortcut. It waits on the saved journeys
 being read rather than guess which way a tap goes, says a change it couldn't save, and a removal
-drops the widget's pins as Settings' Remove does. The boarding stop's page offers no journey. A long press, not a tap (maintainer, 2026-10-05): a stray tap while scrolling the stops
+drops the widget's pins as Settings' Remove does. The boarding stop's details offer no journey, and no star. A long press, not a tap (maintainer, 2026-10-05): a stray tap while scrolling the stops
 favorite journeys the rider never meant to, which then pinned to the widget.
 A journey is a **segment, not a line**: the same two stops starred from another line's page (the 43
 or the 134 between two shared stops) are the same journey. Favorite journeys lead the near-me list as
@@ -2866,6 +2872,10 @@ comes up on the stop with the line's page under it, and Back from the stop (or f
 closes Lines… back to the page it was tapped on, as it was left. Over a trip's line page it offers no To, as a
 trip from there would take the place of the one under it. Where something else is already open over that page,
 its stations stay inert.
+A stop tapped on a route page's stop list opens the same details over the route page, headed by the
+departure tapped with Go in place of From and To (*Route detail*); a station opened from them beside it is
+details like any other, its From closing them for the station's page. Its line pills open the line in Lines…
+only where Lines… would show; elsewhere they're shown, not tapped.
 A bus stop shows its **letter and the way its buses go** under From and To ("Stop H, towards Oxford
 Circus"), or its compass heading where TfL gives no letter or "towards", as the near-me list heads its
 poles: from its stop area's poles, the area as the line's route data places the stop, both from the

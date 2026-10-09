@@ -2237,11 +2237,23 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         starred a journey that then pinned to the widget): no visible button on each row; the tip
         now says a long press stars.
     - [x] **What a plain tap on a stop does** (maintainer, 2026-10-06): opens the stop's page,
-          headed by the journey there with Favorite / Remove favorite.
+          headed by the journey there with Favorite / Remove favorite. Since 2026-10-09 it opens the stop's
+          details over the route page instead: the departure tapped, Go, the journey behind the star.
       - [ ] **A trip's route pages** (On the way, a planned trip) leave their stops inert: the trip
             screen ranks above the station page, so a tap there would open it out of sight.
-      - [ ] **From a station's own route page**, the tapped stop's page takes the station's place,
-            so Back skips back past the route page; a stack of station pages would keep it.
+      - [x] **From a station's own route page**, the tapped stop's page took the station's place,
+            so Back skipped back past the route page: the details now open over the route page, Back to it.
+      - [ ] **Go follows the soonest train**, not the very departure tapped: the trip on the way picks its
+            train as a planned ride's does. Following the one tapped would need the tracker to take a vehicle.
+      - [ ] **A stop opened from a route page's details' board** replaces those details rather than stacking
+            on them, so Back returns to the first route page, not the details in between.
+      - [ ] **A loop's repeated call, ridden on the way**: a ride to a stop its path calls at twice (a bus loop
+            through the same stop) is followed as if it ends at the first call there, since the trip on the way
+            finds the alighting call by id (Codex on #730). Planned rides on such loops share it; following one
+            means carrying which call it ends at through `OnTheWay`'s path checks.
+      - [ ] **A stop's details with an unreadable station index** show no lines or stations beside it, as
+            if the stop had none (Codex on #730): the Lines… page and the route page's details both treat a
+            failed read as no links. A typed failure the page says, with Retry, would be honest.
   - [x] **Starred journeys in Settings** (maintainer, 2026-10-05): listed by their stops and line,
         each with Remove.
   - [x] **Call them favorite journeys** (maintainer, 2026-10-06; *favourite* in en-GB). The saved
@@ -2875,8 +2887,9 @@ Builds on Phase 1's minimal line-status marking.
       (maintainer's idea, 2026-10-06: explore, or discard). Pairs with the folding-map item above.
 - [ ] **Rethink long-pressing a stop on the route page** (maintainer, 2026-10-06). It was meant to offer
       starring the route; think the experience through before changing it.
-- [ ] **Tapping a stop shows its details or departures** (maintainer, 2026-10-06): explore what a tap on
-      a stop in a stop list should open.
+- [x] **Tapping a stop shows its details or departures** (maintainer, 2026-10-06): explore what a tap on
+      a stop in a stop list should open. Decided 2026-10-09: on a route page, the stop's details with the
+      departure tapped and Go; on a line's map, the details with From and To.
 - [ ] **The home screen's line page shows its boarding station's notice** (maintainer, 2026-10-04). A
       line page can read "No disruptions reported" while the station it boards at has a notice in
       force (an escalator out, say); the stop's own notice belongs there too.

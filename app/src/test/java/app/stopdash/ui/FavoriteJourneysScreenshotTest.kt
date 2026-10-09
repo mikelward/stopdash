@@ -39,7 +39,7 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * The favorite journeys in Settings (SPEC *Journeys*): the list with Remove and Add, none, and a file
- * this build can't read; and a stop page's row offering the journey there. Public TfL interchanges only, never anyone's stops (SPEC *Privacy*).
+ * this build can't read; and a tapped route stop kept across a rotation. Public TfL interchanges only, never anyone's stops (SPEC *Privacy*).
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36], qualifiers = "en-rGB-w411dp-h914dp-420dpi")
@@ -104,85 +104,30 @@ class FavoriteJourneysScreenshotTest {
     }
 
     @Test
-    fun a_stops_page_offers_the_journey_there_until_saved_then_its_removal() {
-        var saved by mutableStateOf<Boolean?>(null)
-        var toggles = 0
-        composeRule.setContent {
-            StopDashTheme(dynamicColor = false) {
-                StationJourneyRow(StationJourneyState(victoriaLine, saved, failed = false) { toggles++ })
-            }
-        }
-        composeRule.onNodeWithText("Victoria ➔ King's Cross St. Pancras").assertIsDisplayed()
-        // Not read yet: the button waits rather than guess which way a tap goes.
-        composeRule.onNodeWithTag("stationJourneyToggle").assertIsNotEnabled()
-        saved = false
-        composeRule.onNodeWithText("Favourite").assertIsDisplayed().performClick()
-        assertEquals(1, toggles)
-        saved = true
-        composeRule.onNodeWithText("Remove favourite").assertIsDisplayed()
-    }
-
-    @Test
-    fun a_stops_page_says_when_the_journey_didnt_save() {
-        composeRule.setContent {
-            StopDashTheme(dynamicColor = false) {
-                StationJourneyRow(StationJourneyState(victoriaLine, saved = false, failed = true) {})
-            }
-        }
-        composeRule.onNodeWithText("Couldn't save that change").assertIsDisplayed()
-    }
-
-    @Test
-    fun a_stops_page_still_loading_offers_the_journey_there() {
-        composeRule.setContent {
-            StopDashTheme(dynamicColor = false) {
-                CompositionLocalProvider(LocalStationJourney provides StationJourneyState(victoriaLine, saved = false, failed = false) {}) {
-                    StationPlaceholderScreen(
-                        title = "King's Cross St. Pancras",
-                        state = StationStopsViewModel.State.Loading,
-                        onRetry = {},
-                        onBack = {},
-                    )
-                }
-            }
-        }
-        composeRule.onNodeWithText("Victoria ➔ King's Cross St. Pancras").assertIsDisplayed()
-        composeRule.onNodeWithText("Favourite").assertIsDisplayed()
-    }
-
-    @Test
-    fun a_stops_page_says_when_the_favorites_cant_be_read_with_retry() {
-        var retries = 0
-        composeRule.setContent {
-            StopDashTheme(dynamicColor = false) {
-                StationJourneyRow(StationJourneyState(victoriaLine, saved = null, failed = false, unavailable = true, onRetry = { retries++ }) {})
-            }
-        }
-        composeRule.onNodeWithText("Can't read your favourite journeys.").assertIsDisplayed()
-        composeRule.onNodeWithTag("stationJourneyRetry").performClick()
-        assertEquals(1, retries)
-    }
-
-    @Test
     fun a_tapped_route_stop_survives_being_saved_and_restored() {
         val scope = SaverScope { true }
         val withJourney = RouteStopOpen("940GZZLUKSX", "King's Cross St. Pancras", victoriaLine.copy(from = JourneyEnd("940GZZLUVIC", "Victoria", 51.5, -0.12, "HUBVIC")))
         val bare = RouteStopOpen("940GZZLUKSX", "King's Cross St. Pancras", null, hubId = "HUBKGX")
-        for (open in listOf(withJourney, bare)) {
+        val full = RouteStopOpen(
+            "940GZZLUKSX",
+            "King's Cross St. Pancras",
+            victoriaLine,
+            hubId = "HUBKGX",
+            stopId = "940GZZLUKSX",
+            line = app.stopdash.domain.LineRef("victoria", "Victoria", "tube"),
+            fromName = "Victoria",
+            towards = "Walthamstow Central",
+            position = app.stopdash.domain.Coordinates(51.5308, -0.1238),
+        )
+        for (open in listOf(withJourney, bare, full, full.copy(journey = null, boarding = true))) {
             val saved = with(RouteStopOpenSaver) { scope.save(open) }!!
             assertEquals(open, RouteStopOpenSaver.restore(saved))
         }
-    }
-
-    @Test
-    fun a_route_stop_is_the_open_station_by_its_own_id_or_its_hubs() {
-        val kingsCross = RouteStopOpen("940GZZLUKSX", "King's Cross St. Pancras", null, hubId = "HUBKGX")
-        assertEquals(true, kingsCross.isOpen("940GZZLUKSX"))
-        // A station page opened from search by its interchange.
-        assertEquals(true, kingsCross.isOpen("HUBKGX"))
-        assertEquals(false, kingsCross.isOpen("940GZZLUEUS"))
-        assertEquals(false, kingsCross.isOpen(null))
-        assertEquals(false, RouteStopOpen("940GZZLUEUS", "Euston", null).isOpen("HUBKGX"))
+        // What Go rides isn't kept: the details brought back offer none until a route page opens them again.
+        val withGo = full.copy(go = RouteGo(emptyList(), emptyMap(), emptyMap(), java.time.Instant.EPOCH))
+        assertEquals(full, RouteStopOpenSaver.restore(with(RouteStopOpenSaver) { scope.save(withGo) }!!))
+        // A save from before this build (the station alone) still restores.
+        assertEquals(bare, RouteStopOpenSaver.restore(arrayListOf<Any?>("940GZZLUKSX", "King's Cross St. Pancras", "HUBKGX")))
     }
 
     @Test
