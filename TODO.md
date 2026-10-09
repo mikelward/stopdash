@@ -1175,10 +1175,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           name entries"). The bundled index gives name rows to King's Cross, West Hampstead,
           North Greenwich and Royal Victoria; a hub whose members share one name (Paddington)
           gets none. Matching either half of the hub's name works too (#705).
-    - [ ] **Open a station name with its own modes first**: "St Pancras International" leads
+    - [x] **Open a station name with its own modes first**: "St Pancras International" leads
           with National Rail and St Pancras's own trains, "King's Cross" with the Underground.
-          The page now orders a hub's members by distance, then stop id (every member is 0 m), so
-          it needs the name row's lead carried to the page.
+          The name row's lead rides to the page and breaks every tie among its 0 m members.
     - [ ] **Rank by use**: TypeLauncher breaks ties by how often each item is opened. Here that
           would store which stations a user looks at (user data, on device, riding backup), so it
           waits for a decision and a *Privacy* line.

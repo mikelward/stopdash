@@ -29,6 +29,15 @@ class OriginChangeTest {
     }
 
     @Test
+    fun `back returns to a station opened by one of its names in that name's order`() {
+        val stPancras = OriginChange.Station("HUBKGX", "St Pancras International", searching, lead = listOf("national-rail"))
+        assertEquals(
+            OriginChange.Landing.Station("HUBKGX", "St Pancras International", searching, lead = listOf("national-rail")),
+            OriginChange.back(stPancras),
+        )
+    }
+
+    @Test
     fun `back from a From search no trip opened goes to the list`() {
         assertNull(OriginChange.back(null))
         assertNull(OriginChange.here(null))

@@ -13,8 +13,11 @@ sealed interface OriginChange {
     /** From the near-me trip: it started from the rider's position. */
     data class NearMe(override val to: ToChoice) : OriginChange
 
-    /** From the trip from the station [id] ([name]): it started there. */
-    data class Station(val id: String, val name: String, override val to: ToChoice) : OriginChange
+    /**
+     * From the trip from the station [id] ([name]): it started there. [lead] is the station's
+     * [StationMatch.lead], when it was opened from one of an interchange's station names.
+     */
+    data class Station(val id: String, val name: String, override val to: ToChoice, val lead: List<String> = emptyList()) : OriginChange
 
     /** Where the rider lands next: a trip with [to] as its *To…*, its search or its routes. */
     sealed interface Landing {
@@ -23,8 +26,8 @@ sealed interface OriginChange {
         /** The near-me trip. */
         data class NearMe(override val to: ToChoice) : Landing
 
-        /** The trip from the station [id] ([name]). */
-        data class Station(val id: String, val name: String, override val to: ToChoice) : Landing
+        /** The trip from the station [id] ([name]), opened in [lead]'s order as it was. */
+        data class Station(val id: String, val name: String, override val to: ToChoice, val lead: List<String> = emptyList()) : Landing
     }
 
     companion object {
@@ -41,7 +44,7 @@ sealed interface OriginChange {
         fun back(change: OriginChange?): Landing? = when (change) {
             null -> null
             is NearMe -> Landing.NearMe(change.to)
-            is Station -> Landing.Station(change.id, change.name, change.to)
+            is Station -> Landing.Station(change.id, change.name, change.to, change.lead)
         }
 
         /**

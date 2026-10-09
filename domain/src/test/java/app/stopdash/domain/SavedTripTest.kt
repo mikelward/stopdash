@@ -22,6 +22,8 @@ class SavedTripTest {
             OriginChange.NearMe(ToChoice.NONE.startPicking()),
             OriginChange.NearMe(toPlace),
             OriginChange.Station("940GZZLUKSX", "King's Cross St. Pancras", toCanaryWharf),
+            // Opened from one of King's Cross & St Pancras's station names, its lead goes with it.
+            OriginChange.Station("HUBKGX", "St Pancras International", toCanaryWharf, lead = listOf("national-rail")),
         )
         for (change in changes) {
             assertEquals(change, SavedTrip.originChangeOf(SavedTrip.originChangeFields(change)))
@@ -38,6 +40,15 @@ class SavedTripTest {
             SavedTrip.originChangeOf(listOf("940GZZLUKSX", "King's Cross St. Pancras")),
         )
         assertEquals(OriginChange.NearMe(ToChoice.NONE.startPicking()), SavedTrip.originChangeOf(listOf("")))
+    }
+
+    @Test
+    fun `a change of start saved before leads were kept restores with none`() {
+        val fields = SavedTrip.originChangeFields(OriginChange.Station("HUBKGX", "King's Cross & St Pancras International", toCanaryWharf))
+        assertEquals(
+            OriginChange.Station("HUBKGX", "King's Cross & St Pancras International", toCanaryWharf),
+            SavedTrip.originChangeOf(fields.dropLast(1)),
+        )
     }
 
     @Test
