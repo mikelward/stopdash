@@ -190,7 +190,7 @@ suspend fun applyWidgetRefreshSetting(context: Context, enabled: Boolean) {
 /**
  * Re-fetches arrivals for the widget's persisted stops and saves the refreshed snapshot (which
  * pokes the widget to re-render), then schedules the next tick — the opt-in "live widget" loop
- * (SPEC D5). Reads no location unless *Widget follows you* is on (D1, [WidgetFollowing]): then the
+ * (SPEC D5). Reads no location unless *Automatic watch and widget location* is on (D1, [WidgetFollowing]): then the
  * phone's last known position may move the stops first; otherwise it refreshes the snapshot's stops.
  *
  * Its stops' line statuses are re-checked in the same cycle, so the widget's disruption marks stay
@@ -363,7 +363,7 @@ internal data class SnapshotRefreshReport(
 
 /**
  * One bounded refresh of the stored widget snapshot [prior], after following the phone's last known
- * position where *Widget follows you* is on ([WidgetFollowing]): its stops' arrivals,
+ * position where *Automatic watch and widget location* is on ([WidgetFollowing]): its stops' arrivals,
  * fetched with the user's keys through the shared rate budget, a stop fetched moments ago reused.
  * The result is saved only if the stored stop set still matches; with nothing fresh, the widget
  * re-renders so the unchanged snapshot ages honestly. The widget's own refresh cycle and a watch's

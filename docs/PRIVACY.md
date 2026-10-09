@@ -229,7 +229,7 @@ lookup that finds no stops is remembered too, so a phone left where there are no
 each time: in memory only, never written to storage, and used for up to 15 minutes. It is cleared at
 the next widget refresh after that, or when the app's process ends, whichever comes first. The
 debug log notes only how many stops the widget moved to, never where. Turn it off in Android's
-settings, or from Settings → Widget follows you.
+settings, or from Settings → Automatic watch and widget location.
 
 **Held in memory only:** the last precise (GPS) position, for up to 10 minutes, so a rough
 network position that comes in while you haven't moved doesn't replace it. It is never written to

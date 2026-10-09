@@ -314,7 +314,7 @@ the watch app ships would break pairing between old and new installs.
   new snapshot arrives: the tile asks its updater for a re-render, and the complication asks
   for a data update.
 - **Watch-initiated refresh.** Tapping the tile's **Refresh** line, opening the watch app, or its
-  Refresh button sends a `MessageClient` request to the phone. The phone runs one bounded fetch of the widget's stops, location-free unless *Widget follows you* is on
+  Refresh button sends a `MessageClient` request to the phone. The phone runs one bounded fetch of the widget's stops, location-free unless *Automatic watch and widget location* is on
   (the same work as a `WidgetRefreshWorker` cycle, D1/D5) and pushes the result.
   - It's debounced on both ends, so repeated taps can't become a polling loop: the watch sends at
     most one request per 30 s, and the phone reuses a stop fetched in the last 30 s (answering
@@ -525,7 +525,7 @@ it before committing to the design.
 - **£0:** there's no new external service. The Data Layer is part of Google Play services.
 - **TfL and National Rail traffic:** the watch adds no *periodic* requests, since pushes reuse
   the phone's own fetches. But a watch-requested refresh **is** a new request source: each
-  accepted tap is one fetch of the widget's stops, the same size as an app open (plus, with *Widget follows you* on and the phone moved, one stop lookup).
+  accepted tap is one fetch of the widget's stops, the same size as an app open (plus, with *Automatic watch and widget location* on and the phone moved, one stop lookup).
   - It runs through the same rail-aware client as `WidgetRefreshWorker`. So for a user with a
     National Rail key, it also makes **one National Rail request per rail station** among the
     widget's stops. That's £0, and it counts against that user's own key's limit (SPEC *National

@@ -776,7 +776,7 @@
     <string name="settings_live_widget_refresh_summary">Refreshes the home-screen widget about once a minute in the background. Uses more battery and data.</string>
     <!-- Shown under the toggle when the setting saved but the background refresh couldn't be
          scheduled (a rare storage/WorkManager error); the choice is kept and retried later. -->
-    <string name="settings_widget_follows_title">Widget follows you</string>
+    <string name="settings_widget_follows_title">Automatic watch and widget location</string>
     <string name="settings_widget_follows_summary">Shows the stops where you are, using your location in the background.</string>
     <string name="settings_live_widget_refresh_failed">Couldn\'t update live refresh</string>
     <string name="action_dismiss">Dismiss</string>

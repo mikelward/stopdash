@@ -3098,7 +3098,7 @@ Builds on Phase 1's minimal line-status marking.
         a declaration and a demo video of the features that use it, and may refuse it. The video, from
         a fresh install with no location permission, so every grant is on camera:
         1. Open StopDash; at its location prompt (for stops near you) choose **While using the app**.
-        2. Tap **Yes please** on the "Alerts only in London?" card (or turn on "Widget follows you").
+        2. Tap **Yes please** on the "Alerts only in London?" card (or turn on "Automatic watch and widget location").
         3. The disclosure dialog, held long enough to read, then **Continue**.
         4. Android's background step (Settings on Android 11+): choose **Allow all the time**.
         5. The widget and the watch's tile moving stops with a mock-location app (the

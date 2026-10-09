@@ -1214,8 +1214,8 @@ plainly that StopDash wants location **when the app is not open**, lists each fe
 widget and watch following the rider, D1, and this), says finding stops sends the position to TfL and no one
 else, and ends by naming the steps Android shows next: tap Continue, then **Allow all the time**, or,
 when location isn't allowed at all yet, **While using the app** first and then **Allow all the time**
-(**Continue** / **Not now**). Settings' "Widget
-follows you" switch opens the same disclosure. Without it, or with no fix to be
+(**Continue** / **Not now**). Settings' "Automatic watch and widget location" switch opens the
+same disclosure. Without it, or with no fix to be
 had, alerts fire as before: a missing permission never silences them unseen. So does a fix whose
 uncertainty reaches inside the line, or that reports none, so an approximate fix near the edge never silences a rider
 who is really in range. Each check takes the last
@@ -3223,7 +3223,7 @@ the Open Government Licence v3.0. A test pins the credits so a rewording can't d
 An overflow-menu entry opens a Settings screen, hosted at the activity top level like the
 licenses screen (an overlay whose own Back closes it) rather than through a navigation graph
 — stopdash still has no nav library. Its first row opens the favorite-places editor (D9), and the third the favorite journeys (*Journeys*);
-the opt-in "refresh widget every minute" toggle (D5) follows below them, then "Widget follows you"
+the opt-in "refresh widget every minute" toggle (D5) follows below them, then "Automatic watch and widget location"
 (D1), which reads on while location is allowed all the time: turning it on opens the disclosure and
 Android's prompt, and turning it off opens Android's settings for the app, where the grant is taken
 away. The screen composable
@@ -3676,7 +3676,7 @@ snapshot alone: no polling and no network, and nothing runs once it leaves the s
 
 **Refresh from the watch**: tapping the tile's Refresh line, or opening
 the watch app, asks the phone for one refresh of the widget's stops. The phone does the same
-fetch as a widget refresh (which, with *Widget follows you* on, first follows the phone's last known
+fetch as a widget refresh (which, with *Automatic watch and widget location* on, first follows the phone's last known
 position, D1) and sends the result the usual way. Why and how:
 
 - **Every request gets an answer** (principle 2). The phone answers with what happened:
@@ -4028,7 +4028,7 @@ Mirrors the sibling fleet:
   app is closed (D4) — fetching new data on that schedule was the deferred part.
   - **Tap the header to refresh (2026-10-04).** The widget's header — the title, its stamp,
     and the note under them ("Tap to refresh") — refreshes the widget's stored stops in place,
-    as the live refresh does (D1: location-free, unless *Widget follows you* is on), whatever that setting says; the departures below
+    as the live refresh does (D1: location-free, unless *Automatic watch and widget location* is on), whatever that setting says; the departures below
     open the app, which re-locates. The note says "Refreshing…" while it runs, and why a refresh
     that fetched nothing failed (rate-limited, TfL unreachable, the key rejected) for as long as
     the data it couldn't replace is still out of date (principle 2). It is an expedited one-shot
@@ -4038,7 +4038,7 @@ Mirrors the sibling fleet:
     the app.
   - **Opt-in live refresh (off by default).** A Settings toggle, "refresh widget every
     minute", drives a self-rescheduling one-shot WorkManager chain that re-fetches
-    arrivals for the widget's persisted stops (location-free, or following the phone's last known position with *Widget follows you* on, D1) about once a
+    arrivals for the widget's persisted stops (location-free, or following the phone's last known position with *Automatic watch and widget location* on, D1) about once a
     minute and saves the refreshed snapshot, which pokes the widget to re-render. It is
     off by default because it costs battery and data the passive widget doesn't. A failed
     cycle keeps the last-good and still reschedules, so a transient TfL error doesn't
