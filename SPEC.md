@@ -1123,11 +1123,21 @@ the Alerts screen's sections keep ➔ for the way shown.
 
 The check runs **in the background** (WorkManager), only while a window is open: one at a window's
 start (at once when a direction is turned on, or the app starts, mid-window), then **every 15
-minutes** (WorkManager's floor) and once as it closes, and none outside one. Each asks TfL for the status of
+minutes** counted from the window's start, so one run late doesn't push back the rest and once as it closes, and none outside one. Each asks TfL for the status of
 the journey's line and the lines the app last found running directly between its ends (its widget
 pins), in **one batched line-status request** for every journey being watched: £0, about 8 requests
-per two-hour window, the same kind the list makes, so nothing new leaves the device. Battery: one
-deferrable wakeup every quarter hour inside a window, needing a network. Nothing is scheduled while
+per two-hour window, the same kind the list makes, so nothing new leaves the device. Each check is
+started by **inexact alarms** at its time, run as an expedited job: Android holds an app's deferred
+jobs half an hour or more while it's off screen, even with the phone in use and the battery setting
+"Optimized" (maintainer's bug report, 2026-10-09). Neither alarm needs a permission: one with a
+10-minute window (Android's shortest) comes at most that late while the phone is awake, and the
+check it starts runs at once while the app's daily allowance of expedited jobs lasts (a commute day
+uses a few seconds of it; past it, the check waits like any deferred job), and one allowed
+while idle is delivered in Doze, within Android's own limits. Exact timing would need the "Alarms &
+reminders" permission, which Play reserves for clock and calendar apps. A deferred job at the same
+time stays as the backstop, surviving a reboot. Battery: one
+short wakeup every quarter hour inside a window, needing a network; the same count as before, only
+on time rather than batched with other apps' work. Nothing is scheduled while
 no direction is watched, or while Android won't show the app's notifications or has this channel
 turned off (the Alerts screen says so, with **Allow**), since every alert would be invisible. The
 check is re-scheduled when the device's clock or time zone changes (a window is a time of day where

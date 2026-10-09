@@ -34,6 +34,10 @@ object JourneyAlertLog {
         return "close check in ${Duration.between(now, at).toMinutes()} min (${CLOCK.format(at.atZone(zone))})"
     }
 
+    /** The alarm behind a check fired [late] seconds after its time; [started]: whether it started that check (else one re-timed since, or already run, left it nothing to do). */
+    fun alarm(late: Long, started: Boolean): String =
+        "alarm ran $late s after due: " + if (started) "check started" else "no check waiting for it"
+
     /** Why no check is armed: nothing watched, or alerts can't show. */
     fun notScheduled(watched: Boolean): String =
         if (watched) "not scheduled: notifications off" else "not scheduled: no direction watched"

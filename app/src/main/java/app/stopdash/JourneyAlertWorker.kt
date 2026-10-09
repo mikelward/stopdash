@@ -241,6 +241,9 @@ internal object JourneyAlertChecks {
 
     private const val CLOCK_TAG = "journey-alerts-clock:"
 
+    /** The tag naming the moment a check is due ([JourneyAlertAlarm]). */
+    internal fun dueTag(due: Instant): String = "journey-alerts-due:${due.toEpochMilli()}"
+
     // The wall-clock minute the elapsed-time count started from. Steady while the clock is left alone
     // (a minute or two of network time correction aside); moved by setting it, and by a reboot, after
     // which a resync is harmless. Swappable in tests.
@@ -373,7 +376,7 @@ internal object JourneyAlertChecks {
     private suspend fun <R> Mutex?.lockedIfAny(block: suspend () -> R): R = if (this == null) block() else withLock { block() }
 
     // One sync at a time, so a sync from newer settings is never overtaken by one from older ones.
-    private val syncLock = Mutex()
+    internal val syncLock = Mutex()
 
     private suspend fun syncLocked(
         context: Context,
@@ -416,6 +419,7 @@ internal object JourneyAlertChecks {
             logJourneyAlertWarning(JourneyAlertLog.notScheduled(watched = next != null))
             work.cancelUniqueWork(JOURNEY_ALERTS_WORK).await()
             work.cancelUniqueWork(JOURNEY_ALERTS_CLOSE_WORK).await()
+            JourneyAlertAlarm.cancel(context)
             JourneyAlertState.clearStale(context)
             return
         }
@@ -423,25 +427,12 @@ internal object JourneyAlertChecks {
         val delay = Duration.between(now, due).coerceAtLeast(Duration.ZERO)
         // Whether that check will ask TfL anything: only when a window is open then.
         val asks = JourneyAlerts.active(journeys, schedules, JourneyAlerts.at(due)).isNotEmpty()
-        work.enqueueUniqueWork(
-            JOURNEY_ALERTS_WORK,
-            ExistingWorkPolicy.REPLACE,
-            OneTimeWorkRequestBuilder<JourneyAlertWorker>()
-                // The zone it was timed in, so a return to the app can tell a check left behind by a
-                // time-zone change without anything else having been written.
-                .addTag(zoneTag(at.zone))
-                // And the wall clock it was timed by, as the moment the device's elapsed-time count read
-                // zero: setting the clock moves that moment, so a return to the app tells a manual clock
-                // change from the pending check itself, too (Codex on #700).
-                .addTag(CLOCK_TAG + clockMinute())
-                // When it's due, so it can log how late it ran: Android defers it in Doze.
-                .setInputData(androidx.work.workDataOf(DUE to due.toEpochMilli()))
-                .setInitialDelay(delay.toMillis(), TimeUnit.MILLISECONDS)
-                // Offline, a check inside a window waits for a network rather than fail and say nothing; one
-                // that only closes a window runs anyway, since taking an alert down needs none (Codex on #700).
-                .setConstraints(Constraints.Builder().setRequiredNetworkType(if (asks) NetworkType.CONNECTED else NetworkType.NOT_REQUIRED).build())
-                .build(),
-        ).await()
+        work.enqueueUniqueWork(JOURNEY_ALERTS_WORK, ExistingWorkPolicy.REPLACE, checkRequest(due, asks, at.zone, delay)).await()
+        // And an alarm at the same moment, which starts it then as an expedited job: Android holds a deferred
+        // job for half an hour or more while the app isn't on screen, even with the phone in use, and an
+        // inexact alarm it lets fire. The delayed job stays as the backstop (an alarm doesn't survive a
+        // reboot; WorkManager's jobs do).
+        if (delay.isZero) JourneyAlertAlarm.cancel(context) else JourneyAlertAlarm.arm(context, due, asks, delay)
         logJourneyAlertWarning(JourneyAlertLog.scheduled(now, due, asks, at.zone))
         // The first close from now on, among windows open now or when the check is due: one closing
         // before or at that check while another stays open must not wait for the later close (Codex on #700).
@@ -450,6 +441,36 @@ internal object JourneyAlertChecks {
         // Timed from the clock as it reads now, so whatever a clock change left stale is put right.
         JourneyAlertState.clearStale(context)
     }
+
+    /**
+     * The check due at [due], run after [delay]: one due now is expedited, so Android starts it at once rather
+     * than holding it with the app's deferred work (falling back to an ordinary job when the app's expedited
+     * quota is spent). [asks]: whether a window is open then, so it waits for a network.
+     */
+    internal fun checkRequest(due: Instant, asks: Boolean, zone: java.time.ZoneId, delay: Duration): androidx.work.OneTimeWorkRequest =
+        OneTimeWorkRequestBuilder<JourneyAlertWorker>()
+            // The zone it was timed in, so a return to the app can tell a check left behind by a
+            // time-zone change without anything else having been written.
+            .addTag(zoneTag(zone))
+            // And the wall clock it was timed by, as the moment the device's elapsed-time count read
+            // zero: setting the clock moves that moment, so a return to the app tells a manual clock
+            // change from the pending check itself, too (Codex on #700).
+            .addTag(CLOCK_TAG + clockMinute())
+            // Which moment it's for, so the alarm for that moment starts this one and no later replacement.
+            .addTag(dueTag(due))
+            // When it's due, so it can log how late it ran.
+            .setInputData(androidx.work.workDataOf(DUE to due.toEpochMilli()))
+            // Offline, a check inside a window waits for a network rather than fail and say nothing; one
+            // that only closes a window runs anyway, since taking an alert down needs none (Codex on #700).
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(if (asks) NetworkType.CONNECTED else NetworkType.NOT_REQUIRED).build())
+            .apply {
+                if (delay.isZero) {
+                    setExpedited(androidx.work.OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                } else {
+                    setInitialDelay(delay.toMillis(), TimeUnit.MILLISECONDS)
+                }
+            }
+            .build()
 
     // The close check at [closes], or none. It asks TfL nothing ([CLOSE_ONLY]): it only takes down what
     // the closing window showed and forgets its swipe, so it needs no network and adds no request.

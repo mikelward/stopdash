@@ -87,6 +87,11 @@
             android:name=".JourneyAlertDismissReceiver"
             android:exported="false" />
 
+        <!-- The inexact alarm that starts each journey alert check on time. -->
+        <receiver
+            android:name=".JourneyAlertAlarmReceiver"
+            android:exported="false" />
+
         <!-- A clock set or a time-zone change re-schedules the journey alert check, whose windows
              are times of day where the rider is. System broadcasts, so a receiver that isn't
              exported hears them. -->
