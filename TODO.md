@@ -1504,6 +1504,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         - [x] The main view's pinned card (the near-me list; a station page is its own look).
         - [x] "Get off soon" on its own channel (sound, vibration), the permission asked on Start.
               Only while the app is open until the foreground service below lands.
+        - [ ] Consider "get off soon" at whichever of one stop or two minutes out comes last, not first
+              (maintainer, 2026-10-09: left at whichever comes first for now). First gives the longer
+              warning; last avoids one several minutes early when the stop before is far out.
         - [x] **A "time to board" alert** (maintainer, 2026-09-27): a heads-up as the rider's train
               is about to arrive, on its own channel so it can be muted apart from "Get off soon".
               Done: two minutes before the train followed is due at the boarding stop, once for each
