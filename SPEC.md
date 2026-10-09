@@ -2122,7 +2122,15 @@ as it was.
   sighting, calls that leave the leg (a diversion, another branch) or an empty answer claim
   nothing: the rider is **lost** on it rather than moved on. A train is only followed on a leg if every stop it calls at between
   boarding and getting off is one of the leg's own, in the leg's order (not another branch, nor a
-  loop's other way round); one that calls off the leg on the way is **lost**, not ridden. A bus
+  loop's other way round); one that calls off the leg on the way is **lost**, not ridden. **The
+  line's other branch to the same stop is the ride too** (maintainer, 2026-10-09): where the line
+  parts after the boarding stop and joins again before the rider gets off (Kennington to Camden Town
+  via Bank or via Charing Cross), its trains are followed on that branch's own stops, counted and
+  placed by them, as another line's are. A rider on board a followed train who is **seen clear of
+  it** by a precise, fresh fix (two stops or more past its next stop, or at a stop of the other
+  branch it doesn't call at, nowhere near its way) isn't on it: they're counted on by where they
+  were seen, and their train is looked for from there, so "Get off soon" never runs off a train
+  they aren't on. A bus
   leg can't be checked that way: the Planner names its stops by stop area, which the live calls (by
   pole) never name, so a bus is taken on its boarding and alighting stops alone, matched by pole: a
   stop the Planner gives only as a stop area is never matched to a pole by name (a route can call at
