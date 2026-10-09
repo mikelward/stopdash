@@ -2397,7 +2397,23 @@ rider boarded and to follow a bus above ground, which needs a location declarati
 trip is followed while the app is open. The **foreground service** (special use: the live progress
 of a trip the rider started) is started from the app, on Start and on every return to it with a trip on the way, and
 follows the trip every 30 s app open or closed; its ongoing notification, on a quiet channel of its
-own, is the next step (or says it couldn't update) and opens the trip. It stops itself once the
+own, is the next step (or says it couldn't update) and opens the trip. It asks to be an Android
+**Live Update** (maintainer, 2026-10-09), so where Android and the rider allow it, it sits at the top
+of the shade and the lock screen with a **progress bar** of the trip's legs, each in its line's color
+(walks neutral) and as long as the plan's time on it, the rider placed along it by stops counted on a
+ride and by the clock on a walk; and a **status-bar chip**: where to stand when the step is
+boarding or a change, as the board heads that stop (D8): the train's platform, or the way it faces
+("Platform 8", "Southbound"); a bus pole's letter, its sign's "towards", or its bearing ("Stop G",
+"➔ King's Cross", "Northbound"); else where the train goes, shortened as a board shortens it, since the
+chip has few characters. Stops left on a ride ("Next stop" at one); on a walk the distance left,
+in the rider's units, once a fix places them; minutes otherwise. Boarding or
+changing, the notification's line also names where the train goes and where to stand ("➔ Stratford ·
+Platform 2 · Due in 4 min"). With no current answer the bar and chip are left off, as the text then says it's
+checking, and so is the bar with the train lost, as where the rider is along the ride isn't known; a
+route of more than ten legs folds its shortest into a neighbor, as Android draws ten at most.
+Swiped away, it isn't posted again for that trip, as Android asks of a Live Update, until the app is
+opened on the trip again (the service can't run without it); where Live Updates
+are off it's the same notification, unpromoted. It stops itself once the
 rider arrives or ends the trip, and a process that dies takes it with it: the next opening of the
 app starts it again from the kept trip. With location allowed, the same service **sees a rider left
 behind**: in the five minutes after the followed train leaves the boarding stop, each refresh takes

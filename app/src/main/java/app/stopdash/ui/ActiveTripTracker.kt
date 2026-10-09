@@ -313,7 +313,7 @@ class ActiveTripTracker(
     // ride's lines. Empty for a station; null while they can't be read, when its board is headed by
     // its name alone and the failure logged.
     private suspend fun pairOf(ride: TripLeg): List<StopLocation>? {
-        if (ride.mode !in POLE_MODES || ride.fromId.isBlank()) return emptyList()
+        if (!boardsAtPole(ride) || ride.fromId.isBlank()) return emptyList()
         val stop = ride.fromArea.ifBlank { ride.fromId }
         pairs[stop]?.let { return it }
         return try {
@@ -2254,5 +2254,8 @@ class ActiveTripTracker(
 
         // Modes that board at a lettered pole in the street ([pairOf]); a station's board splits by platform.
         private val POLE_MODES = setOf("bus", "replacement-bus", "coach", "tram")
+
+        /** Whether [ride] boards at a pole in the street ([POLE_MODES]), headed by its letter or sign, not a platform. */
+        fun boardsAtPole(ride: TripLeg): Boolean = ride.mode in POLE_MODES
     }
 }

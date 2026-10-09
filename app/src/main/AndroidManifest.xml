@@ -22,6 +22,9 @@
          Start, the one time an alert is wanted; a denial leaves the trip running, its screen saying
          alerts are off. VIBRATE, granted at install, lets the alert be felt in a pocket. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- The trip's ongoing notification as a Live Update (Android 16): a normal permission, granted at
+         install; the rider can still turn Live Updates off for the app in Settings. -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Following a trip on the way with the app closed (SPEC On the way): a foreground service,
          special use (live progress of a trip the user started, until they arrive or end it). Needs
@@ -85,6 +88,11 @@
              PendingIntent), so the same disruption isn't posted again. Not exported. -->
         <receiver
             android:name=".JourneyAlertDismissReceiver"
+            android:exported="false" />
+
+        <!-- The trip's ongoing notification swiped away: not posted again for that trip. -->
+        <receiver
+            android:name=".OnTheWayDismissReceiver"
             android:exported="false" />
 
         <!-- The inexact alarm that starts each journey alert check on time. -->

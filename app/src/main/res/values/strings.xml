@@ -981,6 +981,10 @@
     <!-- %1$s the line ("Jubilee"), %2$s the stop. -->
     <string name="on_the_way_board">Board %1$s at %2$s</string>
     <string name="on_the_way_due">Due in %1$d min</string>
+    <!-- The trip's status-bar chip (a Live Update), counting down to the next thing: "4 min". -->
+    <string name="on_the_way_chip_minutes">%1$d min</string>
+    <!-- Where the next train goes, before the step's time in the trip's notification: "➔ Stratford". -->
+    <string name="on_the_way_towards">➔ %1$s</string>
     <!-- In place of a train's time or stops, back after a while away, until the next answer. -->
     <string name="on_the_way_updating">Updating…</string>
     <!-- In place of a ride's stops (or a train's due time) once the last answer is too old to stand

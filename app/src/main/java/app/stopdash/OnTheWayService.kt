@@ -46,6 +46,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -70,8 +71,13 @@ class OnTheWayService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val tracker = MainActivity.activeTrip(applicationContext)
+        // Started by the app opening with the trip on: the rider is back with it, so a notification they
+        // swiped away earlier shows again, as the service must post one to run at all.
+        OnTheWayNotification.dismissedTrip = null
         OnTheWayNotification.ensureChannel(this)
-        val first = OnTheWayNotification.build(this, tracker.trip.value, tracker.progress.value, tracker.failed.value, tracker.updatedAt.value, Instant.now(), tracker.answeredAt.value)
+        // Plain, on the main thread before startForeground: the Live Update's bar, chip and boarding are
+        // worked out over the route and the board, so they come with the first update off it, a moment later.
+        val first = OnTheWayNotification.build(this, tracker.trip.value, tracker.progress.value, tracker.failed.value, tracker.updatedAt.value, Instant.now(), tracker.answeredAt.value, live = false)
         // Location too when it's allowed: a fix just after boarding shows a rider left behind.
         val canLocate = locationAllowed()
         val withLocation = enterForeground(canLocate, warn = { StopdashDebugLog.warning("on the way: %s", it) }) { type ->
@@ -94,10 +100,13 @@ class OnTheWayService : Service() {
                 // Shown again on each change, and on each tick, so its minutes count down and an answer
                 // grown old turns to Checking… (or Updating…) though nothing else changed.
                 val shown = launch {
-                    val answers = combine(tracker.updatedAt, tracker.answeredAt, ::Pair)
-                    combine(tracker.trip, tracker.progress, tracker.failed, answers, ticks(NOTIFICATION_TICK)) { trip, progress, failed, (updatedAt, answeredAt), _ ->
-                        if (trip != null) OnTheWayNotification.show(this@OnTheWayService, trip, progress, failed, updatedAt, answeredAt)
-                    }.collect()
+                    val answers = combine(tracker.updatedAt, tracker.answeredAt, tracker.nextBoard, ::Triple)
+                    combine(tracker.trip, tracker.progress, tracker.failed, answers, ticks(NOTIFICATION_TICK)) { trip, progress, failed, (updatedAt, answeredAt, board), _ ->
+                        if (trip != null) {
+                            val boarding = OnTheWayLiveUpdate.boarding(trip, progress, board, Instant.now())
+                            OnTheWayNotification.show(this@OnTheWayService, trip, progress, failed, updatedAt, answeredAt, boarding)
+                        }
+                    }.flowOn(Dispatchers.Default).collect()
                 }
                 // The trip on a paired watch with the app, for as long as it's followed here.
                 val onWatch = launch { WatchTripSync.follow(this@OnTheWayService, tracker) }
@@ -366,7 +375,19 @@ internal object OnTheWayNotification {
      * stops from no recent answer ([updatedAt], as on the trip's screen) say "Checking…" beside the
      * step's last known time where it had an answer ([answeredAt]), or say it's updating where not.
      */
-    fun build(context: Context, trip: ActiveTrip?, progress: TripProgress?, failed: Boolean, updatedAt: Instant?, now: Instant, answeredAt: Instant? = null): Notification {
+    fun build(
+        context: Context,
+        trip: ActiveTrip?,
+        progress: TripProgress?,
+        failed: Boolean,
+        updatedAt: Instant?,
+        now: Instant,
+        answeredAt: Instant? = null,
+        // Where to board the next ride, when it's the step ([OnTheWayLiveUpdate.boarding]).
+        boarding: OnTheWayLiveUpdate.Boarding? = null,
+        // False for a plain notification with no bar or chip: work over the route kept off the main thread.
+        live: Boolean = true,
+    ): Notification {
         val current = ActiveTripTracker.isCurrent(updatedAt, now)
         val (title, detail) = nextStepText(context.resources, progress, now, current, asOf = answeredAt)
         // Failed with an answer of the step's own: the failure said, the last known time kept beside it, as the screen keeps it.
@@ -377,23 +398,47 @@ internal object OnTheWayNotification {
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             .putExtra(GetOffSoonAlert.EXTRA_OPEN_ON_THE_WAY, true)
         val pending = PendingIntent.getActivity(context, 1, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        return NotificationCompat.Builder(context, CHANNEL_ID)
+        // A Live Update (Android 16): promoted to the top of the shade and the lock screen, with a chip in
+        // the status bar, where Android and the rider allow it; a plain ongoing notification where not.
+        // The chip and the bar say only what the text does: with no current answer, neither.
+        val shown = live && !failed && (current || !fromTfl(progress))
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_appbar_route_arrow)
             .setContentTitle(title)
-            .setContentText(if (failed) failedText else detail)
+            .setContentText(if (failed) failedText else OnTheWayLiveUpdate.withBoarding(context.resources, boarding.takeIf { shown }, detail))
             .setSubText(trip?.let { context.getString(R.string.on_the_way_title, it.destinationName) })
             .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setShowWhen(false)
             .setContentIntent(pending)
-            .build()
+            // Dismissed, it stays dismissed for the trip, as Android asks of a Live Update ([dismissedTrip]).
+            .setDeleteIntent(trip?.let { dismissIntent(context, it) })
+            .setRequestPromotedOngoing(true)
+        if (trip != null && shown) OnTheWayLiveUpdate.style(trip, progress, now)?.let(builder::setStyle)
+        if (shown) OnTheWayLiveUpdate.chipText(context.resources, progress, now, boarding, OnTheWayLiveUpdate.distanceSystem(context))?.let(builder::setShortCriticalText)
+        return builder.build()
     }
 
-    fun show(context: Context, trip: ActiveTrip, progress: TripProgress?, failed: Boolean, updatedAt: Instant?, answeredAt: Instant? = null) {
+    /**
+     * The trip ([ActiveTrip.startedAt]) whose notification the rider swiped away: not posted again for
+     * it, as Android asks of a Live Update, until another trip starts or the app is opened on it again
+     * (the service must post one to start). In memory, as a process that dies takes the service with it.
+     */
+    @Volatile
+    internal var dismissedTrip: Instant? = null
+
+    private fun dismissIntent(context: Context, trip: ActiveTrip): PendingIntent = PendingIntent.getBroadcast(
+        context, 2,
+        Intent(context, OnTheWayDismissReceiver::class.java).putExtra(OnTheWayDismissReceiver.EXTRA_STARTED_AT, trip.startedAt.toEpochMilli()),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
+
+    fun show(context: Context, trip: ActiveTrip, progress: TripProgress?, failed: Boolean, updatedAt: Instant?, answeredAt: Instant? = null, boarding: OnTheWayLiveUpdate.Boarding? = null) {
         if (!GetOffSoonAlert.canNotify(context)) return
+        if (dismissedTrip == trip.startedAt) return
         try {
-            NotificationManagerCompat.from(context).notify(ID, build(context, trip, progress, failed, updatedAt, Instant.now(), answeredAt))
+            NotificationManagerCompat.from(context).notify(ID, build(context, trip, progress, failed, updatedAt, Instant.now(), answeredAt, boarding))
         } catch (e: SecurityException) {
             StopdashDebugLog.warning("on the way: %s", "ongoing notification refused: ${e::class.simpleName}")
         }
@@ -414,4 +459,17 @@ internal suspend fun onTheWayFix(location: AndroidLocationProvider, trip: Active
     // for where it could tell more ([OnTheWay.preferredFor]), the vaguer one kept if none comes.
     val fix = location.preciseFix(sureEnough = OnTheWay.preferredFor(trip, now)) ?: return null
     return OnTheWay.usableFix(fix, trip, now)
+}
+
+/** Hears the trip's ongoing notification swiped away (its delete intent), so it isn't posted again for that trip. */
+class OnTheWayDismissReceiver : android.content.BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val startedAt = intent.getLongExtra(EXTRA_STARTED_AT, -1L).takeIf { it >= 0 } ?: return
+        OnTheWayNotification.dismissedTrip = Instant.ofEpochMilli(startedAt)
+        StopdashDebugLog.info("on the way: %s", "ongoing notification dismissed; not posted again for this trip")
+    }
+
+    companion object {
+        const val EXTRA_STARTED_AT = "app.stopdash.extra.ON_THE_WAY_STARTED_AT"
+    }
 }
