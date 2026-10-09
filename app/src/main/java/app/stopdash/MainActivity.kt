@@ -244,6 +244,7 @@ import app.stopdash.ui.LineAlertDismissal
 import app.stopdash.ui.LocalAppMenu
 import app.stopdash.ui.LocalHideUndoCarrier
 import app.stopdash.ui.LocalLiftsOut
+import app.stopdash.ui.LocalLocationAllowed
 import app.stopdash.ui.LocalOnTheWay
 import app.stopdash.ui.LocalOnTheWayBanner
 import app.stopdash.ui.LocalRouteStops
@@ -323,6 +324,7 @@ import app.stopdash.ui.tripStartId
 import app.stopdash.ui.widgetNearbySet
 import app.stopdash.watch.WatchInstall
 import app.stopdash.widget.LiveWidgetRefreshResult
+import app.stopdash.widget.WidgetLocationPrompt
 import app.stopdash.widget.WidgetMinuteTicks
 import app.stopdash.widget.WidgetSnapshotStore
 import app.stopdash.widget.applyLiveWidgetRefresh
@@ -439,6 +441,9 @@ class MainActivity : ComponentActivity() {
 
     // A launcher shortcut's place (SPEC *Launcher shortcuts*): its saved id, until the trip there opens.
     private val routeToPlaceAsked = MutableStateFlow<String?>(null)
+
+    // Whether a location grant is held, for [LocalLocationAllowed].
+    private val locationAllowed = mutableStateOf(true)
 
     // The nearby-stops lookup, shared by the near-me gate and a searched station's page (From…).
     // Reuses a recent lookup made close by (in memory, process-wide), so reopening the app near
@@ -557,9 +562,23 @@ class MainActivity : ComponentActivity() {
         openOnTheWay.value = true
     }
 
+    /**
+     * [locationAllowed] as read now; an empty widget whose prompt no longer matches it is redrawn, and
+     * a grant clears any refusal remembered from before it.
+     */
+    private fun noteLocationAllowed(allowed: Boolean) {
+        locationAllowed.value = allowed
+        lifecycleScope.launch {
+            WidgetLocationPrompt.redrawIfOutdated(applicationContext, allowed)
+            if (allowed) precisePrompted.grantSeen()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Read before the first frame, so a restored screen's location controls hold still.
+        noteLocationAllowed(hasLocationPermission())
         // Read once: a recreation (rotation) keeps the overlay's own saved state instead.
         if (savedInstanceState == null) {
             // Before the extras that say what opened it are taken off; a recreation isn't an open.
@@ -648,6 +667,7 @@ class MainActivity : ComponentActivity() {
                 val lineDismissals = lineDismissalsModel()
                 val lineWorkAhead = remember(lineDismissals) { LineWorkAhead(workAheadCache, lineDismissals.dismissed) }
                 CompositionLocalProvider(
+                    LocalLocationAllowed provides locationAllowed.value,
                     LocalLineWorkAhead provides lineWorkAhead,
                     LocalStepFree provides stepFree,
                     LocalStepFreeLoading provides !stepFreeRead,
@@ -664,16 +684,37 @@ class MainActivity : ComponentActivity() {
                 // True once a request has come back denied with the rationale suppressed —
                 // Android's "don't ask again" / permanently-denied signal. Then re-requesting
                 // only re-denies, so the gate offers Settings instead (Codex). Survives
-                // configuration change so a rotation doesn't drop back to the Allow button.
+                // configuration change so a rotation doesn't drop back to the Allow button, and is
+                // worked out again at each start (REFUSED below) so a cold launch doesn't either.
                 var permissionPermanentlyDenied by rememberSaveable { mutableStateOf(false) }
+                // Whether this start has worked out which of those the gate offers. Until then the gate
+                // holds its placeholder, so a cold start after a lasting refusal never shows an Allow
+                // button that Android would refuse unseen, then swaps it for Settings (Codex on #732).
+                // Held in a view model, not saved state: it outlasts a rotation, but a process restored
+                // after the grant may have changed in Settings decides afresh (Codex on #732).
+                val gateDecision: GateDecision = viewModel()
+                var permissionDecided by gateDecision.decided
 
+                // Whether Android would explain the request as it was made: with the answer's, it tells a
+                // refusal for good from a dismissed prompt (Back), which Android also reports as ungranted.
+                var rationaleBeforeAsk by rememberSaveable { mutableStateOf(false) }
+                var gateAskedAt by rememberSaveable { mutableLongStateOf(0L) }
                 val permissionLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestMultiplePermissions(),
                 ) { grants ->
+                    val answer = locationAnswer(
+                        granted = grants.values.any { it },
+                        rationaleBefore = rationaleBeforeAsk,
+                        rationaleAfter = shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION),
+                        atOnce = SystemClock.elapsedRealtime() - gateAskedAt < JourneyAlertState.AT_ONCE_MILLIS,
+                    )
                     // The precise request has now been shown, whichever way it was answered —
                     // so an upgraded coarse-only user isn't prompted again on every open.
                     // In the process's scope, so the activity going (a rotation) can't cancel the write.
-                    ((application as? StopdashApp)?.applicationScope ?: lifecycleScope).launch { precisePrompted.mark() }
+                    ((application as? StopdashApp)?.applicationScope ?: lifecycleScope).launch {
+                        precisePrompted.mark()
+                        if (answer != null) precisePrompted.answered(granted = !answer) else precisePrompted.askedWithoutRefusal()
+                    }
                     UsageEvents.log(
                         UsageEvent.LocationPermission(
                             UsageEvent.Grant.of(
@@ -684,15 +725,20 @@ class MainActivity : ComponentActivity() {
                     )
                     // Request both so the runtime dialog offers the precise/approximate choice;
                     // either grant finds stops (precise preferred — see AndroidLocationProvider).
+                    noteLocationAllowed(grants.values.any { it })
                     if (grants.values.any { it }) {
                         permissionPermanentlyDenied = false
                         nearbyViewModel.locate()
                     } else {
-                        // A denial with no rationale allowed means the system won't prompt
-                        // again — route the user to Settings rather than a dead re-request.
-                        permissionPermanentlyDenied =
-                            !shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION)
+                        // Refused for good: Android won't prompt again, so Settings rather than a dead
+                        // re-request. A first refusal or a dismissed prompt can still be asked again.
+                        permissionPermanentlyDenied = answer == true
                     }
+                }
+                val askForLocation = {
+                    rationaleBeforeAsk = shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION)
+                    gateAskedAt = SystemClock.elapsedRealtime()
+                    permissionLauncher.launch(locationPermissions)
                 }
 
                 // Resolve when a location permission is held and nothing has resolved
@@ -747,20 +793,29 @@ class MainActivity : ComponentActivity() {
                 ).takeIf { watchInstallAvailable && !watchCardStored && !watchCardClosed }
                 LaunchedEffect(lifecycleOwner) {
                     lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                        // A grant given or taken away in Settings while away.
+                        noteLocationAllowed(hasLocationPermission())
                         if (nearbyViewModel.state.value is NearbyStopsViewModel.State.PermissionRequired) {
                             when (
                                 nearbyPermissionAction(
                                     hasFine = hasFineLocation(),
                                     hasAnyLocation = hasLocationPermission(),
                                     precisePrompted = precisePrompted.get(),
+                                    lastRefused = precisePrompted.lastRefused(),
+                                    rationaleAllowed = shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION),
                                 )
                             ) {
                                 NearbyPermissionAction.LOCATE -> nearbyViewModel.locate()
-                                NearbyPermissionAction.REQUEST_PRECISE ->
-                                    permissionLauncher.launch(locationPermissions)
-                                NearbyPermissionAction.WAIT -> {}
+                                NearbyPermissionAction.REQUEST_PRECISE -> askForLocation()
+                                // Refused for good before this start: Settings at once, not an Allow
+                                // button whose tap Android would refuse unseen.
+                                NearbyPermissionAction.REFUSED -> permissionPermanentlyDenied = true
+                                // Not (or no longer) refused: a value restored from before can't stand.
+                                NearbyPermissionAction.WAIT -> permissionPermanentlyDenied = false
                             }
                         }
+                        // Decided either way, so a gate that comes up later never waits on this.
+                        permissionDecided = true
                     }
                 }
 
@@ -969,7 +1024,13 @@ class MainActivity : ComponentActivity() {
                 // drop the list's departures and open the here-trip over the nearby set. The name is
                 // the one the rider knows it by, used for the title and the walk-to leg. The one path
                 // for Settings' list and the near-me list's chips.
-                val routeToPlace: (TripDestination.Place) -> Unit = { place ->
+                val routeToPlace: (TripDestination.Place) -> Unit = routeToPlace@{ place ->
+                    // A trip from here needs where here is: without a grant it would open under the
+                    // location gate, unseen, so say what it needs instead.
+                    if (!locationAllowed.value) {
+                        Toast.makeText(applicationContext, R.string.route_needs_location, Toast.LENGTH_SHORT).show()
+                        return@routeToPlace
+                    }
                     listStores.clearAll()
                     hereFavorite = place
                     hereToId = null
@@ -2512,14 +2573,14 @@ class MainActivity : ComponentActivity() {
                                         val gatePending = emptyAt != null && chipsPending(savedPlacesState.read, savedPlaces, gatePlacesOrPending)
                                         ReportScreen(UsageEvent.Screen.HOME)
                                         LocationGate(
-                                            state = if (gatePending) NearbyStopsViewModel.State.Locating else state,
+                                            state = gateShownState(state, gatePending, permissionDecided),
                                             now = tickingNow(),
                                             approximate = gateBanner == LocationBanner.COARSE,
                                             permanentlyDenied = permissionPermanentlyDenied,
-                                            onAllow = { permissionLauncher.launch(locationPermissions) },
+                                            onAllow = { askForLocation() },
                                             onRetry = {
                                                 if (hasLocationPermission()) nearbyViewModel.locate()
-                                                else permissionLauncher.launch(locationPermissions)
+                                                else askForLocation()
                                             },
                                             onOpenSettings = ::openAppSettings,
                                             onOpenLicenses = openLicenses,
@@ -3522,6 +3583,11 @@ class MainActivity : ComponentActivity() {
      * the reference along with the models themselves. Empty after process death, when those models
      * are new too and nothing of theirs is in flight.
      */
+    /** Whether this process has worked out what the location gate offers ([gateShownState]). */
+    internal class GateDecision : ViewModel() {
+        val decided = mutableStateOf(false)
+    }
+
     internal class ShownModels : ViewModel() {
         var fromSearch: StationSearchViewModel? = null
     }
@@ -3644,7 +3710,8 @@ class MainActivity : ComponentActivity() {
                 onBack = { leaveSearch(false) },
                 // From…'s "Here": start from the rider's position again — the near-me list, or its
                 // To… search when a From row opened this one.
-                onPickHere = closeSearch,
+                // None without a grant: the near-me list it returns to can't be shown.
+                onPickHere = closeSearch.takeIf { LocalLocationAllowed.current },
                 // A saved place's chip starts there, as a picked station does, standing at its
                 // coordinate ([PlaceStart]); not a recent pick, as a place's chip isn't on To… either.
                 onStartFromPlace = { place ->
@@ -5325,12 +5392,13 @@ internal class NearbyDeparturesStores : androidx.lifecycle.ViewModel() {
 }
 
 /** What the nearby gate should do for the current location-permission state (see [nearbyPermissionAction]). */
-internal enum class NearbyPermissionAction { LOCATE, REQUEST_PRECISE, WAIT }
+internal enum class NearbyPermissionAction { LOCATE, REQUEST_PRECISE, WAIT, REFUSED }
 
 /**
  * The nearby gate's action for a held (or absent) location permission, from the three facts the
  * runtime exposes: whether precise (FINE) is granted, whether *any* location permission is
- * granted, and whether the precise request has already been shown once (persisted).
+ * granted, and whether the precise request has already been shown once and how it was last answered
+ * (persisted).
  *
  * Extracted pure so the coarse-only-upgrade path is unit-testable off a device — the reported
  * bug was an install predating FINE keeping a live coarse grant, which the manifest change does
@@ -5343,17 +5411,58 @@ internal enum class NearbyPermissionAction { LOCATE, REQUEST_PRECISE, WAIT }
  *   re-prompting every open would nag.
  * - **coarse held, precise never prompted** → [REQUEST_PRECISE]: the upgrade case — offer precise
  *   once rather than silently keeping the inaccurate coarse fix.
- * - **no location permission** → [WAIT]: the gate shows its Allow button; nothing auto-fires.
+ * - **no location permission, last answer a refusal, and Android won't explain again** → [REFUSED]:
+ *   Android stops prompting after a second refusal, so the gate goes straight to Settings. Only the
+ *   remembered refusal tells this apart from a first open or an expired one-time grant, where the
+ *   rationale is also withheld but Android does prompt again.
+ * - **no location permission** otherwise → [WAIT]: the gate shows its Allow button; nothing auto-fires.
  */
 internal fun nearbyPermissionAction(
     hasFine: Boolean,
     hasAnyLocation: Boolean,
     precisePrompted: Boolean,
+    lastRefused: Boolean = false,
+    rationaleAllowed: Boolean = false,
 ): NearbyPermissionAction = when {
     hasFine -> NearbyPermissionAction.LOCATE
     hasAnyLocation && precisePrompted -> NearbyPermissionAction.LOCATE
     hasAnyLocation -> NearbyPermissionAction.REQUEST_PRECISE
+    lastRefused && !rationaleAllowed -> NearbyPermissionAction.REFUSED
     else -> NearbyPermissionAction.WAIT
+}
+
+/**
+ * What a location prompt's answer says about refusal: false for a grant; true for a refusal for good,
+ * where Android explained the request before it and won't after (on Android 11+ that's the second
+ * refusal, after which it stops prompting), or answered [atOnce] without explaining, which means it
+ * showed no prompt at all; null where it says nothing either way. A first refusal still lets Android
+ * prompt, and a prompt dismissed with Back is reported as ungranted but changes nothing, so neither
+ * is recorded (Codex on #732).
+ */
+internal fun locationAnswer(
+    granted: Boolean,
+    rationaleBefore: Boolean,
+    rationaleAfter: Boolean,
+    atOnce: Boolean = false,
+): Boolean? = when {
+    granted -> false
+    !rationaleAfter && (rationaleBefore || atOnce) -> true
+    else -> null
+}
+
+/**
+ * What the location gate shows for [state]: its placeholder while the chips it heads are pending, or
+ * while the start hasn't yet worked out whether location was refused for good — so the gate never
+ * offers an Allow button it then swaps for Settings (Codex on #732).
+ */
+internal fun gateShownState(
+    state: NearbyStopsViewModel.State,
+    pending: Boolean,
+    permissionDecided: Boolean,
+): NearbyStopsViewModel.State = when {
+    pending -> NearbyStopsViewModel.State.Locating
+    state is NearbyStopsViewModel.State.PermissionRequired && !permissionDecided -> NearbyStopsViewModel.State.Locating
+    else -> state
 }
 
 /**

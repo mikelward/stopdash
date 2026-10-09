@@ -77,6 +77,72 @@ class AppDirsAndPrecisePromptedTest {
     }
 
     @Test
+    fun `the last answer is read and written on the worker, and kept`() {
+        val ranOn = ThreadRecorder()
+        val (worker, stop) = recordingWorker(ranOn)
+        try {
+            val prefs = { context.getSharedPreferences("test.precise.answer", Context.MODE_PRIVATE) }
+            prefs().edit().clear().commit()
+            val flag = PrecisePrompted(prefs, worker)
+            assertFalse(runBlocking { flag.lastRefused() })
+            runBlocking { flag.answered(granted = false) }
+            assertTrue(runBlocking { flag.lastRefused() })
+            assertTrue(runBlocking { PrecisePrompted(prefs, worker).lastRefused() })
+            // A later grant (one-time included) clears it, so an expired grant prompts again.
+            runBlocking { flag.answered(granted = true) }
+            assertFalse(runBlocking { PrecisePrompted(prefs, worker).lastRefused() })
+            // A grant seen some other way (Settings) clears a refusal too, so a later reset of that
+            // grant isn't read as the refusal before it.
+            runBlocking { flag.answered(granted = false) }
+            runBlocking { flag.grantSeen() }
+            assertFalse(runBlocking { PrecisePrompted(prefs, worker).lastRefused() })
+            assertEquals(setOf("test-worker"), ranOn.threads().toSet())
+        } finally {
+            stop()
+        }
+    }
+
+    @Test
+    fun `an install from before the answer was kept reads asked-once as a refusal`() {
+        val (worker, stop) = recordingWorker(ThreadRecorder())
+        try {
+            val prefs = { context.getSharedPreferences("test.precise.legacy", Context.MODE_PRIVATE) }
+            prefs().edit().clear().commit()
+            assertFalse(runBlocking { PrecisePrompted(prefs, worker).lastRefused() })
+            // Asked before this version, no answer kept: Settings, as before.
+            prefs().edit().putBoolean("precise_prompted", true).commit()
+            assertTrue(runBlocking { PrecisePrompted(prefs, worker).lastRefused() })
+            // A grant seen clears it, so an expired grant after that prompts again.
+            runBlocking { PrecisePrompted(prefs, worker).grantSeen() }
+            assertFalse(runBlocking { PrecisePrompted(prefs, worker).lastRefused() })
+        } finally {
+            stop()
+        }
+    }
+
+    @Test
+    fun `a prompt dismissed by this version isn't read as an old refusal after a restart`() {
+        val (worker, stop) = recordingWorker(ThreadRecorder())
+        try {
+            val prefs = { context.getSharedPreferences("test.precise.dismissed", Context.MODE_PRIVATE) }
+            prefs().edit().clear().commit()
+            runBlocking {
+                val flag = PrecisePrompted(prefs, worker)
+                flag.mark()
+                flag.askedWithoutRefusal()
+            }
+            // A new process: asked, but no refusal recorded, so not refused.
+            assertFalse(runBlocking { PrecisePrompted(prefs, worker).lastRefused() })
+            // A refusal for good already recorded stands.
+            runBlocking { PrecisePrompted(prefs, worker).answered(granted = false) }
+            runBlocking { PrecisePrompted(prefs, worker).askedWithoutRefusal() }
+            assertTrue(runBlocking { PrecisePrompted(prefs, worker).lastRefused() })
+        } finally {
+            stop()
+        }
+    }
+
+    @Test
     fun `the process's flag is one, so a mark outlives the activity that made it`() {
         val first = PrecisePrompted.of(context)
         runBlocking { first.mark() }

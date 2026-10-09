@@ -216,8 +216,7 @@ fun LocationGate(
                         // Offered in the states where a fix or lookup actually happened — no fix, nothing nearby,
                         // TfL unreachable — so the diagnostic log (and, for Empty/Failed, the fix) is the point and
                         // departures never resolve to carry the overflow's own item. Not on PermissionRequired
-                        // (grant-needed, nothing to diagnose yet — and its permanent-denial isn't reconstructed on
-                        // a cold launch) nor the transient Locating spinner.
+                        // (grant-needed, nothing to diagnose yet) nor the transient Locating spinner.
                         val stuck = when (shown) {
                             NearbyStopsViewModel.State.NoLocation,
                             is NearbyStopsViewModel.State.Empty,

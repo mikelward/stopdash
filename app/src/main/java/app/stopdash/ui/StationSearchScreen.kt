@@ -672,7 +672,7 @@ fun StationPlaceholderScreen(
                 },
                 title = { Text(title, maxLines = 1) },
                 actions = {
-                    if (onLocate != null) {
+                    if (onLocate != null && LocalLocationAllowed.current) {
                         IconButton(onClick = onLocate) {
                             Icon(CrosshairIcon, contentDescription = stringResource(R.string.locate_here))
                         }

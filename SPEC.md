@@ -3240,6 +3240,15 @@ the gate's overflow offers it too (maintainer, 2026-10-02). Opening either takes
 (and its background refresh) out of the picture, so nothing polls TfL behind the static
 screen.
 
+Without a location grant, nothing points the rider somewhere it can't take them (maintainer,
+2026-10-09). Once Android has stopped asking (refused twice), the gate offers **Open settings** from
+the next start on, not an Allow button Android would refuse unseen; it tells this apart from a
+first open, or an expired one-time grant, by remembering that the last answer was a refusal. An empty widget says **Allow location in StopDash**
+rather than "Open StopDash to load departures", since opening the app alone won't fill it. From…
+leaves out **Here**, and a station's pages their "use my location" button, which would only return
+to a near-me list that can't be shown; a favorite place or
+place shortcut says a trip from here needs location rather than opening that trip under the gate.
+
 ### Display size
 
 The user can make StopDash's text bigger or smaller than everything else on the phone — a
