@@ -1025,6 +1025,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       failure it could trade a direction's fresh row for the other place's stale one (a "21:14?"
       guess in place of a countdown). `keepDirectionsTogether` now refuses an older stop, as the
       one-way join from #528 does.
+- [ ] **A bus ending at another pole of the place it's listed at** (Codex, #729). A service ending at
+      the stop it's listed at, or its own stop area, is hidden at every stop; one ending at the pole
+      across the road still shows where the rider's distance isn't known. Hiding it by the place's
+      other poles was tried and dropped (maintainer, 2026-10-09): each surface (list, widget, watch,
+      complication) holds a different set of a place's stops, and a stop with no stop area is grouped
+      by its name, so the verdict differed by surface. Alternatives to weigh: carry each place's
+      confirmed member ids (TfL stop areas only) in the persisted snapshot so every surface judges
+      alike; or judge it at fetch time against the stop's stop area from TfL.
 
 ## Phase 2 — Watched stops and settings
 
