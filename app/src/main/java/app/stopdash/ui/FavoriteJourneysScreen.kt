@@ -1,6 +1,10 @@
 package app.stopdash.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -256,8 +260,15 @@ fun FavoriteJourneysScreen(
                     }
                 }
                 // At the top, outside the scroll: worked out with the list, so it never pushes rows down after
-                // they appear.
-                if (state.askLocation) LondonOnlyCard(onAllowLocation, onDecline = onDeclineLocation)
+                // they appear. Shown at once with the list; when it comes or goes later (a grant or a refusal
+                // in Android's settings, No thanks), it slides rather than jumps the rows (maintainer, 2026-10-09).
+                AnimatedVisibility(
+                    visible = state.askLocation,
+                    enter = expandVertically(tween(CARD_MOVE_MILLIS.toInt()), expandFrom = Alignment.Top),
+                    exit = shrinkVertically(tween(CARD_MOVE_MILLIS.toInt()), shrinkTowards = Alignment.Top),
+                ) {
+                    LondonOnlyCard(onAllowLocation, onDecline = onDeclineLocation)
+                }
                 // Outside the scroll, so a failed removal says so wherever the list is scrolled.
                 if (state.writeFailed) {
                     Row(

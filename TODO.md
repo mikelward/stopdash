@@ -3426,6 +3426,12 @@ and these carry the rest as their own PRs:
 
 ## Phase 5 — Distribution and polish
 
+- [ ] **Audit where content changes under the rider and should animate** (maintainer, 2026-10-09). Hold
+      still comes first, but where something must appear, go or move while the rider is looking (a card
+      shown or put away, a row arriving or leaving, a list re-sorting), it should slide rather than jump.
+      Walk every screen and the widget for content that changes after first draw, and give each an
+      enter/exit or placement animation (the trip's header and the favorite journeys' location card use
+      `CARD_MOVE_MILLIS`), or note why it can't (the widget's RemoteViews can't animate).
 - [x] **"Update available" indicator (maintainer, 2026-09-21).** A red dot on the
       departures overflow (⋮) icon plus an "Update available" menu item that opens the Play
       listing, driven by a release-only Play In-App Update *availability* check
