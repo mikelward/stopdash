@@ -558,6 +558,67 @@ class WidgetScreenshotTest {
         capture(name, models[cell], size = cell)
     }
 
+    @Test
+    fun `the widget follows the rider from King's Cross to Waterloo`() {
+        // The demo of the widget following the rider (SPEC D1): the same widget before and after a
+        // refresh that found the phone at Waterloo. Public stations at their published positions only
+        // (SPEC *Privacy*); the move is WidgetFollow's, the trains a stand-in for the refresh's fetch.
+        fun dep(lineId: String, lineName: String, destination: String, offsetSeconds: Long) =
+            Departure(lineId, lineName, "inbound", destination, null, now.plusSeconds(offsetSeconds), "tube")
+        val tube = { id: String, name: String -> app.stopdash.domain.LineRef(id, name, "tube") }
+        val kingsCross = app.stopdash.domain.StopLocation("940GZZLUKSX", "King's Cross St. Pancras", 51.5308, -0.1238, listOf(tube("victoria", "Victoria"), tube("piccadilly", "Piccadilly")), clusterId = "940GZZLUKSX")
+        val waterloo = app.stopdash.domain.StopLocation("940GZZLUWLO", "Waterloo", 51.5036, -0.1143, listOf(tube("bakerloo", "Bakerloo"), tube("jubilee", "Jubilee")), clusterId = "940GZZLUWLO")
+        val before = DeparturesSnapshot(
+            stops = listOf(
+                StopArrivals(
+                    kingsCross.id,
+                    kingsCross.name,
+                    listOf(
+                        dep("victoria", "Victoria", "Brixton", 60),
+                        dep("victoria", "Victoria", "Walthamstow Central", 180),
+                        dep("piccadilly", "Piccadilly", "Heathrow Terminal 5", 120),
+                        dep("piccadilly", "Piccadilly", "Cockfosters", 240),
+                    ),
+                    now.minusSeconds(30),
+                    lines = kingsCross.lines,
+                    clusterId = kingsCross.clusterId,
+                ),
+            ),
+            fetchedAt = now.minusSeconds(30),
+            nearestFirst = listOf(kingsCross.id),
+            lineStatuses = listOf("victoria", "piccadilly", "bakerloo", "jubilee").associateWith {
+                LineStatusCheck(LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service"), now.minusSeconds(30))
+            },
+        )
+        val moved = app.stopdash.domain.WidgetFollow.moved(
+            before,
+            setOf(kingsCross.id),
+            listOf(kingsCross, waterloo),
+            app.stopdash.domain.Coordinates(waterloo.latitude, waterloo.longitude),
+            hidden = emptySet(),
+        )!!
+        assertEquals(setOf(waterloo.id), moved.nearby)
+        val fetched = moved.snapshot.copy(
+            stops = moved.snapshot.stops.map {
+                it.copy(
+                    departures = listOf(
+                        dep("bakerloo", "Bakerloo", "Elephant & Castle", 90),
+                        dep("bakerloo", "Bakerloo", "Harrow & Wealdstone", 150),
+                        dep("jubilee", "Jubilee", "Stratford", 60),
+                        dep("jubilee", "Jubilee", "Stanmore", 210),
+                    ),
+                    fetchedAt = now.minusSeconds(10),
+                    arrivalsFresh = true,
+                )
+            },
+            fetchedAt = now.minusSeconds(10),
+        )
+        val after = app.stopdash.domain.WidgetFollow.settled(fetched, moved.placeholders)
+        val size = DpSize(240.dp, 180.dp)
+        capture("widget-follow-before.png", widgetModel(before, now, geometry = WidgetGeometry(size.width, size.height, 1f)), size = size)
+        capture("widget-follow-after.png", widgetModel(after, now, geometry = WidgetGeometry(size.width, size.height, 1f)), size = size)
+    }
+
     private fun capture(
         name: String,
         model: WidgetModel,

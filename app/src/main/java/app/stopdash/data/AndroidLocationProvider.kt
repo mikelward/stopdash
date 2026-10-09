@@ -171,6 +171,28 @@ class AndroidLocationProvider(
     // app takes a location" holds on every path, not only the one that can recall it.
     private fun expirePreciseMemory() = preciseMemory.expire(SystemClock.elapsedRealtime())
 
+    /**
+     * Every position Android already holds, one per enabled provider, with its age and accuracy, and no
+     * fix asked for: what the widget's background refresh picks from ([app.stopdash.domain.WidgetFollow.best]),
+     * costing no radio. Each provider's, not just the newest: a newer network fix can be vaguer than a
+     * still-recent GPS one (Codex on #711). Empty without location permission or with none held.
+     */
+    fun lastKnownFixes(): List<LocationFix> {
+        if (!hasLocationPermission()) return emptyList()
+        val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return emptyList()
+        val nowNanos = SystemClock.elapsedRealtimeNanos()
+        return enabledProviders(manager).mapNotNull { provider ->
+            lastKnownOrNull(manager, provider)?.let { loc ->
+                LocationFix(
+                    loc.toCoordinates(),
+                    isFallback = false,
+                    accuracyMeters = if (loc.hasAccuracy()) loc.accuracy else null,
+                    ageMillis = (nowNanos - loc.elapsedRealtimeNanos).coerceAtLeast(0) / 1_000_000,
+                )
+            }
+        }
+    }
+
     override suspend fun precise(): Coordinates? = preciseFix()?.coordinates
 
     override suspend fun preciseWithAccuracy(): LocationFix? = preciseFix()

@@ -85,6 +85,11 @@ fun SettingsScreen(
     // value that may not reflect the stored choice — showing it off-and-tappable would let a
     // previously-enabled install read as off (Codex P2 on #56).
     liveWidgetRefreshEnabled: Boolean = true,
+    // Whether the widget follows the rider (location allowed all the time, SPEC D1), null until read,
+    // when the switch is disabled; and a report of a tap, which the caller turns into the disclosure
+    // and Android's prompt, or Android's settings to turn it off.
+    widgetFollows: Boolean? = false,
+    onWidgetFollowsChange: (Boolean) -> Unit = {},
     // The user's saved TfL app_key (empty when keyless — the default), and a report of a new value
     // to save. UI-only like the rest of the screen: persistence and the request clients are the
     // caller's job, so this stays Robolectric-renderable with no store and no network (SPEC D7).
@@ -367,6 +372,14 @@ fun SettingsScreen(
                         onDismiss = onDismissLiveWidgetRefreshError,
                     )
                 }
+                SettingSwitchRow(
+                    title = stringResource(R.string.settings_widget_follows_title),
+                    summary = stringResource(R.string.settings_widget_follows_summary),
+                    checked = widgetFollows == true,
+                    onCheckedChange = onWidgetFollowsChange,
+                    enabled = widgetFollows != null,
+                    switchTestTag = "widgetFollowsSwitch",
+                )
                 onInstallOnWatch?.let { install ->
                     SettingNavRow(
                         title = stringResource(R.string.settings_watch_install_title),

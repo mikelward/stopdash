@@ -216,9 +216,20 @@ log notes only that a check was held back.
 
 Journey alerts show only while you're in London. If you allow location **all the time**, which the app
 asks for once you turn alerts on, each background check reads where your phone is and works out, on the phone, whether it's within
-120 km of central London. Your position is never kept, logged or sent anywhere, and isn't used for
-anything else; the on-device debug log notes only that a check was held back because you were further
-away. If you don't allow it, alerts show anywhere in the UK.
+120 km of central London. That check's position is never kept, logged or sent anywhere; the
+on-device debug log notes only that a check was held back because you were further away. If you
+don't allow it, alerts show anywhere in the UK.
+
+The same permission lets the **widget follow you**. Each time the widget refreshes on its own (you tap
+its header, the every-minute refresh is on, or your watch asks), it reads the position your phone last
+had, without asking for a new one, and shows the stops near there. When those stops aren't ones the
+app has looked up nearby recently, it asks TfL for the stops around that position, exactly as the app
+does when you open it; that lookup is remembered on the phone with the app's own (see below). A
+lookup that finds no stops is remembered too, so a phone left where there are none doesn't ask again
+each time: in memory only, never written to storage, and used for up to 15 minutes. It is cleared at
+the next widget refresh after that, or when the app's process ends, whichever comes first. The
+debug log notes only how many stops the widget moved to, never where. Turn it off in Android's
+settings, or from Settings → Widget follows you.
 
 **Held in memory only:** the last precise (GPS) position, for up to 10 minutes, so a rough
 network position that comes in while you haven't moved doesn't replace it. It is never written to

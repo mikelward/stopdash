@@ -161,6 +161,55 @@ class DataStoreSnapshotStoreTest {
     }
 
     @Test
+    fun `saveFollowedIfUnchanged stores the followed place's order, unless the app stored another`() = runTest {
+        val loaded = snapshot().copy(nearestFirst = listOf("940GZZLUOXC"))
+        val backing = FakeDataStore(loaded.toPersisted())
+        val store = DataStoreSnapshotStore(backing)
+        val waterloo = snapshot().stops.first().copy(stopId = "940GZZLUWLO", stopName = "Waterloo", fetchedAt = now.plusSeconds(60))
+        val followed = snapshot().copy(stops = listOf(waterloo), fetchedAt = now.plusSeconds(60), nearestFirst = listOf("940GZZLUWLO"), missingStopIds = setOf("940GZZLUEMB"))
+        // The app stored another place meanwhile: refused, and nothing changes.
+        assertFalse(store.saveFollowedIfUnchanged(followed, loaded.copy(stops = loaded.stops.map { it.copy(stopId = "940GZZLUKSX") })))
+        assertEquals(listOf("940GZZLUOXC"), store.load()!!.nearestFirst)
+        assertTrue(store.saveFollowedIfUnchanged(followed, loaded))
+        val after = store.load()!!
+        assertEquals(listOf("940GZZLUWLO"), after.stops.map { it.stopId })
+        // Unlike a refresh of the same stops, the order and the missing stops are the follow's own.
+        assertEquals(listOf("940GZZLUWLO"), after.nearestFirst)
+        assertEquals(setOf("940GZZLUEMB"), after.missingStopIds)
+    }
+
+    @Test
+    fun `saveFollowedIfUnchanged keeps fresher stored arrivals but takes the follow's layout`() = runTest {
+        val loaded = snapshot()
+        // The app refreshed the same stops meanwhile, layout unchanged: their arrivals are newer.
+        val fresher = loaded.copy(stops = loaded.stops.map { it.copy(fetchedAt = now.plusSeconds(120)) })
+        val store = DataStoreSnapshotStore(FakeDataStore(fresher.toPersisted()))
+        // The follow, older arrivals but each stop's nearer places from the new position.
+        val followed = loaded.copy(stops = loaded.stops.map { it.copy(nearer = Terminating.Nearer(ids = setOf("940GZZLUWLO"))) })
+        assertTrue(store.saveFollowedIfUnchanged(followed, loaded))
+        val after = store.load()!!
+        assertEquals(fresher.stops.map { it.fetchedAt }, after.stops.map { it.fetchedAt })
+        assertEquals(followed.stops.map { it.nearer }, after.stops.map { it.nearer })
+    }
+
+    @Test
+    fun `saveFollowedIfUnchanged gives way to the app laying the same stops out anew`() = runTest {
+        val loaded = snapshot().copy(nearestFirst = listOf("940GZZLUOXC"))
+        // The app moved meanwhile and stored the same stops with new nearer places.
+        val relaid = loaded.copy(stops = loaded.stops.map { it.copy(nearer = Terminating.Nearer(ids = setOf(it.stopId))) })
+        val store = DataStoreSnapshotStore(FakeDataStore(relaid.toPersisted()))
+        val followed = loaded.copy(fetchedAt = now.plusSeconds(60))
+        assertFalse(store.saveFollowedIfUnchanged(followed, loaded))
+        assertEquals(relaid.stops.map { it.nearer }, store.load()!!.stops.map { it.nearer })
+        // Nor does a new order.
+        val reordered = DataStoreSnapshotStore(FakeDataStore(loaded.copy(nearestFirst = emptyList()).toPersisted()))
+        assertFalse(reordered.saveFollowedIfUnchanged(followed, loaded))
+        // Nor do the app's per-line stop choices, saved meanwhile.
+        val chose = DataStoreSnapshotStore(FakeDataStore(loaded.copy(nearbyChoices = listOf(FoldChoice("victoria", "inbound", "940GZZLUOXC"))).toPersisted()))
+        assertFalse(chose.saveFollowedIfUnchanged(followed, loaded))
+    }
+
+    @Test
     fun `saveKeepingJourneys keeps the stored journeys and their journey-only stops`() = runTest {
         val pin = WidgetJourney("490000009Z", setOf(JourneyCall("b1", "Hill", null)), "k")
         val origin = snapshot().stops.first().copy(stopId = "490000009Z")

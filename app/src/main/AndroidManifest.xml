@@ -7,14 +7,16 @@
          ~1 km off (a stop half a mile away read as nearest), so stopdash requests FINE and uses
          it when granted (maintainer, 2026-09-19). COARSE stays declared so the runtime dialog
          offers the precise/approximate choice and an approximate grant still finds stops,
-         degraded. Location is sent to TfL on demand only, to find stops, never on a background
-         refresh (SPEC Finding stops / Privacy); a trip on the way also checks it on the device just
-         after boarding, never sending it (SPEC On the way). -->
+         degraded. Location is sent to TfL to find stops: on demand in the app, and on a widget
+         refresh only with "Widget follows you" on and this background grant held (SPEC D1 / Privacy);
+         a trip on the way also checks it on the device just after boarding, never sending it
+         (SPEC On the way). -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <!-- Journey alerts fire only in London (SPEC *Journeys → Alerts*): a background check sees where the
-         phone is only with location allowed all the time. Asked for from the favorite journeys list, and
-         only once some journey's alerts are on. -->
+    <!-- Location allowed all the time, for two background uses: journey alerts fire only in London
+         (SPEC *Journeys → Alerts*), compared on the phone and never sent; and the widget follows the
+         rider (SPEC D1), whose stop lookup sends the position to TfL as the app's own does. Asked for
+         from the favorite journeys list, a journey's Alerts screen and Settings' "Widget follows you". -->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <!-- "Get off soon" on a trip on the way (SPEC On the way): asked for when the rider taps
          Start, the one time an alert is wanted; a denial leaves the trip running, its screen saying

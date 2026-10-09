@@ -193,7 +193,7 @@ internal suspend fun requestWidgetRefresh(
 }
 
 /**
- * A tap's refresh of the widget's stored stops: the same location-free work as a live-widget cycle
+ * A tap's refresh of the widget's stored stops: the same work as a live-widget cycle, following the rider first where allowed,
  * and a watch's request ([StoredSnapshotRefresh], one at a time with them), whatever the "refresh
  * widget every minute" setting says, then a redraw that drops "Refreshing…", or says why nothing came.
  */

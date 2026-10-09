@@ -23,8 +23,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 
 /**
- * A watch's refresh request (dev-docs/wear-os.md *Refresh*): one bounded, location-free refresh of
- * the widget's stored stops, the same work as a live-widget refresh cycle, then the outcome sent
+ * A watch's refresh request (dev-docs/wear-os.md *Refresh*): one bounded refresh of the widget's
+ * stops, the same work as a live-widget refresh cycle (following the rider first where *Widget
+ * follows you* is on, which may send the phone's position to TfL to find stops), then the outcome sent
  * back to the watch that asked. A refresh that stores something new is published to the watch by
  * [WatchSync] as any snapshot change is; a debounced one (every stop fetched moments ago) resends
  * the current snapshot instead. Every request is answered, and refreshes run one at a time across
@@ -65,19 +66,25 @@ class WatchRefreshWorker(appContext: Context, params: WorkerParameters) : Corout
 
     private suspend fun refreshLocked(keys: RefreshKeys?): WatchRefreshOutcome = StoredSnapshotRefresh.lock.withLock {
         val prior = WatchSync.snapshots(applicationContext).first()
-        if (prior == null || prior.stops.isEmpty()) {
-            // The watch may still hold stops it was never told were removed, or that the phone no
-            // longer has at all (its data cleared): send it an empty envelope then.
-            resend(emptyIfNone = true)
-            return@withLock WatchRefreshOutcome.NO_STOPS
-        }
+        if (prior == null) return@withLock noStops()
+        // An empty snapshot is refreshed too: a widget that follows the rider stores one where there were
+        // no stops, and the refresh is what follows them on to where there are (Codex on #711).
         val result = StoredSnapshotRefresh.refresh(applicationContext, prior, keys)
+        // Answered for the stops it followed to: none there is "no stops", a failed fetch there is the failure.
+        if (result.outcome == WatchRefreshOutcome.NO_STOPS) return@withLock noStops()
         // Publish what's stored now, rather than rely on the app's collector (which may have given
         // up after storage errors). Nothing saved (debounced, all failed, or discarded because the
         // stops changed meanwhile) forces a resend, which the watch may have missed (an old stop
         // set, say); a save publishes as usual, a no-op if the collector already sent it.
         resend(force = !result.saved)
         result.outcome
+    }
+
+    // The watch may still hold stops it was never told were removed, or that the phone no longer has at
+    // all (its data cleared): send it an empty envelope then.
+    private suspend fun noStops(): WatchRefreshOutcome {
+        resend(emptyIfNone = true)
+        return WatchRefreshOutcome.NO_STOPS
     }
 
     /**

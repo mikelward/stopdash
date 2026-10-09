@@ -3038,9 +3038,19 @@ Builds on Phase 1's minimal line-status marking.
         gets 08:00–10:00 and the way back 16:00–18:00; the end nearer Home (a favorite place) is the
         likely signal for which is which.
   - [ ] **Open the journey from its notification**, not just the app.
-  - [ ] **Play declaration for background location** before release: alerts fire only in London, which
-        needs `ACCESS_BACKGROUND_LOCATION`; Play asks for a declaration and a demo video of the feature
-        that uses it, and may refuse it.
+  - [ ] **Play declaration for background location** before release: alerts fire only in London, and the
+        widget follows the rider (SPEC D1), both of which need `ACCESS_BACKGROUND_LOCATION`; Play asks for
+        a declaration and a demo video of the features that use it, and may refuse it. The video: the
+        disclosure, the prompt, then the widget moving stops with a mock-location app (the
+        `widget-follow-before/after` screenshots show the two states).
+  - [ ] **Device check: the widget following the rider** — tap the header after moving (a mock-location
+        app will do) and see the stops change; and with "every minute" on, that the move lands within a
+        refresh or two of the phone's last known position updating.
+  - [ ] **Widget refresh interval: Off / 1 / 5 minutes** (maintainer, 2026-10-09; nothing longer, the
+        data would be too stale) in place of the every-minute switch. Its own PR.
+  - [ ] **Measure the live refresh's battery cost** on a device (Android's battery usage, or Battery
+        Historian) at 1 and 5 minutes, on mobile data and Wi-Fi; the estimate (~1–2% an hour awake at 1
+        minute, mostly the radio staying up after each refresh) is unmeasured.
   - [ ] **Check the London-only alerts on a device**: the "all the time" grant flow on Android 11+ (it
         sends the rider to settings), and a check's location read under Doze.
   - [ ] **Only the alerts for the way traveled**, where TfL scopes an alert to a direction (bus

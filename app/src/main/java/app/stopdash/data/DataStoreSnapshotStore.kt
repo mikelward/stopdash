@@ -258,7 +258,39 @@ class DataStoreSnapshotStore internal constructor(
         // clock was set back can't win over a fresher one stored.
         val desired = snapshot.toPersisted().distrustingFuture(now)
         // Pure function of `current`, atomic with the read under the write lock (see pruneStops).
+        update(now) { current -> keepingJourneys(current, desired, now) }
+    }
+
+    override suspend fun saveFollowedIfUnchanged(snapshot: DeparturesSnapshot, loaded: DeparturesSnapshot): Boolean {
+        val now = clock()
+        val desired = snapshot.toPersisted().distrustingFuture(now)
+        val expected = loaded.toPersisted()
+        val expectedStopIds = expected.stops.map { it.stopId }
+        // Set on every run, since DataStore may re-run the transform.
+        var applied = false
         update(now) { current ->
+            // The same stops aren't enough: the app may have laid them out from a newer position of its
+            // own meanwhile, whose order and nearer places this older follow mustn't undo (Codex on #711).
+            applied = current != null && current.matchesStops(expectedStopIds) && current.laidOutAs(expected)
+            if (applied) withLayoutOf(keepingJourneys(current, desired, now), desired) else current
+        }
+        return applied
+    }
+
+    // [merged] with each stop's nearer places from [layout]: a stop whose fresher stored arrivals the merge kept
+    // still takes the follow's layout, which is from where the rider is now (Codex on #711).
+    private fun withLayoutOf(merged: PersistedSnapshot, layout: PersistedSnapshot): PersistedSnapshot {
+        val nearer = layout.stops.associate { it.stopId to (it.nearerIds to it.nearerNames) }
+        return merged.copy(
+            stops = merged.stops.map { stop ->
+                nearer[stop.stopId]?.let { (ids, names) -> stop.copy(nearerIds = ids, nearerNames = names) } ?: stop
+            },
+        )
+    }
+
+    // [desired] stored as [saveKeepingJourneys] stores it over [current]: a pure function of both.
+    private fun keepingJourneys(current: PersistedSnapshot?, desired: PersistedSnapshot, now: Instant): PersistedSnapshot =
+        run {
             // A newer build's file isn't this one's to rewrite piecemeal: replace it outright.
             val journeys = current?.takeIf { it.version in PersistedSnapshot.READABLE_VERSIONS }?.journeys.orEmpty()
             val origins = journeys.mapTo(HashSet()) { it.originId }
@@ -298,7 +330,6 @@ class DataStoreSnapshotStore internal constructor(
                 ),
             )
         }
-    }
 
     private fun keepingFresher(current: PersistedSnapshot?, desired: PersistedSnapshot): PersistedSnapshot {
         val stored = current?.stops.orEmpty().associateBy { it.stopId }
@@ -382,6 +413,15 @@ class DataStoreSnapshotStore internal constructor(
  */
 private fun PersistedSnapshot?.matchesStops(ids: List<String>): Boolean =
     this != null && stops.map { it.stopId } == ids
+
+/**
+ * True when this and [other] order their stops alike, give each the same nearer places and keep each
+ * line at the same stop: everything the app works out from where the rider is.
+ */
+private fun PersistedSnapshot.laidOutAs(other: PersistedSnapshot): Boolean {
+    fun layout(s: PersistedSnapshot) = s.stops.associate { it.stopId to (it.nearerIds.toSet() to it.nearerNames.toSet()) }
+    return nearestFirst == other.nearestFirst && nearbyChoices.toSet() == other.nearbyChoices.toSet() && layout(this) == layout(other)
+}
 
 /**
  * Reads and writes [PersistedSnapshot] as JSON. An empty file is "nothing saved yet" and
