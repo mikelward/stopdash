@@ -826,6 +826,7 @@ object OnTheWay {
         // refresh for the walk's length, and up to [END_WALK_GRACE] after it.
         if (walksToEnd(trip, now)) return true
         if (seesWalkEnd(trip, now) || stationRiddenTo(trip, now) != null || watchesWait(trip, now)) return true
+        if (followedNearOff(trip, now)) return true
         if (watchesRide(trip, now)) return true
         // Seen past a stop, while it stands: a fix follows them on, or sees them back, however long since (Codex,
         // #635). It ends once they're back or on board onward, when it's let go of ([settledPast], with each step
@@ -1324,7 +1325,16 @@ object OnTheWay {
     fun seenAlong(trip: ActiveTrip, rider: LocationFix, positions: Map<String, Coordinates>, now: Instant, on: TripLeg? = null): Along? {
         // On board by where they were seen, the line they were seen along ([ridden]): its own path.
         val waiting = waitingToBoard(trip, now) ?: ridden(trip)?.takeIf { ridingUnmatched(trip) } ?: return null
-        val leg = on ?: waiting
+        return placeAlong(on ?: waiting, rider, positions)
+    }
+
+    /**
+     * Where [rider] is along [leg] from its stops' [positions], as [seenAlong] places them, whatever the
+     * trip's state: clear of the boarding stop, and at a later stop, at where they get off, or well on
+     * toward it near the ride's way. Null when the fix doesn't place them along it.
+     */
+    @WorkerThread
+    fun placeAlong(leg: TripLeg, rider: LocationFix, positions: Map<String, Coordinates>): Along? {
         val accuracy = rider.accuracyMeters?.toDouble() ?: return null
         val boarding = positions[leg.fromId] ?: return null
         val fromBoarding = distance(rider.coordinates, boarding)
@@ -1351,6 +1361,61 @@ object OnTheWay {
             positions[leg.path[i]]?.let { fromBoarding + accuracy > distance(it, boarding) && toEnd - accuracy < distance(it, end) } == true
         }
         return Along(passed?.plus(1) ?: 0, atStop = false)
+    }
+
+    /**
+     * How many of a ride's stops the train followed must be past where its rider is seen along the ride
+     * for it to be another (a bus ahead of the one they took): one is a fix's error, or a train pulling
+     * away from the stop the rider is placed at; two is a different vehicle.
+     */
+    const val AHEAD_OF_RIDER_STOPS = 2
+
+    /**
+     * Whether the train followed, with [calls] ahead of it, is [AHEAD_OF_RIDER_STOPS] or more of [on]'s
+     * stops past where its rider is seen [along] the ride, [on] being the ride as the followed train's
+     * line runs it: then it isn't theirs, and its calls mustn't count their stops or end their ride
+     * (maintainer, 2026-10-09: a bus followed three stops ahead took a rider still on board off it).
+     * Only where every way [sequence]'s routes run there calls at the stop past the rider's next on
+     * the way ([passes]): a fast train calling next further on may skip the stops between, still
+     * short of the rider (Codex, PR #726).
+     */
+    @WorkerThread
+    fun followedAhead(trip: ActiveTrip, on: TripLeg, along: Along, calls: List<VehicleCall>, now: Instant, sequence: LineSequence, areas: Map<String, String> = sequence.stopAreas): Boolean {
+        if (along.atEnd) return false
+        val at = followedAt(trip, on, calls, now, areas) ?: return false
+        val next = ahead(along)
+        return at - next >= AHEAD_OF_RIDER_STOPS && passes(on, sequence, next + 1, at)
+    }
+
+    /**
+     * How many of [on]'s stops the train followed, with [calls] ahead of it, is past (as [aheadOnLeg]),
+     * or null where that can't be told. A bus's path the Planner names by stop pair ("490G…") is
+     * matched by each call's pole's pair, from [areas] ([LineSequence.stopAreas]) (Codex, PR #726);
+     * with none, it can't be. A train past every stop of the ride stands at the path's end, but only
+     * once it was due off [trip]'s ride by [now]: before then no calls may just be TfL not predicting
+     * it for a while, as [advance] takes it, and calls off a pair-named path a pole whose pair isn't
+     * known (Codex, PR #726).
+     */
+    @WorkerThread
+    fun followedAt(trip: ActiveTrip, on: TripLeg, calls: List<VehicleCall>, now: Instant, areas: Map<String, String> = emptyMap()): Int? {
+        if (on.path.isEmpty()) return null
+        val byArea = !checkable(on)
+        if (byArea && areas.isEmpty()) return null
+        fun at(call: VehicleCall, i: Int): Boolean {
+            val area = areas[call.stopId]
+            return calls(call, on, on.path[i], on.pathNames.getOrNull(i).orEmpty()) || (area != null && area == on.path[i])
+        }
+        for ((n, call) in calls.withIndex()) {
+            val area = areas[call.stopId]
+            if (callsFrom(call, on) || (area != null && on.fromArea.isNotEmpty() && area == on.fromArea)) return 0
+            val matches = on.path.indices.filter { at(call, it) }
+            if (matches.isEmpty()) continue
+            // A loop's stop met twice: the visit whose next stop is the train's next call (Codex, PR #726).
+            val next = calls.getOrNull(n + 1)
+            return matches.firstOrNull { i -> next != null && i + 1 < on.path.size && at(next, i + 1) } ?: matches.first()
+        }
+        if ((calls.isEmpty() || byArea) && !seenPast(trip, now)) return null
+        return on.path.size
     }
 
     /**
@@ -1797,6 +1862,19 @@ object OnTheWay {
         if (leg.isWalk || leg.mode !in STATION_MODES || !trip.boarded) return null
         val due = trip.dueOffAt ?: return null
         return leg.takeIf { !now.isBefore(due.minus(AT_GET_OFF_BEFORE)) && now.isBefore(due.plus(AT_GET_OFF_AFTER)) }
+    }
+
+    /**
+     * Whether [trip]'s rider is on board a train followed by its calls, about due where they get off at
+     * [now] ([AT_GET_OFF_BEFORE] before to [AT_GET_OFF_AFTER] after): a fix then checks the train is
+     * theirs ([followedAhead]) before its calls end the ride. Any mode, a bus too: one ahead of theirs
+     * reaching the stop first is the failure (maintainer, 2026-10-09). About eight fixes a ride.
+     */
+    fun followedNearOff(trip: ActiveTrip, now: Instant): Boolean {
+        val leg = trip.leg ?: return false
+        if (leg.isWalk || !trip.boarded || trip.vehicleId.isBlank()) return false
+        val due = trip.dueOffAt ?: return false
+        return !now.isBefore(due.minus(AT_GET_OFF_BEFORE)) && now.isBefore(due.plus(AT_GET_OFF_AFTER))
     }
 
     /** The ride [trip]'s rider is walking to at [now], its boarding stop placed or not. */
