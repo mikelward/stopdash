@@ -505,6 +505,48 @@ object JourneyAlerts {
 
     private val HOME_NETWORKS = setOf("gb", "uk", "gg", "je", "im")
 
+    /**
+     * Whether [at] is in or around London, for journey alerts, which fire only there (maintainer,
+     * 2026-10-09): within [LONDON_RADIUS_KM] of Charing Cross, taking in the commuter belt (Brighton,
+     * Cambridge, Oxford, Peterborough) so a rider is told at home before setting out, while staying
+     * quiet in Birmingham, Bristol or anywhere further (maintainer, 2026-10-09: "people commute from
+     * Brighton too").
+     */
+    fun inLondon(at: Coordinates): Boolean = kmFromCentralLondon(at) <= LONDON_RADIUS_KM
+
+    /**
+     * Whether a check should hold its alerts back because [fix] puts the phone away from London
+     * ([inLondon]). Only a position known to be elsewhere does: with none (location not allowed all the
+     * time, or no fix to be had), alerts fire as they would anyway, so a missing permission never
+     * silences them unseen. A fallback fix (a last-known one handed back when a fresh one timed out, up
+     * to half an hour old) may be from before the rider crossed the line either way, so it counts as
+     * none (Codex on #711). And the whole of the fix's uncertainty has to lie outside: an approximate
+     * fix can be kilometers out, and one near the edge (Peterborough sits about a kilometer inside)
+     * mustn't silence a rider who is really in range (Codex on #711).
+     */
+    fun awayFromLondon(fix: LocationFix?): Boolean {
+        if (fix == null || fix.isFallback) return false
+        // A fix with no accuracy can't show its uncertainty lies outside, so it's unknown too (Codex on #711).
+        val accuracy = fix.accuracyMeters?.takeIf { it >= 0f } ?: return false
+        val uncertaintyKm = accuracy / 1000.0
+        return kmFromCentralLondon(fix.coordinates) - uncertaintyKm > LONDON_RADIUS_KM
+    }
+
+    const val LONDON_RADIUS_KM = 120.0
+
+    // Charing Cross, where distances from London are traditionally measured.
+    private val CENTRAL_LONDON = Coordinates(51.5073, -0.1276)
+
+    // The great-circle distance, on a sphere of the Earth's mean radius: within a fraction of a percent here.
+    private fun kmFromCentralLondon(at: Coordinates): Double {
+        val lat1 = Math.toRadians(CENTRAL_LONDON.latitude)
+        val lat2 = Math.toRadians(at.latitude)
+        val dLat = lat2 - lat1
+        val dLon = Math.toRadians(at.longitude - CENTRAL_LONDON.longitude)
+        val h = Math.sin(dLat / 2).let { it * it } + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2).let { it * it }
+        return 2 * 6371.0 * Math.asin(Math.sqrt(h))
+    }
+
     /** The zone a schedule is read in: the device's, as a place's chip days are. */
     fun zone(): ZoneId = ZoneId.systemDefault()
 

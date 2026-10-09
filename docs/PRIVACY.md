@@ -214,6 +214,12 @@ the country of the network your phone is connected to, which Android reports wit
 and compares it with the UK on the phone. It is never kept, logged or sent anywhere; the on-device debug
 log notes only that a check was held back.
 
+Journey alerts show only while you're in London. If you allow location **all the time**, which the app
+asks for once you turn alerts on, each background check reads where your phone is and works out, on the phone, whether it's within
+120 km of central London. Your position is never kept, logged or sent anywhere, and isn't used for
+anything else; the on-device debug log notes only that a check was held back because you were further
+away. If you don't allow it, alerts show anywhere in the UK.
+
 **Held in memory only:** the last precise (GPS) position, for up to 10 minutes, so a rough
 network position that comes in while you haven't moved doesn't replace it. It is never written to
 storage or logged, is sent only as the position of a nearby-stop lookup or as the start of a trip

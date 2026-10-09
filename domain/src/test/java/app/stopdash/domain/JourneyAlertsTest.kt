@@ -436,10 +436,59 @@ class JourneyAlertsTest {
     }
 
     @Test
+    fun `london takes in the commuter belt and stops short of the next cities`() {
+        // Public station positions only (AGENTS.md *Privacy*).
+        val inside = mapOf(
+            "Euston" to Coordinates(51.5282, -0.1337),
+            "Reading" to Coordinates(51.4585, -0.9719),
+            "Shenfield" to Coordinates(51.6309, 0.3297),
+            "Brighton" to Coordinates(50.8290, -0.1413),
+            "Cambridge" to Coordinates(52.1940, 0.1376),
+            "Oxford" to Coordinates(51.7535, -1.2700),
+            "Peterborough" to Coordinates(52.5747, -0.2502),
+        )
+        for ((name, at) in inside) assertTrue(name, JourneyAlerts.inLondon(at))
+        val outside = mapOf(
+            "Birmingham New Street" to Coordinates(52.4778, -1.8990),
+            "Bristol Temple Meads" to Coordinates(51.4491, -2.5813),
+            "Manchester Piccadilly" to Coordinates(53.4774, -2.2309),
+            "Paris Nord" to Coordinates(48.8809, 2.3553),
+        )
+        for ((name, at) in outside) assertFalse(name, JourneyAlerts.inLondon(at))
+    }
+
+    @Test
+    fun `alerts are held back only where the phone is known to be away`() {
+        assertTrue(JourneyAlerts.awayFromLondon(LocationFix(Coordinates(52.4778, -1.8990), isFallback = false, accuracyMeters = 20f)))
+        assertFalse(JourneyAlerts.awayFromLondon(LocationFix(Coordinates(51.5282, -0.1337), isFallback = false, accuracyMeters = 20f)))
+        // No position (location not allowed all the time, or no fix): alerts fire as they would anyway.
+        assertFalse(JourneyAlerts.awayFromLondon(null))
+    }
+
+    @Test
+    fun `a fallback fix says nothing of where the phone is now`() {
+        // Handed back when a fresh fix timed out: it may be from before the rider crossed the line.
+        assertFalse(JourneyAlerts.awayFromLondon(LocationFix(Coordinates(52.4778, -1.8990), isFallback = true, accuracyMeters = 20f)))
+    }
+
+    @Test
+    fun `a fix is away only when all of its uncertainty lies outside`() {
+        // Just past the edge, due north of Charing Cross: about 121 km out.
+        val pastTheEdge = Coordinates(51.5073 + 121.0 / 111.2, -0.1276)
+        assertTrue(JourneyAlerts.awayFromLondon(LocationFix(pastTheEdge, isFallback = false, accuracyMeters = 50f)))
+        // The same point from an approximate fix 3 km wide could be inside: alerts fire.
+        assertFalse(JourneyAlerts.awayFromLondon(LocationFix(pastTheEdge, isFallback = false, isCoarse = true, accuracyMeters = 3_000f)))
+        // A fix that reports no accuracy can't say its uncertainty lies outside: alerts fire.
+        assertFalse(JourneyAlerts.awayFromLondon(LocationFix(Coordinates(52.4778, -1.8990), isFallback = false)))
+        // Far enough out, even a rough fix settles it.
+        assertTrue(JourneyAlerts.awayFromLondon(LocationFix(Coordinates(52.4778, -1.8990), isFallback = false, accuracyMeters = 3_000f)))
+    }
+
+    @Test
     fun `a swipe outlasts an alert only held back`() {
         val dismissed = mapOf("k" to "fp")
         val clear = listOf(JourneyAlertAction.Clear("k"))
-        // Held back (abroad, its window still open): the swipe is kept for the return.
+        // Held back (abroad or away, its window still open): the swipe is kept for the return.
         assertEquals(dismissed, JourneyAlerts.dismissedAfter(dismissed, clear, heldBack = setOf("k")))
         // Cleared for good (window closed, lines clear): forgotten, so the next swipe counts.
         assertEquals(emptyMap<String, String>(), JourneyAlerts.dismissedAfter(dismissed, clear))

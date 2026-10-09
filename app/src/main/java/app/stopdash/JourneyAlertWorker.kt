@@ -20,6 +20,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.await
+import app.stopdash.data.AndroidLocationProvider
 import app.stopdash.data.DataStoreFavoriteJourneysStore
 import app.stopdash.data.FavoriteJourneysWrites
 import app.stopdash.data.DataStoreSnapshotStore
@@ -29,6 +30,7 @@ import app.stopdash.data.SharedTflRateLimiter
 import app.stopdash.data.SharedTflRequestPool
 import app.stopdash.data.logNetworkWarning
 import app.stopdash.domain.DeparturesSnapshot
+import app.stopdash.domain.LocationFix
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.FavoriteJourneysStore
 import app.stopdash.domain.JourneyAlertAction
@@ -190,6 +192,23 @@ internal object JourneyAlertChecks {
         // Some builds throw rather than answer with no network; unknown, so alerts fire as before.
         logJourneyAlertWarning("network country unreadable: ${e::class.simpleName}")
         null
+    }
+
+    /**
+     * Where the phone is for a check, or null when that can't be known: location isn't allowed all the
+     * time (a background check sees no location without it), or no fix could be had. Only ever compared
+     * with London's bounds on the device ([JourneyAlerts.awayFromLondon]); never kept, logged or sent.
+     * Swappable in tests.
+     */
+    @Volatile
+    internal var whereNow: suspend (Context) -> LocationFix? = { context ->
+        if (!JourneyAlertLocation.allowedAllTheTime(context)) {
+            null
+        } else {
+            // The last known position where it's recent enough, a fresh fix otherwise; never remembered
+            // for the near-me lookups, which are the rider's own.
+            AndroidLocationProvider(context, warn = ::logJourneyAlertWarning, remembers = false).current(forceFresh = false)
+        }
     }
 
     /**
@@ -481,6 +500,15 @@ internal object JourneyAlertState {
         if (stale(context)) prefs(context).edit().remove(STALE).apply()
     }
 
+    private const val LOCATION_DECLINED = "location_declined"
+
+    /** Whether the rider said Not now to location all the time: the list stops asking; an Alerts screen still offers it. */
+    fun locationDeclined(context: Context): Boolean = prefs(context).getBoolean(LOCATION_DECLINED, false)
+
+    fun declineLocation(context: Context) {
+        prefs(context).edit().putBoolean(LOCATION_DECLINED, true).apply()
+    }
+
     fun promptGone(context: Context): Boolean = prefs(context).getBoolean(PROMPT_GONE, false)
 
     fun setPromptGone(context: Context, gone: Boolean) {
@@ -548,11 +576,14 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
         // A close check asks nothing: it clears what closed, and leaves the rest to the main check.
         val closeOnly = inputData.getBoolean(JourneyAlertChecks.CLOSE_ONLY, false)
         val asking = !closeOnly && active.isNotEmpty() && JourneyAlertNotification.canAlert(context)
-        // Alerts are held back abroad (maintainer, 2026-10-09): TfL isn't asked, and what's up comes down.
+        // Alerts fire only in London (maintainer, 2026-10-09): abroad by the phone's network, or away by its
+        // position where location is allowed all the time, TfL isn't asked and what's up comes down.
         val abroad = asking && JourneyAlerts.abroad(JourneyAlertChecks.networkCountry(context))
-        // Coarse by design (no country named): it's what says why alerts went quiet (SPEC principle 2).
+        // Coarse by design (no country or place named): it's what says why alerts went quiet (SPEC principle 2).
         if (abroad) logJourneyAlertWarning("abroad: no alerts this check")
-        val answer = if (!asking || abroad) null else results(context, active, schedules, now)
+        val away = asking && !abroad && JourneyAlerts.awayFromLondon(JourneyAlertChecks.whereNow(context))
+        if (away) logJourneyAlertWarning("away from London: no alerts this check")
+        val answer = if (!asking || abroad || away) null else results(context, active, schedules, now)
         val answers = answer?.results.orEmpty()
         // Decided as of when the answer came back, not when it was asked for: a request that outlived its
         // window posts nothing, and an alert's timeout runs from now (Codex on #700).
@@ -565,13 +596,15 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
         val journeysNow = store.journeys().first() ?: throw java.io.IOException("journeys unreadable")
         val schedulesNow = store.alertSchedules().first() ?: throw java.io.IOException("schedules unreadable")
         val canAlertNow = JourneyAlertNotification.canAlert(context)
-        // Abroad nothing counts as watched, so any alert up is taken down. Read again as the answer is: a
-        // phone that crossed a border while TfL was asked posts nothing, and takes down what's up (Codex on #712).
+        // Abroad or away nothing counts as watched, so any alert up is taken down. The network is read again
+        // as the answer is: a phone that crossed a border while TfL was asked posts nothing, and takes down
+        // what's up (Codex on #712).
         val abroadNow = abroad || (answer != null && JourneyAlerts.abroad(JourneyAlertChecks.networkCountry(context)))
         if (abroadNow && !abroad) logJourneyAlertWarning("abroad: no alerts this check")
-        val stillActive = if (canAlertNow && !abroadNow) JourneyAlerts.active(journeysNow, schedulesNow, atAnswer) else emptyList()
+        val heldOff = abroadNow || away
+        val stillActive = if (canAlertNow && !heldOff) JourneyAlerts.active(journeysNow, schedulesNow, atAnswer) else emptyList()
         // The journeys only held back, their windows still open: their swipes are kept for the rider's return.
-        val heldBack = if (abroadNow) JourneyAlerts.active(journeysNow, schedulesNow, atAnswer).mapTo(HashSet()) { it.key } else emptySet()
+        val heldBack = if (heldOff) JourneyAlerts.active(journeysNow, schedulesNow, atAnswer).mapTo(HashSet()) { it.key } else emptySet()
         // What each journey is watched for as these settings stand, as a sync would find it.
         val watchesNow = if (canAlertNow) JourneyAlertChecks.watches(journeysNow, schedulesNow, atAnswer) else emptyMap()
         // An answer about lines chosen for one direction says nothing about another: a journey whose
@@ -653,7 +686,9 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
             closeOnly -> "asks nothing"
             active.isEmpty() -> "no window open"
             !asking -> "notifications off"
-            abroad -> "abroad, held back"
+            abroadNow -> "abroad, held back"
+            // Coarse by design: that the phone was outside London's area, never where (SPEC *Privacy*).
+            away -> "away from London, held back"
             else -> null
         }
         logJourneyAlertWarning(
@@ -1053,5 +1088,19 @@ internal object JourneyAlertNotification {
         if (announced.keys.any { it !in keep }) AnnouncedJourneyAlerts.write(context, announced.filterKeys { it in keep })
         // Under the swipe record's lock, so a swipe landing meanwhile isn't overwritten (Codex on #700).
         AnnouncedJourneyAlerts.updateDismissed(context) { held -> held.filter { (key, said) -> key in keep && holds(key, said) } }
+    }
+}
+
+/**
+ * Whether a journey alert check can see where the phone is: Android shows a background check no location
+ * unless it's allowed all the time (from Android 10; before, the foreground grant covers both).
+ */
+internal object JourneyAlertLocation {
+    fun allowedAllTheTime(context: Context): Boolean {
+        val foreground = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+            .any { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
+        if (!foreground) return false
+        return android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED
     }
 }

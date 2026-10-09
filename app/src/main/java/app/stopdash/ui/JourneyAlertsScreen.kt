@@ -69,6 +69,9 @@ data class JourneyAlertsUi(
     // The schedules, or whether Android will show the alerts, not known yet: the controls wait, rather
     // than calling the schedules unreadable or having a warning pushed in above them (Codex on #700).
     val loading: Boolean = false,
+    // Some journey's alerts are on but location isn't allowed all the time: a card at the foot asks for it,
+    // so alerts fire only in London (maintainer, 2026-10-09).
+    val askLocation: Boolean = false,
 )
 
 /**
@@ -86,6 +89,7 @@ fun JourneyAlertsScreen(
     onUpdate: (directionKey: String, change: (JourneyAlertSchedule?) -> JourneyAlertSchedule?) -> Unit,
     onAllowNotifications: () -> Unit = {},
     onDismissWriteError: () -> Unit = {},
+    onAllowLocation: () -> Unit = {},
     // Where the time dialog's starting window is worked out (AGENTS.md *Main thread*).
     compute: CoroutineDispatcher = Workers.compute,
 ) {
@@ -162,6 +166,11 @@ fun JourneyAlertsScreen(
                                 onEdit = { window -> editing = key to (window?.let(::windowKey) ?: "") },
                             )
                         }
+                    }
+                    // At the foot, below the controls, so it moves nothing the rider is reading or tapping.
+                    if (state.askLocation && !state.loading) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        LondonOnlyCard(onAllowLocation, Modifier.padding(horizontal = 16.dp))
                     }
                     Spacer(modifier = Modifier.height(16.dp))
                 }
