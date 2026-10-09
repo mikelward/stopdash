@@ -162,6 +162,7 @@ import app.stopdash.domain.NearbySelection
 import app.stopdash.domain.NearbyStopsCache
 import app.stopdash.domain.ON_THE_WAY_FIX_DISTANCE_METERS
 import app.stopdash.domain.ON_THE_WAY_FIX_EVERY
+import app.stopdash.domain.OffPlan
 import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.OriginChange
 import app.stopdash.domain.PlaceStart
@@ -1525,6 +1526,7 @@ class MainActivity : ComponentActivity() {
                                         nextBoard, now,
                                         readyAt = onTheWayTrip?.let { OnTheWay.readyAt(it, onTheWayProgress) },
                                         ride = onTheWayTrip?.let(OnTheWay::upcomingRide),
+                                        shortTo = OffPlan.boardShortTo(onTheWayTrip),
                                     ),
                                     trip = onTheWayTrip,
                                     progress = onTheWayProgress,

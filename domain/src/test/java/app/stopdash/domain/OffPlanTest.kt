@@ -236,4 +236,19 @@ class OffPlanTest {
         )
         assertEquals(setOf("line/2/a/b"), taken.disruptionsDismissed)
     }
+
+    @Test
+    fun `the board of a ride the trip cut short by itself is named by where it ends`() {
+        val taken = OffPlan.takenBySelf(trip, OffPlan.take(trip, 0, loop, at(1))!!, 0, loop)
+        assertEquals("C", OffPlan.boardShortTo(taken))
+        // Walking to it, too.
+        val walk = TripLeg(TripLeg.WALKING, "", "", "S", "S", "A", "A", at(0), at(5))
+        val walking = ActiveTrip(TripRoute(listOf(walk, ride)), "X", startedAt = t0)
+        assertEquals("C", OffPlan.boardShortTo(OffPlan.takenBySelf(walking, OffPlan.take(walking, 1, loop, at(3))!!, 1, loop)))
+        // Past the fork, on the rest of the ride; taken by the rider's tap; or none taken: TfL's names stand.
+        assertNull(OffPlan.boardShortTo(taken.copy(legIndex = 1)))
+        assertNull(OffPlan.boardShortTo(OffPlan.take(trip, 0, loop, at(1))!!))
+        assertNull(OffPlan.boardShortTo(trip))
+        assertNull(OffPlan.boardShortTo(null))
+    }
 }

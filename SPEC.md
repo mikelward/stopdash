@@ -2309,7 +2309,12 @@ as it was.
   at the change. Only from a fresh board with every train checked, before a train is followed; at worst
   the change's board lists the train the rider is already on. The warning stays under the trip's card
   until the rider is past that ride, kept with the trip through a restart, so the reroute doesn't hide why, and
-  sounds once as a *Route disruption*. They're read from the
+  sounds once as a *Route disruption*. Meanwhile that board's trains are **named by where the ride ends,
+  in brackets** ("(Camden Town)"; maintainer, 2026-10-09), not by TfL's terminus: every one of them takes
+  the rider there, and TfL's label is just what can't be trusted here (an Edgware train has shown as
+  "High Barnet/Bank" beside "None direct to High Barnet"). The change is never given back for a direct
+  train listed later (maintainer, 2026-10-09): TfL's label can't vouch for one, a train's own predictions
+  rarely reach the fork from where the rider boards, and the change still gets them there. They're read from the
   line's route, not TfL's live labels, so a branch shows even when TfL lists none of its trains or names
   them for the other branch, as it can; route patterns that run on alike past the fork are one row,
   named by a "via" past the fork, else by where it ends. **Other lines from the platform** are offered
