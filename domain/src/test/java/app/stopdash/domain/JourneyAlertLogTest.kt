@@ -68,6 +68,12 @@ class JourneyAlertLogTest {
     }
 
     @Test
+    fun `an alarm says how late it ran and whether it started a check`() {
+        assertEquals("alarm ran 40 s after due: check started", JourneyAlertLog.alarm(40, started = true))
+        assertEquals("alarm ran 0 s after due: no check waiting for it", JourneyAlertLog.alarm(0, started = false))
+    }
+
+    @Test
     fun `nothing armed says why`() {
         assertEquals("not scheduled: notifications off", JourneyAlertLog.notScheduled(watched = true))
         assertEquals("not scheduled: no direction watched", JourneyAlertLog.notScheduled(watched = false))

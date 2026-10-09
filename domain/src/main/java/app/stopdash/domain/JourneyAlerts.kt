@@ -65,6 +65,29 @@ data class JourneyAlertSchedule(
         return occurrence(at.toLocalDate(), end, at.zone, at) ?: ZonedDateTime.of(at.toLocalDate(), end, at.zone)
     }
 
+    /**
+     * When the stretch of windows open at [at] opened, or null when none is open then: overlapping or
+     * touching ones count as one, as in [currentEnd]. What the quarter-hourly checks are counted from.
+     */
+    @WorkerThread
+    fun currentStart(at: ZonedDateTime): ZonedDateTime? {
+        if (at.dayOfWeek !in days) return null
+        var start = windows.filter { it.contains(at.toLocalTime()) }.minOfOrNull { it.start } ?: return null
+        while (true) {
+            val earlier = windows.filter { it.valid && it.start.isBefore(start) && !it.end.isBefore(start) }.minOfOrNull { it.start } ?: break
+            start = earlier
+        }
+        // A start in the hour skipped as the clocks go forward is the jump itself, as [occurrence] has it; in
+        // the hour repeated as they go back, the first time round (Codex on #716).
+        val local = java.time.LocalDateTime.of(at.toLocalDate(), start)
+        val offsets = at.zone.rules.getValidOffsets(local)
+        return if (offsets.isEmpty()) {
+            at.zone.rules.getTransition(local).instant.atZone(at.zone)
+        } else {
+            ZonedDateTime.ofStrict(local, offsets.first(), at.zone)
+        }
+    }
+
     /** The next time a window opens strictly after [after], or null when none ever does. */
     @WorkerThread
     fun nextStart(after: ZonedDateTime): ZonedDateTime? {
@@ -268,10 +291,11 @@ object JourneyAlerts {
         prune(schedules, journeys).values.mapNotNull { it.currentEnd(at) }.minOrNull()
 
     /**
-     * When the next check is due after [now]: a [CHECK_INTERVAL] on while any window is open, but no
-     * later than the next window to open or an open one to close (so its alert comes down as it
-     * closes, not up to a quarter hour after); else when the next one opens. Null when no saved
-     * journey is watched at all, so nothing is scheduled.
+     * When the next check is due after [now]: the next quarter hour counted from the open window's start
+     * ([CHECK_INTERVAL]), but no later than the next window to open or an open one to close (so its alert
+     * comes down as it closes, not up to a quarter hour after); else when the next one opens. Counted from
+     * the start rather than from [now], so a check Android ran late doesn't push back every one after it
+     * (Codex on #716). Null when no saved journey is watched at all, so nothing is scheduled.
      */
     @WorkerThread
     fun nextCheck(journeys: List<FavoriteJourney>, schedules: Map<String, JourneyAlertSchedule>, now: ZonedDateTime): ZonedDateTime? {
@@ -280,7 +304,15 @@ object JourneyAlerts {
         val nextOpen = watched.mapNotNull { it.nextStart(now) }.minOrNull()
         if (watched.none { it.isActive(now) }) return nextOpen
         val closes = watched.mapNotNull { it.currentEnd(now) }.minOrNull()
-        return listOfNotNull(now.plus(CHECK_INTERVAL), nextOpen, closes).min()
+        val quarter = watched.mapNotNull { it.currentStart(now) }.map { nextStep(it, now) }.minOrNull()
+        return listOfNotNull(quarter ?: now.plus(CHECK_INTERVAL), nextOpen, closes).min()
+    }
+
+    // The first of [start], [start] + [CHECK_INTERVAL], [start] + twice that… strictly after [now].
+    private fun nextStep(start: ZonedDateTime, now: ZonedDateTime): ZonedDateTime {
+        val step = CHECK_INTERVAL.seconds
+        val elapsed = Duration.between(start, now).seconds.coerceAtLeast(0L)
+        return start.plusSeconds((elapsed / step + 1) * step)
     }
 
     /**

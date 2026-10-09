@@ -105,6 +105,31 @@ class JourneyAlertsTest {
     }
 
     @Test
+    fun `a late check doesn't push back the ones after it`() {
+        val schedules = both(JourneyAlertSchedule.DEFAULT)
+        // The 08:00 check run at 08:10 still arms 08:15, not 08:25 (Codex on #716).
+        assertEquals(at(5, 8, 15), JourneyAlerts.nextCheck(listOf(journey), schedules, at(5, 8, 10)))
+        assertEquals(at(5, 8, 30), JourneyAlerts.nextCheck(listOf(journey), schedules, at(5, 8, 15)))
+        // A window set to open at 07:22 counts its quarter hours from then.
+        val odd = JourneyAlertSchedule(windows = listOf(TimeWindow(LocalTime.of(7, 22), LocalTime.of(10, 0))))
+        assertEquals(at(5, 7, 37), JourneyAlerts.nextCheck(listOf(journey), both(odd), at(5, 7, 30)))
+    }
+
+    @Test
+    fun `a window starting in the hour the clocks skip counts from the jump`() {
+        // 2027-03-28: Europe/London jumps from 01:00 to 02:00 (Sunday).
+        val night = JourneyAlertSchedule(days = setOf(DayOfWeek.SUNDAY), windows = listOf(TimeWindow(LocalTime.of(1, 30), LocalTime.of(3, 0))))
+        val after = ZonedDateTime.of(LocalDateTime.of(2027, 3, 28, 2, 10), zone)
+        assertEquals(ZonedDateTime.of(LocalDateTime.of(2027, 3, 28, 2, 15), zone), JourneyAlerts.nextCheck(listOf(journey), both(night), after))
+    }
+
+    @Test
+    fun `touching windows count their quarter hours from the first one's start`() {
+        val joined = JourneyAlertSchedule(windows = listOf(TimeWindow(LocalTime.of(8, 0), LocalTime.of(9, 0)), TimeWindow(LocalTime.of(9, 0), LocalTime.of(9, 50))))
+        assertEquals(at(5, 9, 15), JourneyAlerts.nextCheck(listOf(journey), both(joined), at(5, 9, 5)))
+    }
+
+    @Test
     fun `a window closing sooner than the quarter hour is checked as it closes`() {
         val schedules = both(JourneyAlertSchedule.DEFAULT)
         assertEquals(at(5, 10), JourneyAlerts.nextCheck(listOf(journey), schedules, at(5, 9, 55)))
