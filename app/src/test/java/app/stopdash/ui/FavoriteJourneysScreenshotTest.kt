@@ -11,6 +11,7 @@ import androidx.compose.runtime.saveable.SaverScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.onAllNodesWithText
@@ -503,6 +504,9 @@ class FavoriteJourneysScreenshotTest {
         // Google Play's disclosure: location, used while the app is closed, kept on the phone.
         composeRule.onNodeWithText("Allow all the time").assertIsDisplayed()
         composeRule.onNodeWithText("even while it's closed", substring = true).assertIsDisplayed()
+        if (capturing()) {
+            composeRule.onNode(isDialog()).captureRoboImage(filePath = "src/test/snapshots/images/location-disclosure.png")
+        }
         composeRule.onNodeWithTag("continueJourneyAlertsLocation").performClick()
         assertEquals(1, continued)
         composeRule.onNodeWithText("Not now").performClick()
