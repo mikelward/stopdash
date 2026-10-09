@@ -78,6 +78,19 @@ class WidgetContentTest {
     }
 
     @Test
+    fun `no data without a location grant asks for one`() = runGlanceAppWidgetUnitTest {
+        provideComposable {
+            WidgetContent(
+                WidgetModel(hasData = false, stale = false, uncertain = false, stamp = null, rows = emptyList()),
+                now,
+                locationNeeded = true,
+            )
+        }
+        onNode(hasText("Allow location in StopDash")).assertExists()
+        onNode(hasText("Open StopDash to load departures")).assertDoesNotExist()
+    }
+
+    @Test
     fun `a snapshot with no rows renders the no-departures message`() = runGlanceAppWidgetUnitTest {
         provideComposable {
             WidgetContent(

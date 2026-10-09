@@ -1,6 +1,8 @@
 package app.stopdash.widget
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.SystemClock
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -13,6 +15,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.glance.GlanceId
 import androidx.glance.ColorFilter
 import androidx.glance.GlanceModifier
@@ -143,7 +146,7 @@ class StopDashWidget : GlanceAppWidget() {
             }
             when (val shown = drawn) {
                 is TripDrawing -> WidgetTripContent(shown.model, shown.layouts[size], shown.fontScale)
-                is DeparturesDrawing -> WidgetContent(shown.models[size], shown.now, shown.fontScale)
+                is DeparturesDrawing -> WidgetContent(shown.models[size], shown.now, shown.fontScale, shown.locationNeeded)
             }
         }
     }
@@ -301,7 +304,11 @@ class StopDashWidget : GlanceAppWidget() {
         val within = listOfNotNull(NEARBY_SET_RETRY.takeIf { nearbyUnreadable }, tapExpiry, guessExpiry).minOrNull()
         scheduleStalenessRedrawFor(context, shown, now, within = within)
         WidgetRedraws.nextChangeAt = models.nextChangeAt
-        return DeparturesDrawing(models, now, fontScale, generation)
+        // Read here, off the render path, so an empty widget can say what would fill it: without a
+        // location grant the app never finds stops, so "open the app" alone can't.
+        val locationNeeded = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+            .none { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
+        return DeparturesDrawing(models, now, fontScale, generation, locationNeeded)
     }
 
     override suspend fun onDelete(context: Context, glanceId: GlanceId) {
@@ -839,6 +846,8 @@ internal fun WidgetContent(
     // The system font scale, read once by the caller (the host context in provideGlance), so the
     // pills size to it without each reading a context the unit-test harness doesn't provide.
     fontScale: Float = 1f,
+    // No location grant: the empty state asks for one, since opening the app alone won't fill it.
+    locationNeeded: Boolean = false,
 ) {
     // A tap on the header (the title, the stamp and the note under them, or the compact status line)
     // refreshes the widget's stops in place (SPEC D5), as "Tap to refresh" says. With no data there
@@ -902,7 +911,7 @@ internal fun WidgetContent(
             }
             when {
                 !model.hasData ->
-                    WidgetMessage("Open StopDash to load departures")
+                    WidgetMessage(if (locationNeeded) "Allow location in StopDash" else "Open StopDash to load departures")
                 // Not even one whole departure fits at this size and font: say how to fix it, rather
                 // than show a departure without its line or destination, or claim there are none.
                 model.tooSmall ->
@@ -1705,6 +1714,8 @@ internal data class DeparturesDrawing(
     val now: Instant,
     val fontScale: Float,
     override val generation: Long,
+    // No location permission at all, for the empty state's wording ([WidgetContent]).
+    val locationNeeded: Boolean = false,
 ) : WidgetDrawing {
     override suspend fun including(size: DpSize): WidgetDrawing {
         val more = models.including(size)
