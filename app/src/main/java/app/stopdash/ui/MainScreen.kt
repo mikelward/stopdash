@@ -1411,191 +1411,199 @@ fun MainScreen(
         Column(Modifier.fillMaxSize().padding(innerPadding)) {
             if (onTheWay != null) OnTheWayBanner(onTheWay, now, Modifier.padding(start = 16.dp, top = 8.dp, end = 16.dp))
             if (stationJourney != null) StationJourneyRow(stationJourney)
-            val content = Modifier.fillMaxWidth().weight(1f)
-            when (state) {
-                // A more direct update prompt than the top-bar overflow dot, which is easy to miss
-                // while waiting on a cold load: at the bottom, in a slot kept (with one as tall at the
-                // top) whether or not it shows, so the spinner stays centered in one place either way.
-                // Scrolls when a short screen and a large font can't fit the slots and the spinner,
-                // rather than clipping the button; it spaces out to the full height otherwise.
-                DeparturesUiState.Loading -> {
-                    val scrollState = rememberScrollState()
-                    Column(
-                        modifier = content
-                            .scrollEdgeCue(scrollState, scrollCueColors(MaterialTheme.colorScheme.background))
-                            .verticalScroll(scrollState)
-                            .padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        UpdateAvailableButton(onClick = {}, modifier = Modifier.padding(bottom = 16.dp), shown = false)
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator()
-                            Text(
-                                text = stringResource(R.string.departures_loading),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 16.dp),
-                            )
-                        }
-                        UpdateAvailableButton(onClick = onOpenAppListing, modifier = Modifier.padding(top = 16.dp), shown = updateAvailable)
-                    }
-                }
-
-                is DeparturesUiState.Loaded -> if (journeyViewOpen && journeyViewCard == null) {
-                    // The saved journeys are still loading: a placeholder until the card is back.
-                    Centered(content) { CircularProgressIndicator() }
-                } else if (platformPending || platformRows == null && journeyViewCard == null && listPending) {
-                    // The snapshot's rows are being worked out off the main thread, for a list or view
-                    // with none to stand in yet: a placeholder, never an empty list that reads as
-                    // "No departures" (SPEC principle 1).
-                    Centered(content) { CircularProgressIndicator() }
-                } else if (journeyViewCard != null) {
-                    // A journey's own view: just its card, each group headed by where it boards, under
-                    // Swap and Unstar. Rendered from the same snapshot as the list (SPEC D4).
-                    LoadedContent(
-                        drawnLoaded ?: state, drawnNow, onPullRefresh ?: onRefresh, refreshing, content, rows = emptyList(),
-                        listState = drillListState,
-                        journeyCards = listOf(journeyViewCard),
-                        journeyView = true,
-                        onFlipJourney = onFlipJourney,
-                        onUnstarJourney = onToggleJourney,
-                        onRetryJourneyRoutes = { journeyRouteRetry++ },
-                        starred = starred,
-                        onToggleStar = onToggleStar,
-                        starringAvailable = starringAvailable,
-                        onOpenDetail = openDetail(UsageEvent.Tap.STOP_ROW),
-                        onOpenChangeDetail = openDetail(UsageEvent.Tap.CHANGE_CARD),
-                        onOpenSettings = onOpenSettings,
-                        dismissed = dismissed,
-                        onDismissAlert = onDismissAlert,
-                    )
-                } else {
-                    LoadedContent(
-                        drawnState ?: state, drawnNow, onPullRefresh ?: onRefresh, refreshing, content, shownRows,
-                        listCards = shownCards,
-                        listState = if (platformRows != null) drillListState else listState,
-                        dismissedClosures = if (platformRows != null) emptyList() else dismissedClosures,
-                        sharedNotices = sharedNotices,
-                        // The platform view is one place: no distances (its header would only repeat the
-                        // title).
-                        stopDistanceMeters = if (platformRows != null) emptyMap() else stopDistanceMeters,
-                        onOpenStopMap = onOpenStopMap,
-                        // Journey cards sit atop the near-me list only, not a platform or station view.
-                        // A far journey's card sits at the foot, once revealed, never among the near ones.
-                        journeyCards = if (platformRows != null) emptyList() else journeyCards.filter { it.journey.key !in farJourneyMeters },
-                        farJourneyCards = if (platformRows != null || !farRevealed) emptyList() else journeyCards.filter { it.journey.key in farJourneyMeters },
-                        farJourneyMeters = farJourneyMeters,
-                        onRevealFar = if (platformRows == null && !farRevealed && farJourneyMeters.isNotEmpty()) {
-                            {
-                                UsageEvents.log(UsageEvent.FarawayFavorites)
-                                farReveal.reveal()
-                            }
-                        } else {
-                            null
-                        },
-                        // Every nearby row is on a journey card above: nothing to call "no departures".
-                        nearbyShownAbove = platformRows == null && rows.isEmpty() && nearbyRows.isNotEmpty(),
-                        onFlipJourney = onFlipJourney,
-                        onRetryJourneyRoutes = { journeyRouteRetry++ },
-                        starred = starred,
-                        onToggleStar = onToggleStar,
-                        starringAvailable = starringAvailable,
-                        hiddenModes = hiddenModes,
-                        ownHiddenModes = ownHiddenModes,
-                        onHideMode = hideMode,
-                        modesByPlace = drawnFrom?.placeModes.orEmpty(),
-                        onShowAllModes = onShowAllModes,
-                        // Not on a platform's own view, which is one place.
-                        farther = if (platformRows != null) emptyList() else fartherShown,
-                        // Hiding a mode applies to the loading cards too, as to the loaded rows.
-                        // Unfiltered: hiding a mode drops its loading cards from view, but they're still
-                        // loading (see [DepartureList]'s held cards).
-                        // From the drawn snapshot, as the rows are: a stop that lands is pending no
-                        // more in the same frame its rows appear.
-                        pending = if (platformRows != null) emptyList() else (drawnLoaded ?: state).pendingStops,
-                        holdLanded = platformRows == null,
-                        pendingTracker = pendingTracker,
-                        onOpenFarther = onOpenFarther,
-                        onOpenDetail = openDetail(UsageEvent.Tap.STOP_ROW),
-                        onOpenChangeDetail = openDetail(UsageEvent.Tap.CHANGE_CARD),
-                        onOpenSettings = onOpenSettings,
-                        dismissed = dismissed,
-                        onDismissAlert = onDismissAlert,
-                        // The full list and a whole-station view drill down to a platform; inside a platform
-                        // view the header is inert. From a station, the station is remembered so back
-                        // returns to it.
-                        onOpenPlatform = if (platformRows != null && !platformIsStation) {
-                            null
-                        } else {
-                            { group ->
-                                if (platformRows != null) {
-                                    parentStationIds = platformStopIds
-                                    parentStationTitle = platformTitle
-                                } else {
-                                    parentStationIds = null
-                                }
-                                platformStopIds = group.rows.mapTo(LinkedHashSet()) { it.stopId }.joinToString(",")
-                                platformIsStation = false
-                                platformKey = group.splitKey
-                                platformTitle = groupHeaderTitle(group.stopName, group.qualifier)
-                            }
-                        },
-                        // The whole station: the tapped place's clusters, keyed blank so the view keeps all of
-                        // their stops' groups (see platformView). Membership is resolved from each snapshot's
-                        // stops, not the groups on screen: the near-me fold can leave a sibling platform with
-                        // no group, and a warned stop groups under a per-stop key (Codex).
-                        onOpenStation = if (platformRows != null) {
-                            null
-                        } else {
-                            { group ->
-                                platformStopIds = group.rows.mapTo(LinkedHashSet()) { stationClusterOf(it.clusterId, it.stopId) }
-                                    .joinToString(",")
-                                platformIsStation = true
-                                parentStationIds = null
-                                platformKey = ""
-                                platformTitle = group.stopName
-                            }
-                        },
-                        // A platform/station drill-down shows one place's stops, not the near-me set, so
-                        // the "your location is low-confidence" banner doesn't apply there.
-                        locationBanner = if (platformRows != null) null else locationBanner,
-                        // A journey heading opens the journey's own view (from the full list only).
-                        onOpenJourney = { journey ->
-                            UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.JOURNEY_CARD))
-                            journeyViewKey = journey.key
-                        },
-                        // The full near-me list only: not a platform or station drill-down, nor a
-                        // searched station's page, each of which is about one place.
-                        favoritePlaces = if (platformRows != null || stationTitle != null) emptyList() else favoritePlaces,
-                        onRouteToPlace = onRouteToPlace,
-                        onEditFavoritePlaces = onEditFavoritePlaces,
-                        onTelemetryInviteAnswer = onTelemetryInviteAnswer.takeIf { platformRows == null && stationTitle == null },
-                        watchInstall = watchInstall.takeIf {
-                            onTelemetryInviteAnswer == null && platformRows == null && stationTitle == null
-                        },
-                        // The full list only, as the place chips: not a platform, station or searched page.
-                        disruptionsRow = disruptionsRow.takeIf { platformRows == null && stationTitle == null },
-                    )
-                }
-
-                is DeparturesUiState.Error ->
-                    // Under the pull box with a scrollable child so a downward swipe refreshes
-                    // the error screen too (SPEC D6), not only the button.
-                    PullToRefreshBox(isRefreshing = refreshing, onRefresh = onPullRefresh ?: onRefresh, modifier = content) {
+            // A loading screen fades through to what replaces it, taps ignored meanwhile, so one aimed
+            // at the Update available button opens no row that took its place.
+            FadesThroughFromLoading(
+                state = state,
+                loading = { it == DeparturesUiState.Loading },
+                modifier = Modifier.fillMaxWidth().weight(1f),
+            ) { shown ->
+                val content = Modifier.fillMaxSize()
+                when (shown) {
+                    // A more direct update prompt than the top-bar overflow dot, which is easy to miss
+                    // while waiting on a cold load: at the bottom, in a slot kept (with one as tall at the
+                    // top) whether or not it shows, so the spinner stays centered in one place either way.
+                    // Scrolls when a short screen and a large font can't fit the slots and the spinner,
+                    // rather than clipping the button; it spaces out to the full height otherwise.
+                    DeparturesUiState.Loading -> {
                         val scrollState = rememberScrollState()
-                        Centered(
-                            Modifier.fillMaxSize()
+                        Column(
+                            modifier = content
                                 .scrollEdgeCue(scrollState, scrollCueColors(MaterialTheme.colorScheme.background))
-                                .verticalScroll(scrollState),
+                                .verticalScroll(scrollState)
+                                .padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.SpaceBetween,
                         ) {
-                            Text(
-                                text = stringResource(errorMessage(state.kind)),
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
-                            RefreshButton(onPullRefresh ?: onRefresh, Modifier.padding(top = 16.dp))
+                            UpdateAvailableButton(onClick = {}, modifier = Modifier.padding(bottom = 16.dp), shown = false)
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator()
+                                Text(
+                                    text = stringResource(R.string.departures_loading),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 16.dp),
+                                )
+                            }
+                            UpdateAvailableButton(onClick = onOpenAppListing, modifier = Modifier.padding(top = 16.dp), shown = updateAvailable)
                         }
                     }
+
+                    is DeparturesUiState.Loaded -> if (journeyViewOpen && journeyViewCard == null) {
+                        // The saved journeys are still loading: a placeholder until the card is back.
+                        Centered(content) { CircularProgressIndicator() }
+                    } else if (platformPending || platformRows == null && journeyViewCard == null && listPending) {
+                        // The snapshot's rows are being worked out off the main thread, for a list or view
+                        // with none to stand in yet: a placeholder, never an empty list that reads as
+                        // "No departures" (SPEC principle 1).
+                        Centered(content) { CircularProgressIndicator() }
+                    } else if (journeyViewCard != null) {
+                        // A journey's own view: just its card, each group headed by where it boards, under
+                        // Swap and Unstar. Rendered from the same snapshot as the list (SPEC D4).
+                        LoadedContent(
+                            drawnLoaded ?: shown, drawnNow, onPullRefresh ?: onRefresh, refreshing, content, rows = emptyList(),
+                            listState = drillListState,
+                            journeyCards = listOf(journeyViewCard),
+                            journeyView = true,
+                            onFlipJourney = onFlipJourney,
+                            onUnstarJourney = onToggleJourney,
+                            onRetryJourneyRoutes = { journeyRouteRetry++ },
+                            starred = starred,
+                            onToggleStar = onToggleStar,
+                            starringAvailable = starringAvailable,
+                            onOpenDetail = openDetail(UsageEvent.Tap.STOP_ROW),
+                            onOpenChangeDetail = openDetail(UsageEvent.Tap.CHANGE_CARD),
+                            onOpenSettings = onOpenSettings,
+                            dismissed = dismissed,
+                            onDismissAlert = onDismissAlert,
+                        )
+                    } else {
+                        LoadedContent(
+                            drawnState ?: shown, drawnNow, onPullRefresh ?: onRefresh, refreshing, content, shownRows,
+                            listCards = shownCards,
+                            listState = if (platformRows != null) drillListState else listState,
+                            dismissedClosures = if (platformRows != null) emptyList() else dismissedClosures,
+                            sharedNotices = sharedNotices,
+                            // The platform view is one place: no distances (its header would only repeat the
+                            // title).
+                            stopDistanceMeters = if (platformRows != null) emptyMap() else stopDistanceMeters,
+                            onOpenStopMap = onOpenStopMap,
+                            // Journey cards sit atop the near-me list only, not a platform or station view.
+                            // A far journey's card sits at the foot, once revealed, never among the near ones.
+                            journeyCards = if (platformRows != null) emptyList() else journeyCards.filter { it.journey.key !in farJourneyMeters },
+                            farJourneyCards = if (platformRows != null || !farRevealed) emptyList() else journeyCards.filter { it.journey.key in farJourneyMeters },
+                            farJourneyMeters = farJourneyMeters,
+                            onRevealFar = if (platformRows == null && !farRevealed && farJourneyMeters.isNotEmpty()) {
+                                {
+                                    UsageEvents.log(UsageEvent.FarawayFavorites)
+                                    farReveal.reveal()
+                                }
+                            } else {
+                                null
+                            },
+                            // Every nearby row is on a journey card above: nothing to call "no departures".
+                            nearbyShownAbove = platformRows == null && rows.isEmpty() && nearbyRows.isNotEmpty(),
+                            onFlipJourney = onFlipJourney,
+                            onRetryJourneyRoutes = { journeyRouteRetry++ },
+                            starred = starred,
+                            onToggleStar = onToggleStar,
+                            starringAvailable = starringAvailable,
+                            hiddenModes = hiddenModes,
+                            ownHiddenModes = ownHiddenModes,
+                            onHideMode = hideMode,
+                            modesByPlace = drawnFrom?.placeModes.orEmpty(),
+                            onShowAllModes = onShowAllModes,
+                            // Not on a platform's own view, which is one place.
+                            farther = if (platformRows != null) emptyList() else fartherShown,
+                            // Hiding a mode applies to the loading cards too, as to the loaded rows.
+                            // Unfiltered: hiding a mode drops its loading cards from view, but they're still
+                            // loading (see [DepartureList]'s held cards).
+                            // From the drawn snapshot, as the rows are: a stop that lands is pending no
+                            // more in the same frame its rows appear.
+                            pending = if (platformRows != null) emptyList() else (drawnLoaded ?: shown).pendingStops,
+                            holdLanded = platformRows == null,
+                            pendingTracker = pendingTracker,
+                            onOpenFarther = onOpenFarther,
+                            onOpenDetail = openDetail(UsageEvent.Tap.STOP_ROW),
+                            onOpenChangeDetail = openDetail(UsageEvent.Tap.CHANGE_CARD),
+                            onOpenSettings = onOpenSettings,
+                            dismissed = dismissed,
+                            onDismissAlert = onDismissAlert,
+                            // The full list and a whole-station view drill down to a platform; inside a platform
+                            // view the header is inert. From a station, the station is remembered so back
+                            // returns to it.
+                            onOpenPlatform = if (platformRows != null && !platformIsStation) {
+                                null
+                            } else {
+                                { group ->
+                                    if (platformRows != null) {
+                                        parentStationIds = platformStopIds
+                                        parentStationTitle = platformTitle
+                                    } else {
+                                        parentStationIds = null
+                                    }
+                                    platformStopIds = group.rows.mapTo(LinkedHashSet()) { it.stopId }.joinToString(",")
+                                    platformIsStation = false
+                                    platformKey = group.splitKey
+                                    platformTitle = groupHeaderTitle(group.stopName, group.qualifier)
+                                }
+                            },
+                            // The whole station: the tapped place's clusters, keyed blank so the view keeps all of
+                            // their stops' groups (see platformView). Membership is resolved from each snapshot's
+                            // stops, not the groups on screen: the near-me fold can leave a sibling platform with
+                            // no group, and a warned stop groups under a per-stop key (Codex).
+                            onOpenStation = if (platformRows != null) {
+                                null
+                            } else {
+                                { group ->
+                                    platformStopIds = group.rows.mapTo(LinkedHashSet()) { stationClusterOf(it.clusterId, it.stopId) }
+                                        .joinToString(",")
+                                    platformIsStation = true
+                                    parentStationIds = null
+                                    platformKey = ""
+                                    platformTitle = group.stopName
+                                }
+                            },
+                            // A platform/station drill-down shows one place's stops, not the near-me set, so
+                            // the "your location is low-confidence" banner doesn't apply there.
+                            locationBanner = if (platformRows != null) null else locationBanner,
+                            // A journey heading opens the journey's own view (from the full list only).
+                            onOpenJourney = { journey ->
+                                UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.JOURNEY_CARD))
+                                journeyViewKey = journey.key
+                            },
+                            // The full near-me list only: not a platform or station drill-down, nor a
+                            // searched station's page, each of which is about one place.
+                            favoritePlaces = if (platformRows != null || stationTitle != null) emptyList() else favoritePlaces,
+                            onRouteToPlace = onRouteToPlace,
+                            onEditFavoritePlaces = onEditFavoritePlaces,
+                            onTelemetryInviteAnswer = onTelemetryInviteAnswer.takeIf { platformRows == null && stationTitle == null },
+                            watchInstall = watchInstall.takeIf {
+                                onTelemetryInviteAnswer == null && platformRows == null && stationTitle == null
+                            },
+                            // The full list only, as the place chips: not a platform, station or searched page.
+                            disruptionsRow = disruptionsRow.takeIf { platformRows == null && stationTitle == null },
+                        )
+                    }
+
+                    is DeparturesUiState.Error ->
+                        // Under the pull box with a scrollable child so a downward swipe refreshes
+                        // the error screen too (SPEC D6), not only the button.
+                        PullToRefreshBox(isRefreshing = refreshing, onRefresh = onPullRefresh ?: onRefresh, modifier = content) {
+                            val scrollState = rememberScrollState()
+                            Centered(
+                                Modifier.fillMaxSize()
+                                    .scrollEdgeCue(scrollState, scrollCueColors(MaterialTheme.colorScheme.background))
+                                    .verticalScroll(scrollState),
+                            ) {
+                                Text(
+                                    text = stringResource(errorMessage(shown.kind)),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                                RefreshButton(onPullRefresh ?: onRefresh, Modifier.padding(top = 16.dp))
+                            }
+                        }
+                }
             }
         }
     }
