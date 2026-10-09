@@ -1,5 +1,15 @@
 package app.stopdash
 
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.saveable.SaveableStateHolder
+import app.stopdash.domain.StopLinks
+import app.stopdash.domain.linksOf
+import app.stopdash.domain.RouteRide
+import app.stopdash.domain.NATIONAL_RAIL_MODE
+import app.stopdash.ui.LineStopWindow
+import app.stopdash.ui.RouteStopMode
 import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -270,8 +280,8 @@ import app.stopdash.ui.JourneyAdds
 import app.stopdash.ui.addFavoriteJourneyPair
 import app.stopdash.ui.removeFavoriteJourney
 import app.stopdash.ui.LocalOpenRouteStop
-import app.stopdash.ui.LocalStationJourney
 import app.stopdash.ui.RouteStopOpen
+import app.stopdash.ui.RouteGo
 import app.stopdash.ui.RouteStopOpenSaver
 import app.stopdash.ui.StationJourneyState
 import app.stopdash.ui.StationPlaceholderScreen
@@ -848,23 +858,19 @@ class MainActivity : ComponentActivity() {
                 // The order the open station's rows lead in ([StationLead]); null for any station but one of an
                 // interchange's names. Built when it's opened, so the page only reads it.
                 var openStationLead by rememberSaveable(stateSaver = STATION_LEAD_SAVER) { mutableStateOf<StationLead?>(null) }
-                // A station tapped on a route page's stop list, and the journey there its page offers
-                // to favorite: offered only while that station is the one open.
+                // A stop tapped on a route page's stop list: the departure it was tapped on, what Go rides there,
+                // and the journey there its details offer to favorite.
                 var routeStopOpened by rememberSaveable(stateSaver = RouteStopOpenSaver) { mutableStateOf<RouteStopOpen?>(null) }
-                // Bumped to drop the main view's saved state (a route page kept under a station opened from it)
-                // when an arrived trip from that station is done with, so the near-me list shows afresh.
-                var nearbyBodyGeneration by rememberSaveable { mutableIntStateOf(0) }
+                // Its details' page, over the route page it was tapped on, and the stations opened from it beside
+                // it, for Back; null with none up. Their pages' scrolls are kept in [routeStopSaveable] under the opening's
+                // own number ([routeStopSession]), so closing drops them all at once, never by walking the trail.
+                var routeStopTrail by rememberSaveable(stateSaver = LineStopRefSaver) { mutableStateOf<LineStopRef?>(null) }
+                var routeStopSession by rememberSaveable { mutableIntStateOf(0) }
+                val routeStopSaveable = rememberSaveableStateHolder()
                 // The journey whose last change on a stop page didn't save, by key: said only on its own
                 // row, never on another stop's opened since. Process-lived, like the write, so a failure
                 // after a rotation still says so (Codex on #631).
                 val stopJourneyFailed = StopJourneyWrites.failed
-                // Forgotten once its station closes or another opens, so the same station found later
-                // by search isn't headed by an old journey (Codex on #631).
-                LaunchedEffect(openStationId) {
-                    if (routeStopOpened != null && routeStopOpened?.stationId != openStationId) {
-                        routeStopOpened = null
-                    }
-                }
                 // Back on the main view, the station closed: a station opened later is planned as usual.
                 LaunchedEffect(openStationId, stationSearchOpen) {
                     if (openStationId == null && !stationSearchOpen) replanning = false
@@ -1237,26 +1243,11 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-                // A route page's tapped station opens as its own page, above whatever's showing, its Back
-                // returning there (maintainer, 2026-10-06). The station already open beneath the route
-                // page (a station's own route, tapped at its boarding stop) isn't opened again: false,
-                // and the route page closes to show it, headed by the journey there (Codex on #631).
-                val openRouteStop: (RouteStopOpen) -> Boolean = { open ->
-                    routeStopOpened = open
-                    // Only this journey's old failure is forgotten: each is keyed, so others need no clearing,
-                    // and one remove keeps the tap's work constant (AGENTS.md *Main thread*; Codex on #631).
-                    open.journey?.key?.let { stopJourneyFailed.remove(it) }
-                    val already = open.isOpen(openStationId)
-                    if (!already) {
-                        originChange = null
-                        stationTo = ToChoice.NONE
-                        openStationId = open.stationId
-                        openStationName = open.name
-                        openStationLead = null
-                    }
-                    !already
-                }
-                val stopJourney = routeStopOpened?.takeIf { it.stationId == openStationId }?.journey
+                // The journey a route stop's details offer to favorite, while its page is the one showing: not a station
+                // opened beside it, nor while a screen covers it, so a change that fails meanwhile is said app-wide.
+                val routeStopRootShown = routeStopTrail?.previous == null && routeStopTrail != null &&
+                    !routeStopCovered(licenses = licensesOpen, settings = settingsOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen, favoriteJourneys = favoriteJourneysOpen)
+                val stopJourney = routeStopOpened?.takeIf { routeStopRootShown }?.journey
                 val stopJourneyState = stopJourney?.let { journey ->
                     val store = remember { DataStoreFavoriteJourneysStore.from(applicationContext, warn = ::logStarWarning) }
                     // The saved journeys' keys, worked out on the worker so composition only looks one up
@@ -1310,7 +1301,9 @@ class MainActivity : ComponentActivity() {
                                 // own marker, which is cleared only when the row leaves composition.
                                 if (latest) {
                                     withContext(Dispatchers.Main) {
-                                        val stillOpen = routeStopOpened?.takeIf { it.isOpen(openStationId) }?.journey?.key == journey.key
+                                        val stillOpen = routeStopTrail?.previous == null && routeStopTrail != null &&
+                                            !routeStopCovered(licenses = licensesOpen, settings = settingsOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen, favoriteJourneys = favoriteJourneysOpen) &&
+                                            routeStopOpened?.journey?.key == journey.key
                                         if (!stillOpen || StopJourneyWrites.shown != journey.key) {
                                             Toast.makeText(applicationContext, R.string.station_journey_write_failed_away, Toast.LENGTH_SHORT).show()
                                         }
@@ -1323,21 +1316,24 @@ class MainActivity : ComponentActivity() {
                 // A station tapped on the home screen's or a trip's line page: Lines… opens on it, that line's page
                 // under it, its distance from the rider's last fix where there is one.
                 val lineStopSystem = LocalDistanceSystem.current
-                val openLineStop: (LineRef, String, String, Pair<Double, Double>?) -> Unit = remember(lineStopSystem) { { line, id, name, position ->
-                    val at = position?.let { Coordinates(it.first, it.second) }
-                    // The near-me state as it is at the tap, read from its source rather than through what was
-                    // composed (Codex on #708).
+                // How far [at] is from the rider's last fix, as a label; null with either unknown. The near-me state as
+                // it is when asked, read from its source rather than through what was composed (Codex on #708).
+                val fixDistance: (Coordinates?) -> String? = remember(lineStopSystem) { { at ->
                     val fix = when (val near = nearbyViewModel.state.value) {
                         is NearbyStopsViewModel.State.Ready -> near.location
                         is NearbyStopsViewModel.State.Empty -> near.location
                         is NearbyStopsViewModel.State.Failed -> near.location
                         else -> null
                     }
-                    val distance = if (at == null || fix == null || lineStopSystem == null) {
+                    if (at == null || fix == null || lineStopSystem == null) {
                         null
                     } else {
                         StopDistance.label(NearestStops.distanceMeters(fix.latitude, fix.longitude, at.latitude, at.longitude), lineStopSystem)
                     }
+                } }
+                val openLineStop: (LineRef, String, String, Pair<Double, Double>?) -> Unit = remember(fixDistance) { { line, id, name, position ->
+                    val at = position?.let { Coordinates(it.first, it.second) }
+                    val distance = fixDistance(at)
                     UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
                     linesLineWork.clear()
                     linesLine = line
@@ -1345,9 +1341,22 @@ class MainActivity : ComponentActivity() {
                     linesForStop = true
                     linesPresence = linesPresence.opened()
                 } }
+                // A stop tapped on a route page's stop list: its details over the route page, which stays under them for
+                // Back, headed by the departure tapped with Go and the journey there to favorite (maintainer, 2026-10-09).
+                val routeGoHolder = viewModel<RouteGoHolder>()
+                val openRouteStop: (RouteStopOpen) -> Unit = remember(fixDistance) { { open ->
+                    routeGoHolder.keep(open)
+                    // The details this tap replaces forget their pages, a new opening starting afresh.
+                    routeStopSaveable.removeState(routeStopSession)
+                    routeStopSession++
+                    routeStopOpened = open
+                    // Only this journey's old failure is forgotten: each is keyed, so others need no clearing,
+                    // and one remove keeps the tap's work constant (AGENTS.md *Main thread*; Codex on #631).
+                    open.journey?.key?.let { stopJourneyFailed.remove(it) }
+                    routeStopTrail = LineStopRef(open.stopId, open.name, fixDistance(open.position), position = open.position)
+                } }
                 CompositionLocalProvider(
                     LocalOpenRouteStop provides openRouteStop,
-                    LocalStationJourney provides stopJourneyState,
                     LocalHideUndoCarrier provides hideUndoCarrier,
                     LocalAppMenu provides AppMenuActions(
                         updateAvailable = updateAvailable.value,
@@ -1387,9 +1396,8 @@ class MainActivity : ComponentActivity() {
                 ) {
                     NearbyArea(
                         overlayOpen = onTheWayOpen || licensesOpen || settingsOpen || favoritePlacesOpen || favoriteJourneysOpen || linesPresence.shown || stationSearchOpen || openStationId != null,
-                        // A stop opened from a route page keeps that page under it, for Back.
-                        keepBody = openStationId != null && routeStopOpened?.stationId == openStationId || linesForStop,
-                        bodyGeneration = nearbyBodyGeneration,
+                        // A stop's details opened from a line page's map keep that page under Lines…, for Back.
+                        keepBody = linesForStop,
                         aboveOverlay = {
                             ForegroundReturnLatcher(
                                 isReady = { nearbyViewModel.state.value is NearbyStopsViewModel.State.Ready },
@@ -1455,11 +1463,6 @@ class MainActivity : ComponentActivity() {
                                             // models cleared with it. Another station browsed since stays.
                                             // Or its trip's From row's search, still changing that trip's start.
                                             if (openStationId == from || (originChange as? OriginChange.Station)?.id == from) {
-                                                // A route page it was opened from, kept under it, goes too (Codex, #658).
-                                                if (routeStopOpened?.stationId == from) {
-                                                    routeStopOpened = null
-                                                    nearbyBodyGeneration++
-                                                }
                                                 ViewModelProvider(this@MainActivity)["station-stores", NearbyDeparturesStores::class.java].clearAll()
                                                 // Its query cancelled now; reset on next showing if never shown here.
                                                 if (!clearFromSearch()) stationSearchReset = true
@@ -2551,6 +2554,80 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                     )
+                    // Last, so its window is made after any page's below it, and shows over them even as they're all
+                    // made again (a rotation): the route page it was tapped on may itself be one (a stop's details).
+                    routeStopOpened?.takeIf {
+                        // Stepped aside, not closed, while a screen opened from its menu (Licenses, Settings) or one that
+                        // takes over the app is up: a window of its own, it would cover them. Back from those finds it again.
+                        !routeStopCovered(licenses = licensesOpen, settings = settingsOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen, favoriteJourneys = favoriteJourneysOpen)
+                    }?.let { open ->
+                        val line = open.line
+                        routeStopTrail?.takeIf { line != null }?.let { page ->
+                            val closeRouteStop = {
+                                routeStopSaveable.removeState(routeStopSession)
+                                routeStopTrail = null
+                            }
+                            routeStopSaveable.SaveableStateProvider(routeStopSession) {
+                                RouteStopDetails(
+                                    open,
+                                    line!!,
+                                    page,
+                                    rememberSaveableStateHolder(),
+                                    stopJourneyState,
+                                    tripActive = onTheWayTrip != null,
+                                    onPage = { routeStopTrail = it },
+                                    onClose = closeRouteStop,
+                                    onGo = { route, replacing ->
+                                        closeRouteStop()
+                                        // The stop and, for a bus, its stop pair stand for where it ends, as a planned trip's do.
+                                        val leg = route.legs.last()
+                                        val ids = buildMap {
+                                            put(leg.toId, leg.toId)
+                                            if (leg.toArea.isNotBlank()) put(leg.toArea, leg.toId)
+                                        }
+                                        startOnTheWay(route, leg.toName, Instant.now(), listOf(TripDestination.Stop(leg.toId)), ids, leg.toId, replacing)
+                                    },
+                                    distanceTo = fixDistance,
+                                    // A station beside it, as a From… pick opens one: the details close for it.
+                                    onFrom = { stop ->
+                                        closeRouteStop()
+                                        UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
+                                        originChange = null
+                                        stationTo = ToChoice.NONE
+                                        openStationId = stop.fromId ?: stop.id
+                                        openStationName = stop.name
+                                        openStationLead = null
+                                        // Over Lines… (a route page of a stop's details there), the station flow starts from it, as
+                                        // Lines…'s own From starts one, so an arrived trip's Done closes back past it (Codex, #658).
+                                        if (linesPresence.isOpen) stationFromLines = stop.fromId ?: stop.id
+                                    },
+                                    onFavorite = { stop, position ->
+                                        closeRouteStop()
+                                        placeToAdd = StationMatch(stop.id, stop.name, latitude = position?.latitude, longitude = position?.longitude)
+                                        placesFromStop = true
+                                        favoritePlacesOpen = true
+                                    },
+                                    // A line's pill opens it in Lines…, over the route page and kept under it for Back, only
+                                    // where Lines… would show (nothing else open above the page, as for a line page's map).
+                                    onPickLine = if (linesPresence == LinesPresence.CLOSED && !onTheWayOpen && !licensesOpen && !settingsOpen &&
+                                        !favoritePlacesOpen && !favoriteJourneysOpen && !stationSearchOpen && openStationId == null
+                                    ) {
+                                        { picked ->
+                                            closeRouteStop()
+                                            UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
+                                            linesLineWork.clear()
+                                            linesLine = picked
+                                            linesStop = null
+                                            linesForStop = true
+                                            linesPresence = linesPresence.opened()
+                                        }
+                                    } else {
+                                        null
+                                    },
+                                )
+                            }
+                        }
+                    }
                 }
 
                 if (gateAboutOpen) {
@@ -4444,6 +4521,127 @@ class MainActivity : ComponentActivity() {
      * kept for this stop only ([NearbyDeparturesStores]), refreshed while shown and on a return to the app,
      * as a station's page is, and counting down from a ticking clock.
      */
+    /**
+     * A stop tapped on a route page's stop list, its details over that page ([LineStopWindow]): headed by the departure
+     * tapped, with Go riding it there on the way ([RouteRide]), the journey there behind its star, and its lines, step-free
+     * access and board below, as a stop opened from a line's map has them (SPEC *Route detail*).
+     */
+    @Composable
+    private fun RouteStopDetails(
+        open: RouteStopOpen,
+        line: LineRef,
+        page: LineStopRef,
+        saveable: SaveableStateHolder,
+        journey: StationJourneyState?,
+        tripActive: Boolean,
+        onPage: (LineStopRef?) -> Unit,
+        onClose: () -> Unit,
+        onGo: (TripRoute, replacing: Boolean) -> Unit,
+        distanceTo: (Coordinates?) -> String?,
+        onFrom: (LineStopRef) -> Unit,
+        onFavorite: (LineStopRef, Coordinates?) -> Unit,
+        onPickLine: ((LineRef) -> Unit)?,
+    ) {
+        val appContext = applicationContext
+        // Its lines and the stations beside it, from the bundled index, worked out off the main thread; none where
+        // the index can't be read, said in the log.
+        var linksAsked by remember { mutableStateOf<String?>(null) }
+        val links by produceState<Pair<String, StopLinks>?>(null, linksAsked) {
+            val id = linksAsked ?: return@produceState
+            val links = try {
+                val index = withContext(Dispatchers.IO) { StationIndexStore.load(appContext) }
+                withContext(Workers.compute) { index.linksOf(id) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                StopdashDebugLog.warning("lines: route stop links failed for %s: %s", id, e::class.simpleName.orEmpty())
+                StopLinks.NONE
+            }
+            value = id to links
+        }
+        // The ride Go takes, from the route page's stop list, worked out on the worker as the details open. National
+        // Rail can't be followed (SPEC *National Rail*), so it's offered no Go, decided by the line's mode from the
+        // first frame.
+        // Nor the boarding stop itself, which there's no riding to.
+        val followable = !line.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) && !open.boarding
+        // What Go rides isn't saved with the tap, so a rotation would lose it: it's kept by the activity's
+        // retained holder for the tap it came with, and given back here. Only after the process is gone is it lost.
+        val goHolder = viewModel<RouteGoHolder>()
+        // A data class compared with the holder's one kept tap: no walk over anything that grows.
+        val hasRideInputs = remember(open) { open.go != null || goHolder.goFor(open) != null }
+        val ride by produceState<TripRoute?>(null, open) {
+            // Another stop's details replacing these in place: the last one's ride is gone before this one's is worked
+            // out, so a quick tap can't start it.
+            value = null
+            val go = open.go ?: goHolder.goFor(open) ?: return@produceState
+            value = withContext(Workers.compute) {
+                RouteRide.to(go.stops, open.stopId, line.mode, line.id, line.name, go.departs, open.towards, go.positions, go.areas, go.at)
+            }
+        }
+        var confirmReplace by remember { mutableStateOf<TripRoute?>(null) }
+        val go: () -> Unit = {
+            ride?.let { route ->
+                if (tripActive) {
+                    confirmReplace = route
+                } else {
+                    UsageEvents.log(UsageEvent.TripStarted(UsageEvent.RouteChoice.UNKNOWN, rides = 1))
+                    onGo(route, false)
+                }
+            }
+        }
+        val writeFailures = viewModel<WriteFailuresHolder>().failures
+        CompositionLocalProvider(
+            LocalRouteStops provides routeStops(appContext),
+            LocalRouteTopology provides routeTopology.value,
+        ) {
+            LineStopWindow(
+                stop = page,
+                line = line,
+                saveable = saveable,
+                links = links?.takeIf { it.first == page.id }?.second,
+                loadLinks = { linksAsked = it },
+                onStop = onPage,
+                onStopClosed = onClose,
+                distanceTo = distanceTo,
+                onPickLine = { picked -> onPickLine?.invoke(picked) },
+                linesOpenable = onPickLine != null,
+                dismissal = null,
+                onFrom = onFrom,
+                onTo = null,
+                onFavorite = onFavorite,
+                onShowOnMap = { stop, at -> openStopMap(at.latitude, at.longitude, stop.name) },
+                departures = { stop, served, ids -> lineStopDepartures(stop, served, ids, writeFailures) },
+                route = RouteStopMode(
+                    line,
+                    open.fromName,
+                    open.towards,
+                    // None where nothing can make its ride: details brought back after the process was gone have
+                    // neither the tap's stop list nor the holder's, and a Go that could never be tapped says nothing.
+                    onGo = if (followable && hasRideInputs) go else null,
+                    goReady = ride != null,
+                    journey = journey,
+                ),
+            )
+        }
+        // A trip already on the way is replaced only once the rider says so, as a planned trip's Start asks.
+        confirmReplace?.let { route ->
+            AlertDialog(
+                onDismissRequest = { confirmReplace = null },
+                title = { Text(stringResource(R.string.on_the_way_replace_title)) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        confirmReplace = null
+                        UsageEvents.log(UsageEvent.TripStarted(UsageEvent.RouteChoice.UNKNOWN, rides = 1))
+                        onGo(route, true)
+                    }) { Text(stringResource(R.string.on_the_way_replace)) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmReplace = null }) { Text(stringResource(R.string.action_cancel)) }
+                },
+            )
+        }
+    }
+
     @Composable
     private fun lineStopDepartures(stop: LineStopRef, served: List<LineRef>, otherIds: List<String>, writeFailures: WriteFailures): StopDepartures {
         val appContext = applicationContext
@@ -5049,6 +5247,21 @@ internal suspend fun persistBugReportOptOut(settings: AppSettings) {
  * them all when the activity is finished for good.
  */
 /** The activity's one [WriteFailures], retained across rotation and shared by every departures model. */
+/**
+ * The inputs of a tapped route stop's Go ([RouteStopOpen.go]), which its saver doesn't keep: held across a rotation,
+ * for the tap they came with, so the details brought back still offer Go. Gone with the process.
+ */
+internal class RouteGoHolder : androidx.lifecycle.ViewModel() {
+    private var kept: RouteStopOpen? = null
+
+    fun keep(open: RouteStopOpen) {
+        kept = open.takeIf { it.go != null }
+    }
+
+    /** The Go kept for [open]: the same tap, all but its unsaved Go, else none. */
+    fun goFor(open: RouteStopOpen): RouteGo? = kept?.takeIf { it.copy(go = null) == open.copy(go = null) }?.go
+}
+
 internal class WriteFailuresHolder : androidx.lifecycle.ViewModel() {
     val failures = WriteFailures()
 }
@@ -5235,6 +5448,13 @@ internal fun supersedesNearMeTrip(replacing: Boolean, from: String?, openStation
  */
 internal fun tripOptionsLeft(from: String, openStationId: String?, hereTripOpen: Boolean, changingFrom: String? = null): Boolean =
     if (from.isEmpty()) !hereTripOpen else openStationId != from && changingFrom != from
+
+/**
+ * Whether a route stop's details step aside: they're a window of their own, drawn over everything, so an
+ * activity-level screen opened over them (from their menu, or one that takes over the app) would show under them.
+ */
+internal fun routeStopCovered(licenses: Boolean, settings: Boolean, onTheWay: Boolean, favoritePlaces: Boolean, favoriteJourneys: Boolean): Boolean =
+    licenses || settings || onTheWay || favoritePlaces || favoriteJourneys
 
 /** The activity-level overlays, as [topOverlay] picks between them. */
 internal enum class TopOverlay { LICENSES, ON_THE_WAY, FAVORITE_PLACES, FAVORITE_JOURNEYS, LINES, STATIONS, SETTINGS }

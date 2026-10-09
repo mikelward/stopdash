@@ -365,8 +365,9 @@ internal fun RouteStopsSection(
     // Whether a stop tap may star now: false while the page's saved journeys, which a tap goes by, are
     // still being worked out. The tip stays put meanwhile, so the rail under it never shifts.
     journeyTapsReady: Boolean = true,
-    // Opens a tapped station's own page (maintainer, 2026-10-06); null leaves a tap inert.
-    onOpenStop: ((RouteStop) -> Unit)? = null,
+    // Opens a tapped station's details, given its place in the list (a loop can call at a stop twice);
+    // null leaves a tap inert.
+    onOpenStop: ((RouteStop, Int) -> Unit)? = null,
 ) {
     val note = when (state) {
         RouteStopsUi.Hidden -> return
@@ -399,7 +400,7 @@ internal fun RouteStopsSection(
                     inAlert = stop.id in alertStopIds,
                     stepFree = stepFree[stop.id],
                     onClick = if (index > 0 && journeyTapsReady) onToggleJourneyTo?.let { toggle -> { toggle(stop) } } else null,
-                    onOpen = onOpenStop?.let { open -> { open(stop) } },
+                    onOpen = onOpenStop?.let { open -> { open(stop, index) } },
                 )
             }
         } else if (note != null) {

@@ -403,6 +403,16 @@
     <!-- …and where it would, but a lift it needs is out of service now. -->
     <string name="line_stop_step_free_lift_out">Not step-free: a lift is out</string>
     <string name="line_stop_from">From</string>
+    <!-- A stop's details opened from a route page's stop: heads them with the departure tapped. %1$s is
+         where it was boarded, %2$s where the train goes, "From Victoria, towards Walthamstow Central". -->
+    <!-- TODO: translate -->
+    <string name="route_stop_departure" tools:ignore="MissingTranslation">From %1$s, towards %2$s</string>
+    <!-- As route_stop_departure, for a departure TfL names no destination for: "From Victoria". -->
+    <!-- TODO: translate -->
+    <string name="route_stop_departure_from" tools:ignore="MissingTranslation">From %1$s</string>
+    <!-- A stop's details opened from a route page's stop: starts the trip there on the way, on that line. -->
+    <!-- TODO: translate -->
+    <string name="route_stop_go" tools:ignore="MissingTranslation">Go</string>
     <!-- A stop's details: go to this stop, as To… does. -->
     <string name="line_stop_to">To</string>
     <!-- A stop's details: its departures still on their way in. -->
@@ -889,7 +899,7 @@
     <string name="journey_incomplete">Some routes couldn\'t be checked</string>
     <string name="action_unstar_journey">Remove favorite</string>
     <string name="route_stop_journey_starred">Favorite journey</string>
-    <!-- Atop a stop's page opened from a route page's stop: saves the journey there as a favorite. -->
+    <!-- A stop's details opened from a route page's stop: its star, saving the journey there as a favorite. -->
     <string name="station_journey_add">Favorite</string>
     <string name="station_journey_write_failed">Couldn\'t save that change</string>
     <!-- Said app-wide when that change failed after its stop's page was left. -->

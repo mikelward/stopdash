@@ -49,4 +49,15 @@ class TopOverlayTest {
         assertEquals(TopOverlay.ON_THE_WAY, topOverlay(licenses = false, onTheWay = true, favoritePlaces = false, settings = false, lines = true))
         assertEquals(TopOverlay.LICENSES, topOverlay(licenses = true, onTheWay = false, favoritePlaces = false, settings = false, lines = true))
     }
+
+    @Test
+    fun `a route stop's details step aside for a screen opened over them, and only then`() {
+        assertEquals(false, routeStopCovered(licenses = false, settings = false, onTheWay = false, favoritePlaces = false, favoriteJourneys = false))
+        // Its menu's Licenses and Settings, and the screens that take over the app.
+        assertEquals(true, routeStopCovered(licenses = true, settings = false, onTheWay = false, favoritePlaces = false, favoriteJourneys = false))
+        assertEquals(true, routeStopCovered(licenses = false, settings = true, onTheWay = false, favoritePlaces = false, favoriteJourneys = false))
+        assertEquals(true, routeStopCovered(licenses = false, settings = false, onTheWay = true, favoritePlaces = false, favoriteJourneys = false))
+        assertEquals(true, routeStopCovered(licenses = false, settings = false, onTheWay = false, favoritePlaces = true, favoriteJourneys = false))
+        assertEquals(true, routeStopCovered(licenses = false, settings = false, onTheWay = false, favoritePlaces = false, favoriteJourneys = true))
+    }
 }

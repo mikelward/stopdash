@@ -47,7 +47,10 @@ import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import java.time.Instant
 import java.time.LocalDate
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onLast
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -1337,7 +1340,7 @@ class RouteDetailScreenScreenshotTest {
     }
 
     @Test
-    fun tappingAStation_opensItsPage_withTheJourneyThere() {
+    fun tappingAStation_opensItsDetails_withTheDepartureAndTheJourneyThere() {
         val stops = listOf(
             RouteStop("940GZZLUVIC", "Victoria"),
             RouteStop("940GZZLUGPK", "Green Park"),
@@ -1362,18 +1365,17 @@ class RouteDetailScreenScreenshotTest {
                     routeStops = RouteStopsUi.Loaded(stops),
                     journeys = listOf(savedToOxford),
                     onToggleJourney = { toggled += it },
-                    onOpenStop = {
-                        opened += it
-                        true
-                    },
+                    onOpenStop = { opened += it },
                 )
             }
         }
         composeRule.waitForIdle()
 
-        // A tap opens the station, offering the journey from the boarding stop to it; nothing is saved.
+        // A tap opens the stop's details, headed by the departure followed, offering the journey from the boarding
+        // stop to it and Go there along the stop list; nothing is saved.
         composeRule.onNodeWithText("Green Park", substring = true).performClick()
         composeRule.waitForIdle()
+        val greenPark = opened.single()
         assertEquals(
             RouteStopOpen(
                 "940GZZLUGPK",
@@ -1382,9 +1384,15 @@ class RouteDetailScreenScreenshotTest {
                     JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUGPK", "Green Park"), "victoria",
                     lineName = "Victoria", mode = "tube",
                 ),
+                stopId = "940GZZLUGPK",
+                line = LineRef("victoria", "Victoria", "tube"),
+                fromName = "Victoria",
+                towards = "Walthamstow Central",
             ),
-            opened.single(),
+            greenPark.copy(go = null),
         )
+        assertEquals(stops, greenPark.go?.stops)
+        assertEquals(now.plusSeconds(120), greenPark.go?.departs)
         assertTrue(toggled.isEmpty())
         // A saved journey's end offers that journey itself, so its page can remove it.
         composeRule.onNodeWithText("Oxford Circus", substring = true).performClick()
@@ -1394,11 +1402,41 @@ class RouteDetailScreenScreenshotTest {
         composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your stop"))
             .performSemanticsAction(SemanticsActions.OnClick)
         composeRule.waitForIdle()
-        assertEquals(RouteStopOpen("940GZZLUVIC", "Victoria", null), opened.last())
+        assertEquals("940GZZLUVIC", opened.last().stopId)
+        assertEquals(null, opened.last().journey)
+        // It's the boarding stop, which Go offers no ride to; the others aren't.
+        assertTrue(opened.last().boarding)
+        assertFalse(greenPark.boarding)
         // The long press still saves at once.
         composeRule.onNodeWithText("Green Park", substring = true).performTouchInput { longClick() }
         composeRule.waitForIdle()
         assertEquals("940GZZLUGPK", toggled.single().to.stopId)
+    }
+
+    @Test
+    fun theStopList_tellsATapWhichCallOnALoopItWas() {
+        // A loop back through the boarding stop: its later call is told from "your stop" by its place in the list.
+        val stops = listOf(
+            RouteStop("940GZZLUVIC", "Victoria"),
+            RouteStop("940GZZLUGPK", "Green Park"),
+            RouteStop("940GZZLUVIC", "Victoria"),
+        )
+        val tapped = mutableListOf<Pair<String, Int>>()
+        setDetail {
+            StopDashTheme {
+                RouteStopsSection(
+                    state = RouteStopsUi.Loaded(stops),
+                    railColor = androidx.compose.ui.graphics.Color.Blue,
+                    onRetry = {},
+                    onOpenStop = { stop, at -> tapped += stop.id to at },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        // A tap on the later call's name, as a rider's lands on it.
+        composeRule.onAllNodesWithText("Victoria", substring = true).onLast().performClick()
+        composeRule.waitForIdle()
+        assertEquals(listOf("940GZZLUVIC" to 2), tapped)
     }
 
     @Test
@@ -1421,10 +1459,7 @@ class RouteDetailScreenScreenshotTest {
                     routeStops = RouteStopsUi.Loaded(stops),
                     journeys = listOf(savedBack),
                     onToggleJourney = {},
-                    onOpenStop = {
-                        opened += it
-                        true
-                    },
+                    onOpenStop = { opened += it },
                 )
             }
         }
@@ -1455,10 +1490,7 @@ class RouteDetailScreenScreenshotTest {
                     routeStops = RouteStopsUi.Loaded(stops),
                     journeysLoading = loading,
                     onToggleJourney = {},
-                    onOpenStop = {
-                        opened += it
-                        true
-                    },
+                    onOpenStop = { opened += it },
                 )
             }
         }
@@ -1468,34 +1500,6 @@ class RouteDetailScreenScreenshotTest {
         composeRule.onNodeWithText("Green Park", substring = true).performClick()
         composeRule.waitForIdle()
         assertEquals("940GZZLUGPK", opened.single().journey?.to?.stopId)
-    }
-
-    @Test
-    fun tappingTheStationAlreadyOpen_closesTheRoutePageToShowIt() {
-        val stops = listOf(RouteStop("940GZZLUVIC", "Victoria"), RouteStop("940GZZLUGPK", "Green Park"))
-        var backs = 0
-        setDetail {
-            StopDashTheme {
-                RouteDetailScreen(
-                    row = healthyRow(platform = "Northbound - Platform 5"),
-                    isStarred = false,
-                    starrable = true,
-                    disruptionUnknown = false,
-                    stale = false,
-                    now = now,
-                    onToggleStar = {},
-                    onBack = { backs++ },
-                    routeStops = RouteStopsUi.Loaded(stops),
-                    // The host says the station is already open beneath this page.
-                    onOpenStop = { false },
-                )
-            }
-        }
-        composeRule.waitForIdle()
-        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your stop"))
-            .performSemanticsAction(SemanticsActions.OnClick)
-        composeRule.waitForIdle()
-        assertEquals(1, backs)
     }
 
     @Test

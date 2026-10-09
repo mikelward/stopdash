@@ -129,6 +129,143 @@ class LineSearchScreenshotTest {
         assertEquals(1, to)
     }
 
+    // The Victoria line from Victoria to Warren Street, public stations, as a route page's stop list opens it.
+    private val victoriaLine = LineRef("victoria", "Victoria", "tube")
+    private val toWarrenStreet = app.stopdash.domain.FavoriteJourney(
+        app.stopdash.domain.JourneyEnd("940GZZLUVIC", "Victoria"),
+        app.stopdash.domain.JourneyEnd("940GZZLUWRR", "Warren Street"),
+        "victoria",
+        lineName = "Victoria",
+        mode = "tube",
+    )
+
+    private fun routeMode(
+        journey: StationJourneyState? = StationJourneyState(toWarrenStreet, saved = false, failed = false) {},
+        onGo: (() -> Unit)? = {},
+        goReady: Boolean = true,
+    ) = RouteStopMode(victoriaLine, "Victoria", "Walthamstow Central", onGo, goReady, journey)
+
+    @Test
+    fun route_stop_details() {
+        var goes = 0
+        var saved by mutableStateOf<Boolean?>(null)
+        var toggles = 0
+        composeRule.setContent {
+            StopDashTheme {
+                LineStopPage(
+                    name = "Warren Street",
+                    distance = "350 m",
+                    onFrom = {},
+                    onTo = {},
+                    onBack = {},
+                    zone = "1",
+                    cueSlot = true,
+                    access = app.stopdash.domain.StopAccess(app.stopdash.domain.StepFreeLevel.NONE, liftOut = false, byLift = false),
+                    accessSlot = true,
+                    route = routeMode(StationJourneyState(toWarrenStreet, saved, failed = false) { toggles++ }, onGo = { goes++ }),
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("From Victoria, towards Walthamstow Central").assertIsDisplayed()
+        // Go in place of From and To.
+        composeRule.onNodeWithText("From").assertDoesNotExist()
+        composeRule.onNodeWithText("To").assertDoesNotExist()
+        // The star waits on the favorites being read, so a tap never goes the wrong way.
+        composeRule.onNodeWithTag("routeStopJourney").assertIsNotEnabled()
+        saved = false
+        composeRule.waitForIdle()
+        captureSnapshot("route-stop-details.png")
+        composeRule.onNodeWithContentDescription("Favourite").performClick()
+        assertEquals(1, toggles)
+        saved = true
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Remove favourite").assertIsDisplayed()
+        composeRule.onNodeWithTag("routeStopGo").performClick()
+        assertEquals(1, goes)
+    }
+
+    @Test
+    fun route_stop_go_waits_for_its_ride_and_isnt_offered_where_it_cant_be_followed() {
+        var ready by mutableStateOf(false)
+        var followable by mutableStateOf(true)
+        composeRule.setContent {
+            StopDashTheme {
+                LineStopPage(
+                    name = "Warren Street",
+                    distance = null,
+                    onFrom = {},
+                    onTo = {},
+                    onBack = {},
+                    route = routeMode(onGo = if (followable) ({}) else null, goReady = ready),
+                )
+            }
+        }
+        composeRule.onNodeWithTag("routeStopGo").assertIsNotEnabled()
+        ready = true
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("routeStopGo").assertIsEnabled()
+        followable = false
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("routeStopGo").assertDoesNotExist()
+    }
+
+    @Test
+    fun route_stop_says_when_the_journey_didnt_save_or_cant_be_read_with_retry() {
+        var state by mutableStateOf(StationJourneyState(toWarrenStreet, saved = false, failed = true) {})
+        var retries = 0
+        composeRule.setContent {
+            StopDashTheme {
+                LineStopPage(name = "Warren Street", distance = null, onFrom = {}, onTo = {}, onBack = {}, route = routeMode(state))
+            }
+        }
+        composeRule.onNodeWithText("Couldn't save that change").assertIsDisplayed()
+        state = StationJourneyState(toWarrenStreet, saved = null, failed = false, unavailable = true, onRetry = { retries++ }) {}
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Can't read your favourite journeys.").assertIsDisplayed()
+        composeRule.onNodeWithTag("routeStopJourney").assertIsNotEnabled()
+        composeRule.onNodeWithTag("routeStopJourneyRetry").performClick()
+        assertEquals(1, retries)
+    }
+
+    @Test
+    fun route_stop_with_no_destination_says_where_it_was_boarded() {
+        // TfL named no destination for the departure: no dangling "towards".
+        composeRule.setContent {
+            StopDashTheme {
+                LineStopPage(
+                    name = "Warren Street",
+                    distance = null,
+                    onFrom = {},
+                    onTo = {},
+                    onBack = {},
+                    route = RouteStopMode(victoriaLine, "Victoria", "", onGo = {}, goReady = true, journey = null),
+                )
+            }
+        }
+        composeRule.onNodeWithText("From Victoria").assertIsDisplayed()
+    }
+
+    @Test
+    fun route_stop_with_no_journey_has_no_star() {
+        // Its boarding stop: no journey to favorite there, and no place favorite in its stead.
+        composeRule.setContent {
+            StopDashTheme {
+                LineStopPage(
+                    name = "Victoria",
+                    distance = null,
+                    onFrom = {},
+                    onTo = {},
+                    onBack = {},
+                    onFavorite = {},
+                    route = routeMode(journey = null),
+                )
+            }
+        }
+        composeRule.onNodeWithTag("routeStopJourney").assertDoesNotExist()
+        composeRule.onNodeWithTag("lineStopFavorite").assertDoesNotExist()
+    }
+
     @Test
     fun line_stop_access() {
         // Oxford Circus, a public interchange, with its zone and its step-free line: a lift it needs is out,
