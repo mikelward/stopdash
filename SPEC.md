@@ -1208,10 +1208,13 @@ direction's alerts are on and the permission isn't held (the while-using grant f
 missing; a refusal Android answers at once opens the app's settings). The card is an offer, as
 Snoozemo's location banner is ("Alerts only in London?", **Yes please** / **No thanks**); No thanks
 puts the list's card away for good, and the Alerts screen's stays as the way back. Yes please opens
-Google Play's prominent disclosure, a dialog before Android's prompt, Snoozemo's in shape and
-wording: what location is used for (the widget following the rider, D1, and this), that it runs while
-the app is closed, and that finding stops sends the position to TfL as the app does when opened,
-nothing else (**Continue** / **Not now**). Settings' "Widget
+Google Play's prominent disclosure, a dialog before Android's prompt, Snoozemo's in shape. Play
+rejected an earlier version as an "Inadequate Prominent Disclosure" (2026-10-09), so it now says
+plainly that StopDash wants location **when the app is not open**, lists each feature as a bullet (the
+widget and watch following the rider, D1, and this), says finding stops sends the position to TfL and no one
+else, and ends by naming the steps Android shows next: tap Continue, then **Allow all the time**, or,
+when location isn't allowed at all yet, **While using the app** first and then **Allow all the time**
+(**Continue** / **Not now**). Settings' "Widget
 follows you" switch opens the same disclosure. Without it, or with no fix to be
 had, alerts fire as before: a missing permission never silences them unseen. So does a fix whose
 uncertainty reaches inside the line, or that reports none, so an approximate fix near the edge never silences a rider

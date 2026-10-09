@@ -643,10 +643,15 @@
     <string name="journey_alerts_london_body">Journey alerts can stay quiet when you\'re far from London.</string>
     <string name="journey_alerts_london_allow">Yes please</string>
     <string name="journey_alerts_london_decline">No thanks</string>
-    <!-- The disclosure before the background-location prompt, which Google Play's declaration requires precede it:
-         what location is used for, that it runs while the app is closed, and that the widget's lookup sends it to TfL. -->
-    <string name="journey_alerts_location_rationale_title">Allow all the time</string>
-    <string name="journey_alerts_location_rationale_body">StopDash uses your location even while it\'s closed: to show the stops where you are on your widget, and to check you\'re in London before a journey alert. To find stops near you, it sends your position to TfL, as it does when you open the app. Nothing else is collected or shared.</string>
+    <!-- The disclosure before the background-location prompt, which Google Play's declaration requires precede it.
+         Play rejected an earlier version ("Inadequate Prominent Disclosure"): keep it saying that location is used
+         when the app is not open, each feature it's for, who it's shared with, and the choice Android offers next. -->
+    <string name="journey_alerts_location_rationale_title">Background location permission</string>
+    <string name="journey_alerts_location_rationale_body">StopDash wants to access your location when the app is not open to:\n• show nearby stops on your widget and watch\n• disable alerts when you\'re not in London\n\nTo find stops, your location is sent to the transport operator, TfL. It isn\'t shared with anyone else.</string>
+    <!-- The disclosure's last paragraph: the steps Android shows next. With location already allowed while
+         in use, Android offers "Allow all the time" at once; without it, it asks for "While using the app" first. -->
+    <string name="journey_alerts_location_rationale_steps">To allow this functionality, tap Continue then choose Allow all the time.</string>
+    <string name="journey_alerts_location_rationale_steps_foreground">To allow this functionality, tap Continue, choose While using the app, then Allow all the time.</string>
     <string name="journey_alerts_location_rationale_continue">Continue</string>
     <string name="journey_alerts_location_rationale_dismiss">Not now</string>
     <!-- A direction's days, summarized. -->

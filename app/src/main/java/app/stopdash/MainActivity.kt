@@ -5833,6 +5833,9 @@ private const val JOURNEY_END_AREAS = 40
 private fun ComponentActivity.rememberLocationAllTimeAsk(onAnswered: () -> Unit): () -> Unit {
     val locationScope = rememberCoroutineScope()
     var locationAskedAt by rememberSaveable { mutableLongStateOf(0L) }
+    val hasPermission = { permission: String ->
+        ContextCompat.checkSelfPermission(applicationContext, permission) == PackageManager.PERMISSION_GRANTED
+    }
     val openAppSettings = {
         startActivity(
             Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", packageName, null)),
@@ -5859,10 +5862,7 @@ private fun ComponentActivity.rememberLocationAllTimeAsk(onAnswered: () -> Unit)
     // never straight from a card (Google Play: the disclosure precedes the prompt).
     val requestLocation: () -> Unit = {
         locationScope.launch {
-            val foreground = withContext(Dispatchers.IO) {
-                listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
-                    .any { ContextCompat.checkSelfPermission(applicationContext, it) == PackageManager.PERMISSION_GRANTED }
-            }
+            val foreground = foregroundLocationGranted(hasPermission)
             locationAskedAt = SystemClock.elapsedRealtime()
             if (!foreground || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
                 foregroundLocation.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
@@ -5873,7 +5873,15 @@ private fun ComponentActivity.rememberLocationAllTimeAsk(onAnswered: () -> Unit)
     }
     // The disclosure, shown when a card's Yes please or the Settings switch is tapped; kept through a rotation.
     var locationRationale by rememberSaveable { mutableStateOf(false) }
-    val askLocation: () -> Unit = { locationRationale = true }
+    // Whether location is allowed while in use as the disclosure opens, read off the main thread first:
+    // it decides which steps the disclosure names (Codex on #731).
+    var rationaleForeground by rememberSaveable { mutableStateOf(true) }
+    val askLocation: () -> Unit = {
+        locationScope.launch {
+            rationaleForeground = foregroundLocationGranted(hasPermission)
+            locationRationale = true
+        }
+    }
     if (locationRationale) {
         LocationRationaleDialog(
             onContinue = {
@@ -5881,6 +5889,7 @@ private fun ComponentActivity.rememberLocationAllTimeAsk(onAnswered: () -> Unit)
                 requestLocation()
             },
             onDismiss = { locationRationale = false },
+            foregroundGranted = rationaleForeground,
         )
     }
     return askLocation

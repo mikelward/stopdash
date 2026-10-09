@@ -548,16 +548,26 @@ internal fun LondonOnlyCard(
 
 /**
  * The disclosure before the background-location prompt, which Google Play's declaration requires precede
- * it: what location is used for, that it runs while the app is closed, and that the widget's stop lookup
- * sends it to TfL while the alerts check keeps it on the phone.
- * Snoozemo's, in shape and wording; Continue opens Android's prompt.
+ * it: that location is used when the app is not open, each feature as a bullet, that the widget's stop
+ * lookup sends it to TfL, and the steps Android shows next, which depend on [foregroundGranted]. Play
+ * rejected an earlier, vaguer version.
+ * Snoozemo's in shape; Continue opens Android's prompt.
  */
 @Composable
-internal fun LocationRationaleDialog(onContinue: () -> Unit, onDismiss: () -> Unit) {
+internal fun LocationRationaleDialog(
+    onContinue: () -> Unit,
+    onDismiss: () -> Unit,
+    // Whether location is already allowed while in use: if not, Android asks for that before "Allow all
+    // the time", and the last paragraph names both steps so the next screen is the one it describes.
+    foregroundGranted: Boolean = true,
+) {
+    val steps = stringResource(
+        if (foregroundGranted) R.string.journey_alerts_location_rationale_steps else R.string.journey_alerts_location_rationale_steps_foreground,
+    )
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.journey_alerts_location_rationale_title)) },
-        text = { Text(stringResource(R.string.journey_alerts_location_rationale_body)) },
+        text = { Text(stringResource(R.string.journey_alerts_location_rationale_body) + "\n\n" + steps) },
         confirmButton = {
             TextButton(onClick = onContinue, modifier = Modifier.testTag("continueJourneyAlertsLocation")) {
                 Text(stringResource(R.string.journey_alerts_location_rationale_continue))
