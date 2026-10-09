@@ -110,13 +110,6 @@ fun LocationGate(
 ) {
     // Saved so an open About dialog survives rotation on the gate.
     var showAbout by rememberSaveable { mutableStateOf(false) }
-    // A height fixed before verticalScroll (the room under any pinned trip card) keeps the column's
-    // min height at the viewport, so the content stays centered when it fits (unchanged look) but
-    // scrolls instead of clipping when a short viewport + large font scale make it taller than the
-    // screen — the stuck states now carry a third action (Send bug report), which can tip a
-    // landscape/160% layout over (Codex P2 on #86). Matches MainScreen's Centered idiom.
-    val scrollState = rememberScrollState()
-    val locating = state == NearbyStopsViewModel.State.Locating
     // The gate is drawn edge to edge with nothing above it insetting for the system bars, so the
     // viewport steps inside them here: otherwise the scroll cue's chevrons would sit under the
     // gesture handle and the status bar (Codex on #244).
@@ -138,99 +131,114 @@ fun LocationGate(
                 onOpenAbout = onOpenAbout ?: { showAbout = true },
             )
             if (pinned && banner != null) OnTheWayBanner(banner, now, Modifier.padding(start = 16.dp, top = 8.dp, end = 16.dp))
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .scrollEdgeCue(scrollState, scrollCueColors(MaterialTheme.colorScheme.background))
-                    .verticalScroll(scrollState)
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = if (locating) Arrangement.SpaceBetween else Arrangement.Center,
-            ) {
-                // The Locating spinner's update offer sits at the bottom, in a slot kept whether or not it
-                // shows (with one as tall at the top), so the rest stays centered in one place either way.
-                if (locating) UpdateAvailableButton(onClick = {}, modifier = Modifier.padding(bottom = 24.dp), shown = false)
-                // Full width, so each item centers across the screen as it did before this group existed.
-                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    if (!pinned && banner != null) OnTheWayBanner(banner, now, Modifier.padding(bottom = 24.dp))
-                    when (state) {
-                        NearbyStopsViewModel.State.PermissionRequired -> {
-                            Title(stringResource(R.string.location_title))
-                            if (permanentlyDenied) {
-                                // Re-requesting only re-denies, so send the user to Settings instead of
-                                // stranding them on a button that can't grant the permission.
-                                Body(stringResource(R.string.location_denied))
-                                Action(stringResource(R.string.open_settings), onOpenSettings)
-                            } else {
-                                Body(stringResource(R.string.location_rationale))
-                                Action(stringResource(R.string.location_allow), onAllow)
+            // The gate's own messages come in from the top when the Locating spinner gives way, taps
+            // ignored meanwhile, so one aimed at its Update available button opens nothing in its place.
+            RevealsAfterLoading(
+                state = state,
+                loading = { it == NearbyStopsViewModel.State.Locating },
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            ) { shown ->
+                val locating = shown == NearbyStopsViewModel.State.Locating
+                // A height fixed before verticalScroll (the room under any pinned trip card) keeps the
+                // column's min height at the viewport, so the content stays centered when it fits
+                // (unchanged look) but scrolls instead of clipping when a short viewport + large font
+                // scale make it taller than the screen — the stuck states now carry a third action (Send
+                // bug report), which can tip a landscape/160% layout over (Codex P2 on #86). Matches
+                // MainScreen's Centered idiom.
+                val scrollState = rememberScrollState()
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .scrollEdgeCue(scrollState, scrollCueColors(MaterialTheme.colorScheme.background))
+                        .verticalScroll(scrollState)
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = if (locating) Arrangement.SpaceBetween else Arrangement.Center,
+                ) {
+                    // The Locating spinner's update offer sits at the bottom, in a slot kept whether or not it
+                    // shows (with one as tall at the top), so the rest stays centered in one place either way.
+                    if (locating) UpdateAvailableButton(onClick = {}, modifier = Modifier.padding(bottom = 24.dp), shown = false)
+                    // Full width, so each item centers across the screen as it did before this group existed.
+                    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                        if (!pinned && banner != null) OnTheWayBanner(banner, now, Modifier.padding(bottom = 24.dp))
+                        when (shown) {
+                            NearbyStopsViewModel.State.PermissionRequired -> {
+                                Title(stringResource(R.string.location_title))
+                                if (permanentlyDenied) {
+                                    // Re-requesting only re-denies, so send the user to Settings instead of
+                                    // stranding them on a button that can't grant the permission.
+                                    Body(stringResource(R.string.location_denied))
+                                    Action(stringResource(R.string.open_settings), onOpenSettings)
+                                } else {
+                                    Body(stringResource(R.string.location_rationale))
+                                    Action(stringResource(R.string.location_allow), onAllow)
+                                }
+                            }
+
+                            NearbyStopsViewModel.State.Locating -> {
+                                CircularProgressIndicator()
+                                Body(stringResource(R.string.location_finding))
+                            }
+
+                            NearbyStopsViewModel.State.NoLocation -> {
+                                Body(stringResource(R.string.location_no_fix))
+                                Action(stringResource(R.string.try_again), onRetry)
+                            }
+
+                            is NearbyStopsViewModel.State.Empty -> {
+                                // Nothing near is just when a route elsewhere is wanted: the chips head
+                                // the state, as they head the list's empty state, centered with the rest.
+                                if (places.isNotEmpty()) {
+                                    FavoriteChips(
+                                        places,
+                                        onRouteToPlace,
+                                        Modifier.padding(bottom = 16.dp),
+                                        onEditPlaces = onEditPlaces,
+                                        contentPadding = PaddingValues(0.dp),
+                                        centered = true,
+                                    )
+                                }
+                                Body(stringResource(R.string.location_no_stops))
+                                if (approximate) Body(stringResource(R.string.location_coarse))
+                                // Most often, nowhere near London (maintainer, 2026-10-02).
+                                Body(stringResource(R.string.location_london_only))
+                                Action(stringResource(R.string.try_again), onRetry)
+                            }
+
+                            is NearbyStopsViewModel.State.Failed -> {
+                                Body(stringResource(failureMessage(shown.kind)))
+                                Action(stringResource(R.string.try_again), onRetry)
+                            }
+
+                            // Ready is the caller's cue to show the departures screen, not the gate.
+                            is NearbyStopsViewModel.State.Ready -> Unit
+                        }
+                        // Offered in the states where a fix or lookup actually happened — no fix, nothing nearby,
+                        // TfL unreachable — so the diagnostic log (and, for Empty/Failed, the fix) is the point and
+                        // departures never resolve to carry the overflow's own item. Not on PermissionRequired
+                        // (grant-needed, nothing to diagnose yet — and its permanent-denial isn't reconstructed on
+                        // a cold launch) nor the transient Locating spinner.
+                        val stuck = when (shown) {
+                            NearbyStopsViewModel.State.NoLocation,
+                            is NearbyStopsViewModel.State.Empty,
+                            is NearbyStopsViewModel.State.Failed,
+                            -> true
+                            else -> false
+                        }
+                        if (stuck) {
+                            TextButton(onClick = onSendBugReport, modifier = Modifier.padding(top = 24.dp)) {
+                                Text(stringResource(R.string.menu_send_bug_report))
                             }
                         }
-
-                        NearbyStopsViewModel.State.Locating -> {
-                            CircularProgressIndicator()
-                            Body(stringResource(R.string.location_finding))
-                        }
-
-                        NearbyStopsViewModel.State.NoLocation -> {
-                            Body(stringResource(R.string.location_no_fix))
-                            Action(stringResource(R.string.try_again), onRetry)
-                        }
-
-                        is NearbyStopsViewModel.State.Empty -> {
-                            // Nothing near is just when a route elsewhere is wanted: the chips head
-                            // the state, as they head the list's empty state, centered with the rest.
-                            if (places.isNotEmpty()) {
-                                FavoriteChips(
-                                    places,
-                                    onRouteToPlace,
-                                    Modifier.padding(bottom = 16.dp),
-                                    onEditPlaces = onEditPlaces,
-                                    contentPadding = PaddingValues(0.dp),
-                                    centered = true,
-                                )
+                        if (onFindStation != null) {
+                            TextButton(onClick = onFindStation, modifier = Modifier.padding(top = 24.dp)) {
+                                Text(stringResource(R.string.menu_find_station))
                             }
-                            Body(stringResource(R.string.location_no_stops))
-                            if (approximate) Body(stringResource(R.string.location_coarse))
-                            // Most often, nowhere near London (maintainer, 2026-10-02).
-                            Body(stringResource(R.string.location_london_only))
-                            Action(stringResource(R.string.try_again), onRetry)
-                        }
-
-                        is NearbyStopsViewModel.State.Failed -> {
-                            Body(stringResource(failureMessage(state.kind)))
-                            Action(stringResource(R.string.try_again), onRetry)
-                        }
-
-                        // Ready is the caller's cue to show the departures screen, not the gate.
-                        is NearbyStopsViewModel.State.Ready -> Unit
-                    }
-                    // Offered in the states where a fix or lookup actually happened — no fix, nothing nearby,
-                    // TfL unreachable — so the diagnostic log (and, for Empty/Failed, the fix) is the point and
-                    // departures never resolve to carry the overflow's own item. Not on PermissionRequired
-                    // (grant-needed, nothing to diagnose yet — and its permanent-denial isn't reconstructed on
-                    // a cold launch) nor the transient Locating spinner.
-                    val stuck = when (state) {
-                        NearbyStopsViewModel.State.NoLocation,
-                        is NearbyStopsViewModel.State.Empty,
-                        is NearbyStopsViewModel.State.Failed,
-                        -> true
-                        else -> false
-                    }
-                    if (stuck) {
-                        TextButton(onClick = onSendBugReport, modifier = Modifier.padding(top = 24.dp)) {
-                            Text(stringResource(R.string.menu_send_bug_report))
                         }
                     }
-                    if (onFindStation != null) {
-                        TextButton(onClick = onFindStation, modifier = Modifier.padding(top = 24.dp)) {
-                            Text(stringResource(R.string.menu_find_station))
-                        }
-                    }
+                    // A more direct prompt than the overflow's dot while the user waits, as on the cold load.
+                    if (locating) UpdateAvailableButton(onClick = onOpenAppListing, modifier = Modifier.padding(top = 24.dp), shown = updateAvailable)
                 }
-                // A more direct prompt than the overflow's dot while the user waits, as on the cold load.
-                if (locating) UpdateAvailableButton(onClick = onOpenAppListing, modifier = Modifier.padding(top = 24.dp), shown = updateAvailable)
             }
         }
     }

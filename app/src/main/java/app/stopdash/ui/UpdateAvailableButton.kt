@@ -20,7 +20,9 @@ import app.stopdash.R
  * It sits at the bottom of the screen, and its room is kept whether or not an update is pending:
  * with [shown] false it's laid out the same but invisible, disabled and silent, so the screen's own
  * content stays where it is either way. A loading screen puts one not shown at the top too, so
- * that content stays centered between the two.
+ * that content stays centered between the two. What replaces a loading screen comes in row by row
+ * with taps ignored meanwhile ([RevealsAfterLoading]), so a tap meant for this doesn't land on
+ * whatever takes its place.
  */
 @Composable
 fun UpdateAvailableButton(onClick: () -> Unit, modifier: Modifier = Modifier, shown: Boolean = true) {
