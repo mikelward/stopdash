@@ -81,6 +81,10 @@ import app.stopdash.data.DataStoreDismissedAlertsStore
 import app.stopdash.data.DataStoreFavoritePlacesStore
 import app.stopdash.ui.LocalOpenLineStop
 import app.stopdash.ui.LocalOpenLines
+import app.stopdash.ui.RevealsAfterLoading
+import app.stopdash.ui.LocalTapPause
+import app.stopdash.ui.TapPause
+import app.stopdash.ui.ignoresPausedTaps
 import app.stopdash.ui.LinesViewModel
 import app.stopdash.ui.LineDismissalsViewModel
 import app.stopdash.ui.LinesOverlay
@@ -2363,165 +2367,184 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
                             }
-                            when (val state = nearby) {
-                                // "To…" from the near-me list takes the list's place while it's open,
-                                // inside the nearby lifecycle: the location gate, its errors and a
-                                // re-locate on return apply to it as they do to the list.
-                                is NearbyStopsViewModel.State.Ready -> if (hereTripOpen) {
-                                    val hidden by HiddenModesSetting.changes.collectByIdentityWithLifecycle()
-                                    // Worked out from the current set, off the main thread, so a re-locate
-                                    // moves the trip with the rider; none left (all hidden) ends it. A
-                                    // placeholder until it's in, never an empty origin, which would end it.
-                                    val hereOrigin = rememberHereOrigin(
-                                        state, hidden, viewModel(viewModelStoreOwner = this@MainActivity, key = "here-origin-shown-places"),
-                                    )
-                                    if (hereOrigin == null) {
-                                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                                    } else NearMeTrip(
-                                        origin = hereOrigin,
-                                        // The nearest stop of any mode, hidden or not, keys the trip; the
-                                        // Planner starts from where the rider is ([here]).
-                                        anchors = state.nearbyStops,
-                                        here = state.location,
-                                        distanceMeters = state.distanceMeters,
-                                        clusters = state.eager + state.more,
-                                        noneNearby = false,
-                                    )
-                                } else {
-                                    DeparturesForStops(
-                                        ready = state,
-                                        relocate = { onSameSet -> nearbyViewModel.relocate(onSameSet) },
-                                        relocating = nearbyViewModel.relocating,
-                                        returnBusy = nearbyViewModel::relocatingSinceLeft,
-                                        locationBanner = nearbyViewModel.locationBanner,
-                                        refinement = nearbyViewModel.refinement,
-                                        applyRefinement = nearbyViewModel::applyRefinement,
-                                        onOpenLicenses = openLicenses,
-                                        onOpenSettings = {
-                                            UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SETTINGS))
-                                            settingsOnDisruptions = false
-                                            settingsOpen = true
-                                        },
-                                        onFindStation = {
-                                            UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
-                                            stationSearchOpen = true
-                                        },
-                                        onPlanTo = {
-                                            UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
-                                            listStores.clearAll()
-                                            hereTripOpen = true
-                                            herePicking = true
-                                        },
-                                        favoritePlaces = savedPlaces,
-                                        favoritePlacesRead = savedPlacesState.read,
-                                        shownPlacesKey = "shown-places",
-                                        today = today,
-                                        onRouteToPlace = routeToPlace,
-                                        // A long press on a chip edits the places (maintainer, 2026-09-28).
-                                        onEditFavoritePlaces = { favoritePlacesOpen = true },
-                                        riderFix = nearbyViewModel.riderFix,
-                                        hiddenPlaceIds = hiddenPlaceIds.toSet(),
-                                        onHiddenPlaceIds = { hiddenPlaceIds = it.toList() },
-                                        updateAvailable = updateAvailable.value,
-                                        onOpenAppListing = ::openPlayListing,
-                                        onSendBugReport = requestBugReport,
-                                        // A foreground return that landed while an overlay was open is latched
-                                        // above; consume it here so re-entering departures relocates.
-                                        foregroundReturnPending = returnLatch.pending,
-                                        onForegroundReturnConsumed = { returnLatch.pending = false },
-                                        listState = departuresListState,
-                                        farReveal = farReveal,
-                                        pendingTracker = departuresTracker,
-                                        listWork = departuresWork,
-                                        watchInstall = watchInstallCard,
-                                    )
-                                }
-                                // A place chip on "No stops found nearby" opens the trip from where the
-                                // rider is, which needs no stop in range (Codex on #315).
-                                is NearbyStopsViewModel.State.Empty if hereTripOpen -> NearMeTrip(
-                                    origin = emptyList(),
-                                    anchors = emptyList(),
-                                    here = state.location,
-                                    distanceMeters = emptyMap(),
-                                    clusters = emptyList(),
-                                    noneNearby = true,
+                            // The trip from here's origin: worked out from the current set, off the main
+                            // thread, so a re-locate moves the trip with the rider; none left (all hidden)
+                            // ends it. Null until it's in, never an empty origin, which would end it.
+                            val nearbyNow = nearby
+                            val hereOrigin = if (hereTripOpen && nearbyNow is NearbyStopsViewModel.State.Ready) {
+                                val hidden by HiddenModesSetting.changes.collectByIdentityWithLifecycle()
+                                rememberHereOrigin(
+                                    nearbyNow, hidden, viewModel(viewModelStoreOwner = this@MainActivity, key = "here-origin-shown-places"),
                                 )
-                                else -> {
-                                    // While the gate is up (a failed/empty relocate, or a retry), drop
-                                    // any departures store retained from the pre-gate set, so recovering
-                                    // to the same stop IDs rebuilds the ViewModel and re-fetches instead
-                                    // of showing the pre-gate departures until the next auto-refresh
-                                    // (Codex). Ready never enters this branch, so a same-set relocate is
-                                    // untouched. Runs once on gate entry (keyed Unit).
-                                    val stores: NearbyDeparturesStores = viewModel()
-                                    // The from-here trip's origins too, for the same reason (Codex).
-                                    val hereTripStores: NearbyDeparturesStores = viewModel(key = "here-trip-stores")
-                                    DisposableEffect(Unit) {
-                                        stores.clearAll()
-                                        hereTripStores.clearAll()
-                                        onDispose {}
+                            } else {
+                                null
+                            }
+                            // The list or the trip that replaces the "finding stops" spinner comes in
+                            // row by row from the top, taps ignored meanwhile, so one aimed at its Update
+                            // available button opens no departure that took its place. The gate's own
+                            // messages come in the same way inside it ([LocationGate]). The trip's own
+                            // spinner, while its origin is worked out, counts as loading too, so the reveal
+                            // waits for the trip itself (Codex, #714).
+                            RevealsAfterLoading(
+                                state = NearMeShown(nearby, hereTripOpen, originPending = hereTripOpen && nearbyNow is NearbyStopsViewModel.State.Ready && hereOrigin == null),
+                                loading = { it.loading },
+                                modifier = Modifier.fillMaxSize(),
+                                key = { it.screen },
+                            ) { shown ->
+                                when (val state = shown.nearby) {
+                                    // "To…" from the near-me list takes the list's place while it's open,
+                                    // inside the nearby lifecycle: the location gate, its errors and a
+                                    // re-locate on return apply to it as they do to the list.
+                                    is NearbyStopsViewModel.State.Ready -> if (shown.tripOpen) {
+                                        // A placeholder until the origin is in ([NearMeShown.originPending]).
+                                        if (hereOrigin == null) {
+                                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                                        } else NearMeTrip(
+                                            origin = hereOrigin,
+                                            // The nearest stop of any mode, hidden or not, keys the trip; the
+                                            // Planner starts from where the rider is ([here]).
+                                            anchors = state.nearbyStops,
+                                            here = state.location,
+                                            distanceMeters = state.distanceMeters,
+                                            clusters = state.eager + state.more,
+                                            noneNearby = false,
+                                        )
+                                    } else {
+                                        DeparturesForStops(
+                                            ready = state,
+                                            relocate = { onSameSet -> nearbyViewModel.relocate(onSameSet) },
+                                            relocating = nearbyViewModel.relocating,
+                                            returnBusy = nearbyViewModel::relocatingSinceLeft,
+                                            locationBanner = nearbyViewModel.locationBanner,
+                                            refinement = nearbyViewModel.refinement,
+                                            applyRefinement = nearbyViewModel::applyRefinement,
+                                            onOpenLicenses = openLicenses,
+                                            onOpenSettings = {
+                                                UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SETTINGS))
+                                                settingsOnDisruptions = false
+                                                settingsOpen = true
+                                            },
+                                            onFindStation = {
+                                                UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
+                                                stationSearchOpen = true
+                                            },
+                                            onPlanTo = {
+                                                UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
+                                                listStores.clearAll()
+                                                hereTripOpen = true
+                                                herePicking = true
+                                            },
+                                            favoritePlaces = savedPlaces,
+                                            favoritePlacesRead = savedPlacesState.read,
+                                            shownPlacesKey = "shown-places",
+                                            today = today,
+                                            onRouteToPlace = routeToPlace,
+                                            // A long press on a chip edits the places (maintainer, 2026-09-28).
+                                            onEditFavoritePlaces = { favoritePlacesOpen = true },
+                                            riderFix = nearbyViewModel.riderFix,
+                                            hiddenPlaceIds = hiddenPlaceIds.toSet(),
+                                            onHiddenPlaceIds = { hiddenPlaceIds = it.toList() },
+                                            updateAvailable = updateAvailable.value,
+                                            onOpenAppListing = ::openPlayListing,
+                                            onSendBugReport = requestBugReport,
+                                            // A foreground return that landed while an overlay was open is latched
+                                            // above; consume it here so re-entering departures relocates.
+                                            foregroundReturnPending = returnLatch.pending,
+                                            onForegroundReturnConsumed = { returnLatch.pending = false },
+                                            listState = departuresListState,
+                                            farReveal = farReveal,
+                                            pendingTracker = departuresTracker,
+                                            listWork = departuresWork,
+                                            watchInstall = watchInstallCard,
+                                        )
                                     }
-                                    // "No stops nearby" from a coarse fix: a precise fix that lands
-                                    // elsewhere looks again from there (nothing is fetched to cancel).
-                                    val gateRefinement by nearbyViewModel.refinement.collectAsStateWithLifecycle()
-                                    LaunchedEffect(gateRefinement?.id) {
-                                        gateRefinement?.let { nearbyViewModel.applyRefinement(it) }
+                                    // A place chip on "No stops found nearby" opens the trip from where the
+                                    // rider is, which needs no stop in range (Codex on #315).
+                                    is NearbyStopsViewModel.State.Empty if shown.tripOpen -> NearMeTrip(
+                                        origin = emptyList(),
+                                        anchors = emptyList(),
+                                        here = state.location,
+                                        distanceMeters = emptyMap(),
+                                        clusters = emptyList(),
+                                        noneNearby = true,
+                                    )
+                                    else -> {
+                                        // While the gate is up (a failed/empty relocate, or a retry), drop
+                                        // any departures store retained from the pre-gate set, so recovering
+                                        // to the same stop IDs rebuilds the ViewModel and re-fetches instead
+                                        // of showing the pre-gate departures until the next auto-refresh
+                                        // (Codex). Ready never enters this branch, so a same-set relocate is
+                                        // untouched. Runs once on gate entry (keyed Unit).
+                                        val stores: NearbyDeparturesStores = viewModel()
+                                        // The from-here trip's origins too, for the same reason (Codex).
+                                        val hereTripStores: NearbyDeparturesStores = viewModel(key = "here-trip-stores")
+                                        DisposableEffect(Unit) {
+                                            stores.clearAll()
+                                            hereTripStores.clearAll()
+                                            onDispose {}
+                                        }
+                                        // "No stops nearby" from a coarse fix: a precise fix that lands
+                                        // elsewhere looks again from there (nothing is fetched to cancel).
+                                        val gateRefinement by nearbyViewModel.refinement.collectAsStateWithLifecycle()
+                                        LaunchedEffect(gateRefinement?.id) {
+                                            gateRefinement?.let { nearbyViewModel.applyRefinement(it) }
+                                        }
+                                        val gateBanner by nearbyViewModel.locationBanner.collectAsStateWithLifecycle()
+                                        // "No stops found nearby" still offers the saved places, less those the
+                                        // rider is at and those off today, as the list does: a trip from here
+                                        // plans from where the rider is (Codex on #315). A last-known fix
+                                        // carries a banner here too, so it hides none.
+                                        val gateRiderFix by nearbyViewModel.riderFix.collectAsStateWithLifecycle()
+                                        val emptyAt = (state as? NearbyStopsViewModel.State.Empty)?.location
+                                        val gatePlacesOrPending = if (emptyAt == null) emptyList() else rememberShownPlaces(
+                                            savedPlaces, emptyAt, gateRiderFix, gateBanner, hiddenPlaceIds.toSet(),
+                                            { hiddenPlaceIds = it.toList() }, today,
+                                            viewModel(viewModelStoreOwner = this@MainActivity, key = "shown-places-empty"),
+                                        )
+                                        val gatePlaces = gatePlacesOrPending.orEmpty()
+                                        // "No stops nearby" waits on its chips as the list does, on the locating
+                                        // placeholder, so it never shows without the row it heads (Codex on #539).
+                                        val gatePending = emptyAt != null && chipsPending(savedPlacesState.read, savedPlaces, gatePlacesOrPending)
+                                        ReportScreen(UsageEvent.Screen.HOME)
+                                        LocationGate(
+                                            state = if (gatePending) NearbyStopsViewModel.State.Locating else state,
+                                            now = tickingNow(),
+                                            approximate = gateBanner == LocationBanner.COARSE,
+                                            permanentlyDenied = permissionPermanentlyDenied,
+                                            onAllow = { permissionLauncher.launch(locationPermissions) },
+                                            onRetry = {
+                                                if (hasLocationPermission()) nearbyViewModel.locate()
+                                                else permissionLauncher.launch(locationPermissions)
+                                            },
+                                            onOpenSettings = ::openAppSettings,
+                                            onOpenLicenses = openLicenses,
+                                            // The report is most useful in exactly these stuck states (no fix,
+                                            // TfL unreachable, nothing nearby), so it is reachable here too, not
+                                            // only past the gate — with no location or stops (Codex P2 on #86).
+                                            onSendBugReport = requestBugReport,
+                                            // The gate is in front of the departures overflow (which carries the
+                                            // update item), so surface an available update on the Locating spinner.
+                                            updateAvailable = updateAvailable.value,
+                                            onOpenAppListing = ::openPlayListing,
+                                            // The station search needs no location, so it's offered here too:
+                                            // most useful to exactly the users who can't use near me.
+                                            onFindStation = {
+                                                UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
+                                                stationSearchOpen = true
+                                            },
+                                            // Settings is hosted above the gate, as on the list's overflow.
+                                            onOpenStopDashSettings = {
+                                                UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SETTINGS))
+                                                settingsOnDisruptions = false
+                                                settingsOpen = true
+                                            },
+                                            onOpenAbout = { gateAboutOpen = true },
+                                            places = gatePlaces,
+                                            onRouteToPlace = routeToPlace,
+                                            // A long press on a chip edits the places, as on the list.
+                                            onEditPlaces = { favoritePlacesOpen = true },
+                                        )
                                     }
-                                    val gateBanner by nearbyViewModel.locationBanner.collectAsStateWithLifecycle()
-                                    // "No stops found nearby" still offers the saved places, less those the
-                                    // rider is at and those off today, as the list does: a trip from here
-                                    // plans from where the rider is (Codex on #315). A last-known fix
-                                    // carries a banner here too, so it hides none.
-                                    val gateRiderFix by nearbyViewModel.riderFix.collectAsStateWithLifecycle()
-                                    val emptyAt = (state as? NearbyStopsViewModel.State.Empty)?.location
-                                    val gatePlacesOrPending = if (emptyAt == null) emptyList() else rememberShownPlaces(
-                                        savedPlaces, emptyAt, gateRiderFix, gateBanner, hiddenPlaceIds.toSet(),
-                                        { hiddenPlaceIds = it.toList() }, today,
-                                        viewModel(viewModelStoreOwner = this@MainActivity, key = "shown-places-empty"),
-                                    )
-                                    val gatePlaces = gatePlacesOrPending.orEmpty()
-                                    // "No stops nearby" waits on its chips as the list does, on the locating
-                                    // placeholder, so it never shows without the row it heads (Codex on #539).
-                                    val gatePending = emptyAt != null && chipsPending(savedPlacesState.read, savedPlaces, gatePlacesOrPending)
-                                    ReportScreen(UsageEvent.Screen.HOME)
-                                    LocationGate(
-                                        state = if (gatePending) NearbyStopsViewModel.State.Locating else state,
-                                        now = tickingNow(),
-                                        approximate = gateBanner == LocationBanner.COARSE,
-                                        permanentlyDenied = permissionPermanentlyDenied,
-                                        onAllow = { permissionLauncher.launch(locationPermissions) },
-                                        onRetry = {
-                                            if (hasLocationPermission()) nearbyViewModel.locate()
-                                            else permissionLauncher.launch(locationPermissions)
-                                        },
-                                        onOpenSettings = ::openAppSettings,
-                                        onOpenLicenses = openLicenses,
-                                        // The report is most useful in exactly these stuck states (no fix,
-                                        // TfL unreachable, nothing nearby), so it is reachable here too, not
-                                        // only past the gate — with no location or stops (Codex P2 on #86).
-                                        onSendBugReport = requestBugReport,
-                                        // The gate is in front of the departures overflow (which carries the
-                                        // update item), so surface an available update on the Locating spinner.
-                                        updateAvailable = updateAvailable.value,
-                                        onOpenAppListing = ::openPlayListing,
-                                        // The station search needs no location, so it's offered here too:
-                                        // most useful to exactly the users who can't use near me.
-                                        onFindStation = {
-                                            UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
-                                            stationSearchOpen = true
-                                        },
-                                        // Settings is hosted above the gate, as on the list's overflow.
-                                        onOpenStopDashSettings = {
-                                            UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SETTINGS))
-                                            settingsOnDisruptions = false
-                                            settingsOpen = true
-                                        },
-                                        onOpenAbout = { gateAboutOpen = true },
-                                        places = gatePlaces,
-                                        onRouteToPlace = routeToPlace,
-                                        // A long press on a chip edits the places, as on the list.
-                                        onEditPlaces = { favoritePlacesOpen = true },
-                                    )
                                 }
                             }
                         },
@@ -5115,6 +5138,33 @@ internal fun nearbyPermissionAction(
 }
 
 /**
+ * Which near-me screen shows: the location gate, the departures list, the trip from here, or the
+ * spinner standing in for the trip while its origin is worked out.
+ */
+internal enum class NearMeScreen { GATE, LIST, TRIP, ORIGIN }
+
+/**
+ * What near me shows: where [nearby] stands, whether the trip from here is open over it, and whether
+ * that trip's origin is still being worked out ([originPending]). Finding stops and a pending origin
+ * are both [loading], so what replaces either comes in row by row ([app.stopdash.ui.RevealsAfterLoading]).
+ */
+internal data class NearMeShown(
+    val nearby: NearbyStopsViewModel.State,
+    val tripOpen: Boolean,
+    val originPending: Boolean = false,
+) {
+    val loading: Boolean get() = nearby == NearbyStopsViewModel.State.Locating || originPending
+
+    val screen: NearMeScreen
+        get() = when {
+            originPending -> NearMeScreen.ORIGIN
+            nearby is NearbyStopsViewModel.State.Ready -> if (tripOpen) NearMeScreen.TRIP else NearMeScreen.LIST
+            nearby is NearbyStopsViewModel.State.Empty && tripOpen -> NearMeScreen.TRIP
+            else -> NearMeScreen.GATE
+        }
+}
+
+/**
  * The app's composition root: the theme plus a single full-size themed [Surface]. A screen
  * without its own background — the location gate is a bare `Column`; only `MainScreen` brings
  * a `Scaffold` — then paints on `colorScheme.surface` and inherits `onSurface` as its content
@@ -5136,13 +5186,18 @@ internal fun StopDashAppRoot(
     // The timetables an empty board's "–" or "?" is settled by ([EmptyTimes]); null in a test, where
     // every empty board reads "?".
     timetables: TimetableRepository? = null,
+    // Ignores taps for a moment after a loading screen gives way, so one aimed at it doesn't open
+    // what replaced it ([TapPause]); a test passes one on its own clock.
+    tapPause: TapPause = remember { TapPause() },
     content: @Composable () -> Unit,
 ) {
     StopDashTheme {
-        Surface(modifier = Modifier.fillMaxSize()) {
-            ProvideDistanceSystem {
-                val framed: @Composable () -> Unit = { KeyRejectedFrame(keyRejected, onClearKey, keySaveFailed, onRetryKeySave, content) }
-                if (timetables != null) ProvideEmptyTimes(timetables, framed) else framed()
+        Surface(modifier = Modifier.fillMaxSize().ignoresPausedTaps(tapPause)) {
+            CompositionLocalProvider(LocalTapPause provides tapPause) {
+                ProvideDistanceSystem {
+                    val framed: @Composable () -> Unit = { KeyRejectedFrame(keyRejected, onClearKey, keySaveFailed, onRetryKeySave, content) }
+                    if (timetables != null) ProvideEmptyTimes(timetables, framed) else framed()
+                }
             }
         }
     }

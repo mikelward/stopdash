@@ -3181,7 +3181,15 @@ does the download and install. It is a lightweight nudge, not a banner: a dot co
 or top-bar width, and there is no in-app update flow to shoehorn a download/restart UI into.
 The loading screens also surface the same nudge as an outlined **Update available** button
 at the bottom of the screen — its room kept whether or not an update is pending, so the
-spinner and everything else stay where they are either way. On the **location gate** ("finding stops") and the departures
+spinner and everything else stay where they are either way. When a loading screen gives way (a
+brief spinner while a snapshot's rows or a trip's start are worked out counts as one, so the reveal
+waits for what it stands in for),
+the spinner goes at once and what replaces it comes in **row by row** from the top, each line fading
+in a beat after the one above, over 300 ms, and taps are ignored until that reveal has finished —
+however long the system's animation speed makes it, and for 200 ms after the rows appear even with
+animations off. A tap
+aimed at the button, or at the spinner, can't open the departure that just took its place, and the
+reveal shows why that tap did nothing. If loading resumes partway, taps come back at once. Only that handover animates; the departures themselves still update in place. On the **location gate** ("finding stops") and the departures
 **cold-load** spinner alike, the overflow (with its dot) is there too, so the button is a more **direct** prompt than a dot
 the user may not notice while waiting, not the only path to it. Either way a user sitting on a
 slow fix or a cold load can act on the update without hunting a menu, and it stays a secondary
