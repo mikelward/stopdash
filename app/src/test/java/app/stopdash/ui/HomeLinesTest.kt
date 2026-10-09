@@ -417,6 +417,29 @@ class HomeLinesTest {
     }
 
     @Test
+    fun `a favorite journey's line, nearest first, leads a favorite place's lines as bad`() {
+        // A favorite place by King's Cross covers its every line; all closed overnight. The rider's favorite
+        // journey rides the Northern from a listed station 1 km off: it leads, not Circle by name (maintainer,
+        // 2026-10-09).
+        val loaded = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus"), stop("far", "northern" to "tube")), now, determinedLineIds = setOf("73"))
+        val distances = mapOf("near" to 50.0, "far" to 1000.0)
+        val place = listOf("circle", "hammersmith-city", "metropolitan", "northern").map { LineRef(it, it, "tube") }
+        val closed = place.associate { it.id to LineStatus(it.id, 20, "Service Closed") }
+        val judged = HomeLines.row(loaded, distances, HomeLines.Always(closed, now), emptySet(), now, journeyLines = setOf("northern"), placeLines = place)
+        assertEquals(listOf("northern", "circle", "hammersmith-city", "metropolitan"), judged.lines.map { it.lineId })
+        // With no journey, the place's lines rank by their nearest listed stop: the Northern's still first.
+        val nearest = HomeLines.row(loaded, distances, HomeLines.Always(closed, now), emptySet(), now, placeLines = place)
+        assertEquals(listOf("northern", "circle", "hammersmith-city", "metropolitan"), nearest.lines.map { it.lineId })
+        // A nearer stop whose times aren't fetched counts too, however far (Codex, #710): the Circle's, 900 m off
+        // on a farther card, puts it first; the Metropolitan's at 1.2 km, after the Northern.
+        val unfetched = HomeLines.row(
+            loaded, distances, HomeLines.Always(closed, now), emptySet(), now,
+            placeLines = place, lineMeters = mapOf("circle" to 900.0, "metropolitan" to 1200.0),
+        )
+        assertEquals(listOf("circle", "northern", "metropolitan", "hammersmith-city"), unfetched.lines.map { it.lineId })
+    }
+
+    @Test
     fun `favorite places never read leave the row unknown, never a clean none`() {
         val loaded = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus")), now, determinedLineIds = setOf("73"))
         val good = HomeLines.row(loaded, mapOf("near" to 50.0), null, emptySet(), now)

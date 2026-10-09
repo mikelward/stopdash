@@ -318,6 +318,9 @@ object HomeLines {
         // The favorite places never read ([PlaceLines.unread]): their lines can't be named, so the row says
         // "Unknown" rather than leaving them unsaid.
         placesUnread: Boolean = false,
+        // How far each line's nearest stop is, both tiers of the near-me lookup however far, a stop whose
+        // times aren't fetched included ([NearbyStopsViewModel.State.Ready.nearestMetersByLine]).
+        lineMeters: Map<String, Double> = emptyMap(),
     ): TripRow {
         val alwaysLines = linesOf(networks)
         val refs = LinkedHashMap<String, LineRef>()
@@ -420,11 +423,29 @@ object HomeLines {
         // 2026-10-05: what's dismissed stays off it).
         fun everyWayDismissed(status: LineStatus) = status.byDirection.values.filter { it.disrupted }
             .let { ways -> ways.isNotEmpty() && ways.all { DismissedAlert.ofLineStatus(it) in dismissed } }
-        // The lines that matter most to the rider: near them, or a favorite's.
+        // The lines that matter most to the rider, in two tiers (maintainer, 2026-10-09): near them or a
+        // favorite's (a starred row's, a journey's) first, then a favorite place's, so a busy interchange by
+        // a place doesn't bury the rider's own line under its others by name.
         val mine = HashSet<String>(nearby)
         mine += starredHere
         mine += journeyLines
-        placeLines.forEach { mine += it.id }
+        val places = placeLines.mapTo(HashSet()) { it.id }
+        fun tier(id: String) = when (id) {
+            in mine -> 0
+            in places -> 1
+            else -> 2
+        }
+        // Each line's nearest stop, however far, the list's or the near-me lookup's (Codex, #710): as bad and
+        // as much the rider's own, the nearer goes first.
+        val closest = HashMap<String, Double>(lineMeters)
+        for (stop in loaded?.stops.orEmpty()) {
+            val d = distances[stop.stopId] ?: continue
+            fun note(id: String) {
+                if (id.isNotBlank() && d < (closest[id] ?: Double.MAX_VALUE)) closest[id] = d
+            }
+            stop.departures.forEach { note(it.lineId) }
+            stop.lines.forEach { note(it.id) }
+        }
         val every = refs.values.map { ref ->
             val id = ref.id
             val was = raw[id]
@@ -448,8 +469,12 @@ object HomeLines {
                 planned = plannedShown(id, was ?: status, dismissed),
             )
         // The page: worst first as a trip's orders them, then, as bad as each other, the rider's own lines
-        // ahead of a network's far away (maintainer, 2026-10-05).
-        }.sortedWith(tripLineOrder.thenBy<TripLine> { it.leg.lineId !in mine }.then(byName))
+        // ahead of a network's far away (maintainer, 2026-10-05), the nearer first, then by name.
+        }.sortedWith(
+            tripLineOrder.thenBy<TripLine> { tier(it.leg.lineId) }
+                .thenBy { closest[it.leg.lineId] ?: Double.MAX_VALUE }
+                .then(byName),
+        )
         // The pills: in the page's order, worst first, the rider's own ahead of the rest when as bad, so "+N"
         // takes the mildest first (maintainer, 2026-10-07: a far suspension outranks a near minor delay); a
         // dismissed one is never a pill.
