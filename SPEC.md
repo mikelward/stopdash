@@ -525,8 +525,18 @@ nearer places are saved with it in the snapshot, so the widget, whose own refres
 location, hides the same services. **A service ending at the stop it's listed at is hidden at
 every stop** (maintainer, 2026-10-09), a stop with no known distance (a journey's far origin, a
 searched station) included: it goes nowhere for anyone boarding there. Such a stop otherwise
-keeps every departure. At a terminus TfL's live list can hold only these — Walthamstow Central's
-Victoria line lists its incoming trains and nothing leaving — so the line can show no times there. A line whose predictions were all left
+keeps every departure.
+
+**At a rail terminus, an arriving train is shown as the departure it becomes** (maintainer,
+2026-10-09). TfL lists Walthamstow Central's Victoria line only as trains bound for Walthamstow
+Central, filed under its "Southbound" platforms, each once per platform since TfL doesn't know
+which it will use: those are the next trains to Brixton. So at a station that ends every route of
+a line it's on (a tube, DLR, Overground, Elizabeth line or tram terminus, from the bundled station
+index), a train bound for that very station reads as bound for the line's **far end**
+("Brixton"), or "Check Front of Train" where the line runs on to more than one (Morden); is
+listed **once**; and sits under its **compass direction** ("Southbound") rather than a platform it
+may not use. Its time is still when TfL expects it at the platform. A train turned short at a
+station the line runs through is not relabeled: it goes nowhere, and stays hidden. A line whose predictions were all left
 out gets no "No departures" status row either, since it has departures, just none that help.
 
 **The unit of display is one card per platform or pole** (maintainer, 2026-09-22) — a

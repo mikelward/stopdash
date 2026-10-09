@@ -21,6 +21,9 @@ data class IndexedStation(
     // National Rail service → the ends of the routes this station is on (station ids), where TfL
     // gave route data: one service runs to different places from different stations.
     val routeEnds: Map<String, List<String>> = emptyMap(),
+    // Line → the far ends (station ids) of a line this station is the terminus of: the end of every
+    // route it's on there. Read by [Turnback], to relabel a train TfL lists as arriving here.
+    val terminusEnds: Map<String, List<String>> = emptyMap(),
     // The platforms TfL lists under the station ("9100LIVSTLL1", "9400ZZLUKSX3"), for [StationIndex.stationOf].
     val platforms: List<String> = emptyList(),
 )
@@ -221,6 +224,17 @@ class StationIndex(
         }
         return station.takeIf { it in byId }
     }
+
+    /**
+     * The far ends of each line [stopId] is the terminus of ([IndexedStation.terminusEnds]), named,
+     * for [Turnback]; empty for a stop that ends no line, or that the index doesn't know. Read where
+     * arrivals are decoded, off the main thread, like [Turnback.relabel] it feeds.
+     */
+    @WorkerThread
+    fun terminusEnds(stopId: String): Map<String, List<Turnback.End>> =
+        byId[stopId]?.terminusEnds.orEmpty().mapValues { (_, ends) ->
+            ends.map { id -> Turnback.End(id, byId[id]?.name.orEmpty().ifBlank { id }) }
+        }
 
     /** The listed station with [id], as a match, or null for one the list doesn't hold. */
     fun station(id: String): StationMatch? = byId[id]?.let { StationMatch(it.id, it.name, it.modes) }

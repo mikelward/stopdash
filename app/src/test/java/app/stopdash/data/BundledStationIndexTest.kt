@@ -34,4 +34,17 @@ class BundledStationIndexTest {
         assertEquals("910GSTPXBOX", index.stationOf("9100STPXBOX"))
         assertEquals("940GZZLUKSX", index.stationOf("9400ZZLUKSX3"))
     }
+
+    @Test
+    fun `a terminus names the far end its arriving trains leave for`() {
+        val index = StationIndexStore.parse(asset.readText())
+        assertEquals(
+            mapOf("victoria" to listOf(app.stopdash.domain.Turnback.End("940GZZLUBXN", "Brixton"))),
+            index.terminusEnds("940GZZLUWWL"),
+        )
+        // Morden ends the Northern line's routes to three places: no one far end.
+        assertEquals(3, index.terminusEnds("940GZZLUMDN").getValue("northern").size)
+        // A station the line runs through ends nothing.
+        assertEquals(emptyMap<String, Any>(), index.terminusEnds("940GZZLUSVS"))
+    }
 }

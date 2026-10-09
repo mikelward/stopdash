@@ -282,7 +282,7 @@ object RouteStops {
     fun isUnknownDestination(destination: String): Boolean =
         destination.isBlank() || destination.equals(CHECK_FRONT_OF_TRAIN, ignoreCase = true)
 
-    private const val CHECK_FRONT_OF_TRAIN = "Check Front of Train"
+    internal const val CHECK_FRONT_OF_TRAIN = "Check Front of Train"
 
     /**
      * The stations a train at [stopId] bound for [destination] (cleaned, as on a [Departure]) via
