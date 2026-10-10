@@ -3529,8 +3529,16 @@ and these carry the rest as their own PRs:
             both refreshes save only on a nearby stop's fresh arrivals, the app's rule; maintainer,
             2026-10-10), and one merge (every write keeps a stop the store holds newer,
             `keepingFresher`).
-      - [ ] One fetch: the worker on the app's reuse windows, shared-cache rule and stop closures
-            (a cost question: the worker fetches no closures today).
+      - [ ] One fetch: the worker on the app's reuse windows and shared-cache rule. Stop closures
+            wait on the widget showing them at all (*Explore showing stop closures*, below).
+- [ ] **Explore showing stop closures on the widget and watch (maintainer 2026-10-10).** The app
+      checks every nearby stop for closures, but the stored snapshot deliberately carries none
+      (`DeparturesSnapshot`: a closure has no age stamp, so the widget couldn't tell a stale one), so
+      a closed stop shows on the widget only as departures. Explore storing each stop's closure check
+      with when it was made, drawing it on the widget and watch as the app's closure card does, and
+      dropping it at the shared staleness threshold, as line-status marks are (D3/D4). Then the
+      widget's own refresh would check closures too (bus poles batched, about 2-4 more TfL requests
+      a refresh, no extra wakeups). Needs a SPEC decision first.
 - [ ] **A National Rail station's rows can tie on age (Codex on #750; maintainer 2026-10-10: leave
       as is for now).** A station's stamp is its shared National Rail board's time, the oldest part
       of its arrivals. When the app and the widget both reuse the same board, their rows carry the
