@@ -50,6 +50,16 @@ class YourStopsTest {
     }
 
     @Test
+    fun `a stop picked with no lines isn't listed under Recent, one with lines is`() {
+        val stand = StationMatch("490000000002Z", "Example Stand", emptyList())
+        val pole = StationMatch("490000000002S", "Example Stand", listOf("bus"))
+        val yours = YourStops.of(emptyList(), emptyList(), listOf(stand, pole).map(SearchEntry::Stop), emptyList())
+        assertEquals(listOf("490000000002S"), yours.recent.map { it.id })
+        assertEquals(listOf("490000000002S"), yours.recentPicks.map { (it as SearchEntry.Stop).match.id })
+        assertEquals(listOf("490000000002S"), yours.homeRecent().map { it.id })
+    }
+
+    @Test
     fun `an open moves to the front, and the list stays capped`() {
         val stops = (1..RecentStations.MAX).map { StationMatch("49000000000$it", "Stop $it") }
         val reopened = RecentStations.add(stops, stops[3])

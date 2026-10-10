@@ -85,8 +85,10 @@ data class YourStops(
             }
             val picks = recent.mapNotNull { pick ->
                 when (pick) {
+                    // A stop with no lines, picked before the search stopped offering one (a bus stand by
+                    // St Pancras International), would list with no mode and open to an empty page: as [known].
                     is SearchEntry.Stop -> pick.match.copy(name = cleanStopName(pick.match.name))
-                        .takeIf { it.name.isNotBlank() }?.let(SearchEntry::Stop)
+                        .takeIf { it.name.isNotBlank() && it.modes.any(String::isNotBlank) }?.let(SearchEntry::Stop)
                     is SearchEntry.Place -> pick.takeIf { it.hit.name.isNotBlank() }
                 }
             }.distinctBy { it.key }
