@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.SystemClock
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -14,7 +15,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.glance.GlanceId
 import androidx.glance.ColorFilter
@@ -145,8 +145,9 @@ class StopDashWidget : GlanceAppWidget() {
                 drawn = redrawn(drawn, generation, size) { drawing(context, id, it) }
             }
             when (val shown = drawn) {
-                is TripDrawing -> WidgetTripContent(shown.model, shown.layouts[size], shown.fontScale)
-                is DeparturesDrawing -> WidgetContent(shown.models[size], shown.now, shown.fontScale, shown.locationNeeded)
+                is TripDrawing -> WidgetTripContent(shown.model, shown.layouts[size], shown.fontScale, shown.textScale)
+                is DeparturesDrawing ->
+                    WidgetContent(shown.models[size], shown.now, shown.fontScale, shown.locationNeeded, shown.textScale)
             }
         }
     }
@@ -167,7 +168,9 @@ class StopDashWidget : GlanceAppWidget() {
             val tripNow = Instant.now()
             val tripExpiry = JavaDuration.between(tripNow, trip.redrawAt).toKotlinDuration().takeIf { it.isPositive() }
             scheduleStalenessRedrawFor(context, null, tripNow, within = tripExpiry ?: NEARBY_SET_RETRY)
-            val tripScale = context.resources.configuration.fontScale
+            // The system's font scale times the app's own text size (SPEC *Display size*), as the text is drawn.
+            val tripTextScale = widgetTextScale(context)
+            val tripScale = context.resources.configuration.fontScale * tripTextScale
             val tripSizes = try {
                 GlanceAppWidgetManager(context).getAppWidgetSizes(id)
             } catch (e: CancellationException) {
@@ -178,7 +181,7 @@ class StopDashWidget : GlanceAppWidget() {
             }
             // The trip's own updates redraw it; no departures' change is due.
             WidgetRedraws.nextChangeAt = null
-            return TripDrawing(trip, WidgetTripLayouts.of(trip, tripScale, tripSizes, WIDGET_MIN_SIZE), tripScale, generation)
+            return TripDrawing(trip, WidgetTripLayouts.of(trip, tripScale, tripSizes, WIDGET_MIN_SIZE), tripScale, generation, tripTextScale)
         }
         // Off the render path: read the persisted snapshot before composing. A read failure
         // degrades to the empty state (open-the-app prompt) rather than crashing the host —
@@ -276,11 +279,13 @@ class StopDashWidget : GlanceAppWidget() {
         // On the IO dispatcher: Glance draws on the main thread, and the first load reads the asset and
         // the kept patterns from disk (maintainer bug report, 2026-10-05).
         val topology = withContext(Dispatchers.IO) { RouteTopologyStore.load(context) }
-        // The line budget comes from each size's height and the system font scale, so the rows
-        // never run past the cell's bottom edge. The model for every size the launcher reports is
+        // The line budget comes from each size's height and the font scale the text is drawn at — the
+        // system's times the app's own text size (SPEC *Display size*) — so the rows never run past
+        // the cell's bottom edge. The model for every size the launcher reports is
         // worked out here, on a worker, before composing: building one walks every stop's rows
         // (AGENTS.md *Main thread*), so composition just looks its model up.
-        val fontScale = context.resources.configuration.fontScale
+        val textScale = widgetTextScale(context)
+        val fontScale = context.resources.configuration.fontScale * textScale
         val sizes = try {
             GlanceAppWidgetManager(context).getAppWidgetSizes(id)
         } catch (e: CancellationException) {
@@ -316,7 +321,7 @@ class StopDashWidget : GlanceAppWidget() {
                 else -> WidgetLocationPrompt.Drawn.OPEN_THE_APP
             },
         )
-        return DeparturesDrawing(models, now, fontScale, generation, locationNeeded)
+        return DeparturesDrawing(models, now, fontScale, generation, locationNeeded, textScale)
     }
 
     override suspend fun onDelete(context: Context, glanceId: GlanceId) {
@@ -851,12 +856,15 @@ internal fun withoutJourneys(ordered: List<DepartureRow>, snapshot: DeparturesSn
 internal fun WidgetContent(
     model: WidgetModel,
     now: Instant,
-    // The system font scale, read once by the caller (the host context in provideGlance), so the
-    // pills size to it without each reading a context the unit-test harness doesn't provide.
+    // The font scale the text is drawn at — the system's times [textScale] — read once by the caller
+    // (the host context in provideGlance), so the pills size to it without each reading a context
+    // the unit-test harness doesn't provide.
     fontScale: Float = 1f,
     // No location grant: the empty state asks for one, since opening the app alone won't fill it.
     locationNeeded: Boolean = false,
-) {
+    // The app's own text size (SPEC *Display size*), which every text is multiplied by ([widgetSp]).
+    textScale: Float = 1f,
+) = CompositionLocalProvider(LocalWidgetTextScale provides textScale) {
     // A tap on the header (the title, the stamp and the note under them, or the compact status line)
     // refreshes the widget's stops in place (SPEC D5), as "Tap to refresh" says. With no data there
     // is nothing to refresh, and the header opens the app like the rest.
@@ -955,7 +963,12 @@ internal fun WidgetContent(
  * the app, which shows the trip. Out of date, it says so and the trains read as guessed times.
  */
 @androidx.compose.runtime.Composable
-internal fun WidgetTripContent(model: WidgetTripModel, layout: WidgetTripLayout, fontScale: Float = 1f) {
+internal fun WidgetTripContent(
+    model: WidgetTripModel,
+    layout: WidgetTripLayout,
+    fontScale: Float = 1f,
+    textScale: Float = 1f,
+) = CompositionLocalProvider(LocalWidgetTextScale provides textScale) {
     GlanceTheme {
         Column(
             modifier = GlanceModifier
@@ -978,7 +991,7 @@ internal fun WidgetTripContent(model: WidgetTripModel, layout: WidgetTripLayout,
                 Text(
                     text = model.title,
                     maxLines = 2,
-                    style = TextStyle(color = GlanceTheme.colors.onBackground, fontWeight = FontWeight.Bold, fontSize = 13.sp),
+                    style = TextStyle(color = GlanceTheme.colors.onBackground, fontWeight = FontWeight.Bold, fontSize = widgetSp(13f)),
                 )
                 if (model.detail.isNotEmpty()) WidgetStatusLine(model.detail)
                 Spacer(GlanceModifier.height(8.dp))
@@ -1066,7 +1079,7 @@ private fun WidgetHeaderRow(stamp: String?, title: String = "StopDash") {
             style = TextStyle(
                 color = GlanceTheme.colors.onBackground,
                 fontWeight = FontWeight.Bold,
-                fontSize = 14.sp,
+                fontSize = widgetSp(14f),
             ),
         )
         Spacer(GlanceModifier.width(8.dp))
@@ -1074,7 +1087,7 @@ private fun WidgetHeaderRow(stamp: String?, title: String = "StopDash") {
             Text(
                 text = it,
                 maxLines = 1,
-                style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 11.sp),
+                style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = widgetSp(11f)),
             )
         }
     }
@@ -1094,7 +1107,7 @@ private fun WidgetStatusLine(text: String) {
     Text(
         text = text,
         maxLines = 1,
-        style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 11.sp),
+        style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = widgetSp(11f)),
     )
 }
 
@@ -1109,7 +1122,7 @@ private fun WidgetStopHeader(header: WidgetHeader) {
         style = TextStyle(
             color = GlanceTheme.colors.onBackground,
             fontWeight = FontWeight.Medium,
-            fontSize = 12.sp,
+            fontSize = widgetSp(12f),
         ),
     )
 }
@@ -1119,7 +1132,7 @@ private fun WidgetStopHeader(header: WidgetHeader) {
 private fun WidgetMessage(text: String) {
     Text(
         text = text,
-        style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 13.sp),
+        style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = widgetSp(13f)),
     )
 }
 
@@ -1287,7 +1300,7 @@ private fun WidgetDisruption(description: String, modifier: GlanceModifier, deta
         modifier = modifier.semantics {
             contentDescription = if (detail == null) "Disrupted: $description" else "Disrupted: $description. $detail"
         },
-        style = TextStyle(color = GlanceTheme.colors.error, fontWeight = FontWeight.Medium, fontSize = 12.sp),
+        style = TextStyle(color = GlanceTheme.colors.error, fontWeight = FontWeight.Medium, fontSize = widgetSp(12f)),
     )
 }
 
@@ -1328,7 +1341,7 @@ private fun WidgetDestination(label: String, spoken: String?, modifier: GlanceMo
         text = label,
         maxLines = 1,
         modifier = spoken?.let { modifier.semantics { contentDescription = it } } ?: modifier,
-        style = TextStyle(color = GlanceTheme.colors.onBackground, fontSize = 13.sp),
+        style = TextStyle(color = GlanceTheme.colors.onBackground, fontSize = widgetSp(13f)),
     )
 }
 
@@ -1341,7 +1354,7 @@ private fun WidgetCountdown(text: String, stale: Boolean) {
         style = TextStyle(
             color = if (stale) GlanceTheme.colors.onSurfaceVariant else GlanceTheme.colors.onBackground,
             fontWeight = FontWeight.Bold,
-            fontSize = 13.sp,
+            fontSize = widgetSp(13f),
         ),
     )
 }
@@ -1358,7 +1371,8 @@ private fun WidgetPill(row: DepartureRow, fontScale: Float) = WidgetPill(row.lin
 /** [WidgetPill] for a line named outright, as a trip's step and trains name theirs. */
 @androidx.compose.runtime.Composable
 private fun WidgetPill(lineName: String, lineId: String, mode: String, fontScale: Float) {
-    // The label and its fixed-width slot grow together with the system [fontScale], up to
+    // The label and its fixed-width slot grow together with [fontScale] (the system's times the
+    // app's text size), up to
     // WIDGET_PILL_MAX_SCALE; past that both hold (the sp size is divided back down), so the widest
     // code always fits the slot whole and a very large font can't grow the pill until it crowds out
     // the countdown. TalkBack still reads the full line name.
@@ -1450,7 +1464,7 @@ private fun WidgetPillLabel(code: String, color: ColorProvider, pillScale: Float
             color = color,
             fontWeight = FontWeight.Bold,
             // 12sp at scales up to the cap; beyond it, held at the cap's size.
-            fontSize = (12f * pillScale / fontScale).sp,
+            fontSize = widgetSp(12f * pillScale / fontScale),
             textAlign = TextAlign.Center,
         ),
     )
@@ -1724,6 +1738,8 @@ internal data class DeparturesDrawing(
     override val generation: Long,
     // No location permission at all, for the empty state's wording ([WidgetContent]).
     val locationNeeded: Boolean = false,
+    // The app's own text size, which [fontScale] already includes ([WidgetContent]).
+    val textScale: Float = 1f,
 ) : WidgetDrawing {
     override suspend fun including(size: DpSize): WidgetDrawing {
         val more = models.including(size)
@@ -1737,6 +1753,7 @@ internal data class TripDrawing(
     val layouts: WidgetTripLayouts,
     val fontScale: Float,
     override val generation: Long,
+    val textScale: Float = 1f,
 ) : WidgetDrawing {
     override suspend fun including(size: DpSize): WidgetDrawing {
         val more = layouts.including(size)

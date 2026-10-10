@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.stopdash.domain.AppSettings
 import app.stopdash.domain.DistanceUnits
@@ -12,6 +13,7 @@ import app.stopdash.domain.UsageState
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.telemetry.UsageProperties
 import app.stopdash.telemetry.UsagePropertiesPublisher
+import app.stopdash.widget.widgetTextScale
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -125,6 +127,10 @@ class FontSizeUsageTest {
         val loaded = System.nanoTime() + 5_000_000_000L
         while (FontSizeSetting.inForce() == null && System.nanoTime() < loaded) Thread.yield()
         FontSizeSetting.setScale(1.4f)
+        // Published at once for the widget's redraw, though the write will fail.
+        assertEquals(1.4f, FontSizeSetting.shownScale.value)
+        // And the widget draws at it, read or not.
+        assertEquals(1.4f, widgetTextScale(ApplicationProvider.getApplicationContext()))
         // The failed write still asks for the properties again, and they carry the size in force.
         val deadline = System.nanoTime() + 5_000_000_000L
         while (sent.isEmpty() && System.nanoTime() < deadline) {

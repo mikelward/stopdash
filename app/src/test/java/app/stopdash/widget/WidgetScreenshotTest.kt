@@ -31,6 +31,7 @@ import java.time.LocalDate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -380,6 +381,44 @@ class WidgetScreenshotTest {
 
     // The minimum size at a 1.3x font with the partial note: no line fits under the full header,
     // so the compact layout shows the short warning in its place and one whole (stacked) departure.
+    // The app's own text size (SPEC *Display size*) sizes the widget's text as the system's does, and
+    // the line budget follows it.
+    @Test
+    fun `a full line budget fits the default size at a large app text size`() =
+        captureFullBudget("widget-full-budget-large-app-text.png", fontScale = 1f, textScale = 1.4f)
+
+    @Test
+    fun `the app's text size scales every text on the widget`() {
+        RuntimeEnvironment.setFontScale(1f)
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val model = WidgetModel(
+            hasData = true,
+            stale = false,
+            uncertain = false,
+            stamp = "Updated just now",
+            rows = listOf(rowModel(row("victoria", "Victoria", "Brixton", 120))),
+        )
+        fun sizes(textScale: Float): Map<String, Float> =
+            textViews(inflate(context, model, DpSize(240.dp, 180.dp), textScale = textScale))
+                .associate { it.text.toString() to it.textSize }
+        val base = sizes(1f)
+        val larger = sizes(1.5f)
+        // The parse found the texts this compares: the title, the stamp, the line's code and countdown.
+        assertTrue(base.keys.containsAll(listOf("StopDash", "Updated just now", "VIC")))
+        assertEquals(base.keys, larger.keys)
+        // Every text but the pill's grows by the factor; the pill's code grows with it to the pill's cap.
+        base.forEach { (text, size) ->
+            val expected = if (text == "VIC") 1.15f else 1.5f
+            assertEquals(text, size * expected, larger.getValue(text), 0.5f)
+        }
+    }
+
+    private fun textViews(view: View): List<TextView> = when (view) {
+        is TextView -> listOf(view)
+        is ViewGroup -> (0 until view.childCount).flatMap { textViews(view.getChildAt(it)) }
+        else -> emptyList()
+    }
+
     @Test
     fun `minimum size at a large font falls back to the compact layout`() =
         captureFullBudget("widget-min-size-compact.png", fontScale = 1.3f, arrivalsFresh = false, size = DpSize(180.dp, 110.dp))
@@ -400,6 +439,7 @@ class WidgetScreenshotTest {
         fontScale: Float,
         arrivalsFresh: Boolean = true,
         size: DpSize = DpSize(240.dp, 180.dp),
+        textScale: Float = 1f,
     ) {
         fun dep(lineId: String, lineName: String, destination: String, offsetSeconds: Long) =
             Departure(lineId, lineName, "inbound", destination, null, now.plusSeconds(offsetSeconds), "tube")
@@ -429,8 +469,8 @@ class WidgetScreenshotTest {
             },
         )
         // The same cell StopDashWidget.provideGlance passes for this size and font.
-        val model = widgetModel(snapshot, now, geometry = WidgetGeometry(size.width, size.height, fontScale))
-        capture(name, model, size = size, fontScale = fontScale)
+        val model = widgetModel(snapshot, now, geometry = WidgetGeometry(size.width, size.height, fontScale * textScale))
+        capture(name, model, size = size, fontScale = fontScale, textScale = textScale)
     }
 
     // The compact width at a large font (Codex on #155): the row with three times stacks, so its
@@ -633,13 +673,14 @@ class WidgetScreenshotTest {
         size: DpSize = DpSize(240.dp, 180.dp),
         fontScale: Float = 1f,
         locationNeeded: Boolean = false,
+        textScale: Float = 1f,
     ) {
         if (dark) RuntimeEnvironment.setQualifiers("+night") else RuntimeEnvironment.setQualifiers("+notnight")
         // Set after the qualifiers so they can't override it; the inflated widget reads its sp sizes
         // from this context's configuration, as a real host does.
         RuntimeEnvironment.setFontScale(fontScale)
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val view = inflate(context, model, size, fontScale, locationNeeded)
+        val view = inflate(context, model, size, fontScale, locationNeeded, textScale)
         // Capture at the widget's own size in px (420dpi), so a small size shows its real clipping.
         val density = context.resources.displayMetrics.density
         captureSnapshot(view, name, (size.width.value * density).toInt(), (size.height.value * density).toInt())
@@ -651,10 +692,12 @@ class WidgetScreenshotTest {
         size: DpSize,
         fontScale: Float = 1f,
         locationNeeded: Boolean = false,
+        // The app's own text size; the widget is drawn at [fontScale] times it, as provideGlance does.
+        textScale: Float = 1f,
     ): View {
         val result = runBlocking {
             GlanceRemoteViews().compose(context, size = size) {
-                WidgetContent(model, now, fontScale, locationNeeded)
+                WidgetContent(model, now, fontScale * textScale, locationNeeded, textScale)
             }
         }
         return result.remoteViews.apply(context, FrameLayout(context))

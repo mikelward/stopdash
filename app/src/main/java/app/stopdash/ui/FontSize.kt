@@ -38,6 +38,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -81,6 +83,15 @@ internal object FontSizeSetting {
         private set
 
     /**
+     * The size the app is drawn at ([current]'s scale), once it is the rider's own — read from the
+     * store, or settled on since (a slider release, a pinch, Reset), saved or not — else null. A
+     * placed widget draws at it ([app.stopdash.widget.widgetTextScale]) and redraws when it changes,
+     * so it follows what the app shows even when the store never saw it.
+     */
+    val shownScale: StateFlow<Float?> get() = shown
+    private val shown = MutableStateFlow<Float?>(null)
+
+    /**
      * Begins reading the stored size into [current], off the main thread, and keeps it live for
      * later writes. Idempotent — a second call is ignored — so it can be called from
      * `MainActivity.onCreate` without stacking collectors. Narrows the first-frame window rather
@@ -119,6 +130,7 @@ internal object FontSizeSetting {
             appSettings.fontSize().collect {
                 current = it
                 loaded = true
+                shown.value = clampFontScale(it.scale)
             }
         }
     }
@@ -138,6 +150,7 @@ internal object FontSizeSetting {
         val clamped = clampFontScale(scale)
         val before = current.scale
         current = current.copy(scale = clamped)
+        shown.value = clamped
         writes.trySend(Write.Scale(clamped))
         if (clamped != before) UsageEvents.log(UsageEvent.SettingChanged.textSize(clamped))
     }

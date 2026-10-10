@@ -3280,6 +3280,10 @@ top of the range (D8). The default is the system's own size (100%): StopDash fol
 platform setting until the user chooses otherwise, so the dense default layout stays as-is and
 scaling is opt-in.
 
+The home-screen widget is drawn at the same size: its text, and the line pills and line budget
+that follow the text, are sized as for the system's font scale times the user's factor, and a
+change made in the app redraws a placed widget at once.
+
 Two controls change the one stored size, kept in sync because they write the same value: a
 **slider** on Settings and a **two-finger pinch anywhere in the app** (a pinch resizes the
 *app*, not the page it happened on). A switch on Settings gates the pinch, for a user who
