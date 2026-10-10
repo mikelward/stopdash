@@ -3,11 +3,13 @@ package app.stopdash.widget
 import android.content.Context
 import app.stopdash.data.DataStoreAlertsBehindStore
 import app.stopdash.data.DataStoreDismissedAlertsStore
+import app.stopdash.ui.FontSizeSetting
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 
 /**
@@ -15,7 +17,8 @@ import kotlinx.coroutines.launch
  * The widget applies them when it draws ([app.stopdash.domain.DeparturesSnapshot.withDismissals]),
  * so a dismissal from any screen, or one a refresh forgets, shows on it at once. Nothing is
  * stored with the snapshot, so there is nothing else to update. The same for the app's verdicts that
- * a bus alert lies behind a stop ([app.stopdash.domain.DeparturesSnapshot.withAlertsBehind]).
+ * a bus alert lies behind a stop ([app.stopdash.domain.DeparturesSnapshot.withAlertsBehind]), and
+ * for the app's own text size (SPEC *Display size*), which the widget draws at too ([widgetTextScale]).
  */
 object WidgetDismissalRedraw {
     /** The first wait before re-reading a failed dismissed set; doubled each time, to [MAX_RETRY_MS]. */
@@ -39,6 +42,12 @@ object WidgetDismissalRedraw {
         val behind = DataStoreAlertsBehindStore.from(appContext, warn = ::logWidgetSnapshotWarning)
         scope.launch(Dispatchers.IO) {
             redrawOnChange({ behind.verdicts() }) { redrawWidgets(appContext) }
+        }
+        scope.launch(Dispatchers.IO) {
+            // The size the app shows, rather than the stored one: a write that failed still leaves
+            // the app at it, and the widget draws at it too. Nothing until the app has a size of its
+            // own, so a widget-only process start costs nothing; the app's own start redraws once.
+            redrawOnChange({ FontSizeSetting.shownScale.filterNotNull() }) { redrawWidgets(appContext) }
         }
     }
 
