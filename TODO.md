@@ -2290,7 +2290,20 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
   - [x] **Add a favorite journey from Settings** (maintainer, 2026-10-06): Add opens the station
         search; a line's route page, then a stop's page, saves it. One line between two stops (v1).
     - [x] **Two arbitrary stops** (maintainer, 2026-10-07): Add picks From, then To with From in its
-          row, and saves the pair on a line both stations serve, saying "No direct line" when none does.
+          row, and saves the pair on a line both stations serve; when none does, it is saved grayed
+          ("Support for multi-leg journeys coming soon", maintainer 2026-10-10).
+    - [x] **Favorite places as either end** (maintainer, 2026-10-10): chips atop both searches; a journey
+          with a place end is saved grayed, as one StopDash can't follow yet.
+    - [ ] **Follow a grayed journey**: open it in the trip planner (Fastest/Simplest), then alerts on the
+          planned route's lines, and drop the gray (*Trips with a change*).
+      - [ ] **Show a place end under its current label**: a grayed journey keeps the place's name from when
+            it was saved, so renaming Home or Work leaves the row on the old one. Look the place up by its
+            saved id (the name only a fallback for a deleted place), as following the journey must anyway
+            (Codex on #740).
+      - [ ] **Drop the gray when its pair is followed elsewhere**: a grayed station pair later followed from
+            a stop page or a route's long-press stays grayed too, listed twice and counted twice, until
+            removed; only the Settings picker swaps it (`addReplacingPending`). Keep the stop ids looked up
+            for each grayed station end, so the store's every add can match and drop it (Codex on #740).
       - [ ] **Check the line's route reaches To from From**: a line both serve can still need a change
             (two Northern branches); the card then shows its change at the fork. Use the card's cached
             route lookups to say so at Add.
@@ -2298,8 +2311,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         320 m of its origin, on any mode, and reaches every stop within the rider's max walk of its far end,
         as Direct does; at most its nearest 6 boarding stops a refresh, 3 rows then "+N more" / "More"
         opening the journey's own view.
-    - [ ] **Add's "No direct line" weighs only a line both stations serve**: a bus between stops near each
-          station is direct on the card but refused at Add. Check with the same lookups before refusing.
+    - [ ] **Add's direct check weighs only a line both stations serve**: a bus between stops near each
+          station is direct on the card but saved grayed at Add. Check with the same lookups before graying it.
   - [ ] **Rename a starred journey** — needs a label in the stored file (a schema version bump, so
         an older build can't drop it on its next write).
   - [ ] **Converge "journey" and "trip"** (maintainer, 2026-10-05: "longer term we'll need to

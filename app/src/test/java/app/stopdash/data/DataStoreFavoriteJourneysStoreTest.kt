@@ -5,6 +5,9 @@ import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.JourneyAlertSchedule
 import app.stopdash.domain.JourneyAlerts
+import app.stopdash.domain.PendingEnd
+import app.stopdash.domain.PendingJourney
+import app.stopdash.domain.SavedJourneys
 import app.stopdash.domain.TimeWindow
 import java.time.DayOfWeek
 import java.time.LocalTime
@@ -34,10 +37,14 @@ class DataStoreFavoriteJourneysStoreTest {
 
     private class FakeDataStore(initial: PersistedFavoriteJourneys?) : DataStore<PersistedFavoriteJourneys?> {
         private val state = MutableStateFlow(initial)
+        var writes = 0
         override val data: Flow<PersistedFavoriteJourneys?> = state
         override suspend fun updateData(
             transform: suspend (t: PersistedFavoriteJourneys?) -> PersistedFavoriteJourneys?,
-        ): PersistedFavoriteJourneys? = transform(state.value).also { state.value = it }
+        ): PersistedFavoriteJourneys? = transform(state.value).also {
+            writes++
+            state.value = it
+        }
     }
 
     @Test
@@ -137,6 +144,99 @@ class DataStoreFavoriteJourneysStoreTest {
             assertTrue(reads.reads.isNotEmpty())
             assertEquals(setOf(OffMainReads.WORKER), reads.reads.toSet())
         }
+    }
+
+    private val fromHome = PendingJourney(PendingEnd.Place("h", "Home"), PendingEnd.Station("940GZZLUWLO", "Waterloo"))
+
+    @Test
+    fun `a grayed journey is saved once, either way round, and removed`() = runTest {
+        val store = DataStoreFavoriteJourneysStore(FakeDataStore(null))
+        assertEquals(emptyList<PendingJourney>(), store.pendingJourneys().first())
+        store.addPending(fromHome)
+        store.addPending(PendingJourney(fromHome.to, fromHome.from))
+        assertEquals(listOf(fromHome), store.pendingJourneys().first())
+        // It's no favorite journey: the near-me list, widget and alerts never see it.
+        assertEquals(emptyList<FavoriteJourney>(), store.journeys().first())
+        store.removePending(fromHome)
+        store.removePending(fromHome)
+        assertEquals(emptyList<PendingJourney>(), store.pendingJourneys().first())
+    }
+
+    @Test
+    fun `a journey replaces its grayed copy in one write`() = runTest {
+        val grayed = PendingJourney(PendingEnd.Station("HUBKGX", "King's Cross St. Pancras"), PendingEnd.Station("940GZZLUHGT", "Highgate"))
+        val data = FakeDataStore(null)
+        val store = DataStoreFavoriteJourneysStore(data)
+        store.addPending(grayed)
+        store.addPending(fromHome)
+        val before = data.writes
+        store.addReplacingPending(journey, grayed)
+        assertEquals(before + 1, data.writes)
+        assertEquals(listOf(journey), store.journeys().first())
+        // Only that pair's gray copy goes.
+        assertEquals(listOf(fromHome), store.pendingJourneys().first())
+    }
+
+    @Test
+    fun `both lists come from one read, so the swap reaches a reader in one emission`() = runTest {
+        val grayed = PendingJourney(PendingEnd.Station("HUBKGX", "King's Cross St. Pancras"), PendingEnd.Station("940GZZLUHGT", "Highgate"))
+        val store = DataStoreFavoriteJourneysStore(FakeDataStore(null))
+        store.addPending(grayed)
+        assertEquals(SavedJourneys(emptyList(), listOf(grayed)), store.savedJourneys().first())
+        store.addReplacingPending(journey, grayed)
+        assertEquals(SavedJourneys(listOf(journey), emptyList()), store.savedJourneys().first())
+    }
+
+    @Test
+    fun `a disk read failure leaves both lists unreadable`() = runTest {
+        val failing = object : DataStore<PersistedFavoriteJourneys?> {
+            override val data: Flow<PersistedFavoriteJourneys?> = flow { throw IOException("disk") }
+            override suspend fun updateData(
+                transform: suspend (t: PersistedFavoriteJourneys?) -> PersistedFavoriteJourneys?,
+            ): PersistedFavoriteJourneys? = throw IOException("disk")
+        }
+        val warnings = mutableListOf<String>()
+        assertEquals(SavedJourneys(null, null), DataStoreFavoriteJourneysStore(failing, warn = { warnings += it }).savedJourneys().first())
+        assertEquals(listOf("favorite journeys read failed: IOException"), warnings)
+    }
+
+    @Test
+    fun `editing the journeys or their alerts keeps the grayed ones, and the reverse`() = runTest {
+        val store = DataStoreFavoriteJourneysStore(FakeDataStore(null))
+        store.addPending(fromHome)
+        store.add(journey)
+        val key = JourneyAlerts.directionKey(journey, journey.from.stopId)
+        store.updateAlertSchedule(key) { JourneyAlertSchedule.DEFAULT }
+        assertEquals(listOf(fromHome), store.pendingJourneys().first())
+        store.removePending(fromHome)
+        assertEquals(listOf(journey), store.journeys().first())
+        assertEquals(mapOf(key to JourneyAlertSchedule.DEFAULT), store.alertSchedules().first())
+    }
+
+    @Test
+    fun `grayed journeys survive the JSON round trip, and one of an unknown kind is dropped`() = runTest {
+        val stations = PendingJourney(PendingEnd.Station("HUBKGX", "King's Cross St. Pancras"), PendingEnd.Station("940GZZLUCWR", "Canada Water"))
+        val stored = PersistedFavoriteJourneys(
+            pending = listOf(
+                PersistedPendingJourney(PersistedPendingEnd("place", "h", "Home"), PersistedPendingEnd("station", "940GZZLUWLO", "Waterloo")),
+                PersistedPendingJourney(PersistedPendingEnd("station", "HUBKGX", "King's Cross St. Pancras"), PersistedPendingEnd("station", "940GZZLUCWR", "Canada Water")),
+                PersistedPendingJourney(PersistedPendingEnd("bus-route", "x", "X"), PersistedPendingEnd("station", "940GZZLUWLO", "Waterloo")),
+            ),
+        )
+        val out = ByteArrayOutputStream()
+        FavoriteJourneysSerializer.writeTo(stored, out)
+        val back = FavoriteJourneysSerializer.readFrom(ByteArrayInputStream(out.toByteArray()))
+        assertEquals(listOf(fromHome, stations), back?.pendingToDomain())
+    }
+
+    @Test
+    fun `a newer-version file's grayed journeys read as unavailable and an add preserves it`() = runTest {
+        val newer = PersistedFavoriteJourneys(version = PersistedFavoriteJourneys.CURRENT_VERSION + 1)
+        val data = FakeDataStore(newer)
+        val store = DataStoreFavoriteJourneysStore(data)
+        assertNull(store.pendingJourneys().first())
+        store.addPending(fromHome)
+        assertEquals(newer, data.data.first())
     }
 
     @Test

@@ -46,6 +46,8 @@ import app.stopdash.domain.FavoriteJourneysStore
 import app.stopdash.domain.JourneyAlertSchedule
 import app.stopdash.domain.JourneyAlerts
 import app.stopdash.domain.JourneyPair
+import app.stopdash.domain.PendingEnd
+import app.stopdash.domain.PendingJourney
 import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.TflException
@@ -70,6 +72,9 @@ import kotlinx.coroutines.sync.withLock
  */
 data class FavoriteJourneysUi(
     val journeys: List<FavoriteJourney>? = emptyList(),
+    // Those saved grayed, listed after the rest: no one line serves them, or an end is a favorite place
+    // ([PendingJourney]). Empty while unreadable, the journeys saying so.
+    val pending: List<PendingJourney> = emptyList(),
     val loaded: Boolean = true,
     val writeFailed: Boolean = false,
     // An alert schedule change that couldn't be saved: its write outlives the Alerts screen, so a failure
@@ -96,7 +101,6 @@ sealed interface JourneyAddNote {
 
     data class Adding(override val from: String, override val to: String) : JourneyAddNote
     data class AlreadySaved(override val from: String, override val to: String) : JourneyAddNote
-    data class NoDirectLine(override val from: String, override val to: String) : JourneyAddNote
     data class SameStation(override val from: String, override val to: String) : JourneyAddNote
 
     /** Looking the stations up failed, for [kind]. */
@@ -153,32 +157,85 @@ internal suspend fun addFavoriteJourneyPair(
     warn: (String) -> Unit = {},
     worker: CoroutineDispatcher = Dispatchers.Default,
 ): JourneyAddNote? = withContext(worker) {
-    val result = try {
-        JourneyPair.resolve(from.name, finder.stationStops(from.id), to.name, finder.stationStops(to.id))
+    val (fromStops, toStops) = try {
+        finder.stationStops(from.id) to finder.stationStops(to.id)
     } catch (e: TflException) {
         // Logged without the stations (SPEC *Privacy*).
         warn("favorite journey add lookup failed: ${e::class.simpleName}")
         return@withContext JourneyAddNote.LookupFailed(from.name, to.name, errorKindOf(e))
     }
-    when (result) {
+    // The pair as it would be saved grayed: one list holds it at a time, whichever way it last resolved
+    // (TfL's lines at a station can change between two Adds).
+    val grayed = PendingJourney(PendingEnd.Station(from.id, from.name), PendingEnd.Station(to.id, to.name))
+    when (val result = JourneyPair.resolve(from.name, fromStops, to.name, toStops)) {
         JourneyPair.Result.SameStation -> JourneyAddNote.SameStation(from.name, to.name)
-        JourneyPair.Result.NoDirectLine -> JourneyAddNote.NoDirectLine(from.name, to.name)
+        // No one line serves both: saved grayed, to follow once journeys with a change are (maintainer, 2026-10-10),
+        // unless it is already followed on a line saved before.
+        JourneyPair.Result.NoDirectLine -> {
+            val followed = try {
+                journeys.journeys().first() ?: return@withContext JourneyAddNote.NotSaved(from.name, to.name)
+            } catch (e: IOException) {
+                warn("favorite journey add not saved: ${e::class.simpleName}")
+                return@withContext JourneyAddNote.NotSaved(from.name, to.name)
+            }
+            val fromIds = fromStops.mapTo(HashSet()) { it.id }
+            val toIds = toStops.mapTo(HashSet()) { it.id }
+            val joins = followed.any { j ->
+                (j.from.stopId in fromIds && j.to.stopId in toIds) || (j.from.stopId in toIds && j.to.stopId in fromIds)
+            }
+            if (joins) JourneyAddNote.AlreadySaved(from.name, to.name) else savePending(grayed, journeys, warn)
+        }
         is JourneyPair.Result.Found -> {
             val journey = result.journey
             try {
                 // Unreadable (a newer StopDash's file): the store keeps that file rather than write over
                 // it, so the journey wouldn't be saved; said, never passed off as added.
                 val saved = journeys.journeys().first() ?: return@withContext JourneyAddNote.NotSaved(from.name, to.name)
+                // Followed now, so a grayed copy from an earlier Add goes, in the same write as the save.
                 if (saved.any { it.key == journey.key }) {
-                    return@withContext JourneyAddNote.AlreadySaved(from.name, to.name)
+                    journeys.removePending(grayed)
+                    JourneyAddNote.AlreadySaved(from.name, to.name)
+                } else {
+                    journeys.addReplacingPending(journey, grayed)
+                    null
                 }
-                journeys.add(journey)
-                null
             } catch (e: IOException) {
                 warn("favorite journey add not saved: ${e::class.simpleName}")
                 JourneyAddNote.NotSaved(from.name, to.name)
             }
         }
+    }
+}
+
+/**
+ * Adds a journey with a favorite place at one end or both ([FavoriteJourneyPicker]): saved grayed, since
+ * StopDash can't follow one yet (maintainer, 2026-10-10). Null once saved; else why it wasn't. Off the
+ * main thread, the hop first (AGENTS.md *Main thread*).
+ */
+internal suspend fun addPendingJourneyPair(
+    from: PendingEnd,
+    to: PendingEnd,
+    journeys: FavoriteJourneysStore,
+    warn: (String) -> Unit = {},
+    worker: CoroutineDispatcher = Dispatchers.Default,
+): JourneyAddNote? = withContext(worker) {
+    if (from.key == to.key) return@withContext JourneyAddNote.SameStation(from.name, to.name)
+    savePending(PendingJourney(from, to), journeys, warn)
+}
+
+// Saves [journey] grayed unless it already is. Null once saved; else why it wasn't.
+private suspend fun savePending(journey: PendingJourney, journeys: FavoriteJourneysStore, warn: (String) -> Unit): JourneyAddNote? {
+    val from = journey.from.name
+    val to = journey.to.name
+    return try {
+        // Unreadable (a newer StopDash's file): the store keeps that file rather than write over it.
+        val saved = journeys.pendingJourneys().first() ?: return JourneyAddNote.NotSaved(from, to)
+        if (saved.any { it.key == journey.key }) return JourneyAddNote.AlreadySaved(from, to)
+        journeys.addPending(journey)
+        null
+    } catch (e: IOException) {
+        warn("pending journey add not saved: ${e::class.simpleName}")
+        JourneyAddNote.NotSaved(from, to)
     }
 }
 
@@ -191,9 +248,13 @@ internal object JourneyAdds {
     val note = MutableStateFlow<JourneyAddNote?>(null)
     private val latest = AtomicLong()
 
-    fun attempt(scope: CoroutineScope, from: StationMatch, to: StationMatch, add: suspend () -> JourneyAddNote?): Job {
+    fun attempt(scope: CoroutineScope, from: StationMatch, to: StationMatch, add: suspend () -> JourneyAddNote?): Job =
+        attempt(scope, from.name, to.name, add)
+
+    /** As above, for ends named [from] and [to] (a favorite place's, or a station's). */
+    fun attempt(scope: CoroutineScope, from: String, to: String, add: suspend () -> JourneyAddNote?): Job {
         val mine = latest.incrementAndGet()
-        note.value = JourneyAddNote.Adding(from.name, to.name)
+        note.value = JourneyAddNote.Adding(from, to)
         return scope.launch {
             val outcome = add()
             if (latest.get() == mine) note.value = outcome
@@ -221,6 +282,7 @@ fun FavoriteJourneysScreen(
     state: FavoriteJourneysUi,
     onBack: () -> Unit,
     onRemove: (FavoriteJourney) -> Unit,
+    onRemovePending: (PendingJourney) -> Unit = {},
     onDismissWriteError: () -> Unit = {},
     onDismissAlertWriteError: () -> Unit = {},
     // Reads the store again after it couldn't be read (a disk error, or a newer StopDash's file).
@@ -313,14 +375,20 @@ fun FavoriteJourneysScreen(
                                 ) { Text(stringResource(R.string.favorite_journeys_retry)) }
                             }
                         }
-                        journeys.isEmpty() -> item { Note(stringResource(R.string.favorite_journeys_empty)) }
-                        else -> items(journeys, key = { it.key }) { journey ->
-                            JourneyRow(
-                                journey,
-                                alerts = state.alertSummaries[journey.key],
-                                onRemove = { onRemove(journey) },
-                                onOpen = onOpenAlerts?.let { open -> { open(journey) } },
-                            )
+                        journeys.isEmpty() && state.pending.isEmpty() -> item { Note(stringResource(R.string.favorite_journeys_empty)) }
+                        else -> {
+                            items(journeys, key = { it.key }) { journey ->
+                                JourneyRow(
+                                    journey,
+                                    alerts = state.alertSummaries[journey.key],
+                                    onRemove = { onRemove(journey) },
+                                    onOpen = onOpenAlerts?.let { open -> { open(journey) } },
+                                )
+                            }
+                            // After those StopDash follows, so the grayed ones never push a working one down.
+                            items(state.pending, key = { "pending-${it.key}" }) { journey ->
+                                PendingJourneyRow(journey, onRemove = { onRemovePending(journey) })
+                            }
                         }
                     }
                 }
@@ -360,7 +428,6 @@ private fun AddNoteRow(note: JourneyAddNote, onDismiss: () -> Unit) {
     val text = when (note) {
         is JourneyAddNote.Adding -> stringResource(R.string.favorite_journeys_adding, note.from, note.to)
         is JourneyAddNote.AlreadySaved -> stringResource(R.string.favorite_journeys_add_already, note.from, note.to)
-        is JourneyAddNote.NoDirectLine -> stringResource(R.string.favorite_journeys_add_no_line, note.from, note.to)
         is JourneyAddNote.SameStation -> stringResource(R.string.favorite_journeys_add_same)
         is JourneyAddNote.LookupFailed -> stringResource(R.string.favorite_journeys_add_failed, note.from, note.to, stringResource(partialReason(note.kind)))
         is JourneyAddNote.NotSaved -> stringResource(R.string.favorite_journeys_add_not_saved, note.from, note.to)
@@ -445,6 +512,39 @@ private fun JourneyRow(
             onClick = onRemove,
             modifier = Modifier
                 .testTag("remove-${journey.key}")
+                .semantics { contentDescription = removeDescription },
+        ) { Text(stringResource(R.string.favorite_journey_remove)) }
+    }
+}
+
+// A journey saved grayed: its two ends, and why StopDash can't follow it yet (maintainer, 2026-10-10).
+// Inert but for Remove: it has no alerts to open.
+@Composable
+private fun PendingJourneyRow(journey: PendingJourney, onRemove: () -> Unit) {
+    val spoken = stringResource(R.string.journey_title_both_ways_spoken, journey.from.name, journey.to.name)
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp).testTag("pending-${journey.key}"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(vertical = 8.dp).semantics(mergeDescendants = true) {}) {
+            Text(
+                text = stringResource(R.string.journey_title_both_ways, journey.from.name, journey.to.name),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.semantics { contentDescription = spoken },
+            )
+            Text(
+                text = stringResource(R.string.favorite_journeys_multi_leg_soon),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        val removeDescription = stringResource(R.string.favorite_journey_remove_description, journey.from.name, journey.to.name)
+        TextButton(
+            onClick = onRemove,
+            modifier = Modifier
+                .testTag("removePending-${journey.key}")
                 .semantics { contentDescription = removeDescription },
         ) { Text(stringResource(R.string.favorite_journey_remove)) }
     }

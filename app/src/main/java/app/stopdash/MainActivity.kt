@@ -51,6 +51,7 @@ import app.stopdash.domain.SavedTrip
 import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.StarredRowSet
 import app.stopdash.domain.StationLead
+import app.stopdash.domain.PendingEnd
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.StepFreeAccess
@@ -280,6 +281,7 @@ import app.stopdash.ui.journeyAlertSummaries
 import app.stopdash.ui.JourneyAlertsUi
 import app.stopdash.ui.JourneyAdds
 import app.stopdash.ui.addFavoriteJourneyPair
+import app.stopdash.ui.addPendingJourneyPair
 import app.stopdash.ui.removeFavoriteJourney
 import app.stopdash.ui.LocalOpenRouteStop
 import app.stopdash.ui.RouteStopOpen
@@ -1872,7 +1874,10 @@ class MainActivity : ComponentActivity() {
                                 // Wrapped, so "not read yet" (null here) is told from "unreadable" (a null list).
                                 // Retry re-reads: a failed read's flow has ended, so a new one is collected.
                                 var journeysAttempt by remember { mutableIntStateOf(0) }
-                                val read by remember(journeyStore, journeysAttempt) { journeyStore.journeys().map { JourneysRead(it) } }
+                                // With those saved grayed (no one line, or a favorite place at an end), from one read of
+                                // the file, so a save that swaps a grayed copy for the journey moves both lists in the same
+                                // frame (Codex on #740). Unreadable grayed ones read as none, the journeys saying so.
+                                val read by remember(journeyStore, journeysAttempt) { journeyStore.savedJourneys() }
                                     .collectAsStateWithLifecycle(initialValue = null)
                                 // The process's scope, not this overlay's: a Remove followed at once by Back or a
                                 // rotation still lands (Codex on #589).
@@ -1883,6 +1888,8 @@ class MainActivity : ComponentActivity() {
                                 var journeyPicking by rememberSaveable { mutableStateOf(false) }
                                 var journeyFromId by rememberSaveable { mutableStateOf<String?>(null) }
                                 var journeyFromName by rememberSaveable { mutableStateOf("") }
+                                // Whether the start is a favorite place (by its id) rather than a station.
+                                var journeyFromPlace by rememberSaveable { mutableStateOf(false) }
                                 val journeyAdding by JourneyAdds.note.collectAsStateWithLifecycle()
                                 // The journey whose alerts are open (SPEC *Journeys → Alerts*), the row's own copy, kept
                                 // over a rotation, so the screen draws at once rather than after a lookup (Codex on #700).
@@ -1951,6 +1958,8 @@ class MainActivity : ComponentActivity() {
                                             withContext(Workers.compute) { journeyAlertSummaries(applicationContext, journeys, schedules) }
                                         },
                                         askLocation = !allTime && !locationDeclined && !schedules.isNullOrEmpty(),
+                                        // Carried with the journeys, so the two lists are shown together.
+                                        pending = loaded.pending.orEmpty(),
                                     )
                                 }
                                 // Asks for location all the time: the while-using grant first where it's missing, since
@@ -2071,6 +2080,8 @@ class MainActivity : ComponentActivity() {
                                                     createSavedStateHandle(),
                                                     loadIndex = { StationIndexStore.load(appContext) },
                                                     loadYours = { loadYourStops(appContext, recents) },
+                                                    // The favorite places, as chips for either end (maintainer, 2026-10-10).
+                                                    loadPlaces = { loadFavoritePlaces(appContext) },
                                                     warn = ::logDepartureWarning,
                                                 )
                                             }
@@ -2083,34 +2094,59 @@ class MainActivity : ComponentActivity() {
                                         journeyPicking = false
                                         journeyFromId = null
                                         journeyFromName = ""
+                                        journeyFromPlace = false
                                     }
                                     FavoriteJourneyPicker(
                                         state = searchState,
-                                        from = journeyFromId?.let { StationMatch(it, journeyFromName) },
+                                        from = journeyFromId?.let { id ->
+                                            if (journeyFromPlace) PendingEnd.Place(id, journeyFromName) else PendingEnd.Station(id, journeyFromName)
+                                        },
                                         onQueryChange = search::onQueryChange,
                                         onRetry = search::retry,
-                                        onPickFrom = { match ->
+                                        onRetryPlaces = search::refreshYours,
+                                        onPickFrom = { end ->
                                             search.clear()
-                                            journeyFromId = match.id
-                                            journeyFromName = match.name
+                                            journeyFromName = end.name
+                                            when (end) {
+                                                is PendingEnd.Station -> {
+                                                    journeyFromId = end.stationId
+                                                    journeyFromPlace = false
+                                                }
+                                                is PendingEnd.Place -> {
+                                                    journeyFromId = end.placeId
+                                                    journeyFromPlace = true
+                                                }
+                                            }
                                         },
                                         onPickTo = { from, to ->
                                             closePicker()
-                                            JourneyAdds.attempt(removeScope, from, to) {
-                                                addFavoriteJourneyPair(from, to, stationFinder, journeyStore, warn = ::logStarWarning)
+                                            JourneyAdds.attempt(removeScope, from.name, to.name) {
+                                                if (from is PendingEnd.Station && to is PendingEnd.Station) {
+                                                    addFavoriteJourneyPair(
+                                                        StationMatch(from.stationId, from.name),
+                                                        StationMatch(to.stationId, to.name),
+                                                        stationFinder,
+                                                        journeyStore,
+                                                        warn = ::logStarWarning,
+                                                    )
+                                                } else {
+                                                    // A favorite place at an end: saved grayed (maintainer, 2026-10-10).
+                                                    addPendingJourneyPair(from, to, journeyStore, warn = ::logStarWarning)
+                                                }
                                             }
                                         },
                                         onChangeFrom = {
                                             search.clear()
                                             journeyFromId = null
                                             journeyFromName = ""
+                                            journeyFromPlace = false
                                         },
                                         onBack = closePicker,
                                     )
                                 } else {
                                     val listAlertWriteFailed by JourneyAlertWrites.failed.collectAsStateWithLifecycle()
                                     FavoriteJourneysScreen(
-                                        state = FavoriteJourneysUi(journeysShown?.journeys, loaded = journeysShown != null, writeFailed = journeyRemoveFailed, alertWriteFailed = listAlertWriteFailed, adding = journeyAdding, alertSummaries = journeysShown?.summaries.orEmpty(), askLocation = journeysShown?.askLocation == true),
+                                        state = FavoriteJourneysUi(journeysShown?.journeys, pending = journeysShown?.pending.orEmpty(), loaded = journeysShown != null, writeFailed = journeyRemoveFailed, alertWriteFailed = listAlertWriteFailed, adding = journeyAdding, alertSummaries = journeysShown?.summaries.orEmpty(), askLocation = journeysShown?.askLocation == true),
                                         onBack = { favoriteJourneysOpen = false },
                                         onAdd = {
                                             JourneyAdds.dismiss()
@@ -2121,6 +2157,9 @@ class MainActivity : ComponentActivity() {
                                             JourneyRemovals.attempt(removeScope, warn = ::logStarWarning) {
                                                 removeFavoriteJourney(journey, journeyStore, WidgetSnapshotStore(applicationContext), warn = ::logStarWarning)
                                             }
+                                        },
+                                        onRemovePending = { journey ->
+                                            JourneyRemovals.attempt(removeScope, warn = ::logStarWarning) { journeyStore.removePending(journey) }
                                         },
                                         onDismissWriteError = { JourneyRemovals.failed.value = false },
                                         onDismissAlertWriteError = { JourneyAlertWrites.failed.value = false },
@@ -6582,6 +6621,7 @@ internal data class FavoriteJourneysList(
     val journeys: List<FavoriteJourney>?,
     val summaries: Map<String, List<String>>,
     val askLocation: Boolean,
+    val pending: List<app.stopdash.domain.PendingJourney> = emptyList(),
 )
 
 internal object JourneyAlertWrites {

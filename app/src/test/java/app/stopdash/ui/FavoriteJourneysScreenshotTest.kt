@@ -26,7 +26,11 @@ import app.stopdash.domain.JourneyAlerts
 import app.stopdash.domain.JourneyEnd
 import java.time.DayOfWeek
 import app.stopdash.domain.FavoriteJourney
-import app.stopdash.domain.StationMatch
+import app.stopdash.domain.Coordinates
+import app.stopdash.domain.FavoriteKind
+import app.stopdash.domain.FavoritePlace
+import app.stopdash.domain.PendingEnd
+import app.stopdash.domain.PendingJourney
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Assert.assertEquals
@@ -87,7 +91,8 @@ class FavoriteJourneysScreenshotTest {
     @Test
     fun none_says_how_to_add_one() {
         show(FavoriteJourneysUi(emptyList()))
-        composeRule.onNodeWithText("Tap Add", substring = true).assertIsDisplayed()
+        // Either end can be a station or a favorite place (maintainer, 2026-10-10).
+        composeRule.onNodeWithText("None yet. Tap Add and pick two stations or places.").assertIsDisplayed()
         captureSnapshot("favorite-journeys-empty.png")
     }
 
@@ -144,22 +149,111 @@ class FavoriteJourneysScreenshotTest {
     }
 
     @Test
-    fun a_pair_with_no_direct_line_says_so_until_dismissed() {
-        var dismissed = 0
+    fun a_journey_stopdash_cant_follow_yet_is_listed_grayed_after_the_rest_with_remove() {
+        val indirect = PendingJourney(
+            PendingEnd.Station("HUBKGX", "King's Cross St. Pancras"),
+            PendingEnd.Station("940GZZLUCWR", "Canada Water"),
+        )
+        val fromHome = PendingJourney(PendingEnd.Place("h", "Home"), PendingEnd.Station("940GZZLUWLO", "Waterloo"))
+        val removed = mutableListOf<PendingJourney>()
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 FavoriteJourneysScreen(
-                    state = FavoriteJourneysUi(listOf(victoriaLine), adding = JourneyAddNote.NoDirectLine("King's Cross St. Pancras", "Canada Water")),
+                    state = FavoriteJourneysUi(listOf(victoriaLine), pending = listOf(indirect, fromHome)),
                     onBack = {},
                     onRemove = {},
-                    onDismissAddNote = { dismissed++ },
+                    onRemovePending = { removed += it },
                 )
             }
         }
-        composeRule.onNodeWithText("No direct line from King's Cross St. Pancras to Canada Water").assertIsDisplayed()
-        captureSnapshot("favorite-journeys-no-direct-line.png")
-        composeRule.onNodeWithTag("dismissJourneyAddNote").performClick()
-        assertEquals(1, dismissed)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("King's Cross St. Pancras ⇄ Canada Water").assertIsDisplayed()
+        composeRule.onNodeWithText("Home ⇄ Waterloo").assertIsDisplayed()
+        assertEquals(2, composeRule.onAllNodesWithText("Support for multi-leg journeys coming soon").fetchSemanticsNodes().size)
+        // After the journeys StopDash follows, so a grayed one never pushes a working one down.
+        val working = composeRule.onNodeWithTag("remove-${victoriaLine.key}").getUnclippedBoundsInRoot().top
+        val grayed = composeRule.onNodeWithTag("removePending-${indirect.key}").getUnclippedBoundsInRoot().top
+        assertEquals(true, working < grayed)
+        captureSnapshot("favorite-journeys-grayed.png")
+        composeRule.onNodeWithTag("removePending-${fromHome.key}").performClick()
+        assertEquals(listOf(fromHome), removed)
+    }
+
+    @Test
+    fun only_grayed_journeys_still_list_rather_than_say_none() {
+        val fromHome = PendingJourney(PendingEnd.Place("h", "Home"), PendingEnd.Station("940GZZLUWLO", "Waterloo"))
+        show(FavoriteJourneysUi(emptyList(), pending = listOf(fromHome)))
+        composeRule.onNodeWithText("Home ⇄ Waterloo").assertIsDisplayed()
+        composeRule.onNodeWithText("None yet", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun places_that_couldnt_be_read_offer_a_retry_at_either_end() {
+        var from by mutableStateOf<PendingEnd?>(null)
+        var retries = 0
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                FavoriteJourneyPicker(
+                    state = StationSearchViewModel.State(yoursRead = true, favoritePlacesFailed = true),
+                    from = from,
+                    onQueryChange = {},
+                    onRetry = {},
+                    onRetryPlaces = { retries++ },
+                    onPickFrom = { from = it },
+                    onPickTo = { _, _ -> },
+                    onChangeFrom = { from = null },
+                    onBack = {},
+                    autoFocus = false,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Retry").performClick()
+        from = PendingEnd.Station("940GZZLUWLO", "Waterloo")
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Retry").performClick()
+        assertEquals(2, retries)
+    }
+
+    @Test
+    fun the_same_end_twice_asks_for_two_different_places() {
+        show(FavoriteJourneysUi(emptyList(), adding = JourneyAddNote.SameStation("Home", "Home")))
+        composeRule.onNodeWithText("Pick two different places").assertIsDisplayed()
+    }
+
+    @Test
+    fun the_favorite_places_are_chips_for_either_end() {
+        val home = FavoritePlace("h", FavoriteKind.HOME, "Home", Coordinates(51.5, -0.12))
+        var from by mutableStateOf<PendingEnd?>(null)
+        var picked: Pair<PendingEnd, PendingEnd>? = null
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                FavoriteJourneyPicker(
+                    state = StationSearchViewModel.State(yoursRead = true, favoritePlaces = listOf(home)),
+                    from = from,
+                    onQueryChange = {},
+                    onRetry = {},
+                    onRetryPlaces = {},
+                    onPickFrom = { from = it },
+                    onPickTo = { a, b -> picked = a to b },
+                    onChangeFrom = { from = null },
+                    onBack = {},
+                    autoFocus = false,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        // Picked by the place's id, so the journey follows the place if it moves.
+        composeRule.onNodeWithTag("favoriteChip-h").performClick()
+        composeRule.waitForIdle()
+        assertEquals(PendingEnd.Place("h", "Home"), from)
+        // The To search offers it too, under the From row naming the start.
+        composeRule.onNodeWithTag("favoriteChip-h").assertIsDisplayed()
+        captureSnapshot("favorite-journeys-pick-place.png")
+        from = PendingEnd.Station("940GZZLUWLO", "Waterloo")
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("favoriteChip-h").performClick()
+        assertEquals(PendingEnd.Station("940GZZLUWLO", "Waterloo") to PendingEnd.Place("h", "Home"), picked)
     }
 
     @Test
@@ -171,8 +265,8 @@ class FavoriteJourneysScreenshotTest {
 
     @Test
     fun picking_a_pair_asks_from_then_to_with_the_start_in_the_from_row() {
-        var from by mutableStateOf<StationMatch?>(null)
-        var picked: Pair<StationMatch, StationMatch>? = null
+        var from by mutableStateOf<PendingEnd?>(null)
+        var picked: Pair<PendingEnd, PendingEnd>? = null
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 FavoriteJourneyPicker(
@@ -180,6 +274,7 @@ class FavoriteJourneysScreenshotTest {
                     from = from,
                     onQueryChange = {},
                     onRetry = {},
+                    onRetryPlaces = {},
                     onPickFrom = { from = it },
                     onPickTo = { a, b -> picked = a to b },
                     onChangeFrom = { from = null },
@@ -189,7 +284,7 @@ class FavoriteJourneysScreenshotTest {
             }
         }
         composeRule.onNodeWithText("From station or stop").assertIsDisplayed()
-        from = StationMatch("940GZZLUEUS", "Euston")
+        from = PendingEnd.Station("940GZZLUEUS", "Euston")
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Euston").assertIsDisplayed()
         captureSnapshot("favorite-journeys-pick-to.png")

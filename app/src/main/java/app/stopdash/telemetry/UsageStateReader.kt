@@ -89,7 +89,11 @@ internal class UsageStateReader(
                 bounded("favorite places") { (DataStoreFavoritePlacesStore.from(context, warn = ::warn).places().first() as? FavoritePlacesSet.Loaded)?.places?.size }
             },
             favoriteJourneys = orUnknown("favorite journeys") {
-                bounded("favorite journeys") { DataStoreFavoriteJourneysStore.from(context, warn = ::warn).journeys().first()?.size }
+                bounded("favorite journeys") {
+                    // Both lists from one read, so a save swapping a grayed copy for the journey isn't miscounted.
+                    val saved = DataStoreFavoriteJourneysStore.from(context, warn = ::warn).savedJourneys().first()
+                    favoriteJourneyCount(saved.journeys, saved.pending)
+                }
             },
             notifications = orUnknown("notifications") { NotificationManagerCompat.from(context).areNotificationsEnabled() },
             location = orUnknown("location") {
@@ -140,3 +144,11 @@ internal class UsageStateReader(
         const val READ_TIMEOUT_MILLIS = 5_000L
     }
 }
+
+/**
+ * The favorite journeys a rider has saved, the grayed ones included (maintainer, 2026-10-10: saved from
+ * the same Add, so a rider with only those has favorites too). Null when either list couldn't be read,
+ * so the property says unknown rather than undercount.
+ */
+internal fun favoriteJourneyCount(journeys: List<*>?, pending: List<*>?): Int? =
+    if (journeys == null || pending == null) null else journeys.size + pending.size
