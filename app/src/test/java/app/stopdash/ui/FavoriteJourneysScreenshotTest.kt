@@ -292,7 +292,7 @@ class FavoriteJourneysScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Alerts to Waterloo: Mon–Fri 08:00–10:00").assertIsDisplayed()
         composeRule.onNodeWithText("Alerts to Euston: Mon–Fri 16:00–18:00").assertIsDisplayed()
-        composeRule.onNodeWithText("Alerts off").assertIsDisplayed()
+        composeRule.onNodeWithText("Tap to enable alerts").assertIsDisplayed()
         captureSnapshot("favorite-journeys-alerts.png")
         composeRule.onNodeWithTag("openAlerts-${northern.key}").performClick()
         assertEquals(listOf(northern), opened)

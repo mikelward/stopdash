@@ -78,7 +78,7 @@ data class FavoriteJourneysUi(
     // A pair picked to add, as it stands (null when none is under way or left to say).
     val adding: JourneyAddNote? = null,
     // What each journey's row says of its alerts, by journey key ([journeyAlertSummaries], worked out
-    // off the main thread): one line per watched direction, or none for "Alerts off". A journey
+    // off the main thread): one line per watched direction, or none for "Tap to enable alerts". A journey
     // missing (not worked out yet, or the schedules unreadable) says nothing of alerts.
     val alertSummaries: Map<String, List<String>> = emptyMap(),
     // Some journey's alerts are on but location isn't allowed all the time, so they can't tell when the
@@ -450,7 +450,7 @@ private fun JourneyRow(
     }
 }
 
-// Under a journey: each watched direction's days and times, or "Alerts off".
+// Under a journey: each watched direction's days and times, or "Tap to enable alerts".
 @Composable
 private fun AlertsSummary(lines: List<String>?) {
     // Always two one-line slots, one per direction, filled or not: a save finishing after the rider has come
