@@ -3001,6 +3001,7 @@ private fun DepartureList(
                         // A pole's own notice heads that pole only, so the card keeps the place's
                         // heading over its other poles' routes whenever one is among them.
                         showHeading = placeNotices.isEmpty() || placeNotices.any { (notice, _) -> poleOnly(notice) },
+                        board = heldBoard(place),
                     )
                 }
             }
@@ -3071,7 +3072,7 @@ private fun DepartureList(
                 opened.forEach { group -> groupItems(1, group) }
             } else if (cardNotices.isEmpty()) {
                 item(key = "farther|${card.place.key}") {
-                    FartherCardView(card, fartherCue(card, fetchedStopIds, unavailableStopIds, closedStops.stopIds), onOpen = onOpenFarther)
+                    FartherCardView(card, fartherCue(card, fetchedStopIds, unavailableStopIds, closedStops.stopIds), onOpen = onOpenFarther, board = fartherBoard(card))
                 }
             }
         }
@@ -3114,7 +3115,7 @@ private fun FartherCards(
 ) {
     if (farther.isEmpty()) return
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        for (card in farther) FartherCardView(card, fartherCue(card, fetchedStopIds, unavailableStopIds), onOpen = onOpen)
+        for (card in farther) FartherCardView(card, fartherCue(card, fetchedStopIds, unavailableStopIds), onOpen = onOpen, board = fartherBoard(card))
     }
 }
 
@@ -3144,6 +3145,10 @@ internal data class PendingPlace(
     val distanced: Boolean,
     val placeKey: String = place.key.removePrefix("pending:"),
     val stopIds: Set<String> = emptySet(),
+    // The stops themselves, for the card's timetable marks ([heldBoard]): a reference, so building a
+    // place does no work per line; empty for a place restored from before they were kept, whose
+    // card keeps a plain dash.
+    val stops: List<StopRef> = emptyList(),
 )
 
 /** The lazy-list key of [place]'s card, the same whether it says "Loading" or "Tap to see". */
@@ -3203,6 +3208,7 @@ class PendingTracker {
             ),
             distanced = meters != null,
             stopIds = before.stopIds + place.stopIds,
+            stops = (place.stops + before.stops).distinctBy { it.id },
         )
     }
 
@@ -3232,6 +3238,17 @@ class PendingTracker {
             p.placeKey, p.place.key, p.place.stationId, p.place.name, p.place.meters, p.distanced,
             ArrayList(p.stopIds), ArrayList(p.place.lines.map { it.id }),
             ArrayList(p.place.lines.map { it.name }), ArrayList(p.place.lines.map { it.mode }),
+            ArrayList(p.stops.map { encodeStop(it) }),
+        )
+
+        // A stop as plain strings: its fields, then each line's id, name and mode.
+        private fun encodeStop(s: StopRef): ArrayList<String> = arrayListOf(
+            s.id, s.name, s.clusterId, s.hubId, s.stopLetter, s.bearing, s.towards,
+        ).apply { s.lines.forEach { addAll(listOf(it.id, it.name, it.mode)) } }
+
+        private fun decodeStop(f: List<String>): StopRef = StopRef(
+            id = f[0], name = f[1], clusterId = f[2], hubId = f[3], stopLetter = f[4], bearing = f[5], towards = f[6],
+            lines = f.drop(7).chunked(3).filter { it.size == 3 }.map { (id, name, mode) -> LineRef(id, name, mode) },
         )
 
         @Suppress("UNCHECKED_CAST")
@@ -3250,6 +3267,8 @@ class PendingTracker {
                 distanced = entry[5] as Boolean,
                 placeKey = entry[0] as String,
                 stopIds = (entry[6] as List<String>).toSet(),
+                // Absent from a place saved by an older build.
+                stops = (entry.getOrNull(10) as? List<List<String>>).orEmpty().map { decodeStop(it) },
             )
         }
 
@@ -3432,6 +3451,7 @@ internal fun pendingPlaces(
                 distanced = meters != null,
                 placeKey = key,
                 stopIds = stops.mapTo(HashSet()) { it.id },
+                stops = stops,
             )
         }
     return if (nearMe) places.sortedBy { it.place.meters } else places
@@ -3457,6 +3477,45 @@ internal fun distanceSlots(groupMeters: List<Double?>, pinned: List<Boolean>, me
         val after = groupMeters.indices.lastOrNull { i -> !pinned[i] && groupMeters[i]?.let { it <= m } == true }
         after?.plus(1) ?: pinned.indexOfFirst { !it }.takeIf { it >= 0 } ?: groupMeters.size
     }
+
+/**
+ * An opened farther card's board ([EmptyTimes.placeBoard]), as a recipe the repository calls off the
+ * main thread: the lines it shows at the stops it opened. Null until it has opened, or with no
+ * stops to look up.
+ */
+internal fun fartherBoard(card: FartherCard): PlaceBoard? {
+    val load = card.load as? FartherLoad.Open ?: return null
+    if (load.stops.isEmpty()) return null
+    val lines = card.place.lines
+    return PlaceBoard("${System.identityHashCode(load)}.${lines.size}") {
+        EmptyTimes.placeBoard(load.stops.associate { stop -> stop.id to stop.lines.map { it.id } }, lines)
+    }
+}
+
+/**
+ * A held cold-load card's board ([EmptyTimes.placeBoard]), as a recipe the repository calls off the
+ * main thread, where each stop's lines are read; null for a place saved before its stops were kept.
+ */
+internal fun heldBoard(place: PendingPlace): PlaceBoard? {
+    val stops = place.stops.takeIf { it.isNotEmpty() } ?: return null
+    val lines = place.place.lines
+    // The stops' list is kept by reference through a card's re-measuring and hiding, and rebuilt only
+    // when stops land ([PendingTracker.widened]); its lines can be refiltered each frame by a hidden
+    // mode, so they count by size, which changes when hiding drops one.
+    return PlaceBoard("${System.identityHashCode(stops)}.${lines.size}") {
+        EmptyTimes.placeBoard(stops.associate { stop -> stop.id to stop.lines.map { it.id } }, lines)
+    }
+}
+
+/**
+ * A collapsed card's board: the [recipe] the repository calls off the main thread, and the [tag]
+ * that, in the mark's id, makes a board whose inputs changed a new board ([emptyTimesMark]), so an
+ * answer worked out for the old one never shows for it, however the repository's work interleaves.
+ * Made in constant time from what the recipe reads: the identity of the load or stops it was built
+ * from, which held state keeps between frames and rebuilds only when they change, and its line
+ * count. Never by walking a list on the main thread.
+ */
+internal class PlaceBoard(val tag: String, val recipe: () -> EmptyTimes.Board)
 
 /** What a collapsed card says where the times would be, and whether a tap acts on it. */
 internal enum class FartherCue(val tappable: Boolean) { TAP_TO_SEE(true), LOADING(false), RETRY(true), NO_DEPARTURES(false), CLOSED(false) }
@@ -3503,19 +3562,41 @@ private fun FartherCardView(
     showDistance: Boolean = true,
     // False when the place's notice group already heads it, so the place isn't named twice.
     showHeading: Boolean = true,
+    // The card's board for its timetable marks once it comes back with nothing ([EmptyTimes.placeBoard]):
+    // a recipe, called off the main thread by the repository. Null keeps a plain dash.
+    board: PlaceBoard? = null,
 ) {
     val place = card.place
+    // With nothing back, the same marks as a line row (SPEC *Departures*): a dash only when its
+    // timetables say nothing is due, "?" when one has a train due or can't say, a spinner while
+    // they load. Its board's [PlaceBoard.tag] is in the id, so a reloaded card, or stops landing on a
+    // held one, is a new board with no mark yet, never the old board's answer.
+    val mark = if (cue == FartherCue.NO_DEPARTURES && board != null) {
+        emptyTimesMark("place:${place.key}#${board.tag}", board.recipe)
+    } else {
+        EmptyTimes.Mark.NONE
+    }
+    val unknown = cue == FartherCue.NO_DEPARTURES && mark == EmptyTimes.Mark.UNKNOWN
+    val loadingTimes = cue == FartherCue.NO_DEPARTURES && mark == EmptyTimes.Mark.LOADING
     val cueText = stringResource(
-        when (cue) {
-            FartherCue.TAP_TO_SEE -> R.string.farther_tap_to_see
-            FartherCue.LOADING -> R.string.farther_loading
-            FartherCue.RETRY -> R.string.farther_retry
-            // A dash where the times go, as a line row with nothing running shows.
-            FartherCue.NO_DEPARTURES -> R.string.status_no_departures
-            FartherCue.CLOSED -> R.string.farther_closed
+        when {
+            unknown -> R.string.status_times_unknown
+            else -> when (cue) {
+                FartherCue.TAP_TO_SEE -> R.string.farther_tap_to_see
+                FartherCue.LOADING -> R.string.farther_loading
+                FartherCue.RETRY -> R.string.farther_retry
+                // A dash where the times go, as a line row with nothing running shows.
+                FartherCue.NO_DEPARTURES -> R.string.status_no_departures
+                FartherCue.CLOSED -> R.string.farther_closed
+            }
         },
     )
-    val cueSpoken = if (cue == FartherCue.NO_DEPARTURES) stringResource(R.string.status_no_departures_description) else cueText
+    val cueSpoken = when {
+        unknown -> stringResource(R.string.status_times_unknown_description)
+        loadingTimes -> stringResource(R.string.status_times_loading_description)
+        cue == FartherCue.NO_DEPARTURES -> stringResource(R.string.status_no_departures_description)
+        else -> cueText
+    }
     val tappable = cue.tappable
     // In the chosen units, like every near-me header; none while the stored choice is being read.
     val distanceSystem = LocalDistanceSystem.current
@@ -3545,7 +3626,14 @@ private fun FartherCardView(
                 ) {
                     for (line in place.lines) LinePill(line.name, line.id, line.mode)
                 }
-                Text(
+                if (loadingTimes) {
+                    // As a line row's spinner: the timetables that settle the mark are on their way.
+                    CircularProgressIndicator(
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp).semantics { contentDescription = cueSpoken },
+                    )
+                } else Text(
                     text = cueText,
                     modifier = Modifier.semantics { contentDescription = cueSpoken },
                     style = MaterialTheme.typography.labelLarge,

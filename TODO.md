@@ -971,8 +971,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       ran, and the status row's dash read as "no trains". The dash now needs StopDash to be sure —
       the line isn't running there, or its TfL timetable has nothing within 30 minutes — and is "?"
       otherwise. The timetable is never shown as times.
-  - [ ] **The same marks on a place card that came back empty** (maintainer, 2026-10-03: status
-        rows first, cards after). Build each card's board (the lines it shows, at the stops that
+  - [x] **The same marks on a place card that came back empty** (maintainer, 2026-10-03: status
+        rows first, cards after). *Done: an opened farther card and a held cold-load card ask for
+        their lines' timetables at the stops that serve them, off the main thread; a night bus by
+        day is a dash with no timetable fetched.* Build each card's board (the lines it shows, at the stops that
         serve them: an interchange's member stations, not its hub; a bus card's picked routes only;
         no National Rail line) where the cards are built, off the main thread, with a revision, and
         tie each mark to the revision it was worked out for. Working the board out in composition, as
