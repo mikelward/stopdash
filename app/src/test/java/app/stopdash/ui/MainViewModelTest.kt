@@ -6964,8 +6964,11 @@ class MainViewModelTest {
                     initializer {
                         FartherCardsViewModel(
                             stationStops = { listOf(fartherStop) },
+                            // The cards' model works on the same worker: on the app's own compute thread its
+                            // state would reach the cards' collector on the worker at any moment, even after
+                            // close() saw it go quiet, and fail the test now and then.
                             newModel = { stops, distances ->
-                                MainViewModel(twoStopClient(), stops, clock = { now }, io = dispatcher, stopDistanceMeters = distances)
+                                MainViewModel(twoStopClient(), stops, clock = { now }, io = dispatcher, compute = worker, stopDistanceMeters = distances)
                             },
                             io = dispatcher,
                             compute = worker,
