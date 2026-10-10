@@ -59,6 +59,7 @@ import app.stopdash.MainActivity
 import app.stopdash.R
 import app.stopdash.shared.R as SharedR
 import app.stopdash.StopdashDebugLog
+import com.mikelward.androidlog.safe
 import app.stopdash.data.HiddenModesSetting
 import app.stopdash.data.DataStoreAlertsBehindStore
 import app.stopdash.data.DataStoreDismissedAlertsStore
@@ -302,6 +303,10 @@ class StopDashWidget : GlanceAppWidget() {
             models.all.maxOf { it.rows.size },
             shown?.let { JavaDuration.between(it.fetchedAt, now).seconds } ?: -1L,
         )
+        // The sizes the launcher reported and what each fitted, so a widget that leaves space unused
+        // (or clips) can be told apart: a launcher reporting a smaller cell than it draws, or rows
+        // costed taller than they are. Sizes and counts only.
+        StopdashDebugLog.info("widget: sizes %s at font %s", safe(models.sizesSummary), fontScale)
         // A stale line's guess ("21:14?") goes once its train is due, as a countdown drops a departed
         // train; nothing else redraws a stale widget, so the redraw is due by the soonest one drawn.
         val guessExpiry = models.guessExpiresAt?.let { JavaDuration.between(now, it).toKotlinDuration() }
@@ -374,15 +379,31 @@ internal suspend fun widgetModels(
         )
     }
     val everyRow = build(DpSize(WIDGET_MIN_WIDTH, WIDGET_UNBOUNDED_HEIGHT))
+    val bySize = sizes.associateWith(build)
     WidgetModels(
-        sizes.associateWith(build),
+        bySize,
         fallback = build(WIDGET_MIN_SIZE),
         everyRow.guessExpiresAt,
         build,
         worker,
         nextChangeAt = nextCountdownChange(snapshot?.stops.orEmpty().flatMap { it.departures }, now),
+        // For the debug log, here on the worker rather than where the log line is written.
+        sizesSummary = widgetSizesSummary(bySize.mapValues { it.value.rows.size }),
     )
 }
+
+/** A size as the debug log writes it, in whole dp: "411x290". */
+internal fun widgetSizeLabel(size: DpSize): String = "${size.width.value.toInt()}x${size.height.value.toInt()}"
+
+/**
+ * Each reported size and how many rows its model fitted, widest first, for the debug log:
+ * "720x290 9 rows, 411x620 12 rows"; "none" when the launcher reported no size.
+ */
+internal fun widgetSizesSummary(rowsBySize: Map<DpSize, Int>): String =
+    rowsBySize.entries
+        .sortedWith(compareByDescending<Map.Entry<DpSize, Int>> { it.key.width.value }.thenByDescending { it.key.height.value })
+        .joinToString(", ") { (size, rows) -> "${widgetSizeLabel(size)} $rows rows" }
+        .ifEmpty { "none" }
 
 /**
  * The first instant after [now] at which any of [departures]' countdowns changes: one departing, or
@@ -418,6 +439,8 @@ internal class WidgetModels(
     private val worker: CoroutineDispatcher,
     /** When the first of the snapshot's countdowns next changes ([nextCountdownChange]). */
     val nextChangeAt: Instant? = null,
+    /** The reported sizes and the rows each fitted, for the debug log ([widgetSizesSummary]). */
+    val sizesSummary: String = "none",
 ) {
     operator fun get(size: DpSize): WidgetModel = bySize[size] ?: fallback
 
@@ -426,7 +449,10 @@ internal class WidgetModels(
         if (size in bySize) {
             this
         } else {
-            withContext(worker) { WidgetModels(bySize + (size to build(size)), fallback, guessExpiresAt, build, worker, nextChangeAt) }
+            // Drawn at a size the launcher didn't report when the models were worked out: worth
+            // knowing when the rows don't fill the cell.
+            StopdashDebugLog.info("widget: drawn at unreported size %s", safe(widgetSizeLabel(size)))
+            withContext(worker) { WidgetModels(bySize + (size to build(size)), fallback, guessExpiresAt, build, worker, nextChangeAt, sizesSummary) }
         }
 
     /** Every model worked out, the fallback's too: never empty. */

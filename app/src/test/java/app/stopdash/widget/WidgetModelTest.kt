@@ -1,6 +1,7 @@
 package app.stopdash.widget
 
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import app.stopdash.domain.AlertBehind
 import app.stopdash.domain.Departure
@@ -931,5 +932,13 @@ class WidgetModelTest {
         val model = widgetModel(snapshot, now, maxLines = 1, maxLinesWithNote = 1)
         assertFalse(model.statusUnknown)
         assertEquals(listOf("victoria"), model.rows.map { it.row.lineId })
+    }
+
+    @Test
+    fun `the size summary names each reported size and its rows, widest first`() {
+        val summary = widgetSizesSummary(mapOf(DpSize(411.dp, 620.dp) to 12, DpSize(720.5.dp, 290.dp) to 9))
+        // Widest first, in whole dp.
+        assertEquals("720x290 9 rows, 411x620 12 rows", summary)
+        assertEquals("none", widgetSizesSummary(emptyMap()))
     }
 }

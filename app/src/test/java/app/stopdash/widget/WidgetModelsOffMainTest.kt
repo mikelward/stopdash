@@ -16,6 +16,7 @@ import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -58,6 +59,12 @@ class WidgetModelsOffMainTest {
             }
             assertEquals(setOf("test-worker"), ranOn.threads().toSet())
             assertEquals(setOf(portrait, landscape), models.bySize.keys)
+            // The debug log's size summary is worked out on the worker too, with the models.
+            assertEquals(
+                widgetSizesSummary(models.bySize.mapValues { it.value.rows.size }),
+                models.sizesSummary,
+            )
+            assertTrue(models.sizesSummary.startsWith("700x250 "))
             val min = WidgetGeometry(WIDGET_MIN_SIZE.width, WIDGET_MIN_SIZE.height, 1f)
             assertEquals(widgetModel(snapshot, now, geometry = min), models.fallback)
             for ((size, model) in models.bySize) {
