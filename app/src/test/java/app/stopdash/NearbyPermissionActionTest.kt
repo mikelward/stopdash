@@ -2,6 +2,8 @@ package app.stopdash
 
 import app.stopdash.ui.NearbyStopsViewModel
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -105,5 +107,13 @@ class NearbyPermissionActionTest {
         assertEquals(null, locationAnswer(granted = false, rationaleBefore = true, rationaleAfter = true))
         // Answered at once with no prompt shown: Android had already stopped asking.
         assertEquals(true, locationAnswer(granted = false, rationaleBefore = false, rationaleAfter = false, atOnce = true))
+    }
+
+    @Test
+    fun `a grant looks stops up again unless approximate is kept over a shown list`() {
+        assertTrue(relocateAfterGrant(fine = false, showingStops = false))
+        assertTrue(relocateAfterGrant(fine = true, showingStops = false))
+        assertTrue(relocateAfterGrant(fine = true, showingStops = true))
+        assertFalse(relocateAfterGrant(fine = false, showingStops = true))
     }
 }

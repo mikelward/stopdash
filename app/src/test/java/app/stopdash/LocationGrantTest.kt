@@ -34,4 +34,26 @@ class LocationGrantTest {
         assertTrue(foregroundLocationGranted({ it == Manifest.permission.ACCESS_FINE_LOCATION }))
         assertFalse(foregroundLocationGranted({ false }))
     }
+
+    @Test
+    fun `location access is precise, approximate or none`() = runBlocking {
+        assertEquals(LocationAccess.PRECISE, locationAccess({ true }))
+        assertEquals(LocationAccess.APPROXIMATE, locationAccess({ it == Manifest.permission.ACCESS_COARSE_LOCATION }))
+        assertEquals(LocationAccess.NONE, locationAccess({ false }))
+    }
+
+    @Test
+    fun `location access is read off the caller's thread`() {
+        val caller = Executors.newSingleThreadExecutor { Thread(it, "test-caller") }.asCoroutineDispatcher()
+        val worker = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }.asCoroutineDispatcher()
+        try {
+            val threads = ThreadRecorder()
+            val access = runBlocking(caller) { locationAccess({ threads.note(); false }, io = worker) }
+            assertEquals(LocationAccess.NONE, access)
+            assertEquals(listOf("test-worker", "test-worker"), threads.threads())
+        } finally {
+            caller.close()
+            worker.close()
+        }
+    }
 }

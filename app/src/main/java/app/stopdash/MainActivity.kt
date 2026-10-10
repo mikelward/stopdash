@@ -699,6 +699,9 @@ class MainActivity : ComponentActivity() {
                 // refusal for good from a dismissed prompt (Back), which Android also reports as ungranted.
                 var rationaleBeforeAsk by rememberSaveable { mutableStateOf(false) }
                 var gateAskedAt by rememberSaveable { mutableLongStateOf(0L) }
+                // Asked from Settings' Location row: a refusal for good there opens Android's settings for
+                // StopDash, since the row has no Open settings button of its own.
+                var askedFromSettings by rememberSaveable { mutableStateOf(false) }
                 val permissionLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestMultiplePermissions(),
                 ) { grants ->
@@ -728,14 +731,27 @@ class MainActivity : ComponentActivity() {
                     noteLocationAllowed(grants.values.any { it })
                     if (grants.values.any { it }) {
                         permissionPermanentlyDenied = false
-                        nearbyViewModel.locate()
+                        if (relocateAfterGrant(fine = grants[Manifest.permission.ACCESS_FINE_LOCATION] == true, showingStops = nearbyViewModel.state.value is NearbyStopsViewModel.State.Ready)) {
+                            nearbyViewModel.locate()
+                        }
                     } else {
                         // Refused for good: Android won't prompt again, so Settings rather than a dead
                         // re-request. A first refusal or a dismissed prompt can still be asked again.
                         permissionPermanentlyDenied = answer == true
                     }
+                    // Precise not granted, answered at once with no dialog shown: Android won't ask, so its settings.
+                    // An approximate grant refused precise for good lands here too, with coarse still held.
+                    if (askedFromSettings && grants[Manifest.permission.ACCESS_FINE_LOCATION] != true &&
+                        SystemClock.elapsedRealtime() - gateAskedAt < JourneyAlertState.AT_ONCE_MILLIS
+                    ) {
+                        openAppSettings()
+                    }
+                    askedFromSettings = false
                 }
-                val askForLocation = {
+                // One ask for location, from the gate and from Settings alike, so each answer is recorded,
+                // remembered across starts and starts the nearby lookup the same way.
+                val askForLocation = { fromSettings: Boolean ->
+                    askedFromSettings = fromSettings
                     rationaleBeforeAsk = shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION)
                     gateAskedAt = SystemClock.elapsedRealtime()
                     permissionLauncher.launch(locationPermissions)
@@ -806,7 +822,7 @@ class MainActivity : ComponentActivity() {
                                 )
                             ) {
                                 NearbyPermissionAction.LOCATE -> nearbyViewModel.locate()
-                                NearbyPermissionAction.REQUEST_PRECISE -> askForLocation()
+                                NearbyPermissionAction.REQUEST_PRECISE -> askForLocation(false)
                                 // Refused for good before this start: Settings at once, not an Allow
                                 // button whose tap Android would refuse unseen.
                                 NearbyPermissionAction.REFUSED -> permissionPermanentlyDenied = true
@@ -2231,10 +2247,13 @@ class MainActivity : ComponentActivity() {
                                 // until read, off the main thread, and read again on every return, since it's
                                 // granted or taken away in Android's settings.
                                 var widgetFollows by remember { mutableStateOf<Boolean?>(null) }
+                                // How much location is allowed while in use, for the Location row: read with it.
+                                var locationAccessNow by remember { mutableStateOf<LocationAccess?>(null) }
                                 val followsScope = rememberCoroutineScope()
                                 val readFollows: () -> Unit = {
                                     followsScope.launch {
                                         widgetFollows = withContext(Dispatchers.IO) { JourneyAlertLocation.allowedAllTheTime(applicationContext) }
+                                        locationAccessNow = locationAccess({ ContextCompat.checkSelfPermission(applicationContext, it) == PackageManager.PERMISSION_GRANTED })
                                     }
                                 }
                                 LifecycleResumeEffect(Unit) {
@@ -2243,6 +2262,17 @@ class MainActivity : ComponentActivity() {
                                 }
                                 val askFollows = rememberLocationAllTimeAsk(onAnswered = readFollows)
                                 SettingsScreen(
+                                    locationAccess = locationAccessNow,
+                                    onLocationClick = {
+                                        // Precise already: Android's settings for StopDash, where it can be changed. Otherwise
+                                        // ask for precise; Android offers approximate alongside it.
+                                        if (locationAccessNow == LocationAccess.PRECISE) {
+                                            openAppSettings()
+                                        } else {
+                                            // Read again on return, as the prompt resumes the activity.
+                                            askForLocation(true)
+                                        }
+                                    },
                                     widgetFollows = widgetFollows,
                                     onWidgetFollowsChange = { on ->
                                         // Turned on through the disclosure and Android's prompt; off only in Android's
@@ -2588,10 +2618,10 @@ class MainActivity : ComponentActivity() {
                                             now = tickingNow(),
                                             approximate = gateBanner == LocationBanner.COARSE,
                                             permanentlyDenied = permissionPermanentlyDenied,
-                                            onAllow = { askForLocation() },
+                                            onAllow = { askForLocation(false) },
                                             onRetry = {
                                                 if (hasLocationPermission()) nearbyViewModel.locate()
-                                                else askForLocation()
+                                                else askForLocation(false)
                                             },
                                             onOpenSettings = ::openAppSettings,
                                             onOpenLicenses = openLicenses,
@@ -5450,6 +5480,14 @@ internal fun nearbyPermissionAction(
     lastRefused && !rationaleAllowed -> NearbyPermissionAction.REFUSED
     else -> NearbyPermissionAction.WAIT
 }
+
+/**
+ * Whether a location prompt's grant looks the nearby stops up again: always when nothing is listed yet,
+ * and over a list already shown only when precise was granted, an upgrade (the prompt is only shown
+ * without precise). Approximate kept, as when Settings' Location row is answered Approximate again,
+ * leaves the list as it is rather than replacing it with a fresh lookup that may fail (Codex on #734).
+ */
+internal fun relocateAfterGrant(fine: Boolean, showingStops: Boolean): Boolean = fine || !showingStops
 
 /**
  * What a location prompt's answer says about refusal: false for a grant; true for a refusal for good,
