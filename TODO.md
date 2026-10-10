@@ -220,7 +220,8 @@ exercises the whole spine the widget later renders from.
       the engineering ones (the worker, a slot, an answer standing in, held, settle, snapshot,
       refresh, reconcile, relocation, report, check, lookup, verdict). Then use them as defined:
       a term whose meaning isn't written down drifts, and a reader (or a reviewer) can't tell
-      which of two meanings a sentence uses.
+      which of two meanings a sentence uses. Drafted: the ⚑ entries in it are the maintainer's
+      to settle, then the spec and code follow the words chosen.
 
 ## Phase 1 — In-app departures view (first deliverable)
 
