@@ -1089,6 +1089,43 @@ class SettingsScreenScreenshotTest {
         System.getProperty("roborazzi.test.record") == "true" ||
             System.getProperty("roborazzi.test.verify") == "true"
 
+    @Test
+    fun the_location_row_leads_the_widget_settings_and_says_how_much_is_allowed() {
+        var access by mutableStateOf<app.stopdash.LocationAccess?>(null)
+        var taps = 0
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(
+                    liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = {},
+                    locationAccess = access, onLocationClick = { taps++ },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        // Not read yet: held, so a tap can't act on a grant that isn't known.
+        composeRule.onNodeWithTag("locationRow").performScrollTo().assertIsNotEnabled()
+        access = app.stopdash.LocationAccess.APPROXIMATE
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Approximate").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("locationRow").performClick()
+        assertEquals(1, taps)
+        access = app.stopdash.LocationAccess.PRECISE
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Precise").assertIsDisplayed()
+        access = app.stopdash.LocationAccess.NONE
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Not allowed").assertIsDisplayed()
+        // Location, then the widget following the rider, then how often the widget updates.
+        val location = composeRule.onNodeWithTag("locationRow").fetchSemanticsNode().positionInRoot.y
+        val follows = composeRule.onNodeWithTag("widgetFollowsSwitch").fetchSemanticsNode().positionInRoot.y
+        val live = composeRule.onNodeWithTag("liveWidgetSwitch").fetchSemanticsNode().positionInRoot.y
+        org.junit.Assert.assertTrue("location above follows", location < follows)
+        org.junit.Assert.assertTrue("follows above live refresh", follows < live)
+        access = app.stopdash.LocationAccess.APPROXIMATE
+        composeRule.waitForIdle()
+        captureSnapshot("settings-location-row.png")
+    }
+
     private fun captureSnapshot(name: String, widthPx: Int = 1080, heightPx: Int = 1920) {
         if (!capturing()) return
         val root = composeRule.activity.window.decorView.rootView

@@ -51,6 +51,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import app.stopdash.LocationAccess
 import app.stopdash.R
 import app.stopdash.domain.DEFAULT_FONT_SCALE
 import app.stopdash.domain.DistanceUnits
@@ -90,6 +91,10 @@ fun SettingsScreen(
     // and Android's prompt, or Android's settings to turn it off.
     widgetFollows: Boolean? = false,
     onWidgetFollowsChange: (Boolean) -> Unit = {},
+    // How much location StopDash may use while in use (Android's grant), null until read, and a report
+    // of a tap on its row, which the caller turns into a request for precise or Android's settings.
+    locationAccess: LocationAccess? = null,
+    onLocationClick: () -> Unit = {},
     // The user's saved TfL app_key (empty when keyless — the default), and a report of a new value
     // to save. UI-only like the rest of the screen: persistence and the request clients are the
     // caller's job, so this stays Robolectric-renderable with no store and no network (SPEC D7).
@@ -355,6 +360,29 @@ fun SettingsScreen(
                         onDismiss = onDismissStepFreeError,
                     )
                 }
+                // Location first, then what builds on it: the widget following the rider, then how often
+                // the widget updates.
+                SettingNavRow(
+                    title = stringResource(R.string.settings_location_title),
+                    summary = when (locationAccess) {
+                        LocationAccess.PRECISE -> stringResource(R.string.settings_location_precise)
+                        LocationAccess.APPROXIMATE -> stringResource(R.string.settings_location_approximate)
+                        LocationAccess.NONE -> stringResource(R.string.settings_location_none)
+                        // Not read yet: an empty summary holds the row's height until it is.
+                        null -> ""
+                    },
+                    onClick = onLocationClick,
+                    testTag = "locationRow",
+                    enabled = locationAccess != null,
+                )
+                SettingSwitchRow(
+                    title = stringResource(R.string.settings_widget_follows_title),
+                    summary = stringResource(R.string.settings_widget_follows_summary),
+                    checked = widgetFollows == true,
+                    onCheckedChange = onWidgetFollowsChange,
+                    enabled = widgetFollows != null,
+                    switchTestTag = "widgetFollowsSwitch",
+                )
                 SettingSwitchRow(
                     title = stringResource(R.string.settings_live_widget_refresh_title),
                     summary = stringResource(R.string.settings_live_widget_refresh_summary),
@@ -372,14 +400,6 @@ fun SettingsScreen(
                         onDismiss = onDismissLiveWidgetRefreshError,
                     )
                 }
-                SettingSwitchRow(
-                    title = stringResource(R.string.settings_widget_follows_title),
-                    summary = stringResource(R.string.settings_widget_follows_summary),
-                    checked = widgetFollows == true,
-                    onCheckedChange = onWidgetFollowsChange,
-                    enabled = widgetFollows != null,
-                    switchTestTag = "widgetFollowsSwitch",
-                )
                 onInstallOnWatch?.let { install ->
                     SettingNavRow(
                         title = stringResource(R.string.settings_watch_install_title),

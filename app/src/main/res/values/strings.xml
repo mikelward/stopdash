@@ -776,10 +776,16 @@
     <string name="settings_title">Settings</string>
     <string name="settings_live_widget_refresh_title">Refresh widget every minute</string>
     <string name="settings_live_widget_refresh_summary">Refreshes the home-screen widget about once a minute in the background. Uses more battery and data.</string>
-    <!-- Shown under the toggle when the setting saved but the background refresh couldn't be
-         scheduled (a rare storage/WorkManager error); the choice is kept and retried later. -->
+    <!-- Settings' Location row: how much location StopDash may use, from Android's grant. Tapping it
+         asks for precise location, or opens Android's location settings for StopDash. -->
+    <string name="settings_location_title">Location</string>
+    <string name="settings_location_precise">Precise</string>
+    <string name="settings_location_approximate">Approximate</string>
+    <string name="settings_location_none">Not allowed</string>
     <string name="settings_widget_follows_title">Automatic watch and widget location</string>
     <string name="settings_widget_follows_summary">Shows the stops where you are, using your location in the background.</string>
+    <!-- Shown under the toggle when the setting saved but the background refresh couldn't be
+         scheduled (a rare storage/WorkManager error); the choice is kept and retried later. -->
     <string name="settings_live_widget_refresh_failed">Couldn\'t update live refresh</string>
     <string name="action_dismiss">Dismiss</string>
 

@@ -3223,10 +3223,13 @@ the Open Government Licence v3.0. A test pins the credits so a rewording can't d
 An overflow-menu entry opens a Settings screen, hosted at the activity top level like the
 licenses screen (an overlay whose own Back closes it) rather than through a navigation graph
 — stopdash still has no nav library. Its first row opens the favorite-places editor (D9), and the third the favorite journeys (*Journeys*);
-the opt-in "refresh widget every minute" toggle (D5) follows below them, then "Automatic watch and widget location"
-(D1), which reads on while location is allowed all the time: turning it on opens the disclosure and
-Android's prompt, and turning it off opens Android's settings for the app, where the grant is taken
-away. The screen composable
+three location and widget rows follow below them, in order. **Location** says how much location
+StopDash may use while in use: Precise, Approximate or Not allowed. Tapping it asks Android for
+precise location, or opens Android's settings for the app when precise is already allowed or
+Android has stopped asking. Next comes "Automatic watch and widget location" (D1), which reads on
+while location is allowed all the time: turning it on opens the disclosure and Android's prompt,
+and turning it off opens Android's settings for the app, where the grant is taken away. Last is the
+opt-in "refresh widget every minute" toggle (D5). The screen composable
 is UI-only for the toggle: it reflects the setting and reports a
 change, while persistence (a typed DataStore, mirroring the starred-rows store) and the
 refresh scheduler (WorkManager) are wired by the activity, so the screen stays
