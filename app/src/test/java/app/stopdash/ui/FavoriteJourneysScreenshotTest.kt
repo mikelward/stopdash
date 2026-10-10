@@ -144,7 +144,7 @@ class FavoriteJourneysScreenshotTest {
     }
 
     @Test
-    fun a_pair_with_no_direct_line_says_so_until_dismissed() {
+    fun a_pair_with_no_direct_line_shows_grayed_with_multi_leg_coming_soon_until_dismissed() {
         var dismissed = 0
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -156,7 +156,8 @@ class FavoriteJourneysScreenshotTest {
                 )
             }
         }
-        composeRule.onNodeWithText("No direct line from King's Cross St. Pancras to Canada Water").assertIsDisplayed()
+        composeRule.onNodeWithText("King's Cross St. Pancras ⇄ Canada Water").assertIsDisplayed()
+        composeRule.onNodeWithText("Support for multi-leg journeys coming soon").assertIsDisplayed()
         captureSnapshot("favorite-journeys-no-direct-line.png")
         composeRule.onNodeWithTag("dismissJourneyAddNote").performClick()
         assertEquals(1, dismissed)

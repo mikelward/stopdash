@@ -598,8 +598,9 @@
     <string name="favorite_journeys_adding">Adding %1$s ⇄ %2$s…</string>
     <!-- The picked pair was already saved. -->
     <string name="favorite_journeys_add_already">%1$s ⇄ %2$s is already a favorite</string>
-    <!-- No line serves both picked stations: a journey with a change isn't supported yet. -->
-    <string name="favorite_journeys_add_no_line">No direct line from %1$s to %2$s</string>
+    <!-- Under the grayed pair (journey_title_both_ways) when no line serves both picked stations: a
+         journey with a change isn't supported yet (maintainer, 2026-10-10). -->
+    <string name="favorite_journeys_add_multi_leg_soon">Support for multi-leg journeys coming soon</string>
     <!-- The same station picked for both ends. -->
     <string name="favorite_journeys_add_same">Pick two different stations</string>
     <!-- Looking up the picked stations failed. %3$s is why, as the partial-refresh banner says it ("offline"). -->

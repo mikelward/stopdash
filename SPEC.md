@@ -1262,8 +1262,8 @@ found and dropped without riding past its card; Remove only ever removes the fav
 where it starts, then, with that standing in its From row, where it ends; the From row changes the
 start, and Back from the end drops back to it. The pair is saved on a line both stations serve (rail
 before bus), as a long press saves one, and the list says what it's doing ("Adding Euston ➔
-Waterloo…") and why a pair wasn't added: no line serves both ("No direct line from … to …"; a
-journey with a change waits on *Trips with a change*), the same station twice, already a favorite, or
+Waterloo…") and why a pair wasn't added: no line serves both (the pair grayed, under it "Support for multi-leg journeys coming soon", maintainer
+2026-10-10; a journey with a change waits on *Trips with a change*), the same station twice, already a favorite, or
 the lookup or the save failed. It costs one stop lookup per station picked, as opening a station does. Favorite journeys are
 kept on the device with the rest of the user's config and never logged (*Privacy*).
 

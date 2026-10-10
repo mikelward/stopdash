@@ -360,7 +360,8 @@ private fun AddNoteRow(note: JourneyAddNote, onDismiss: () -> Unit) {
     val text = when (note) {
         is JourneyAddNote.Adding -> stringResource(R.string.favorite_journeys_adding, note.from, note.to)
         is JourneyAddNote.AlreadySaved -> stringResource(R.string.favorite_journeys_add_already, note.from, note.to)
-        is JourneyAddNote.NoDirectLine -> stringResource(R.string.favorite_journeys_add_no_line, note.from, note.to)
+        // The pair itself, grayed, with why under it (maintainer, 2026-10-10).
+        is JourneyAddNote.NoDirectLine -> stringResource(R.string.journey_title_both_ways, note.from, note.to)
         is JourneyAddNote.SameStation -> stringResource(R.string.favorite_journeys_add_same)
         is JourneyAddNote.LookupFailed -> stringResource(R.string.favorite_journeys_add_failed, note.from, note.to, stringResource(partialReason(note.kind)))
         is JourneyAddNote.NotSaved -> stringResource(R.string.favorite_journeys_add_not_saved, note.from, note.to)
@@ -370,12 +371,27 @@ private fun AddNoteRow(note: JourneyAddNote, onDismiss: () -> Unit) {
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).testTag("journeyAddNote"),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
-        )
+        if (note is JourneyAddNote.NoDirectLine) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = stringResource(R.string.favorite_journeys_add_multi_leg_soon),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+        }
         if (note !is JourneyAddNote.Adding) {
             Spacer(modifier = Modifier.width(16.dp))
             TextButton(onClick = onDismiss, modifier = Modifier.testTag("dismissJourneyAddNote")) {
