@@ -48,6 +48,7 @@ import app.stopdash.domain.ReplanOrigin
 import app.stopdash.domain.RouteRide
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.SavedTrip
+import app.stopdash.domain.AlertsBehindStore
 import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.StarredRowSet
 import app.stopdash.domain.StationLead
@@ -3253,6 +3254,7 @@ class MainActivity : ComponentActivity() {
                             // (its load() returns null) — a previous location's stops must not
                             // resurface under a newly-resolved set.
                             snapshotStore = if (forWidget) WidgetSnapshotStore(applicationContext) else SnapshotStore.NONE,
+                            alertsBehindStore = if (forWidget) DataStoreAlertsBehindStore.from(appContext, warn = ::logDepartureWarning) else AlertsBehindStore.NONE,
                             // A station's list isn't the widget's: the near-me model keeps the journey pins.
                             ownsWidgetJourneys = forWidget,
                             // Starring is persisted per row across every nearby set (it's keyed

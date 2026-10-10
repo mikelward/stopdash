@@ -43,6 +43,17 @@ interface SnapshotStore {
         saveIfStopsMatch(snapshot, loaded.stops.map { it.stopId })
 
     /**
+     * [saveFollowedIfUnchanged], with the stored [DeparturesSnapshot.nearbyChoices] worked out by
+     * [choicesFor] from what the write keeps, atomically with it: a stop whose fresher stored rows the
+     * write keeps over [snapshot]'s folds by choices made from those rows, not from [snapshot]'s.
+     */
+    suspend fun saveFollowedIfUnchanged(
+        snapshot: DeparturesSnapshot,
+        loaded: DeparturesSnapshot,
+        choicesFor: (DeparturesSnapshot) -> List<FoldChoice>,
+    ): Boolean = saveFollowedIfUnchanged(snapshot, loaded)
+
+    /**
      * Update the stored widget journeys by [report] ([WidgetJourneys.apply]), atomically with the
      * read, taking a pinned journey's origin from [origins] where it is missing or older — the one
      * write that changes the pins.
@@ -126,6 +137,19 @@ interface SnapshotStore {
      * be late (SPEC D3). A no-op when nothing is stored.
      */
     suspend fun updateLineStatuses(checks: Map<String, LineStatusCheck>) {}
+
+    /**
+     * [updateLineStatuses], with the stored [DeparturesSnapshot.nearbyChoices] worked out again by
+     * [choicesFor] from the snapshot with the merged statuses, atomically with the merge: a line
+     * suspended since gets a status row, which folds by the choices like any other ([DepartureRows.glanceFolded]).
+     * Only while the stored layout (its stops, their order and nearer places, and its choices) is
+     * still [laidOut]'s: one laid out from a newer position meanwhile keeps its own.
+     */
+    suspend fun updateLineStatuses(
+        checks: Map<String, LineStatusCheck>,
+        laidOut: DeparturesSnapshot,
+        choicesFor: (DeparturesSnapshot) -> List<FoldChoice>,
+    ) = updateLineStatuses(checks)
 
     companion object {
         /** A store that persists nothing — the default for tests and for a build with no

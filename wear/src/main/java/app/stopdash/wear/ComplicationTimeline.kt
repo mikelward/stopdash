@@ -6,6 +6,7 @@ import app.stopdash.data.toDomain
 import app.stopdash.domain.DepartureLabels
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
+import app.stopdash.domain.GlanceRows
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.RouteTopology
@@ -102,7 +103,7 @@ object ComplicationTimeline {
         // on the default row shows the suspension rather than skip past it.
         val staleRow: (DepartureRow) -> Boolean = { stale[it.stopId] == true }
         val ordered = DepartureRows.freshFirst(
-            DepartureRows.across(stops, now, envelope.liveLineStatuses(now), splitPlatforms = false, statusRowsWhenStale = true)
+            GlanceRows.of(stops, now, envelope.liveLineStatuses(now))
                 .filter { it.stopDisruption == null },
             staleRow,
         )

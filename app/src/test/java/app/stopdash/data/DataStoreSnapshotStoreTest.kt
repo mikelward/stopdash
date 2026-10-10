@@ -179,6 +179,38 @@ class DataStoreSnapshotStoreTest {
     }
 
     @Test
+    fun `a refresh saved where nothing moved stores the follow's new line choices, which saveIfStopsMatch keeps out`() = runTest {
+        val loaded = snapshot().copy(nearestFirst = snapshot().stops.map { it.stopId })
+        val store = DataStoreSnapshotStore(FakeDataStore(loaded.toPersisted()))
+        val chosen = loaded.copy(nearbyChoices = listOf(FoldChoice("victoria", "outbound", loaded.stops.first().stopId)))
+        // The plain conditional save keeps the stored choices: they're the app's.
+        assertTrue(store.saveIfStopsMatch(chosen, loaded.stops.map { it.stopId }))
+        assertEquals(emptyList<FoldChoice>(), store.load()!!.nearbyChoices)
+        // Over the layout it loaded, the follow's save stores them.
+        assertTrue(store.saveFollowedIfUnchanged(chosen, store.load()!!))
+        assertEquals(chosen.nearbyChoices, store.load()!!.nearbyChoices)
+    }
+
+    @Test
+    fun `a follow's choices are worked out from the rows the write keeps, fresher stored ones included`() = runTest {
+        val loaded = snapshot()
+        // The app refreshed the same stops meanwhile, layout unchanged: their arrivals are newer.
+        val fresher = loaded.copy(stops = loaded.stops.map { it.copy(fetchedAt = now.plusSeconds(120)) })
+        val store = DataStoreSnapshotStore(FakeDataStore(fresher.toPersisted()))
+        var workedFrom: List<java.time.Instant>? = null
+        val chosen = FoldChoice("victoria", "outbound", loaded.stops.first().stopId)
+        assertTrue(
+            store.saveFollowedIfUnchanged(loaded, loaded) { kept ->
+                workedFrom = kept.stops.map { it.fetchedAt }
+                listOf(chosen)
+            },
+        )
+        // From the fresher rows the write kept, not the caller's older ones, and stored with them.
+        assertEquals(fresher.stops.map { it.fetchedAt }, workedFrom)
+        assertEquals(listOf(chosen), store.load()!!.nearbyChoices)
+    }
+
+    @Test
     fun `saveFollowedIfUnchanged keeps fresher stored arrivals but takes the follow's layout`() = runTest {
         val loaded = snapshot()
         // The app refreshed the same stops meanwhile, layout unchanged: their arrivals are newer.
@@ -657,6 +689,38 @@ class DataStoreSnapshotStoreTest {
         // An older one doesn't replace it.
         store.updateLineStatuses(mapOf("victoria" to check(LineStatus.GOOD_SERVICE, now.plusSeconds(30))))
         assertEquals(now.plusSeconds(60), store.load()!!.lineStatuses.getValue("victoria").checkedAt)
+    }
+
+    @Test
+    fun `line checks stored alone work the line choices out again over the layout the caller saw`() = runTest {
+        val store = DataStoreSnapshotStore(FakeDataStore(null))
+        val seen = snapshot().copy(lineStatuses = mapOf("victoria" to check(LineStatus.GOOD_SERVICE, now)))
+        store.save(seen)
+        val suspended = LineStatusCheck(LineStatus("victoria", 20, "Suspended"), now.plusSeconds(60))
+        var severity: Int? = null
+        val chosen = FoldChoice("victoria", "outbound", snapshot().stops.first().stopId)
+        store.updateLineStatuses(mapOf("victoria" to suspended), seen) { merged ->
+            severity = merged.lineStatuses.getValue("victoria").status.severity
+            listOf(chosen)
+        }
+        // Worked out from the merged checks, and stored with them.
+        assertEquals(20, severity)
+        assertEquals(listOf(chosen), store.load()!!.nearbyChoices)
+    }
+
+    @Test
+    fun `line checks stored alone leave the choices of a layout laid out since`() = runTest {
+        val store = DataStoreSnapshotStore(FakeDataStore(null))
+        val seen = snapshot().copy(lineStatuses = mapOf("victoria" to check(LineStatus.GOOD_SERVICE, now)))
+        // The app laid the same stops out since, from a newer position: its own order and choices.
+        val ids = snapshot().stops.map { it.stopId }
+        val appChoice = FoldChoice("victoria", "outbound", ids.first())
+        store.save(seen.copy(nearestFirst = ids, nearbyChoices = listOf(appChoice)))
+        val suspended = LineStatusCheck(LineStatus("victoria", 20, "Suspended"), now.plusSeconds(60))
+        store.updateLineStatuses(mapOf("victoria" to suspended), seen) { error("not over a layout laid out since") }
+        val stored = store.load()!!
+        assertEquals(20, stored.lineStatuses.getValue("victoria").status.severity)
+        assertEquals(listOf(appChoice), stored.nearbyChoices)
     }
 
     @Test

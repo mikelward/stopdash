@@ -6,6 +6,7 @@ import app.stopdash.domain.Countdown
 import app.stopdash.domain.DepartureLabels
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
+import app.stopdash.domain.GlanceRows
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.NoTimes
 import app.stopdash.domain.PlannedAlert
@@ -216,7 +217,7 @@ object TileTimeline {
         // A suspension's status row stays while its own check is live, past the stop's boundary.
         val stale: (DepartureRow) -> Boolean = { staleStop[it.stopId] == true }
         val ordered = DepartureRows.freshFirst(
-            DepartureRows.across(stops, now, statuses, splitPlatforms = false, statusRowsWhenStale = true),
+            GlanceRows.of(stops, now, statuses),
             stale,
         )
         // A line several nearby stops serve shows once, from the nearest, as on the widget and the

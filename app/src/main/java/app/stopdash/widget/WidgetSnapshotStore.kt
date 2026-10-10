@@ -44,6 +44,16 @@ class WidgetSnapshotStore(context: Context) : SnapshotStore {
         return applied
     }
 
+    override suspend fun saveFollowedIfUnchanged(
+        snapshot: DeparturesSnapshot,
+        loaded: DeparturesSnapshot,
+        choicesFor: (DeparturesSnapshot) -> List<FoldChoice>,
+    ): Boolean {
+        val applied = delegate.saveFollowedIfUnchanged(snapshot, loaded, choicesFor)
+        if (applied) pokeWidget()
+        return applied
+    }
+
     override suspend fun updateWidgetJourneys(report: WidgetJourneysReport, origins: List<StopArrivals>) {
         delegate.updateWidgetJourneys(report, origins)
         pokeWidget()
@@ -91,6 +101,18 @@ class WidgetSnapshotStore(context: Context) : SnapshotStore {
         // no arrivals to save still needs the widget to age, or old countdowns would read as live.
         try {
             delegate.updateLineStatuses(checks)
+        } finally {
+            pokeWidget()
+        }
+    }
+
+    override suspend fun updateLineStatuses(
+        checks: Map<String, LineStatusCheck>,
+        laidOut: DeparturesSnapshot,
+        choicesFor: (DeparturesSnapshot) -> List<FoldChoice>,
+    ) {
+        try {
+            delegate.updateLineStatuses(checks, laidOut, choicesFor)
         } finally {
             pokeWidget()
         }

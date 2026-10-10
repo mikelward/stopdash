@@ -202,7 +202,19 @@ class DataStoreSnapshotStore internal constructor(
         }
     }
 
-    override suspend fun updateLineStatuses(checks: Map<String, LineStatusCheck>) {
+    override suspend fun updateLineStatuses(checks: Map<String, LineStatusCheck>) = mergeLineStatuses(checks, null, null)
+
+    override suspend fun updateLineStatuses(
+        checks: Map<String, LineStatusCheck>,
+        laidOut: DeparturesSnapshot,
+        choicesFor: (DeparturesSnapshot) -> List<FoldChoice>,
+    ) = mergeLineStatuses(checks, laidOut.toPersisted(), choicesFor)
+
+    private suspend fun mergeLineStatuses(
+        checks: Map<String, LineStatusCheck>,
+        laidOut: PersistedSnapshot?,
+        choicesFor: ((DeparturesSnapshot) -> List<FoldChoice>)?,
+    ) {
         if (checks.isEmpty()) return
         val desired = checks.toPersistedStatuses()
         val now = clock()
@@ -212,7 +224,12 @@ class DataStoreSnapshotStore internal constructor(
         update(now) { current ->
             if (current == null || current.version !in PersistedSnapshot.READABLE_VERSIONS) return@update current
             val merged = newestStatuses(current.lineStatuses, desired, current.stops, now)
-            if (merged.toSet() == current.lineStatuses.toSet()) current else current.copy(lineStatuses = merged)
+            val withStatuses = if (merged.toSet() == current.lineStatuses.toSet()) current else current.copy(lineStatuses = merged)
+            // Worked out from the merged statuses, so a status row they add folds as the app folds it; only
+            // over the layout the caller saw, not one laid out from a newer position meanwhile (Codex on #748).
+            val choices = choicesFor?.takeIf { laidOut != null && current.laidOutAs(laidOut) }
+                ?.let { work -> withStatuses.toDomain()?.let(work) }?.map(PersistedFoldChoice::of)
+            if (choices == null || choices == withStatuses.nearbyChoices) withStatuses else withStatuses.copy(nearbyChoices = choices)
         }
     }
 
@@ -261,7 +278,20 @@ class DataStoreSnapshotStore internal constructor(
         update(now) { current -> keepingJourneys(current, desired, now) }
     }
 
-    override suspend fun saveFollowedIfUnchanged(snapshot: DeparturesSnapshot, loaded: DeparturesSnapshot): Boolean {
+    override suspend fun saveFollowedIfUnchanged(snapshot: DeparturesSnapshot, loaded: DeparturesSnapshot): Boolean =
+        saveFollowed(snapshot, loaded, null)
+
+    override suspend fun saveFollowedIfUnchanged(
+        snapshot: DeparturesSnapshot,
+        loaded: DeparturesSnapshot,
+        choicesFor: (DeparturesSnapshot) -> List<FoldChoice>,
+    ): Boolean = saveFollowed(snapshot, loaded, choicesFor)
+
+    private suspend fun saveFollowed(
+        snapshot: DeparturesSnapshot,
+        loaded: DeparturesSnapshot,
+        choicesFor: ((DeparturesSnapshot) -> List<FoldChoice>)?,
+    ): Boolean {
         val now = clock()
         val desired = snapshot.toPersisted().distrustingFuture(now)
         val expected = loaded.toPersisted()
@@ -272,7 +302,12 @@ class DataStoreSnapshotStore internal constructor(
             // The same stops aren't enough: the app may have laid them out from a newer position of its
             // own meanwhile, whose order and nearer places this older follow mustn't undo (Codex on #711).
             applied = current != null && current.matchesStops(expectedStopIds) && current.laidOutAs(expected)
-            if (applied) withLayoutOf(keepingJourneys(current, desired, now), desired) else current
+            if (!applied) return@update current
+            val written = withLayoutOf(keepingJourneys(current, desired, now), desired)
+            // Worked out from the rows the write keeps: a fresher stored stop's rows over the caller's
+            // fold by choices made from them (Codex on #748).
+            val choices = choicesFor?.let { work -> written.toDomain()?.let(work) }?.map(PersistedFoldChoice::of)
+            if (choices == null || choices == written.nearbyChoices) written else written.copy(nearbyChoices = choices)
         }
         return applied
     }

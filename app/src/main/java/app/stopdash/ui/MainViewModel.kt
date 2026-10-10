@@ -3,6 +3,10 @@ package app.stopdash.ui
 import androidx.annotation.WorkerThread
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.stopdash.domain.AlertBehind
+import app.stopdash.domain.AlertsBehindStore
+import app.stopdash.domain.Dismissals
+import app.stopdash.domain.GlanceRows
 import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.RailFeed
@@ -170,6 +174,9 @@ class MainViewModel(
     // Persists which stop-closure alerts the user has dismissed (hidden until their text changes).
     // No-op by default, so tests and an unwired build run identically minus dismissing.
     private val dismissedStore: DismissedAlertsStore = DismissedAlertsStore.NONE,
+    // The app's verdicts that an alert lies behind a stop, read (never written) here so the stop each line
+    // is shown from on the widget is chosen over the rows the widget draws ([GlanceRows.choices]).
+    private val alertsBehindStore: AlertsBehindStore = AlertsBehindStore.NONE,
     // No-op by default: the shared on-device logger is deferred until `docs/PRIVACY.md`
     // describes what it carries (both are their own Phase 1 items), so nothing is logged
     // in production until then. The seam stays for tests and that later wiring.
@@ -2280,7 +2287,7 @@ class MainViewModel(
                     val dismissedNow = _dismissed.value
                     val hiddenUsed = withContext(io) {
                         val hidden = hiddenModes()
-                        val choices = widgetChoicesOf(loaded.stops, loaded.lineStatuses, nearIds, distances, now, dismissedNow, hidden)
+                        val choices = GlanceRows.choices(toSave, nearIds, distances, now, hidden, glanceDismissals(), glanceVerdicts())
                         snapshotStore.saveKeepingJourneys(toSave.copy(nearbyChoices = choices))
                         hidden
                     }
@@ -2643,6 +2650,29 @@ class MainViewModel(
     // What the latest widget write read; null until the first has read them.
     private var choiceFiltersUsed: ChoiceFilters? = null
 
+    /**
+     * The user's dismissals as the widget reads them to draw, the ended ones it still hides included
+     * ([GlanceRows.choices]). An unreadable set counts as none, as the widget counts it. Called off the main thread.
+     */
+    private suspend fun glanceDismissals(): Dismissals = try {
+        dismissedStore.dismissals().first()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        warn("widget choices: dismissals read failed: ${reason(e)}")
+        Dismissals.NONE
+    }
+
+    /** The app's alert-behind verdicts as the widget reads them to draw; unreadable, none. Off the main thread. */
+    private suspend fun glanceVerdicts(): Set<AlertBehind> = try {
+        alertsBehindStore.verdicts().first()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        warn("widget choices: alerts-behind read failed: ${reason(e)}")
+        emptySet()
+    }
+
     private fun updateWidgetNearestFirst(choicesFrom: WidgetChoicesInput, order: List<String>? = null) {
         // A model that doesn't feed the widget (a farther card, a station's page) stores nothing, so it
         // takes no number: one would supersede the near-me model's write and write nothing itself.
@@ -2654,15 +2684,18 @@ class MainViewModel(
                 val dismissedNow = _dismissed.value
                 val hidden = hiddenModes()
                 choiceFiltersUsed = ChoiceFilters(dismissedNow, hidden)
-                val choicesFor: (DeparturesSnapshot) -> List<FoldChoice> = { stored ->
-                    val places = nearbyPlacesOf(choicesFrom.eager, choicesFrom.more, choicesFrom.distances)
-                    val stops = stored.stops.map { stop ->
-                        val nearer = Terminating.nearer(stop.stopId, places)
-                        if (nearer == stop.nearer) stop else stop.copy(nearer = nearer)
-                    }
-                    widgetChoicesOf(stops, stored.liveLineStatuses(now), choicesFrom.eager.map { it.id }, choicesFrom.distances, now, dismissedNow, hidden)
-                }
                 withContext(NonCancellable + io) {
+                    // Read here, off the main thread, as the widget reads them to draw.
+                    val dismissals = glanceDismissals()
+                    val verdicts = glanceVerdicts()
+                    val choicesFor: (DeparturesSnapshot) -> List<FoldChoice> = { stored ->
+                        val places = nearbyPlacesOf(choicesFrom.eager, choicesFrom.more, choicesFrom.distances)
+                        val stops = stored.stops.map { stop ->
+                            val nearer = Terminating.nearer(stop.stopId, places)
+                            if (nearer == stop.nearer) stop else stop.copy(nearer = nearer)
+                        }
+                        GlanceRows.choices(stored.copy(stops = stops), choicesFrom.eager.map { it.id }, choicesFrom.distances, now, hidden, dismissals, verdicts)
+                    }
                     val nearestFirst = order ?: nearestFirstOf(choicesFrom.eager.map { it.id }, choicesFrom.distances)
                     if (nearestFirst.isEmpty()) return@withContext
                     NearestFirstWrites.lock.withLock {
@@ -3238,29 +3271,6 @@ private class WidgetChoicesInput(
     val eager: List<StopRef>,
     val more: List<NearbySelection.NearbyCluster>,
 )
-
-/**
- * The stop the near-me list shows each line from ([DepartureRows.nearbyChoices]), as [listRowsOf]
- * folds it: the nearby stops' rows less the hidden modes, with the dismissed alerts. Saved with the
- * widget's snapshot so the widget and the watch show each line from the same stop. On a worker.
- */
-@WorkerThread
-private fun widgetChoicesOf(
-    stops: List<StopArrivals>,
-    lineStatuses: Map<String, LineStatus>,
-    nearIds: Collection<String>,
-    distances: Map<String, Double>,
-    now: Instant,
-    dismissed: Set<DismissedAlert>,
-    hidden: Set<String>,
-): List<FoldChoice> {
-    // As a set here, on the worker: the caller only hands over what it already holds.
-    val ids = nearIds as? Set<String> ?: nearIds.toHashSet()
-    val near = stops.filter { it.stopId in ids && it.stopId in distances }
-    if (near.isEmpty()) return emptyList()
-    val rows = HiddenModes.rows(DepartureRows.across(near, now, lineStatuses), hidden)
-    return DepartureRows.nearbyChoices(rows, distances, dismissed)
-}
 
 /** [ids] that have a distance in [distanceMeters], nearest first (a tie by id, so the order is stable). */
 internal fun nearestFirstOf(ids: Collection<String>, distanceMeters: Map<String, Double>): List<String> =

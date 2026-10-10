@@ -3514,6 +3514,22 @@ and these carry the rest as their own PRs:
       Overground pills, the card grouping, and the app icon in the header. Landed: the stamp on
       the title row, a pill on every line, and stop headers (shared `groupHeaderTitle`).
 
+- [ ] **One refresh for the app and the widget (own PR, maintainer 2026-10-10).** Both read and write
+      the one stored snapshot, but each has its own refresh: the app's in `MainViewModel`, the
+      widget's in `WidgetRefreshWorker` (with `WidgetFollowing` for the rider's position). Every
+      derived thing they store (the order, each stop's nearer places, the stop each line shows
+      from) is worked out on both paths, and the two drift: #748 found the widget's follow
+      discarding the app's line choices, then five places the two disagreed. #748 shares the
+      rows and choices (`GlanceRows`); fold the rest of the refresh into one domain use case both
+      call, with only the scheduling and the position source differing.
+- [ ] **Line choices catch up only at the next save (#748, maintainer 2026-10-10).** The stop
+      each line shows from (`nearbyChoices`) is worked out when the snapshot is written, over the
+      dismissals and alert-behind verdicts at that moment. Both change without a write: a
+      dismissal made in the app, or a verdict `placeWidgetAlerts` records just after the
+      widget's own save, folds by the stored choices until the next save works them out again.
+      Closing it fully means folding at draw time, which needs the distances the snapshot never
+      stores (SPEC *Widget*); short of that, re-work the choices when either store changes.
+
 - [x] **Judge a dismissal at read time, not as a stored flag** (Codex on PR #322; maintainer,
       2026-09-28: "do it how you like"). The widget's draw and the watch publish apply the
       dismissed set; nothing stores a copy, so no writer can bring a dismissed mark back.
