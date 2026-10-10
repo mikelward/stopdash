@@ -133,18 +133,21 @@ class DataStoreSnapshotStore internal constructor(
         // snapshot can't restore its places over the app's newer ones.
         fun keepingAppsOwn(current: PersistedSnapshot): PersistedSnapshot {
             val nearerById = current.stops.associate { it.stopId to (it.nearerIds to it.nearerNames) }
-            return desired.copy(
+            // A stop the app stored newer than this caller's copy keeps the app's rows, as every other
+            // write keeps them ([keepingFresher]): a slow refresh mustn't land older arrivals last.
+            val fresher = keepingFresher(current, desired)
+            return fresher.copy(
                 journeys = current.journeys,
                 journeyOnlyStopIds = current.journeyOnlyStopIds,
                 // Which requested stops are missing is the app's too: the worker only refetches the
                 // stops it holds, so an older worker result can't clear a newer missing set.
                 missingStopIds = current.missingStopIds,
-                stops = desired.stops.map { stop ->
+                stops = fresher.stops.map { stop ->
                     nearerById[stop.stopId]?.let { (ids, names) -> stop.copy(nearerIds = ids, nearerNames = names) } ?: stop
                 },
                 // Line checks per line, newest wins: the app may have checked a line since this
                 // caller loaded, and an older verdict mustn't replace it.
-                lineStatuses = newestStatuses(current.lineStatuses, desired.lineStatuses, desired.stops, now),
+                lineStatuses = newestStatuses(current.lineStatuses, desired.lineStatuses, fresher.stops, now),
                 // So is the stops' nearest-first order, for the same reason as the nearer places,
                 // and the stop the app shows each line from.
                 nearestFirst = current.nearestFirst,
