@@ -3229,7 +3229,7 @@ precise location, or opens Android's settings for the app when precise is alread
 Android has stopped asking. Next comes "Automatic watch and widget location" (D1), which reads on
 while location is allowed all the time: turning it on opens the disclosure and Android's prompt,
 and turning it off opens Android's settings for the app, where the grant is taken away. Last is the
-opt-in "refresh widget every minute" toggle (D5). The screen composable
+opt-in "Automatically update widget" toggle (D5), the widget's update about once a minute. The screen composable
 is UI-only for the toggle: it reflects the setting and reports a
 change, while persistence (a typed DataStore, mirroring the starred-rows store) and the
 refresh scheduler (WorkManager) are wired by the activity, so the screen stays
