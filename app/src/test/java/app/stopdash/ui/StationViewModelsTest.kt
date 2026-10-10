@@ -562,6 +562,246 @@ class StationViewModelsTest {
     }
 
     @Test
+    fun `removing a recent pick takes it off the list at once, then from the device`() = runTest {
+        val gallery = PlaceHit("Example Gallery", Coordinates(51.5, -0.12), PlaceKind.PLACE)
+        val picks = mutableListOf<SearchEntry>(SearchEntry.Stop(oxford), SearchEntry.Place(gallery))
+        val vm = StationSearchViewModel(
+            FakeFinder(),
+            loadYours = {
+                YourStops(
+                    recent = picks.filterIsInstance<SearchEntry.Stop>().map { it.match },
+                    recentPicks = picks.toList(),
+                )
+            },
+            recordRemove = { removed -> picks.removeAll { it.key == removed.key } },
+            io = dispatcher, compute = dispatcher,
+        )
+        advanceUntilIdle()
+        assertEquals(listOf(SearchEntry.Stop(oxford), SearchEntry.Place(gallery)), vm.state.value.recent)
+        vm.onRemoveRecent(SearchEntry.Stop(oxford))
+        runCurrent()
+        // Gone from the list before the write runs.
+        assertEquals(listOf<SearchEntry>(SearchEntry.Place(gallery)), vm.state.value.recent)
+        advanceUntilIdle()
+        assertEquals(listOf<SearchEntry>(SearchEntry.Place(gallery)), picks)
+        assertEquals(listOf<SearchEntry>(SearchEntry.Place(gallery)), vm.state.value.recent)
+    }
+
+    @Test
+    fun `a read under way when a row is removed doesn't bring it back`() = runTest {
+        val picks = mutableListOf<SearchEntry>(SearchEntry.Stop(oxford))
+        var gate: CompletableDeferred<Unit>? = null
+        val writing = CompletableDeferred<Unit>()
+        val vm = StationSearchViewModel(
+            FakeFinder(),
+            loadYours = {
+                val read = YourStops(recent = picks.filterIsInstance<SearchEntry.Stop>().map { it.match }, recentPicks = picks.toList())
+                gate?.await()
+                read
+            },
+            recordRemove = { removed -> writing.await(); picks.removeAll { it.key == removed.key } },
+            io = dispatcher, compute = dispatcher,
+        )
+        advanceUntilIdle()
+        // The search reopens: a read starts, has the row, and is held.
+        val held = CompletableDeferred<Unit>()
+        gate = held
+        vm.refreshYours()
+        runCurrent()
+        gate = null
+        // The row is removed, its write still running, when the held read lands.
+        vm.onRemoveRecent(SearchEntry.Stop(oxford))
+        runCurrent()
+        held.complete(Unit)
+        runCurrent()
+        assertEquals(emptyList<SearchEntry>(), vm.state.value.recent)
+        writing.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(emptyList<SearchEntry>(), vm.state.value.recent)
+    }
+
+    @Test
+    fun `a long press's question is held until confirmed or canceled`() = runTest {
+        val vm = StationSearchViewModel(FakeFinder(), recordRemove = { true }, io = dispatcher, compute = dispatcher)
+        advanceUntilIdle()
+        vm.askRemoveRecent(SearchEntry.Stop(oxford))
+        assertEquals(SearchEntry.Stop(oxford), vm.state.value.pendingRemoval)
+        vm.cancelRemoveRecent()
+        assertEquals(null, vm.state.value.pendingRemoval)
+        vm.askRemoveRecent(SearchEntry.Stop(oxford))
+        vm.onRemoveRecent(SearchEntry.Stop(oxford))
+        assertEquals(null, vm.state.value.pendingRemoval)
+    }
+
+    @Test
+    fun `a second removal stays gone while the first one's write lands and reads back`() = runTest {
+        val bank = StationMatch("940GZZLUBNK", "Bank", listOf("tube"))
+        val file = mutableListOf<SearchEntry>(SearchEntry.Stop(oxford), SearchEntry.Stop(bank))
+        val first = CompletableDeferred<Unit>()
+        val second = CompletableDeferred<Unit>()
+        val vm = StationSearchViewModel(
+            FakeFinder(),
+            loadYours = { YourStops(recent = file.filterIsInstance<SearchEntry.Stop>().map { it.match }, recentPicks = file.toList()) },
+            recordRemove = { removed ->
+                (if (removed.key == oxford.key) first else second).await()
+                file.removeAll { it.key == removed.key }
+                true
+            },
+            io = dispatcher, compute = dispatcher,
+        )
+        advanceUntilIdle()
+        vm.onRemoveRecent(SearchEntry.Stop(oxford))
+        vm.onRemoveRecent(SearchEntry.Stop(bank))
+        runCurrent()
+        // Both gone at once, the second not waiting on the first one's write.
+        assertEquals(emptyList<SearchEntry>(), vm.state.value.recent)
+        // The first write lands and reads the file back, Bank still on it: Bank stays gone.
+        first.complete(Unit)
+        runCurrent()
+        assertEquals(emptyList<SearchEntry>(), vm.state.value.recent)
+        second.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(emptyList<SearchEntry>(), vm.state.value.recent)
+        assertEquals(emptyList<SearchEntry>(), file)
+    }
+
+    @Test
+    fun `one removal failing is still said after another succeeds`() = runTest {
+        val bank = StationMatch("940GZZLUBNK", "Bank", listOf("tube"))
+        val file = mutableListOf<SearchEntry>(SearchEntry.Stop(oxford), SearchEntry.Stop(bank))
+        val vm = StationSearchViewModel(
+            FakeFinder(),
+            loadYours = { YourStops(recent = file.filterIsInstance<SearchEntry.Stop>().map { it.match }, recentPicks = file.toList()) },
+            recordRemove = { removed -> if (removed.key == oxford.key) false else { file.removeAll { it.key == removed.key }; true } },
+            io = dispatcher, compute = dispatcher,
+        )
+        advanceUntilIdle()
+        vm.onRemoveRecent(SearchEntry.Stop(oxford))
+        vm.onRemoveRecent(SearchEntry.Stop(bank))
+        advanceUntilIdle()
+        assertTrue(vm.state.value.removeRecentFailed)
+        assertEquals(listOf<SearchEntry>(SearchEntry.Stop(oxford)), vm.state.value.recent)
+    }
+
+    @Test
+    fun `a removal asked about before process death is asked again once Recent is read`() = runTest {
+        val picks = listOf<SearchEntry>(SearchEntry.Stop(oxford))
+        val saved = SavedStateHandle()
+        val before = StationSearchViewModel(FakeFinder(), saved, loadYours = { YourStops(recent = listOf(oxford), recentPicks = picks) }, io = dispatcher, compute = dispatcher)
+        advanceUntilIdle()
+        before.askRemoveRecent(SearchEntry.Stop(oxford))
+        // A new model over the saved state, as after process death.
+        val after = StationSearchViewModel(
+            FakeFinder(),
+            SavedStateHandle(mapOf("pendingRemoval" to saved.get<String>("pendingRemoval"))),
+            loadYours = { YourStops(recent = listOf(oxford), recentPicks = picks) },
+            io = dispatcher, compute = dispatcher,
+        )
+        advanceUntilIdle()
+        assertEquals(SearchEntry.Stop(oxford), after.state.value.pendingRemoval)
+        after.cancelRemoveRecent()
+        // Canceled, nothing is asked again on the next read.
+        after.refreshYours()
+        advanceUntilIdle()
+        assertEquals(null, after.state.value.pendingRemoval)
+    }
+
+    @Test
+    fun `a removal confirmed while a read loads the places stays gone when that read lands`() = runTest {
+        val picks = listOf<SearchEntry>(SearchEntry.Stop(oxford))
+        var gate: CompletableDeferred<Unit>? = null
+        val writing = CompletableDeferred<Unit>()
+        val vm = StationSearchViewModel(
+            FakeFinder(),
+            loadYours = { YourStops(recent = listOf(oxford), recentPicks = picks) },
+            loadPlaces = { gate?.await(); emptyList() },
+            recordRemove = { writing.await(); true },
+            io = dispatcher, compute = dispatcher,
+        )
+        advanceUntilIdle()
+        // A read has the stops and waits on the places.
+        val held = CompletableDeferred<Unit>()
+        gate = held
+        vm.refreshYours()
+        runCurrent()
+        vm.onRemoveRecent(SearchEntry.Stop(oxford))
+        runCurrent()
+        held.complete(Unit)
+        runCurrent()
+        assertEquals(emptyList<SearchEntry>(), vm.state.value.recent)
+        writing.complete(Unit)
+    }
+
+    @Test
+    fun `a removal asked about while a read loads the places keeps its saved key`() = runTest {
+        val picks = listOf<SearchEntry>(SearchEntry.Stop(oxford))
+        val saved = SavedStateHandle()
+        var gate: CompletableDeferred<Unit>? = null
+        val vm = StationSearchViewModel(
+            FakeFinder(),
+            saved,
+            loadYours = { YourStops(recent = listOf(oxford), recentPicks = picks) },
+            loadPlaces = { gate?.await(); emptyList() },
+            io = dispatcher, compute = dispatcher,
+        )
+        advanceUntilIdle()
+        val held = CompletableDeferred<Unit>()
+        gate = held
+        vm.refreshYours()
+        runCurrent()
+        vm.askRemoveRecent(SearchEntry.Stop(oxford))
+        held.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(SearchEntry.Stop(oxford).key, saved.get<String>("pendingRemoval"))
+        assertEquals(SearchEntry.Stop(oxford), vm.state.value.pendingRemoval)
+    }
+
+    @Test
+    fun `a removal that couldn't be saved lists the row again and says so, until another is asked about`() = runTest {
+        val picks = listOf<SearchEntry>(SearchEntry.Stop(oxford))
+        val vm = StationSearchViewModel(
+            FakeFinder(),
+            loadYours = { YourStops(recent = listOf(oxford), recentPicks = picks) },
+            recordRemove = { false },
+            io = dispatcher, compute = dispatcher,
+        )
+        advanceUntilIdle()
+        vm.onRemoveRecent(SearchEntry.Stop(oxford))
+        advanceUntilIdle()
+        assertEquals(picks, vm.state.value.recent)
+        assertTrue(vm.state.value.removeRecentFailed)
+        // Closed and shown again (the rider may have left before it failed): still said.
+        vm.clear()
+        vm.refreshYours()
+        advanceUntilIdle()
+        assertTrue(vm.state.value.removeRecentFailed)
+        // The next long press: read, so no longer said.
+        vm.askRemoveRecent(SearchEntry.Stop(oxford))
+        assertFalse(vm.state.value.removeRecentFailed)
+    }
+
+    @Test
+    fun `a removal that couldn't be saved is still said after process death, until another is asked about`() = runTest {
+        val picks = listOf<SearchEntry>(SearchEntry.Stop(oxford))
+        val saved = SavedStateHandle()
+        val before = StationSearchViewModel(
+            FakeFinder(), saved,
+            loadYours = { YourStops(recent = listOf(oxford), recentPicks = picks) },
+            recordRemove = { false },
+            io = dispatcher, compute = dispatcher,
+        )
+        advanceUntilIdle()
+        before.onRemoveRecent(SearchEntry.Stop(oxford))
+        advanceUntilIdle()
+        val after = StationSearchViewModel(FakeFinder(), saved, loadYours = { YourStops(recent = listOf(oxford), recentPicks = picks) }, io = dispatcher, compute = dispatcher)
+        advanceUntilIdle()
+        assertTrue(after.state.value.removeRecentFailed)
+        after.askRemoveRecent(SearchEntry.Stop(oxford))
+        assertFalse(after.state.value.removeRecentFailed)
+        assertFalse(saved.contains("removeRecentFailed"))
+    }
+
+    @Test
     fun `picks are written in the order tapped, however long each write takes`() = runTest {
         // The first write is slow (the gate holds it); the second, tapped after it, must still land after it.
         val gate = CompletableDeferred<Unit>()

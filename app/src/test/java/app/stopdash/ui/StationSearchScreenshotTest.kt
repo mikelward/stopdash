@@ -4,7 +4,11 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -104,6 +108,51 @@ class StationSearchScreenshotTest {
         composeRule.onNodeWithContentDescription("King's Cross & St Pancras International, National Rail · Tube")
             .assertIsDisplayed()
         captureSnapshot("station-search-long-names.png")
+    }
+
+    @Test
+    fun station_search_remove_recent() {
+        // A long press on a Recent row asks before taking it off; Cancel keeps it, Remove takes it off.
+        // A starred row offers no long press. The question is held as the view model holds it.
+        // Public station names only.
+        val oxford = SearchEntry.Stop(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube")))
+        val removed = mutableListOf<SearchEntry>()
+        var pending by mutableStateOf<SearchEntry?>(null)
+        composeRule.setContent {
+            StopDashTheme {
+                StationSearchScreen(
+                    state = StationSearchViewModel.State(
+                        recent = listOf(oxford),
+                        favorites = listOf(StationMatch("940GZZLUBNK", "Bank", listOf("tube"))),
+                        yoursRead = true,
+                        pendingRemoval = pending,
+                    ),
+                    onQueryChange = {},
+                    onOpenStation = {},
+                    onRetry = {},
+                    onBack = {},
+                    autoFocus = false,
+                    onAskRemoveRecent = { pending = it },
+                    onCancelRemoveRecent = { pending = null },
+                    onRemoveRecent = { pending = null; removed += it },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Bank").performTouchInput { longClick() }
+        composeRule.onNodeWithText("Remove from Recent?").assertDoesNotExist()
+        composeRule.onNodeWithText("Oxford Circus").performTouchInput { longClick() }
+        assertEquals(oxford, pending)
+        composeRule.onNodeWithText("Remove from Recent?").assertIsDisplayed()
+        if (capturing()) {
+            composeRule.onNode(isDialog()).captureRoboImage(filePath = "src/test/snapshots/images/station-search-remove-recent.png")
+        }
+        composeRule.onNodeWithText("Cancel").performClick()
+        composeRule.onNodeWithText("Remove from Recent?").assertDoesNotExist()
+        assertTrue(removed.isEmpty())
+        composeRule.onNodeWithText("Oxford Circus").performTouchInput { longClick() }
+        composeRule.onNodeWithTag("removeRecent").performClick()
+        assertEquals(listOf<SearchEntry>(oxford), removed)
     }
 
     @Test

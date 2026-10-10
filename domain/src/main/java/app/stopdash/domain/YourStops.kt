@@ -44,6 +44,19 @@ data class YourStops(
      */
     val own: List<String> get() = (recent + favorites).map { it.key }.distinct()
 
+    /**
+     * These lists less the recent picks keyed in [removing] ([SearchEntry.key]): removals confirmed whose
+     * write hasn't landed yet, so a read of the file from before it can't list them again. Walks every
+     * pick, so it runs off the main thread.
+     */
+    @WorkerThread
+    fun withoutRecent(removing: Set<String>): YourStops =
+        if (removing.isEmpty()) {
+            this
+        } else {
+            copy(recent = recent.filterNot { it.key in removing }, recentPicks = recentPicks.filterNot { it.key in removing })
+        }
+
     /** The location-free home's Starred list: the first [HOME_ROWS] favorites. */
     val homeStarred: List<StationMatch> get() = favorites.take(HOME_ROWS)
 
@@ -137,4 +150,18 @@ object RecentStations {
      */
     fun add(current: List<SearchEntry>, picked: SearchEntry, max: Int = MAX): List<SearchEntry> =
         (listOf(picked) + current.filter { it.key != picked.key }).take(max)
+
+    /**
+     * [current] without [removed], a pick as the search listed it: a stop matched by its key once its
+     * name is cleaned as [YourStops.of] lists it (an interchange's station name keys on its name), a
+     * place by its name and coordinate. Every copy goes, so the row doesn't come back on the next read.
+     */
+    @WorkerThread
+    fun remove(current: List<SearchEntry>, removed: SearchEntry): List<SearchEntry> =
+        current.filterNot { listedKey(it) == removed.key }
+
+    private fun listedKey(entry: SearchEntry): String = when (entry) {
+        is SearchEntry.Stop -> entry.match.copy(name = cleanStopName(entry.match.name)).key
+        is SearchEntry.Place -> entry.key
+    }
 }

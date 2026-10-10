@@ -41,6 +41,19 @@ class FileRecentStationsStoreTest {
     }
 
     @Test
+    fun `a removal comes off across a reload, and one that can't be saved says so`() {
+        val file = File(tmp.root, "recent-stations.json")
+        FileRecentStationsStore(file).add(oxford)
+        FileRecentStationsStore(file).add(stop)
+        assertTrue(FileRecentStationsStore(file).remove(SearchEntry.Stop(oxford)))
+        assertEquals(listOf(stop), FileRecentStationsStore(file).load())
+        // The temp file can't be written (a directory stands in its place): the list stays as it was.
+        File(file.path + ".tmp").apply { mkdir(); File(this, "x").writeText("") }
+        assertFalse(FileRecentStationsStore(file).remove(SearchEntry.Stop(stop)))
+        assertEquals(listOf(stop), FileRecentStationsStore(file).load())
+    }
+
+    @Test
     fun `a picked place is kept among the stops, in the order picked, across a reload`() {
         val file = File(tmp.root, "recent-destinations.json")
         val gallery = PlaceHit("Example Gallery", Coordinates(51.5, -0.12), PlaceKind.PLACE)

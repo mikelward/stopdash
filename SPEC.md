@@ -296,7 +296,10 @@ The app finds stops two ways:
   last eight places picked from that search, the most recent on top, less a stop with no lines,
   which would open to nothing), then **Starred** (the ends
   of favorite journeys, then the places holding a starred row, each recorded when starred), less
-  any picked lately. *From…* and *To…* keep **separate recent lists** — where the rider looks from
+  any picked lately. A **long press on a Recent row** asks "Remove from Recent?" and, confirmed,
+  takes it off that list (maintainer, 2026-10-10); if that can't be saved the row stays and the
+  search says so until the next long press, even if it was closed meanwhile; a starred row is removed where it was starred.
+  *From…* and *To…* keep **separate recent lists** — where the rider looks from
   and where they go — so each search lists its own history. As the user types, those and every place the app has lately shown near them (the
   widget's last departures and the nearby-lookup cache, less any stop TfL lists with no lines,
   which would open to nothing) match on the device alongside the bundled stations, so a starred bus stop appears at once; a bus stop (a journey's end

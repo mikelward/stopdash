@@ -60,6 +60,40 @@ class YourStopsTest {
     }
 
     @Test
+    fun `removing a pick takes it off by the key it was listed under, leaving the rest`() {
+        val oxford = StationMatch("940GZZLUOXC", "Oxford Circus Underground Station", listOf("tube"))
+        val bank = StationMatch("940GZZLUBNK", "Bank", listOf("tube"))
+        val hub = StationMatch("HUBKGX", "King's Cross & St Pancras International", listOf("tube", "national-rail"))
+        val stPancras = StationMatch("HUBKGX", "St Pancras International", listOf("national-rail"), lead = listOf("national-rail"))
+        val gallery = SearchEntry.Place(PlaceHit("Example Gallery", Coordinates(51.5, -0.12), PlaceKind.PLACE))
+        val stored = listOf(oxford, bank, hub, stPancras).map(SearchEntry::Stop) + gallery
+        // Listed with its name cleaned, as YourStops.of shows it.
+        val listedOxford = SearchEntry.Stop(oxford.copy(name = "Oxford Circus"))
+        assertEquals(stored.drop(1), RecentStations.remove(stored, listedOxford))
+        // An interchange's station name comes off alone, the interchange's own row staying.
+        assertEquals(stored - SearchEntry.Stop(stPancras), RecentStations.remove(stored, SearchEntry.Stop(stPancras)))
+        assertEquals(stored.dropLast(1), RecentStations.remove(stored, gallery))
+    }
+
+    @Test
+    fun `picks being removed are left out of the recent lists alone`() {
+        val oxford = StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"))
+        val bank = StationMatch("940GZZLUBNK", "Bank", listOf("tube"))
+        val gallery = SearchEntry.Place(PlaceHit("Example Gallery", Coordinates(51.5, -0.12), PlaceKind.PLACE))
+        val yours = YourStops(
+            favorites = listOf(oxford),
+            recent = listOf(oxford, bank),
+            recentPicks = listOf(SearchEntry.Stop(oxford), gallery, SearchEntry.Stop(bank)),
+        )
+        val without = yours.withoutRecent(setOf(oxford.key, gallery.key))
+        assertEquals(listOf(bank), without.recent)
+        assertEquals(listOf<SearchEntry>(SearchEntry.Stop(bank)), without.recentPicks)
+        // A starred stop isn't a recent pick: it stays.
+        assertEquals(listOf(oxford), without.favorites)
+        assertEquals(yours, yours.withoutRecent(emptySet()))
+    }
+
+    @Test
     fun `an open moves to the front, and the list stays capped`() {
         val stops = (1..RecentStations.MAX).map { StationMatch("49000000000$it", "Stop $it") }
         val reopened = RecentStations.add(stops, stops[3])
