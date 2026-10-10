@@ -126,4 +126,25 @@ class YourStopsTest {
         assertEquals(listOf(bank), yours.recent)
         assertEquals(emptyList<String>(), yours.unnamedStarred)
     }
+
+    @Test
+    fun `the home's Recent is the stops picked lately, less the starred and places, capped`() {
+        val victoria = StationMatch("940GZZLUVIC", "Victoria", listOf("tube"))
+        val bank = StationMatch("940GZZLUBNK", "Bank", listOf("tube"))
+        val gallery = PlaceHit("Example Gallery", Coordinates(51.5, -0.12), PlaceKind.PLACE)
+        val many = (1..12).map { StationMatch("HUB$it", "Station $it", listOf("tube")) }
+        val yours = YourStops(
+            favorites = listOf(victoria),
+            recentPicks = listOf(SearchEntry.Stop(bank), SearchEntry.Place(gallery), SearchEntry.Stop(victoria)) +
+                many.map(SearchEntry::Stop),
+        )
+        assertEquals(listOf(bank) + many.take(YourStops.HOME_ROWS - 1), yours.homeRecent())
+    }
+
+    @Test
+    fun `the home's Starred is the first favorites, capped`() {
+        val many = (1..12).map { StationMatch("HUB$it", "Station $it", listOf("tube")) }
+        assertEquals(many.take(YourStops.HOME_ROWS), YourStops(favorites = many).homeStarred)
+        assertEquals(many.take(3), YourStops(favorites = many.take(3)).homeStarred)
+    }
 }

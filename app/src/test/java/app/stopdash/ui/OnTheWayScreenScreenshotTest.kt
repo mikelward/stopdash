@@ -453,7 +453,7 @@ class OnTheWayScreenScreenshotTest {
                 }
             }
         }
-        composeRule.onNodeWithText("Allow location").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Show stations near me").performScrollTo().assertIsDisplayed()
         // Scrolled to the action, the card has gone up with the rest of the gate: it isn't pinned.
         // Found by its tag: at this text size the card shortens the place to fit beside its time.
         assertTrue(composeRule.onNodeWithTag("onTheWayBanner").getUnclippedBoundsInRoot().top < androidx.compose.ui.unit.Dp(0f))

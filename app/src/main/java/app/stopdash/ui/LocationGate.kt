@@ -16,7 +16,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -28,11 +30,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.FavoritePlace
+import app.stopdash.domain.StationMatch
 import app.stopdash.domain.TripDestination
 import java.time.Instant
 
@@ -43,8 +47,10 @@ import java.time.Instant
  * non-happy outcome is an honest, actionable screen rather than a blank or a fake list
  * (SPEC principles 1–2):
  *
- * - [PermissionRequired][NearbyStopsViewModel.State.PermissionRequired] — the rationale
- *   (honest that the position is sent to TfL) and an **Allow location** button.
+ * - [PermissionRequired][NearbyStopsViewModel.State.PermissionRequired] — a home that works
+ *   without location: **Show stations near me** first (the rationale, honest that the position is
+ *   sent to TfL, above it), **Find a station**, then the rider's starred and recent stations to
+ *   open in a tap (SPEC *Without location*).
  * - [Locating][NearbyStopsViewModel.State.Locating] — a spinner, shown at once (SPEC 5), plus an
  *   **Update available** button at the bottom when [updateAvailable], a more direct prompt than the
  *   overflow's dot, as on the departures cold load.
@@ -107,6 +113,11 @@ fun LocationGate(
     onRouteToPlace: (TripDestination.Place) -> Unit = {},
     // A long press on a chip: the saved places' own screen, as on the list. Null offers none.
     onEditPlaces: (() -> Unit)? = null,
+    // Without location, the rider's own stations from the station search (starred, then recently
+    // opened), each opening its page: what near me would have shown, picked by hand.
+    starredStations: List<StationMatch> = emptyList(),
+    recentStations: List<StationMatch> = emptyList(),
+    onOpenStation: (StationMatch) -> Unit = {},
 ) {
     // Saved so an open About dialog survives rotation on the gate.
     var showAbout by rememberSaveable { mutableStateOf(false) }
@@ -153,7 +164,14 @@ fun LocationGate(
                         .verticalScroll(scrollState)
                         .padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = if (locating) Arrangement.SpaceBetween else Arrangement.Center,
+                    // The home without location reads from the top: its stations below the buttons can be
+                    // read again and change (a star added on a station page) without moving the title or
+                    // a button being tapped, as a centered column would (Codex on #733).
+                    verticalArrangement = when {
+                        locating -> Arrangement.SpaceBetween
+                        shown == NearbyStopsViewModel.State.PermissionRequired -> Arrangement.Top
+                        else -> Arrangement.Center
+                    },
                 ) {
                     // The Locating spinner's update offer sits at the bottom, in a slot kept whether or not it
                     // shows (with one as tall at the top), so the rest stays centered in one place either way.
@@ -170,9 +188,17 @@ fun LocationGate(
                                     Body(stringResource(R.string.location_denied))
                                     Action(stringResource(R.string.open_settings), onOpenSettings)
                                 } else {
+                                    // The better experience leads, so saying yes is one tap (maintainer, 2026-10-09).
                                     Body(stringResource(R.string.location_rationale))
                                     Action(stringResource(R.string.location_allow), onAllow)
                                 }
+                                // Everything below works without location.
+                                if (onFindStation != null) {
+                                    OutlinedButton(onClick = onFindStation, modifier = Modifier.padding(top = 12.dp)) {
+                                        Text(stringResource(R.string.menu_find_station))
+                                    }
+                                }
+                                YourStations(starredStations, recentStations, onOpenStation)
                             }
 
                             NearbyStopsViewModel.State.Locating -> {
@@ -229,7 +255,8 @@ fun LocationGate(
                                 Text(stringResource(R.string.menu_send_bug_report))
                             }
                         }
-                        if (onFindStation != null) {
+                        // PermissionRequired offers it above, as one of its two ways in.
+                        if (onFindStation != null && shown != NearbyStopsViewModel.State.PermissionRequired) {
                             TextButton(onClick = onFindStation, modifier = Modifier.padding(top = 24.dp)) {
                                 Text(stringResource(R.string.menu_find_station))
                             }
@@ -325,6 +352,25 @@ private fun Title(text: String) {
         style = MaterialTheme.typography.titleLarge,
         textAlign = TextAlign.Center,
     )
+}
+
+/**
+ * The rider's starred and recently opened stations, under their headings, as the station search
+ * lists them before anything is typed: a station picked once is a tap away without location.
+ */
+@Composable
+private fun YourStations(starred: List<StationMatch>, recent: List<StationMatch>, onOpen: (StationMatch) -> Unit) {
+    if (starred.isEmpty() && recent.isEmpty()) return
+    Column(Modifier.fillMaxWidth().padding(top = 24.dp).testTag("gateYourStations")) {
+        listOf(R.string.station_search_starred to starred, R.string.station_search_recent to recent).forEach { (heading, matches) ->
+            if (matches.isEmpty()) return@forEach
+            SectionHeading(stringResource(heading))
+            matches.forEach { match ->
+                MatchRow(match, onClick = { onOpen(match) })
+                HorizontalDivider()
+            }
+        }
+    }
 }
 
 @Composable

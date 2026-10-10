@@ -316,8 +316,8 @@
          honest about the location leaving the device, since it does — it's sent to TfL to
          find nearby stops (SPEC Privacy). -->
     <string name="location_title">Departures near you</string>
-    <string name="location_rationale">StopDash shows the stops nearest you. Your location is sent to TfL only to find them.</string>
-    <string name="location_allow">Allow location</string>
+    <string name="location_rationale">StopDash shows the stops nearest you.\nYour location is sent to the transport operator, TfL.</string>
+    <string name="location_allow">Show stations near me</string>
     <string name="location_finding">Finding stops near you…</string>
     <string name="location_no_fix">Couldn\'t get your location</string>
     <string name="location_no_stops">No stops found nearby</string>

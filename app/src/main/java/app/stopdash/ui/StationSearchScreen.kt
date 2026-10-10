@@ -494,7 +494,7 @@ private fun PlaceHitRow(place: PlaceHit, onClick: () -> Unit) {
 }
 
 @Composable
-private fun MatchRow(match: StationMatch, onClick: () -> Unit) {
+internal fun MatchRow(match: StationMatch, onClick: () -> Unit) {
     // One line per result (name, then its modes on the right) so more fit on screen. The name takes
     // priority — it fills the row (pushing the modes to the right edge) and gets every pixel the modes
     // don't need, so a long name like "King's Cross & St Pancras International" shows as much as fits

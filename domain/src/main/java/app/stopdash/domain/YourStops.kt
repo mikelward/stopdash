@@ -1,5 +1,7 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
+
 /**
  * The stops "Find a station" knows without asking TfL (SPEC *Finding stops → Find a station*):
  * the user's [recent] picks from the search, most recent first, and their [favorites] not picked
@@ -42,8 +44,26 @@ data class YourStops(
      */
     val own: List<String> get() = (recent + favorites).map { it.key }.distinct()
 
+    /** The location-free home's Starred list: the first [HOME_ROWS] favorites. */
+    val homeStarred: List<StationMatch> get() = favorites.take(HOME_ROWS)
+
+    /**
+     * The location-free home's Recent list: the stops picked lately, most recent first, less any
+     * starred (they're listed under Starred already), at most [HOME_ROWS]. Places aren't stations,
+     * so they're left out. Walks every pick and favorite, so it runs off the main thread.
+     */
+    @WorkerThread
+    fun homeRecent(): List<StationMatch> {
+        val starred = favorites.mapTo(HashSet()) { it.key }
+        return recentPicks.mapNotNull { (it as? SearchEntry.Stop)?.match }.filter { it.key !in starred }.take(HOME_ROWS)
+    }
+
     companion object {
         val EMPTY = YourStops()
+
+        // The most rows each of the location-free home's Starred and Recent lists, so its column stays
+        // short whatever the rider has saved; Find a station lists everything.
+        const val HOME_ROWS = 10
 
         /**
          * Gathers the lists from what the device holds: the [recent] picks, stops and places, most

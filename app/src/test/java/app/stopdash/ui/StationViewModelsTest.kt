@@ -425,6 +425,58 @@ class StationViewModelsTest {
     }
 
     @Test
+    fun `the home's refresh while the first read is still going doesn't read again, a later one does`() = runTest {
+        var reads = 0
+        val vm = StationSearchViewModel(
+            FakeFinder(),
+            loadYours = { reads++; YourStops(favorites = listOf(favoriteStop), recent = emptyList()) },
+            io = dispatcher, compute = dispatcher,
+        )
+        vm.refreshYoursUnlessReading()
+        advanceUntilIdle()
+        assertEquals(1, reads)
+        vm.refreshYoursUnlessReading()
+        advanceUntilIdle()
+        assertEquals(2, reads)
+        // Find a station's own refresh, still going when the home comes back, is reused too.
+        vm.refreshYours()
+        vm.refreshYoursUnlessReading()
+        advanceUntilIdle()
+        assertEquals(3, reads)
+    }
+
+    @Test
+    fun `recent stations for the home without location leave out the starred ones`() = runTest {
+        val recent = StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"))
+        val vm = StationSearchViewModel(
+            FakeFinder(),
+            loadYours = { YourStops(favorites = listOf(favoriteStop), recent = listOf(recent, favoriteStop)) },
+            io = dispatcher, compute = dispatcher,
+        )
+        advanceUntilIdle()
+        assertEquals(listOf(recent), vm.state.value.recentStations)
+        // Kept when the search closes, as the rest of the rider's own stops are.
+        vm.clear()
+        assertEquals(listOf(recent), vm.state.value.recentStations)
+    }
+
+    @Test
+    fun `the home's station lists are bounded however much the rider has saved`() = runTest {
+        val starred = (1..15).map { StationMatch("HUB$it", "Station $it", listOf("tube")) }
+        val recent = (1..15).map { StationMatch("940G$it", "Recent $it", listOf("tube")) }
+        val vm = StationSearchViewModel(
+            FakeFinder(),
+            loadYours = { YourStops(favorites = starred, recent = recent) },
+            io = dispatcher, compute = dispatcher,
+        )
+        advanceUntilIdle()
+        assertEquals(starred.take(YourStops.HOME_ROWS), vm.state.value.homeStarred)
+        assertEquals(recent.take(YourStops.HOME_ROWS), vm.state.value.recentStations)
+        // The search's own lists stay whole.
+        assertEquals(starred, vm.state.value.favorites)
+    }
+
+    @Test
     fun `a starred station the device couldn't name is named from the bundled index`() = runTest {
         val vm = StationSearchViewModel(
             FakeFinder(),

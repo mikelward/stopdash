@@ -95,6 +95,11 @@ class StationSearchViewModel(
         // list holds the geocoded places a To… search picked too, in the order picked.
         val favorites: List<StationMatch> = emptyList(),
         val recent: List<SearchEntry> = emptyList(),
+        // What the location-free home lists (SPEC *Without location*): the starred stations and the
+        // recent ones less those starred, each bounded so the home's rows don't grow with the
+        // rider's data (Find a station lists the rest). Worked out with the read, off the main thread.
+        val homeStarred: List<StationMatch> = emptyList(),
+        val recentStations: List<StationMatch> = emptyList(),
         // The user's saved favorite places, offered at the top of a To… picker so they can route to
         // one without typing (SPEC D9). Empty outside a To… picker, which passes no [onOpenPlace].
         val favoritePlaces: List<FavoritePlace> = emptyList(),
@@ -178,6 +183,8 @@ class StationSearchViewModel(
             State(
                 favorites = it.favorites,
                 recent = it.recent,
+                homeStarred = it.homeStarred,
+                recentStations = it.recentStations,
                 favoritePlaces = it.favoritePlaces,
                 favoritePlacesFailed = it.favoritePlacesFailed,
                 yoursRead = it.yoursRead,
@@ -191,6 +198,16 @@ class StationSearchViewModel(
      */
     fun refreshYours() {
         yours = readYours()
+    }
+
+    /**
+     * [refreshYours] for the location-free home: a read still going (the one started as the model was
+     * made, or Find a station's, left a moment ago) is as fresh as a new one, so it isn't read twice
+     * (Codex on #733). Once it's done, a call reads again.
+     */
+    fun refreshYoursUnlessReading() {
+        if (yours.isActive) return
+        refreshYours()
     }
 
     /**
@@ -269,12 +286,16 @@ class StationSearchViewModel(
             // a places read failure never drops the stops. Null = couldn't read (a retryable notice),
             // distinct from an empty list (genuinely no saved places).
             val places = loadPlaces()
+            val homeStarred = named.homeStarred
+            val recentStations = named.homeRecent()
             named.also { read ->
                 if (generation == yoursGeneration) {
                     _state.update {
                         it.copy(
                             favorites = read.favorites,
                             recent = read.recentPicks,
+                            homeStarred = homeStarred,
+                            recentStations = recentStations,
                             favoritePlaces = places.orEmpty(),
                             favoritePlacesFailed = places == null,
                             yoursRead = true,
@@ -409,7 +430,6 @@ class StationSearchViewModel(
 
     companion object {
         const val MIN_QUERY_LENGTH = 2
-
         // How many of the index's matches show before TfL answers: enough to tap the obvious station
         // at once, few enough that most of the list arrives below them rather than around them.
         const val LOCAL_PREVIEW = 4
