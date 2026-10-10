@@ -1923,6 +1923,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           2026-09-26: To… plans a trip from the rider's nearest stop (SPEC "Trips with a change").*
   - [x] **Find a station from the location gate**: a *Find a station* button under the gate's
         own action, since the search needs no location and helps most a user who denied it (Codex).
+  - [ ] **Say when your stations can't be read** (Codex on #733): the read behind the station
+        search's starting list and the location-free home logs an unreadable favorite-journeys,
+        snapshot or starred-rows store and carries on with nothing from it, so those sections look
+        empty rather than failed. Carry a typed read failure through `YourStops` and show a short
+        "Couldn't load your stations" with Try again on both screens.
 - [ ] **Search for a stop by name or line, and pin it.** Beyond nearby discovery, let the
       user type a **stop/station name** (TfL `/StopPoint/Search`) *or* a **line**
       (`/Line/Search/{query}` — the query is a path segment, not a `?query=` parameter like the
