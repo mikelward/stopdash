@@ -67,6 +67,28 @@ class WatchInstallOfferTest {
     }
 
     @Test
+    fun `each read of the watches counts as a check, whatever the answer, even a failure`() = runTest {
+        val none = WatchInstallOffer(FakeNodes(), logged::add)
+        assertEquals(0L, none.checks.value)
+        none.refresh()
+        assertEquals(1L, none.checks.value)
+        assertFalse(none.available.value)
+        val failing = WatchInstallOffer(FakeNodes(connected = setOf("w1"), failRead = true), logged::add)
+        failing.refresh()
+        assertEquals(1L, failing.checks.value)
+    }
+
+    @Test
+    fun `only a check finished since the app came to the front is current`() {
+        // Not yet come to the front.
+        assertFalse(watchesCheckedSince(start = -1, checks = 3))
+        // Checked on an earlier visit only.
+        assertFalse(watchesCheckedSince(start = 3, checks = 3))
+        assertTrue(watchesCheckedSince(start = 3, checks = 4))
+        assertTrue(watchesCheckedSince(start = 0, checks = 1))
+    }
+
+    @Test
     fun `a connected watch without the app is offered it, and the install opens Play on that one`() = runTest {
         val nodes = FakeNodes(connected = setOf("w1", "w2"), withApp = setOf("w2"))
         val offer = WatchInstallOffer(nodes, logged::add)

@@ -444,6 +444,59 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `a placed widget's update question opens Settings or goes for good`() {
+        var settings = 0
+        var dismissals = 0
+        capture("main-widget-update.png") {
+            MainScreen(
+                DeparturesUiState.Loaded(stops(now.minusSeconds(60)), now.minusSeconds(60), lineStatuses = statuses()),
+                now,
+                {},
+                favoritePlaces = places,
+                widgetUpdate = WidgetUpdateActions(onSettings = { settings++ }, onDismiss = { dismissals++ }),
+            )
+        }
+        composeRule.onNodeWithText("Automatically update widget?").assertExists()
+        composeRule.onNodeWithText("Go to settings to choose when the widget updates.").assertExists()
+        composeRule.onNodeWithText("Settings").performClick()
+        composeRule.onNodeWithText("Dismiss").performClick()
+        assertEquals(1, settings)
+        assertEquals(1, dismissals)
+    }
+
+    @Test
+    fun `the widget question waits while the watch offer is shown, and isn't reported shown`() {
+        var shown = 0
+        composeRule.setContent {
+            MainScreen(
+                DeparturesUiState.Loaded(stops(now.minusSeconds(60)), now.minusSeconds(60), lineStatuses = statuses()),
+                now,
+                {},
+                watchInstall = WatchInstallActions(onInstall = {}, onDismiss = {}),
+                widgetUpdate = WidgetUpdateActions(onSettings = {}, onDismiss = {}, onShown = { shown++ }),
+            )
+        }
+        composeRule.onNodeWithTag("watchInstall").assertExists()
+        composeRule.onNodeWithTag("widgetUpdate").assertDoesNotExist()
+        assertEquals(0, shown)
+    }
+
+    @Test
+    fun `the widget question says when it's on screen`() {
+        var shown = 0
+        composeRule.setContent {
+            MainScreen(
+                DeparturesUiState.Loaded(stops(now.minusSeconds(60)), now.minusSeconds(60), lineStatuses = statuses()),
+                now,
+                {},
+                widgetUpdate = WidgetUpdateActions(onSettings = {}, onDismiss = {}, onShown = { shown++ }),
+            )
+        }
+        composeRule.onNodeWithTag("widgetUpdate").assertExists()
+        assertEquals(1, shown)
+    }
+
+    @Test
     fun `the watch offer waits while the telemetry question is asked`() {
         composeRule.setContent {
             MainScreen(

@@ -6,6 +6,7 @@ import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
@@ -1124,6 +1125,20 @@ class SettingsScreenScreenshotTest {
         access = app.stopdash.LocationAccess.APPROXIMATE
         composeRule.waitForIdle()
         captureSnapshot("settings-location-row.png")
+    }
+
+    @Test
+    fun opened_for_the_widget_settings_it_opens_scrolled_to_them() {
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = {}, startOnWidgets = true)
+            }
+        }
+        composeRule.waitForIdle()
+        // Scrolled to the widget rows: the top of Settings is out of view, the widget rows in it.
+        composeRule.onNodeWithTag("favoritePlacesRow").assertIsNotDisplayed()
+        composeRule.onNodeWithTag("widgetFollowsSwitch").assertIsDisplayed()
+        composeRule.onNodeWithTag("liveWidgetSwitch").assertIsDisplayed()
     }
 
     private fun captureSnapshot(name: String, widthPx: Int = 1080, heightPx: Int = 1920) {

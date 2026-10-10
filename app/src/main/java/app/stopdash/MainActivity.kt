@@ -4,10 +4,78 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.saveable.SaveableStateHolder
-import app.stopdash.domain.StopLinks
-import app.stopdash.domain.linksOf
-import app.stopdash.domain.RouteRide
+import app.stopdash.domain.AppSettings
+import app.stopdash.domain.ArrivalsCache
+import app.stopdash.domain.AvoidedLines
+import app.stopdash.domain.BugReport
+import app.stopdash.domain.CachingStopFinder
+import app.stopdash.domain.CachingTflClient
+import app.stopdash.domain.CollapsedPlaces
+import app.stopdash.domain.Coordinates
+import app.stopdash.domain.DepartureRow
+import app.stopdash.domain.FartherBuses
+import app.stopdash.domain.FartherStations
+import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.FavoritePlace
+import app.stopdash.domain.FavoritePlacesSet
+import app.stopdash.domain.FavoriteShortcuts
+import app.stopdash.domain.FixedLocation
+import app.stopdash.domain.HubInfoCache
+import app.stopdash.domain.JourneyAlertSchedule
+import app.stopdash.domain.JourneyEnd
+import app.stopdash.domain.Journeys
+import app.stopdash.domain.LauncherShortcuts
+import app.stopdash.domain.LiftOutages
+import app.stopdash.domain.LineRef
+import app.stopdash.domain.ModeGroups
+import app.stopdash.domain.MoveFollow
 import app.stopdash.domain.NATIONAL_RAIL_MODE
+import app.stopdash.domain.NearbySelection
+import app.stopdash.domain.NearbyStopsCache
+import app.stopdash.domain.NearestStops
+import app.stopdash.domain.ON_THE_WAY_FIX_DISTANCE_METERS
+import app.stopdash.domain.ON_THE_WAY_FIX_EVERY
+import app.stopdash.domain.OffPlan
+import app.stopdash.domain.OnTheWay
+import app.stopdash.domain.OriginChange
+import app.stopdash.domain.PlaceStart
+import app.stopdash.domain.PlaceStops
+import app.stopdash.domain.PlaceStopsFinder
+import app.stopdash.domain.PlanTargets
+import app.stopdash.domain.RailAwareTflClient
+import app.stopdash.domain.RecentPositions
+import app.stopdash.domain.ReplanOrigin
+import app.stopdash.domain.RouteRide
+import app.stopdash.domain.RouteStopsRepository
+import app.stopdash.domain.SavedTrip
+import app.stopdash.domain.SnapshotStore
+import app.stopdash.domain.StarredRowSet
+import app.stopdash.domain.StationLead
+import app.stopdash.domain.StationMatch
+import app.stopdash.domain.StepFree
+import app.stopdash.domain.StepFreeAccess
+import app.stopdash.domain.StopClosureCache
+import app.stopdash.domain.StopDistance
+import app.stopdash.domain.StopLinks
+import app.stopdash.domain.TflClient
+import app.stopdash.domain.TimetableRepository
+import app.stopdash.domain.ToChoice
+import app.stopdash.domain.TripDestination
+import app.stopdash.domain.TripFixes
+import app.stopdash.domain.TripOrigin
+import app.stopdash.domain.TripProgress
+import app.stopdash.domain.TripRoute
+import app.stopdash.domain.TripTiming
+import app.stopdash.domain.UsageEvent
+import app.stopdash.domain.Workers
+import app.stopdash.domain.YourStops
+import app.stopdash.domain.askedAgainWhenEnded
+import app.stopdash.domain.currentPatterns
+import app.stopdash.domain.linksOf
+import app.stopdash.domain.stopPlace
+import app.stopdash.domain.widgetQuestionsSettled
+import app.stopdash.domain.widgetUpdateCardGone
+import app.stopdash.domain.widgetUpdateCardShown
 import app.stopdash.ui.LineStopWindow
 import app.stopdash.ui.RouteStopMode
 import android.Manifest
@@ -140,71 +208,7 @@ import app.stopdash.data.UserApiKeySetting
 import app.stopdash.data.WalkingSpeedSetting
 import app.stopdash.data.logAppSettingsWarning
 import app.stopdash.data.logNetworkWarning
-import app.stopdash.domain.AppSettings
-import app.stopdash.domain.ArrivalsCache
-import app.stopdash.domain.FavoriteShortcuts
-import app.stopdash.domain.LineRef
-import app.stopdash.domain.NearestStops
 import app.stopdash.ui.LocalDistanceSystem
-import app.stopdash.domain.StopDistance
-import app.stopdash.domain.PlaceStops
-import app.stopdash.domain.PlaceStopsFinder
-import app.stopdash.domain.AvoidedLines
-import app.stopdash.domain.BugReport
-import app.stopdash.domain.CachingStopFinder
-import app.stopdash.domain.CachingTflClient
-import app.stopdash.domain.CollapsedPlaces
-import app.stopdash.domain.Coordinates
-import app.stopdash.domain.DepartureRow
-import app.stopdash.domain.FartherBuses
-import app.stopdash.domain.FartherStations
-import app.stopdash.domain.FavoritePlace
-import app.stopdash.domain.FavoritePlacesSet
-import app.stopdash.domain.FixedLocation
-import app.stopdash.domain.HubInfoCache
-import app.stopdash.domain.JourneyEnd
-import app.stopdash.domain.Journeys
-import app.stopdash.domain.LauncherShortcuts
-import app.stopdash.domain.LiftOutages
-import app.stopdash.domain.ModeGroups
-import app.stopdash.domain.MoveFollow
-import app.stopdash.domain.NearbySelection
-import app.stopdash.domain.NearbyStopsCache
-import app.stopdash.domain.ON_THE_WAY_FIX_DISTANCE_METERS
-import app.stopdash.domain.ON_THE_WAY_FIX_EVERY
-import app.stopdash.domain.OffPlan
-import app.stopdash.domain.OnTheWay
-import app.stopdash.domain.OriginChange
-import app.stopdash.domain.PlaceStart
-import app.stopdash.domain.PlanTargets
-import app.stopdash.domain.RailAwareTflClient
-import app.stopdash.domain.RecentPositions
-import app.stopdash.domain.ReplanOrigin
-import app.stopdash.domain.RouteStopsRepository
-import app.stopdash.domain.SavedTrip
-import app.stopdash.domain.SnapshotStore
-import app.stopdash.domain.FavoriteJourney
-import app.stopdash.domain.StarredRowSet
-import app.stopdash.domain.StationLead
-import app.stopdash.domain.StationMatch
-import app.stopdash.domain.StepFree
-import app.stopdash.domain.StepFreeAccess
-import app.stopdash.domain.StopClosureCache
-import app.stopdash.domain.Workers
-import app.stopdash.domain.TflClient
-import app.stopdash.domain.TimetableRepository
-import app.stopdash.domain.ToChoice
-import app.stopdash.domain.TripDestination
-import app.stopdash.domain.TripFixes
-import app.stopdash.domain.TripOrigin
-import app.stopdash.domain.TripProgress
-import app.stopdash.domain.TripRoute
-import app.stopdash.domain.TripTiming
-import app.stopdash.domain.UsageEvent
-import app.stopdash.domain.YourStops
-import app.stopdash.domain.askedAgainWhenEnded
-import app.stopdash.domain.currentPatterns
-import app.stopdash.domain.stopPlace
 import app.stopdash.telemetry.ReportScreen
 import app.stopdash.telemetry.TelemetryConsent
 import app.stopdash.telemetry.UsageEvents
@@ -276,7 +280,6 @@ import app.stopdash.ui.LocationRationaleDialog
 import app.stopdash.ui.JourneyAlertsScreen
 import app.stopdash.ui.journeyAlertSummaries
 import app.stopdash.ui.JourneyAlertsUi
-import app.stopdash.domain.JourneyAlertSchedule
 import app.stopdash.ui.JourneyAdds
 import app.stopdash.ui.addFavoriteJourneyPair
 import app.stopdash.ui.removeFavoriteJourney
@@ -298,6 +301,7 @@ import app.stopdash.ui.TripScreen
 import app.stopdash.ui.TripStart
 import app.stopdash.ui.TripViewModel
 import app.stopdash.ui.WatchInstallActions
+import app.stopdash.ui.WidgetUpdateActions
 import app.stopdash.ui.WriteFailures
 import app.stopdash.ui.chipsPending
 import app.stopdash.ui.fartherCardsKey
@@ -323,6 +327,7 @@ import app.stopdash.ui.tripRepickId
 import app.stopdash.ui.tripStartId
 import app.stopdash.ui.widgetNearbySet
 import app.stopdash.watch.WatchInstall
+import app.stopdash.watch.watchesCheckedSince
 import app.stopdash.widget.LiveWidgetRefreshResult
 import app.stopdash.widget.WidgetLocationPrompt
 import app.stopdash.widget.WidgetMinuteTicks
@@ -332,6 +337,8 @@ import app.stopdash.widget.logWidgetSnapshotWarning
 import app.stopdash.widget.redrawWidgetNow
 import app.stopdash.widget.redrawWidgets
 import app.stopdash.widget.syncLiveWidgetRefreshSchedule
+import app.stopdash.widget.WidgetPresence
+import app.stopdash.widget.widgetPlaced
 import com.mikelward.androidlog.DebugLog
 import com.mikelward.androidlog.android.DebugReport
 import com.mikelward.androidlog.android.ReportScreenshot
@@ -769,8 +776,13 @@ class MainActivity : ComponentActivity() {
                 // on it, since is picked up. Play services answers asynchronously, off the main thread.
                 val watchOffer = remember { WatchInstall.offer(applicationContext) }
                 val watchInstallAvailable by watchOffer.available.collectAsStateWithLifecycle()
+                // The count as the app comes to the front: only a check finished since counts as current.
+                var watchChecksAtStart by remember { mutableLongStateOf(-1L) }
                 LaunchedEffect(lifecycleOwner, watchOffer) {
-                    lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { watchOffer.refresh() }
+                    lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                        watchChecksAtStart = watchOffer.checks.value
+                        watchOffer.refresh()
+                    }
                 }
                 val watchCardSettings = remember { DataStoreAppSettings.from(applicationContext, warn = ::logAppSettingsWarning) }
                 // Hidden (true) until read, so the card never flashes at someone who dismissed it.
@@ -853,7 +865,14 @@ class MainActivity : ComponentActivity() {
                 var settingsOnDisruptions by rememberSaveable { mutableStateOf(false) }
                 // Settings closed any way (Back, or a route away from a place opened from the summary page): the
                 // next opening starts at its top, not on that page (Codex, #657).
-                LaunchedEffect(settingsOpen) { if (!settingsOpen) settingsOnDisruptions = false }
+                // Settings opened from the "Automatically update widget?" card: it opens at its widget rows.
+                var settingsOnWidgets by rememberSaveable { mutableStateOf(false) }
+                LaunchedEffect(settingsOpen) {
+                    if (!settingsOpen) {
+                        settingsOnDisruptions = false
+                        settingsOnWidgets = false
+                    }
+                }
                 // The location gate's About dialog, hosted here rather than in the gate: a lookup that
                 // finishes while it's open replaces the gate, and would close it under the reader (Codex, #470).
                 var gateAboutOpen by rememberSaveable { mutableStateOf(false) }
@@ -1112,6 +1131,84 @@ class MainActivity : ComponentActivity() {
                 val skipBugReportConsent: Boolean by settings.skipBugReportConsent()
                     .collectAsStateWithLifecycle(initialValue = false)
                 val telemetryOptIn: Boolean? by TelemetryConsent.state.collectAsStateWithLifecycle()
+                // The near-me "Automatically update widget?" card: for a rider with a widget placed and
+                // automatic updates off, until dismissed for good. Whether a widget is placed is asked of the
+                // host off the main thread each time the app comes to the front, so one placed or removed
+                // meanwhile is picked up. Hidden (dismissed) until the stored answer is read, as the watch card.
+                val widgetPlacedNow by WidgetPresence.placed.collectAsStateWithLifecycle()
+                LaunchedEffect(lifecycleOwner) {
+                    lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                        // A receiver event while the host is asked is newer, and wins (Codex on #735).
+                        val since = WidgetPresence.generation()
+                        widgetPlaced(applicationContext)?.let { WidgetPresence.setIfUnchanged(it, since) }
+                    }
+                }
+                // Null until read: neither shown nor ended until the stored answer is known.
+                val widgetCardStored by remember(watchCardSettings) {
+                    watchCardSettings.widgetUpdateCardDismissed().map<Boolean, Boolean?> { it }
+                }.collectAsStateWithLifecycle(initialValue = null)
+                var widgetCardClosed by rememberSaveable { mutableStateOf(false) }
+                val watchChecks by watchOffer.checks.collectAsStateWithLifecycle()
+                // Checked on this visit: a widget placed while StopDash was away doesn't show its card ahead
+                // of a watch connected meanwhile, still being read (Codex on #735).
+                val watchChecked = watchesCheckedSince(watchChecksAtStart, watchChecks)
+                // The watch card's stored dismissal as read, null until then: the widget card waits on it
+                // too, since the watch card shows hidden (dismissed) until it lands (Codex on #735).
+                val watchCardRead by remember(watchCardSettings) {
+                    watchCardSettings.watchInstallCardDismissed().map<Boolean, Boolean?> { it }
+                }.collectAsStateWithLifecycle(initialValue = null)
+                val closeWidgetCard: () -> Unit = {
+                    widgetCardClosed = true
+                    (appScope ?: watchScope).launch {
+                        try {
+                            watchCardSettings.setWidgetUpdateCardDismissed(true)
+                        } catch (e: IOException) {
+                            // Closed for now already; it shows again after a restart.
+                            logAppSettingsWarning("widget update card dismissal not saved: ${e::class.simpleName}")
+                        }
+                    }
+                }
+                // Once on screen, the widget card keeps its place until it goes: a watch found since (one
+                // connected while StopDash was away) waits behind it, rather than replacing it under the rider
+                // (Codex on #735). Set by the card itself as it's drawn, so only a card actually on screen is
+                // held; re-checking the watches on each return instead would take the card away each time.
+                // Saved as the process that held it: a rotation keeps the hold, but a new process after
+                // process death reads everything again before showing the card (Codex on #735).
+                var widgetCardHeldBy by rememberSaveable { mutableLongStateOf(0L) }
+                // Definitely gone (answered, updates turned on, or no widget): nothing left to hold. A value
+                // still being read, as after a rotation, doesn't end it (Codex on #735).
+                val widgetCardGone = widgetUpdateCardGone(
+                    widgetPlaced = widgetPlacedNow,
+                    autoUpdate = liveWidgetRefresh,
+                    dismissed = widgetCardStored,
+                    closedNow = widgetCardClosed,
+                )
+                // A card that's gone holds nothing from the same frame, so a watch offer waiting behind it
+                // takes its place at once rather than after the saved hold is cleared (Codex on #735).
+                val widgetCardHeld = WidgetPresence.holds(widgetCardHeldBy, gone = widgetCardGone)
+                LaunchedEffect(widgetCardGone) { if (widgetCardGone) widgetCardHeldBy = 0L }
+                val widgetUpdateCard = WidgetUpdateActions(
+                    // Settings, at the widget rows; the card stays until automatic updates are on or it's dismissed.
+                    onSettings = {
+                        settingsOnWidgets = true
+                        settingsOpen = true
+                    },
+                    onDismiss = closeWidgetCard,
+                    onShown = { widgetCardHeldBy = WidgetPresence.process },
+                ).takeIf {
+                    widgetUpdateCardShown(
+                        widgetPlaced = widgetPlacedNow,
+                        autoUpdate = liveWidgetRefresh,
+                        dismissed = widgetCardStored,
+                        closedNow = widgetCardClosed,
+                        held = widgetCardHeld,
+                        questionsSettled = widgetQuestionsSettled(
+                            telemetryRead = telemetryOptIn != null,
+                            watchCardDismissed = watchCardRead,
+                            watchesChecked = watchChecked,
+                        ),
+                    )
+                }
                 val distanceUnits by DistanceUnitsSetting.changes.collectAsStateWithLifecycle()
                 val distanceUnitsLoaded by DistanceUnitsSetting.isLoaded.collectAsStateWithLifecycle()
                 val distanceUnitsWriteFailed by DistanceUnitsSetting.writeFailed.collectAsStateWithLifecycle()
@@ -2357,6 +2454,7 @@ class MainActivity : ComponentActivity() {
                                     avoidedWriteFailed = avoidedWriteFailedNow,
                                     onDismissAvoidedError = AvoidedLinesSetting::writeFailureShown,
                                     startOnDisruptions = settingsOnDisruptions,
+                                    startOnWidgets = settingsOnWidgets,
                                     onDisruptionsClosed = { settingsOnDisruptions = false },
                                     onOpenFavoritePlacesFromDisruptions = {
                                         settingsOnDisruptions = true
@@ -2551,7 +2649,8 @@ class MainActivity : ComponentActivity() {
                                             farReveal = farReveal,
                                             pendingTracker = departuresTracker,
                                             listWork = departuresWork,
-                                            watchInstall = watchInstallCard,
+                                            watchInstall = watchInstallCard.takeIf { !widgetCardHeld },
+                                            widgetUpdate = widgetUpdateCard,
                                         )
                                     }
                                     // A place chip on "No stops found nearby" opens the trip from where the
@@ -3021,6 +3120,7 @@ class MainActivity : ComponentActivity() {
         // The offer of StopDash for a connected watch without it, atop the near-me list
         // ([WatchInstallCard]); null (none, or dismissed, or a station's page) shows no card.
         watchInstall: WatchInstallActions? = null,
+        widgetUpdate: WidgetUpdateActions? = null,
     ) {
         // Each nearby set gets its own MainViewModel, and the previous one is CLEARED when
         // the set changes (the user moved and re-located) rather than left keyed in the
@@ -3598,6 +3698,7 @@ class MainActivity : ComponentActivity() {
                     // Stored as the Settings switch stores it, so the two never disagree.
                     onTelemetryInviteAnswer = if (telemetryUnanswered) TelemetryConsent::set else null,
                     watchInstall = watchInstall,
+                    widgetUpdate = widgetUpdate,
                     // Hiding filters the list at once; the hidden mode's stops stop being fetched
                     // from the next re-locate. Showing them again re-picks the set from the same
                     // fix, so they come back now (SPEC *Finding stops → Hiding a mode*).

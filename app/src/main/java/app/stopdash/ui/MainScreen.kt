@@ -422,6 +422,9 @@ fun MainScreen(
     // Offers StopDash to a connected watch without it ([WatchInstallCard]), where the telemetry
     // question isn't being asked: one question at a time. Null (no such watch, or dismissed) shows none.
     watchInstall: WatchInstallActions? = null,
+    // The "Automatically update widget?" card ([WidgetUpdateCard]), asked only when neither card
+    // above is: one question at a time. Null (no widget, updates on, or dismissed) shows none.
+    widgetUpdate: WidgetUpdateActions? = null,
     // The screen this list counts as for usage stats ([ReportScreen]): the near-me list, or a searched
     // station's page. A row's route page, opened over either, counts as its own.
     usageScreen: UsageEvent.Screen = UsageEvent.Screen.HOME,
@@ -1586,6 +1589,9 @@ fun MainScreen(
                             watchInstall = watchInstall.takeIf {
                                 onTelemetryInviteAnswer == null && platformRows == null && stationTitle == null
                             },
+                            widgetUpdate = widgetUpdate.takeIf {
+                                onTelemetryInviteAnswer == null && watchInstall == null && platformRows == null && stationTitle == null
+                            },
                             // The full list only, as the place chips: not a platform, station or searched page.
                             disruptionsRow = disruptionsRow.takeIf { platformRows == null && stationTitle == null },
                         )
@@ -1750,6 +1756,9 @@ private fun LoadedContent(
     onTelemetryInviteAnswer: ((Boolean) -> Unit)? = null,
     // The watch install offer (see [MainScreen]); null shows no card.
     watchInstall: WatchInstallActions? = null,
+    // The "Automatically update widget?" card ([WidgetUpdateCard]), asked only when neither card
+    // above is: one question at a time. Null (no widget, updates on, or dismissed) shows none.
+    widgetUpdate: WidgetUpdateActions? = null,
     // The disruptions row ([HomeDisruptionsRow]), under the place chips; null shows none.
     disruptionsRow: TripRow? = null,
 ) {
@@ -1837,6 +1846,9 @@ private fun LoadedContent(
                     }
                     watchInstall.takeIf { !journeyView }?.let { actions ->
                         WatchInstallCard(actions, modifier = Modifier.padding(bottom = 16.dp))
+                    }
+                    widgetUpdate.takeIf { !journeyView }?.let { actions ->
+                        WidgetUpdateCard(actions, modifier = Modifier.padding(bottom = 16.dp))
                     }
                     // No list to lead, so the place chips head the empty state, inside its scroller so
                     // they move with it (Codex): nothing near has departures, just when a route
@@ -1932,6 +1944,7 @@ private fun LoadedContent(
                     // Not in a journey's own view, which is about that journey.
                     onTelemetryInviteAnswer = onTelemetryInviteAnswer.takeIf { !journeyView },
                     watchInstall = watchInstall.takeIf { !journeyView },
+                    widgetUpdate = widgetUpdate.takeIf { !journeyView },
                     disruptionsRow = disruptionsRow.takeIf { !journeyView },
                     nearbyEmptyNote = if (rows.isEmpty() && !journeyView && !nearbyShownAbove && shownPending.isEmpty() && dismissedClosures.isEmpty()) {
                         // With modes hidden, say so rather than "no departures": they may be running.
@@ -2430,6 +2443,9 @@ private fun DepartureList(
     onTelemetryInviteAnswer: ((Boolean) -> Unit)? = null,
     // The watch install offer, first in the list too; null shows no card.
     watchInstall: WatchInstallActions? = null,
+    // The "Automatically update widget?" card ([WidgetUpdateCard]), asked only when neither card
+    // above is: one question at a time. Null (no widget, updates on, or dismissed) shows none.
+    widgetUpdate: WidgetUpdateActions? = null,
     // The disruptions row ([HomeDisruptionsRow]), under the place chips; null shows none.
     disruptionsRow: TripRow? = null,
     modifier: Modifier,
@@ -2718,6 +2734,9 @@ private fun DepartureList(
         }
         watchInstall?.let { actions ->
             item(key = "watch-install") { WatchInstallCard(actions) }
+        }
+        widgetUpdate?.let { actions ->
+            item(key = "widget-update") { WidgetUpdateCard(actions) }
         }
         if (favoritePlaces.isNotEmpty()) {
             item(key = "favorite-chips") { FavoriteChips(favoritePlaces, onRouteToPlace, contentPadding = PaddingValues(0.dp), onEditPlaces = onEditFavoritePlaces) }

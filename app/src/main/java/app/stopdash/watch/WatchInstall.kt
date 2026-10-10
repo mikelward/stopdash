@@ -52,6 +52,12 @@ class WatchInstallOffer(
     private val _available = MutableStateFlow(false)
     val available: StateFlow<Boolean> = _available.asStateFlow()
 
+    // How many times [available] has been worked out, either way. A question that waits behind the offer
+    // (the widget card) waits for a check finished since the app last came to the front
+    // ([watchesCheckedSince]), so the offer can't land in its place (Codex on #735).
+    private val _checks = MutableStateFlow(0L)
+    val checks: StateFlow<Long> = _checks.asStateFlow()
+
     /** Re-reads which connected watches lack the app. A failure reads as none, and is logged. */
     suspend fun refresh() {
         missingNow()
@@ -67,6 +73,7 @@ class WatchInstallOffer(
             emptySet()
         }
         _available.value = now.isNotEmpty()
+        _checks.value = _checks.value + 1
         return now
     }
 
@@ -169,3 +176,10 @@ private suspend fun <T> ListenableFuture<T>.await(): T =
         )
         cont.invokeOnCancellation { cancel(false) }
     }
+
+/**
+ * Whether the watches have been checked since [start], the [WatchInstallOffer.checks] count taken as the
+ * app came to the front (negative before then): an answer from an earlier visit can predate a watch
+ * connected while StopDash was away.
+ */
+internal fun watchesCheckedSince(start: Long, checks: Long): Boolean = start >= 0 && checks > start

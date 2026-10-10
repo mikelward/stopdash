@@ -3229,7 +3229,11 @@ precise location, or opens Android's settings for the app when precise is alread
 Android has stopped asking. Next comes "Automatic watch and widget location" (D1), which reads on
 while location is allowed all the time: turning it on opens the disclosure and Android's prompt,
 and turning it off opens Android's settings for the app, where the grant is taken away. Last is the
-opt-in "Automatically update widget" toggle (D5), the widget's update about once a minute. The screen composable
+opt-in "Automatically update widget" toggle (D5), the widget's update about once a minute. A rider
+with a StopDash widget placed and automatic updates off is pointed at these rows by a card atop the
+near-me list, "Automatically update widget?": **Settings** opens Settings scrolled to its widget
+rows, and **Dismiss** puts the card away for good. It also goes once automatic updates are on, and it
+waits while the telemetry question or the watch offer is shown, one question at a time. The screen composable
 is UI-only for the toggle: it reflects the setting and reports a
 change, while persistence (a typed DataStore, mirroring the starred-rows store) and the
 refresh scheduler (WorkManager) are wired by the activity, so the screen stays

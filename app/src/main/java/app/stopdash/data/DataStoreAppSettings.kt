@@ -102,6 +102,13 @@ class DataStoreAppSettings internal constructor(
         dataStore.updateData { (it ?: PersistedSettings()).copy(watchInstallCardDismissed = dismissed) }
     }
 
+    override fun widgetUpdateCardDismissed(): Flow<Boolean> =
+        persisted().map { it?.widgetUpdateCardDismissed ?: false }
+
+    override suspend fun setWidgetUpdateCardDismissed(dismissed: Boolean) {
+        dataStore.updateData { (it ?: PersistedSettings()).copy(widgetUpdateCardDismissed = dismissed) }
+    }
+
     // Blank is normalized to null on read too, so a stored empty string (from an older build or a
     // hand-edited file) reads as keyless rather than sending an empty app_key that TfL rejects.
     override fun userApiKey(): Flow<String?> =
@@ -285,6 +292,8 @@ data class PersistedSettings(
     val journeyTipDismissed: Boolean = false,
     // Whether the near-me "StopDash for your watch" card was dismissed. Defaulted, like the tip's.
     val watchInstallCardDismissed: Boolean = false,
+    // Whether the near-me "Automatically update widget?" card was dismissed. Defaulted, like the watch card's.
+    val widgetUpdateCardDismissed: Boolean = false,
     // The user's own TfL app_key (SPEC D7), or null when keyless. The one persisted setting that is
     // a credential; it is sent only with the user's own TfL requests (its purpose) and rides Android
     // backup like the rest of their settings, and is never logged or put in any other off-device
