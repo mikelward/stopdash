@@ -2973,7 +2973,7 @@
         },
         {
             "uniqueId": "com.mikelward.androidlog:logging-android",
-            "artifactVersion": "3.1.74",
+            "artifactVersion": "3.1.76",
             "name": "androidlog logging-android",
             "description": "The Android sinks and bug-report transport for androidlog.",
             "website": "https://github.com/mikelward/androidlog",
@@ -2991,7 +2991,7 @@
         },
         {
             "uniqueId": "com.mikelward.androidlog:logging-core",
-            "artifactVersion": "3.1.74",
+            "artifactVersion": "3.1.76",
             "name": "androidlog logging-core",
             "description": "The privacy floor and ring buffer, testable without Android.",
             "website": "https://github.com/mikelward/androidlog",
@@ -3674,7 +3674,7 @@
         },
         {
             "uniqueId": "org.jetbrains.kotlinx:kotlinx-collections-immutable-jvm",
-            "artifactVersion": "0.4.0",
+            "artifactVersion": "0.5.2",
             "name": "kotlinx-collections-immutable",
             "description": "Kotlin Immutable Collections multiplatform library",
             "website": "https://github.com/Kotlin/kotlinx.collections.immutable",
