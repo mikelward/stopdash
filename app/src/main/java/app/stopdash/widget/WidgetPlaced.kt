@@ -1,7 +1,6 @@
 package app.stopdash.widget
 
 import android.content.Context
-import androidx.glance.appwidget.GlanceAppWidgetManager
 import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -21,9 +20,7 @@ internal suspend fun widgetPlaced(
     context: Context,
     io: CoroutineDispatcher = Dispatchers.IO,
     warn: (String) -> Unit = ::logWidgetSnapshotWarning,
-    ids: suspend () -> Boolean = {
-        GlanceAppWidgetManager(context.applicationContext).getGlanceIds(StopDashWidget::class.java).isNotEmpty()
-    },
+    ids: suspend () -> Boolean = { placedWidgetIds(context.applicationContext).isNotEmpty() },
 ): Boolean? = withContext(io) {
     try {
         ids()

@@ -76,4 +76,44 @@ class WidgetPlacedTest {
         assertFalse(WidgetPresence.holds(WidgetPresence.process, gone = true))
         assertFalse(WidgetPresence.holds(0L, gone = false))
     }
+
+    @Test
+    fun `placed widgets are found by the receiver, not by Glance's class-name map`() {
+        // Glance's getGlanceIds keys on StopDashWidget's class name, which R8 renames between
+        // releases; the receiver's component name is pinned by the manifest.
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val manager = android.appwidget.AppWidgetManager.getInstance(context)
+        org.robolectric.Shadows.shadowOf(manager).setAllowedToBindAppWidgets(true)
+        assertEquals(0, placedWidgetIds(context).size)
+
+        manager.bindAppWidgetIdIfAllowed(7, android.content.ComponentName(context, StopDashWidgetReceiver::class.java))
+
+        assertEquals(listOf(7), placedWidgetIds(context).toList())
+    }
+
+    @Test
+    fun `a redraw finds and updates the placed widgets off the caller's thread`() {
+        val caller = Executors.newSingleThreadExecutor { Thread(it, "test-caller") }.asCoroutineDispatcher()
+        val worker = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }.asCoroutineDispatcher()
+        try {
+            val threads = ThreadRecorder()
+            val widgets = listOf(object : androidx.glance.GlanceId {}, object : androidx.glance.GlanceId {})
+            runBlocking(caller) {
+                redrawWidgets(
+                    ApplicationProvider.getApplicationContext(),
+                    io = worker,
+                    glanceIds = {
+                        threads.note()
+                        widgets
+                    },
+                    update = { threads.note() },
+                )
+            }
+            // One lookup, then one update per widget, all on the worker.
+            assertEquals(listOf("test-worker", "test-worker", "test-worker"), threads.threads())
+        } finally {
+            caller.close()
+            worker.close()
+        }
+    }
 }

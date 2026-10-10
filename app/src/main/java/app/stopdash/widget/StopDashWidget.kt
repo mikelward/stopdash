@@ -34,7 +34,6 @@ import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
-import androidx.glance.appwidget.updateAll
 import androidx.glance.background
 import androidx.glance.color.ColorProvider as DayNightColor
 import androidx.glance.layout.Alignment
@@ -336,7 +335,7 @@ class StopDashWidget : GlanceAppWidget() {
         // own installed-widget guard is the reliable backstop on the next save; here we catch
         // the removed-while-app-closed case. Cancellation rethrown; other failures logged.
         try {
-            if (GlanceAppWidgetManager(context).getGlanceIds(StopDashWidget::class.java).isEmpty()) {
+            if (placedWidgetIds(context).isEmpty()) {
                 cancelWidgetStalenessRedraw(context)
                 // Also retire the opt-in live-refresh chain — a widgetless user isn't left with a
                 // ~1/min fetch loop (Codex P1 on #56). The worker's own installed-widget guard is
@@ -1822,11 +1821,36 @@ internal object WidgetRedraws {
 
 /**
  * Redraws every placed widget with what's stored now, whether or not Glance has its session open.
- * Every redraw goes through here, never [androidx.glance.appwidget.updateAll] alone.
+ * Every redraw goes through here, never Glance's `updateAll` (see [placedWidgetIds]). Callers
+ * include the main thread, and finding the widgets is a system call per widget, so the lookup and
+ * the per-widget [update] loop both run on [io] (AGENTS.md *Main thread*); injectable so a test
+ * can check where they ran.
  */
-internal suspend fun redrawWidgets(context: Context) {
+internal suspend fun redrawWidgets(
+    context: Context,
+    io: CoroutineDispatcher = Dispatchers.IO,
+    glanceIds: () -> List<GlanceId> = { placedGlanceIds(context) },
+    update: suspend (GlanceId) -> Unit = { id -> StopDashWidget().update(context, id) },
+) {
     WidgetRedraws.generation.update { it + 1 }
-    StopDashWidget().updateAll(context)
+    withContext(io) { glanceIds().forEach { id -> update(id) } }
+}
+
+/**
+ * Glance's IDs for the placed widgets ([placedWidgetIds]); each conversion asks the host again. A
+ * widget removed in between has no provider any more and is skipped, so it can't cost the others
+ * their redraw.
+ */
+private fun placedGlanceIds(context: Context): List<GlanceId> {
+    val manager = GlanceAppWidgetManager(context)
+    return placedWidgetIds(context).asList().mapNotNull { id ->
+        try {
+            manager.getGlanceIdBy(id)
+        } catch (e: IllegalArgumentException) {
+            logWidgetSnapshotWarning("widget $id removed during redraw, skipped")
+            null
+        }
+    }
 }
 
 /**

@@ -94,3 +94,9 @@
     public static ** INSTANCE;
     kotlinx.serialization.KSerializer serializer(...);
 }
+
+# Glance remembers which GlanceAppWidget class each receiver hosts by class
+# name; R8 renaming StopDashWidget between releases leaves that map stale.
+# Widget code reads IDs by receiver (placedWidgetIds), but keep the name
+# stable so Glance's own lookups agree across releases too.
+-keepnames class * extends androidx.glance.appwidget.GlanceAppWidget
