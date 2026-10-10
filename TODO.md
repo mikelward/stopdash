@@ -3525,9 +3525,9 @@ and these carry the rest as their own PRs:
       - [x] One layout: picking the nearby stops (hidden-mode fallback, anchors), their distances,
             nearest-first order (a tie by id) and nearer places (`NearbyLayout`).
       - [ ] One snapshot plan and one guarded store write: the stops to store, missing and
-            journey-only sets, the save gate (the app judges nearby stops only; the worker counts a
-            journey origin's fresh arrivals too), and one merge (`keepingFresher` + journeys) for
-            both, retiring `saveIfStopsMatch`'s separate semantics.
+            journey-only sets, and the save gate (the app judges nearby stops only; the worker counts a
+            journey origin's fresh arrivals too). The merge is done: every write now keeps a stop
+            the store holds newer (`keepingFresher`), `saveIfStopsMatch` included.
       - [ ] One fetch: the worker on the app's reuse windows, shared-cache rule and stop closures
             (a cost question: the worker fetches no closures today).
 - [ ] **Line choices catch up only at the next save (#748, maintainer 2026-10-10).** The stop
@@ -4022,9 +4022,9 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   transform) and independent of the save, closing the class. The round-4 P2 (a pruned state
   asserting a trusted empty "No departures" through the replacement fetch) is fixed in the same
   change: an all-departed prune shows the loading placeholder; a partial prune flags the shown set
-  incomplete. (`saveIfStopsMatch`'s still-deferred "widget-snapshot-scope redesign" — a full
-  prior/revision compare for the *same-set* concurrent-writer race — is adjacent but broader and
-  left as-is.) **Round 6 (maintainer accepted best-effort, 2026-09-21):** Codex then flagged
+  incomplete. (The *same-set* concurrent-writer race `saveIfStopsMatch` once deferred to a
+  "widget-snapshot-scope redesign" is closed without one, 2026-10-10: that write now keeps each
+  stop's later-fetched rows, `keepingFresher`, as every other write does.) **Round 6 (maintainer accepted best-effort, 2026-09-21):** Codex then flagged
   that `pruneStops`'s own write can throw and its `catch` only logs, so a departed stop could
   linger on disk. Declined a durable pending-prune (it would partly re-introduce the persisted
   state this redesign removed): `pruneStops` is a best-effort fast path that swallows a write

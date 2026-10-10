@@ -389,6 +389,20 @@ class DataStoreSnapshotStoreTest {
     }
 
     @Test
+    fun `saveIfStopsMatch keeps a stop the app stored newer, as every other write does`() = runTest {
+        val loaded = snapshot()
+        // The app refreshed the same stops meanwhile: their arrivals are newer than this caller's.
+        val fresher = loaded.copy(stops = loaded.stops.map { it.copy(fetchedAt = now.plusSeconds(120)) })
+        val store = DataStoreSnapshotStore(FakeDataStore(fresher.toPersisted()))
+        assertTrue(store.saveIfStopsMatch(loaded, loaded.stops.map { it.stopId }))
+        assertEquals(fresher.stops.map { it.fetchedAt }, store.load()!!.stops.map { it.fetchedAt })
+        // A caller's newer copy still replaces an older stored one.
+        val newest = loaded.copy(stops = loaded.stops.map { it.copy(fetchedAt = now.plusSeconds(300)) })
+        assertTrue(store.saveIfStopsMatch(newest, loaded.stops.map { it.stopId }))
+        assertEquals(newest.stops.map { it.fetchedAt }, store.load()!!.stops.map { it.fetchedAt })
+    }
+
+    @Test
     fun `saveIfStopsMatch keeps the stored widget journeys`() = runTest {
         val journeys = listOf(WidgetJourney("940GZZLUOXC", setOf(JourneyCall("victoria", "Brixton", null)), "k"))
         val store = DataStoreSnapshotStore(FakeDataStore(snapshot().copy(journeys = journeys).toPersisted()))

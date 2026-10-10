@@ -4015,7 +4015,7 @@ Mirrors the sibling fleet:
     staying put asks TfL nothing), with the old place's trains taken off at once and a new stop not
     fetched yet shown as missing (principle 1). A pinned journey's origin stays, for its journey. The
     position isn't kept or logged; the lookup's place joins the nearby cache as the app's own do. A
-    set the app stores meanwhile, from a fresher fix of its own, wins. Battery: no radio for the
+    set the app stores meanwhile, from a fresher fix of its own, wins. Where both refresh the same stops at once, each stop keeps the later-fetched arrivals, whichever side fetched them. Battery: no radio for the
     position; one stop lookup per move of more than a short walk. It reverses the part of this
     decision below that kept location off the widget's refresh, for a rider who allows it; without
     the grant, all below stands.

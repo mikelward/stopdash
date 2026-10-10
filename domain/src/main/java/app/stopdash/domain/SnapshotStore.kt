@@ -77,15 +77,12 @@ interface SnapshotStore {
      * transform running under the write lock. The app's own refresh, which is the authority on
      * the current set, keeps using [save].
      *
-     * The guard is deliberately on stop **identity**, not the exact snapshot or a revision: it
-     * closes only the case that breaks the honesty floor — a *changed* set, where old-location
-     * departures would be stamped fresh over the new one. A *same-set* concurrent write (the app
-     * and the worker both refreshing the same stops seconds apart) still passes this predicate,
-     * but both results are honestly ~fresh for the same stops and countdowns render from absolute
-     * `expectedArrival`, so the marginally-older one winning is within the aging-stamp floor — the
-     * broader concurrent-writer race the maintainer deferred (the widget-snapshot-scope work; a
-     * full-prior/revision compare that would also close the same-set case is that redesign's shape,
-     * a maintainer call, not folded in here).
+     * The guard is on stop **identity**, not the exact snapshot or a revision: it closes the case
+     * that breaks the honesty floor — a *changed* set, where old-location departures would be
+     * stamped fresh over the new one. A *same-set* concurrent write (the app and the worker both
+     * refreshing the same stops seconds apart) passes it, and then each stop keeps whichever rows
+     * were fetched later, the stored ones or this caller's (`keepingFresher`, as every other write):
+     * a slow worker no longer lands older arrivals over ones the app fetched after it.
      */
     suspend fun saveIfStopsMatch(
         snapshot: DeparturesSnapshot,
