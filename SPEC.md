@@ -852,7 +852,7 @@ drawn from the route data the page already holds for the train's way, never a se
 line's other way. Its folds open one at a time, the last folding again as the next opens, with no "Show all stations". The list below stays wherever that map can't be drawn (a route still loading or
 failed, a line the map can't lay out): the train's stops in hand are never replaced by a note. **A tap on a station opens its details over the route page** (maintainer, 2026-10-09; it opened the
 station's own departures page from 2026-10-06): the same page a stop tapped on a line's map opens (*Finding a
-line*), with its lines, step-free access, zone, the stations beside it and its board, but headed by the
+line*), with the lines there and around it, step-free access, zone and Departures, but headed by the
 departure tapped ("From Victoria, towards Walthamstow Central", behind the line's pill) and with **Go** in
 place of From and To. Go starts the trip there on the way (*On the way*) on that line from the boarding stop,
 along the route page's own stop list, no Planner asked; the trip follows the soonest of the line's trains
@@ -2893,8 +2893,7 @@ closes Lines… back to the page it was tapped on, as it was left. Over a trip's
 trip from there would take the place of the one under it. Where something else is already open over that page,
 its stations stay inert.
 A stop tapped on a route page's stop list opens the same details over the route page, headed by the
-departure tapped with Go in place of From and To (*Route detail*); a station opened from them beside it is
-details like any other, its From closing them for the station's page. Its line pills open the line in Lines…
+departure tapped with Go in place of From and To (*Route detail*). Its line pills open the line in Lines…
 only where Lines… would show; elsewhere they're shown, not tapped.
 A bus stop shows its **letter and the way its buses go** under From and To ("Stop H, towards Oxford
 Circus"), or its compass heading where TfL gives no letter or "towards", as the near-me list heads its
@@ -2916,28 +2915,22 @@ where any id serving it is undescribed. Where only a lift makes those lines step
 as the route page watches them (no new request), and while a lift it needs is out it says "Not
 step-free: a lift is out". That line too is held from the first frame for a station, blank where the
 table says nothing; a bus stop holds none.
-Under From and To are the **lines through it** as pills, each opening that line's page in place of the
-stop's (under, so the buttons never move as they come in); then the other stations of its interchange (**Same interchange**: the rail station beside
-a tube one) and the stations a short walk from it (**Nearby**, within 800 m, nearest five, with how far),
-each opening that station's details in place of these (maintainer, 2026-10-07). All three come from the
-bundled station index, with no request, so a bus stop, which it doesn't hold, shows none. A station
-opened that way that the line doesn't call at has no line to lead its board: every service is shown,
-none first, and "No departures" with nothing due.
-Under them is the stop's **board** (maintainer, 2026-10-07): the line it was opened from first, by
-platform or pole as the near-me list draws them, then the stop's other services under **"Also here"**,
-so a rider who came for the line sees it before anything else. A line with nothing due says so ("No
-Northern departures") over the rest. The board is the stop's live arrivals, from the same shared cache
-as a station's page, asked as the details open and again while they're up and on a return to the app,
-as a station's page is, and asked again each time the details open; until they're in it says it's
-loading, a failure says so with Try again, and a refresh that failed keeps the board up with a line
-saying so, while a stale card withholds its times (D4). A stamp over the board gives its age, or says
-its disruption checks are still out ("Checking…") or couldn't be made, so unchecked times never read as
-clean; a closure or moved-stop notice heads the board, and a bus alert wholly behind the stop is muted,
-as on the near-me list. A row opens its **route
-page** over the details, as on a station's page, Back returning to the stop. It works as there: its
-star pins the route to the top, its alerts can be dismissed, and a station on its stop list opens that
-station's page in place of Lines…, Back returning to the route page as from any route page. A pin or dismissal that couldn't be
-saved says so on the stop's details once the route page is closed. A star in its top bar **adds it as a favorite place** (maintainer, 2026-10-07):
+Beside From and To is **Departures** (maintainer, 2026-10-10): the page From opens for the station (its own
+stops' departures, by platform or pole, and those of the stops around it, *Finding stops → From… To…*), as a look that
+starts nothing. Its bar names the stop alone, with **Back** where a station's page has To… and no crosshairs,
+since it's a look at somewhere else, not a place to plan from; none of the station flow is touched, so a
+station's page or trip open under the details is left as it was, and Back returns to the details. Its route pages
+leave their stations inert, as a trip's do, since the details a tap would open sit under the page. A station
+under several ids opens its interchange, as From does, so it waits on the stop's links. It replaced a board of
+the stop's departures in the details themselves (2026-10-07 to 2026-10-10), and the stations of its
+interchange and a short walk away listed by name: the page shows both, and a board under the details' own
+content kept moving what was under it as its arrivals came in.
+Under the buttons are the **lines here and around it** as one row of pills, each opening that line's page in
+place of the stop's (under, so the buttons never move as they come in): its own lines first, then those its
+interchange's other stations add (the rail lines beside a tube station), then those of the stations within
+800 m (the nearest five), each line once (maintainer, 2026-10-10). All come from the bundled station index,
+with no request, so a bus stop, which it doesn't hold, shows none.
+A star in its top bar **adds it as a favorite place** (maintainer, 2026-10-07):
 the favorite-places editor opens over it, filled in as a custom place named for the station at its
 position (the index's, else its stops' center, as a pick from the place search, a lookup that fails
 offering a retry on its row), so the rider can still rename it or pick its icon and days before Save;
@@ -2945,8 +2938,7 @@ Save or Cancel returns to the stop. Home and Work are set from Settings, as befo
 a map** (maintainer, 2026-10-07): the phone's maps app opens on a labeled pin at the stop's published
 position (the index's, else where the line's map placed it), never the rider's fix, as a tap on a
 near-me header's distance does; with no maps app it says so. The pin waits on the stop's links, so the
-index's position wins over the map's, and is greyed for a stop placed by neither. The star waits on the stop's links, which carry its position. Back from a station opened from another's details returns to that one, as it
-was left, and so back through the stations opened (the last ten); Back from the first returns to the line, its map just as it was,
+index's position wins over the map's, and is greyed for a stop placed by neither. The star waits on the stop's links, which carry its position. Back returns to the line, its map just as it was,
 scrolled and unfolded, Back from From's station page included; closing the line forgets it, so the line
 opened again starts at its top.
 A station's **facilities** close its details (maintainer, 2026-10-09), "Toilets · Waiting room · Taxi

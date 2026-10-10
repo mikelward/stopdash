@@ -22,6 +22,10 @@ class StopLinks(
     // The lines the index lists under each of the station's own ids (this one and [ownIds]), so what is
     // read under one id is read only for the lines that id serves (Codex on #678).
     val linesById: Map<String, Set<String>> = emptyMap(),
+    // Every line here and around it, for the details' one row of pills (maintainer, 2026-10-10): this stop's
+    // [lines] first, then those its interchange's other stations add, then the nearby stations', nearest first,
+    // each once. Worked out with the rest, on the worker.
+    val nearbyLines: List<LineRef> = lines,
 ) {
     val isEmpty: Boolean get() = lines.isEmpty() && sameHub.isEmpty() && nearby.isEmpty()
 
@@ -108,6 +112,9 @@ fun StationIndex.linksOf(id: String, nearbyMeters: Double = NEARBY_LINK_METERS, 
         val lon = station.longitude ?: return null
         return here?.let { NearestStops.distanceMeters(it.latitude, it.longitude, lat, lon) }
     }
+    fun linesOf(station: IndexedStation): List<LineRef> = station.lines.flatMap { (mode, ids) ->
+        ids.filter { it.isNotBlank() }.map { line -> LineRef(line, riderLineName(lineNames[line] ?: line, mode), mode) }
+    }
     fun near(station: IndexedStation) = NearStation(
         station.id,
         cleanStopName(station.name),
@@ -123,28 +130,33 @@ fun StationIndex.linksOf(id: String, nearbyMeters: Double = NEARBY_LINK_METERS, 
     val ownGroup = if (isHub) emptyList() else stations.filter { it.id != ownId && sameStation(own, it) }
     val lines = LinkedHashMap<String, LineRef>()
     for (station in if (isHub) members else listOf(own) + ownGroup) {
-        for ((mode, ids) in station.lines) {
-            ids.forEach { line -> if (line.isNotBlank()) lines.getOrPut(line) { LineRef(line, riderLineName(lineNames[line] ?: line, mode), mode) } }
-        }
+        linesOf(station).forEach { line -> lines.putIfAbsent(line.id, line) }
     }
     val ownIds = ownGroup.mapTo(HashSet()) { it.id } + ownId
     // A member named as this one is still its own station (Balham rail beside Balham tube): kept, its mode
     // telling them apart on the page; one under several ids is one chip asking for all of them (Codex on #664).
     val sameHub = merged(members.filter { it.id !in ownIds }.map(::near))
     val inHub = members.mapTo(HashSet()) { it.id } + ownIds
-    val nearby = if (here == null) {
+    // The stations within reach, nearest first, before one listed under several ids is merged into one chip.
+    val inReach = if (here == null) {
         emptyList()
     } else {
         stations.asSequence()
             .filter { it.id !in inHub && !it.id.startsWith("HUB", ignoreCase = true) }
             .mapNotNull { station -> metersTo(station)?.takeIf { it <= nearbyMeters }?.let { station to it } }
             .sortedBy { it.second }
-            .map { near(it.first) }
+            .map { it.first }
             // Left out by id, never by name: Bethnal Green's Overground and tube stations share one but are
             // two stations 460 m apart (Codex on #664); the page tells a same-named one by its mode.
             .toList()
-            .let(::merged)
-            .take(nearbyLimit)
+    }
+    val nearby = merged(inReach.map(::near)).take(nearbyLimit)
+    // Every line here, then the interchange's other stations', then those of the nearby stations kept above
+    // (each of their ids), each line once.
+    val kept = nearby.mapTo(HashSet()) { it.name to it.modes }
+    val around = LinkedHashMap(lines)
+    for (station in members + inReach.filter { (cleanStopName(it.name) to it.modes) in kept }) {
+        linesOf(station).forEach { line -> around.putIfAbsent(line.id, line) }
     }
     val openId = own.hubId.takeIf { ownGroup.isNotEmpty() && it.isNotBlank() }
     val linesById = if (isHub) {
@@ -152,7 +164,7 @@ fun StationIndex.linksOf(id: String, nearbyMeters: Double = NEARBY_LINK_METERS, 
     } else {
         (listOf(own) + ownGroup).associate { station -> station.id to station.lines.values.flatten().filterTo(HashSet()) { it.isNotBlank() } }
     }
-    return StopLinks(lines.values.toList(), sameHub, nearby, ownGroup.map { it.id }, openId, here, linesById)
+    return StopLinks(lines.values.toList(), sameHub, nearby, ownGroup.map { it.id }, openId, here, linesById, around.values.toList())
 }
 
 /** How far a station can be and still count as near a stop's details: a short walk. */

@@ -8,7 +8,6 @@ import app.stopdash.domain.stopAccessFor
 import app.stopdash.domain.NearStation
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.minimumInteractiveComponentSize
 import app.stopdash.domain.NearestStops
 import app.stopdash.domain.Coordinates
@@ -18,8 +17,6 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.MutableState
 import androidx.compose.material3.Button
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarHost
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -93,7 +90,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
 import app.stopdash.R
 import androidx.annotation.WorkerThread
-import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.StopQualifier
 import app.stopdash.domain.lineStopCue
@@ -110,7 +106,6 @@ import app.stopdash.domain.UsageEvent
 import app.stopdash.telemetry.ReportScreen
 import app.stopdash.telemetry.UsageEvents
 import app.stopdash.domain.LineRef
-import app.stopdash.domain.RouteFocus
 
 /**
  * Opens *Lines…* (SPEC *Finding a line*), for the overflows that offer it under From… and To…: the
@@ -225,12 +220,8 @@ internal fun LinesOverlay(
     onFavorite: ((LineStopRef, Coordinates?) -> Unit)? = null,
     // Show on map: the stop at its published position in the phone's maps app; null offers none.
     onShowOnMap: ((LineStopRef, Coordinates) -> Unit)? = null,
-    // The stop's live departures, from a model the caller keeps alive and refreshing while the page is
-    // up ([StopDepartures]); null draws none.
-    // With it, the lines to declare served there (the line it was opened from, else the station's own), so
-    // a suspended one's status is asked for even with nothing due there.
-    // And the stop's other ids ([StopLinks.ownIds]), asked for too.
-    departures: @Composable (LineStopRef, List<LineRef>, List<String>) -> StopDepartures? = { _, _, _ -> null },
+    // Departures: the departures at the stop and around it, on a page of their own that starts nothing.
+    onDepartures: (LineStopRef) -> Unit = {},
     // The line page's worked-out row and map, held by the caller above any overlay that takes this one's
     // place (From's station page), so the page comes back as it was left (Codex on #659).
     lineWork: LinePageWorkHolder = remember { LinePageWorkHolder() },
@@ -327,12 +318,11 @@ internal fun LinesOverlay(
                     stop.pageKeys().forEach(saveable::removeState)
                     if (picked.id != line.id) onOpen(picked)
                 },
-                dismissal = dismissal,
                 onFrom = onFrom,
                 onTo = onTo,
                 onFavorite = onFavorite,
                 onShowOnMap = onShowOnMap,
-                departures = departures,
+                onDepartures = onDepartures,
             )
         }
     } else {
@@ -367,13 +357,12 @@ internal fun LineStopWindow(
     onStopClosed: (() -> Unit)?,
     distanceTo: (Coordinates?) -> String?,
     onPickLine: (LineRef) -> Unit,
-    // A row's route page's line alert, dismissible through it; null offers no ×.
-    dismissal: LineAlertDismissal?,
     onFrom: (LineStopRef) -> Unit,
     onTo: ((LineStopRef) -> Unit)?,
     onFavorite: ((LineStopRef, Coordinates?) -> Unit)?,
     onShowOnMap: ((LineStopRef, Coordinates) -> Unit)?,
-    departures: @Composable (LineStopRef, List<LineRef>, List<String>) -> StopDepartures?,
+    // The departures at the stop and around it, on a page of their own ([LineStopRef.fromId] its interchange).
+    onDepartures: (LineStopRef) -> Unit,
     // Opened from a route page's stop list: that stop's page in its route mode ([RouteStopMode]); a station
     // opened from it, beside it, is a stop page like any other.
     route: RouteStopMode? = null,
@@ -448,60 +437,19 @@ internal fun LineStopWindow(
         // A dialog's window has none of the app's text size nor its pinch (SPEC *Display size*): both
         // applied again here (Codex on #659).
         FontSizePinchWindow {
-            // Every board waits on the stop's links (the bundled index, quick), "Loading departures…"
-            // meanwhile: the links sit above it, so a board up first (a stop's kept model, opened again)
-            // would be pushed down as they came in. Every line through it is declared, so a suspended one
-            // with nothing due shows its status (Codex on #664); the line it was opened from only decides
-            // which part leads. A stop the index doesn't hold (a bus stop) declares that line alone.
-            val board = links?.let { departures(stop, if (it.lines.isEmpty() && stop.onLine) listOf(line) else it.lines, it.ownIds) }
-            // A fresh page per stop: a station opened from another's chips starts at its top, its title and
-            // From and To in view (Codex on #664); Back to one opened before finds it as it was left.
+            // A fresh page per stop, its scroll kept with it in [saveable].
             key(stop.pageKey) {
                 saveable.SaveableStateProvider(stop.pageKey) {
-                    // A row's route page open over the stop, by its route's key, kept with the stop's page so
-                    // Back to this stop, or a rotation, finds it still open.
-                    var routeKey by rememberSaveable { mutableStateOf<String?>(null) }
-                    var routeDestination by rememberSaveable { mutableStateOf<String?>(null) }
-                    var routeBranch by rememberSaveable { mutableStateOf<String?>(null) }
-                    // Its line's page ("View line") open over the route page, kept with the route it's for.
-                    val routeLineOpen = rememberSaveable(routeKey) { mutableStateOf(false) }
-                    // The stop's details, the route page a row opens over them, or its line's page over that.
-                    ReportScreen(
-                        when {
-                            routeKey == null -> UsageEvent.Screen.LINE_STOP
-                            routeLineOpen.value -> UsageEvent.Screen.LINE
-                            else -> UsageEvent.Screen.ROUTE
-                        },
-                    )
-                    val view = rememberStopBoard(board, line.id.takeIf { stop.onLine })
-                    // The row gone from the board (its last train left), or the board failed (a restore whose
-                    // reload couldn't be made): the page closes, rather than reopening if a later refresh or a
-                    // Try again brought the same route back. Kept only while the board is still worked out.
-                    val boardFailed = board?.state is DeparturesUiState.Error
-                    LaunchedEffect(routeKey, view, boardFailed) {
-                        val key = routeKey ?: return@LaunchedEffect
-                        if (boardFailed || (view != null && key !in view.rowsByKey)) routeKey = null
-                    }
+                    ReportScreen(UsageEvent.Screen.LINE_STOP)
                     LineStopPage(
                         name = stop.name,
                         distance = stop.distance,
-                        lineName = line.name.takeIf { stop.onLine },
-                        departures = board,
-                        // Its board waiting on its links: "Loading departures…" meanwhile, never a blank (Codex on #664).
-                        boardPending = board == null,
-                        view = view,
                         pole = pole,
                         zone = facts?.zone,
                         facilities = facts?.facilities,
                         cueSlot = true,
                         access = access,
                         accessSlot = isStation,
-                        onOpenRoute = { row, focus ->
-                            UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.STOP_ROW))
-                            routeKey = row.detailKey()
-                            routeDestination = focus?.destination
-                            routeBranch = focus?.branch
-                        },
                         links = links,
                         // A line's pill closes the stop for that line's page ([onPickLine]).
                         onOpenLine = if (linesOpenable) {
@@ -514,27 +462,12 @@ internal fun LineStopWindow(
                         } else {
                             null
                         },
-                        // A station beside this one opens its details in their place, Back returning here.
-                        onOpenStation = { station ->
-                            // The station the trail lets go of forgets its scroll too (Codex on #667).
-                            stop.evictedByOpening()?.let(saveable::removeState)
-                            onStop(
-                                LineStopRef(
-                                    station.id,
-                                    station.name,
-                                    distanceTo(station.position),
-                                    onLine = line.id in station.lineIds,
-                                    position = station.position,
-                                    cue = station.cue,
-                                )
-                                    .openedFrom(stop),
-                            )
-                        },
-                        // A station under several ids opens its interchange ([StopLinks.openId]): From and To wait
-                        // for the links, so a tap during the lookup can't open one id alone (Codex on #664).
+                        // A station under several ids opens its interchange ([StopLinks.openId]): From, To and
+                        // Departures wait for the links, so a tap during the lookup can't open one id alone (Codex on #664).
                         actionsReady = links != null,
                         onFrom = { onFrom(stop.copy(fromId = links?.openId)) },
                         onTo = onTo?.let { to -> { to(stop.copy(fromId = links?.openId)) } },
+                        onDepartures = { onDepartures(stop.copy(fromId = links?.openId)) },
                         // Where it is: the index's, else where the map placed it (a bus stop), so no lookup
                         // is needed for a stop already placed (Codex on #670).
                         onFavorite = onFavorite?.let { favorite -> { favorite(stop, links?.position ?: stop.position) } },
@@ -545,25 +478,9 @@ internal fun LineStopWindow(
                             { links?.let { it.position ?: stop.position }?.let { at -> show(stop, at) } }
                         },
                         mapReady = links?.let { it.position ?: stop.position } != null,
-                        // A pin or dismiss that couldn't be saved says so here once its route page is closed.
-                        routeOpen = routeKey != null,
                         route = route?.takeIf { stop.previous == null },
                         onBack = back,
                     )
-                    routeKey?.let { key ->
-                        // Its star and dismiss through the board's own model, as on a station's page; its
-                        // line's page ("View line") dismisses as the line's own page above does (Codex on #689).
-                        CompositionLocalProvider(LocalDismissLineAlert provides dismissal) {
-                            StopRoutePage(
-                                view,
-                                key,
-                                routeDestination?.let { RouteFocus(it, routeBranch) },
-                                routeLineOpen,
-                                onBack = { routeKey = null },
-                                actions = board,
-                            )
-                        }
-                    }
                 }
             }
         }
@@ -582,29 +499,20 @@ internal fun LineStopPage(
     onFrom: () -> Unit,
     onTo: (() -> Unit)?,
     onBack: () -> Unit,
-    // The line it was opened from, whose departures lead its board, then the rest ([stopBoard]).
-    // Null where that line doesn't call here (a station opened from another's details): the board then
-    // shows every service, none leading.
-    lineName: String? = "",
-    departures: StopDepartures? = null,
-    view: StopBoardView? = null,
-    // A board to come, not yet started: drawn as loading until [departures] is in.
-    boardPending: Boolean = false,
-    // Whether From and To can be tapped yet: false while what they open is still being worked out.
+    // Whether From, To and Departures can be tapped yet: false while what they open is still being worked out.
     actionsReady: Boolean = true,
-    // The lines through it and the stations beside it ([linksOf]); null while they're worked out.
+    // The lines through it and around it ([StopLinks.nearbyLines]); null while they're worked out.
     links: StopLinks? = null,
     // A line's pill opens that line's page; null shows them without.
     onOpenLine: ((LineRef) -> Unit)? = {},
-    onOpenStation: (NearStation) -> Unit = {},
+    // The departures at the stop and around it, on a page of their own that starts nothing; null offers none.
+    onDepartures: (() -> Unit)? = null,
     // Save it as a favorite place; null offers none. Waits on [actionsReady], for its position.
     onFavorite: (() -> Unit)? = null,
     // Show it in the phone's maps app; null where none is offered. Greyed until [mapReady]: where it is
     // isn't known yet, or is known nowhere.
     onShowOnMap: (() -> Unit)? = null,
     mapReady: Boolean = true,
-    // A row's route page, as on a station's page; null leaves the rows inert.
-    onOpenRoute: ((DepartureRow, RouteFocus?) -> Unit)? = null,
     // A bus stop's letter and the way its buses go ("Stop H, towards Oxford Circus"), from its pole's
     // data; null for a station, or while it's looked up.
     pole: StopQualifier? = null,
@@ -620,31 +528,11 @@ internal fun LineStopPage(
     access: StopAccess? = null,
     // Its line, under the cue's, kept from the first frame as that one is, for a station.
     accessSlot: Boolean = false,
-    // A route page open over it: a failed pin or dismiss there ([StopDepartures.starWriteFailed]) is said here
-    // once it's closed, as the near-me list says one once its route page is (the page has no room for it).
-    routeOpen: Boolean = false,
     // Opened from a route page's stop list: headed by the departure tapped, with Go in place of From and To,
     // its star the journey there ([RouteStopMode]); null for a stop opened from a line's map.
     route: RouteStopMode? = null,
 ) {
     BackHandler(onBack = onBack)
-    val snackbarHostState = remember { SnackbarHostState() }
-    val starFailedMessage = stringResource(R.string.star_write_failed)
-    val dismissFailedMessage = stringResource(R.string.dismiss_write_failed)
-    val starFailed = departures?.starWriteFailed == true
-    val dismissFailed = departures?.dismissWriteFailed == true
-    LaunchedEffect(starFailed, routeOpen) {
-        if (starFailed && !routeOpen) {
-            departures?.onStarWriteFailureShown?.invoke()
-            snackbarHostState.showSnackbar(starFailedMessage)
-        }
-    }
-    LaunchedEffect(dismissFailed, routeOpen) {
-        if (dismissFailed && !routeOpen) {
-            departures?.onDismissWriteFailureShown?.invoke()
-            snackbarHostState.showSnackbar(dismissFailedMessage)
-        }
-    }
     val zoneCue = zone?.takeIf { it.isNotBlank() }?.let { stringResource(R.string.line_stop_zone, it) }
     val accessCue = when {
         access == null || access.level == null -> null
@@ -691,7 +579,6 @@ internal fun LineStopPage(
                 },
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         // Scrolls, so a long name at a large text size never pushes From and To out of reach (Codex on #659).
         val listState = rememberLazyListState()
@@ -715,18 +602,24 @@ internal fun LineStopPage(
             if (route != null) {
                 item(key = "departure") { RouteStopDeparture(route) }
                 // Go only where the ride can be followed: decided by the line's mode, so it's there from the first frame.
-                route.onGo?.let { go ->
+                if (route.onGo != null || onDepartures != null) {
                     item(key = "actions") {
-                        Button(onClick = go, enabled = route.goReady, modifier = Modifier.testTag("routeStopGo")) {
-                            Text(stringResource(R.string.route_stop_go))
+                        StopActions {
+                            route.onGo?.let { go ->
+                                Button(onClick = go, enabled = route.goReady, modifier = Modifier.testTag("routeStopGo")) {
+                                    Text(stringResource(R.string.route_stop_go))
+                                }
+                            }
+                            if (onDepartures != null) DeparturesButton(onDepartures, actionsReady)
                         }
                     }
                 }
             } else {
                 item(key = "actions") {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StopActions {
                         Button(onClick = onFrom, enabled = actionsReady) { Text(stringResource(R.string.line_stop_from)) }
                         if (onTo != null) Button(onClick = onTo, enabled = actionsReady) { Text(stringResource(R.string.line_stop_to)) }
+                        if (onDepartures != null) DeparturesButton(onDepartures, actionsReady)
                     }
                 }
             }
@@ -769,22 +662,11 @@ internal fun LineStopPage(
                     }
                 }
             }
-            // The links come in after the first frame: under From and To, so those never move as they arrive
-            // (Codex on #664). From the bundled index, they're in long before the board's arrivals.
-            if (links != null && links.lines.isNotEmpty()) {
-                item(key = "lines") { StopLines(links.lines, onOpenLine) }
+            // The lines here and around it come in after the first frame: under From and To, so those never move
+            // as they arrive (Codex on #664). From the bundled index, they're in at once.
+            if (links != null && links.nearbyLines.isNotEmpty()) {
+                item(key = "lines") { StopLines(links.nearbyLines, onOpenLine) }
             }
-            if (links != null && links.sameHub.isNotEmpty()) {
-                item(key = "sameHub") {
-                    StationLinks(stringResource(R.string.line_stop_same_hub), links.sameHub, withDistance = false, onOpenStation, "lineStopSameHub", name)
-                }
-            }
-            if (links != null && links.nearby.isNotEmpty()) {
-                item(key = "nearby") {
-                    StationLinks(stringResource(R.string.line_stop_nearby), links.nearby, withDistance = true, onOpenStation, "lineStopNearby", name)
-                }
-            }
-            if (departures != null || boardPending) stopBoard(departures, view, lineName, onOpenRoute)
             // Last, so coming in never moves anything above it (SPEC *Finding a line → A station's facilities*).
             if (facilities != null) {
                 item(key = "facilities") {
@@ -876,40 +758,24 @@ private fun StopLines(lines: List<LineRef>, onOpenLine: ((LineRef) -> Unit)?) {
 }
 
 /**
- * The stations a stop's details link to under [title]: its interchange's others, or those a short walk
- * away with how far ([withDistance]), each a chip opening its details.
+ * The page's buttons, wrapped onto as many rows as they need: three side by side don't fit a narrow window
+ * at a large text size, and none may be cut off (Codex on #736).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun StationLinks(
-    title: String,
-    stations: List<NearStation>,
-    withDistance: Boolean,
-    onOpen: (NearStation) -> Unit,
-    tag: String,
-    // The stop's own name: a station named the same takes its mode after it ("Balham (National Rail)").
-    ownName: String,
-) {
-    val system = LocalDistanceSystem.current
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.testTag(tag)) {
-        Text(title, style = MaterialTheme.typography.titleMedium)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            stations.forEach { station ->
-                val meters = station.meters
-                val mode = station.modes.firstOrNull()
-                val named = if (station.name == ownName && mode != null) {
-                    stringResource(R.string.line_stop_title_distance, station.name, modeName(mode))
-                } else {
-                    station.name
-                }
-                val text = if (withDistance && meters != null && system != null) {
-                    stringResource(R.string.line_stop_title_distance, named, StopDistance.label(meters, system))
-                } else {
-                    named
-                }
-                SuggestionChip(onClick = { onOpen(station) }, label = { Text(text) })
-            }
-        }
+private fun StopActions(content: @Composable () -> Unit) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.testTag("lineStopActions"),
+    ) { content() }
+}
+
+/** Departures, beside the page's other actions: the departures at the stop and around it. */
+@Composable
+private fun DeparturesButton(onClick: () -> Unit, enabled: Boolean) {
+    Button(onClick = onClick, enabled = enabled, modifier = Modifier.testTag("lineStopDepartures")) {
+        Text(stringResource(R.string.line_stop_departures))
     }
 }
 

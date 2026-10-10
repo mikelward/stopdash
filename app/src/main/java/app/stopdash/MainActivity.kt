@@ -170,9 +170,7 @@ import app.stopdash.ui.LinePageWorkHolder
 import app.stopdash.ui.LineRefSaver
 import app.stopdash.ui.LineStopRefSaver
 import app.stopdash.ui.StationMatchSaver
-import app.stopdash.ui.StopDepartures
 import app.stopdash.ui.LineStopRef
-import app.stopdash.ui.lineStopRefs
 import app.stopdash.data.FileRecentLinesStore
 import app.stopdash.data.FileLineCatalogStore
 import app.stopdash.data.LineCatalog
@@ -373,6 +371,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import app.stopdash.ui.FontSizePinchWindow
 
 /**
  * Turns a captured screenshot [file] into a shareable `content://` URI, degrading to `null` — a
@@ -905,6 +906,9 @@ class MainActivity : ComponentActivity() {
                 var linesLine by rememberSaveable(stateSaver = LineRefSaver) { mutableStateOf<LineRef?>(null) }
                 // And the search's scroll, and each open stop page's, for the same reason.
                 val linesSaveable = rememberSaveableStateHolder()
+                // A stop's Departures page's own saved state (its scroll, a route page open on it), held here above
+                // the overlays that can cover it (Licenses, Settings), so Back to it finds it as it was (Codex on #736).
+                val departuresSaveable = rememberSaveableStateHolder()
                 // And the open line's page's worked-out map, so it's drawn at once when the page comes back.
                 // Its folds and scroll saved for a rotation or the process coming back.
                 val linesLineWork = rememberSaveable(saver = LinePageWorkHolder.Saver) { LinePageWorkHolder() }
@@ -948,6 +952,16 @@ class MainActivity : ComponentActivity() {
                 // The order the open station's rows lead in ([StationLead]); null for any station but one of an
                 // interchange's names. Built when it's opened, so the page only reads it.
                 var openStationLead by rememberSaveable(stateSaver = STATION_LEAD_SAVER) { mutableStateOf<StationLead?>(null) }
+                // A stop's departures opened from its details (Departures): a look over them that starts nothing, apart
+                // from the station flow above, so a station page or trip open under them is left as it was.
+                var departuresStationId by rememberSaveable { mutableStateOf<String?>(null) }
+                var departuresStationName by rememberSaveable { mutableStateOf("") }
+                val openDepartures = { stop: LineStopRef ->
+                    UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
+                    // A station under several ids opens its interchange, as From does.
+                    departuresStationId = stop.fromId ?: stop.id
+                    departuresStationName = stop.name
+                }
                 // A stop tapped on a route page's stop list: the departure it was tapped on, what Go rides there,
                 // and the journey there its details offer to favorite.
                 var routeStopOpened by rememberSaveable(stateSaver = RouteStopOpenSaver) { mutableStateOf<RouteStopOpen?>(null) }
@@ -1419,6 +1433,8 @@ class MainActivity : ComponentActivity() {
                 }
                 // The journey a route stop's details offer to favorite, while its page is the one showing: not a station
                 // opened beside it, nor while a screen covers it, so a change that fails meanwhile is said app-wide.
+                // Kept under its own Departures, as the details are, so Back finds the star as it was; a failure
+                // meanwhile is still said app-wide, by the write's own check below (Codex on #736).
                 val routeStopRootShown = routeStopTrail?.previous == null && routeStopTrail != null &&
                     !routeStopCovered(licenses = licensesOpen, settings = settingsOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen, favoriteJourneys = favoriteJourneysOpen)
                 val stopJourney = routeStopOpened?.takeIf { routeStopRootShown }?.journey
@@ -1476,7 +1492,7 @@ class MainActivity : ComponentActivity() {
                                 if (latest) {
                                     withContext(Dispatchers.Main) {
                                         val stillOpen = routeStopTrail?.previous == null && routeStopTrail != null &&
-                                            !routeStopCovered(licenses = licensesOpen, settings = settingsOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen, favoriteJourneys = favoriteJourneysOpen) &&
+                                            !routeStopCovered(licenses = licensesOpen, settings = settingsOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen, favoriteJourneys = favoriteJourneysOpen, departures = departuresStationId != null) &&
                                             routeStopOpened?.journey?.key == journey.key
                                         if (!stillOpen || StopJourneyWrites.shown != journey.key) {
                                             Toast.makeText(applicationContext, R.string.station_journey_write_failed_away, Toast.LENGTH_SHORT).show()
@@ -2126,11 +2142,9 @@ class MainActivity : ComponentActivity() {
                                         linesQueryReset = false
                                     }
                                 }
-                                // A stop's details report themselves, with the route page a row opens over them ([LinesOverlay]).
+                                // A stop's details report themselves ([LineStopWindow]).
                                 if (linesStop == null) ReportScreen(if (linesLine != null) UsageEvent.Screen.LINE else UsageEvent.Screen.LINES)
                                 // The line's map is drawn from the route pages' day-long cache (SPEC *Line page → Map*).
-                                // And a stop's board groups a branching line's trains by where they go, as a station's does.
-                                val linesWriteFailures = viewModel<WriteFailuresHolder>().failures
                                 CompositionLocalProvider(
                                     LocalRouteStops provides routeStops(applicationContext),
                                     LocalRouteTopology provides routeTopology.value,
@@ -2206,8 +2220,8 @@ class MainActivity : ComponentActivity() {
                                         // Back from the search: Lines… closes, the next opening at the top on
                                         // the recent lines, not where this one was.
                                         onBack = closeLines,
-                                        // A stop's live departures, kept and refreshed while its page is up.
-                                        departures = { stop, served, ids -> lineStopDepartures(stop, served, ids, linesWriteFailures) },
+                                        // The departures at the stop and around it, over Lines…, its Back returning to the stop.
+                                        onDepartures = openDepartures,
                                     )
                                 }
                             } else if (top == TopOverlay.STATIONS) {
@@ -2769,6 +2783,8 @@ class MainActivity : ComponentActivity() {
                     routeStopOpened?.takeIf {
                         // Stepped aside, not closed, while a screen opened from its menu (Licenses, Settings) or one that
                         // takes over the app is up: a window of its own, it would cover them. Back from those finds it again.
+                        // Not for its own Departures: that's a window made after this one, so it shows over the details,
+                        // which stay composed beneath it, links and ride and all, for Back (Codex on #736).
                         !routeStopCovered(licenses = licensesOpen, settings = settingsOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen, favoriteJourneys = favoriteJourneysOpen)
                     }?.let { open ->
                         val line = open.line
@@ -2819,6 +2835,8 @@ class MainActivity : ComponentActivity() {
                                     },
                                     // A line's pill opens it in Lines…, over the route page and kept under it for Back, only
                                     // where Lines… would show (nothing else open above the page, as for a line page's map).
+                                    // Over the details, which step aside for it ([routeStopCovered]) and come back on its Back.
+                                    onDepartures = openDepartures,
                                     onPickLine = if (linesPresence == LinesPresence.CLOSED && !onTheWayOpen && !licensesOpen && !settingsOpen &&
                                         !favoritePlacesOpen && !favoriteJourneysOpen && !stationSearchOpen && openStationId == null
                                     ) {
@@ -2835,6 +2853,31 @@ class MainActivity : ComponentActivity() {
                                         null
                                     },
                                 )
+                            }
+                        }
+                    }
+                    // A stop's Departures, a window of its own made after every other, so it shows over the stop's details
+                    // (Lines…'s, a route page's) and whatever is under them, which stay up beneath it just as they were, for
+                    // Back (Codex on #736). It steps aside, as the details do, for a screen opened from its menu or one that
+                    // takes over the app, its scroll and route page kept ([departuresSaveable]) for when it comes back.
+                    departuresStationId?.takeIf {
+                        !routeStopCovered(licenses = licensesOpen, settings = settingsOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen, favoriteJourneys = favoriteJourneysOpen)
+                    }?.let { id ->
+                        val closeDepartures = {
+                            // Closed, it forgets where it was: opened again, it starts at its top.
+                            departuresSaveable.removeState(id)
+                            departuresStationId = null
+                            departuresStationName = ""
+                        }
+                        Dialog(
+                            onDismissRequest = closeDepartures,
+                            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+                        ) {
+                            // A dialog's window has none of the app's text size nor its pinch: both applied again here.
+                            FontSizePinchWindow {
+                                departuresSaveable.SaveableStateProvider(id) {
+                                    DeparturesArea(id, departuresStationName, closeDepartures)
+                                }
                             }
                         }
                     }
@@ -3052,8 +3095,9 @@ class MainActivity : ComponentActivity() {
         onOpenLicenses: () -> Unit,
         onOpenSettings: () -> Unit,
         onFindStation: () -> Unit,
-        // "To…" from the near-me list (SPEC *Finding stops → From… To…*).
-        onPlanTo: () -> Unit,
+        // "To…" from the near-me list (SPEC *Finding stops → From… To…*); null where the page starts nothing
+        // (a stop's departures opened from its details).
+        onPlanTo: (() -> Unit)?,
         // The saved favorite places, offered as route chips atop the list less those the rider is at
         // (SPEC D9 → *Routing from the near-me list*), and the trip a tap opens. Empty (a From…
         // station's page) shows no row.
@@ -3112,6 +3156,8 @@ class MainActivity : ComponentActivity() {
         stationTitle: String? = null,
         stationLead: StationLead? = null,
         onCloseStation: () -> Unit = {},
+        // A stop's departures opened from its details: a look that starts nothing ([MainScreen]'s stationBrowse).
+        stationBrowse: Boolean = false,
         // A precise fix that arrived after the set was shown from a coarse one and would move it
         // (SPEC *Finding stops*), and how to apply it: the same cancel-then-re-pick a refresh runs.
         refinement: StateFlow<NearbyStopsViewModel.Refinement?> = MutableStateFlow(null),
@@ -3672,11 +3718,12 @@ class MainActivity : ComponentActivity() {
                     onCloseStation = onCloseStation,
                     // Offered only while some nearby stop could start a trip (not every mode hidden), as
                     // worked out off the main thread; not offered for the moment that takes.
-                    onPlanTo = if (hereOriginNow.isNullOrEmpty()) {
+                    onPlanTo = if (hereOriginNow.isNullOrEmpty() || onPlanTo == null) {
                         null
                     } else {
                         { onPlanTo() }
                     },
+                    stationBrowse = stationBrowse,
                     updateAvailable = updateAvailable,
                     onOpenAppListing = onOpenAppListing,
                     farther = fartherCards,
@@ -3947,7 +3994,7 @@ class MainActivity : ComponentActivity() {
             FromStationArea(
                 stationName = stationName,
                 center = center,
-                stationStopIds = ready.stops.mapTo(HashSet()) { it.id },
+                stationStopIds = ready.stopIds,
                 stationLead = stationLead,
                 onClose = closeStation,
                 onBackToNearMe = closeSearch,
@@ -3958,6 +4005,78 @@ class MainActivity : ComponentActivity() {
                 changeTo = changeTo,
                 onChangeFrom = changeFrom,
             )
+        }
+    }
+
+    /**
+     * A stop's departures, opened from its details' **Departures** (SPEC *Finding a line*): the page From…
+     * opens for the station — its stops' departures and those of the stops around it — as a look that starts
+     * nothing. No To…, no crosshairs, Back in the bar where To… would be, and none of the station flow's state
+     * touched, so a station page or trip open underneath is just as it was. Its models live in a store of
+     * their own, dropped as it closes.
+     */
+    @Composable
+    private fun DeparturesArea(stationId: String, stationName: String, onClose: () -> Unit) {
+        val stores: NearbyDeparturesStores = viewModel(key = "departures-stores")
+        val close = {
+            stores.clearAll()
+            onClose()
+        }
+        val storeOwner = remember(stationId) { stores.ownerFor(stationId, this@MainActivity) }
+        CompositionLocalProvider(
+            LocalViewModelStoreOwner provides storeOwner,
+            // A stop on one of its route pages, or on a line's map there, leaves its stations inert, as a trip's route
+            // pages do: the details they'd open sit under this page, stepped aside for it, so a tap would open them
+            // unseen and in place of the ones it was opened from (Codex on #736).
+            LocalOpenRouteStop provides null,
+            LocalOpenLineStop provides null,
+        ) {
+            val stopsModel: StationStopsViewModel = viewModel(
+                factory = viewModelFactory {
+                    initializer {
+                        StationStopsViewModel(
+                            stationFinder,
+                            stationId,
+                            warn = ::logDepartureWarning,
+                            loadIndex = { StationIndexStore.load(applicationContext) },
+                        )
+                    }
+                },
+            )
+            val stops by stopsModel.state.collectByIdentityWithLifecycle()
+            val ready = stops as? StationStopsViewModel.State.Ready
+            val center = ready?.center
+            when {
+                ready == null -> {
+                    ReportScreen(UsageEvent.Screen.STATION)
+                    StationPlaceholderScreen(
+                        title = stationName,
+                        state = stops,
+                        onRetry = stopsModel::retry,
+                        onBack = close,
+                        onBrowseBack = close,
+                    )
+                }
+                // Nowhere to stand (TfL placed none of its stops): its own departures alone, as From… shows them.
+                center == null -> LookDepartures(
+                    stops = ready.stops,
+                    title = stationName,
+                    onClose = close,
+                    onLocate = null,
+                    writeFailures = viewModel<WriteFailuresHolder>().failures,
+                    browse = true,
+                )
+                else -> FromStationArea(
+                    stationName = stationName,
+                    center = center,
+                    stationStopIds = ready.stopIds,
+                    onClose = close,
+                    onBackToNearMe = null,
+                    to = ToChoice.NONE,
+                    onTo = {},
+                    browse = true,
+                )
+            }
         }
     }
 
@@ -3980,13 +4099,17 @@ class MainActivity : ComponentActivity() {
         planFrom: Coordinates? = null,
         onClose: () -> Unit,
         // The crosshairs: "use my location" leaves the station for the near-me list.
-        onBackToNearMe: () -> Unit,
+        // Null for a look at somewhere else (a stop's Departures): none of the page's states, its placeholder
+        // included, offers the crosshairs then (Codex on #736).
+        onBackToNearMe: (() -> Unit)?,
         to: ToChoice,
         onTo: (ToChoice) -> Unit,
         onEditPlaces: (() -> Unit)? = null,
         onChangeFrom: (() -> Unit)? = null,
         onStartReached: () -> Unit = {},
         changeTo: ToChoice? = null,
+        // A stop's departures opened from its details: the same page around it, with no To… ([DeparturesArea]).
+        browse: Boolean = false,
     ) {
         val fromNearby: NearbyStopsViewModel = viewModel(
             key = "from-nearby",
@@ -4123,6 +4246,7 @@ class MainActivity : ComponentActivity() {
                 onRetry = fromNearby::locate,
                 onBack = onClose,
                 onLocate = onBackToNearMe,
+                onBrowseBack = if (browse) onClose else null,
             )
             return
         }
@@ -4152,7 +4276,7 @@ class MainActivity : ComponentActivity() {
                 onOpenLicenses = {},
                 onOpenSettings = {},
                 onFindStation = {},
-                onPlanTo = { onTo(to.startPicking()) },
+                onPlanTo = if (browse) null else { { onTo(to.startPicking()) } },
                 updateAvailable = false,
                 onOpenAppListing = {},
                 onSendBugReport = {},
@@ -4169,6 +4293,7 @@ class MainActivity : ComponentActivity() {
                 stationTitle = stationName,
                 stationLead = stationLead,
                 onCloseStation = onClose,
+                stationBrowse = browse,
                 onLocate = onBackToNearMe,
                 pendingTracker = listTracker,
             )
@@ -4701,8 +4826,7 @@ class MainActivity : ComponentActivity() {
 
     /**
      * A searched place's departures model: [stops], with every service shown whatever the near-me list
-     * hides, never the widget's list. A station's page with nowhere to stand ([LookDepartures]) and a
-     * stop opened from a line's map ([lineStopDepartures]) both keep one.
+     * hides, never the widget's list. A station's page with nowhere to stand ([LookDepartures]) keeps one.
      */
     private fun searchedDeparturesModel(appContext: Context, stops: List<StopRef>, writeFailures: WriteFailures): MainViewModel =
         MainViewModel(
@@ -4759,6 +4883,7 @@ class MainActivity : ComponentActivity() {
         onFrom: (LineStopRef) -> Unit,
         onFavorite: (LineStopRef, Coordinates?) -> Unit,
         onPickLine: ((LineRef) -> Unit)?,
+        onDepartures: (LineStopRef) -> Unit,
     ) {
         val appContext = applicationContext
         // Its lines and the stations beside it, from the bundled index, worked out off the main thread; none where
@@ -4807,7 +4932,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        val writeFailures = viewModel<WriteFailuresHolder>().failures
         CompositionLocalProvider(
             LocalRouteStops provides routeStops(appContext),
             LocalRouteTopology provides routeTopology.value,
@@ -4823,12 +4947,11 @@ class MainActivity : ComponentActivity() {
                 distanceTo = distanceTo,
                 onPickLine = { picked -> onPickLine?.invoke(picked) },
                 linesOpenable = onPickLine != null,
-                dismissal = null,
                 onFrom = onFrom,
                 onTo = null,
                 onFavorite = onFavorite,
                 onShowOnMap = { stop, at -> openStopMap(at.latitude, at.longitude, stop.name) },
-                departures = { stop, served, ids -> lineStopDepartures(stop, served, ids, writeFailures) },
+                onDepartures = onDepartures,
                 route = RouteStopMode(
                     line,
                     open.fromName,
@@ -4860,65 +4983,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    @Composable
-    private fun lineStopDepartures(stop: LineStopRef, served: List<LineRef>, otherIds: List<String>, writeFailures: WriteFailures): StopDepartures {
-        val appContext = applicationContext
-        val stores: NearbyDeparturesStores = viewModel(key = "line-stop-stores")
-        // One model per stop and the line it leads with: [served] is the stop's own lines either way, the same
-        // each time it's opened. No walk of [served] here (Codex on #664).
-        val owner = stores.ownerFor(if (stop.onLine) "${stop.id}|${served.firstOrNull()?.id.orEmpty()}" else "${stop.id}|own", this)
-        val viewModel: MainViewModel = viewModel(
-            viewModelStoreOwner = owner,
-            factory = viewModelFactory {
-                // The lines served there ([served]: the line it was opened from, else the station's own) are
-                // declared, so a suspended one's status is asked for even when it has nothing due: the board then
-                // shows why, not just "No departures" (Codex on #661, #664).
-                // A station TfL lists under several ids asks for all of them, as one place (Codex on #664).
-                initializer {
-                    val stops = lineStopRefs(stop.id, stop.name, served, otherIds)
-                    searchedDeparturesModel(appContext, stops, writeFailures)
-                }
-            },
-        )
-        val state by viewModel.state.collectByIdentityWithLifecycle()
-        AutoRefresh(viewModel, NOT_RELOCATING)
-        // Opened again on a stop whose model was kept: asked again at once, as a first opening is, rather
-        // than leaving the last board up until the next tick (Codex on #661). A first opening is already
-        // loading, and isn't asked twice.
-        LaunchedEffect(viewModel) {
-            if (viewModel.state.value !is DeparturesUiState.Loading && !viewModel.refreshing.value) viewModel.refresh()
-        }
-        val lifecycleOwner = LocalLifecycleOwner.current
-        LaunchedEffect(lifecycleOwner, viewModel) {
-            var returning = false
-            lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                if (returning && !viewModel.refreshing.value) viewModel.refresh()
-                returning = true
-            }
-        }
-        val dismissed by viewModel.dismissed.collectByIdentityWithLifecycle()
-        // A row's route page pins and dismisses through this stop's own model, as a station's page does.
-        val starred by viewModel.starred.collectByIdentityWithLifecycle()
-        val starringAvailable by viewModel.starringAvailable.collectAsStateWithLifecycle()
-        val starWriteFailed by viewModel.starWriteFailed.collectAsStateWithLifecycle()
-        val dismissWriteFailed by viewModel.dismissWriteFailed.collectAsStateWithLifecycle()
-        val now = tickingNow()
-        return StopDepartures(
-            state,
-            now,
-            onRefresh = { viewModel.refresh() },
-            dismissed = dismissed,
-            starred = starred,
-            starringAvailable = starringAvailable,
-            onToggleStar = viewModel::toggleStar,
-            onDismissAlert = viewModel::dismissAlert,
-            starWriteFailed = starWriteFailed,
-            onStarWriteFailureShown = viewModel::starWriteFailureShown,
-            dismissWriteFailed = dismissWriteFailed,
-            onDismissWriteFailureShown = viewModel::dismissWriteFailureShown,
-        )
-    }
-
     /**
      * A searched station's page with nowhere to stand (TfL placed none of its stops, SPEC *Finding
      * stops*): [stops]' live departures under [title], with its own retained [MainViewModel] from the
@@ -4930,10 +4994,13 @@ class MainActivity : ComponentActivity() {
         stops: List<StopRef>,
         title: String,
         onClose: () -> Unit,
-        onLocate: () -> Unit,
+        // The crosshairs; null hides them.
+        onLocate: (() -> Unit)?,
         writeFailures: WriteFailures,
         // A station opened from one of its interchange's names ([StationLead]).
         stationLead: StationLead? = null,
+        // A stop's departures opened from its details: a look, Back in To…'s place ([MainScreen]'s stationBrowse).
+        browse: Boolean = false,
     ) {
         val appContext = applicationContext
         val viewModel: MainViewModel = viewModel(
@@ -4999,6 +5066,7 @@ class MainActivity : ComponentActivity() {
                 onDismissWriteFailureShown = viewModel::dismissWriteFailureShown,
                 stationTitle = title,
                 onCloseStation = onClose,
+                stationBrowse = browse,
                 stationLead = stationLead,
             )
         }
@@ -5725,8 +5793,16 @@ internal fun tripOptionsLeft(from: String, openStationId: String?, hereTripOpen:
  * Whether a route stop's details step aside: they're a window of their own, drawn over everything, so an
  * activity-level screen opened over them (from their menu, or one that takes over the app) would show under them.
  */
-internal fun routeStopCovered(licenses: Boolean, settings: Boolean, onTheWay: Boolean, favoritePlaces: Boolean, favoriteJourneys: Boolean): Boolean =
-    licenses || settings || onTheWay || favoritePlaces || favoriteJourneys
+internal fun routeStopCovered(
+    licenses: Boolean,
+    settings: Boolean,
+    onTheWay: Boolean,
+    favoritePlaces: Boolean,
+    favoriteJourneys: Boolean,
+    // Its own Departures, over it: not the page showing, so a favorite's failed write is said app-wide, though
+    // the details and their star stay composed beneath (their window is made first, so Departures shows over it).
+    departures: Boolean = false,
+): Boolean = licenses || settings || onTheWay || favoritePlaces || favoriteJourneys || departures
 
 /** The activity-level overlays, as [topOverlay] picks between them. */
 internal enum class TopOverlay { LICENSES, ON_THE_WAY, FAVORITE_PLACES, FAVORITE_JOURNEYS, LINES, STATIONS, SETTINGS }

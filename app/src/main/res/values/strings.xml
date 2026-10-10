@@ -418,17 +418,14 @@
     <string name="route_stop_go" tools:ignore="MissingTranslation">Go</string>
     <!-- A stop's details: go to this stop, as To… does. -->
     <string name="line_stop_to">To</string>
-    <!-- A stop's details: its departures still on their way in. -->
-    <string name="stop_board_loading">Loading departures…</string>
-    <!-- A stop's details: the line it was opened from has nothing due there, "No Northern departures". -->
-    <string name="stop_board_line_empty">No %1$s departures</string>
-    <!-- A stop's details: heads the stop's other services, after the line it was opened from. -->
-    <string name="line_stop_same_hub">Same interchange</string>
-    <string name="line_stop_nearby">Nearby</string>
+    <!-- A stop's details: the departures at the stop and the stops around it, on a page that starts nothing. -->
+    <!-- TODO: translate -->
+    <string name="line_stop_departures" tools:ignore="MissingTranslation">Departures</string>
+    <!-- A stop's departures opened from its details: back to the details, in the bar where To… would be. -->
+    <!-- TODO: translate -->
+    <string name="station_browse_back" tools:ignore="MissingTranslation">Back</string>
     <string name="line_stop_open_line">Open %1$s</string>
     <string name="line_stop_favorite">Add to favorite places</string>
-    <string name="stop_board_empty">No departures</string>
-    <string name="stop_board_also_here">Also here</string>
     <!-- Placeholder in the destination search opened by "To…", beside its "To" label; it finds
          geocoded places too. -->
     <string name="station_search_to_hint">Station, stop or place</string>
