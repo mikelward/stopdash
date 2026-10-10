@@ -386,6 +386,50 @@ class WidgetModelTest {
     }
 
     @Test
+    fun `a stop header and a status under a row cost their own drawn heights, not a line's`() {
+        assertEquals("4dp above and below a 12sp line", 25, widgetHeaderHeight(1f))
+        assertEquals("4dp above a 12sp line", 21, widgetStatusLineHeight(1f))
+        assertEquals(31, widgetHeaderHeight(1.33f))
+        // Neither is taller than a departure line, at any font.
+        for (scale in listOf(0.85f, 1f, 1.3f, 2f)) {
+            assertTrue(widgetHeaderHeight(scale) <= widgetLineHeight(scale))
+            assertTrue(widgetStatusLineHeight(scale) < widgetLineHeight(scale))
+        }
+    }
+
+    @Test
+    fun `places with headers fill the height their headers really take`() {
+        val lines = listOf("victoria", "piccadilly", "northern")
+        val stops = lines.mapIndexed { i, line -> stop("940GZZLU$i", listOf(departure(line, 60L * (i + 1))), now, name = "Station $i") }
+        val checks = lines.associateWith { LineStatusCheck(LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service"), now) }
+        val snapshot = DeparturesSnapshot(stops, now, lineStatuses = checks)
+        // Room for three headers and three lines, but not for three places costed a line per header.
+        val place = widgetHeaderHeight() + widgetLineHeight()
+        val height = (100..400).first { widgetRowsHeight(it.dp) >= 3 * place }.dp
+        assertTrue(widgetRowsHeight(height) < 6 * widgetLineHeight())
+        val model = widgetModel(snapshot, now, geometry = WidgetGeometry(380.dp, height))
+        assertEquals(listOf("victoria", "piccadilly", "northern"), model.rows.map { it.row.lineId })
+        assertTrue(model.rows.all { it.header != null })
+    }
+
+    @Test
+    fun `disrupted rows fill the height their statuses really take`() {
+        val lines = listOf("victoria", "piccadilly", "northern")
+        val snapshot = DeparturesSnapshot(
+            listOf(stop("940GZZLU0", lines.mapIndexed { i, line -> departure(line, 60L * (i + 1)) }, now)),
+            now,
+            lineStatuses = lines.associateWith { LineStatusCheck(LineStatus(it, 6, "Severe Delays"), now) },
+        )
+        // Room for three lines with a status under each, but not for six lines.
+        val row = widgetLineHeight() + widgetStatusLineHeight()
+        val height = (100..400).first { widgetRowsHeight(it.dp) >= 3 * row }.dp
+        assertTrue(widgetRowsHeight(height) < 6 * widgetLineHeight())
+        val model = widgetModel(snapshot, now, geometry = WidgetGeometry(380.dp, height))
+        assertEquals(lines.toSet(), model.rows.map { it.row.lineId }.toSet())
+        assertTrue(model.rows.all { it.row.status != null })
+    }
+
+    @Test
     fun `a branching row's lines stack on their own countdowns, so a dropped one can't stack the rest`() {
         // One time to Morden first, then three to Kennington: at 220dp and 1.3x the first fits one
         // line and the second needs two (Codex on #457).

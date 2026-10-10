@@ -688,10 +688,12 @@ internal fun widgetModel(
     val costs = geometry?.let { g ->
         val line = widgetLineHeight(g.fontScale, stacked = false)
         val stackedLine = widgetLineHeight(g.fontScale, stacked = true)
+        val statusLine = widgetStatusLineHeight(g.fontScale)
         LineCosts(
-            header = line,
+            header = widgetHeaderHeight(g.fontScale),
             line = { row, group -> if (stacked(row, group)) stackedLine else line },
-            status = { row, alone -> if (alone && statusStacked(row)) stackedLine else line },
+            // Under a row's countdowns a status is one short text line; drawn alone, it takes the pill's line.
+            status = { row, alone -> if (!alone) statusLine else if (statusStacked(row)) stackedLine else line },
         )
     } ?: LineCosts.UNIT
     // The least one departure costs: less room than this shows none. Its least is what
@@ -1606,11 +1608,31 @@ internal fun widgetRowsHeight(
 }
 
 /**
+ * What a stop header takes, in dp rounded up, at [fontScale]: its one line of 12sp text and the 4dp
+ * above and below it ([WidgetRows]; the first header has no space above, so it's costed at the most).
+ */
+internal fun widgetHeaderHeight(fontScale: Float = 1f): Int =
+    kotlin.math.ceil((WIDGET_HEADER_GAP * 2 + WIDGET_SMALL_TEXT_HEIGHT * fontScale).value).toInt()
+
+/**
+ * What a line's status under its countdowns takes, in dp rounded up, at [fontScale]: the 4dp above
+ * it and its one line of 12sp text ([WidgetRow]).
+ */
+internal fun widgetStatusLineHeight(fontScale: Float = 1f): Int =
+    kotlin.math.ceil((WIDGET_HEADER_GAP + WIDGET_SMALL_TEXT_HEIGHT * fontScale).value).toInt()
+
+/** The space above and below a stop header, and above a status under a row. */
+private val WIDGET_HEADER_GAP = 4.dp
+
+/** A 12sp line's height at font scale 1 (a stop header, a status), with a dp to spare so it never clips. */
+private val WIDGET_SMALL_TEXT_HEIGHT = 17.dp
+
+/**
  * What one departure line takes, in dp rounded up, at the system [fontScale]: its pill plus the
  * widest gap below it; a [stacked] line also carries its destination line below the pill (see
  * [widgetRowStacked]). The pill's label grows with [fontScale] up to [WIDGET_PILL_MAX_SCALE], the
- * text keeps growing. Costed at the widest case. A stop header and a status line cost the same as
- * an unstacked line.
+ * text keeps growing. Costed at the widest case. A stop header and a status under a row's
+ * countdowns are shorter text lines of their own ([widgetHeaderHeight], [widgetStatusLineHeight]).
  */
 internal fun widgetLineHeight(fontScale: Float = 1f, stacked: Boolean = false): Int {
     // A line is as tall as its tallest part: the pill (its label stops growing at
