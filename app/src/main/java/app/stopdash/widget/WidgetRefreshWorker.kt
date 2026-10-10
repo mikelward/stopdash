@@ -9,7 +9,6 @@ import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.CachingTflClient
 import app.stopdash.domain.RailAwareTflClient
 import android.content.Context
-import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
@@ -150,9 +149,8 @@ private suspend fun scheduleWidgetRefreshIfNotPending(context: Context) {
 /** True when at least one [StopDashWidget] is installed on a host. A refresh cycle with none
  *  installed would fetch every persisted stop each minute with no surface to update, so the
  *  chain must neither run nor reschedule without one (Codex P1 on #56). */
-private suspend fun anyWidgetInstalled(context: Context): Boolean =
-    GlanceAppWidgetManager(context.applicationContext)
-        .getGlanceIds(StopDashWidget::class.java).isNotEmpty()
+private fun anyWidgetInstalled(context: Context): Boolean =
+    placedWidgetIds(context.applicationContext).isNotEmpty()
 
 /**
  * Restarts the live-refresh chain when a widget render shows a widget now exists (an add, or a
