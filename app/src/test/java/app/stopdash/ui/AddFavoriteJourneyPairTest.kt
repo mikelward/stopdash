@@ -4,6 +4,8 @@ import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.FavoriteJourneysStore
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.LineRef
+import app.stopdash.domain.PendingEnd
+import app.stopdash.domain.PendingJourney
 import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StopLocation
@@ -49,9 +51,22 @@ class AddFavoriteJourneyPairTest {
         ),
     )
 
-    private class Journeys(initial: List<FavoriteJourney>?, val failAdd: Boolean = false) : FavoriteJourneysStore {
+    private class Journeys(
+        initial: List<FavoriteJourney>?,
+        val failAdd: Boolean = false,
+        pendingInitial: List<PendingJourney>? = initial?.let { emptyList() },
+    ) : FavoriteJourneysStore {
         val state = MutableStateFlow(initial)
+        val pending = MutableStateFlow(pendingInitial)
         override fun journeys(): Flow<List<FavoriteJourney>?> = state
+        override fun pendingJourneys(): Flow<List<PendingJourney>?> = pending
+        override suspend fun addPending(journey: PendingJourney) {
+            if (failAdd) throw IOException("disk")
+            pending.value = pending.value.orEmpty() + journey
+        }
+        override suspend fun removePending(journey: PendingJourney) {
+            pending.value = pending.value?.filterNot { it.key == journey.key }
+        }
         override suspend fun toggle(journey: FavoriteJourney) {}
         override suspend fun remove(journey: FavoriteJourney) {}
         override suspend fun add(journey: FavoriteJourney) {
@@ -74,13 +89,106 @@ class AddFavoriteJourneyPairTest {
     }
 
     @Test
+    fun `two stations no one line serves are saved grayed, once`() = runTest {
+        val worker = StandardTestDispatcher(testScheduler)
+        val journeys = Journeys(emptyList())
+        assertNull(addFavoriteJourneyPair(kingsCross, canadaWater, finder, journeys, worker = worker))
+        assertTrue(journeys.state.value!!.isEmpty())
+        assertEquals(
+            listOf(PendingJourney(PendingEnd.Station("HUBKGX", "King's Cross St. Pancras"), PendingEnd.Station("940GZZLUCWR", "Canada Water"))),
+            journeys.pending.value,
+        )
+        // Either way round, it's the same one.
+        assertEquals(
+            JourneyAddNote.AlreadySaved("Canada Water", "King's Cross St. Pancras"),
+            addFavoriteJourneyPair(canadaWater, kingsCross, finder, journeys, worker = worker),
+        )
+        assertEquals(1, journeys.pending.value!!.size)
+        assertEquals(
+            JourneyAddNote.NotSaved("King's Cross St. Pancras", "Canada Water"),
+            addFavoriteJourneyPair(kingsCross, canadaWater, finder, Journeys(emptyList(), failAdd = true), worker = worker),
+        )
+    }
+
+    @Test
+    fun `a grayed pair that resolves to a line later is followed, and its gray copy goes`() = runTest {
+        val worker = StandardTestDispatcher(testScheduler)
+        val journeys = Journeys(emptyList())
+        addFavoriteJourneyPair(kingsCross, canadaWater, finder, journeys, worker = worker)
+        assertEquals(1, journeys.pending.value!!.size)
+        // TfL now reports the Jubilee at King's Cross too.
+        val later = Finder(
+            mapOf(
+                "HUBKGX" to listOf(tube("940GZZLUKSX", "northern", "victoria", "jubilee")),
+                "940GZZLUCWR" to listOf(tube("940GZZLUCWR", "jubilee")),
+            ),
+        )
+        assertNull(addFavoriteJourneyPair(canadaWater, kingsCross, later, journeys, worker = worker))
+        assertEquals("jubilee", journeys.state.value!!.single().lineId)
+        assertEquals(emptyList<PendingJourney>(), journeys.pending.value)
+    }
+
+    @Test
+    fun `a followed pair that no longer resolves to a line isn't saved again grayed`() = runTest {
+        val worker = StandardTestDispatcher(testScheduler)
+        val journeys = Journeys(emptyList())
+        addFavoriteJourneyPair(kingsCross, waterloo, finder, journeys, worker = worker)
+        // TfL no longer reports a line both serve.
+        val later = Finder(
+            mapOf(
+                "HUBKGX" to listOf(tube("940GZZLUKSX", "victoria")),
+                "940GZZLUWLO" to listOf(tube("940GZZLUWLO", "jubilee")),
+            ),
+        )
+        assertEquals(
+            JourneyAddNote.AlreadySaved("Waterloo", "King's Cross St. Pancras"),
+            addFavoriteJourneyPair(waterloo, kingsCross, later, journeys, worker = worker),
+        )
+        assertEquals(1, journeys.state.value!!.size)
+        assertEquals(emptyList<PendingJourney>(), journeys.pending.value)
+    }
+
+    @Test
+    fun `a favorite place at an end is saved grayed`() = runTest {
+        val worker = StandardTestDispatcher(testScheduler)
+        val journeys = Journeys(emptyList())
+        val home = PendingEnd.Place("place-1", "Home")
+        val station = PendingEnd.Station("940GZZLUWLO", "Waterloo")
+        assertNull(addPendingJourneyPair(home, station, journeys, worker = worker))
+        assertEquals(listOf(PendingJourney(home, station)), journeys.pending.value)
+        assertTrue(journeys.state.value!!.isEmpty())
+        assertEquals(JourneyAddNote.AlreadySaved("Waterloo", "Home"), addPendingJourneyPair(station, home, journeys, worker = worker))
+        assertEquals(JourneyAddNote.SameStation("Home", "Home"), addPendingJourneyPair(home, home, journeys, worker = worker))
+        assertEquals(1, journeys.pending.value!!.size)
+        // Unreadable: kept as it is, so said rather than passed off as added.
+        val unreadable = Journeys(null)
+        assertEquals(JourneyAddNote.NotSaved("Home", "Waterloo"), addPendingJourneyPair(home, station, unreadable, worker = worker))
+        assertNull(unreadable.pending.value)
+    }
+
+    @Test
+    fun `a place pair is saved on the worker, not the caller`() {
+        val worker = Executors.newSingleThreadExecutor { Thread(it, "add-worker") }
+        try {
+            var ranOn: String? = null
+            val journeys = object : FavoriteJourneysStore by Journeys(emptyList()) {
+                override suspend fun addPending(journey: PendingJourney) {
+                    ranOn = Thread.currentThread().name
+                }
+            }
+            runBlocking {
+                addPendingJourneyPair(PendingEnd.Place("place-1", "Home"), PendingEnd.Station("940GZZLUWLO", "Waterloo"), journeys, worker = worker.asCoroutineDispatcher())
+            }
+            assertTrue(ranOn.orEmpty().startsWith("add-worker"))
+        } finally {
+            worker.shutdown()
+        }
+    }
+
+    @Test
     fun `why a pair isn't added is said`() = runTest {
         val worker = StandardTestDispatcher(testScheduler)
         val journeys = Journeys(emptyList())
-        assertEquals(
-            JourneyAddNote.NoDirectLine("King's Cross St. Pancras", "Canada Water"),
-            addFavoriteJourneyPair(kingsCross, canadaWater, finder, journeys, worker = worker),
-        )
         assertEquals(JourneyAddNote.SameStation("Waterloo", "Waterloo"), addFavoriteJourneyPair(waterloo, waterloo, finder, journeys, worker = worker))
         assertEquals(
             JourneyAddNote.LookupFailed("King's Cross St. Pancras", "Waterloo", DeparturesUiState.Error.Kind.OFFLINE),
@@ -114,8 +222,9 @@ class AddFavoriteJourneyPairTest {
         val worker = Executors.newSingleThreadExecutor { Thread(it, "add-worker") }
         try {
             var ranOn: String? = null
+            // A new journey is saved through addReplacingPending, which drops any grayed copy in the same write.
             val journeys = object : FavoriteJourneysStore by Journeys(emptyList()) {
-                override suspend fun add(journey: FavoriteJourney) {
+                override suspend fun addReplacingPending(journey: FavoriteJourney, grayed: PendingJourney) {
                     ranOn = Thread.currentThread().name
                 }
             }
@@ -132,10 +241,10 @@ class AddFavoriteJourneyPairTest {
         val first = CompletableDeferred<JourneyAddNote?>()
         JourneyAdds.attempt(scope, kingsCross, waterloo) { first.await() }
         assertEquals(JourneyAddNote.Adding("King's Cross St. Pancras", "Waterloo"), JourneyAdds.note.value)
-        JourneyAdds.attempt(scope, kingsCross, canadaWater) { JourneyAddNote.NoDirectLine("King's Cross St. Pancras", "Canada Water") }
+        JourneyAdds.attempt(scope, kingsCross, canadaWater) { JourneyAddNote.AlreadySaved("King's Cross St. Pancras", "Canada Water") }
         scope.testScheduler.advanceUntilIdle()
         first.complete(JourneyAddNote.NotSaved("King's Cross St. Pancras", "Waterloo"))
         scope.testScheduler.advanceUntilIdle()
-        assertEquals(JourneyAddNote.NoDirectLine("King's Cross St. Pancras", "Canada Water"), JourneyAdds.note.value)
+        assertEquals(JourneyAddNote.AlreadySaved("King's Cross St. Pancras", "Canada Water"), JourneyAdds.note.value)
     }
 }

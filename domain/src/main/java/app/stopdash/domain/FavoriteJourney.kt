@@ -697,6 +697,9 @@ object Journeys {
  * and on every change — null when a stored list exists that this build can't read (a newer schema),
  * which the store then preserves rather than overwrite. [toggle] and [remove] run off the main thread.
  */
+/** The followed and the grayed journeys as of one read; either is null while unreadable. */
+data class SavedJourneys(val journeys: List<FavoriteJourney>?, val pending: List<PendingJourney>?)
+
 interface FavoriteJourneysStore {
     fun journeys(): kotlinx.coroutines.flow.Flow<List<FavoriteJourney>?>
 
@@ -730,6 +733,36 @@ interface FavoriteJourneysStore {
      * main thread.
      */
     suspend fun updateAlertSchedule(directionKey: String, change: (JourneyAlertSchedule?) -> JourneyAlertSchedule?) {}
+
+    /**
+     * The journeys saved grayed, which no single line serves or which end at a favorite place
+     * ([PendingJourney]). Null while unreadable, like [journeys].
+     */
+    fun pendingJourneys(): kotlinx.coroutines.flow.Flow<List<PendingJourney>?> =
+        kotlinx.coroutines.flow.flowOf(emptyList())
+
+    /**
+     * Both lists from one read of the file, so a write that changes both ([addReplacingPending]) reaches
+     * a reader in one emission: Settings never shows a pair in both lists, or in neither, for a frame.
+     */
+    fun savedJourneys(): kotlinx.coroutines.flow.Flow<SavedJourneys> =
+        kotlinx.coroutines.flow.combine(journeys(), pendingJourneys()) { journeys, pending -> SavedJourneys(journeys, pending) }
+
+    /** Saves [journey] grayed unless it already is. Off the main thread. */
+    suspend fun addPending(journey: PendingJourney) {}
+
+    /** Removes a grayed journey; never adds one back. Off the main thread. */
+    suspend fun removePending(journey: PendingJourney) {}
+
+    /**
+     * Saves [journey], unless it already is, and drops [grayed], its copy from an earlier Add that
+     * found no line, in one write: the pair is never in both lists, nor saved with its gray copy left
+     * behind by a failure between two writes. Off the main thread.
+     */
+    suspend fun addReplacingPending(journey: FavoriteJourney, grayed: PendingJourney) {
+        add(journey)
+        removePending(grayed)
+    }
 
     companion object {
         /** Persists nothing and reads an empty list: tests and an unwired build. */

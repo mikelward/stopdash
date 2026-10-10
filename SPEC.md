@@ -1261,11 +1261,16 @@ favorite places (maintainer, 2026-10-10): each by its two stops and line, with *
 found and dropped without riding past its card; Remove only ever removes the favorite. Its **Add**
 (maintainer, 2026-10-07) picks the journey's two stations over the list: the station search asks
 where it starts, then, with that standing in its From row, where it ends; the From row changes the
-start, and Back from the end drops back to it. The pair is saved on a line both stations serve (rail
-before bus), as a long press saves one, and the list says what it's doing ("Adding Euston ➔
-Waterloo…") and why a pair wasn't added: no line serves both ("No direct line from … to …"; a
-journey with a change waits on *Trips with a change*), the same station twice, already a favorite, or
-the lookup or the save failed. It costs one stop lookup per station picked, as opening a station does. Favorite journeys are
+start, and Back from the end drops back to it. Both searches lead with the rider's **favorite places**
+as chips (maintainer, 2026-10-10), so Home, Work or a place of their own can be either end. The pair is
+saved on a line both stations serve (rail before bus), as a long press saves one, and the list says what
+it's doing ("Adding Euston ➔ Waterloo…") and why a pair wasn't added: the same station twice, already a
+favorite, or the lookup or the save failed. A pair StopDash **can't follow yet** — no one line serves
+both, or an end is a favorite place — is saved anyway and listed **grayed**, after the rest, with
+"Support for multi-leg journeys coming soon" under it and its own Remove (maintainer, 2026-10-10). Only
+this list sees one: the near-me list, the widget and alerts go on seeing only the journeys they can
+follow, until *Trips with a change* lets StopDash plan the rest. A place end is kept as that place, not
+its position, so moving the place moves the journey. It costs one stop lookup per station picked, as opening a station does. Favorite journeys are
 kept on the device with the rest of the user's config and never logged (*Privacy*).
 
 ### Trips with a change
@@ -3841,7 +3846,7 @@ comes to the front, so each event reads against the rider's setup: the trip opti
 longest walk, step-free level, modes off, avoided lines and stops as a count), hidden modes by group with
 hidden lines as a count, distance units, text size in bands, the Settings switches, whether there's
 an own TfL or National Rail key (never the key), widgets placed, a paired watch with the app or a
-connected one without it, starred rows, saved places and favorite journeys as counts in ranges, and whether notifications
+connected one without it, starred rows, saved places and favorite journeys (grayed ones included) as counts in ranges, and whether notifications
 and location are allowed. Step-free choices are sent though they can hint at a rider's mobility: the
 maintainer asked for them, they're user properties under the resettable app-instance ID, and they
 read as a routing preference ("step-free to the platform" is also what a suitcase or a buggy needs).

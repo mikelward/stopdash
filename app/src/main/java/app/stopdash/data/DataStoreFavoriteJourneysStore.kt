@@ -14,6 +14,10 @@ import app.stopdash.domain.TimeWindow
 import app.stopdash.domain.Journeys
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.FavoriteJourneysStore
+import app.stopdash.domain.PendingEnd
+import app.stopdash.domain.PendingJourney
+import app.stopdash.domain.PendingJourneys
+import app.stopdash.domain.SavedJourneys
 import app.stopdash.domain.Workers
 import app.stopdash.domain.riderLineName
 import java.io.IOException
@@ -85,7 +89,7 @@ class DataStoreFavoriteJourneysStore internal constructor(
             val alerts = stored?.alertsToDomain().orEmpty().toMutableMap()
             val schedule = change(alerts[directionKey])
             if (schedule == null) alerts.remove(directionKey) else alerts[directionKey] = schedule
-            saved.toPersisted(alerts)
+            saved.toPersisted(alerts).copy(pending = stored?.pending.orEmpty())
         } }
     }
 
@@ -94,6 +98,57 @@ class DataStoreFavoriteJourneysStore internal constructor(
     override suspend fun remove(journey: FavoriteJourney) = edit { Journeys.remove(it, journey) }
 
     override suspend fun add(journey: FavoriteJourney) = edit { Journeys.add(it, journey) }
+
+    override fun pendingJourneys(): Flow<List<PendingJourney>?> =
+        dataStore.data
+            .map { stored -> if (stored == null) emptyList() else stored.pendingToDomain() }
+            .flowOn(compute)
+            .catch { e ->
+                if (e !is IOException) throw e
+                warn("pending journeys read failed: ${e::class.simpleName}")
+                emit(null)
+            }
+
+    override fun savedJourneys(): Flow<SavedJourneys> =
+        dataStore.data
+            .map { stored -> if (stored == null) SavedJourneys(emptyList(), emptyList()) else SavedJourneys(stored.toDomain(), stored.pendingToDomain()) }
+            .flowOn(compute)
+            .catch { e ->
+                if (e !is IOException) throw e
+                warn("favorite journeys read failed: ${e::class.simpleName}")
+                emit(SavedJourneys(null, null))
+            }
+
+    override suspend fun addPending(journey: PendingJourney) = editPending { PendingJourneys.add(it, journey) }
+
+    override suspend fun removePending(journey: PendingJourney) = editPending { PendingJourneys.remove(it, journey) }
+
+    override suspend fun addReplacingPending(journey: FavoriteJourney, grayed: PendingJourney): Unit = withContext(compute) {
+        writes.withLock { dataStore.updateData { stored ->
+            if (stored != null && stored.toDomain() == null) {
+                warn("favorite journeys file is a newer schema version; preserving it, not overwriting")
+                stored
+            } else {
+                val next = Journeys.add(stored?.toDomain() ?: emptyList(), journey)
+                val pending = PendingJourneys.remove(stored?.pendingToDomain().orEmpty(), grayed)
+                next.toPersisted(JourneyAlerts.prune(stored?.alertsToDomain().orEmpty(), next))
+                    .copy(pending = pending.map { it.toPersisted() })
+            }
+        } }
+    }
+
+    // Only the grayed list changes; the journeys and their alerts are written back as stored.
+    private suspend fun editPending(change: (List<PendingJourney>) -> List<PendingJourney>): Unit = withContext(compute) {
+        writes.withLock { dataStore.updateData { stored ->
+            if (stored != null && stored.toDomain() == null) {
+                warn("favorite journeys file is a newer schema version; preserving it, not overwriting")
+                stored
+            } else {
+                val base = stored ?: PersistedFavoriteJourneys()
+                base.copy(pending = change(base.pendingToDomain().orEmpty()).map { it.toPersisted() })
+            }
+        } }
+    }
 
     // On the worker first: DataStore runs the transform in the caller's context, and the edit maps and
     // searches the whole list, so a tap from the main thread must not do it there (AGENTS.md *Main
@@ -107,6 +162,7 @@ class DataStoreFavoriteJourneysStore internal constructor(
                 // A journey's alerts go with it, so one saved again later starts with them off.
                 val next = change(stored?.toDomain() ?: emptyList())
                 next.toPersisted(JourneyAlerts.prune(stored?.alertsToDomain().orEmpty(), next))
+                    .copy(pending = stored?.pending.orEmpty())
             }
         } }
     }
@@ -150,6 +206,9 @@ internal data class PersistedFavoriteJourneys(
     // bump: an older build reads past it (ignoreUnknownKeys) and its next write drops it, which turns
     // those alerts off rather than misreading them.
     val alerts: Map<String, PersistedAlertSchedule> = emptyMap(),
+    // The journeys saved grayed (PendingJourney). Added without a version bump, as alerts were: an
+    // older build reads past it and its next write drops them.
+    val pending: List<PersistedPendingJourney> = emptyList(),
 ) {
     companion object {
         /** The current on-disk format. Bump when a field's meaning changes incompatibly. */
@@ -173,6 +232,21 @@ internal data class PersistedFavoriteJourney(
     val lineId: String,
     val lineName: String = "",
     val mode: String = "",
+)
+
+@Serializable
+internal data class PersistedPendingEnd(
+    // "station" or "place"; an end of a kind this build doesn't know drops its journey.
+    val kind: String,
+    // The station's id, or the favorite place's.
+    val id: String,
+    val name: String,
+)
+
+@Serializable
+internal data class PersistedPendingJourney(
+    val from: PersistedPendingEnd,
+    val to: PersistedPendingEnd,
 )
 
 @Serializable
@@ -222,6 +296,29 @@ internal fun PersistedFavoriteJourneys.alertsToDomain(): Map<String, JourneyAler
     val journeys = toDomain() ?: return null
     // Only those for a saved journey's own directions, as the app saves them (Codex on #700).
     return JourneyAlerts.prune(alerts.mapNotNull { (key, schedule) -> schedule.toDomain()?.let { key to it } }.toMap(), journeys)
+}
+
+private fun PendingEnd.toPersisted() = when (this) {
+    is PendingEnd.Station -> PersistedPendingEnd("station", stationId, name)
+    is PendingEnd.Place -> PersistedPendingEnd("place", placeId, name)
+}
+
+private fun PersistedPendingEnd.toDomain(): PendingEnd? = when (kind) {
+    "station" -> PendingEnd.Station(id, name)
+    "place" -> PendingEnd.Place(id, name)
+    else -> null
+}
+
+private fun PendingJourney.toPersisted() = PersistedPendingJourney(from.toPersisted(), to.toPersisted())
+
+/** The grayed journeys, or null for a newer schema version this build can't read. */
+internal fun PersistedFavoriteJourneys.pendingToDomain(): List<PendingJourney>? {
+    if (version != PersistedFavoriteJourneys.CURRENT_VERSION) return null
+    return pending.mapNotNull { p ->
+        val from = p.from.toDomain() ?: return@mapNotNull null
+        val to = p.to.toDomain() ?: return@mapNotNull null
+        PendingJourney(from, to)
+    }.distinctBy { it.key }
 }
 
 private fun JourneyEnd.toPersisted() = PersistedJourneyEnd(stopId, name, latitude, longitude, areaId)

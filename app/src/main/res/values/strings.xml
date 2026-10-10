@@ -583,7 +583,7 @@
     <string name="settings_favorite_journeys_summary">Save routes between two places</string>
     <string name="favorite_journeys_title">Favorite journeys</string>
     <string name="favorite_journeys_loading">Loading…</string>
-    <string name="favorite_journeys_empty">None yet. Tap Add and pick the two stations.</string>
+    <string name="favorite_journeys_empty">None yet. Tap Add and pick two stations or places.</string>
     <string name="favorite_journeys_add">Add</string>
     <!-- A failed read or a file from a newer StopDash; Retry reads it again. -->
     <string name="favorite_journeys_unavailable">Can\'t read your favorite journeys.</string>
@@ -595,10 +595,13 @@
     <string name="favorite_journeys_adding">Adding %1$s ⇄ %2$s…</string>
     <!-- The picked pair was already saved. -->
     <string name="favorite_journeys_add_already">%1$s ⇄ %2$s is already a favorite</string>
-    <!-- No line serves both picked stations: a journey with a change isn't supported yet. -->
-    <string name="favorite_journeys_add_no_line">No direct line from %1$s to %2$s</string>
-    <!-- The same station picked for both ends. -->
-    <string name="favorite_journeys_add_same">Pick two different stations</string>
+    <!-- Under a grayed journey in Settings' list: no one line serves it, or an end is a favorite place, so
+         StopDash can't follow it yet (maintainer, 2026-10-10). -->
+    <string name="favorite_journeys_multi_leg_soon">Support for multi-leg journeys coming soon</string>
+    <!-- TalkBack, a favorite-place chip in the favorite-journey picker: %1$s is the place's name. -->
+    <string name="favorite_place_pick_description">Choose %1$s</string>
+    <!-- The same station or favorite place picked for both ends. -->
+    <string name="favorite_journeys_add_same">Pick two different places</string>
     <!-- Looking up the picked stations failed. %3$s is why, as the partial-refresh banner says it ("offline"). -->
     <string name="favorite_journeys_add_failed">Couldn\'t add %1$s ⇄ %2$s: %3$s</string>
     <!-- Saving the picked pair failed (a disk error). -->

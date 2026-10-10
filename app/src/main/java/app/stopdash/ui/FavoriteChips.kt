@@ -74,6 +74,9 @@ internal fun FavoriteChips(
     labelOverride: ChipLabel? = null,
     // What TalkBack hears a place chip do, %1$s its name: plan a trip there, or (From…) start from it.
     @StringRes actionDescription: Int = R.string.favorite_place_route_description,
+    // Set where a chip picks the place itself rather than a trip (the favorite-journey picker): handed
+    // the place and its chip's name, in place of [onRouteTo].
+    onPickPlace: ((FavoritePlace, String) -> Unit)? = null,
 ) {
     val editLabel = stringResource(R.string.favorite_places_edit_action)
     LazyRow(
@@ -100,7 +103,9 @@ internal fun FavoriteChips(
             // TalkBack hears the action, not just the name, as on the Settings row.
             val description = stringResource(actionDescription, name)
             PlaceChip(
-                onClick = { onRouteTo(TripDestination.Place(place.coordinate, name)) },
+                onClick = {
+                    if (onPickPlace != null) onPickPlace(place, name) else onRouteTo(TripDestination.Place(place.coordinate, name))
+                },
                 onLongClick = onEditPlaces,
                 onLongClickLabel = editLabel,
                 // The place's own icon, its name, or both, as the rider chose (maintainer, 2026-09-28);
