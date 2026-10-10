@@ -583,6 +583,35 @@ class StationSearchScreenshotTest {
         captureSnapshot("station-loading.png")
     }
 
+    @Test
+    fun a_stops_departures_still_loading_have_back_in_tos_place() {
+        // Back from the first frame, not only once the departures page is ready (Codex on #736).
+        var back = 0
+        composeRule.setContent {
+            StopDashTheme {
+                StationPlaceholderScreen(
+                    title = "King's Cross St. Pancras",
+                    state = StationStopsViewModel.State.Loading,
+                    onRetry = {},
+                    onBack = {},
+                    onBrowseBack = { back++ },
+                )
+            }
+        }
+        composeRule.onNodeWithTag("stationBrowseBack").performClick()
+        assertEquals(1, back)
+    }
+
+    @Test
+    fun a_station_loading_has_no_browse_back() {
+        composeRule.setContent {
+            StopDashTheme {
+                StationPlaceholderScreen(title = "Euston", state = StationStopsViewModel.State.Loading, onRetry = {}, onBack = {})
+            }
+        }
+        composeRule.onNodeWithTag("stationBrowseBack").assertDoesNotExist()
+    }
+
     private fun captureSnapshot(name: String, widthPx: Int = 1080, heightPx: Int = 1920) {
         if (!capturing()) return
         val root = composeRule.activity.window.decorView.rootView

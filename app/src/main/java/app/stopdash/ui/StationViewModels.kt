@@ -456,7 +456,12 @@ class StationStopsViewModel(
     sealed interface State {
         data object Loading : State
         /** The station's stops, and its [center] (null when TfL placed none) — where From… stands. */
-        data class Ready(val stops: List<StopRef>, val center: Coordinates? = null) : State
+        data class Ready(
+            val stops: List<StopRef>,
+            val center: Coordinates? = null,
+            // The stops' ids, made with the state (on the worker), so a page never walks [stops] to find them.
+            val stopIds: Set<String> = stops.mapTo(HashSet()) { it.id },
+        ) : State
         /** TfL knows the station but nothing under it carries departures stopdash shows. */
         data object NoStops : State
         data class Failed(val kind: DeparturesUiState.Error.Kind) : State

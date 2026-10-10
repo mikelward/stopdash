@@ -2265,13 +2265,22 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             so Back skipped back past the route page: the details now open over the route page, Back to it.
       - [ ] **Go follows the soonest train**, not the very departure tapped: the trip on the way picks its
             train as a planned ride's does. Following the one tapped would need the tracker to take a vehicle.
-      - [ ] **A stop opened from a route page's details' board** replaces those details rather than stacking
-            on them, so Back returns to the first route page, not the details in between.
+      - [x] **A stop opened from a route page's details' board** replaced those details: moot since the
+            details have no board, only Departures (2026-10-10).
+      - [x] **Departures in place of the board and the stations by name** (maintainer, 2026-10-10): one row of
+            pills for every line here and around it, and Departures opening the station's page as a look.
+      - [ ] **A covered station page misses a return to the app** (Codex on #736): with Settings or Licenses over
+            a station's page (From's, or a stop's Departures), a trip to the background and back isn't seen by the
+            page's `ForegroundReturnLatcher`, which isn't composed then, so its departures wait for the next 60 s
+            refresh rather than refreshing on Back. Stale cards still withhold their times (D4). Hosting the latch
+            above the overlay switch, as the near-me list does, would cover both pages.
+      - [ ] **Drop the stop trail**: with no station opened from another's details, `LineStopRef.previous` and its
+            ten-deep trail are only ever empty; removing them is plumbing left from the station rows.
       - [ ] **A loop's repeated call, ridden on the way**: a ride to a stop its path calls at twice (a bus loop
             through the same stop) is followed as if it ends at the first call there, since the trip on the way
             finds the alighting call by id (Codex on #730). Planned rides on such loops share it; following one
             means carrying which call it ends at through `OnTheWay`'s path checks.
-      - [ ] **A stop's details with an unreadable station index** show no lines or stations beside it, as
+      - [ ] **A stop's details with an unreadable station index** show no lines here or around it, as
             if the stop had none (Codex on #730): the Lines… page and the route page's details both treat a
             failed read as no links. A typed failure the page says, with Retry, would be honest.
   - [x] **Starred journeys in Settings** (maintainer, 2026-10-05): listed by their stops and line,

@@ -402,6 +402,9 @@ fun MainScreen(
     // the app's mark, and the overflow menu is left out — it belongs to the main list.
     stationTitle: String? = null,
     onCloseStation: () -> Unit = {},
+    // A station's departures opened from a stop's details (their Departures), which start nothing: Back in the
+    // bar where To… would be, and no crosshairs, as it's a look, not a place to move to.
+    stationBrowse: Boolean = false,
     // "To…" (SPEC *Finding stops → From… To…*): pick a destination, then only the departures that go
     // there. An app-bar action on a searched station's page; an overflow item on the near-me list,
     // where the trip starts from the stops near the rider. Null leaves it out.
@@ -1300,7 +1303,7 @@ fun MainScreen(
                     // Crosshairs: "use my location" (SPEC *Finding stops*). Near me it re-locates, as
                     // pull-to-refresh does; on a From… station page it goes back to the near-me list.
                     // None without a grant: it could only lead back to the location gate.
-                    if (LocalLocationAllowed.current) {
+                    if (LocalLocationAllowed.current && !stationBrowse) {
                         IconButton(onClick = onLocate ?: onRefresh) {
                             Icon(CrosshairIcon, contentDescription = stringResource(R.string.locate_here))
                         }
@@ -1308,6 +1311,12 @@ fun MainScreen(
                     // A station's "To…": pick where to, and plan the trip there.
                     if (stationTitle != null && onPlanTo != null && platformRows == null && !journeyViewOpen) {
                         TextButton(onClick = onPlanTo) { Text(stringResource(R.string.menu_to)) }
+                    }
+                    // A look at a stop's departures: Back to the stop, in To…'s place (maintainer, 2026-10-10).
+                    if (stationTitle != null && stationBrowse && platformRows == null && !journeyViewOpen) {
+                        TextButton(onClick = onCloseStation, modifier = Modifier.testTag("stationBrowseBack")) {
+                            Text(stringResource(R.string.station_browse_back))
+                        }
                     }
                     // Near me, the same in one tap: the Directions glyph, To… for a screen reader. The
                     // overflow keeps its To… item beside From….

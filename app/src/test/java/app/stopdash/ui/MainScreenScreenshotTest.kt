@@ -794,6 +794,28 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `a stop's departures opened from its details have Back in To's place and no crosshairs`() {
+        var closed = 0
+        // Titled by the stop alone (maintainer, 2026-10-10).
+        capture("station-browse.png") {
+            CompositionLocalProvider(LocalLocationAllowed provides true) {
+                MainScreen(
+                    DeparturesUiState.Loaded(stops(now.minusSeconds(30)), now.minusSeconds(30), lineStatuses = statuses()),
+                    now,
+                    {},
+                    stationTitle = "Whitechapel",
+                    onCloseStation = { closed++ },
+                    stationBrowse = true,
+                )
+            }
+        }
+        composeRule.onNodeWithText("To…").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Use my location").assertDoesNotExist()
+        composeRule.onNodeWithTag("stationBrowseBack").performClick()
+        assertEquals(1, closed)
+    }
+
+    @Test
     fun `a hidden mode's rows are left out under a banner that shows them again`() {
         var shownAll = false
         // Just the Underground and the bus stop, so the bus rows would sit on screen (composed) if the

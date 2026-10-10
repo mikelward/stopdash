@@ -54,6 +54,27 @@ class StopLinksTest {
     }
 
     @Test
+    fun the_lines_here_and_around_are_one_list_this_stop_s_first() {
+        // King's Cross tube's own lines, then its interchange's rail stations' (St Pancras under both its ids),
+        // then those a short walk away add (Euston's rail station), each line once (maintainer, 2026-10-10).
+        val eustonRail = IndexedStation(
+            "910GEUSTON", "London Euston Rail Station", listOf("national-rail"), "HUBEUS", 51.52822, -0.13377,
+            mapOf("national-rail" to listOf("london-northwestern", "")),
+        )
+        val links = StationIndex(index.stations + eustonRail, lineNames = mapOf("northern" to "Northern")).linksOf("940GZZLUKSX")
+        assertEquals(
+            listOf("northern", "victoria", "piccadilly", "great-northern", "thameslink", "southeastern", "london-northwestern"),
+            links.nearbyLines.map { it.id },
+        )
+        assertEquals("Northern", links.nearbyLines.first().name)
+        assertEquals("national-rail", links.nearbyLines.last().mode)
+        // Waterloo, over 3 km away, adds none of its.
+        assertTrue(links.nearbyLines.none { it.id == "bakerloo" })
+        // A stop the index doesn't hold has none.
+        assertEquals(emptyList<LineRef>(), StopLinks.NONE.nearbyLines)
+    }
+
+    @Test
     fun a_station_under_several_ids_is_one_chip_asking_for_all_of_them() {
         // St Pancras is listed as two National Rail stations: one chip, both ids, every line (Codex on #664).
         val stPancrasChip = index.linksOf("940GZZLUKSX").sameHub.single { it.name == "London St Pancras International" }

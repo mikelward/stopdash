@@ -164,7 +164,8 @@ class SearchResultsOffMainTest {
         mainIdle()
         assertEquals(StationStopsViewModel.State.Loading, vm.state.value)
         releaseCompute()
-        assertTrue(vm.state.value is StationStopsViewModel.State.Ready)
+        // Its stop ids too, made with the state, so the page never walks the stops (Codex on #736).
+        assertEquals(setOf("9400ZZLUOXC1"), (vm.state.value as StationStopsViewModel.State.Ready).stopIds)
     }
 
     @Test

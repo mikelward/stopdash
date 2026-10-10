@@ -660,6 +660,9 @@ fun StationPlaceholderScreen(
     // The crosshairs, as on the page this stands in for (SPEC *Finding stops*): from a From…
     // station, back to the near-me list, so a station TfL can't place isn't a dead end. Null hides it.
     onLocate: (() -> Unit)? = null,
+    // A look at a stop's departures: Back to the stop, in To…'s place, as the page this stands in for
+    // shows it (MainScreen's stationBrowse), so it's there from the first frame (Codex on #736).
+    onBrowseBack: (() -> Unit)? = null,
 ) {
     BackHandler(onBack = onBack)
     Scaffold(
@@ -675,6 +678,11 @@ fun StationPlaceholderScreen(
                     if (onLocate != null && LocalLocationAllowed.current) {
                         IconButton(onClick = onLocate) {
                             Icon(CrosshairIcon, contentDescription = stringResource(R.string.locate_here))
+                        }
+                    }
+                    if (onBrowseBack != null) {
+                        TextButton(onClick = onBrowseBack, modifier = Modifier.testTag("stationBrowseBack")) {
+                            Text(stringResource(R.string.station_browse_back))
                         }
                     }
                     AppMenuOverflow()

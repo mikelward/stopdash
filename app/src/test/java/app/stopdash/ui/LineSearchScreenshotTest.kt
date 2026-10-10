@@ -15,6 +15,8 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -150,6 +152,15 @@ class LineSearchScreenshotTest {
         var goes = 0
         var saved by mutableStateOf<Boolean?>(null)
         var toggles = 0
+        var departures = 0
+        // Warren Street's lines, then Euston Square's, a short walk away.
+        val lines = listOf(
+            app.stopdash.domain.LineRef("northern", "Northern", "tube"),
+            app.stopdash.domain.LineRef("victoria", "Victoria", "tube"),
+            app.stopdash.domain.LineRef("circle", "Circle", "tube"),
+            app.stopdash.domain.LineRef("hammersmith-city", "Hammersmith & City", "tube"),
+            app.stopdash.domain.LineRef("metropolitan", "Metropolitan", "tube"),
+        )
         composeRule.setContent {
             StopDashTheme {
                 LineStopPage(
@@ -158,6 +169,8 @@ class LineSearchScreenshotTest {
                     onFrom = {},
                     onTo = {},
                     onBack = {},
+                    links = app.stopdash.domain.StopLinks(lines.take(2), emptyList(), emptyList(), nearbyLines = lines),
+                    onDepartures = { departures++ },
                     zone = "1",
                     cueSlot = true,
                     access = app.stopdash.domain.StopAccess(app.stopdash.domain.StepFreeLevel.NONE, liftOut = false, byLift = false),
@@ -183,6 +196,9 @@ class LineSearchScreenshotTest {
         composeRule.onNodeWithContentDescription("Remove favourite").assertIsDisplayed()
         composeRule.onNodeWithTag("routeStopGo").performClick()
         assertEquals(1, goes)
+        // Departures beside Go.
+        composeRule.onNodeWithText("Departures").performClick()
+        assertEquals(1, departures)
     }
 
     @Test
@@ -291,75 +307,29 @@ class LineSearchScreenshotTest {
     }
 
     @Test
-    fun line_stop_departures() {
-        // Oxford Circus, a public interchange, opened from the Victoria line, with made-up times: the
-        // Victoria line's platforms first, then the Central and Bakerloo lines under "Also here".
-        val now = java.time.Instant.parse("2026-10-07T09:00:00Z")
-        fun train(line: String, name: String, destination: String, platform: String, minutes: Long) =
-            app.stopdash.domain.Departure(line, name, "outbound", destination, platform, now.plusSeconds(minutes * 60), "tube")
-        val state = DeparturesUiState.Loaded(
-            stops = listOf(
-                app.stopdash.domain.StopArrivals(
-                    "940GZZLUOXC",
-                    "Oxford Circus",
-                    listOf(
-                        train("victoria", "Victoria", "Walthamstow Central", "Northbound - Platform 5", 2),
-                        train("victoria", "Victoria", "Walthamstow Central", "Northbound - Platform 5", 5),
-                        train("victoria", "Victoria", "Brixton", "Southbound - Platform 6", 1),
-                        train("victoria", "Victoria", "Brixton", "Southbound - Platform 6", 4),
-                        train("central", "Central", "Epping", "Eastbound - Platform 1", 3),
-                        train("central", "Central", "Ealing Broadway", "Westbound - Platform 2", 2),
-                        train("bakerloo", "Bakerloo", "Elephant & Castle", "Southbound - Platform 4", 6),
-                    ),
-                    fetchedAt = now,
-                ),
-            ),
-            fetchedAt = now,
-        )
-        val departures = StopDepartures(state, now, onRefresh = {})
-        composeRule.setContent {
-            StopDashTheme {
-                CompositionLocalProvider(LocalWorker provides kotlinx.coroutines.Dispatchers.Unconfined) {
-                    LineStopPage(
-                        name = "Oxford Circus",
-                        distance = "350 m",
-                        onFrom = {},
-                        onTo = {},
-                        onBack = {},
-                        lineName = "Victoria",
-                        departures = departures,
-                        view = rememberStopBoard(departures, "victoria"),
-                    )
-                }
-            }
-        }
-        composeRule.waitForIdle()
-        composeRule.onNodeWithText("Brixton").assertIsDisplayed()
-        composeRule.onNodeWithText("Also here").assertExists()
-        captureSnapshot("line-stop-departures.png")
-    }
-
-    @Test
     fun line_stop_links() {
-        // King's Cross St. Pancras tube station, a public interchange: its lines as pills, the interchange's
-        // rail stations, and Euston a short walk away, each opening what it names.
+        // King's Cross St. Pancras tube station, a public interchange: one row of pills for every line here and
+        // around it (its own, then its interchange's rail lines, then a short walk's), each opening its line.
+        val own = listOf(
+            app.stopdash.domain.LineRef("circle", "Circle", "tube"),
+            app.stopdash.domain.LineRef("hammersmith-city", "Hammersmith & City", "tube"),
+            app.stopdash.domain.LineRef("metropolitan", "Metropolitan", "tube"),
+            app.stopdash.domain.LineRef("northern", "Northern", "tube"),
+            app.stopdash.domain.LineRef("piccadilly", "Piccadilly", "tube"),
+            app.stopdash.domain.LineRef("victoria", "Victoria", "tube"),
+        )
         val links = app.stopdash.domain.StopLinks(
-            lines = listOf(
-                app.stopdash.domain.LineRef("circle", "Circle", "tube"),
-                app.stopdash.domain.LineRef("hammersmith-city", "Hammersmith & City", "tube"),
-                app.stopdash.domain.LineRef("metropolitan", "Metropolitan", "tube"),
-                app.stopdash.domain.LineRef("northern", "Northern", "tube"),
-                app.stopdash.domain.LineRef("piccadilly", "Piccadilly", "tube"),
-                app.stopdash.domain.LineRef("victoria", "Victoria", "tube"),
-            ),
-            sameHub = listOf(
-                app.stopdash.domain.NearStation("910GKNGX", "London King's Cross", 20.0),
-                app.stopdash.domain.NearStation("910GSTPX", "London St Pancras International", 300.0),
-            ),
+            lines = own,
+            sameHub = listOf(app.stopdash.domain.NearStation("910GKNGX", "London King's Cross", 20.0)),
             nearby = listOf(app.stopdash.domain.NearStation("940GZZLUEUS", "Euston", 720.0, setOf("northern", "victoria"))),
+            nearbyLines = own + listOf(
+                app.stopdash.domain.LineRef("great-northern", "Great Northern", "national-rail"),
+                app.stopdash.domain.LineRef("thameslink", "Thameslink", "national-rail"),
+                app.stopdash.domain.LineRef("southeastern", "Southeastern", "national-rail"),
+            ),
         )
         val lines = mutableListOf<String>()
-        val stations = mutableListOf<String>()
+        var departures = 0
         composeRule.setContent {
             StopDashTheme {
                 LineStopPage(
@@ -368,33 +338,58 @@ class LineSearchScreenshotTest {
                     onFrom = {},
                     onTo = {},
                     onBack = {},
-                    lineName = "Victoria",
                     links = links,
                     onOpenLine = { lines += it.id },
-                    onOpenStation = { stations += it.id },
+                    onDepartures = { departures++ },
                 )
             }
         }
         composeRule.waitForIdle()
         captureSnapshot("line-stop-links.png")
-        composeRule.onNodeWithText("Same interchange").assertIsDisplayed()
+        // No stations listed by name: Departures shows them (maintainer, 2026-10-10).
+        composeRule.onNodeWithText("Euston", substring = true).assertDoesNotExist()
         composeRule.onNodeWithTag("lineStopLine:northern").performClick()
-        composeRule.onNodeWithTag("lineStopPage").performScrollToNode(hasText("Euston (0.7 km)"))
-        composeRule.onNodeWithText("Euston (0.7 km)").performClick()
-        composeRule.onNodeWithText("London King's Cross").performClick()
-        assertEquals(listOf("northern"), lines)
-        assertEquals(listOf("940GZZLUEUS", "910GKNGX"), stations)
+        composeRule.onNodeWithTag("lineStopLine:thameslink").performClick()
+        composeRule.onNodeWithText("Departures").performClick()
+        assertEquals(listOf("northern", "thameslink"), lines)
+        assertEquals(1, departures)
     }
 
     @Test
-    fun a_board_still_to_start_says_it_is_loading() {
-        // A station opened off the line waits on its own lines before its board starts (Codex on #664).
+    fun the_buttons_wrap_rather_than_cut_off_departures_in_a_narrow_window() {
+        // From, To and Departures don't fit side by side here: Departures wraps to its own row, whole (Codex on #736).
         composeRule.setContent {
             StopDashTheme {
-                LineStopPage(name = "Euston", distance = null, onFrom = {}, onTo = null, onBack = {}, lineName = null, boardPending = true)
+                androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.width(240.dp)) {
+                    LineStopPage(name = "Euston", distance = null, onFrom = {}, onTo = {}, onBack = {}, onDepartures = {})
+                }
             }
         }
-        composeRule.onNodeWithText("Loading departures…").assertIsDisplayed()
+        val actions = composeRule.onNodeWithTag("lineStopActions").getUnclippedBoundsInRoot()
+        val departures = composeRule.onNodeWithText("Departures").getUnclippedBoundsInRoot()
+        val from = composeRule.onNodeWithText("From").getUnclippedBoundsInRoot()
+        assertTrue("Departures ends at ${departures.right}, inside ${actions.right}", departures.right <= actions.right)
+        assertTrue("Departures wraps below From", departures.top > from.bottom)
+    }
+
+    @Test
+    fun departures_waits_for_what_it_opens() {
+        // A station under several ids opens its interchange: Departures waits for the links that say so, as From
+        // and To do (Codex on #664).
+        var ready by mutableStateOf(false)
+        var departures = 0
+        composeRule.setContent {
+            StopDashTheme {
+                LineStopPage(
+                    name = "St Pancras International", distance = null, onFrom = {}, onTo = {}, onBack = {},
+                    actionsReady = ready, onDepartures = { departures++ },
+                )
+            }
+        }
+        composeRule.onNodeWithText("Departures").assertIsNotEnabled()
+        ready = true
+        composeRule.onNodeWithText("Departures").performClick()
+        assertEquals(1, departures)
     }
 
     @Test
