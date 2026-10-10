@@ -10,6 +10,7 @@ import app.stopdash.domain.GlanceRows
 import app.stopdash.domain.NearbyLayout
 import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.SaveGate
+import app.stopdash.domain.SnapshotPlan
 import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.RailFeed
 import app.stopdash.domain.Departure
@@ -323,20 +324,19 @@ class MainViewModel(
         journeyIds: Set<String>,
         distances: Map<String, Double>,
     ): DeparturesSnapshot {
-        val kept = snapshot.stops.filter { it.stopId in nearIds || it.stopId in journeyIds }
+        // Kept, classed and ordered as the widget's own refresh lays them out ([SnapshotPlan]).
+        val laid = SnapshotPlan.laidOut(snapshot.stops, nearIds, journeyIds, distances)
         return DeparturesSnapshot(
-            stops = kept,
+            stops = laid.stops,
             fetchedAt = snapshot.fetchedAt,
-            journeyOnlyStopIds = kept.mapTo(HashSet()) { it.stopId } - nearIds,
+            journeyOnlyStopIds = laid.journeyOnlyStopIds,
             // A nearby stop with no arrivals at all failed with nothing to fall back on
             // ([Snapshot.mergeStop] drops it), so the widget must not read the rest as complete.
-            missingStopIds = nearIds - kept.mapTo(HashSet()) { it.stopId },
+            missingStopIds = laid.missingStopIds,
             // Each kept line's last determined status, stamped with when TfL gave it, so the widget
             // marks a disrupted service and withholds the mark at the staleness threshold (SPEC D3/D4).
-            lineStatuses = widgetLineChecks(kept),
-            // Nearest the rider now first, so the widget shows a line once, from its nearest stop, as
-            // this list does. The nearby stops only: a journey-only origin isn't one the rider is near.
-            nearestFirst = nearestFirstOf(kept.map { it.stopId }.filter { it in nearIds }, distances),
+            lineStatuses = widgetLineChecks(laid.stops),
+            nearestFirst = laid.nearestFirst,
         )
     }
 

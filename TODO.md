@@ -3524,10 +3524,11 @@ and these carry the rest as their own PRs:
       call, with only the scheduling and the position source differing. In three steps:
       - [x] One layout: picking the nearby stops (hidden-mode fallback, anchors), their distances,
             nearest-first order (a tie by id) and nearer places (`NearbyLayout`).
-      - [ ] One snapshot plan and one guarded store write: the stops to store, missing and
-            journey-only sets. Done: the merge (every write keeps a stop the store holds newer,
-            `keepingFresher`) and the save gate (`SaveGate`: both refreshes save only on a nearby
-            stop's fresh arrivals, the app's rule; maintainer, 2026-10-10).
+      - [x] One snapshot plan and one guarded store write: the stops stored, their journey-only
+            and missing sets and nearest-first order (`SnapshotPlan`), the save gate (`SaveGate`:
+            both refreshes save only on a nearby stop's fresh arrivals, the app's rule; maintainer,
+            2026-10-10), and one merge (every write keeps a stop the store holds newer,
+            `keepingFresher`).
       - [ ] One fetch: the worker on the app's reuse windows, shared-cache rule and stop closures
             (a cost question: the worker fetches no closures today).
 - [ ] **A National Rail station's rows can tie on age (Codex on #750; maintainer 2026-10-10: leave

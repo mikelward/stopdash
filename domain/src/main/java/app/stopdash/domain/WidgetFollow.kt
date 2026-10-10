@@ -152,13 +152,15 @@ object WidgetFollow {
                 nearer = Terminating.nearer(stop.id, places),
             )
         }
-        val stops = kept + added
+        // Classed and ordered as the app's refresh lays them out ([SnapshotPlan]): every nearby stop is
+        // kept or a placeholder, so none is missing until [settled] finds a placeholder unfetched.
+        val laid = SnapshotPlan.laidOut(kept + added, nearby, origins, meters)
         return Followed(position, Moved(
             snapshot = prior.copy(
-                stops = stops,
-                journeyOnlyStopIds = origins.filterTo(HashSet()) { id -> id !in nearby && stops.any { it.stopId == id } },
-                missingStopIds = prior.missingStopIds.filterTo(HashSet()) { it in nearby },
-                nearestFirst = nearestFirst,
+                stops = laid.stops,
+                journeyOnlyStopIds = laid.journeyOnlyStopIds,
+                missingStopIds = laid.missingStopIds,
+                nearestFirst = laid.nearestFirst,
                 // With new stops to fetch, a choice made without them could fold a line onto a farther
                 // stop: none until [settled] works them out again from the fetched rows.
                 nearbyChoices = if (added.isEmpty()) choicesHere else emptyList(),
