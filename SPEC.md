@@ -293,7 +293,8 @@ The app finds stops two ways:
 
   **The user's own stops** (maintainer, 2026-09-24) come without a TfL search. Before anything
   is typed, the search lists them **by last use** (maintainer, 2026-09-26): **Recent** first (the
-  last eight places picked from that search, the most recent on top), then **Starred** (the ends
+  last eight places picked from that search, the most recent on top, less a stop with no lines,
+  which would open to nothing), then **Starred** (the ends
   of favorite journeys, then the places holding a starred row, each recorded when starred), less
   any picked lately. *From…* and *To…* keep **separate recent lists** — where the rider looks from
   and where they go — so each search lists its own history. As the user types, those and every place the app has lately shown near them (the
