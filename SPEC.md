@@ -2911,15 +2911,16 @@ asks for no poles, a bus stop for no zone, and a river bus pier or cable car sta
 zone) for neither: each by its own mode, not the line's, as a station opened from another's details can
 be of another (a tube station beside a pier). A stop the lookup couldn't place, or one TfL gives no zone
 (outside the zones, or "NA" where zone fares don't run), keeps the blank line.
-Under its zone a station says how **step-free** it is ("Step-free to the train", "Step-free to the
+Under the lines here and around it (below) a station says how **step-free** it is ("Step-free to the train", "Step-free to the
 platform", "Not step-free"), from TfL's bundled step-free table: for the line it was opened from, else
 the level every line through it meets, blank where the table leaves any of those lines undescribed
 (unknown, never a guess), across every id TfL lists the station under (St Pancras's entry is under its
 high-speed id), each id answering only for the lines the index says it serves, and a line unknown
 where any id serving it is undescribed. Where only a lift makes those lines step-free, TfL's lift outages are watched
 as the route page watches them (no new request), and while a lift it needs is out it says "Not
-step-free: a lift is out". That line too is held from the first frame for a station, blank where the
-table says nothing; a bus stop holds none.
+step-free: a lift is out". That line, with the facilities under it, waits on the lines being worked out
+(never long: from the bundled index), so the pills coming in never push it down (maintainer, 2026-10-10);
+from then it's held for a station, blank where the table says nothing; a bus stop holds none.
 Beside From and To is **Departures** (maintainer, 2026-10-10): the page From opens for the station (its own
 stops' departures, by platform or pole, and those of the stops around it, *Finding stops → From… To…*), as a look that
 starts nothing. Its bar names the stop alone, with **Back** where a station's page has To… and no crosshairs,

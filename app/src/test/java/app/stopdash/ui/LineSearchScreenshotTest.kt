@@ -298,6 +298,7 @@ class LineSearchScreenshotTest {
                     cueSlot = true,
                     access = app.stopdash.domain.StopAccess(app.stopdash.domain.StepFreeLevel.NONE, liftOut = true, byLift = true),
                     accessSlot = true,
+                    links = app.stopdash.domain.StopLinks.NONE,
                 )
             }
         }
@@ -447,37 +448,66 @@ class LineSearchScreenshotTest {
     }
 
     @Test
-    fun a_station_lists_the_facilities_tfl_says_it_has_at_its_foot() {
+    fun a_station_s_step_free_line_and_facilities_sit_under_its_lines() {
+        // King's Cross St. Pancras, a public interchange, with everything a station's details can show: its
+        // distance, star and map pin, From, To and Departures, its zone, the lines here and around it, then how
+        // step-free it is, then every facility TfL can name at the foot (maintainer, 2026-10-10).
+        val lines = listOf(
+            app.stopdash.domain.LineRef("circle", "Circle", "tube"),
+            app.stopdash.domain.LineRef("hammersmith-city", "Hammersmith & City", "tube"),
+            app.stopdash.domain.LineRef("metropolitan", "Metropolitan", "tube"),
+            app.stopdash.domain.LineRef("northern", "Northern", "tube"),
+            app.stopdash.domain.LineRef("piccadilly", "Piccadilly", "tube"),
+            app.stopdash.domain.LineRef("victoria", "Victoria", "tube"),
+            app.stopdash.domain.LineRef("great-northern", "Great Northern", "national-rail"),
+            app.stopdash.domain.LineRef("thameslink", "Thameslink", "national-rail"),
+            app.stopdash.domain.LineRef("southeastern", "Southeastern", "national-rail"),
+        )
+        var links by mutableStateOf<app.stopdash.domain.StopLinks?>(null)
         composeRule.setContent {
             StopDashTheme {
                 LineStopPage(
                     name = "King's Cross St. Pancras",
-                    distance = null,
+                    distance = "350 m",
                     onFrom = {},
                     onTo = {},
                     onBack = {},
+                    links = links,
+                    onDepartures = {},
+                    onFavorite = {},
+                    onShowOnMap = {},
                     zone = "1",
+                    cueSlot = true,
+                    access = app.stopdash.domain.StopAccess(app.stopdash.domain.StepFreeLevel.LEVEL, liftOut = false, byLift = false),
+                    accessSlot = true,
                     facilities = facilitiesLine(
                         composeRule.activity.resources,
                         app.stopdash.domain.StationFacts(
                             zone = "1",
-                            facilities = listOf(
-                                app.stopdash.domain.StationFacility.ACCESSIBLE_TOILET,
-                                app.stopdash.domain.StationFacility.CASH_MACHINE,
-                                app.stopdash.domain.StationFacility.TAXI_RANK,
-                            ),
+                            facilities = app.stopdash.domain.StationFacility.entries.toList(),
                             toiletNote = "National Rail",
                         ),
                     ),
-                    cueSlot = true,
                 )
             }
         }
+        // While the lines are worked out, neither shows: the pills coming in would push them down.
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("lineStopAccessSlot").assertDoesNotExist()
+        composeRule.onNodeWithTag("lineStopFacilities").assertDoesNotExist()
+        links = app.stopdash.domain.StopLinks(lines, emptyList(), emptyList(), nearbyLines = lines)
         composeRule.waitForIdle()
         captureSnapshot("line-stop-facilities.png")
+        val pills = composeRule.onNodeWithTag("lineStopLine:thameslink").getUnclippedBoundsInRoot()
+        val access = composeRule.onNodeWithTag("lineStopAccess").getUnclippedBoundsInRoot()
+        val facilities = composeRule.onNodeWithTag("lineStopFacilities").getUnclippedBoundsInRoot()
+        assertTrue("step-free under the lines", access.top >= pills.bottom)
+        assertTrue("facilities under step-free", facilities.top >= access.bottom)
+        composeRule.onNodeWithText("Step-free to the train").assertIsDisplayed()
         composeRule.onNodeWithText("Facilities").assertIsDisplayed()
         // As UK riders read them (en-GB).
-        composeRule.onNodeWithText("Accessible toilet (National Rail) · Cash machine · Taxi rank").assertIsDisplayed()
+        composeRule.onNodeWithText("Accessible toilet (National Rail)", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Zone 1").assertIsDisplayed()
     }
 
     @Test
@@ -504,6 +534,7 @@ class LineSearchScreenshotTest {
                     zone = "1",
                     facilities = facilitiesLine(composeRule.activity.resources, app.stopdash.domain.StationFacts(zone = "1")),
                     cueSlot = true,
+                    links = app.stopdash.domain.StopLinks.NONE,
                 )
             }
         }

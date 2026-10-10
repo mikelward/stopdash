@@ -883,7 +883,7 @@ class LinesOverlayTest {
             StopDashTheme {
                 LineStopPage(
                     name = "Somewhere Road", distance = null, onFrom = {}, onTo = {}, onBack = {},
-                    facilities = "Toilets", pole = pole, cueSlot = true,
+                    facilities = "Toilets", pole = pole, cueSlot = true, links = app.stopdash.domain.StopLinks.NONE,
                 )
             }
         }

@@ -526,7 +526,7 @@ internal fun LineStopPage(
     cueSlot: Boolean = false,
     // A station's step-free access ([stopAccess]); null while it's worked out, or for a bus stop.
     access: StopAccess? = null,
-    // Its line, under the cue's, kept from the first frame as that one is, for a station.
+    // Its line, under the lines here, kept for a station once they are worked out.
     accessSlot: Boolean = false,
     // Opened from a route page's stop list: headed by the departure tapped, with Go in place of From and To,
     // its star the journey there ([RouteStopMode]); null for a stop opened from a line's map.
@@ -647,9 +647,16 @@ internal fun LineStopPage(
                     }
                 }
             }
-            // Under the zone, held from the first frame for a station as the zone's line is, one line so a
-            // long phrase can't grow into what's under it.
-            if (accessSlot || accessCue != null) {
+            // The lines here and around it, under From and To and the cue, so those never move as they arrive
+            // (Codex on #664). From the bundled index, they're in at once.
+            if (links != null && links.nearbyLines.isNotEmpty()) {
+                item(key = "lines") { StopLines(links.nearbyLines, onOpenLine) }
+            }
+            // How step-free it is and its facilities, under the lines (maintainer, 2026-10-10). They wait on the
+            // lines being worked out (never long: the bundled index, or none), so the pills coming in never push
+            // them down mid-read. The step-free line is held from then for a station, one line so a long phrase
+            // can't grow into what's under it.
+            if (links != null && (accessSlot || accessCue != null)) {
                 item(key = "access") {
                     Box(Modifier.testTag("lineStopAccessSlot")) {
                         Text(
@@ -662,13 +669,8 @@ internal fun LineStopPage(
                     }
                 }
             }
-            // The lines here and around it come in after the first frame: under From and To, so those never move
-            // as they arrive (Codex on #664). From the bundled index, they're in at once.
-            if (links != null && links.nearbyLines.isNotEmpty()) {
-                item(key = "lines") { StopLines(links.nearbyLines, onOpenLine) }
-            }
             // Last, so coming in never moves anything above it (SPEC *Finding a line → A station's facilities*).
-            if (facilities != null) {
+            if (links != null && facilities != null) {
                 item(key = "facilities") {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.testTag("lineStopFacilities")) {
                         Text(stringResource(R.string.line_stop_facilities), style = MaterialTheme.typography.titleMedium)
