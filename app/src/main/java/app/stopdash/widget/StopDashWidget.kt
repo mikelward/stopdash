@@ -72,6 +72,7 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureLabels
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
+import app.stopdash.domain.GlanceRows
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.DestinationGroup
@@ -613,7 +614,7 @@ internal fun widgetModel(
     // With the line statuses still young enough to stand behind (SPEC D3/D4): a disrupted line's
     // rows carry its status, and a suspended line with no predictions gets a status row.
     val ordered = DepartureRows.freshFirst(
-        DepartureRows.across(snapshot.stops, now, snapshot.liveLineStatuses(now), splitPlatforms = false, statusRowsWhenStale = true),
+        GlanceRows.of(snapshot.stops, now, snapshot.liveLineStatuses(now)),
     ) { Staleness.isStale(it.fetchedAt, now) }
     // Bound the widget by total RENDERED lines, not outer rows: a branching (line, direction)
     // row expands to one line per destination/branch group, and the widget has a fixed height,

@@ -3,6 +3,7 @@ package app.stopdash.data
 import app.stopdash.domain.AlertStart
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
+import app.stopdash.domain.GlanceRows
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.FoldChoice
 import app.stopdash.domain.HiddenModes
@@ -363,7 +364,7 @@ object WatchEnvelopes {
         // Fresh first as the widget orders them, a live suspension's status row counting as fresh.
         val stale: (DepartureRow) -> Boolean = { staleStop[it.stopId] == true }
         val ordered = DepartureRows.freshFirst(
-            DepartureRows.across(stops, now, lineStatuses, splitPlatforms = false, statusRowsWhenStale = true),
+            GlanceRows.of(stops, now, lineStatuses),
             stale,
         )
         val rows = HiddenModes.rows(DepartureRows.glanceFolded(ordered, nearestFirst, choices, stale), hiddenModes)

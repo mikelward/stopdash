@@ -34,6 +34,7 @@ import app.stopdash.domain.AlertsBehind
 import app.stopdash.domain.AlertsBehindStore
 import app.stopdash.domain.AppSettings
 import app.stopdash.domain.DeparturesSnapshot
+import app.stopdash.domain.FoldChoice
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DismissalMarks
 import app.stopdash.domain.DismissedAlertsStore
@@ -438,7 +439,8 @@ internal suspend fun refreshStoredSnapshot(
                 ran = true
                 // Following the rider first, where allowed (SPEC D1): the stops where they are now are
                 // the ones fetched. Through the app's own nearby cache, so staying put asks TfL nothing.
-                val followed = WidgetFollowing.follow(context, prior, CachingStopFinder(tfl, nearbyStopsCache(context)))
+                val following = WidgetFollowing.follow(context, prior, CachingStopFinder(tfl, nearbyStopsCache(context)))
+                val followed = following?.moved
                 val working = followed?.snapshot ?: prior
                 stopCount = working.stops.size
                 // A station's National Rail board is left out while National Rail is hidden, since it
@@ -498,15 +500,19 @@ internal suspend fun refreshStoredSnapshot(
                 // keep the old place's stops, refreshed on every cycle for rows the widget no longer shows,
                 // while the nearby set says the rider moved (Codex on #711). The app storing a place of its
                 // own meanwhile wins, as for a save.
+                // The layout this refresh last saw stored: the prior one, or the follow's once it's stored.
+                var layout: DeparturesSnapshot? = prior
                 if (followed != null && outcome !is WidgetRefresh.Outcome.Save) {
                     // A failed store is a failed refresh, as for a save: the nearby set has already moved
                     // (Codex on #711).
                     saving = true
-                    val laid = WidgetSnapshotStore(context).saveFollowedIfUnchanged(
-                        WidgetFollow.settled(followed.snapshot, followed.placeholders),
-                        prior,
-                    )
+                    val settled = WidgetFollow.settled(followed.snapshot, followed, Instant.now())
+                    val laid = WidgetSnapshotStore(context).saveFollowedIfUnchanged(settled, prior, choicesAt(followed.position))
                     saving = false
+                    // What was written, not what was asked for: the save keeps a stop's fresher stored rows
+                    // and works the choices out from them, and the status merge below is guarded by that
+                    // layout (Codex on #748). Unreadable, the merge leaves the choices as stored.
+                    layout = if (laid) storedLayout(context) else null
                     if (!laid) logWidgetSnapshotWarning("widget follow layout discarded: the app stored a newer layout")
                 }
                 when (outcome) {
@@ -520,11 +526,19 @@ internal suspend fun refreshStoredSnapshot(
                         saving = true
                         val expected = prior.stops.map { it.stopId }
                         val applied = if (followed == null) {
-                            WidgetSnapshotStore(context).saveIfStopsMatch(outcome.snapshot, expected)
+                            // Still where the follow found the rider: the fresh rows' lines are folded from
+                            // there, a line newly in its prediction window included, stored with them while
+                            // the layout is still the one this refresh loaded ([saveIfStopsMatch] keeps the
+                            // stored choices, so it can't carry them). One the app laid out since keeps its
+                            // own choices, and takes the arrivals as any refresh's (Codex on #748).
+                            val store = WidgetSnapshotStore(context)
+                            val follow = following
+                            (follow != null && store.saveFollowedIfUnchanged(outcome.snapshot, prior, choicesAt(follow.position))) ||
+                                store.saveIfStopsMatch(outcome.snapshot, expected)
                         } else {
                             // The new place's stops, laid out from where the rider is, unless the app
                             // stored a place of its own meanwhile.
-                            WidgetSnapshotStore(context).saveFollowedIfUnchanged(WidgetFollow.settled(outcome.snapshot, followed.placeholders), prior)
+                            WidgetSnapshotStore(context).saveFollowedIfUnchanged(WidgetFollow.settled(outcome.snapshot, followed, Instant.now()), prior, choicesAt(followed.position))
                         }
                         saving = false
                         saved = applied
@@ -542,7 +556,16 @@ internal suspend fun refreshStoredSnapshot(
                         // Only the statuses are stored, merged per line with whatever the app wrote
                         // meanwhile, for the lines the stored stops show; the arrivals stay as stored,
                         // to age honestly. The store redraws the widget, as a save does.
-                        WidgetSnapshotStore(context).updateLineStatuses(outcome.checks)
+                        // Where a follow found the rider, a line's status row the new checks add folds from
+                        // there too, as long as the stored layout is still the one this refresh saw: one
+                        // the app laid out from a newer position meanwhile keeps its own choices.
+                        val position = following?.position
+                        val seen = layout
+                        if (position == null || seen == null) {
+                            WidgetSnapshotStore(context).updateLineStatuses(outcome.checks)
+                        } else {
+                            WidgetSnapshotStore(context).updateLineStatuses(outcome.checks, seen, choicesAt(position))
+                        }
                         answered?.let { reconcileWidgetDismissals(dismissals(), it, since) }
                         placeWidgetAlerts(context, answered.orEmpty(), asked)
                     }
@@ -704,3 +727,17 @@ internal suspend fun widgetLineStatuses(
         logWidgetSnapshotWarning("widget refresh line status failed for ${lineIds.size} line(s): ${e::class.simpleName}")
         null
     }
+
+/** The stop each line of a stored snapshot shows from at [position], worked out as a write lands ([GlanceRows]). */
+private fun choicesAt(position: WidgetFollow.Position): (DeparturesSnapshot) -> List<FoldChoice> =
+    { stored -> WidgetFollow.withChoices(stored, position, Instant.now()).nearbyChoices }
+
+/** The snapshot stored now, to guard a later write by; null, logged, when it can't be read. */
+private suspend fun storedLayout(context: Context): DeparturesSnapshot? = try {
+    WidgetSnapshotStore(context).stored()
+} catch (e: CancellationException) {
+    throw e
+} catch (e: Exception) {
+    logWidgetSnapshotWarning("widget follow layout read failed: ${e::class.simpleName}")
+    null
+}

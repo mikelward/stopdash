@@ -646,11 +646,11 @@ class WidgetScreenshotTest {
         )
         val atKingsCross = app.stopdash.domain.Coordinates(kingsCross.latitude, kingsCross.longitude)
         val atStPancras = app.stopdash.domain.Coordinates(stPancras.latitude, stPancras.longitude - 0.001)
-        val start = app.stopdash.domain.WidgetFollow.moved(DeparturesSnapshot(stops = emptyList(), fetchedAt = now), null, found, atKingsCross, hidden = emptySet())!!
+        val start = app.stopdash.domain.WidgetFollow.moved(DeparturesSnapshot(stops = emptyList(), fetchedAt = now), null, found, atKingsCross, hidden = emptySet(), now = now)!!
         val before = fetchedFor(start.snapshot, now.minusSeconds(30))
         assertEquals(kingsCross.id, before.nearestFirst.first())
-        val moved = app.stopdash.domain.WidgetFollow.moved(before, start.nearby, found, atStPancras, hidden = emptySet())!!
-        val after = app.stopdash.domain.WidgetFollow.settled(fetchedFor(moved.snapshot, now.minusSeconds(10)), moved.placeholders)
+        val moved = app.stopdash.domain.WidgetFollow.moved(before, start.nearby, found, atStPancras, hidden = emptySet(), now = now)!!
+        val after = app.stopdash.domain.WidgetFollow.settled(fetchedFor(moved.snapshot, now.minusSeconds(10)), moved, now)
         assertEquals(stPancras.id, after.nearestFirst.first())
         val size = DpSize(280.dp, 200.dp)
         // Closest stop first: the tube leads at King's Cross, Thameslink at St Pancras, though the tube's
