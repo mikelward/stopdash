@@ -583,7 +583,7 @@
     <string name="settings_favorite_places_summary">Save places to route to, like Home and Work</string>
     <!-- Settings row that opens the favorite-journeys list, to see, add and remove them. -->
     <string name="settings_favorite_journeys_title">Favorite journeys</string>
-    <string name="settings_favorite_journeys_summary">See, add and remove them</string>
+    <string name="settings_favorite_journeys_summary">Save routes between two places</string>
     <string name="favorite_journeys_title">Favorite journeys</string>
     <string name="favorite_journeys_loading">Loading…</string>
     <string name="favorite_journeys_empty">None yet. Tap Add and pick the two stations.</string>
