@@ -609,8 +609,9 @@
     <string name="favorite_journey_remove">Remove</string>
     <!-- A favorite journey in Settings' list: saved both ways, so a two-way arrow (maintainer, 2026-10-08). -->
     <string name="journey_title_both_ways">%1$s ⇄ %2$s</string>
-    <!-- Under a favorite journey in Settings' list: no direction is watched for alerts. -->
-    <string name="favorite_journey_alerts_off">Alerts off</string>
+    <!-- Under a favorite journey in Settings' list: no direction is watched for alerts, so it says what a
+         tap on the row does (maintainer, 2026-10-10). -->
+    <string name="favorite_journey_alerts_off">Tap to enable alerts</string>
     <!-- Under a favorite journey in Settings' list, one per watched direction: %1$s is where it goes, %2$s its days ("Mon–Fri"), %3$s its times ("08:00–10:00"). -->
     <string name="favorite_journey_alerts_direction">Alerts to %1$s: %2$s %3$s</string>
     <!-- Content description for a favorite journey's row in Settings, which opens its alerts. -->

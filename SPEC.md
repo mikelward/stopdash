@@ -1156,7 +1156,8 @@ for the way the journey was saved and **16:00–18:00** for the way back; guessi
 morning one (from favorite places, say) is a `TODO.md` follow-up. The settings live on the journey's
 own **Alerts** screen, opened by tapping its row in Settings' list (a direction keeps at least one
 day and one window, and has at most four: its switch is how it's turned off; a change that couldn't be saved is said there), which says each watched
-direction's days and times ("Alerts to Waterloo: Mon–Fri 08:00–10:00") or "Alerts off". That list
+direction's days and times ("Alerts to Waterloo: Mon–Fri 08:00–10:00") or, with none watched, what a tap does: "Tap to enable
+alerts" (maintainer, 2026-10-10). That list
 names a journey with a two-way arrow ("Euston ⇄ Waterloo"), since it is saved both ways; a card and
 the Alerts screen's sections keep ➔ for the way shown.
 
