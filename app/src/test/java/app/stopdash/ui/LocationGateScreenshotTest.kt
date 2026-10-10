@@ -22,8 +22,10 @@ import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import app.stopdash.domain.Coordinates
+import app.stopdash.domain.StationMatch
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlaceIcon
@@ -63,7 +65,39 @@ class LocationGateScreenshotTest {
             LocationGate(NearbyStopsViewModel.State.PermissionRequired, onAllow = {}, onRetry = {}, onOpenSettings = {})
         }
         composeRule.onNodeWithText("Departures near you").assertExists()
-        composeRule.onNodeWithText("Allow location").assertExists()
+        composeRule.onNodeWithText("Show stations near me").assertExists()
+    }
+
+    @Test
+    fun `without location the home offers near me first, then the rider's own stations`() {
+        // Big interchanges only, never a rider's own stops (AGENTS *Privacy*).
+        val kingsCross = StationMatch("HUBKGX", "King's Cross St. Pancras", listOf("tube", "national-rail"))
+        val victoria = StationMatch("HUBVIC", "Victoria", listOf("tube", "national-rail"))
+        var allowed = false
+        var opened: StationMatch? = null
+        capture("location-free-home.png") {
+            LocationGate(
+                NearbyStopsViewModel.State.PermissionRequired,
+                onAllow = { allowed = true },
+                onRetry = {},
+                onOpenSettings = {},
+                onFindStation = {},
+                starredStations = listOf(kingsCross),
+                recentStations = listOf(victoria),
+                onOpenStation = { opened = it },
+            )
+        }
+        composeRule.onNodeWithText("Starred").assertExists()
+        composeRule.onNodeWithText("Recent").assertExists()
+        composeRule.onNodeWithText("Find a station").assertExists()
+        // The better experience is one tap, above everything else.
+        val near = composeRule.onNodeWithText("Show stations near me").getBoundsInRoot()
+        val find = composeRule.onNodeWithText("Find a station").getBoundsInRoot()
+        org.junit.Assert.assertTrue(near.top < find.top)
+        composeRule.onNodeWithText("Show stations near me").performClick()
+        org.junit.Assert.assertTrue(allowed)
+        composeRule.onNodeWithText("Victoria").performScrollTo().performClick()
+        assertEquals(victoria, opened)
     }
 
     @Test

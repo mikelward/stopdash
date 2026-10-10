@@ -3240,8 +3240,19 @@ the gate's overflow offers it too (maintainer, 2026-10-02). Opening either takes
 (and its background refresh) out of the picture, so nothing polls TfL behind the static
 screen.
 
-Without a location grant, nothing points the rider somewhere it can't take them (maintainer,
-2026-10-09). Once Android has stopped asking (refused twice), the gate offers **Open settings** from
+### Without location
+
+The app works without a location grant, and asks for it as an offer rather than a wall (maintainer,
+2026-10-09). Until one is given, the home screen leads with **Show stations near me**, the better
+experience a tap away, with the honest line that the position goes to the transport operator, TfL.
+Under it, **Find a station** searches by name, then the rider's **Starred** and
+**Recent** stations, as the station search lists them before anything is typed (ten of each at
+most; the search has the rest), each opening its page in one tap with Back returning home. The
+screen reads from the top and its buttons show at once, so its stations, read from the device each
+time it comes up, arrive and change below the buttons without moving them. So a rider who never shares location still has their
+stations one tap from opening the app.
+
+Nothing points the rider without a grant somewhere it can't take them (maintainer, 2026-10-09). Once Android has stopped asking (refused twice), the gate offers **Open settings** from
 the next start on, not an Allow button Android would refuse unseen; it tells this apart from a
 first open, or an expired one-time grant, by remembering that the last answer was a refusal. An empty widget says **Allow location in StopDash**
 rather than "Open StopDash to load departures", since opening the app alone won't fill it. From…

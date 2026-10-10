@@ -2571,8 +2571,19 @@ class MainActivity : ComponentActivity() {
                                         // "No stops nearby" waits on its chips as the list does, on the locating
                                         // placeholder, so it never shows without the row it heads (Codex on #539).
                                         val gatePending = emptyAt != null && chipsPending(savedPlacesState.read, savedPlaces, gatePlacesOrPending)
+                                        // Without location, the rider's own stations from the search head the gate
+                                        // (SPEC *Without location*), read again each time it comes up, as a star
+                                        // may have changed since. Only without a grant: with one, the gate passes
+                                        // through PermissionRequired on a cold start and never shows them, so
+                                        // nothing is read for it (Codex on #733).
+                                        val gateSearch = if (LocalLocationAllowed.current) null else fromSearchModel()
+                                        val noGrant = state is NearbyStopsViewModel.State.PermissionRequired
+                                        LaunchedEffect(noGrant, gateSearch) { if (noGrant) gateSearch?.refreshYoursUnlessReading() }
+                                        val gateYours = gateSearch?.state?.collectAsStateWithLifecycle()?.value
                                         ReportScreen(UsageEvent.Screen.HOME)
                                         LocationGate(
+                                            // The home without location shows its buttons at once: it reads from the
+                                            // top, so its stations arrive below them without moving them.
                                             state = gateShownState(state, gatePending, permissionDecided),
                                             now = tickingNow(),
                                             approximate = gateBanner == LocationBanner.COARSE,
@@ -2609,6 +2620,15 @@ class MainActivity : ComponentActivity() {
                                             onRouteToPlace = routeToPlace,
                                             // A long press on a chip edits the places, as on the list.
                                             onEditPlaces = { favoritePlacesOpen = true },
+                                            starredStations = gateYours?.homeStarred.orEmpty(),
+                                            recentStations = gateYours?.recentStations.orEmpty(),
+                                            // Its page opens straight over the gate, and Back returns to it.
+                                            onOpenStation = { match ->
+                                                gateSearch?.onOpened(match)
+                                                openStationId = match.id
+                                                openStationName = match.name
+                                                openStationLead = StationLead.of(match)
+                                            },
                                         )
                                     }
                                 }
