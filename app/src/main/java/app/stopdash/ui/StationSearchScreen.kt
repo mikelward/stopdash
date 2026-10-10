@@ -3,6 +3,7 @@ package app.stopdash.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -40,6 +41,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -135,6 +137,12 @@ fun StationSearchScreen(
     // Null keeps the plain search bar.
     fromStation: String? = null,
     onChangeFrom: (() -> Unit)? = null,
+    // A long press on a Recent row asks to take it off the list ([onAskRemoveRecent], null offering no
+    // long press); the question is [StationSearchViewModel.State.pendingRemoval], so it outlives a
+    // rotation, and Remove calls [onRemoveRecent], Cancel [onCancelRemoveRecent].
+    onAskRemoveRecent: ((SearchEntry) -> Unit)? = null,
+    onCancelRemoveRecent: () -> Unit = {},
+    onRemoveRecent: (SearchEntry) -> Unit = {},
 ) {
     BackHandler(onBack = onBack)
     val focus = remember { FocusRequester() }
@@ -256,6 +264,11 @@ fun StationSearchScreen(
                             onStartFromPlace = onStartFromPlace,
                             onPickPlace = onPickPlace,
                             onEditPlaces = onEditPlaces,
+                            onAskRemoveRecent = onAskRemoveRecent,
+                            onCancelRemoveRecent = onCancelRemoveRecent,
+                            onRemoveRecent = onRemoveRecent,
+                            pendingRemoval = state.pendingRemoval,
+                            removeRecentFailed = state.removeRecentFailed,
                             chipsStart = chipsStart,
                             chipsTop = if (onChangeFrom != null) 0.dp else 8.dp,
                         )
@@ -363,6 +376,11 @@ private fun YourStopsList(
     onStartFromPlace: ((TripDestination.Place) -> Unit)? = null,
     onPickPlace: ((FavoritePlace, String) -> Unit)? = null,
     onEditPlaces: (() -> Unit)? = null,
+    onAskRemoveRecent: ((SearchEntry) -> Unit)? = null,
+    onCancelRemoveRecent: () -> Unit = {},
+    onRemoveRecent: (SearchEntry) -> Unit = {},
+    pendingRemoval: SearchEntry? = null,
+    removeRecentFailed: Boolean = false,
     // Where the chips start: the screen's margin, or the To field's edge under the From/To bar.
     chipsStart: Dp = 16.dp,
     // Space above the chips: none right under the From/To bar, so they sit close to the To field
@@ -370,6 +388,16 @@ private fun YourStopsList(
     chipsTop: Dp = 8.dp,
 ) {
     val listState = rememberLazyListState()
+    pendingRemoval?.let { entry ->
+        RemoveRecentDialog(
+            name = when (entry) {
+                is SearchEntry.Stop -> abbreviateStationName(entry.match.name)
+                is SearchEntry.Place -> entry.hit.name
+            },
+            onRemove = { onRemoveRecent(entry) },
+            onDismiss = onCancelRemoveRecent,
+        )
+    }
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -417,10 +445,28 @@ private fun YourStopsList(
         ).forEach { (heading, entries) ->
             if (entries.isEmpty()) return@forEach
             item(key = "heading-$heading") { SectionHeading(stringResource(heading)) }
+            if (heading == R.string.station_search_recent && removeRecentFailed) {
+                // The removal wasn't saved, so the row is back: say so rather than leave it unexplained.
+                item(key = "remove-recent-failed") {
+                    Text(
+                        stringResource(R.string.station_search_remove_recent_failed),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
+            }
+            // Only Recent's rows come off with a long press: a starred stop is removed where it was starred.
+            val onLongPress = onAskRemoveRecent.takeIf { heading == R.string.station_search_recent }
             items(entries, key = { "$heading-${it.key}" }) { entry ->
+                val onLongClick = onLongPress?.let { ask -> { ask(entry) } }
                 when (entry) {
-                    is SearchEntry.Stop -> MatchRow(entry.match, onClick = { onOpenStation(entry.match) })
-                    is SearchEntry.Place -> PlaceHitRow(entry.hit, onClick = { openPlaceHit(entry.hit, onPlacePicked, onOpenPlace) })
+                    is SearchEntry.Stop -> MatchRow(entry.match, onClick = { onOpenStation(entry.match) }, onLongClick = onLongClick)
+                    is SearchEntry.Place -> PlaceHitRow(
+                        entry.hit,
+                        onClick = { openPlaceHit(entry.hit, onPlacePicked, onOpenPlace) },
+                        onLongClick = onLongClick,
+                    )
                 }
                 HorizontalDivider()
             }
@@ -428,6 +474,32 @@ private fun YourStopsList(
     }
 }
 
+
+/** Asks before a long-pressed Recent row ([name]) comes off the list: Remove or Cancel. */
+@Composable
+private fun RemoveRecentDialog(name: String, onRemove: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.station_search_remove_recent_title)) },
+        text = { Text(name) },
+        confirmButton = {
+            TextButton(onClick = onRemove, modifier = Modifier.testTag("removeRecent")) {
+                Text(stringResource(R.string.station_search_remove_recent_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.station_search_remove_recent_cancel)) }
+        },
+    )
+}
+
+/** A row's tap, and its long press where it has one ([onLongClick]). */
+private fun Modifier.rowClicks(onClick: () -> Unit, onLongClick: (() -> Unit)?, longClickLabel: String): Modifier =
+    if (onLongClick == null) {
+        clickable(onClick = onClick)
+    } else {
+        combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = longClickLabel)
+    }
 
 /** A section heading over one group of the pre-query list ("Places", "Recent", "Starred"). */
 @Composable
@@ -466,17 +538,18 @@ private fun PlacesError(onRetry: (() -> Unit)?) {
 /** A geocoded place in the To… results: its name, and a Place/Postcode tag in the right column (where
  *  a stop shows its modes) so a place reads apart from a stop, on one line at [MatchRow]'s density. */
 @Composable
-private fun PlaceHitRow(place: PlaceHit, onClick: () -> Unit) {
+private fun PlaceHitRow(place: PlaceHit, onClick: () -> Unit, onLongClick: (() -> Unit)? = null) {
     val tag = stringResource(
         when (place.kind) {
             PlaceKind.POSTCODE -> R.string.station_search_kind_postcode
             PlaceKind.PLACE -> R.string.station_search_kind_place
         },
     )
+    val removeLabel = stringResource(R.string.station_search_remove_recent_action)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .rowClicks(onClick, onLongClick, removeLabel)
             .heightIn(min = 48.dp)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -500,7 +573,7 @@ private fun PlaceHitRow(place: PlaceHit, onClick: () -> Unit) {
 }
 
 @Composable
-internal fun MatchRow(match: StationMatch, onClick: () -> Unit) {
+internal fun MatchRow(match: StationMatch, onClick: () -> Unit, onLongClick: (() -> Unit)? = null) {
     // One line per result (name, then its modes on the right) so more fit on screen. The name takes
     // priority — it fills the row (pushing the modes to the right edge) and gets every pixel the modes
     // don't need, so a long name like "King's Cross & St Pancras International" shows as much as fits
@@ -511,10 +584,11 @@ internal fun MatchRow(match: StationMatch, onClick: () -> Unit) {
     // FULL station name (not the visual "Intl" abbreviation) plus the modes. A per-child description
     // would be read alone and drop the modes; the visual modes text can ellipsize, but this doesn't.
     val spoken = if (modes.isEmpty()) match.name else "${match.name}, $modes"
+    val removeLabel = stringResource(R.string.station_search_remove_recent_action)
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .rowClicks(onClick, onLongClick, removeLabel)
             // 8dp padding keeps the denser look; the min height holds the row at Android's 48dp tap
             // target, which a one-mode row's ~40dp would otherwise miss (more so at large text scales).
             .heightIn(min = 48.dp)

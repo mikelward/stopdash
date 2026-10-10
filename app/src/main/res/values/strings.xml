@@ -566,6 +566,14 @@
     <!-- Headings over the user's own stops, listed before anything is typed. -->
     <string name="station_search_starred">Starred</string>
     <string name="station_search_recent">Recent</string>
+    <!-- Long-press action on a Recent row in station search, read by TalkBack. -->
+    <string name="station_search_remove_recent_action">Remove from Recent</string>
+    <!-- Title of the dialog confirming a Recent row's removal; the row's name is the body. -->
+    <string name="station_search_remove_recent_title">Remove from Recent?</string>
+    <string name="station_search_remove_recent_confirm">Remove</string>
+    <string name="station_search_remove_recent_cancel">Cancel</string>
+    <!-- Under the Recent heading when a removal couldn't be saved on the device, so the row is still listed. -->
+    <string name="station_search_remove_recent_failed">Couldn\'t remove that from Recent</string>
     <!-- Atop the To… search when the saved places couldn't be read, with a Retry. -->
     <string name="station_search_places_error">Couldn\'t load your places</string>
     <!-- Right-column tag on a geocoded To… result, telling a place/postcode apart from a stop. -->

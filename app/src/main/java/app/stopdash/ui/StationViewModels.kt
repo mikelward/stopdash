@@ -30,6 +30,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -80,6 +81,9 @@ class StationSearchViewModel(
     // Remembers a geocoded place picked from a To… search, in the same recent list; blocking, run on
     // [io]. Only a To… picker supplies it — the default keeps none.
     private val recordPlace: suspend (PlaceHit) -> Unit = {},
+    // Takes a pick off the recent list, the rider having confirmed it; false when it couldn't be saved.
+    // Blocking, run on [io].
+    private val recordRemove: suspend (SearchEntry) -> Boolean = { true },
     private val io: CoroutineDispatcher = Dispatchers.IO,
     // Ranks and merges each answer, off the main thread (AGENTS.md *Main thread*).
     private val compute: CoroutineDispatcher = Workers.compute,
@@ -95,6 +99,12 @@ class StationSearchViewModel(
         // list holds the geocoded places a To… search picked too, in the order picked.
         val favorites: List<StationMatch> = emptyList(),
         val recent: List<SearchEntry> = emptyList(),
+        // A Recent row's removal couldn't be saved, so it's listed again: the search says so until the
+        // rider next long-presses a Recent row ([askRemoveRecent]), not merely until it's shown again, so a
+        // failure landing while the search is closed is still said when it reopens (Codex, #745).
+        val removeRecentFailed: Boolean = false,
+        // The Recent row a long press asked to remove, until the rider confirms or cancels.
+        val pendingRemoval: SearchEntry? = null,
         // What the location-free home lists (SPEC *Without location*): the starred stations and the
         // recent ones less those starred, each bounded so the home's rows don't grow with the
         // rider's data (Find a station lists the rest). Worked out with the read, off the main thread.
@@ -132,13 +142,24 @@ class StationSearchViewModel(
         data class Failed(val kind: DeparturesUiState.Error.Kind) : Result
     }
 
-    private val _state = MutableStateFlow(State(query = savedState.get<String>(KEY_QUERY).orEmpty()))
+    private val _state = MutableStateFlow(
+        State(
+            query = savedState.get<String>(KEY_QUERY).orEmpty(),
+            // Saved too, so a failure is still said after process death (Codex, #745).
+            removeRecentFailed = savedState.get<Boolean>(KEY_REMOVE_FAILED) == true,
+        ),
+    )
     val state: StateFlow<State> = _state.asStateFlow()
 
     private var search: Job? = null
 
     // Taken by each recent-list write in turn ([record]).
     private val recording = Mutex()
+
+    // The Recent rows whose removal is confirmed but not yet written, by [SearchEntry.key]: every read
+    // published leaves them out, so no read of the file from before a write can list one again, however
+    // the reads and writes interleave (Codex, #745). Each leaves once its write is done.
+    private val removing: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
     // TfL's answer behind the matches on screen, for the query it answered: an open re-ranks it
     // rather than asking again. Dropped as each search starts, so a failed one never borrows it.
@@ -177,6 +198,7 @@ class StationSearchViewModel(
     fun clear() {
         search?.cancel()
         savedState.remove<String>(KEY_QUERY)
+        savedState.remove<String>(KEY_PENDING_REMOVAL)
         remoteFor = null
         entriesFor = null
         _state.update {
@@ -188,6 +210,8 @@ class StationSearchViewModel(
                 favoritePlaces = it.favoritePlaces,
                 favoritePlacesFailed = it.favoritePlacesFailed,
                 yoursRead = it.yoursRead,
+                // Said until the next long press, not until the search closes (Codex, #745).
+                removeRecentFailed = it.removeRecentFailed,
             )
         }
     }
@@ -197,6 +221,11 @@ class StationSearchViewModel(
      * it last did. The typed search picks the new read up from its next letter.
      */
     fun refreshYours() {
+        reread()
+    }
+
+    // The user's stops read again after a write of this model's own.
+    private fun reread() {
         yours = readYours()
     }
 
@@ -217,7 +246,7 @@ class StationSearchViewModel(
     fun onOpened(match: StationMatch) {
         viewModelScope.launch {
             record { recordOpen(match) }
-            refreshYours()
+            reread()
             rerank()
         }
     }
@@ -229,7 +258,74 @@ class StationSearchViewModel(
     fun onPlaceOpened(hit: PlaceHit) {
         viewModelScope.launch {
             record { recordPlace(hit) }
-            refreshYours()
+            reread()
+        }
+    }
+
+    /**
+     * A long press on Recent's [entry]: ask whether to remove it. Held here, not in the screen, so a
+     * rotation keeps the question up for the same row; its key is saved too, so after process death the
+     * question comes back once Recent is read again (Codex, #745).
+     */
+    fun askRemoveRecent(entry: SearchEntry) {
+        savedState[KEY_PENDING_REMOVAL] = entry.key
+        // A new removal is under way, so an earlier one's failure has been read: it's no longer said.
+        savedState.remove<Boolean>(KEY_REMOVE_FAILED)
+        _state.update { it.copy(pendingRemoval = entry, removeRecentFailed = false) }
+    }
+
+    /** The removal asked about isn't wanted. */
+    fun cancelRemoveRecent() {
+        savedState.remove<String>(KEY_PENDING_REMOVAL)
+        _state.update { it.copy(pendingRemoval = null) }
+    }
+
+    /**
+     * Take [entry] off the recent list (a long press, confirmed): gone from the list at once, then from
+     * the device, after any pick still being written, and the user's stops read again. The write
+     * finishes even if the search closes.
+     */
+    fun onRemoveRecent(entry: SearchEntry) {
+        savedState.remove<String>(KEY_PENDING_REMOVAL)
+        _state.update { it.copy(pendingRemoval = null) }
+        // Left out of every read from now until its write is done, whatever else is written meanwhile.
+        removing += entry.key
+        // Gone from the list at once, filtered on compute, not in the tap (AGENTS.md *Main thread*): apart
+        // from the write, since [removing] already keeps every read from listing it.
+        val hidden = viewModelScope.launch(compute) {
+            _state.update { st ->
+                // A save that failed before this ran has let the row back: it stays.
+                if (entry.key !in removing) return@update st
+                st.copy(
+                    recent = st.recent.filterNot { it.key == entry.key },
+                    recentStations = st.recentStations.filterNot { it.key == entry.key },
+                )
+            }
+        }
+        viewModelScope.launch {
+            var saved = true
+            // Its place among the writes is taken at once, so a pick tapped after it is written after it
+            // (Codex, #745).
+            record { saved = recordRemove(entry) }
+            // A failed save leaves the row on the device: read back, it returns, and the search says why,
+            // marked first so it never shows again unexplained. Only the rider's next long press clears it,
+            // never another write's read, nor the search shown again.
+            if (saved) {
+                // The row off the screen first, however busy compute is, so it can't be left up and tappable
+                // once its key is gone (Codex, #745).
+                hidden.join()
+                // A read begun before the write may hold the file as it was: superseded before the row is
+                // let back into reads, so only one begun after the write can publish.
+                reread()
+                removing -= entry.key
+            } else {
+                savedState[KEY_REMOVE_FAILED] = true
+                _state.update { it.copy(removeRecentFailed = true) }
+                // Still on the device, so back in reads before the read that lists it again.
+                removing -= entry.key
+                reread()
+            }
+            rerank()
         }
     }
 
@@ -281,21 +377,40 @@ class StationSearchViewModel(
         return viewModelScope.async(io) {
             // A star the device couldn't name may be a listed station: name it from the bundled list.
             val loaded = loadYours()
-            val named = if (loaded.unnamedStarred.isEmpty()) loaded else loaded.namedFrom(index.await())
+            val unfiltered = if (loaded.unnamedStarred.isEmpty()) loaded else loaded.namedFrom(index.await())
             // Read alongside the stops so the To… picker shows both from the same open; independent, so
             // a places read failure never drops the stops. Null = couldn't read (a retryable notice),
             // distinct from an empty list (genuinely no saved places).
             val places = loadPlaces()
+            // From here to publishing nothing suspends: the removals are those confirmed by now, not when
+            // the read began, so one confirmed while it read stays gone (Codex, #745).
+            val named = unfiltered.withoutRecent(removing.toSet())
             val homeStarred = named.homeStarred
             val recentStations = named.homeRecent()
+            // A question about a removal that process death interrupted, asked again of the row read
+            // back; gone if the row is. The key as saved now, so one asked while this read ran is kept.
+            val pendingKey = savedState.get<String>(KEY_PENDING_REMOVAL)
+            val restoredPending = pendingKey?.let { key -> named.recentPicks.firstOrNull { it.key == key } }
             named.also { read ->
                 if (generation == yoursGeneration) {
+                    // Dropped only while it is still the key this read looked for and found no row for.
+                    if (pendingKey != null && restoredPending == null && savedState.get<String>(KEY_PENDING_REMOVAL) == pendingKey) {
+                        savedState.remove<String>(KEY_PENDING_REMOVAL)
+                    }
                     _state.update {
+                        // Still asked at the publish itself: a Cancel or Remove on the main thread since the
+                        // read began has dropped the key (Codex, #745).
+                        val asked = restoredPending?.takeIf { p -> savedState.get<String>(KEY_PENDING_REMOVAL) == p.key }
+                        // The removals as they stand at the publish itself, inside the atomic update: one
+                        // confirmed on the main thread after the filter above is still left out, and the
+                        // optimistic filter it launches runs after it in any case (Codex, #745).
+                        val shown = read.withoutRecent(removing.toSet())
                         it.copy(
+                            pendingRemoval = it.pendingRemoval ?: asked,
                             favorites = read.favorites,
-                            recent = read.recentPicks,
+                            recent = shown.recentPicks,
                             homeStarred = homeStarred,
-                            recentStations = recentStations,
+                            recentStations = if (shown === read) recentStations else shown.homeRecent(),
                             favoritePlaces = places.orEmpty(),
                             favoritePlacesFailed = places == null,
                             yoursRead = true,
@@ -435,6 +550,8 @@ class StationSearchViewModel(
         const val LOCAL_PREVIEW = 4
         const val DEBOUNCE_MILLIS = 300L
         private const val KEY_QUERY = "query"
+        private const val KEY_PENDING_REMOVAL = "pendingRemoval"
+        private const val KEY_REMOVE_FAILED = "removeRecentFailed"
     }
 }
 

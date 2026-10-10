@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import app.stopdash.R
 import app.stopdash.domain.PendingEnd
+import app.stopdash.domain.SearchEntry
 
 /**
  * Adding a favorite journey from Settings (SPEC *Journeys*): the station search picks where it starts,
@@ -27,6 +28,11 @@ fun FavoriteJourneyPicker(
     onChangeFrom: () -> Unit,
     onBack: () -> Unit,
     autoFocus: Boolean = true,
+    // A long press on a Recent row asks to remove it, as in From…'s own search, whose list this is
+    // ([StationSearchScreen]'s removal callbacks).
+    onAskRemoveRecent: ((SearchEntry) -> Unit)? = null,
+    onCancelRemoveRecent: () -> Unit = {},
+    onRemoveRecent: (SearchEntry) -> Unit = {},
 ) {
     if (from == null) {
         StationSearchScreen(
@@ -40,6 +46,9 @@ fun FavoriteJourneyPicker(
             // The journey keeps the place's id, so the place stays the one source of where it is.
             onPickPlace = { place, name -> onPickFrom(PendingEnd.Place(place.id, name)) },
             onRetryPlaces = onRetryPlaces,
+            onAskRemoveRecent = onAskRemoveRecent,
+            onCancelRemoveRecent = onCancelRemoveRecent,
+            onRemoveRecent = onRemoveRecent,
         )
     } else {
         StationSearchScreen(
@@ -54,6 +63,9 @@ fun FavoriteJourneyPicker(
             onRetryPlaces = onRetryPlaces,
             fromStation = from.name,
             onChangeFrom = onChangeFrom,
+            onAskRemoveRecent = onAskRemoveRecent,
+            onCancelRemoveRecent = onCancelRemoveRecent,
+            onRemoveRecent = onRemoveRecent,
         )
     }
 }

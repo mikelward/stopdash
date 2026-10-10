@@ -2082,6 +2082,8 @@ class MainActivity : ComponentActivity() {
                                                     loadYours = { loadYourStops(appContext, recents) },
                                                     // The favorite places, as chips for either end (maintainer, 2026-10-10).
                                                     loadPlaces = { loadFavoritePlaces(appContext) },
+                                                    // A Recent row removed here leaves From…'s list, which this is.
+                                                    recordRemove = { withContext(Dispatchers.IO) { recents.remove(it) } },
                                                     warn = ::logDepartureWarning,
                                                 )
                                             }
@@ -2104,6 +2106,9 @@ class MainActivity : ComponentActivity() {
                                         onQueryChange = search::onQueryChange,
                                         onRetry = search::retry,
                                         onRetryPlaces = search::refreshYours,
+                                        onAskRemoveRecent = search::askRemoveRecent,
+                                        onCancelRemoveRecent = search::cancelRemoveRecent,
+                                        onRemoveRecent = search::onRemoveRecent,
                                         onPickFrom = { end ->
                                             search.clear()
                                             journeyFromName = end.name
@@ -3856,6 +3861,7 @@ class MainActivity : ComponentActivity() {
                     // The saved places, chips after "Here" to start from (maintainer, 2026-10-04).
                     loadPlaces = { loadFavoritePlaces(appContext) },
                     recordOpen = { recents.add(it) },
+                    recordRemove = { withContext(Dispatchers.IO) { recents.remove(it) } },
                     warn = ::logDepartureWarning,
                 )
             }
@@ -3939,6 +3945,9 @@ class MainActivity : ComponentActivity() {
             StationSearchScreen(
                 state = state,
                 onQueryChange = search::onQueryChange,
+                onAskRemoveRecent = search::askRemoveRecent,
+                onCancelRemoveRecent = search::cancelRemoveRecent,
+                onRemoveRecent = search::onRemoveRecent,
                 onOpenStation = { match ->
                     search.onOpened(match)
                     onOpenStation(match)
@@ -4484,6 +4493,7 @@ class MainActivity : ComponentActivity() {
                         recordOpen = { recents.add(it) },
                         // A geocoded place picked is remembered with the stops, where only To… lists it.
                         recordPlace = { recents.addPlace(it) },
+                        recordRemove = { withContext(Dispatchers.IO) { recents.remove(it) } },
                         warn = ::logDepartureWarning,
                     )
                 }
@@ -4539,6 +4549,9 @@ class MainActivity : ComponentActivity() {
             StationSearchScreen(
                 state = state,
                 onQueryChange = search::onQueryChange,
+                onAskRemoveRecent = search::askRemoveRecent,
+                onCancelRemoveRecent = search::cancelRemoveRecent,
+                onRemoveRecent = search::onRemoveRecent,
                 onOpenStation = { match ->
                     toStores.clearAll()
                     search.onOpened(match)

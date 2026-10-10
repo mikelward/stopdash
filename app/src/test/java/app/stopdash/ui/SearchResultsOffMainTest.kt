@@ -7,6 +7,7 @@ import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FavoritePlacesStore
 import app.stopdash.domain.IndexedStation
 import app.stopdash.domain.PlaceCandidate
+import app.stopdash.domain.RecentStations
 import app.stopdash.domain.SearchEntry
 import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationIndex
@@ -132,6 +133,74 @@ class SearchResultsOffMainTest {
         releaseCompute()
         assertFalse(vm.state.value.searching)
         assertTrue(vm.matches()!!.entries.single() is SearchEntry.Place)
+    }
+
+    @Test
+    fun removingARecentPickFiltersOnCompute() {
+        val pick = SearchEntry.Stop(oxford)
+        val file = mutableListOf(oxford)
+        val vm = StationSearchViewModel(
+            Finder(),
+            loadYours = { YourStops(recent = file.toList()) },
+            // The write held until compute has run, so the filter alone can take the row off.
+            recordRemove = { removed -> file.removeAll { it.key == removed.key }; true },
+            io = compute, compute = compute, debounceMillis = 0,
+        )
+        mainIdle()
+        releaseCompute()
+        assertEquals(listOf<SearchEntry>(pick), vm.state.value.recent)
+        vm.onRemoveRecent(pick)
+        mainIdle()
+        assertEquals("removed with compute held", listOf<SearchEntry>(pick), vm.state.value.recent)
+        computeScheduler.advanceUntilIdle()
+        assertTrue(vm.state.value.recent.isEmpty())
+    }
+
+    @Test
+    fun aPickOpenedAfterARemovalIsWrittenAfterItWhileComputeIsBusy() {
+        // Eight picks, the most a list keeps: remove the first, then open a new station before compute
+        // runs. The removal's write keeps its place, so the open drops nothing (Codex, #745).
+        val stops = (1..RecentStations.MAX).map { StationMatch("94000000000$it", "Example $it", listOf("tube")) }
+        val file = stops.map<StationMatch, SearchEntry>(SearchEntry::Stop).toMutableList()
+        fun write(picks: List<SearchEntry>) { file.clear(); file.addAll(picks) }
+        val vm = StationSearchViewModel(
+            Finder(),
+            recordOpen = { write(RecentStations.add(file.toList(), SearchEntry.Stop(it))) },
+            recordRemove = { write(RecentStations.remove(file.toList(), it)); true },
+            io = main, compute = compute, debounceMillis = 0,
+        )
+        mainIdle()
+        releaseCompute()
+        vm.onRemoveRecent(SearchEntry.Stop(stops[0]))
+        vm.onOpened(oxford)
+        mainIdle()
+        releaseCompute()
+        releaseCompute()
+        assertEquals(listOf<SearchEntry>(SearchEntry.Stop(oxford)) + stops.drop(1).map(SearchEntry::Stop), file)
+    }
+
+    @Test
+    fun aRemovalSavedBeforeComputeRunsIsStillTakenOffTheScreen() {
+        // The write (on io, here main) lands while compute is held, and the read after it is slow: the
+        // row must still come off the screen once compute runs (Codex, #745).
+        val pick = SearchEntry.Stop(oxford)
+        val file = mutableListOf(oxford)
+        var slowRead: CompletableDeferred<Unit>? = null
+        val vm = StationSearchViewModel(
+            Finder(),
+            loadYours = { slowRead?.await(); YourStops(recent = file.toList()) },
+            recordRemove = { removed -> file.removeAll { it.key == removed.key }; true },
+            io = main, compute = compute, debounceMillis = 0,
+        )
+        mainIdle()
+        releaseCompute()
+        assertEquals(listOf<SearchEntry>(pick), vm.state.value.recent)
+        slowRead = CompletableDeferred()
+        vm.onRemoveRecent(pick)
+        mainIdle()
+        assertTrue("written with compute held", file.isEmpty())
+        releaseCompute()
+        assertTrue(vm.state.value.recent.isEmpty())
     }
 
     @Test

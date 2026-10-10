@@ -48,21 +48,30 @@ internal class FileRecentStationsStore(
 
     /** Put [opened] at the front of the list ([RecentStations.add]) and save it. */
     @Synchronized
-    fun add(opened: StationMatch) = save(RecentStations.add(loadPicks(), SearchEntry.Stop(opened)))
+    fun add(opened: StationMatch) { save(RecentStations.add(loadPicks(), SearchEntry.Stop(opened))) }
 
     /** Put the geocoded place [picked] at the front of the list, as a station opened is, and save it. */
     @Synchronized
-    fun addPlace(picked: PlaceHit) = save(RecentStations.add(loadPicks(), SearchEntry.Place(picked)))
+    fun addPlace(picked: PlaceHit) { save(RecentStations.add(loadPicks(), SearchEntry.Place(picked))) }
 
-    private fun save(picks: List<SearchEntry>) {
-        try {
+    /**
+     * Take [removed], a pick as the search listed it, off the list ([RecentStations.remove]) and save it;
+     * false when the save failed (logged), so the search can say the row stayed.
+     */
+    @Synchronized
+    fun remove(removed: SearchEntry): Boolean = save(RecentStations.remove(loadPicks(), removed))
+
+    // Whether the list was saved; a failure is logged and the old file left as it was.
+    private fun save(picks: List<SearchEntry>): Boolean {
+        return try {
             // Its directory is named, not checked, when the store is built ([AppDirs]), so made here.
             tmp.parentFile?.mkdirs()
             tmp.writeText(json.encodeToString(PersistedRecentStations(picks.map { it.toPersisted() })))
             // Replace in one step, so a reader never sees a half-written file.
-            if (!tmp.renameTo(file)) warn("recent stations not saved: rename failed")
+            tmp.renameTo(file).also { if (!it) warn("recent stations not saved: rename failed") }
         } catch (e: IOException) {
             warn("recent stations not saved: ${e::class.simpleName}")
+            false
         } finally {
             if (tmp.exists()) tmp.delete()
         }
