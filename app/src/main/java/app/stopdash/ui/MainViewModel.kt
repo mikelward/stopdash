@@ -7,6 +7,7 @@ import app.stopdash.domain.AlertBehind
 import app.stopdash.domain.AlertsBehindStore
 import app.stopdash.domain.Dismissals
 import app.stopdash.domain.GlanceRows
+import app.stopdash.domain.NearbyLayout
 import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.RailFeed
@@ -3235,17 +3236,17 @@ private sealed interface HeldLine {
 }
 
 /** Where else the rider may be: both tiers' stops, each with its distance. */
+@WorkerThread
 private fun nearbyPlacesOf(
     eager: List<StopRef>,
     more: List<NearbySelection.NearbyCluster>,
     distanceMeters: Map<String, Double>,
-): List<Terminating.Place> {
-    val all = eager.map { Triple(it.id, it.clusterId, it.name) } +
-        more.flatMap { cluster -> cluster.stops.map { Triple(it.id, it.clusterId, it.name) } }
-    return all.mapNotNull { (id, cluster, name) ->
-        distanceMeters[id]?.let { Terminating.Place(id, cluster, name, it) }
-    }
-}
+): List<Terminating.Place> =
+    // Each stop once, as the widget's own refresh lays them out ([NearbyLayout]).
+    (eager.map { NearbyLayout.place(it.id, it.clusterId, it.name, distanceMeters) } +
+        NearbyLayout.places(more.flatMap { it.stops }, distanceMeters))
+        .filterNotNull()
+        .distinctBy { it.stopId }
 
 /** [loaded] with each stop's nearer places taken from [places], or null when none moved. */
 private fun remeasured(loaded: DeparturesUiState.Loaded, places: List<Terminating.Place>): DeparturesUiState.Loaded? {
@@ -3273,8 +3274,9 @@ private class WidgetChoicesInput(
 )
 
 /** [ids] that have a distance in [distanceMeters], nearest first (a tie by id, so the order is stable). */
+@WorkerThread
 internal fun nearestFirstOf(ids: Collection<String>, distanceMeters: Map<String, Double>): List<String> =
-    ids.filter { it in distanceMeters }.sortedWith(compareBy<String> { distanceMeters.getValue(it) }.thenBy { it })
+    NearbyLayout.nearestFirst(ids, distanceMeters)
 
 /**
  * Every nearest-first order asked for in this process, numbered, and the lock their writes take in turn:

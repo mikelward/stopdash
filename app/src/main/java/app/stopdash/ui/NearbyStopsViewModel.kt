@@ -10,6 +10,7 @@ import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LocationFix
 import app.stopdash.domain.LocationProvider
 import app.stopdash.domain.MoveFollow
+import app.stopdash.domain.NearbyLayout
 import app.stopdash.domain.NearbySelection
 import app.stopdash.domain.NearestByLine
 import app.stopdash.domain.NearestStops
@@ -834,19 +835,10 @@ class NearbyStopsViewModel(
         val counted = UsageEvent.NearbyStops(found)
         // A hidden mode's stops aren't picked, so they cost no request — unless that would leave
         // nothing at all: then the full set is picked and the list, filtered by mode, says what's
-        // hidden rather than claiming nothing runs nearby (SPEC principle 2).
-        // A searched station's own stops stand where the rider is taken to be (From…), so they're
-        // 0 m away for picking as well as for showing: placed at the fix before either.
-        val placed = if (anchorStopIds.isEmpty()) {
-            found
-        } else {
-            found.map { if (it.id in anchorStopIds) it.copy(latitude = fix.latitude, longitude = fix.longitude) else it }
-        }
-        val shown = HiddenModes.stops(placed, hidden)
-        val result = NearbySelection.selectClusters(
-            shown, fix.latitude, fix.longitude, outerRadiusMeters = radiusMeters,
-        ).takeIf { it.eager.isNotEmpty() }
-            ?: NearbySelection.selectClusters(placed, fix.latitude, fix.longitude, outerRadiusMeters = radiusMeters)
+        // hidden rather than claiming nothing runs nearby (SPEC principle 2). A searched station's
+        // own stops stand where the rider is taken to be (From…): 0 m away for picking and showing.
+        // The same picking the widget's own refresh does ([NearbyLayout]).
+        val result = NearbyLayout.pick(found, fix, hidden, radiusMeters, anchorStopIds)
         // Eager empty means no stop with a route in range (each present mode contributes its
         // nearest; a route-less stop is never eager and has nothing to show) — nothing nearby runs.
         if (result.eager.isEmpty()) {
@@ -858,46 +850,17 @@ class NearbyStopsViewModel(
                 "nearby lookup (no stops)"
             } else {
                 "nearby lookup (no stops with routes): " + routeless.joinToString {
-                    val meters = if (it.id in anchorStopIds) {
-                        0.0
-                    } else {
-                        NearestStops.distanceMeters(fix.latitude, fix.longitude, it.latitude, it.longitude)
-                    }
-                    "${it.id} ${meters.roundToLong()} m"
+                    "${it.id} ${result.distances[it.id]?.roundToLong() ?: "?"} m"
                 } + ","
             }
             return Picked(State.Empty(location = fix), counted, warning, described)
         }
-        // The anchors were moved only for picking: the set keeps their real positions (a stop's
-        // map opens where it stands), and their distance is set to 0 below.
-        val real = if (anchorStopIds.isEmpty()) emptyMap() else found.associateBy { it.id }
-        fun restored(clusters: List<NearbySelection.NearbyCluster>) =
-            if (real.isEmpty()) {
-                clusters
-            } else {
-                clusters.map { c ->
-                    // Only the position goes back: the picked copy's lines stay (a hidden mode's are off it).
-                    c.copy(
-                        stops = c.stops.map { picked ->
-                            real[picked.id]?.let { picked.copy(latitude = it.latitude, longitude = it.longitude) } ?: picked
-                        },
-                    )
-                }
-            }
-        val eager = restored(result.eager)
-        val more = restored(result.more)
+        val eager = result.eager
+        val more = result.more
         // Distance per stop, over BOTH tiers (in memory only), so a stop an opened card brings in is
         // collapsed and ordered like an eager one — the departures list shows a line once, from its nearest stop
         // (SPEC *Finding stops → Near me now*). Never persisted or logged; kept in RecentPositions (below).
-        val distances = (eager + more)
-            .flatMap { it.stops }
-            .associate {
-                it.id to if (it.id in anchorStopIds) {
-                    0.0
-                } else {
-                    NearestStops.distanceMeters(fix.latitude, fix.longitude, it.latitude, it.longitude)
-                }
-            }
+        val distances = result.distances
         // Which stops a fix produced, and how far each is, go with its position to RecentPositions
         // only: several stop distances pin the position down (stops' positions are public), so the
         // persisted log gets the counts alone (maintainer, 2026-09-25).

@@ -105,13 +105,11 @@ object WidgetFollow {
         verdicts: Set<AlertBehind> = emptySet(),
         radiusMeters: Int = NearbySelection.OUTER_RADIUS_METERS,
     ): Followed {
-        val shown = HiddenModes.stops(found, hidden)
-        val result = NearbySelection.selectClusters(shown, at.latitude, at.longitude, outerRadiusMeters = radiusMeters)
-            .takeIf { it.eager.isNotEmpty() }
-            ?: NearbySelection.selectClusters(found, at.latitude, at.longitude, outerRadiusMeters = radiusMeters)
+        // Picked, measured and ordered as the app's list does it ([NearbyLayout]).
+        val result = NearbyLayout.pick(found, at, hidden, radiusMeters)
         val eager = result.eager.flatMap { it.stops }
         val all = eager + result.more.flatMap { it.stops }
-        val meters = all.associate { it.id to NearestStops.distanceMeters(at.latitude, at.longitude, it.latitude, it.longitude) }
+        val meters = result.distances
         val nearby = eager.mapTo(LinkedHashSet()) { it.id }
         val held = prior.stops.associateBy { it.stopId }
         // The set stored and every stop of it held: nothing to change. A set stored whose stops the snapshot
@@ -120,8 +118,8 @@ object WidgetFollow {
         val origins = prior.journeys.mapTo(HashSet()) { it.originId }
         // Nor one still holding a stop that's neither nearby nor a journey's origin (an empty set's layout
         // that wasn't stored), whose arrivals would be fetched for rows the widget no longer shows.
-        val places = all.distinctBy { it.id }.map { Terminating.Place(it.id, it.clusterId, it.name, meters.getValue(it.id)) }
-        val nearestFirst = eager.sortedBy { meters.getValue(it.id) }.map { it.id }.distinct()
+        val places = NearbyLayout.places(all, meters)
+        val nearestFirst = NearbyLayout.nearestFirst(eager.map { it.id }, meters)
         // The same stops can sit in a different order, or with other stops nearer, from a new spot: the
         // layout is position-derived, so it's compared too (Codex on #711).
         // The stop each line is shown from, worked out from here as the app works it out (keeping a
