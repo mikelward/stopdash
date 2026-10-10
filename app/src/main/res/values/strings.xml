@@ -774,7 +774,7 @@
     <!-- Content description for a place chip on the From… search: the trip starts there. %1$s is the label. -->
     <string name="favorite_place_start_description">Start from %1$s</string>
     <string name="settings_title">Settings</string>
-    <string name="settings_live_widget_refresh_title">Refresh widget every minute</string>
+    <string name="settings_live_widget_refresh_title">Automatically update widget</string>
     <string name="settings_live_widget_refresh_summary">Refreshes the home-screen widget about once a minute in the background. Uses more battery and data.</string>
     <!-- Settings' Location row: how much location StopDash may use, from Android's grant. Tapping it
          asks for precise location, or opens Android's location settings for StopDash. -->

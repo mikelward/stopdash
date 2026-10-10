@@ -40,7 +40,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * The Settings screen in both toggle states (SPEC D5): the "refresh widget every minute" row off
+ * The Settings screen in both toggle states (SPEC D5): the "Automatically update widget" row off
  * (the default) and on. The composable is UI-only — persistence and the WorkManager scheduler are
  * the caller's job — so it renders under Robolectric with no Android services and no user data.
  */
@@ -61,7 +61,7 @@ class SettingsScreenScreenshotTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithText("Settings").assertIsDisplayed()
-        composeRule.onNodeWithText("Refresh widget every minute").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Automatically update widget").performScrollTo().assertIsDisplayed()
         captureSnapshot("settings-off.png")
     }
 
@@ -426,7 +426,7 @@ class SettingsScreenScreenshotTest {
         }
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText("Refresh widget every minute").performScrollTo().performClick()
+        composeRule.onNodeWithText("Automatically update widget").performScrollTo().performClick()
         composeRule.runOnIdle { assert(latest == true) }
     }
 
