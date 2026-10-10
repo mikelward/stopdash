@@ -3530,6 +3530,12 @@ and these carry the rest as their own PRs:
             stop's fresh arrivals, the app's rule; maintainer, 2026-10-10).
       - [ ] One fetch: the worker on the app's reuse windows, shared-cache rule and stop closures
             (a cost question: the worker fetches no closures today).
+- [ ] **A National Rail station's rows can tie on age (Codex on #750; maintainer 2026-10-10: leave
+      as is for now).** A station's stamp is its shared National Rail board's time, the oldest part
+      of its arrivals. When the app and the widget both reuse the same board, their rows carry the
+      same stamp, and a save keeps the caller's copy even if the other side's TfL part is seconds
+      newer. Closing it needs a second, refresh-time stamp per stop in the stored snapshot (or the
+      TfL and National Rail parts merged separately).
 - [ ] **Line choices catch up only at the next save (#748, maintainer 2026-10-10).** The stop
       each line shows from (`nearbyChoices`) is worked out when the snapshot is written, over the
       dismissals and alert-behind verdicts at that moment. Both change without a write: a
