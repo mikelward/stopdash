@@ -138,10 +138,15 @@ object WidgetRefresh {
                 async { if (recent(stop) || sharedByStop[i] != null) null else fetchArrivals(stop.stopId) }
             }.awaitAll()
         }
+        // Worth storing only when something came back ([anyNew]) and a nearby stop's arrivals are fresh
+        // ([SaveGate]): fetched now, or carried over as fetched moments ago, as the app counts them.
+        val judged = SaveGate.judged(prior.stops, SaveGate.nearIds(prior)).mapTo(HashSet()) { it.stopId }
+        var anyNew = false
         var anyFresh = false
         val stops = prior.stops.mapIndexed { i, stop ->
             sharedByStop[i]?.let { entry ->
-                anyFresh = true
+                anyNew = true
+                if (stop.stopId in judged) anyFresh = true
                 // With the National Rail feed that fetch found ("No key" once a key is removed).
                 return@mapIndexed stop.copy(
                     departures = entry.departures,
@@ -150,14 +155,18 @@ object WidgetRefresh {
                     railFeed = entry.railFeed,
                 )
             }
-            if (recent(stop)) return@mapIndexed stop
+            if (recent(stop)) {
+                if (stop.stopId in judged) anyFresh = true
+                return@mapIndexed stop
+            }
             when (val fetched = fetchedByStop[i]) {
                 // Keep the aged last-good, but mark it not-fresh so its stale withhold fires and
                 // it can't render as fresh within the freshness window (Codex P1 on #56). Its own
                 // fetchedAt is preserved and still drives age-based staleness.
                 null -> stop.copy(arrivalsFresh = false)
                 else -> {
-                    anyFresh = true
+                    anyNew = true
+                    if (stop.stopId in judged) anyFresh = true
                     val stamp = SteadyClock.stamp(now)
                     stop.copy(
                         departures = fetched,
@@ -168,7 +177,7 @@ object WidgetRefresh {
                 }
             }
         }
-        if (!anyFresh) return null
+        if (!anyNew || !anyFresh) return null
         // The whole-screen stamp is the freshest stop's age (matches DeparturesSnapshot).
         // The journeys the app last worked out ride along unchanged (route data isn't refetched here).
         return prior.copy(stops = stops, fetchedAt = stops.maxOf { it.fetchedAt })

@@ -9,6 +9,7 @@ import app.stopdash.domain.Dismissals
 import app.stopdash.domain.GlanceRows
 import app.stopdash.domain.NearbyLayout
 import app.stopdash.domain.ArrivalsCache
+import app.stopdash.domain.SaveGate
 import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.RailFeed
 import app.stopdash.domain.Departure
@@ -351,15 +352,6 @@ class MainViewModel(
                 null -> null
             }
         }.toMap()
-
-    /**
-     * Whether a fetch's widget snapshot is worth saving: judged on the nearby stops whenever any were
-     * asked for — even if none came back — so a journey origin's fresh arrivals alone never save
-     * failed nearby stops over the last good ones.
-     */
-    @WorkerThread
-    private fun widgetJudged(stops: List<StopArrivals>, nearIds: Set<String>): List<StopArrivals> =
-        if (nearIds.isEmpty()) stops else stops.filter { it.stopId in nearIds }
 
     /**
      * The favorite journeys' [keys], their cards' latest [checks], and the stop each is shown from
@@ -2242,7 +2234,7 @@ class MainViewModel(
                 val snapshot = (newState as? DeparturesUiState.Loaded)
                     ?.let { forWidget(DeparturesSnapshot(it.stops, it.fetchedAt), nearIds, journeyIds, distances) }
                 val widgetStops = snapshot?.stops.orEmpty()
-                val judged = widgetJudged(widgetStops, nearIds)
+                val judged = SaveGate.judged(widgetStops, nearIds)
                 val carriedFresh = judged.any { it.stopId in reuse && it.arrivalsFresh }
                 val freshNear = judged.any { it.stopId in batch.freshArrivalStopIds }
                 val authoritative = freshNear || carriedFresh || (widgetStops.isEmpty() && firstError == null)
@@ -2269,7 +2261,7 @@ class MainViewModel(
             // arrivals came from a successful fetch moments ago — so a refresh that reuses every stop
             // still saves. Otherwise a refresh that cancels the previous one's save and then reuses
             // its stops would leave the widget and next launch on the older snapshot on disk.
-            // Judged on the stops the widget keeps ([forWidget], [widgetJudged]): a journey origin's
+            // Judged on the stops the widget keeps ([forWidget], [SaveGate]): a journey origin's
             // fresh arrivals must not make a save that rewrites the nearby stops as failed and stamps
             // them "just now".
             // The widget's snapshot ([widgetSnapshot]) and whether to save it ([toSave]) were worked out

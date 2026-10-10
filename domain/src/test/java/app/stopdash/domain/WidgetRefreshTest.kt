@@ -101,6 +101,40 @@ class WidgetRefreshTest {
     }
 
     @Test
+    fun `a journey origin's fresh arrivals alone don't store a refresh whose nearby stops failed`() = runTest {
+        val prior = snapshot(stop("A", listOf(departure("Brixton"))), stop("B", listOf(departure("Walthamstow"))))
+            .copy(journeyOnlyStopIds = setOf("B"))
+        val refreshed = WidgetRefresh.refreshedArrivals(prior, t1) { id ->
+            if (id == "B") listOf(departure("Fresh B")) else null
+        }
+        // The nearby stop keeps its last good times as stored, rather than being marked out of date.
+        assertNull(refreshed)
+        // A nearby stop that does come back stores the refresh, the origin's arrivals with it.
+        val withNear = WidgetRefresh.refreshedArrivals(prior, t1) { id -> listOf(departure("Fresh $id")) }!!
+        assertEquals(listOf("Fresh A", "Fresh B"), withNear.stops.map { it.departures.single().destination })
+    }
+
+    @Test
+    fun `a nearby stop fetched moments ago lets a journey origin's fresh arrivals be stored`() = runTest {
+        val prior = snapshot(
+            stop("A", listOf(departure("Brixton")), fetchedAt = t1.minusSeconds(5)),
+            stop("B", listOf(departure("Walthamstow"))),
+        ).copy(journeyOnlyStopIds = setOf("B"))
+        val refreshed = WidgetRefresh.refreshedArrivals(prior, t1, reuse = java.time.Duration.ofSeconds(30)) { id ->
+            assertEquals("B", id)
+            listOf(departure("Fresh B"))
+        }!!
+        assertEquals(listOf("Brixton", "Fresh B"), refreshed.stops.map { it.departures.single().destination })
+    }
+
+    @Test
+    fun `a missing nearby stop still keeps a journey origin alone from storing the refresh`() = runTest {
+        val prior = snapshot(stop("B", listOf(departure("Walthamstow"))))
+            .copy(journeyOnlyStopIds = setOf("B"), missingStopIds = setOf("A"))
+        assertNull(WidgetRefresh.refreshedArrivals(prior, t1) { listOf(departure("Fresh B")) })
+    }
+
+    @Test
     fun `a cycle where every stop is recent fetches nothing and saves nothing`() = runTest {
         val prior = snapshot(stop("A", listOf(departure("Brixton")), fetchedAt = t1.minusSeconds(5)))
         var calls = 0
