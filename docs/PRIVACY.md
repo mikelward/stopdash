@@ -343,7 +343,9 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
   "get off soon" alert is shown, the stops left and whether they were counted from the train
   followed or from where you were seen — never which stop, or where,
 - for each **widget render**, how many stored stops it kept against the nearby set (and that
-  set's size), how many rows it drew and how old its data was; and for each **scheduled widget
+  set's size), how many rows it drew and how old its data was, and the sizes your home screen
+  reported for the widget (in dp) with how many rows each fitted, and the text size it was drawn
+  at (your phone's font scale times StopDash's own); and for each **scheduled widget
   redraw**, how many seconds after it was due Android ran it — counts and seconds only, no stop or
   place,
 - **per-refresh request counts and timing**: how many TfL requests a refresh made, of which
