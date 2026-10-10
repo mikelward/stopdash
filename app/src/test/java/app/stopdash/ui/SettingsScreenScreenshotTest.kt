@@ -12,6 +12,7 @@ import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -67,7 +68,7 @@ class SettingsScreenScreenshotTest {
     }
 
     @Test
-    fun the_disruptions_summary_comes_second_and_its_page_turns_the_row_off() {
+    fun the_disruptions_summary_comes_third_and_its_page_turns_the_row_off() {
         val chosen = mutableListOf<Boolean>()
         composeRule.setContent {
             StopDashTheme {
@@ -79,6 +80,12 @@ class SettingsScreenScreenshotTest {
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Show alerts and delays on the home screen").assertIsDisplayed()
+        // Favorite places, then favorite journeys, then the disruptions summary (maintainer, 2026-10-10).
+        val places = composeRule.onNodeWithTag("favoritePlacesRow").getUnclippedBoundsInRoot().top
+        val journeys = composeRule.onNodeWithTag("favoriteJourneysRow").getUnclippedBoundsInRoot().top
+        val disruptions = composeRule.onNodeWithTag("disruptionsSummaryRow").getUnclippedBoundsInRoot().top
+        org.junit.Assert.assertTrue("places above journeys", places < journeys)
+        org.junit.Assert.assertTrue("journeys above the disruptions summary", journeys < disruptions)
         captureSnapshot("settings-disruptions-summary.png")
         composeRule.onNodeWithTag("disruptionsSummaryRow").performClick()
         composeRule.onNodeWithTag("disruptionsSummaryPage").assertIsDisplayed()

@@ -1255,8 +1255,8 @@ places the ends) and shows every direct line between them; a starred trip with a
 (the eventual goal behind starring home and work) builds on *Trips with a change* below. The long-press entry point has no
 cue of its own, so a starrable stop list opens with a one-line tip ("Long-press a stop to favorite the journey
 there") until the user dismisses it (maintainer, 2026-09-24); the dismissal is kept with the app's
-settings. **Settings lists the favorite journeys** (maintainer, 2026-10-05), third, under the
-disruptions switch: each by its two stops and line, with **Remove**, so one starred by mistake can be
+settings. **Settings lists the favorite journeys** (maintainer, 2026-10-05), second, under the
+favorite places (maintainer, 2026-10-10): each by its two stops and line, with **Remove**, so one starred by mistake can be
 found and dropped without riding past its card; Remove only ever removes the favorite. Its **Add**
 (maintainer, 2026-10-07) picks the journey's two stations over the list: the station search asks
 where it starts, then, with that standing in its From row, where it ends; the From row changes the
@@ -2597,7 +2597,7 @@ Where the row shows, it takes the place of the list's "Couldn't check for disrup
 (maintainer, 2026-10-05), so nothing comes and goes over the list: a line on the list whose check
 didn't answer, however far its stop, is named after "Unknown:"; a stop whose closure check failed is
 named on its page; and what can't be named (a departure with no line to check) still reads "Unknown".
-**Disruptions summary**, second in Settings under the favorite places, says what the row does ("Show
+**Disruptions summary**, third in Settings under the favorite journeys (maintainer, 2026-10-10), says what the row does ("Show
 alerts and delays on the home screen", maintainer 2026-10-06: the name alone doesn't say it), or "Off",
 and opens its own page, since its settings control only the row (maintainer, 2026-10-05); what the row
 covers is set and seen there. The lines page's menu opens Settings on that page too, its Back going up
@@ -3222,7 +3222,7 @@ the Open Government Licence v3.0. A test pins the credits so a rewording can't d
 
 An overflow-menu entry opens a Settings screen, hosted at the activity top level like the
 licenses screen (an overlay whose own Back closes it) rather than through a navigation graph
-— stopdash still has no nav library. Its first row opens the favorite-places editor (D9), and the third the favorite journeys (*Journeys*);
+— stopdash still has no nav library. Its first row opens the favorite-places editor (D9), and the second the favorite journeys (*Journeys*);
 three location and widget rows follow below them, in order. **Location** says how much location
 StopDash may use while in use: Precise, Approximate or Not allowed. Tapping it asks Android for
 precise location, or opens Android's settings for the app when precise is already allowed or

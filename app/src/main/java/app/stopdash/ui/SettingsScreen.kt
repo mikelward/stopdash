@@ -252,7 +252,15 @@ fun SettingsScreen(
                     onClick = onOpenFavoritePlaces,
                     testTag = "favoritePlacesRow",
                 )
-                // The home screen's disruptions row, second (maintainer, 2026-10-05): like the places, it
+                // The favorite journeys, second, under the places (maintainer, 2026-10-10): what the
+                // rider has saved, like the places.
+                SettingNavRow(
+                    title = stringResource(R.string.settings_favorite_journeys_title),
+                    summary = stringResource(R.string.settings_favorite_journeys_summary),
+                    onClick = onOpenFavoriteJourneys,
+                    testTag = "favoriteJourneysRow",
+                )
+                // The home screen's disruptions row, third (maintainer, 2026-10-10; was second): like the places, it
                 // decides what the home screen leads with. Its settings are its own page, so none reads as
                 // the app's at large (maintainer, 2026-10-05).
                 SettingNavRow(
@@ -278,14 +286,6 @@ fun SettingsScreen(
                         },
                     )
                 }
-                // The favorite journeys, third, after the disruptions switch
-                // the maintainer placed second: what the rider has saved, like the places.
-                SettingNavRow(
-                    title = stringResource(R.string.settings_favorite_journeys_title),
-                    summary = stringResource(R.string.settings_favorite_journeys_summary),
-                    onClick = onOpenFavoriteJourneys,
-                    testTag = "favoriteJourneysRow",
-                )
                 // What's hidden, under the places: like them, it decides what the list shows. Only
                 // while something is, as with the list's banner.
                 val hiddenItems = ModeGroups.hiddenItems(hiddenModes)
