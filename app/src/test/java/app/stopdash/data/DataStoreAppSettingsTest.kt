@@ -199,6 +199,15 @@ class DataStoreAppSettingsTest {
     }
 
     @Test
+    fun `the widget update card shows until dismissed, apart from the watch card`() = runTest {
+        val store = DataStoreAppSettings(FakeDataStore(null))
+        assertFalse(store.widgetUpdateCardDismissed().first())
+        store.setWidgetUpdateCardDismissed(true)
+        assertTrue(store.widgetUpdateCardDismissed().first())
+        assertFalse(store.watchInstallCardDismissed().first())
+    }
+
+    @Test
     fun `the documented consent default is to ask every time`() {
         assertEquals(false, DataStoreAppSettings.DEFAULT_SKIP_BUG_REPORT_CONSENT)
     }

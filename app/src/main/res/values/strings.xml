@@ -810,6 +810,12 @@
     <string name="watch_install_dismiss">Not now</string>
     <string name="watch_install_opened">Check your watch</string>
     <string name="watch_install_failed">Couldn\'t reach your watch</string>
+    <!-- The near-me card for a rider with a widget placed and automatic updates off: Settings opens at
+         the widget settings; Dismiss takes it away for good. -->
+    <string name="widget_update_title">Automatically update widget?</string>
+    <string name="widget_update_body">Go to settings to choose when the widget updates.</string>
+    <string name="widget_update_settings">Settings</string>
+    <string name="widget_update_dismiss">Dismiss</string>
     <string name="settings_watch_install_title">Install on watch</string>
     <string name="settings_watch_install_summary">Open StopDash\'s Play Store page on your watch</string>
     <string name="settings_pinch_title">Pinch to resize text</string>

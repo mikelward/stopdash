@@ -40,6 +40,9 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -182,6 +185,9 @@ fun SettingsScreen(
     // Its page closed, back up to Settings: the caller drops [startOnDisruptions], so Settings composed
     // afresh (back from a page opened over it) opens at the top, not on that page again (Codex, #607).
     onDisruptionsClosed: () -> Unit = {},
+    // Opened from the near-me "Automatically update widget?" card: Settings opens scrolled to its
+    // widget rows, starting at the first, rather than at the top.
+    startOnWidgets: Boolean = false,
     // Favorite places opened from the Disruptions summary page, whose lines it includes: back from them
     // returns to that page, not Settings' top.
     onOpenFavoritePlacesFromDisruptions: () -> Unit = onOpenFavoritePlaces,
@@ -223,10 +229,15 @@ fun SettingsScreen(
             // a large Android font scale can't push the lower controls off a short screen where
             // they'd be unreachable (Codex).
             val scrollState = rememberScrollState()
+            // Opened for the widget rows: scrolled to the first as soon as it's laid out, and the rows drawn
+            // only from then, so the top of Settings is never shown before the jump. Once, so a return from
+            // a page over Settings keeps the rider's place.
+            var scrolledToWidgets by rememberSaveable { mutableStateOf(!startOnWidgets) }
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .scrollEdgeCue(scrollState, scrollCueColors(MaterialTheme.colorScheme.surface))
+                    .graphicsLayer { alpha = if (scrolledToWidgets) 1f else 0f }
                     .verticalScroll(scrollState),
             ) {
                 // Text size (display scaling, SPEC *Display size*): a slider that mirrors — and
@@ -375,14 +386,23 @@ fun SettingsScreen(
                     testTag = "locationRow",
                     enabled = locationAccess != null,
                 )
-                SettingSwitchRow(
-                    title = stringResource(R.string.settings_widget_follows_title),
-                    summary = stringResource(R.string.settings_widget_follows_summary),
-                    checked = widgetFollows == true,
-                    onCheckedChange = onWidgetFollowsChange,
-                    enabled = widgetFollows != null,
-                    switchTestTag = "widgetFollowsSwitch",
-                )
+                Box(
+                    modifier = Modifier.onGloballyPositioned {
+                        if (!scrolledToWidgets) {
+                            scrollState.dispatchRawDelta(it.positionInParent().y)
+                            scrolledToWidgets = true
+                        }
+                    },
+                ) {
+                    SettingSwitchRow(
+                        title = stringResource(R.string.settings_widget_follows_title),
+                        summary = stringResource(R.string.settings_widget_follows_summary),
+                        checked = widgetFollows == true,
+                        onCheckedChange = onWidgetFollowsChange,
+                        enabled = widgetFollows != null,
+                        switchTestTag = "widgetFollowsSwitch",
+                    )
+                }
                 SettingSwitchRow(
                     title = stringResource(R.string.settings_live_widget_refresh_title),
                     summary = stringResource(R.string.settings_live_widget_refresh_summary),

@@ -70,6 +70,15 @@ interface AppSettings {
     suspend fun setWatchInstallCardDismissed(dismissed: Boolean) {}
 
     /**
+     * Whether the near-me "Automatically update widget?" card was dismissed, which is for good.
+     * Defaults to dismissed, so a settings store that can't say never shows the card.
+     */
+    fun widgetUpdateCardDismissed(): Flow<Boolean> = flowOf(true)
+
+    /** Set [widgetUpdateCardDismissed]. Suspending, off the main thread; best-effort. */
+    suspend fun setWidgetUpdateCardDismissed(dismissed: Boolean) {}
+
+    /**
      * The user's own free TfL `app_key`, pasted in Settings for the higher request budget
      * (SPEC D7), or null when keyless — the default. StopDash ships no baked-in key; a
      * per-user key raises the limit ~50→~500 req/min. Blank is normalized to null on write,
