@@ -221,6 +221,37 @@ class StationIndexTest {
     }
 
     @Test
+    fun `a station leads bus stops of the same name, whatever its punctuation`() {
+        // St. Paul's station (public TfL data) against bus stops named "St Paul's": the dot is
+        // dropped for matching and for length, and the station wins the tie.
+        val station = IndexedStation("940GZZLUSPU", "St. Paul's", listOf("tube"))
+        val stations = StationIndex(listOf(station))
+        val buses = listOf(StationMatch("490000000004D", "St Paul's", listOf("bus")), StationMatch("490000000005E", "St Paul's", listOf("bus"), 51.6, -0.2))
+        val ranked = stations.rank("st paul", stations.search("st paul"), buses)
+        assertEquals("940GZZLUSPU", ranked.first().id)
+    }
+
+    @Test
+    fun `a station leads a same-named bus stop the app has seen, in the index's own search too`() {
+        // The preview, before the bundled bus stops are read, comes from search(): it must agree.
+        val station = IndexedStation("940GZZLUSPU", "St. Paul's", listOf("tube"))
+        val bus = StationMatch("490000000004D", "St Paul's", listOf("bus"))
+        val stations = StationIndex(listOf(station)).withYours(YourStops(known = listOf(bus)))
+        assertEquals(listOf("940GZZLUSPU", "490000000004D"), stations.search("st paul").map { it.id })
+    }
+
+    @Test
+    fun `a station leads only a bus stop of the same name, not one that sorts ahead of it`() {
+        // Synthetic names of equal length: the bus stop's name sorts first, so it stays first.
+        val station = IndexedStation("940GZZLUZZZ", "Zeta Zed", listOf("tube"))
+        val bus = StationMatch("490000000006F", "Zeta Bee", listOf("bus"))
+        val stations = StationIndex(listOf(station)).withYours(YourStops(known = listOf(bus)))
+        assertEquals(listOf("490000000006F", "940GZZLUZZZ"), stations.search("zeta").map { it.id })
+        val plain = StationIndex(listOf(station))
+        assertEquals(listOf("490000000006F", "940GZZLUZZZ"), plain.rank("zeta", plain.search("zeta"), listOf(bus)).map { it.id })
+    }
+
+    @Test
     fun `a TfL match inside a matched interchange stays folded into it`() {
         val local = index.search("kings")
         val member = StationMatch("940GZZLUKSX", "King's Cross St. Pancras", listOf("tube"))

@@ -63,13 +63,24 @@ class StationIndex(
         return scored
             .filter { it.hubId.isBlank() || it.hubId !in matchedIds }
             .sortedWith(
-                compareBy({ it.tier }, { leadOf(it.match) }, { !it.match.id.startsWith("HUB", ignoreCase = true) }, { it.match.name.length }, { it.match.name }),
+                compareBy(
+                    { it.tier }, { leadOf(it.match) }, { !it.match.id.startsWith("HUB", ignoreCase = true) }, { it.length },
+                    // A station before a bus stop of the same name (one of the user's, joined by withYours), as in
+                    // [rank]: the name as matched first, so this only ever splits identical names.
+                    { it.matched },
+                    { it.match.modes.isNotEmpty() && it.match.modes.all { mode -> mode == "bus" } },
+                    { it.match.name },
+                ),
             )
             .take(limit)
             .map { it.match }
     }
 
-    private class Scored(val match: StationMatch, val hubId: String, val tier: StationMatchTier)
+    private class Scored(val match: StationMatch, val hubId: String, val tier: StationMatchTier) {
+        // The name as matched, punctuation and case dropped, so "St. Paul's" ties "St Paul's".
+        val matched = StationMatcher.normalize(match.name).lowercase()
+        val length = matched.length
+    }
 
     /**
      * Each interchange's station names, as rows of their own beside the interchange's (maintainer,
@@ -158,6 +169,8 @@ class StationIndex(
         // first, then interchanges, shorter name, then name — so a TfL bus stop that matches as well
         // as a bundled station sorts among them rather than after all of them. Source order only breaks an exact tie.
         // A match the matcher can't place (TfL found it by a rule this one doesn't share) goes last.
+        // Each name as matched, punctuation and case dropped, so "St. Paul's" ties "St Paul's".
+        val matched = candidates.associate { it.key to StationMatcher.normalize(it.name).lowercase() }
         return candidates
             .filter { hubOf[it.id]?.let { hub -> hub in matchedIds } != true }
             .withIndex()
@@ -166,7 +179,11 @@ class StationIndex(
                     { tierOf(query, it.value)?.ordinal ?: StationMatchTier.entries.size },
                     { leadOf(it.value) },
                     { !it.value.id.startsWith("HUB", ignoreCase = true) },
-                    { it.value.name.length },
+                    { matched[it.value.key]?.length },
+                    // A station before a bus stop of the same name: "St Paul's" means the station. The name as
+                    // matched first, so this only ever splits identical names.
+                    { matched[it.value.key] },
+                    { it.value.modes.isNotEmpty() && it.value.modes.all { mode -> mode == "bus" } },
                     { it.value.name },
                     { it.index },
                 ),
