@@ -3602,7 +3602,8 @@ refreshes and redraws.
 
 **In the launcher's widget picker** each widget shows an example of itself (maintainer, 2026-10-11):
 made-up departures at King's Cross St. Pancras, drawn by the widget's own layout, never the user's
-stops. Android 15 and later draw it from that layout (a generated preview, handed over once per app
+stops. Each looks as a placed one does: the full widget names the station above its rows, the compact
+one doesn't, and the sizes the example is drawn at are a phone's usual cells. Android 15 and later draw it from that layout (a generated preview, handed over once per app
 version, since the system limits how often it may be set); Android 14 shows the app's icon.
 
 The widget is laid out for **each size the launcher reports for it** (portrait and landscape,

@@ -35,10 +35,13 @@ class WidgetPreviewTest {
     }
 
     @Test
-    fun `the default cell names the station above its first lines`() {
-        val model = models().bySize.getValue(WidgetPreview.SIZES.first { it.width.value == 250f })
-        assertEquals(setOf("victoria", "northern"), model.rows.mapTo(HashSet()) { it.row.lineId })
-        assertEquals("the station is named", "King's Cross St. Pancras", model.rows.first().header?.text)
+    fun `the full example names its station above its rows, and the compact one doesn't`() {
+        for (size in WidgetPreview.SIZES.filter { it.height.value > 110f }) {
+            val full = models().bySize.getValue(size)
+            assertEquals("$size", listOf("King's Cross St. Pancras"), full.rows.mapNotNull { it.header?.text })
+            assertEquals("$size: the header leads", "King's Cross St. Pancras", full.rows.first().header?.text)
+            assertEquals("$size: one station's rows", setOf("940GZZLUKSX"), full.rows.mapTo(HashSet()) { it.row.stopId })
+        }
     }
 
     @Test

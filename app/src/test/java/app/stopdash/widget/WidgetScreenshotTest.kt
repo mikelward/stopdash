@@ -114,19 +114,21 @@ class WidgetScreenshotTest {
         )
     }
 
-    @Test
-    fun `the widget picker's example`() {
-        val size = WidgetPreview.SIZES.first { it.width.value == 250f }
-        val model = runBlocking { WidgetPreview.models(app.stopdash.domain.RouteTopology.EMPTY) }[size]
-        capture("widget-picker-preview.png", model, size = size)
+    // The widget picker's examples at each size the picker may draw them, as the launcher shows them:
+    // the full widget names its two stations above their rows, the compact one doesn't.
+    private fun capturePickerExamples(bare: Boolean) {
+        val models = runBlocking { WidgetPreview.models(app.stopdash.domain.RouteTopology.EMPTY, bare = bare) }
+        for (size in WidgetPreview.SIZES) {
+            val kind = if (bare) "widget-compact-picker-preview" else "widget-picker-preview"
+            capture("$kind-${widgetSizeLabel(size)}.png", models[size], size = size)
+        }
     }
 
     @Test
-    fun `the compact widget picker's example`() {
-        val size = WidgetPreview.SIZES.first { it.width.value == 250f }
-        val model = runBlocking { WidgetPreview.models(app.stopdash.domain.RouteTopology.EMPTY, bare = true) }[size]
-        capture("widget-compact-picker-preview.png", model, size = size)
-    }
+    fun `the widget picker's examples`() = capturePickerExamples(bare = false)
+
+    @Test
+    fun `the compact widget picker's examples`() = capturePickerExamples(bare = true)
 
     // The compact widget beside the full one, from the same two places: the title row and update
     // time stay, the stop headers go, and their room goes to departures. Public stations only.
