@@ -29,9 +29,11 @@ internal object StopdashDebugLog : DebugLog()
 
 /**
  * The app's section of a consent-gated bug report. Everything but this run's log is composed
- * first, and the log gets whatever room that leaves in [REPORT_SECTION_CHARS], so a long list of
- * nearby stops shortens the log rather than pushing the section past its share. Past its share the
- * library cuts a section from the middle, which here would be the start of this log.
+ * first, and the log ([DebugReport.logLines]) gets whatever room that leaves of the section's share,
+ * [DebugReport.APP_SECTION_CHARS], so a long list of nearby stops shortens the log rather than
+ * pushing the section past it. androidlog sets that share so the whole report survives being
+ * pasted; past it, the library cuts a section from the middle, which here would be the start of
+ * this log.
  *
  * The log keeps at least a whole process-exit batch ([ProcessExits.maxBatchChars]) whatever the
  * rest takes. Only a stop list far longer than any lookup returns needs it, and then the library's
@@ -47,34 +49,6 @@ internal fun bugReportSection(
 ): String {
     val rest = BugReport.compose(header, location, stops, logLines = emptyList(), recentPositions)
     // The log's lines replace the empty log's placeholder, so charging it to the rest is margin.
-    val logBudget = maxOf(REPORT_SECTION_CHARS - rest.length, ProcessExits.maxBatchChars())
-    return BugReport.compose(header, location, stops, log.reportLines(logBudget), recentPositions)
+    val logBudget = maxOf(DebugReport.APP_SECTION_CHARS - rest.length, ProcessExits.maxBatchChars())
+    return BugReport.compose(header, location, stops, DebugReport.logLines(log, logBudget), recentPositions)
 }
-
-/**
- * This run's log for the consent-gated bug report: the ring's newest lines, preceded by any pinned
- * lines the ring has since evicted, such as why the previous processes ended
- * ([logRecentProcessExits]). [DebugLog.snapshot] reads the ring only, so a busy run would push
- * those out of the report.
- *
- * Within [budgetChars], each line counted with its newline. The pinned reserve comes first and
- * holds up to a whole process-exit batch, since a smaller one would drop the oldest exits; the
- * recent lines get the rest, newest kept. The reserve is no bigger than the pinned lines need,
- * because the snapshot does not hand an unused reserve on, and a run with little pinned would
- * otherwise lose recent lines to room nothing fills.
- */
-internal fun DebugLog.reportLines(budgetChars: Int = REPORT_SECTION_CHARS): List<String> {
-    val budget = budgetChars.coerceAtLeast(0)
-    val pinnedNeed = pinnedSnapshot().sumOf { it.length + 1 }
-    val pinned = minOf(ProcessExits.maxBatchChars(), pinnedNeed, budget)
-    return boundedSnapshot(pinnedBudgetChars = pinned, recentBudgetChars = budget - pinned)
-}
-
-/**
- * The app's share of a bug report: well under what survives being pasted. androidlog allows a
- * report [DebugReport.MAX_REPORT_CHARS], but pasted on, a report was kept only to about its first
- * 20,000 characters, and the newest log lines, last in it, were what went (bug reports,
- * 2026-10-11). This section comes first, so held to this it arrives whole; the earlier runs
- * androidlog appends after it are what a cut takes.
- */
-internal const val REPORT_SECTION_CHARS = 12_000
