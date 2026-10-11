@@ -562,6 +562,22 @@ may not use. Its time is still when TfL expects it at the platform. A train turn
 station the line runs through is not relabeled: it goes nowhere, and stays hidden. A line whose predictions were all left
 out gets no "No departures" status row either, since it has departures, just none that help.
 
+**A tube train TfL may be tracking twice is grayed in the app** (maintainer, 2026-10-11; on trial).
+TfL's tracking sometimes follows one train under a second id a signal section behind it, so a
+platform lists a train that never comes, often for the other branch: a "Morden via Bank" train a
+minute behind the real Battersea one, still "at platform" after it had gone. Nothing in TfL's answer
+tells the copy apart (it has its own id and moves station by station), and the station's display, fed
+from the signalling, shows it once. No two trains of a line can use one platform that close — the
+tightest scheduled headway on the Underground is about 100 seconds — so of a line's tube trains due at
+one numbered platform less than **90 seconds** apart, the later one's time is **grayed** in the app
+and read aloud as maybe not running: it may be real, so it isn't hidden, but it isn't one stopdash
+stands behind either (principle 1). Further out TfL rounds its times to whole minutes and bunches
+them, so some real trains are grayed too; the trial is to see how that looks before the rule settles,
+and the widget and watch show these times as usual meanwhile. A train TfL still lists after it was due
+counts for nothing. A trip follows, and times its arrival by, a doubtful train only when no other is
+listed. Each one marked is noted in the debug log, so what the feed looked like can be compared with
+what the rider saw. Buses, and platforms TfL names by direction alone, are left as they are.
+
 **The unit of display is one card per platform or pole** (maintainer, 2026-09-22) — a
 group of same-cluster stops split by platform / stop letter (see below). Each card is
 headed by a **single title-case line** naming the place and that platform/pole, and holds

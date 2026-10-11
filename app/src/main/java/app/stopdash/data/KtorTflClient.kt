@@ -1,5 +1,6 @@
 package app.stopdash.data
 
+import app.stopdash.StopdashDebugLog
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.HubInfo
@@ -34,6 +35,9 @@ import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripModes
 import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.Turnback
+import androidx.annotation.WorkerThread
+import app.stopdash.domain.PlatformDirection
+import app.stopdash.domain.DoubtfulTrains
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.VehicleCall
@@ -131,6 +135,9 @@ class KtorTflClient(
     // departure it becomes ([Turnback]). Looked up here, where the answer is decoded, off the main
     // thread. None by default (tests, the other clients): the trains stay as TfL lists them.
     private val stationIndex: () -> StationIndex? = { null },
+    // Where the trains TfL may be tracking twice are noted ([DoubtfulTrains]), the debug log by
+    // default; a test swaps in its own to see where the marking ran.
+    private val logDoubtful: (String) -> Unit = ::logDoubtfulTrains,
     // Where each request's answer is read: decoding a route's sequence (~600 KB for a National Rail
     // line) and mapping a plan (which reads the bundled station index) froze the screen for seconds
     // when it ran on a caller's main thread, as a screen's own loads do. A test swaps in its own.
@@ -430,9 +437,29 @@ class KtorTflClient(
                 applyAppKey(key)
             }.body<List<TflArrivalDto>>().map { it.toDeparture() }
                 // Already on the decode dispatcher; the hop names it here, where lint can see it.
-                .let { withContext(decodeDispatcher) { Turnback.relabel(it, stopId, stationIndex()?.terminusEnds(stopId).orEmpty()) } }
+                .let {
+                    withContext(decodeDispatcher) {
+                        withDoubtfulMarked(stopId, Turnback.relabel(it, stopId, stationIndex()?.terminusEnds(stopId).orEmpty()))
+                    }
+                }
                 .let(DepartureRows::inferDirections)
         }
+
+    // A train TfL may be tracking twice is marked, and said so: what the feed looked like each time is
+    // what tells a real close pair from a copy.
+    @WorkerThread
+    private fun withDoubtfulMarked(stopId: String, departures: List<Departure>): List<Departure> {
+        val result = DoubtfulTrains.mark(departures, clock())
+        if (result.marked.isNotEmpty()) {
+            logDoubtful(
+                "doubtful at $stopId: " + result.marked.joinToString { d ->
+                    "${d.lineId} P${PlatformDirection.platformNumber(d.platform)} ${d.vehicleId.ifBlank { "no id" }} " +
+                        "${d.destination}${d.branch?.let { " via $it" }.orEmpty()}"
+                },
+            )
+        }
+        return result.departures
+    }
 
     override suspend fun vehicleCalls(vehicleId: String, lineId: String): List<VehicleCall> =
         tflRequest { key ->
@@ -924,3 +951,5 @@ private const val WORK_AHEAD_DAYS = 7L
 // TfL's date-range path takes local-free date-times; asked in UTC, which its periods come back in too.
 private val WORK_AHEAD_FORMAT: java.time.format.DateTimeFormatter =
     java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss").withZone(java.time.ZoneOffset.UTC)
+
+internal fun logDoubtfulTrains(message: String) = StopdashDebugLog.info("arrivals: %s", message)

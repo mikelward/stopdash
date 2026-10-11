@@ -25,6 +25,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -713,6 +714,54 @@ class KtorTflClientTest {
         assertEquals(Instant.parse("2026-10-09T19:49:12Z"), first.expectedArrival)
         // Without the index, the same feed is left as TfL lists it.
         assertEquals(20, client(body).arrivals("940GZZLUWWL").count { it.destinationId == "940GZZLUWWL" })
+    }
+
+    @Test
+    fun `a train due too close behind another at its platform comes back marked doubtful`() = runTest {
+        // Recorded at Euston about 12:24:44: TfL listed Northern and Victoria line trains under 90 s behind
+        // another at the same platform: one 3 min out (231, 60 s behind 216), the rest further down the
+        // board, where TfL bunches its times a minute apart.
+        val body = checkNotNull(javaClass.getResource("/fixtures/stoppoint_arrivals_euston.json")).readText()
+        val departures = client(body, clock = { Instant.parse("2026-10-09T12:24:44Z") }).arrivals("940GZZLUEUS")
+        assertTrue(departures.size > 40)
+        val doubtful = departures.filter { it.doubtful }
+        assertEquals(9, doubtful.size)
+        assertTrue(doubtful.any { it.vehicleId == "231" && it.expectedArrival == Instant.parse("2026-10-09T12:28:04Z") })
+        // Every train is still there.
+        val raw = Json { ignoreUnknownKeys = true }.decodeFromString<List<TflArrivalDto>>(body)
+        assertEquals(raw.size, departures.size)
+    }
+
+    @Test
+    fun `trains are marked doubtful off the caller's thread`() {
+        // The Euston board has a close pair, so the marking notes one; where it noted it is where it ran.
+        val body = checkNotNull(javaClass.getResource("/fixtures/stoppoint_arrivals_euston.json")).readText()
+        val engine = MockEngine {
+            respond(ByteReadChannel(body), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val markedOn = app.stopdash.ThreadRecorder()
+        val client = KtorTflClient(
+            httpClient = http,
+            baseUrl = "https://tfl.example",
+            clock = { Instant.parse("2026-10-09T12:24:44Z") },
+            logDoubtful = { markedOn.note() },
+        )
+        // The caller's own single thread, as a screen's main thread is.
+        val caller = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            val callerThread = caller.submit<Thread> { Thread.currentThread() }.get()
+            val departures = kotlinx.coroutines.runBlocking(caller.asCoroutineDispatcher()) { client.arrivals("940GZZLUEUS") }
+            assertTrue(departures.any { it.doubtful })
+            val marked = markedOn.threads()
+            assertTrue(marked.isNotEmpty())
+            assertTrue(marked.none { it == callerThread.name.substringBefore(" @") })
+        } finally {
+            caller.shutdown()
+        }
     }
 
     @Test

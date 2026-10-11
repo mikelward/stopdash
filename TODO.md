@@ -1459,11 +1459,23 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [ ] **On the way** (maintainer, 2026-09-26; SPEC *On the way*; autopilot): Start on an open
             route follows the rider there, assuming the next train they can catch and switching
             when another is seen (this replaces the mock's "I'm on this one" tap as the way in).
-        - [ ] **A trip's board showing more trains than the platform has** (maintainer, 2026-10-09):
+        - [x] **A trip's board showing more trains than the platform has** (maintainer, 2026-10-09):
               both branches' rows on one platform showed the same minutes while the station's own
-              display listed fewer trains. The debug log now names a train the board lists twice, or two
-              under a minute apart at one platform, as TfL sent them and as the trip's screen holds them
-              (`DoubledTrains`); fix where the next report shows it doubling.
+              display listed fewer trains. The debug log names a train the board lists twice, or two
+              under a minute apart at one platform (`DoubledTrains`). TfL's own feed was the source
+              (2026-10-11): it tracked a train under a second id 30–60 s behind the real one, with the
+              other branch's destination, still "at platform" after the real one left, and nothing in
+              the feed tells the copy apart. A line's tube train under 90 s behind another at one
+              numbered platform is now grayed in the app (`DoubtfulTrains`), not hidden; a trip
+              follows one only when no other is listed.
+        - [ ] **Decide the doubtful-train look after the trial** (maintainer, 2026-10-11): gray in the
+              app only, no time limit, to see how it looks. Then decide whether to limit it to trains
+              due soon (TfL bunches later times a minute apart, so real far-out trains get grayed), and
+              whether the widget and watch gray them too (the widget can, drawing each time as its own
+              text).
+        - [ ] **Tell a doubtful train from a real one** (maintainer, 2026-10-11): keep collecting
+              reports (each mark is logged with the feed's train ids) against what the station display
+              showed, and hide a doubtful train outright only once a rule separates the two.
         - [x] Which train makes each departure, and one train's calls ahead (`VehicleSource`).
         - [x] Following a started trip from its train's calls (`OnTheWay`, `:domain`).
           - [x] **A loop train's boarding call jumping over five minutes at once**: a loop train still

@@ -483,6 +483,9 @@ data class PersistedDeparture(
     // What a National Rail board says it runs by, so a restored train's stop list still tells its
     // way. Defaulted blank for an older snapshot.
     val via: String = "",
+    // A train predicted too close behind another to both be there ([DoubtfulTrains]), so a restored
+    // board still grays it. Defaulted false for an older snapshot.
+    val doubtful: Boolean = false,
 )
 
 @Serializable
@@ -597,6 +600,7 @@ private fun Departure.toPersisted(): PersistedDeparture =
         destinationId = destinationId,
         vehicleId = vehicleId,
         via = via,
+        doubtful = doubtful,
     )
 
 internal fun PersistedDeparture.toDomain(): Departure =
@@ -614,4 +618,5 @@ internal fun PersistedDeparture.toDomain(): Departure =
         destinationId = destinationId,
         vehicleId = vehicleId,
         via = via,
+        doubtful = doubtful,
     )

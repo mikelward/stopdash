@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -162,7 +163,13 @@ private fun DirectRow(shown: PlaceDirectViewModel.ShownRow, onOpen: ((PlaceDirec
         Spacer(Modifier.width(8.dp))
         Box(Modifier.heightIn(min = 40.dp), contentAlignment = Alignment.CenterEnd) {
             when {
-                mine == null -> Text(shown.times, style = MaterialTheme.typography.bodyLarge)
+                mine == null -> if (shown.doubtful) {
+                    // A doubtful train's time grayed and said so, as a board's row does ([doubtfulTimes]).
+                    val (text, spoken) = doubtfulTimes(shown.parts)
+                    Text(text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.semantics { spoken?.let { contentDescription = it } })
+                } else {
+                    Text(shown.times, style = MaterialTheme.typography.bodyLarge)
+                }
                 mine.failed -> Text(
                     stringResource(R.string.trip_direct_not_planned),
                     style = MaterialTheme.typography.bodyLarge,
