@@ -1740,11 +1740,26 @@ class MainViewModel(
         // check, or the reverse) waits for it and reuses its answers, never asking the same twice nor
         // publishing a newer failure over the other's success (Codex, #599). Aged as of when it gets
         // its turn, not when it was called: the other's answers are newer than that (Codex, #599).
-        // On [compute]: it walks the lines and the shared cache (Codex on #765).
-        lineCheckLock.withLock { withContext(compute) { checkLinesNow(lineIds, clock()) } }
+        // A request the widget or a watch has out for them is waited on too, its answers then reused
+        // rather than asked again alongside it ([LineStatusCache.awaitAsking]).
+        // On [compute]: it walks the lines, again each time another surface claims one first (Codex on #765, #766).
+        lineCheckLock.withLock {
+            withContext(compute) {
+                heldLines.awaitAsking(lineIds)
+                // Again, read afresh, whenever another surface claimed one of the lines first (null).
+                var check: LineCheck? = null
+                while (check == null) check = checkLinesNow(lineIds, clock())
+                check
+            }
+        }
     private val lineCheckLock = Mutex()
 
-    private suspend fun checkLinesNow(lineIds: Set<String>, now: Instant): LineCheck {
+    // Null when another surface claimed one of the lines first ([LineStatusCache.asking]): it was
+    // waited on, and nothing was asked.
+    private suspend fun checkLinesNow(lineIds: Set<String>, now: Instant): LineCheck? {
+        // Taken before the cache is read: an answer landing after it sends this back to read again
+        // rather than ask on a stale reading (Codex on #766).
+        val since = heldLines.mark()
         // Lines TfL answered 404 for ("not recognised": a National Rail service it has no line for, such
         // as Eurostar), by whichever surface asked. Not asked about again while the shared cache says so —
         // the answer won't change — and never determined, so their rows still read as unchecked rather
@@ -1774,68 +1789,72 @@ class MainViewModel(
         var requests = 0
         // The dismissals counted before anything is asked: one counted after is newer than the answers.
         val askedAt = dismissedStore.mark()
-        // Taken before asking, so a later request's answers aren't replaced by these landing after them.
-        val ticket = heldLines.ticket()
-        return try {
-            // One call per request TfL accepts, each with its own outcome (LineStatusBatch), so
-            // the stats count only what was sent and one part failing or unknown doesn't
-            // discard the verdicts the others returned.
-            val results = LineStatusBatch.request(toQuery) { chunk -> withContext(io) { client.lineStatuses(chunk) } }
-            requests = results.requests
-            val fetched = results.answers.flatMap { it.value }
-            val unknown = results.unknown
-            val failed = results.failed
-            // Nothing answered at all: the whole lookup failed, as before it was split.
-            if (!results.anyAnswered) throw checkNotNull(results.failure)
-            if (failed.isNotEmpty()) {
-                // Not answered, so not an omission: those lines read unchecked and are asked
-                // again next refresh, while the verdicts the other requests returned stand.
-                warn("line status fetch failed for ${failed.joinToString(",")}: ${results.failure?.let(::reason)}")
+        // Marked as under way, so another surface waits on it rather than asking too ([LineStatusCache.asking]).
+        val asked = heldLines.asking(toQuery, since) {
+            // Taken before asking, so a later request's answers aren't replaced by these landing after them.
+            val ticket = heldLines.ticket()
+            try {
+                // One call per request TfL accepts, each with its own outcome (LineStatusBatch), so
+                // the stats count only what was sent and one part failing or unknown doesn't
+                // discard the verdicts the others returned.
+                val results = LineStatusBatch.request(toQuery) { chunk -> withContext(io) { client.lineStatuses(chunk) } }
+                requests = results.requests
+                val fetched = results.answers.flatMap { it.value }
+                val unknown = results.unknown
+                val failed = results.failed
+                // Nothing answered at all: the whole lookup failed, as before it was split.
+                if (!results.anyAnswered) throw checkNotNull(results.failure)
+                if (failed.isNotEmpty()) {
+                    // Not answered, so not an omission: those lines read unchecked and are asked
+                    // again next refresh, while the verdicts the other requests returned stand.
+                    warn("line status fetch failed for ${failed.joinToString(",")}: ${results.failure?.let(::reason)}")
+                }
+                if (unknown.isNotEmpty()) {
+                    // TfL knows none of these lines: marked so in the shared cache below, as omitted, so
+                    // no refresh asks again.
+                    warn("line status: TfL doesn't know line(s) ${unknown.joinToString(",")}; not asked again")
+                }
+                // Stamped when TfL answered, not when this batch began: a slow batch neither loses
+                // the store's newest-wins merge to a check made meanwhile nor saves an answer
+                // already near its expiry (SPEC D3/D4). By the steady clock, as a fetch is
+                // ([SteadyClock]).
+                val answeredAt = SteadyClock.stamp(clock())
+                // The latest answer for a line replaces the other kind outright ([heldLines]).
+                fetched.forEach {
+                    heldLines.set(it.lineId, LineStatusCache.Held.Verdict(answeredAt, it), ticket)
+                    lineStatusMarks[it.lineId] = askedAt
+                }
+                // A line TfL returned no determinable status for is unknown, not clean — flag it so
+                // those rows aren't shown as verified-clean (the client drops such lines, so they're
+                // absent here).
+                val statuses = cachedStatuses + fetched
+                val determined = statuses.mapTo(mutableSetOf()) { it.lineId }
+                // Asked and left out: remembered, so the widget's copy of an older verdict for it
+                // is replaced by "no verdict" rather than kept ([widgetLineChecks]).
+                toQuery.filterNot { it in determined || it in failed }.forEach {
+                    heldLines.set(it, LineStatusCache.Held.Omitted(answeredAt, unrecognized = it in unknown), ticket)
+                    lineStatusMarks.remove(it)
+                }
+                // This check's unknown and failed lines were just named above.
+                val undetermined = lineIds.filterNot { it in determined || it in unknown || it in failed }
+                if (undetermined.isNotEmpty()) {
+                    // Name the specific lines so a persistent "couldn't check for disruptions" is
+                    // diagnosable — a line id is a canned identifier, not user data (SPEC
+                    // *Privacy*: line ids are allowed in the log).
+                    warn("disruption status unknown: TfL returned no status for line(s) ${undetermined.joinToString(",")}")
+                }
+                val dismissals = cachedDismissals + fetched.associate { it.lineId to askedAt }
+                LineCheck(lineIds, statuses, answered = true, requests = requests, unknown = heldLines.unrecognized(), dismissals = dismissals)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Only the cached verdicts are determined, so every line this request was for
+                // reads undetermined — the flag the callers derive is set (SPEC principle 1).
+                warn("line status fetch failed for ${toQuery.joinToString(",")}: ${reason(e)}")
+                LineCheck(lineIds, cachedStatuses, answered = false, requests = requests, unknown = unknownLineIds, dismissals = cachedDismissals)
             }
-            if (unknown.isNotEmpty()) {
-                // TfL knows none of these lines: marked so in the shared cache below, as omitted, so
-                // no refresh asks again.
-                warn("line status: TfL doesn't know line(s) ${unknown.joinToString(",")}; not asked again")
-            }
-            // Stamped when TfL answered, not when this batch began: a slow batch neither loses
-            // the store's newest-wins merge to a check made meanwhile nor saves an answer
-            // already near its expiry (SPEC D3/D4). By the steady clock, as a fetch is
-            // ([SteadyClock]).
-            val answeredAt = SteadyClock.stamp(clock())
-            // The latest answer for a line replaces the other kind outright ([heldLines]).
-            fetched.forEach {
-                heldLines.set(it.lineId, LineStatusCache.Held.Verdict(answeredAt, it), ticket)
-                lineStatusMarks[it.lineId] = askedAt
-            }
-            // A line TfL returned no determinable status for is unknown, not clean — flag it so
-            // those rows aren't shown as verified-clean (the client drops such lines, so they're
-            // absent here).
-            val statuses = cachedStatuses + fetched
-            val determined = statuses.mapTo(mutableSetOf()) { it.lineId }
-            // Asked and left out: remembered, so the widget's copy of an older verdict for it
-            // is replaced by "no verdict" rather than kept ([widgetLineChecks]).
-            toQuery.filterNot { it in determined || it in failed }.forEach {
-                heldLines.set(it, LineStatusCache.Held.Omitted(answeredAt, unrecognized = it in unknown), ticket)
-                lineStatusMarks.remove(it)
-            }
-            // This check's unknown and failed lines were just named above.
-            val undetermined = lineIds.filterNot { it in determined || it in unknown || it in failed }
-            if (undetermined.isNotEmpty()) {
-                // Name the specific lines so a persistent "couldn't check for disruptions" is
-                // diagnosable — a line id is a canned identifier, not user data (SPEC
-                // *Privacy*: line ids are allowed in the log).
-                warn("disruption status unknown: TfL returned no status for line(s) ${undetermined.joinToString(",")}")
-            }
-            val dismissals = cachedDismissals + fetched.associate { it.lineId to askedAt }
-            LineCheck(lineIds, statuses, answered = true, requests = requests, unknown = heldLines.unrecognized(), dismissals = dismissals)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // Only the cached verdicts are determined, so every line this request was for
-            // reads undetermined — the flag the callers derive is set (SPEC principle 1).
-            warn("line status fetch failed for ${toQuery.joinToString(",")}: ${reason(e)}")
-            LineCheck(lineIds, cachedStatuses, answered = false, requests = requests, unknown = unknownLineIds, dismissals = cachedDismissals)
         }
+        return (asked as? LineStatusCache.Asked.Ran)?.value
     }
 
     /**
@@ -2936,24 +2955,29 @@ class MainViewModel(
         val since = dismissedStore.mark()
         val stored = withContext(io) { snapshotStore.stored() } ?: return
         var answered: List<LineStatus>? = null
-        val checked = WidgetRefresh.refreshedLineStatuses(stored, clock(), reuse = lineStatusReuse, answeredAt = clock, shared = heldLines) { ids ->
-            try {
-                withContext(io) { client.lineStatuses(ids) }.also { answered = answered.orEmpty() + it }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: TflException.NotFound) {
-                // Passed on, so the request's batching records the lines as ones TfL doesn't know:
-                // marked so in the shared answers, and stored as no verdict (Codex on #765).
-                warn("widget line status: TfL doesn't know ${ids.size} line(s)")
-                throw e
-            } catch (e: Exception) {
-                warn("widget line status failed for ${ids.size} line(s): ${reason(e)}")
-                null
+        // On [compute]: it walks the stored lines and the shared answers, and again each time another
+        // surface claims one first (Codex on #766).
+        val (checked, isNew) = withContext(compute) {
+            val checked = WidgetRefresh.refreshedLineStatuses(stored, clock(), reuse = lineStatusReuse, answeredAt = clock, shared = heldLines) { ids ->
+                try {
+                    withContext(io) { client.lineStatuses(ids) }.also { answered = answered.orEmpty() + it }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: TflException.NotFound) {
+                    // Passed on, so the request's batching records the lines as ones TfL doesn't know:
+                    // marked so in the shared answers, and stored as no verdict (Codex on #765).
+                    warn("widget line status: TfL doesn't know ${ids.size} line(s)")
+                    throw e
+                } catch (e: Exception) {
+                    warn("widget line status failed for ${ids.size} line(s): ${reason(e)}")
+                    null
+                }
             }
+            checked to with(WidgetRefresh) { checked.answersNew(stored) }
         }
         // Stored when any line's check is new, whether TfL answered here or another surface's check
         // was taken from the shared cache (Codex on #765); the dismissals settle only on TfL's answers.
-        if (with(WidgetRefresh) { checked.answersNew(stored) }) write(checked.lineStatuses)
+        if (isNew) write(checked.lineStatuses)
         val found = answered ?: return
         // The answers settle the dismissals of those lines' alerts, as a refresh's own check does
         // ([reconcileDismissals]): one TfL now reports changed or ended is forgotten.

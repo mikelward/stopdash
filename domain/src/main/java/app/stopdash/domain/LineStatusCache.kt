@@ -4,6 +4,7 @@ import androidx.annotation.WorkerThread
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CompletableDeferred
 
 /**
  * Each line's last status answer, for the process: whichever surface asked (the app's list, the
@@ -49,13 +50,18 @@ open class LineStatusCache {
      * nothing new about it; only a verdict clears the mark.
      */
     fun set(lineId: String, answer: Held, ticket: Long) {
-        held.compute(lineId) { _, current ->
-            when {
-                current != null && current.ticket > ticket -> current
-                answer is Held.Omitted && !answer.unrecognized && (current?.answer as? Held.Omitted)?.unrecognized == true ->
-                    Entry(answer.copy(unrecognized = true), ticket)
-                else -> Entry(answer, ticket)
+        // Under the lock [asking] validates and claims under, so a claim sees an answer and its count
+        // together, never one without the other (Codex on #766).
+        synchronized(asking) {
+            held.compute(lineId) { _, current ->
+                when {
+                    current != null && current.ticket > ticket -> current
+                    answer is Held.Omitted && !answer.unrecognized && (current?.answer as? Held.Omitted)?.unrecognized == true ->
+                        Entry(answer.copy(unrecognized = true), ticket)
+                    else -> Entry(answer, ticket)
+                }
             }
+            answeredAt[lineId] = answers.incrementAndGet()
         }
     }
 
@@ -66,6 +72,71 @@ open class LineStatusCache {
 
     /** Holds [answer] as [lineId]'s latest, as the answer to a request sent now. */
     operator fun set(lineId: String, answer: Held) = set(lineId, answer, ticket())
+
+    // How many answers have been held, and the count as of each line's latest: a caller that read the
+    // cache before another surface's answer landed must not ask on that stale reading ([asking]).
+    private val answers = AtomicLong()
+    private val answeredAt: MutableMap<String, Long> = ConcurrentHashMap()
+
+    /** The point a caller reads the cache from, taken before it reads and passed to [asking]. */
+    fun mark(): Long = answers.get()
+
+    // Each line a request is out for, by any surface, with what completes when it settles.
+    private val asking = HashMap<String, CompletableDeferred<Unit>>()
+
+    /**
+     * Waits for any request another surface has out for [lineIds] to settle, so the caller reads its
+     * answers here rather than sending the same request alongside it (SPEC *Freshness → Shared line
+     * status*). Whether it waited at all: a caller that did reads the clock afresh, since the answers
+     * are stamped after it was first read. A request that fails, or whose asker is canceled, leaves
+     * nothing here, so its lines are asked again.
+     */
+    @WorkerThread
+    suspend fun awaitAsking(lineIds: Collection<String>): Boolean {
+        val pending = synchronized(asking) { lineIds.mapNotNullTo(HashSet()) { asking[it] } }
+        pending.forEach { it.await() }
+        return pending.isNotEmpty()
+    }
+
+    /** What [asking] did: ran the request, or found one already out for a line and waited for it. */
+    sealed interface Asked<out T> {
+        data class Ran<T>(val value: T) : Asked<T>
+
+        /** Nothing was asked: read the cache again, and ask for what's still missing. */
+        data object Waited : Asked<Nothing>
+    }
+
+    /**
+     * Runs [ask], a request for [lineIds], marked as under way so another surface waits on it
+     * ([awaitAsking]) rather than asking too. The claim is all or nothing, made at once: when another
+     * request is already out for any of the lines, nothing is claimed or asked; this waits for it and
+     * returns [Asked.Waited], so the caller reads its answers and asks only for what's still missing.
+     * Two surfaces can therefore never both ask about a line, and since none waits while holding a
+     * claim, never wait on each other. [ask] holds its answers here before it returns: the mark comes
+     * off only after, so a waiter never wakes to find them missing. A line answered since [since] (the
+     * caller's [mark], taken before it read the cache) also returns [Asked.Waited], without waiting:
+     * the caller decided to ask on a reading that request has since overtaken, so it reads again.
+     */
+    @WorkerThread
+    suspend fun <T> asking(lineIds: Set<String>, since: Long, ask: suspend () -> T): Asked<T> {
+        val done = CompletableDeferred<Unit>()
+        val busy = synchronized(asking) {
+            if (lineIds.any { (answeredAt[it] ?: 0L) > since }) return Asked.Waited
+            val out = lineIds.mapNotNullTo(HashSet()) { asking[it] }
+            if (out.isEmpty()) lineIds.forEach { asking[it] = done }
+            out
+        }
+        if (busy.isNotEmpty()) {
+            busy.forEach { it.await() }
+            return Asked.Waited
+        }
+        try {
+            return Asked.Ran(ask())
+        } finally {
+            synchronized(asking) { lineIds.forEach { if (asking[it] === done) asking.remove(it) } }
+            done.complete(Unit)
+        }
+    }
 
     companion object {
         /** The app's one cache, fed by every line-status check. */

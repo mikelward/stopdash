@@ -3,8 +3,11 @@ package app.stopdash.domain
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -144,6 +147,56 @@ class LineStatusCheckTest {
         }
         assertEquals(setOf("victoria"), asked)
         assertEquals(LineStatusCheck(severe, now), refreshed.lineStatuses["victoria"])
+    }
+
+    // One request at a time per line, across surfaces: a refresh starting while another surface's
+    // request for the same line is out waits for it rather than sending its own.
+    @Test
+    fun `a refresh waits on another surface's request for the same line rather than asking too`() = runTest {
+        val shared = LineStatusCache()
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val first = launch {
+            shared.asking(setOf("victoria"), shared.mark()) {
+                gate.await()
+                shared["victoria"] = LineStatusCache.Held.Verdict(t0.plusSeconds(5), severe)
+            }
+        }
+        testScheduler.runCurrent()
+        var asked = false
+        val second = async {
+            WidgetRefresh.refreshedLineStatuses(
+                snapshot(emptyMap()), t0, reuse = Duration.ofSeconds(90), answeredAt = { t0.plusSeconds(6) }, shared = shared,
+            ) { asked = true; emptyList() }
+        }
+        testScheduler.runCurrent()
+        assertTrue("still waiting", second.isActive)
+        gate.complete(Unit)
+        first.join()
+        val refreshed = second.await()
+        assertFalse(asked)
+        assertEquals(LineStatusCheck(severe, t0.plusSeconds(5)), refreshed.lineStatuses["victoria"])
+    }
+
+    @Test
+    fun `a request that fails leaves the waiting refresh to ask for itself`() = runTest {
+        val shared = LineStatusCache()
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val first = launch {
+            runCatching { shared.asking(setOf("victoria"), shared.mark()) { gate.await(); error("rate-limited") } }
+        }
+        testScheduler.runCurrent()
+        var asked: Set<String>? = null
+        val second = async {
+            WidgetRefresh.refreshedLineStatuses(snapshot(emptyMap()), t0, reuse = Duration.ofSeconds(90), shared = shared) {
+                asked = it
+                listOf(good)
+            }
+        }
+        testScheduler.runCurrent()
+        gate.complete(Unit)
+        first.join()
+        assertEquals(LineStatusCheck(good, t0), second.await().lineStatuses["victoria"])
+        assertEquals(setOf("victoria"), asked)
     }
 
     @Test
