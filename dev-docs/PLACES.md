@@ -164,6 +164,11 @@ London (longitude −0.51 to 0.34, latitude 51.28 to 51.70).
   - They're downloadable from Amazon S3, which this sandbox can reach.
 - **Streets:** Overture's road network, which is derived from OpenStreetMap (ODbL). That gives
   51,507 distinct street names; keeping one entry per name per ~1 km cell gives 84,212 entries.
+  Shown bare, those cells would list one street several times, and same-named streets in
+  different areas identically, using up the result limit. So each street entry should carry its
+  neighborhood ("High Street, Exampleton", from Overture's divisions data), with the cells of
+  one name in one neighborhood collapsed to a single entry. As built, that's 75,546 entries,
+  larger per entry than the bare cells because of the neighborhood names.
 - **Postcodes:** OS Code-Point Open, the postcodes in the 33 London boroughs: 180,837.
 - **Street addresses:** Overture has no UK addresses. Measuring OpenStreetMap's London
   house-number coverage needs the Geofabrik extract, which this sandbox still can't reach.
@@ -180,11 +185,29 @@ precompresses the file.
 | B. A + businesses with confidence ≥ 0.9 | 178,690 | 6.9 MB | 2.6 MB | 1.9 MB |
 | C. All places, confidence ≥ 0.7 | 380,373 | 14.5 MB | 5.4 MB | 4.0 MB |
 | D. All places | 494,598 | 18.8 MB | 7.1 MB | 5.3 MB |
-| Streets | 84,212 | 2.6 MB | 0.8 MB | 0.6 MB |
+| Streets, with neighborhoods (as built) | 75,546 | 3.8 MB | 1.1 MB | 0.7 MB |
 | Postcodes | 180,837 | 4.4 MB | 1.4 MB | 0.7 MB |
-| **A + streets + postcodes** | 315,423 | 9.3 MB | **3.0 MB** | 2.0 MB |
-| **B + streets + postcodes** | 443,739 | 14.4 MB | **4.9 MB** | 3.4 MB |
-| **C + streets + postcodes** | 645,422 | 22.0 MB | **7.7 MB** | 5.4 MB |
+| **A + streets + postcodes** (sum of the rows) | 306,757 | 10.2 MB | **3.3 MB** | 2.0 MB |
+| **B + streets + postcodes** (as built: deduplicated, tab-separated) | 431,998 | 19.9 MB | **5.4 MB** | 3.5 MB |
+| **C + streets + postcodes** (sum of the rows) | 636,756 | 22.7 MB | **7.9 MB** | 5.4 MB |
+
+### Bus stops: replacing TfL's stop search too
+
+The stations are already bundled (`app/src/main/assets/stations`). TfL's `/StopPoint/Search` is
+mainly what finds **bus stops**, and TfL publishes them in bulk:
+
+- **Source:** `/StopPoint/Mode/bus`, 33 pages and a few minutes of keyless requests a week from
+  CI. It lists 32,582 records in London: stops, stop pairs and clusters. 30,950 of them list the
+  routes they serve.
+- **What they carry:** TfL's own IDs (the `490…` NaPTAN codes the app already opens), names,
+  stop letters, positions, and the routes, which NaPTAN doesn't have.
+- **Size:** about 2 MB raw, or **0.5 MB** deflated with each stop's routes.
+
+With stations, bus stops, places, streets and postcodes all bundled, a *To…* search needs **no
+TfL request at all**. It would answer on each keystroke, offline, with one ranking. TfL's
+search would stay only as a fallback for anything the bundle can't find (a house number, a
+brand-new stop), or could be dropped. One thing to check first is which IDs TfL's search
+returns for a bus query (single stops or stop pairs), so the bundled rows open the same pages.
 
 ### Quality
 
@@ -201,8 +224,8 @@ Museum. The data still needs work at build time:
 
 ### Memory and search
 
-- **Memory:** about the raw size, plus an index. Tier B with streets and postcodes is roughly
-  15 MB of names, so it should be loaded off the main thread and kept as compact arrays, not
+- **Memory:** about the raw size, plus an index. Tier B with streets and postcodes is about
+  20 MB of text, so it should be loaded off the main thread and kept as compact arrays, not
   objects.
 - **Search speed:** a sorted-name prefix search is instant at this size. The trigram index for
   the substring tier, and the first-letter scan for the fuzzy tier, are the parts to benchmark
@@ -269,7 +292,7 @@ The source ranks its results, and the app has to decide how far to trust that or
 ## Suggested path
 
 1. **Option 4 measured from Overture** (above): public places, streets and postcodes add about
-   3 MB to the download; adding confident businesses brings it to about 5 MB. That's with the
+   3.3 MB to the download; adding confident businesses brings it to about 5.4 MB. That's with the
    run-time scan, so nothing else ships; prebuilt indexes would add to it. Next, prototype tier A or B
    against the bundled station index's matcher, with the duplicate merging.
 2. **Add the typo tier and the importance tie-break** to the matcher. Both help stops too.
