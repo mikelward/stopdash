@@ -1310,6 +1310,7 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               landmark ranked well down its raw results in testing); our re-rank fixes the obvious cases
               but a dedicated place/geocoding API (or TfL's `/Place`) would return better candidates.
               Watch the added per-search TfL request cost when choosing.
+              The options, and how each fits the name matcher, are in `dev-docs/PLACES.md`.
         - [x] **Rank stops and places together, matching each part of a name** (maintainer,
               2026-09-28): one list by match tier, so "tate" puts "…, Tate Britain" above "… Estate"
               stops; a name's parts (" / ", ", ") each match as a prefix.
