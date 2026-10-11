@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.core.content.edit
 import androidx.glance.appwidget.GlanceAppWidgetManager
 import app.stopdash.BuildConfig
 import app.stopdash.StopdashDebugLog
@@ -35,38 +36,41 @@ internal object WidgetPreview {
     val NOW: Instant = Instant.parse("2026-09-18T08:00:00Z")
 
     /**
-     * The sizes the picker may draw the example at: the provider's minimum, its default 3x2 cell,
-     * and a wider one. The launcher shows whichever fits its preview best.
+     * The sizes the picker may draw the example at: the provider's minimum, its default 3x2 cell as a
+     * phone launcher sizes it, and a wider one. The launcher shows whichever fits its preview best.
      */
-    val SIZES: Set<DpSize> = setOf(DpSize(180.dp, 110.dp), DpSize(250.dp, 180.dp), DpSize(320.dp, 180.dp))
+    val SIZES: Set<DpSize> = setOf(DpSize(180.dp, 110.dp), DpSize(270.dp, 220.dp), DpSize(360.dp, 220.dp))
 
-    private const val STOP_ID = "940GZZLUKSX"
-
+    /**
+     * King's Cross St. Pancras, its rows filling the cell under its name on the full widget and with
+     * no header on the compact one, as placed widgets draw them. Every line checked and running well,
+     * so the example has no warning line (SPEC *One widget, many surfaces*).
+     */
     fun snapshot(): DeparturesSnapshot {
-        fun dep(lineId: String, lineName: String, direction: String, destination: String, inSeconds: Long, branch: String? = null) =
-            Departure(lineId, lineName, direction, destination, null, NOW.plusSeconds(inSeconds), "tube", branch = branch)
-        val lines = listOf(
-            LineRef("victoria", "Victoria", "tube"),
-            LineRef("northern", "Northern", "tube"),
-            LineRef("piccadilly", "Piccadilly", "tube"),
-        )
-        val stop = StopArrivals(
-            stopId = STOP_ID,
+        fun dep(lineId: String, lineName: String, mode: String, destination: String, inSeconds: Long, branch: String? = null) =
+            Departure(lineId, lineName, "outbound", destination, null, NOW.plusSeconds(inSeconds), mode, branch = branch)
+        val kingsCross = StopArrivals(
+            stopId = "940GZZLUKSX",
             stopName = "King's Cross St. Pancras",
             departures = listOf(
-                dep("victoria", "Victoria", "outbound", "Brixton", 90),
-                dep("victoria", "Victoria", "outbound", "Brixton", 330),
-                dep("northern", "Northern", "outbound", "Morden", 150, branch = "Bank"),
-                dep("northern", "Northern", "outbound", "Kennington", 480, branch = "Bank"),
-                dep("piccadilly", "Piccadilly", "outbound", "Heathrow T5", 240),
-                dep("piccadilly", "Piccadilly", "outbound", "Uxbridge", 600),
+                dep("victoria", "Victoria", "tube", "Brixton", 90),
+                dep("victoria", "Victoria", "tube", "Brixton", 330),
+                dep("northern", "Northern", "tube", "Morden", 150, branch = "Bank"),
+                dep("northern", "Northern", "tube", "Kennington", 480, branch = "Bank"),
+                dep("piccadilly", "Piccadilly", "tube", "Heathrow T5", 240),
+                dep("piccadilly", "Piccadilly", "tube", "Uxbridge", 600),
             ),
             fetchedAt = NOW,
-            lines = lines,
+            lines = listOf(LineRef("victoria", "Victoria", "tube"), LineRef("northern", "Northern", "tube"), LineRef("piccadilly", "Piccadilly", "tube")),
         )
-        // Every line checked and running well, so the example says nothing about disruptions.
-        val statuses = lines.associate { it.id to LineStatusCheck(LineStatus(it.id, LineStatus.GOOD_SERVICE, "Good Service"), NOW) }
-        return DeparturesSnapshot(stops = listOf(stop), fetchedAt = NOW, lineStatuses = statuses)
+        val stops = listOf(kingsCross)
+        val statuses = stops.flatMap { it.lines }
+            .associate { it.id to LineStatusCheck(LineStatus(it.id, LineStatus.GOOD_SERVICE, "Good Service"), NOW) }
+        return DeparturesSnapshot(
+            stops = stops,
+            fetchedAt = NOW,
+            lineStatuses = statuses,
+        )
     }
 
     /**
@@ -112,7 +116,7 @@ internal object WidgetPreview {
                 val results = listOf(StopDashWidgetReceiver::class, StopDashCompactWidgetReceiver::class)
                     .map { manager.setWidgetPreviews(it) }
                 if (results.all { it == GlanceAppWidgetManager.SET_WIDGET_PREVIEWS_RESULT_SUCCESS }) {
-                    prefs.edit().putInt(PUBLISHED_VERSION, BuildConfig.VERSION_CODE).apply()
+                    prefs.edit { putInt(PUBLISHED_VERSION, BuildConfig.VERSION_CODE) }
                     StopdashDebugLog.info("widget: picker preview published")
                 } else {
                     StopdashDebugLog.info("widget: picker preview rate-limited, retrying next start")
