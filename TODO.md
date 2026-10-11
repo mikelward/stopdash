@@ -1527,6 +1527,20 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           - [ ] Device check: promoted on a real phone, the chip's width for a long label, and the
                 Northern line's black segment against a dark shade.
           - [x] The chip on a walk (maintainer, 2026-10-09): the distance left, minutes until a fix.
+          - [ ] **More help on a walk: a compass toward where it goes** (maintainer, 2026-10-11;
+                after #772). The arrow points at the current walk's end: the stop to board at, the
+                change's next stop or entrance, or the trip's destination. On the trip's screen,
+                the arrow and the distance. On the chip, both together, if both fit.
+            - The chip shows only about 7 characters before Android cuts it off, so the arrow has
+              to be one glyph ("↗ 450 m", 7). A compass point ("NE 450 m", 8) needs no sensor, but
+              may not fit. Check both on a device, the long ones too ("↗ 1.2 km", "~450 m").
+            - An arrow relative to the way the rider faces needs the rotation-vector sensor. That
+              costs battery, so read it only while the trip's screen is open, not for the chip.
+            - The chip could only update the arrow when a new location fix comes in, not as the
+              rider turns. So there it is the heading from the last two fixes, or a fixed
+              compass point.
+            - Decide: which form goes on the chip, and whether the screen's arrow turns with the
+              phone.
         - [x] **A ride is two steps, boarding it and getting off it** (maintainer, 2026-09-29): Next
               from boarding says the rider is on the train followed ("Ride to …" its own row).
           - [x] **On board by the rider's word, with the train followed still minutes away**: the
