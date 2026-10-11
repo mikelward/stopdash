@@ -1,6 +1,8 @@
 package app.stopdash.domain
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlaceHitsTest {
@@ -60,5 +62,26 @@ class PlaceHitsTest {
     fun `de-duplicates candidates with the same name and coordinate`() {
         val candidates = listOf(candidate("Zeta Hall"), candidate("Zeta Hall"))
         assertEquals(1, PlaceHits.rank("zeta", candidates, PlaceKind.PLACE).size)
+    }
+
+    @Test
+    fun `the bundle answers a query only with a prefix or substring match`() {
+        val at = Coordinates(51.5, -0.12)
+        fun hit(name: String) = PlaceHit(name, at, PlaceKind.PLACE)
+        assertTrue(PlaceHits.answers("zeta gal", listOf(hit("Zeta Gallery"))))
+        assertTrue(PlaceHits.answers("gallery", listOf(hit("Zeta Gallery"))))
+        assertFalse(PlaceHits.answers("zgly", listOf(hit("Zeta Gallery"))))
+        assertFalse(PlaceHits.answers("50 zeta road", listOf(hit("350 Zeta Road"))))
+        assertFalse(PlaceHits.answers("zeta", emptyList()))
+    }
+
+    @Test
+    fun `a house number then a word reads as an address`() {
+        assertTrue(PlaceHits.looksLikeAddress("50 Euston Road"))
+        assertTrue(PlaceHits.looksLikeAddress("12a Zeta Street"))
+        assertTrue(PlaceHits.looksLikeAddress("10-12 Zeta Street"))
+        assertFalse(PlaceHits.looksLikeAddress("Euston Road"))
+        assertFalse(PlaceHits.looksLikeAddress("SW1A 1AA"))
+        assertFalse(PlaceHits.looksLikeAddress("50"))
     }
 }

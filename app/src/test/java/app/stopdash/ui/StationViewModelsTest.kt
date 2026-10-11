@@ -7,6 +7,7 @@ import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.IndexedStation
 import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.PlaceHit
+import app.stopdash.domain.PlaceIndex
 import app.stopdash.domain.PlaceKind
 import app.stopdash.domain.SearchEntry
 import app.stopdash.domain.LineRef
@@ -105,6 +106,128 @@ class StationViewModelsTest {
         val result = vm.state.value.result as StationSearchViewModel.Result.Matches
         assertEquals(listOf("Zeta Hall", "Alpha Zeta"), result.places.map { it.name })
         assertEquals(PlaceKind.PLACE, result.places.first().kind)
+    }
+
+    // A bundled place index from synthetic lines (AGENTS *Privacy*).
+    private fun placeIndex(vararg lines: String): PlaceIndex = PlaceIndex.read(
+        java.io.BufferedReader(java.io.StringReader((listOf("# stopdash place index v1\ttest") + lines).joinToString("\n"))),
+    )
+
+    @Test
+    fun `a To search lists bundled places with the first matches, and asks TfL's geocoder nothing`() = runTest {
+        var geocoded = 0
+        val vm = StationSearchViewModel(
+            FakeFinder(search = { emptyList() }),
+            io = dispatcher, compute = dispatcher,
+            debounceMillis = 300,
+            searchPlaces = { geocoded++; listOf(PlaceCandidate("Zeta Hall", Coordinates(51.5, -0.1))) },
+            loadPlaceIndex = { placeIndex("P\tZeta Gallery\tmuseum\t51.50000\t-0.12000\t9", "S\tZeta Road\t\t51.50000\t-0.12000\t4") },
+        )
+        runCurrent()
+        vm.onQueryChange("zeta")
+        // Before the typing pause: the bundled places are already listed.
+        runCurrent()
+        val early = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals(listOf("Zeta Gallery", "Zeta Road"), early.places.map { it.name })
+        assertEquals(listOf(PlaceKind.PLACE, PlaceKind.STREET), early.places.map { it.kind })
+        advanceUntilIdle()
+        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals(listOf("Zeta Gallery", "Zeta Road"), result.places.map { it.name })
+        assertEquals(0, geocoded)
+    }
+
+    @Test
+    fun `bundled places read late are listed without waiting for TfL's stop search`() = runTest {
+        val indexRead = CompletableDeferred<Unit>()
+        val stopSearch = CompletableDeferred<List<StationMatch>>()
+        val vm = StationSearchViewModel(
+            FakeFinder(search = { stopSearch.await() }),
+            io = dispatcher, compute = dispatcher,
+            debounceMillis = 300,
+            searchPlaces = { emptyList() },
+            loadPlaceIndex = { indexRead.await(); placeIndex("P\tZeta Gallery\tmuseum\t51.50000\t-0.12000\t9") },
+        )
+        vm.onQueryChange("zeta")
+        advanceTimeBy(1_000)
+        runCurrent()
+        // The index is read only now, past the pause, with TfL's stop search still out.
+        indexRead.complete(Unit)
+        runCurrent()
+        val early = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals(listOf("Zeta Gallery"), early.places.map { it.name })
+        assertTrue(vm.state.value.searching)
+        stopSearch.complete(emptyList())
+        advanceUntilIdle()
+        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals(listOf("Zeta Gallery"), result.places.map { it.name })
+    }
+
+    @Test
+    fun `bundled places are listed while the saved stops are still being read`() = runTest {
+        // The place index is ready; the rider's saved stops aren't. The places don't wait for them.
+        val yoursRead = CompletableDeferred<Unit>()
+        val vm = StationSearchViewModel(
+            FakeFinder(search = { emptyList() }),
+            io = dispatcher, compute = dispatcher,
+            debounceMillis = 300,
+            searchPlaces = { emptyList() },
+            loadYours = { yoursRead.await(); YourStops.EMPTY },
+            loadPlaceIndex = { placeIndex("P\tZeta Gallery\tmuseum\t51.50000\t-0.12000\t9") },
+        )
+        runCurrent()
+        vm.onQueryChange("zeta")
+        runCurrent()
+        val early = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals(listOf("Zeta Gallery"), early.places.map { it.name })
+        yoursRead.complete(Unit)
+        advanceUntilIdle()
+        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals(listOf("Zeta Gallery"), result.places.map { it.name })
+    }
+
+    @Test
+    fun `TfL's geocoder is asked only when the bundled places find nothing`() = runTest {
+        val vm = StationSearchViewModel(
+            FakeFinder(search = { emptyList() }),
+            io = dispatcher, compute = dispatcher,
+            debounceMillis = 300,
+            searchPlaces = { listOf(PlaceCandidate("12 Zeta Hall Road", Coordinates(51.5, -0.1))) },
+            loadPlaceIndex = { placeIndex("P\tAlpha Gallery\tmuseum\t51.50000\t-0.12000\t9") },
+        )
+        vm.onQueryChange("12 zeta hall")
+        advanceUntilIdle()
+        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals(listOf("12 Zeta Hall Road"), result.places.map { it.name })
+    }
+
+    @Test
+    fun `an address still asks TfL's geocoder when the bundle matches it only loosely`() = runTest {
+        val vm = StationSearchViewModel(
+            FakeFinder(search = { emptyList() }),
+            io = dispatcher, compute = dispatcher,
+            debounceMillis = 300,
+            searchPlaces = { listOf(PlaceCandidate("50 Zeta Road", Coordinates(51.5, -0.1))) },
+            loadPlaceIndex = { placeIndex("P\t350 Zeta Road\toffice\t51.50000\t-0.12000\t2") },
+        )
+        vm.onQueryChange("50 zeta road")
+        advanceUntilIdle()
+        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertTrue("50 Zeta Road" in result.places.map { it.name })
+    }
+
+    @Test
+    fun `a loose bundled match still asks TfL's geocoder`() = runTest {
+        val vm = StationSearchViewModel(
+            FakeFinder(search = { emptyList() }),
+            io = dispatcher, compute = dispatcher,
+            debounceMillis = 300,
+            searchPlaces = { listOf(PlaceCandidate("Zgly Hall", Coordinates(51.5, -0.1))) },
+            loadPlaceIndex = { placeIndex("P\tZeta Gallery\tmuseum\t51.50000\t-0.12000\t9") },
+        )
+        vm.onQueryChange("zgly")
+        advanceUntilIdle()
+        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertTrue("Zgly Hall" in result.places.map { it.name })
     }
 
     @Test

@@ -543,6 +543,7 @@ private fun PlaceHitRow(place: PlaceHit, onClick: () -> Unit, onLongClick: (() -
         when (place.kind) {
             PlaceKind.POSTCODE -> R.string.station_search_kind_postcode
             PlaceKind.PLACE -> R.string.station_search_kind_place
+            PlaceKind.STREET -> R.string.station_search_kind_street
         },
     )
     val removeLabel = stringResource(R.string.station_search_remove_recent_action)

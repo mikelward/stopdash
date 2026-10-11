@@ -376,14 +376,29 @@ The app finds stops two ways:
   removed earlier the same day; the near-me list's place chips still have no "Here", since a chip for
   where the rider already is adds nothing. A saved place or geocoded address as the **start** is not
   offered yet (`TODO.md`).
-- **To… a place or postcode** (maintainer, 2026-09-27) — the *To…* search offers **geocoded places**
-  (a landmark, an address, a postcode) among the stop matches, each tagged *Place* or *Postcode* in
-  the right column where a stop shows its modes; tapping one plans to its **coordinate** (a final walk
-  leg, D9), like a favorite. TfL's Journey Planner is the geocoder (the only one in the free Unified
-  API), the same call the postcode resolver makes — so it adds a **second TfL request** per *To…*
-  search alongside the stop search (*Cost*; only a *To…* picker makes it — from the near-me list or a
-  *From…* station alike — not the From… search itself), and
-  sends only the typed query, as the stop search already does (*Privacy*). TfL's geocoder orders its
+- **To… a place or postcode** (maintainer, 2026-09-27) — the *To…* search offers **places** (a
+  landmark, a venue, a business, a street, an address, a postcode) among the stop matches, each tagged
+  *Place*, *Street* or *Postcode* in the right column where a stop shows its modes; tapping one plans
+  to its **coordinate** (a final walk leg, D9), like a favorite. Its field reads "Station, stop, place
+  or postcode".
+  - **Found on the device first** (maintainer, 2026-10-11; `dev-docs/PLACES.md`): a **bundled London
+    place index** — public places (embassies, theatres, schools, parks, leisure centers, places of
+    worship, museums, hospitals, venues…) and well-established businesses from Overture Maps, named
+    streets, and every London postcode from OS Code-Point Open — about 440,000 entries, 5 MB in the
+    download. It's read once, off the main thread, as the search opens, and searched as the rider
+    types, so its places are **listed with the bundled stations at once**, offline, with nothing sent.
+    It ranks by the stop search's tiers (a prefix, then a substring, then letters in order from the
+    name's first letter), a leading "The" passed over, and a more prominent place ahead of an equal
+    match. Overture's listings are cleaned when the index is built: near-duplicates of one place merge,
+    and a famous place's mis-placed copies elsewhere in London (check-ins) are dropped.
+  - **TfL's geocoder is the fallback**, asked unless the index answers the query: a place it lists
+    matches as a prefix or within the name, not just letters in order, and the query isn't an address
+    with a house number (the index holds none, so it matches one only loosely). The geocoder's answers
+    are listed below the index's. TfL's Journey Planner is that geocoder (the only one in the free
+    Unified API), the same call the postcode resolver makes — so then it adds a **second TfL request**
+    alongside the stop search (*Cost*; only a *To…* picker makes it — from the near-me list or a
+    *From…* station alike — not the From… search itself), and
+    sends only the typed query, as the stop search already does (*Privacy*). TfL's geocoder orders its
   candidates **noisily** (a weak partial can outrank the obvious landmark), so a place-name query is
   **re-ranked by the app's own name matcher** (Prefix over Anchored over Substring over Fuzzy) and
   non-matching candidates dropped; a postcode query keeps TfL's order (its resolved location's name

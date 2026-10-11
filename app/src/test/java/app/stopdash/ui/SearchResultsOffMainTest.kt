@@ -7,6 +7,7 @@ import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FavoritePlacesStore
 import app.stopdash.domain.IndexedStation
 import app.stopdash.domain.PlaceCandidate
+import app.stopdash.domain.PlaceIndex
 import app.stopdash.domain.RecentStations
 import app.stopdash.domain.SearchEntry
 import app.stopdash.domain.StationFinder
@@ -133,6 +134,26 @@ class SearchResultsOffMainTest {
         releaseCompute()
         assertFalse(vm.state.value.searching)
         assertTrue(vm.matches()!!.entries.single() is SearchEntry.Place)
+    }
+
+    @Test
+    fun theBundledPlacesAreSearchedOnCompute() {
+        // TfL's stop search never answers and there are no stops: searching the place index is the pass.
+        val places = PlaceIndex.read(
+            java.io.BufferedReader(java.io.StringReader("# stopdash place index v1\ttest\nP\tExample Gallery\tmuseum\t51.50000\t-0.12000\t9")),
+        )
+        val vm = StationSearchViewModel(
+            Finder(search = { never.await() }), loadPlaceIndex = { places },
+            io = main, compute = compute, debounceMillis = 0,
+        )
+        mainIdle()
+        vm.onQueryChange("gallery")
+        mainIdle()
+        assertNull("places published with compute held", vm.matches())
+        // Two passes on compute: the search of the index, then the rows they join.
+        releaseCompute()
+        releaseCompute()
+        assertEquals(listOf("Example Gallery"), vm.matches()!!.places.map { it.name })
     }
 
     @Test

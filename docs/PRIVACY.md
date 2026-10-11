@@ -94,7 +94,10 @@ Google's Data Layer documentation says what passes through its servers is end-to
 between your phone and your watch, and between them over Bluetooth the link is encrypted too.
 
 **Find a station** (the menu's *From…* and *To…*, and a station's *To…*) sends the name you type to TfL's
-stop search, once you pause typing, and then the chosen station's id to look up its stops and
+stop search, once you pause typing. In *To…*, places, streets and postcodes are first looked up in a
+list of London places that ships inside the app, so finding one sends nothing beyond that stop search; only when that list has
+no close match for what you typed, or what you typed is an address with a house number (which the list doesn't hold), is the text also
+sent to TfL's Journey Planner to look it up. After a pick, the app sends the chosen station's id to look up its stops and
 departures, and the station's own position (a public place, not yours) to find the stops around it (for *To…*, the stops and the routes of the lines leaving where you start from; a *To…* from the near-me list starts from the location the near-me list was found from, which goes to TfL's Journey Planner as the trip's start — see **Trips with a change** — and refreshing it or coming back to the app finds your location again, exactly as the near-me list does). The name isn't saved,
 logged or sent anywhere else. The last eight stations you open from *From…*, and separately the last eight
 destinations you pick in *To…* (a stop, or a place or postcode with the name and map position TfL
