@@ -40,6 +40,8 @@ import app.stopdash.domain.JourneyAlertSchedule
 import app.stopdash.domain.JourneyAlerts
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusBatch
+import app.stopdash.domain.LineStatusCache
+import app.stopdash.ui.LINE_STATUS_REUSE
 import app.stopdash.domain.Workers
 import app.stopdash.ui.WidgetJourneysWrites
 import app.stopdash.widget.readRefreshKeys
@@ -235,15 +237,25 @@ internal object JourneyAlertChecks {
     }
 
     /**
-     * The statuses [request] returns for [lineIds], asked one group at a time ([LineStatusBatch]): a group
-     * that fails leaves only its lines unanswered, keeping what the others returned (Codex on #700). Null
-     * when nothing was answered; failures logged by count only (SPEC *Privacy*).
+     * [lineIds]' statuses through the line answers every screen shares ([LineStatusCache.SHARED]): one
+     * another screen had within [reuse] is taken as it stands, a request one has out is waited on, and the
+     * rest asked of [request] one group at a time ([LineStatusBatch]), a group that fails leaving only its
+     * lines unanswered (Codex on #700). Null when none was answered; failures logged by count only (SPEC
+     * *Privacy*). This check's client looks up no alert's direction, so what it asks is held for the
+     * others as still waiting on that ([LineStatus.awaitingDirections]): a screen asks again rather than
+     * show it unsplit.
      */
-    internal suspend fun answered(lineIds: Set<String>, request: suspend (List<String>) -> List<LineStatus>): List<LineStatus>? {
-        val results = LineStatusBatch.request(lineIds, request)
-        results.failure?.let { logJourneyAlertWarning("line status failed for ${results.failed.size} line(s): ${it::class.simpleName}") }
-        if (results.unknown.isNotEmpty()) logJourneyAlertWarning("TfL doesn't know ${results.unknown.size} line(s)")
-        return if (results.anyAnswered) results.answers.flatMap { it.value } else null
+    internal suspend fun answered(
+        lineIds: Set<String>,
+        cache: LineStatusCache = LineStatusCache.SHARED,
+        clock: () -> Instant = Instant::now,
+        reuse: java.time.Duration = LINE_STATUS_REUSE,
+        request: suspend (List<String>) -> List<LineStatus>,
+    ): List<LineStatus>? {
+        val checked = cache.check(lineIds, clock, reuse) { chunk -> request(chunk).map { it.copy(awaitingDirections = true) } }
+        checked.failure?.let { logJourneyAlertWarning("line status failed for ${checked.failed.size} line(s): ${it::class.simpleName}") }
+        if (checked.unknown.isNotEmpty()) logJourneyAlertWarning("TfL doesn't know ${checked.unknown.size} line(s)")
+        return if (checked.answers.isNotEmpty()) checked.statuses.values.toList() else null
     }
 
     private fun zoneTag(zone: java.time.ZoneId): String = "journey-alerts-zone:${zone.id}"

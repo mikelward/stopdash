@@ -94,7 +94,12 @@ class LinesViewModelTest {
         loadIndex = { indexLoads++; index() },
         workAhead = { aheadAsked++; app.stopdash.data.WorkAhead(ahead(), aheadStartsIn) },
         aheadReuse = java.time.Duration.ofHours(3),
+        sharedLines = sharedLines,
+        // The wall clock the shared answers are judged by, moved with the page's own.
+        clock = { java.time.Instant.ofEpochMilli(1_000_000_000_000L + clock) },
     )
+
+    private var sharedLines = app.stopdash.domain.LineStatusCache()
 
     private var aheadAsked = 0
     private var aheadStartsIn: java.time.Duration? = null
@@ -248,9 +253,40 @@ class LinesViewModelTest {
         val check = model.check.value!!
         assertNull(check.status)
         assertTrue(check.unknown)
+        // TfL's saying it has none is an answer every screen shares, as a line's status is: reopened at
+        // once, it stands rather than asking again; the page's next tick asks.
+        model.page(n299)
+        idle()
+        assertEquals(1, asked)
+        clock += 45_000
         model.page(n299)
         idle()
         assertEquals(2, asked)
+    }
+
+    // Shared with the other screens (SPEC *Freshness → Shared line status*): a line another screen
+    // checked moments ago is shown from that answer, dated by it, and this page's answer goes back for them.
+    @Test
+    fun `a line another screen checked moments ago is shown from that answer, not asked again`() {
+        val severe = LineStatus("299", 6, "Severe Delays")
+        sharedLines.set("299", app.stopdash.domain.LineStatusCache.Held.Verdict(java.time.Instant.ofEpochMilli(1_000_000_000_000L + clock - 20_000), severe), sharedLines.ticket())
+        val model = vm()
+        idle()
+        model.page(n299)
+        idle()
+        assertEquals(0, asked)
+        assertEquals("Severe Delays", model.check.value!!.status!!.description)
+        // Dated by when it was had, 20 s ago, so taken down 90 s after that, not after it reached the page.
+        assertEquals(clock - 20_000, model.check.value!!.checkedAt)
+    }
+
+    @Test
+    fun `this page's answer is left for the other screens`() {
+        val model = vm()
+        idle()
+        model.page(n299)
+        idle()
+        assertEquals("Good Service", (sharedLines["299"] as app.stopdash.domain.LineStatusCache.Held.Verdict).status.description)
     }
 
     @Test

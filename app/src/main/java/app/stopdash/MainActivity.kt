@@ -5362,6 +5362,7 @@ class MainActivity : ComponentActivity() {
                 loadRecent = recent::load,
                 recordOpen = recent::add,
                 lineStatus = linesClient::lineStatusInDetail,
+                sharedLines = LineStatusCache.SHARED,
                 warn = ::logDepartureWarning,
                 dismissedStore = DataStoreDismissedAlertsStore.from(context, warn = ::logDepartureWarning),
                 saved = saved,

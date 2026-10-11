@@ -528,13 +528,44 @@ class JourneyAlertChecksTest {
         assertTrue(groups.size >= 2)
         var sent = 0
         val statuses = runBlocking {
-            JourneyAlertChecks.answered(lines) { chunk ->
+            JourneyAlertChecks.answered(lines, cache = app.stopdash.domain.LineStatusCache()) { chunk ->
                 if (sent++ > 0) throw java.io.IOException("offline")
                 chunk.map { LineStatus(it, 10, "Good Service") }
             }
         }
         assertEquals(groups.first().toSet(), statuses!!.map { it.lineId }.toSet())
         // Nothing answered at all: no answer.
-        assertNull(runBlocking { JourneyAlertChecks.answered(lines) { throw java.io.IOException("offline") } })
+        assertNull(runBlocking { JourneyAlertChecks.answered(lines, cache = app.stopdash.domain.LineStatusCache()) { throw java.io.IOException("offline") } })
+    }
+
+    // Shared with the app's screens (SPEC *Freshness → Shared line status*): a line one of them checked
+    // moments ago is taken from that answer, not asked again.
+    @Test
+    fun a_line_a_screen_checked_moments_ago_is_taken_not_asked_again() {
+        val now = java.time.Instant.parse("2026-10-05T08:00:00Z")
+        val cache = app.stopdash.domain.LineStatusCache()
+        cache["victoria"] = app.stopdash.domain.LineStatusCache.Held.Verdict(now.minusSeconds(20), LineStatus("victoria", 6, "Severe Delays"))
+        var asked = 0
+        val statuses = runBlocking {
+            JourneyAlertChecks.answered(setOf("victoria"), cache = cache, clock = { now }) { asked++; emptyList() }
+        }
+        assertEquals(0, asked)
+        assertEquals("Severe Delays", statuses!!.single().description)
+    }
+
+    // This check's client looks up no alert's direction: what it asks is held as still waiting on that,
+    // so a screen asks again rather than show it unsplit.
+    @Test
+    fun what_the_check_asks_is_left_for_the_screens_as_awaiting_its_directions() {
+        val now = java.time.Instant.parse("2026-10-05T08:00:00Z")
+        val cache = app.stopdash.domain.LineStatusCache()
+        runBlocking {
+            JourneyAlertChecks.answered(setOf("victoria"), cache = cache, clock = { now }) { chunk -> chunk.map { LineStatus(it, 6, "Severe Delays") } }
+        }
+        val held = cache["victoria"] as app.stopdash.domain.LineStatusCache.Held.Verdict
+        assertTrue(held.status.awaitingDirections)
+        var asked = 0
+        runBlocking { cache.check(listOf("victoria"), { now.plusSeconds(5) }, java.time.Duration.ofSeconds(90)) { asked++; emptyList() } }
+        assertEquals(1, asked)
     }
 }

@@ -9,6 +9,8 @@ import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineSearch
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusCache
+import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.PlannedAlert
 import app.stopdash.data.WorkAhead
 import app.stopdash.domain.Workers
@@ -72,6 +74,11 @@ internal class LinesViewModel(
     // Where that's kept: one shared with every lines page in the app, so a line asked for on one isn't asked
     // again on another; built from the above where none is given.
     private val aheadCache: WorkAheadCache = WorkAheadCache(workAhead, io, elapsedMillis, aheadReuse, warn),
+    // The line answers every screen shares ([LineStatusCache.SHARED] in the app): a line another screen
+    // checked within [reuse] is shown from that answer, and this page's goes back for the others (SPEC
+    // *Freshness → Shared line status*). Judged by [clock], the wall clock, as an answer is stamped.
+    private val sharedLines: LineStatusCache = LineStatusCache(),
+    private val clock: () -> java.time.Instant = java.time.Instant::now,
 ) : ViewModel() {
     /**
      * What the search shows. Compared by identity, never as a data class: the state flow compares each
@@ -240,7 +247,8 @@ internal class LinesViewModel(
             var status: LineStatus? = null
             val answer = try {
                 // No status at all is no answer: the page says it couldn't check, and asks again.
-                status = withContext(io) { lineStatus(line.id) }
+                val (given, age) = withContext(io) { sharedStatus(line.id) }
+                status = given
                 if (status == null) warn("line status for ${line.id}: none given")
                 // Read once the status is in, never before: one that ran out while it was asked is asked again
                 // rather than shown (Codex, #704).
@@ -248,7 +256,9 @@ internal class LinesViewModel(
                 // The week ahead as last asked added to it, on the worker: it walks both.
                 // An empty week has nothing to add, so no hop.
                 val shown = kept?.takeIf { it.isNotEmpty() }?.let { alerts -> status?.let { withContext(compute) { it.withWorkAhead(alerts) } } } ?: status
-                Check(line.id, checking = false, status = shown, unknown = status == null, checkedAt = elapsedMillis(), aheadUnknown = aheadCache.failed(line.id))
+                // Dated by when the answer was had, another screen's perhaps, not when it reached this page:
+                // it's taken down [reuse] after that, never later ([expire]).
+                Check(line.id, checking = false, status = shown, unknown = status == null, checkedAt = elapsedMillis() - age, aheadUnknown = aheadCache.failed(line.id))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -285,13 +295,31 @@ internal class LinesViewModel(
     private fun expire(answer: Check) {
         expiryJob?.cancel()
         expiryJob = viewModelScope.launch {
-            delay(reuse.toMillis())
+            // What's left of its [reuse]: an answer taken from another screen is already some way into it.
+            val age = answer.checkedAt?.let { elapsedMillis() - it }?.coerceAtLeast(0) ?: 0
+            delay((reuse.toMillis() - age).coerceAtLeast(0))
             _check.update { now ->
                 if (now != null && now.lineId == answer.lineId && now.checkedAt == answer.checkedAt && now.status != null) {
                     Check(now.lineId, now.checking, status = null, unknown = now.unknown)
                 } else now
             }
         }
+    }
+
+    /**
+     * [lineId]'s status through the shared answers, with its detail ([lineStatus]) asked of TfL only where
+     * none stands, and how old the answer is in milliseconds. Null where TfL gave none. Throws when it
+     * couldn't be asked, so the page says it couldn't check.
+     */
+    @WorkerThread
+    private suspend fun sharedStatus(lineId: String): Pair<LineStatus?, Long> {
+        // Taken only while younger than [checkEvery], the page's own interval: its next tick then asks
+        // afresh, so what it shows is never one it would itself have asked again for by now.
+        val checked = sharedLines.check(listOf(lineId), clock, checkEvery) { chunk -> chunk.mapNotNull { lineStatus(it) } }
+        if (lineId in checked.failed) throw checked.failure ?: java.io.IOException("line status not asked")
+        val held = checked.answers[lineId] ?: return null to 0L
+        val age = SteadyClock.age(held.at, clock()).toMillis().coerceAtLeast(0)
+        return (held as? LineStatusCache.Held.Verdict)?.status to age
     }
 
     /** How often a line's page asks again while it's on screen: well inside [reuse], so its answer never ages out shown. */
