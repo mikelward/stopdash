@@ -6,6 +6,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.saveable.SaveableStateHolder
 import app.stopdash.domain.AppSettings
 import app.stopdash.domain.ArrivalsCache
+import app.stopdash.domain.LineStatusCache
 import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.BugReport
 import app.stopdash.domain.CachingStopFinder
@@ -3333,6 +3334,7 @@ class MainActivity : ComponentActivity() {
                             // few minutes — both spare TfL's keyless rate budget.
                             arrivalsReuse = ARRIVALS_REUSE,
                             sharedArrivals = ArrivalsCache.SHARED,
+                            sharedLines = LineStatusCache.SHARED,
                             disruptionReuse = DISRUPTION_REUSE,
                             disruptionCache = StopClosureCache.SHARED,
                             hubNames = HubInfoCache.SHARED,
@@ -4956,6 +4958,7 @@ class MainActivity : ComponentActivity() {
             warn = ::logDepartureWarning,
             arrivalsReuse = ARRIVALS_REUSE,
             sharedArrivals = ArrivalsCache.SHARED,
+            sharedLines = LineStatusCache.SHARED,
             disruptionReuse = DISRUPTION_REUSE,
             disruptionCache = StopClosureCache.SHARED,
             hubNames = HubInfoCache.SHARED,
@@ -6778,6 +6781,7 @@ private fun fartherCardModel(
     warn = ::logDepartureWarning,
     arrivalsReuse = ARRIVALS_REUSE,
     sharedArrivals = ArrivalsCache.SHARED,
+    sharedLines = LineStatusCache.SHARED,
     disruptionReuse = DISRUPTION_REUSE,
     disruptionCache = StopClosureCache.SHARED,
     hubNames = HubInfoCache.SHARED,

@@ -8,6 +8,7 @@ import app.stopdash.domain.TflException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -24,9 +25,10 @@ class WidgetLineStatusesTest {
     }
 
     @Test
-    fun `lines TfL doesn't know are an empty answer, so they get no-verdict checks and aren't re-asked`() = runTest {
+    fun `lines TfL doesn't know are passed on as such, for the batching to record`() = runTest {
         val client = StatusClient { throw TflException.NotFound(null) }
-        assertEquals(emptyList<LineStatus>(), widgetLineStatuses(client, setOf("southern")))
+        val thrown = runCatching { widgetLineStatuses(client, setOf("southern")) }.exceptionOrNull()
+        assertTrue(thrown is TflException.NotFound)
     }
 
     @Test

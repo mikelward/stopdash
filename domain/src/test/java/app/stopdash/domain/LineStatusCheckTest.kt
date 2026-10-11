@@ -108,6 +108,76 @@ class LineStatusCheckTest {
         assertNull("both checked 10 s ago: nothing asked", askedAgain)
     }
 
+    // Shared with the other surfaces (SPEC *Freshness → Shared line status*): a line another one
+    // checked within the window is taken rather than asked, and the widget's own answers go back.
+    @Test
+    fun `a line another surface checked moments ago is taken, not asked again`() = runTest {
+        val now = t0.plusSeconds(120)
+        val prior = snapshot(mapOf("victoria" to LineStatusCheck(good, t0))).let {
+            it.copy(stops = it.stops + StopArrivals("B", "Stop B", listOf(departure("jubilee")), t0))
+        }
+        val shared = LineStatusCache()
+        shared["victoria"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), severe)
+        var asked: Set<String>? = null
+        val refreshed = WidgetRefresh.refreshedLineStatuses(prior, now, reuse = Duration.ofSeconds(90), shared = shared) { ids ->
+            asked = ids
+            emptyList()
+        }
+        assertEquals("only the line nobody checked", setOf("jubilee"), asked)
+        assertEquals(LineStatusCheck(severe, now.minusSeconds(10)), refreshed.lineStatuses["victoria"])
+        // Jubilee was asked and left out: that answer goes back for the others too.
+        assertEquals(LineStatusCache.Held.Omitted(now), shared["jubilee"])
+    }
+
+    // Codex on #765: a newer shared answer still waiting on its alerts' directions replaces the widget's
+    // older check, which would otherwise stand, and is asked again for the directions.
+    @Test
+    fun `a newer shared answer awaiting directions replaces an older check and is asked again`() = runTest {
+        val now = t0.plusSeconds(30)
+        val prior = snapshot(mapOf("victoria" to LineStatusCheck(good, t0)))
+        val shared = LineStatusCache()
+        shared["victoria"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), severe.copy(awaitingDirections = true))
+        var asked: Set<String>? = null
+        val refreshed = WidgetRefresh.refreshedLineStatuses(prior, now, reuse = Duration.ofSeconds(90), shared = shared) { ids ->
+            asked = ids
+            listOf(severe)
+        }
+        assertEquals(setOf("victoria"), asked)
+        assertEquals(LineStatusCheck(severe, now), refreshed.lineStatuses["victoria"])
+    }
+
+    @Test
+    fun `a line TfL doesn't know is shared as such`() = runTest {
+        val shared = LineStatusCache()
+        val refreshed = WidgetRefresh.refreshedLineStatuses(snapshot(emptyMap()), t0, shared = shared) {
+            throw TflException.NotFound(null)
+        }
+        assertEquals(LineStatusCheck.noVerdict("victoria", t0), refreshed.lineStatuses["victoria"])
+        assertEquals(LineStatusCache.Held.Omitted(t0, unrecognized = true), shared["victoria"])
+    }
+
+    @Test
+    fun `a shared answer past the window, or older than the widget's own, isn't taken`() = runTest {
+        val now = t0.plusSeconds(200)
+        val shared = LineStatusCache()
+        shared["victoria"] = LineStatusCache.Held.Verdict(now.minusSeconds(100), severe)
+        var asked: Set<String>? = null
+        val refreshed = WidgetRefresh.refreshedLineStatuses(snapshot(emptyMap()), now, reuse = Duration.ofSeconds(90), shared = shared) {
+            asked = it
+            listOf(good)
+        }
+        assertEquals(setOf("victoria"), asked)
+        assertEquals(LineStatusCheck(good, now), refreshed.lineStatuses["victoria"])
+        assertEquals(LineStatusCache.Held.Verdict(now, good), shared["victoria"])
+        // The widget's own check is newer than the shared one: kept, and nothing asked.
+        shared["victoria"] = LineStatusCache.Held.Verdict(now.minusSeconds(30), severe)
+        val own = snapshot(mapOf("victoria" to LineStatusCheck(good, now.minusSeconds(5))))
+        val kept = WidgetRefresh.refreshedLineStatuses(own, now, reuse = Duration.ofSeconds(90), shared = shared) {
+            error("asked")
+        }
+        assertEquals(LineStatusCheck(good, now.minusSeconds(5)), kept.lineStatuses["victoria"])
+    }
+
     @Test
     fun `a dismissed disruption isn't marked, but its line still counts as checked`() {
         val snap = snapshot(mapOf("victoria" to LineStatusCheck(severe, t0, dismissed = true)))
