@@ -12,6 +12,10 @@ import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FavoritePlacesStore
 import app.stopdash.domain.FixedLocation
 import app.stopdash.domain.PlaceCandidate
+import app.stopdash.domain.PlaceHit
+import app.stopdash.domain.PlaceHits
+import app.stopdash.domain.PlaceIndex
+import app.stopdash.domain.PlaceKind
 import app.stopdash.domain.PostcodeResolution
 import app.stopdash.domain.PostcodeResolver
 import app.stopdash.domain.StationFinder
@@ -29,6 +33,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -70,6 +75,10 @@ class FavoritePlacesViewModel(
     // same ranked list as From…/To… (SPEC *Finding stops*); loaded once, off the main thread, on first
     // search. Empty by default (tests, and before it loads) leaves matching to TfL's search alone.
     loadIndex: suspend () -> StationIndex = { StationIndex.EMPTY },
+    // The bundled London places, streets and postcodes (dev-docs/PLACES.md), offered as places to save
+    // alongside the stops, found on the device with nothing sent. A complete postcode it holds is
+    // adopted from it without asking TfL. Read once, off the main thread. None by default.
+    loadPlaceIndex: suspend () -> PlaceIndex = { PlaceIndex.EMPTY },
     // Restores the in-progress editor draft across process death; the saved copy stays on the device.
     private val savedState: SavedStateHandle = SavedStateHandle(),
     private val debounceMillis: Long = DEBOUNCE_MILLIS,
@@ -107,6 +116,12 @@ class FavoritePlacesViewModel(
         val query: String = "",
         val searching: Boolean = false,
         val results: List<StationMatch> = emptyList(),
+        // The bundled places, streets and postcodes the query finds, below the stops; each carries its
+        // coordinate, so picking one needs no lookup.
+        val places: List<PlaceHit> = emptyList(),
+        // How many of [results] sit above [places]: the stops shown when the places appeared. TfL's
+        // later stops go below the places, so nothing the rider is reading moves down (*hold still*).
+        val placesAfter: Int = Int.MAX_VALUE,
         val searchFailed: Boolean = false,
         // TfL's search failed but the bundled index still matched: the local list stands, and the
         // screen says bus stops / newer stations weren't searched — as the station search does.
@@ -165,6 +180,18 @@ class FavoritePlacesViewModel(
 
     // The bundled index, loaded once on first use so opening the editor never waits on the asset read.
     private val index = viewModelScope.async(io, start = CoroutineStart.LAZY) { loadIndex() }
+
+    // Started at once (it takes a moment to read), so it's usually ready by the first letter typed.
+    private val placeIndex = viewModelScope.async(io) { loadPlaceIndex() }
+
+    // The bundled places for [query], searched on [compute]; none, with no hop, when there's no index.
+    private suspend fun bundledPlaces(query: String, postcodesOnly: Boolean = false): List<PlaceHit> {
+        val places = placeIndex.await()
+        return if (places.size == 0) emptyList() else withContext(compute) {
+            // A search typed past stops partway rather than scanning the whole index.
+            PlaceHits.fromIndex(places, query, checkpoint = { ensureActive() }, postcodesOnly = postcodesOnly)
+        }
+    }
 
     init {
         // A read failure (IOException before the first emit) must not escape the scope and crash the
@@ -295,7 +322,7 @@ class FavoritePlacesViewModel(
         postcode?.cancel()
         updateEditor {
             it.copy(
-                query = query, coordinate = null, placeName = null, resolvingId = null,
+                query = query, coordinate = null, placeName = null, resolvingId = null, places = emptyList(),
                 // The rider is searching for another place: a restore no longer goes back to the stop.
                 pendingStop = null,
                 postcodeResolving = false, postcodeCandidates = emptyList(),
@@ -314,6 +341,15 @@ class FavoritePlacesViewModel(
                     searching = false, results = emptyList(), searchFailed = false, remoteFailed = false,
                     unresolvableIds = emptySet(), resolveFailedIds = emptySet(),
                 )
+            }
+            // The bundled postcodes it starts, to pick from as it's typed ("SW1A" lists SW1A's): postcodes
+            // only, so places named like one ("E12 Cafe") can't take every slot.
+            search = viewModelScope.launch {
+                val places = bundledPlaces(query.trim(), postcodesOnly = true)
+                _state.update {
+                    val editor = it.editor?.takeIf { e -> e.query == query } ?: return@update it
+                    it.copy(editor = editor.copy(places = places))
+                }
             }
             // A complete postcode resolves itself (debounced), so the happy path is type → Save; while
             // it's still partial there's nothing to look up yet (SPEC D9).
@@ -416,6 +452,13 @@ class FavoritePlacesViewModel(
             // that slips through the debounce is dropped by the guard below.
             if (debounce) delay(debounceMillis)
             if (_state.value.editor?.query != query) return@launch
+            // The bundle holds every London postcode at its center: adopt it from there, as TfL's direct
+            // resolution would be, and ask TfL nothing.
+            val bundled = bundledPlaces(code).firstOrNull { it.kind == PlaceKind.POSTCODE && it.name.equals(code, ignoreCase = true) }
+            if (bundled != null) {
+                if (_state.value.editor?.query == query) adoptLocation(bundled.name, bundled.coordinate)
+                return@launch
+            }
             val resolution = try {
                 withContext(io) { postcodes.resolvePostcode(code) }
             } catch (e: CancellationException) {
@@ -445,6 +488,12 @@ class FavoritePlacesViewModel(
         }
     }
 
+    /** Adopt a bundled place, street or postcode [hit] as the place's location, like picking a stop. */
+    fun onPickPlace(hit: PlaceHit) {
+        if (savingNow()) return
+        adoptLocation(hit.name, hit.coordinate)
+    }
+
     /** Adopt a resolved postcode [candidate] as the place's location, like picking a search result. */
     fun onPickCandidate(candidate: PlaceCandidate) {
         if (savingNow()) return
@@ -469,6 +518,7 @@ class FavoritePlacesViewModel(
                 labelFromPick = deriveLabel,
                 query = name,
                 results = emptyList(),
+                places = emptyList(),
                 searching = false,
                 searchFailed = false,
                 resolvingId = null,
@@ -578,6 +628,7 @@ class FavoritePlacesViewModel(
         updateEditor {
             it.copy(
                 searching = true, searchFailed = false, remoteFailed = false, results = emptyList(),
+                placesAfter = Int.MAX_VALUE,
                 unresolvableIds = emptySet(), resolveFailedIds = emptySet(),
             )
         }
@@ -591,14 +642,21 @@ class FavoritePlacesViewModel(
             // index so a station favorite is selectable even when TfL is unreachable (Codex). Applied
             // to the displayed lists only, so rank/fold behavior stays identical to From…/To….
             val localShown = withContext(compute) { stations.withBundledPositions(local) }
+            val places = bundledPlaces(trimmed)
             _state.update {
                 val editor = it.editor?.takeIf { e -> e.query.trim() == trimmed } ?: return@update it
-                if (localShown.isEmpty()) it else it.copy(editor = editor.copy(results = localShown))
+                if (localShown.isEmpty() && places.isEmpty()) {
+                    it
+                } else {
+                    it.copy(editor = editor.copy(results = localShown, places = places, placesAfter = localShown.size))
+                }
             }
             delay(debounceMillis)
             try {
                 val remote = withContext(io) { finder.searchStations(trimmed) }
-                val merged = withContext(compute) { stations.withBundledPositions(stations.rank(trimmed, local, remote)) }
+                val merged = withContext(compute) {
+                    holdStill(localShown, stations.withBundledPositions(stations.rank(trimmed, local, remote)))
+                }
                 _state.update {
                     // Guard against a result landing after the editor closed or moved on.
                     val editor = it.editor?.takeIf { e -> e.query.trim() == trimmed } ?: return@update it
@@ -617,8 +675,9 @@ class FavoritePlacesViewModel(
                         editor = editor.copy(
                             searching = false,
                             results = localShown,
-                            searchFailed = localShown.isEmpty(),
-                            remoteFailed = localShown.isNotEmpty(),
+                            // The places, found on the device, stand too: only nothing at all is a failure.
+                            searchFailed = localShown.isEmpty() && editor.places.isEmpty(),
+                            remoteFailed = localShown.isNotEmpty() || editor.places.isNotEmpty(),
                         ),
                     )
                 }
@@ -688,6 +747,24 @@ class FavoritePlacesViewModel(
     }
 
     companion object {
+        /**
+         * TfL's merged stops, kept still: the stops already [shown] stay first, in their order (each
+         * with TfL's fuller record where it has one), and the stops TfL added follow them, up to the
+         * usual [limit] of stop rows in all.
+         */
+        @androidx.annotation.WorkerThread
+        internal fun holdStill(
+            shown: List<StationMatch>,
+            merged: List<StationMatch>,
+            limit: Int = StationIndex.DEFAULT_LIMIT,
+        ): List<StationMatch> {
+            // By [StationMatch.key], not id: an interchange's names share one id as distinct rows.
+            val byKey = merged.associateBy { it.key }
+            val shownKeys = shown.mapTo(HashSet()) { it.key }
+            val kept = shown.map { byKey[it.key] ?: it }
+            return kept + merged.filter { it.key !in shownKeys }.take((limit - kept.size).coerceAtLeast(0))
+        }
+
         const val MIN_QUERY_LENGTH = 2
         const val DEBOUNCE_MILLIS = 300L
         private const val KEY_KIND = "editor.kind"

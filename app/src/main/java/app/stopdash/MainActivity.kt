@@ -1833,6 +1833,9 @@ class MainActivity : ComponentActivity() {
                                                 // The same bundled index From…/To… search uses, so the
                                                 // picker matches identically (SPEC *Finding stops*).
                                                 loadIndex = { StationIndexStore.load(applicationContext) },
+                                                // The bundled London places, streets and postcodes, to save
+                                                // one as a favorite (maintainer, 2026-10-11).
+                                                loadPlaceIndex = { PlaceIndexStore.load(applicationContext) },
                                                 // Restores an in-progress add/edit draft across process death.
                                                 savedState = createSavedStateHandle(),
                                                 warn = ::logStarWarning,
@@ -1894,6 +1897,7 @@ class MainActivity : ComponentActivity() {
                                     onPick = favoritePlacesModel::onPick,
                                     onResolvePostcode = favoritePlacesModel::resolvePostcode,
                                     onPickCandidate = favoritePlacesModel::onPickCandidate,
+                                    onPickPlace = favoritePlacesModel::onPickPlace,
                                     onLabelChange = favoritePlacesModel::onLabelChange,
                                     onToggleDay = favoritePlacesModel::onToggleDay,
                                     onIconChange = favoritePlacesModel::onIconChange,
@@ -3925,7 +3929,12 @@ class MainActivity : ComponentActivity() {
                     loadYours = { loadYourStops(appContext, recents) },
                     // The saved places, chips after "Here" to start from (maintainer, 2026-10-04).
                     loadPlaces = { loadFavoritePlaces(appContext) },
+                    // The bundled London places, streets and postcodes, to start a trip from one
+                    // (maintainer, 2026-10-11): found on the device, never sent; TfL isn't geocoded here.
+                    loadPlaceIndex = { PlaceIndexStore.load(appContext) },
                     recordOpen = { recents.add(it) },
+                    // A place started from joins From…'s own Recent, as a station opened there does.
+                    recordPlace = { recents.addPlace(it) },
                     recordRemove = { withContext(Dispatchers.IO) { recents.remove(it) } },
                     warn = ::logDepartureWarning,
                 )
@@ -4028,6 +4037,9 @@ class MainActivity : ComponentActivity() {
                 onStartFromPlace = { place ->
                     onOpenStation(StationMatch(PlaceStart.id(place.coordinate), place.name))
                 },
+                hint = stringResource(R.string.station_search_from_hint),
+                // A typed place started from is remembered under From…'s Recent (a chip isn't).
+                onPlacePicked = search::onPlaceOpened,
                 onRetryPlaces = search::refreshYours,
                 // No long press to edit the places here: the places screen routes *to* a place, which
                 // From… can't show over its search (Codex on #558).

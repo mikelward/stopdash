@@ -374,8 +374,11 @@ The app finds stops two ways:
   better of it, never loses the destination, picked or being typed. Leaving a station to change
   the start closes its page, which stops its refreshes. This replaces a From **chip** built and
   removed earlier the same day; the near-me list's place chips still have no "Here", since a chip for
-  where the rider already is adds nothing. A saved place or geocoded address as the **start** is not
-  offered yet (`TODO.md`).
+  where the rider already is adds nothing. A **place as the start** (maintainer, 2026-10-11): a saved
+  place's chip, or a place, street or postcode typed in *From…* — whose field reads "Station, stop,
+  place or postcode" — and found in the **bundled London place index** (*To… a place or postcode*),
+  starts the trip from its coordinate, as a station does. *From…* doesn't ask TfL's geocoder, so an
+  address the index doesn't hold can't be a start yet (`TODO.md`).
 - **To… a place or postcode** (maintainer, 2026-09-27) — the *To…* search offers **places** (a
   landmark, a venue, a business, a street, an address, a postcode) among the stop matches, each tagged
   *Place*, *Street* or *Postcode* in the right column where a stop shows its modes; tapping one plans
@@ -417,7 +420,8 @@ The app finds stops two ways:
   picked is **remembered under *To…*'s *Recent*** with the stops picked there, in the order picked
   (maintainer, 2026-10-02), its name and coordinate kept on the device as the stops are (*Privacy*);
   a tap routes to it again, tagged as in the results. It matches nothing typed (the geocoder finds it
-  again), and a search that routes to no place (*From…*) never lists one.
+  again). *From…* lists the bundled places too, a pick starting from that place's position and joining
+  *From…*'s own *Recent* the same way.
 - **Farther stations** (maintainer, 2026-09-25) — where the near-me list reaches only one tube
   station, the rest of the network can be two miles off. Below the loaded places, a **collapsed card** stands for the nearest station of each **rail line** the loaded
   nearby stops don't serve (a station left unfetched in the *more* tier doesn't count, since nothing
@@ -4199,19 +4203,25 @@ Mirrors the sibling fleet:
   Home/Work slots are identified by role, not by the mutable, possibly-duplicated label (a custom
   place may reuse the word "Home"; a label may change on edit or with localization). The coordinate is resolved from a **stop/station or a
   postcode via TfL** (its `/StopPoint/Search` matches usually carry lat/lon, and the **Journey Planner**
-  resolves a postcode — no third-party geocoder, £0); the favorite-setup field reads **"Stop or
-  postcode"**. A typed stop/station is **sent to TfL's stop search** (the *Find a station* path), once
+  resolves a postcode — no third-party geocoder, £0); the favorite-setup field reads **"Stop, place
+  or postcode"**. The **bundled London place index** (*To… a place or postcode*; maintainer,
+  2026-10-11) is searched on the device as the user types, its places, streets and postcodes listed
+  below the stops, each carrying its coordinate, so picking one needs no lookup; a **complete
+  postcode it holds is adopted from it** at once, with nothing sent, and only one it doesn't hold
+  goes to the Journey Planner as below. A typed stop/station is **sent to TfL's stop search** (the *Find a station* path), once
   typing pauses, to resolve the coordinate — the same send as the station search. When the text instead
   **looks like a postcode**, a **complete** one **resolves itself** through the Journey Planner (as the
   stop search resolves a station on a pause — no extra tap), which either geocodes it to one point or
   returns **candidate places**. A postcode is unambiguous, so a **single place is adopted straight away**
   (type → Save); only a genuine **multi-place** answer offers a chooser the user **picks** from, and an
   empty or failed lookup is shown honestly (a failure stays retryable). While the postcode is still
-  partial the editor shows only a passive "Postcode …" hint (from two characters, the same floor station
-  completions use). A postcode-shaped query (a digit present) is **not also sent to the stop search** —
+  partial the editor shows a passive "Postcode …" hint (from two characters, the same floor station
+  completions use) above the bundled postcodes it starts ("SW1A" lists SW1A's), each pickable at once
+  with nothing sent. A postcode-shaped query (a digit present) is **not also sent to the stop search** —
   only the Journey Planner — so it costs one request, not two (a plain two-letter prefix, how a station
-  name starts, still searches). Postcode entry is **favorite-setup only** for now (From… and To… stay
-  stop/station fuzzy search). The **search query text is not persisted** (it isn't written to saved
+  name starts, still searches). From… and To… find postcodes too, from the bundled place index
+  (*Finding stops*); the Journey Planner lookup for one the index doesn't hold is favorite setup's
+  and To…'s, not From…'s. The **search query text is not persisted** (it isn't written to saved
   state, `FavoritePlacesStore`, or backup — *Privacy*, `docs/PRIVACY.md`); the place the user then
   **chooses** is saved by its coordinate and its resolved name exactly as a chosen station is — and for
   a postcode that name may be the postcode itself, no more revealing than the coordinate already stored

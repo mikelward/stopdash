@@ -55,6 +55,7 @@ import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlaceIcon
 import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.PlaceCandidate
+import app.stopdash.domain.PlaceHit
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.UkPostcode
 import java.time.DayOfWeek
@@ -83,6 +84,7 @@ fun FavoritePlacesScreen(
     onPick: (StationMatch) -> Unit,
     onResolvePostcode: () -> Unit = {},
     onPickCandidate: (PlaceCandidate) -> Unit = {},
+    onPickPlace: (PlaceHit) -> Unit = {},
     onLabelChange: (String) -> Unit,
     onToggleDay: (DayOfWeek) -> Unit = {},
     onIconChange: (String) -> Unit = {},
@@ -163,6 +165,7 @@ fun FavoritePlacesScreen(
                         onPick = onPick,
                         onResolvePostcode = onResolvePostcode,
                         onPickCandidate = onPickCandidate,
+                        onPickPlace = onPickPlace,
                         onLabelChange = onLabelChange,
                         onToggleDay = onToggleDay,
                         onIconChange = onIconChange,
@@ -335,6 +338,7 @@ private fun PlaceEditor(
     onPick: (StationMatch) -> Unit,
     onResolvePostcode: () -> Unit,
     onPickCandidate: (PlaceCandidate) -> Unit,
+    onPickPlace: (PlaceHit) -> Unit,
     onLabelChange: (String) -> Unit,
     onToggleDay: (DayOfWeek) -> Unit,
     onIconChange: (String) -> Unit,
@@ -396,7 +400,7 @@ private fun PlaceEditor(
             // The postcode section is the answer for a postcode-shaped query, so don't also say the
             // station search found "no matches" beneath it (Codex).
             editor.query.trim().length >= FavoritePlacesViewModel.MIN_QUERY_LENGTH &&
-                editor.results.isEmpty() && !showingPostcode -> Text(
+                editor.results.isEmpty() && editor.places.isEmpty() && !showingPostcode -> Text(
                 text = stringResource(R.string.station_search_no_matches),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -407,7 +411,7 @@ private fun PlaceEditor(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        editor.results.forEach { match ->
+        val matchRow: @Composable (StationMatch) -> Unit = { match ->
             MatchResultRow(
                 match = match,
                 resolving = editor.resolvingId == match.id,
@@ -416,6 +420,15 @@ private fun PlaceEditor(
                 onPick = onPick,
             )
         }
+        // The stops shown when the places appeared, then the bundled places, streets and postcodes
+        // (each tagged as on To…), then any stops TfL added after: a late answer goes below what the
+        // rider is reading rather than pushing it down.
+        val placesAfter = editor.placesAfter.coerceAtMost(editor.results.size)
+        editor.results.subList(0, placesAfter).forEach { matchRow(it) }
+        editor.places.forEach { place ->
+            PlaceHitRow(place, onClick = { onPickPlace(place) })
+        }
+        editor.results.subList(placesAfter, editor.results.size).forEach { matchRow(it) }
         // TfL's search failed but the bundled index matched: say bus stops weren't searched, as the
         // station search does, rather than presenting the local list as the whole answer.
         if (editor.remoteFailed) {
