@@ -71,18 +71,23 @@ internal object WidgetPreview {
 
     /**
      * The example's model at each of [SIZES], with the bundled branch topology read on [io] and the
-     * models worked out on [worker], neither on the caller's thread (AGENTS.md *Main thread*).
+     * models worked out on [worker], neither on the caller's thread (AGENTS.md *Main thread*); the
+     * compact widget's when [bare].
      */
     suspend fun models(
         context: Context,
+        bare: Boolean = false,
         io: CoroutineDispatcher = Dispatchers.IO,
         worker: CoroutineDispatcher = Dispatchers.Default,
     ): WidgetModels =
-        models(withContext(io) { RouteTopologyStore.load(context) }, worker)
+        models(withContext(io) { RouteTopologyStore.load(context) }, worker, bare)
 
-    /** The example's model at each of [SIZES], worked out on [worker] (AGENTS.md *Main thread*). */
-    suspend fun models(topology: RouteTopology, worker: CoroutineDispatcher = Dispatchers.Default): WidgetModels =
-        widgetModels(snapshot(), NOW, emptySet(), fontScale = 1f, topology, emptySet(), SIZES, worker = worker)
+    /**
+     * The example's model at each of [SIZES], worked out on [worker] (AGENTS.md *Main thread*); the
+     * compact widget's when [bare].
+     */
+    suspend fun models(topology: RouteTopology, worker: CoroutineDispatcher = Dispatchers.Default, bare: Boolean = false): WidgetModels =
+        widgetModels(snapshot(), NOW, emptySet(), fontScale = 1f, topology, emptySet(), SIZES, worker = worker, bare = bare)
 
     // Kept out of backup and device transfer (backup_rules.xml): the system's preview belongs to this
     // install, so a restored record would stop a new phone ever getting one.
@@ -102,8 +107,11 @@ internal object WidgetPreview {
             try {
                 val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 if (prefs.getInt(PUBLISHED_VERSION, -1) == BuildConfig.VERSION_CODE) return@launch
-                val result = GlanceAppWidgetManager(app).setWidgetPreviews(StopDashWidgetReceiver::class)
-                if (result == GlanceAppWidgetManager.SET_WIDGET_PREVIEWS_RESULT_SUCCESS) {
+                // Both widgets in the picker, the compact one too; both must take for the version to count.
+                val manager = GlanceAppWidgetManager(app)
+                val results = listOf(StopDashWidgetReceiver::class, StopDashCompactWidgetReceiver::class)
+                    .map { manager.setWidgetPreviews(it) }
+                if (results.all { it == GlanceAppWidgetManager.SET_WIDGET_PREVIEWS_RESULT_SUCCESS }) {
                     prefs.edit().putInt(PUBLISHED_VERSION, BuildConfig.VERSION_CODE).apply()
                     StopdashDebugLog.info("widget: picker preview published")
                 } else {

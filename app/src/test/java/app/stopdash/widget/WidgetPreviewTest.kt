@@ -41,6 +41,17 @@ class WidgetPreviewTest {
     }
 
     @Test
+    fun `the compact widget's example shows departures and no stop headers`() {
+        val models = runBlocking { WidgetPreview.models(RouteTopology.EMPTY, bare = true) }
+        for ((size, model) in models.bySize) {
+            assertTrue("$size shows a departure", model.rows.isNotEmpty())
+            assertTrue("$size has no headers", model.rows.all { it.header == null })
+            assertEquals(null, model.tap)
+            assertFalse("$size warns", model.stale || model.uncertain || model.statusUnknown)
+        }
+    }
+
+    @Test
     fun `the example is worked out on the worker`() {
         val pool = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
         try {

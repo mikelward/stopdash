@@ -122,6 +122,37 @@ class WidgetScreenshotTest {
     }
 
     @Test
+    fun `the compact widget picker's example`() {
+        val size = WidgetPreview.SIZES.first { it.width.value == 250f }
+        val model = runBlocking { WidgetPreview.models(app.stopdash.domain.RouteTopology.EMPTY, bare = true) }[size]
+        capture("widget-compact-picker-preview.png", model, size = size, bare = true)
+    }
+
+    // The compact widget: departures only, no title, stamp or stop headers.
+    @Test
+    fun `compact widget, light`() = capture("widget-compact.png", compactModel(), bare = true)
+
+    @Test
+    fun `compact widget, dark`() = capture("widget-compact-dark.png", compactModel(), dark = true, bare = true)
+
+    // Out-of-date departures still say so on the compact widget, above them.
+    @Test
+    fun `compact widget still warns when departures are out of date`() =
+        capture("widget-compact-partial.png", compactModel().copy(uncertain = true), bare = true)
+
+    private fun compactModel() = WidgetModel(
+        hasData = true,
+        stale = false,
+        uncertain = false,
+        stamp = "Updated just now",
+        rows = listOf(
+            rowModel(row("victoria", "Victoria", "Brixton", 120)),
+            rowModel(branchingRow()),
+            rowModel(row("piccadilly", "Piccadilly", "Heathrow T5", 300)),
+        ),
+    )
+
+    @Test
     fun widget_trip_on_the_way_shows_the_step_and_the_trains_at_the_next_change() {
         // Public TfL interchanges only (SPEC *Privacy*).
         val trip = app.stopdash.data.WatchTrip(
@@ -681,13 +712,14 @@ class WidgetScreenshotTest {
         fontScale: Float = 1f,
         locationNeeded: Boolean = false,
         textScale: Float = 1f,
+        bare: Boolean = false,
     ) {
         if (dark) RuntimeEnvironment.setQualifiers("+night") else RuntimeEnvironment.setQualifiers("+notnight")
         // Set after the qualifiers so they can't override it; the inflated widget reads its sp sizes
         // from this context's configuration, as a real host does.
         RuntimeEnvironment.setFontScale(fontScale)
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val view = inflate(context, model, size, fontScale, locationNeeded, textScale)
+        val view = inflate(context, model, size, fontScale, locationNeeded, textScale, bare)
         // Capture at the widget's own size in px (420dpi), so a small size shows its real clipping.
         val density = context.resources.displayMetrics.density
         captureSnapshot(view, name, (size.width.value * density).toInt(), (size.height.value * density).toInt())
@@ -701,10 +733,11 @@ class WidgetScreenshotTest {
         locationNeeded: Boolean = false,
         // The app's own text size; the widget is drawn at [fontScale] times it, as provideGlance does.
         textScale: Float = 1f,
+        bare: Boolean = false,
     ): View {
         val result = runBlocking {
             GlanceRemoteViews().compose(context, size = size) {
-                WidgetContent(model, now, fontScale * textScale, locationNeeded, textScale)
+                WidgetContent(model, now, fontScale * textScale, locationNeeded, textScale, bare)
             }
         }
         return result.remoteViews.apply(context, FrameLayout(context))

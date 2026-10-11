@@ -123,7 +123,12 @@ import kotlinx.coroutines.flow.update
  * `MainActivity`), so the widget shows "the stops near where you last opened the app". Phase 2
  * replaces that with the watched stops; a live-refresh cadence for the widget is D5.
  */
-class StopDashWidget : GlanceAppWidget() {
+open class StopDashWidget internal constructor(
+    // The compact widget ([StopDashCompactWidget]): departures only, no title, stamp or stop headers.
+    private val bare: Boolean,
+) : GlanceAppWidget() {
+    constructor() : this(bare = false)
+
     // Drawn at each size the launcher reports for this widget (portrait and landscape, say), so the
     // rows are costed at the cell's real width and the line budget fills its real height (see
     // widgetRowsHeight), with no space left over between canned sizes. A narrow widget shortens its
@@ -138,8 +143,8 @@ class StopDashWidget : GlanceAppWidget() {
      * layout, never the user's stops. The models are worked out before composing, off the main thread.
      */
     override suspend fun providePreview(context: Context, widgetCategory: Int) {
-        val models = WidgetPreview.models(context)
-        provideContent { WidgetContent(models[LocalSize.current], WidgetPreview.NOW) }
+        val models = WidgetPreview.models(context, bare)
+        provideContent { WidgetContent(models[LocalSize.current], WidgetPreview.NOW, bare = bare) }
     }
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
@@ -160,7 +165,7 @@ class StopDashWidget : GlanceAppWidget() {
             when (val shown = drawn) {
                 is TripDrawing -> WidgetTripContent(shown.model, shown.layouts[size], shown.fontScale, shown.textScale)
                 is DeparturesDrawing ->
-                    WidgetContent(shown.models[size], shown.now, shown.fontScale, shown.locationNeeded, shown.textScale)
+                    WidgetContent(shown.models[size], shown.now, shown.fontScale, shown.locationNeeded, shown.textScale, bare)
             }
         }
     }
@@ -308,7 +313,7 @@ class StopDashWidget : GlanceAppWidget() {
             logWidgetSnapshotWarning("widget sizes read failed: ${e::class.simpleName}")
             emptyList()
         }
-        val models = widgetModels(shown, now, starred, fontScale, topology, hiddenModes, sizes, tap)
+        val models = widgetModels(shown, now, starred, fontScale, topology, hiddenModes, sizes, tap, bare = bare)
         StopdashDebugLog.info(
             "widget: drew %s to %s rows across sizes, data %s s old",
             models.all.minOf { it.rows.size },
@@ -364,6 +369,13 @@ class StopDashWidget : GlanceAppWidget() {
 }
 
 /**
+ * The compact widget (maintainer, 2026-10-11): the same departures as [StopDashWidget], from the same
+ * snapshot and refreshes, with no title, "Updated" stamp or stop headers, so the cell holds more of
+ * them. A warning (old or partial departures, a failed refresh) still shows above them (SPEC D4).
+ */
+class StopDashCompactWidget : StopDashWidget(bare = true)
+
+/**
  * [widgetModel] for each of [sizes] at [fontScale], plus the minimum size's as the fallback, worked
  * out on [worker], never on the caller's thread. The redraw for a stale guess is judged against
  * every row the snapshot has, so it holds for a size reported later too.
@@ -378,13 +390,15 @@ internal suspend fun widgetModels(
     sizes: Collection<DpSize>,
     tap: WidgetTapNote? = null,
     worker: CoroutineDispatcher = Dispatchers.Default,
+    // The compact widget's models ([WidgetGeometry.bare]).
+    bare: Boolean = false,
 ): WidgetModels = withContext(worker) {
     val build = { size: DpSize ->
         widgetModel(
             snapshot,
             now,
             starred,
-            geometry = WidgetGeometry(size.width, size.height, fontScale),
+            geometry = WidgetGeometry(size.width, size.height, fontScale, bare),
             topology = topology,
             hiddenModes = hiddenModes,
             tap = tap,
@@ -541,7 +555,14 @@ internal data class WidgetRowModel(
  * The cell the widget is drawn in: the host's size bucket and the system font scale, from which
  * [widgetModel] works out each row's layout (see [widgetRowStacked]) and how many fit.
  */
-internal data class WidgetGeometry(val width: Dp, val height: Dp, val fontScale: Float = 1f)
+internal data class WidgetGeometry(
+    val width: Dp,
+    val height: Dp,
+    val fontScale: Float = 1f,
+    // The compact widget ([StopDashCompactWidget]): departures only, with no title, stamp or stop
+    // headers, so the rows have the whole cell bar the padding and a warning, when there is one.
+    val bare: Boolean = false,
+)
 
 /**
  * A stop header above a group of widget rows — the same place name and qualifier the in-app list
@@ -702,7 +723,7 @@ internal fun widgetModel(
         val stackedLine = widgetLineHeight(g.fontScale, stacked = true)
         val statusLine = widgetStatusLineHeight(g.fontScale)
         LineCosts(
-            header = widgetHeaderHeight(g.fontScale),
+            header = if (g.bare) 0 else widgetHeaderHeight(g.fontScale),
             line = { row, group -> if (stacked(row, group)) stackedLine else line },
             // Under a row's countdowns a status is one short text line; drawn alone, it takes the pill's line.
             status = { row, alone -> if (!alone) statusLine else if (statusStacked(row)) stackedLine else line },
@@ -722,15 +743,30 @@ internal fun widgetModel(
             row.groups.sumOf { costs.line(row.row, it) } +
             (if (row.row.status != null) costs.status(row.row, row.groups.isEmpty()) else 0)
         var room = budget * 2
+        // A header's worth less room each try; the compact widget's headers cost nothing, so it steps
+        // by the least a departure costs instead, or the loop would never end (Codex on #759).
+        val step = if (costs.header > 0) costs.header else oneLine.coerceAtLeast(1)
         while (room > budget) {
             val rows = BudgetedRows.select(pinned, room, WIDGET_MAX_TIMES, topology, ::grouped, costs)
             if (rows.size >= 2) widgetColumns(rows, budget, costs.header, ::cost)?.let { return it }
-            room -= costs.header
+            room -= step
         }
         return BudgetedRows.select(pinned, budget, WIDGET_MAX_TIMES, topology, ::grouped, costs) to null
     }
     var columnBreak: Int? = null
     fun layout(withNote: Boolean): Triple<Boolean, Int, List<BudgetedRow>> {
+        // The compact widget has no title row to drop, so it never switches layout: its rows get the
+        // cell bar the padding and the warning line, and a cell that fits none is too small.
+        val bareBudget = geometry?.takeIf { it.bare }?.let { widgetRowsHeight(it.height, it.fontScale, withNote = withNote, bare = true) }
+        if (bareBudget != null && twoColumns) {
+            val (rows, at) = columns(bareBudget)
+            columnBreak = at
+            return Triple(false, bareBudget, rows)
+        }
+        if (bareBudget != null) {
+            columnBreak = null
+            return Triple(false, bareBudget, BudgetedRows.select(pinned, bareBudget, WIDGET_MAX_TIMES, topology, ::grouped, costs))
+        }
         // The same condition WidgetContent draws the note under (a stamp is always set here).
         val fullBudget = geometry?.let { widgetRowsHeight(it.height, it.fontScale, withNote = withNote) }
             ?: if (withNote) maxLinesWithNote else maxLines
@@ -780,7 +816,7 @@ internal fun widgetModel(
         WidgetRowModel(
             it.row,
             it.groups,
-            it.header?.let { header -> WidgetHeader(header.text, header.spoken) },
+            it.header?.takeIf { geometry?.bare != true }?.let { header -> WidgetHeader(header.text, header.spoken) },
             noTimes = if (it.groups.isEmpty()) widgetNoTimes(it.row, current = it.row.stopId in currentStops) else null,
             stackedLines = it.groups.map { group -> stacked(it.row, group) },
             statusStacked = it.groups.isEmpty() && statusStacked(it.row),
@@ -904,6 +940,8 @@ internal fun WidgetContent(
     locationNeeded: Boolean = false,
     // The app's own text size (SPEC *Display size*), which every text is multiplied by ([widgetSp]).
     textScale: Float = 1f,
+    // The compact widget ([StopDashCompactWidget]): no title or stamp, only a warning when there is one.
+    bare: Boolean = false,
 ) = CompositionLocalProvider(LocalWidgetTextScale provides textScale) {
     // A tap on the header (the title, the stamp and the note under them, or the compact status line)
     // refreshes the widget's stops in place (SPEC D5), as "Tap to refresh" says. With no data there
@@ -942,7 +980,14 @@ internal fun WidgetContent(
             val stamp = model.stamp?.let {
                 if (LocalSize.current.width < WIDGET_COMPACT_WIDTH) it.removePrefix("Updated ") else it
             }
-            if (model.compact) {
+            if (bare) {
+                // The compact widget: no title or stamp. A warning still shows, where the stamp would
+                // have been, so old or partial departures never pass as live (SPEC D4).
+                note?.let {
+                    Column(modifier = header) { WidgetStatusLine(it) }
+                    Spacer(GlanceModifier.height(4.dp))
+                }
+            } else if (model.compact) {
                 // Compact: no title row, just one status line — the warning when there is one (the
                 // stronger claim; a stale row's own countdown is already withheld as "?"), else the
                 // age — so the one departure below still fits (SPEC D4).
@@ -1609,8 +1654,12 @@ internal fun widgetRowsHeight(
     withNote: Boolean = false,
     // The compact layout's chrome: no title row, just the one status line.
     compact: Boolean = false,
+    // The compact widget's chrome ([WidgetGeometry.bare]): the padding, and the warning line when [withNote].
+    bare: Boolean = false,
 ): Int {
-    val chrome = if (compact) {
+    val chrome = if (bare) {
+        if (withNote) WIDGET_COMPACT_CHROME + WIDGET_NOTE_TEXT_HEIGHT * fontScale else WIDGET_PADDING_CHROME
+    } else if (compact) {
         WIDGET_COMPACT_CHROME + WIDGET_NOTE_TEXT_HEIGHT * fontScale
     } else {
         WIDGET_FIXED_CHROME +
@@ -1741,6 +1790,9 @@ private val WIDGET_FIXED_CHROME = 32.dp
 /** The title row's text height at font scale 1 (the 14sp title's line). */
 private val WIDGET_TITLE_TEXT_HEIGHT = 20.dp
 
+/** The compact widget's chrome with no warning to show: the 24dp of padding alone. */
+private val WIDGET_PADDING_CHROME = 24.dp
+
 /** The compact chrome's fixed part: 24dp of padding and the 4dp under the status line. */
 private val WIDGET_COMPACT_CHROME = 28.dp
 
@@ -1842,11 +1894,11 @@ internal object WidgetRedraws {
 internal suspend fun redrawWidgets(
     context: Context,
     io: CoroutineDispatcher = Dispatchers.IO,
-    glanceIds: () -> List<GlanceId> = { placedGlanceIds(context) },
-    update: suspend (GlanceId) -> Unit = { id -> StopDashWidget().update(context, id) },
+    glanceIds: () -> List<Pair<GlanceId, GlanceAppWidget>> = { placedGlanceIds(context) },
+    update: suspend (GlanceId, GlanceAppWidget) -> Unit = { id, widget -> widget.update(context, id) },
 ) {
     WidgetRedraws.generation.update { it + 1 }
-    withContext(io) { glanceIds().forEach { id -> update(id) } }
+    withContext(io) { glanceIds().forEach { (id, widget) -> update(id, widget) } }
 }
 
 /**
@@ -1854,11 +1906,13 @@ internal suspend fun redrawWidgets(
  * widget removed in between has no provider any more and is skipped, so it can't cost the others
  * their redraw.
  */
-private fun placedGlanceIds(context: Context): List<GlanceId> {
+private fun placedGlanceIds(context: Context): List<Pair<GlanceId, GlanceAppWidget>> {
     val manager = GlanceAppWidgetManager(context)
+    // Each widget is redrawn by its own kind, so a compact one stays compact.
+    val compact = placedWidgetIds(context, StopDashCompactWidgetReceiver::class.java).toHashSet()
     return placedWidgetIds(context).asList().mapNotNull { id ->
         try {
-            manager.getGlanceIdBy(id)
+            manager.getGlanceIdBy(id) to (if (id in compact) StopDashCompactWidget() else StopDashWidget())
         } catch (e: IllegalArgumentException) {
             logWidgetSnapshotWarning("widget $id removed during redraw, skipped")
             null

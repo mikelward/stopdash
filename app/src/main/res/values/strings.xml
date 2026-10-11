@@ -344,6 +344,8 @@
 
     <!-- Shown in the widget picker. -->
     <string name="widget_description">Live departures from the stops near you</string>
+    <string name="widget_compact_label">StopDash compact</string>
+    <string name="widget_compact_description">Just the departures</string>
 
     <!-- Overflow (three-dot) button in the departures top bar. Neutral because the menu now
          opens more than one destination (Settings and About), so a screen reader shouldn't
