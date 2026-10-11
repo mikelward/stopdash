@@ -1,11 +1,15 @@
 package app.stopdash.widget
 
-import android.appwidget.AppWidgetManager
 import android.content.BroadcastReceiver
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import androidx.work.WorkManager
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Redraws the widget when the device's clock is set (SPEC *Freshness*). Its countdowns and age are
@@ -17,10 +21,27 @@ import androidx.work.WorkManager
 class WidgetClockChangeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_TIME_CHANGED) return
-        // Null on a device with no widget support.
-        val ids = AppWidgetManager.getInstance(context)
-            ?.getAppWidgetIds(ComponentName(context, StopDashWidgetReceiver::class.java))
-        if (ids == null || ids.isEmpty()) return
-        redrawWidgetNow(WorkManager.getInstance(context.applicationContext))
+        // Asking the host which widgets are placed is a system call per kind, so it runs off the main
+        // thread the receiver is called on, with the broadcast held open until it's done (Codex on #759).
+        val pending: PendingResult? = goAsync()
+        val app = context.applicationContext
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                clockChanged(app)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // The widget keeps its old countdowns until its next scheduled redraw.
+                logWidgetSnapshotWarning("widget clock-change redraw failed: ${e::class.simpleName}")
+            } finally {
+                pending?.finish()
+            }
+        }
     }
+}
+
+/** The clock was set: a redraw now while a widget is placed, the host asked on [io]. */
+internal suspend fun clockChanged(context: Context, io: CoroutineDispatcher = Dispatchers.IO) {
+    if (withContext(io) { placedWidgetIds(context).isEmpty() }) return
+    redrawWidgetNow(WorkManager.getInstance(context))
 }

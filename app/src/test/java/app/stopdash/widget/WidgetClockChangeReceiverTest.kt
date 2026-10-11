@@ -5,9 +5,16 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
+import app.stopdash.ThreadRecorder
+import java.util.concurrent.Executors
+import kotlin.coroutines.CoroutineContext
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.testing.WorkManagerTestInitHelper
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Runnable
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -48,17 +55,46 @@ class WidgetClockChangeReceiverTest {
     @Test
     fun `setting the clock redraws a placed widget at once`() {
         placeWidget()
-        WidgetClockChangeReceiver().onReceive(context, Intent(Intent.ACTION_TIME_CHANGED))
+        runBlocking { clockChanged(context) }
         val redraw = redraws().single()
         assertEquals(0L, redraw.initialDelayMillis)
     }
 
     @Test
+    fun `a compact widget counts as placed`() {
+        val manager = AppWidgetManager.getInstance(context)
+        shadowOf(manager).setAllowedToBindAppWidgets(true)
+        assertTrue(manager.bindAppWidgetIdIfAllowed(2, ComponentName(context, StopDashCompactWidgetReceiver::class.java)))
+        runBlocking { clockChanged(context) }
+        assertEquals(1, redraws().size)
+    }
+
+    @Test
     fun `with no widget placed, or another broadcast, nothing is scheduled`() {
-        WidgetClockChangeReceiver().onReceive(context, Intent(Intent.ACTION_TIME_CHANGED))
+        runBlocking { clockChanged(context) }
         assertTrue(redraws().isEmpty())
         placeWidget()
         WidgetClockChangeReceiver().onReceive(context, Intent(Intent.ACTION_TIMEZONE_CHANGED))
         assertTrue(redraws().isEmpty())
+    }
+
+    // The host is asked off the caller's thread: the receiver is called on the main thread (Codex on #759).
+    @Test
+    fun `the host is asked on the io dispatcher, not the caller's thread`() {
+        val caller = Executors.newSingleThreadExecutor { Thread(it, "test-caller") }
+        val io = Executors.newSingleThreadExecutor { Thread(it, "test-io") }
+        try {
+            val ranOn = ThreadRecorder()
+            val base = io.asCoroutineDispatcher()
+            val recording = object : CoroutineDispatcher() {
+                override fun dispatch(context: CoroutineContext, block: Runnable) =
+                    base.dispatch(context) { ranOn.note(); block.run() }
+            }
+            runBlocking(caller.asCoroutineDispatcher()) { clockChanged(context, recording) }
+            assertEquals(listOf("test-io"), ranOn.threads().distinct())
+        } finally {
+            caller.shutdown()
+            io.shutdown()
+        }
     }
 }

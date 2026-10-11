@@ -3583,7 +3583,7 @@ surface.)
 
 ## One widget, many surfaces
 
-There is one widget. On Android 16 QPR and later, where the OS re-added widgets to the
+There is one widget, in two layouts the launcher's widget picker lists separately. On Android 16 QPR and later, where the OS re-added widgets to the
 phone lock screen, it is eligible to sit there; everywhere else it is a home-screen
 widget. Both use the standard AppWidget/Glance API — a lock-screen widget is just a
 widget the host is allowed to place on the keyguard — so there is no lock-screen-specific
@@ -3592,7 +3592,13 @@ code path to maintain. StopDash does **not** opt out of lock-screen placement (t
 (Android 14 / API 34); the lock-screen *placement* simply appears on devices new enough
 to offer it.
 
-**In the launcher's widget picker** the widget shows an example of itself (maintainer, 2026-10-11):
+**StopDash compact** (maintainer, 2026-10-11) is the same widget without its stop headers, so the
+same cell holds more departures. It keeps the title row, "StopDash" and the update time, so
+departures a late redraw leaves on screen still say how old they are (principle 1), and its
+warnings, taps and trips are the full widget's. It reads the same snapshot and takes the same
+refreshes and redraws.
+
+**In the launcher's widget picker** each widget shows an example of itself (maintainer, 2026-10-11):
 made-up departures at King's Cross St. Pancras, drawn by the widget's own layout, never the user's
 stops. Android 15 and later draw it from that layout (a generated preview, handed over once per app
 version, since the system limits how often it may be set); Android 14 shows the app's icon.
