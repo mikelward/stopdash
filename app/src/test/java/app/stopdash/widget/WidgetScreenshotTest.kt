@@ -122,6 +122,50 @@ class WidgetScreenshotTest {
     }
 
     @Test
+    fun `the compact widget picker's example`() {
+        val size = WidgetPreview.SIZES.first { it.width.value == 250f }
+        val model = runBlocking { WidgetPreview.models(app.stopdash.domain.RouteTopology.EMPTY, bare = true) }[size]
+        capture("widget-compact-picker-preview.png", model, size = size)
+    }
+
+    // The compact widget beside the full one, from the same two places: the title row and update
+    // time stay, the stop headers go, and their room goes to departures. Public stations only.
+    // [partial]: a third stop the refresh couldn't get, so the widget lays out with its warning line.
+    private fun twoPlaces(partial: Boolean = false): app.stopdash.domain.DeparturesSnapshot {
+        fun dep(lineId: String, lineName: String, destination: String, inSeconds: Long) =
+            Departure(lineId, lineName, "outbound", destination, null, now.plusSeconds(inSeconds), "tube")
+        fun place(id: String, name: String, vararg deps: Departure) = app.stopdash.domain.StopArrivals(id, name, deps.toList(), now)
+        return app.stopdash.domain.DeparturesSnapshot(
+            stops = listOf(
+                place("940GZZLUKSX", "King's Cross St. Pancras", dep("victoria", "Victoria", "Brixton", 90), dep("piccadilly", "Piccadilly", "Heathrow T5", 240)),
+                place("940GZZLUEUS", "Euston", dep("northern", "Northern", "Morden", 150), dep("victoria", "Victoria", "Walthamstow Central", 300)),
+            ),
+            fetchedAt = now,
+            missingStopIds = if (partial) setOf("940GZZLUOXC") else emptySet(),
+            lineStatuses = listOf("victoria", "piccadilly", "northern").associateWith {
+                app.stopdash.domain.LineStatusCheck(app.stopdash.domain.LineStatus(it, app.stopdash.domain.LineStatus.GOOD_SERVICE, "Good Service"), now)
+            },
+        )
+    }
+
+    private fun twoPlacesModel(bare: Boolean, size: DpSize = DpSize(240.dp, 180.dp), partial: Boolean = false) =
+        widgetModel(twoPlaces(partial), now, geometry = WidgetGeometry(size.width, size.height, bare = bare))
+
+    @Test
+    fun `full widget, two places`() = capture("widget-two-places.png", twoPlacesModel(bare = false))
+
+    @Test
+    fun `compact widget, light`() = capture("widget-compact.png", twoPlacesModel(bare = true))
+
+    @Test
+    fun `compact widget, dark`() = capture("widget-compact-dark.png", twoPlacesModel(bare = true), dark = true)
+
+    // Out-of-date departures still say so on the compact widget, under its title row.
+    @Test
+    fun `compact widget still warns when departures are out of date`() =
+        capture("widget-compact-partial.png", twoPlacesModel(bare = true, partial = true))
+
+    @Test
     fun widget_trip_on_the_way_shows_the_step_and_the_trains_at_the_next_change() {
         // Public TfL interchanges only (SPEC *Privacy*).
         val trip = app.stopdash.data.WatchTrip(

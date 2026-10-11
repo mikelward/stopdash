@@ -1,8 +1,6 @@
 package app.stopdash.telemetry
 
 import android.Manifest
-import android.appwidget.AppWidgetManager
-import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
 import androidx.core.app.NotificationManagerCompat
@@ -30,7 +28,7 @@ import app.stopdash.domain.UsageState
 import app.stopdash.ui.FontSizeSetting
 import app.stopdash.watch.DataLayerWatchNodes
 import app.stopdash.watch.WatchNodes
-import app.stopdash.widget.StopDashWidgetReceiver
+import app.stopdash.widget.placedWidgetIds
 import app.stopdash.widget.liveWidgetRefreshNow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.StateFlow
@@ -79,7 +77,7 @@ internal class UsageStateReader(
             tflKey = UserApiKeySetting.current != null,
             railKey = RailApiKeySetting.current != null,
             widgets = orUnknown("widgets") {
-                AppWidgetManager.getInstance(context).getAppWidgetIds(ComponentName(context, StopDashWidgetReceiver::class.java)).size
+                placedWidgetIds(context).size
             },
             watch = orUnknown("watch") { bounded("watch") { watch() } },
             starredRows = orUnknown("starred rows") {

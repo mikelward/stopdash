@@ -84,6 +84,20 @@
                 android:resource="@xml/stopdash_widget_info" />
         </receiver>
 
+        <!-- The compact widget: the same departures, with no title, stamp or stop headers. A second
+             entry in the launcher's widget picker, labeled so the two can be told apart. -->
+        <receiver
+            android:name=".widget.StopDashCompactWidgetReceiver"
+            android:label="@string/widget_compact_label"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/stopdash_compact_widget_info" />
+        </receiver>
+
         <!-- Hears a journey alert swiped away (its delete intent, sent by this app's own
              PendingIntent), so the same disruption isn't posted again. Not exported. -->
         <receiver

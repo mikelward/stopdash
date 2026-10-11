@@ -16,7 +16,7 @@ class WidgetSourceRulesTest {
     @Test
     fun `every widget redraw goes through redrawWidgets`() {
         val direct = sources.filter { file ->
-            file.readLines().any { line -> "StopDashWidget().update" in line && !line.trimStart().startsWith("//") }
+            file.readLines().any { line -> ".update(context, id)" in line && !line.trimStart().startsWith("//") }
         }.map { it.name }
         assertEquals(listOf("StopDashWidget.kt"), direct)
     }
