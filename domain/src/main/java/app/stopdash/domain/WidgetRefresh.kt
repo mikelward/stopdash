@@ -155,34 +155,27 @@ object WidgetRefresh {
                 anyNew = true
                 if (stop.stopId in judged) anyFresh = true
                 // With the National Rail feed that fetch found ("No key" once a key is removed).
-                return@mapIndexed stop.copy(
-                    departures = entry.departures,
-                    fetchedAt = entry.fetchedAt,
-                    arrivalsFresh = true,
-                    railFeed = entry.railFeed,
-                )
+                return@mapIndexed Snapshot.withArrivals(stop, entry.departures, entry.fetchedAt, entry.railFeed)
             }
             if (recent(stop)) {
                 if (stop.stopId in judged) anyFresh = true
                 return@mapIndexed stop
             }
-            when (val fetched = fetchedByStop[i]) {
-                // Keep the aged last-good, but mark it not-fresh so its stale withhold fires and
-                // it can't render as fresh within the freshness window (Codex P1 on #56). Its own
-                // fetchedAt is preserved and still drives age-based staleness.
-                null -> stop.copy(arrivalsFresh = false)
-                else -> {
-                    anyNew = true
-                    if (stop.stopId in judged) anyFresh = true
-                    val stamp = SteadyClock.stamp(now)
-                    stop.copy(
-                        departures = fetched,
-                        fetchedAt = fetchedAt?.invoke(stop.stopId)?.takeIf { it.isBefore(stamp) } ?: stamp,
-                        arrivalsFresh = true,
-                        railFeed = if (railFeed != null) railFeed(stop.stopId) else stop.railFeed,
-                    )
-                }
+            // A failed fetch keeps the aged last-good, marked not-fresh so its stale withhold fires
+            // and it can't render as fresh within the freshness window (Codex P1 on #56); its own
+            // fetchedAt still drives age-based staleness. The app's list merges by the same rule.
+            val fetched = fetchedByStop[i]
+            if (fetched != null) {
+                anyNew = true
+                if (stop.stopId in judged) anyFresh = true
             }
+            val stamp = SteadyClock.stamp(now)
+            Snapshot.withArrivals(
+                stop,
+                fetched,
+                fetchedAt = fetchedAt?.invoke(stop.stopId)?.takeIf { it.isBefore(stamp) } ?: stamp,
+                railFeed = if (railFeed != null) railFeed(stop.stopId) else stop.railFeed,
+            )
         }
         if (!anyNew || !anyFresh) return null
         // The whole-screen stamp is the freshest stop's age (matches DeparturesSnapshot).
