@@ -3592,6 +3592,11 @@ code path to maintain. StopDash does **not** opt out of lock-screen placement (t
 (Android 14 / API 34); the lock-screen *placement* simply appears on devices new enough
 to offer it.
 
+**In the launcher's widget picker** the widget shows an example of itself (maintainer, 2026-10-11):
+made-up departures at King's Cross St. Pancras, drawn by the widget's own layout, never the user's
+stops. Android 15 and later draw it from that layout (a generated preview, handed over once per app
+version, since the system limits how often it may be set); Android 14 shows the app's icon.
+
 The widget is laid out for **each size the launcher reports for it** (portrait and landscape,
 say), not the nearest of a few canned sizes, so it fills its cell: a tall widget shows as many
 departures as fit, and a wide one wraps a row's times under its destination only when they really

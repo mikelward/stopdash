@@ -7,7 +7,9 @@
      last found near the rider, which the widget shows from: where they are now, and wrong on
      another phone. Nor the journey alerts' state: which alerts this install has shown or had
      swiped, and whether Android has stopped offering its notification prompt, are facts about this
-     install, and a restored "prompt gone" would send Allow to Settings on a fresh one that can ask. -->
+     install, and a restored "prompt gone" would send Allow to Settings on a fresh one that can ask. Nor which app
+     version last handed the widget picker its example: the system's preview belongs to this install,
+     and a restored record would stop a new phone getting one. -->
 <full-backup-content>
     <exclude domain="sharedpref" path="telemetry.xml" />
     <exclude domain="sharedpref" path="com.google.firebase.crashlytics.xml" />
@@ -17,4 +19,5 @@
     <exclude domain="sharedpref" path="journey-alerts-state.xml" />
     <exclude domain="sharedpref" path="journey-alerts-announced.xml" />
     <exclude domain="sharedpref" path="journey-alerts-dismissed.xml" />
+    <exclude domain="sharedpref" path="widget_preview.xml" />
 </full-backup-content>

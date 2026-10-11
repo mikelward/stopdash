@@ -130,6 +130,18 @@ class StopDashWidget : GlanceAppWidget() {
     // stamp rather than clip it (WIDGET_COMPACT_WIDTH).
     override val sizeMode = SizeMode.Exact
 
+    // The launcher's widget picker draws the example at whichever of these fits ([WidgetPreview]).
+    override val previewSizeMode = SizeMode.Responsive(WidgetPreview.SIZES)
+
+    /**
+     * The example the widget picker shows (Android 15+): sample departures drawn by the widget's own
+     * layout, never the user's stops. The models are worked out before composing, off the main thread.
+     */
+    override suspend fun providePreview(context: Context, widgetCategory: Int) {
+        val models = WidgetPreview.models(context)
+        provideContent { WidgetContent(models[LocalSize.current], WidgetPreview.NOW) }
+    }
+
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val first = drawing(context, id, WidgetRedraws.generation.value)
         provideContent {

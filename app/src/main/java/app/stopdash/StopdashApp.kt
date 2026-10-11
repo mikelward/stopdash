@@ -38,6 +38,7 @@ import app.stopdash.telemetry.startTelemetry
 import app.stopdash.telemetry.whenConsentLoads
 import app.stopdash.watch.WatchSync
 import app.stopdash.widget.WidgetDismissalRedraw
+import app.stopdash.widget.WidgetPreview
 import app.stopdash.widget.redrawWidgets
 import com.mikelward.androidlog.DebugLog
 import com.mikelward.androidlog.android.DebugFileSink
@@ -132,7 +133,16 @@ open class StopdashApp : Application() {
         warmSharedState()
         installWatchSync()
         installWidgetDismissalRedraw()
+        installWidgetPreview()
         installJourneyAlerts()
+    }
+
+    /**
+     * Gives the launcher's widget picker its example widget, once per app version ([WidgetPreview]).
+     * `open` so the test [Application] can skip it.
+     */
+    protected open fun installWidgetPreview() {
+        WidgetPreview.publishOnce(this, applicationScope)
     }
 
     /**

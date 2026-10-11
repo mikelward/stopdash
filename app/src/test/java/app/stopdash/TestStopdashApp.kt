@@ -51,6 +51,10 @@ class TestStopdashApp : StopdashApp() {
         // DataStore to follow; WidgetDismissalRedrawTest drives the redraw with fakes.
     }
 
+    override fun installWidgetPreview() {
+        // Intentionally empty — no widget host in the test suite; WidgetPreviewTest covers the example.
+    }
+
     override fun installJourneyAlerts() {
         // Intentionally empty — no WorkManager in the test suite, and no real journeys DataStore to
         // follow; JourneyAlertsTest covers the decisions.
