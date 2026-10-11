@@ -3529,8 +3529,16 @@ and these carry the rest as their own PRs:
             both refreshes save only on a nearby stop's fresh arrivals, the app's rule; maintainer,
             2026-10-10), and one merge (every write keeps a stop the store holds newer,
             `keepingFresher`).
-      - [ ] One fetch: the worker on the app's reuse windows and shared-cache rule. Stop closures
-            wait on the widget showing them at all (*Explore showing stop closures*, below).
+      - [ ] One fetch. Shared already (checked 2026-10-11): the near-stop reuse window
+            (`ARRIVALS_REUSE`), the line-status one (`LINE_STATUS_REUSE`), and one arrivals cache
+            (`ArrivalsCache.SHARED`, written through `CachingTflClient`). Still apart (Codex on
+            #754): a stop beyond the eager radius (a far journey origin) is reused for
+            `FAR_ARRIVALS_REUSE` (90 s) by the app but 50 s by the widget, so the two can ask TfL
+            for it at different times; and the app orchestrates its own `fetchBatch` while only the
+            widget calls `WidgetRefresh.refresh`. Closing it means one domain fetch both call, with
+            the reuse window chosen per stop by distance. What the app fetches that the snapshot
+            deliberately leaves out (stop closures, trains with no time) is *Explore showing stop
+            closures* below, not this step.
 - [ ] **Explore showing stop closures on the widget and watch (maintainer 2026-10-10).** The app
       checks every nearby stop for closures, but the stored snapshot deliberately carries none
       (`DeparturesSnapshot`: a closure has no age stamp, so the widget couldn't tell a stale one), so
@@ -3538,7 +3546,9 @@ and these carry the rest as their own PRs:
       with when it was made, drawing it on the widget and watch as the app's closure card does, and
       dropping it at the shared staleness threshold, as line-status marks are (D3/D4). Then the
       widget's own refresh would check closures too (bus poles batched, about 2-4 more TfL requests
-      a refresh, no extra wakeups). Needs a SPEC decision first.
+      a refresh, no extra wakeups). Needs a SPEC decision first. The same question covers a
+      National Rail board's trains with no time (canceled, or delayed with no estimate): the app
+      shows them, but `StopArrivals.untimed` isn't stored, so the widget and watch never do.
 - [ ] **A National Rail station's rows can tie on age (Codex on #750; maintainer 2026-10-10: leave
       as is for now).** A station's stamp is its shared National Rail board's time, the oldest part
       of its arrivals. When the app and the widget both reuse the same board, their rows carry the
