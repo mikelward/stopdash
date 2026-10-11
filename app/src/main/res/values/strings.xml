@@ -672,6 +672,14 @@
     <string name="journey_alerts_days_none">No days</string>
     <!-- The notification channel for journey alerts, as Android's settings list it. -->
     <string name="journey_alerts_channel">Journey alerts</string>
+    <!-- The button on a journey alert that pauses every journey's alerts. -->
+    <string name="journey_alerts_pause">Pause</string>
+    <!-- The near-me list's card while journey alerts are paused, and its button. -->
+    <string name="journey_alerts_paused">Alert notifications paused</string>
+    <string name="journey_alerts_paused_body">Favorite journey alerts are paused. You will not be notified about service disruptions.</string>
+    <string name="journey_alerts_unpause">Unpause</string>
+    <!-- Said when Unpause couldn't be saved; alerts stay paused. -->
+    <string name="journey_alerts_unpause_failed">Couldn\'t unpause alerts</string>
     <string name="journey_alerts_channel_description">A favorite journey\'s line is disrupted during its alert times</string>
     <!-- Content description for a favorite journey's Remove button; %1$s and %2$s are its two stops. -->
     <string name="favorite_journey_remove_description">Remove %1$s to %2$s</string>

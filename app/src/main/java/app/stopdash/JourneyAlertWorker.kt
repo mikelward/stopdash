@@ -102,14 +102,23 @@ internal object JourneyAlertChecks {
     ) {
         val app = context.applicationContext
         scope.launch {
+            // Read first, so a pause set while the app was away holds from the first sync.
+            try {
+                JourneyAlertPause.load(app)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logJourneyAlertWarning("pause unreadable: ${e::class.simpleName}")
+            }
             // The stores' flows end after a read failure (they say so with null first); collected again a
             // minute later, so a passing disk error doesn't leave the check unarmed for the process's life
             // (Codex on #700). A healthy store's flow never ends.
             while (true) {
-                combine(store.journeys(), store.alertSchedules()) { journeys, schedules -> journeys to schedules }
+                // And the pause: Pause or Unpause re-arms (or stops) the checks at once (SPEC *Journeys → Alerts*).
+                combine(store.journeys(), store.alertSchedules(), JourneyAlertPause.paused) { journeys, schedules, paused -> Triple(journeys, schedules, paused) }
                     .distinctUntilChanged()
                     .flowOn(compute)
-                    .collectLatest { (journeys, schedules) ->
+                    .collectLatest { (journeys, schedules, _) ->
                         // At once while a window is open: a direction just turned on, or an app start
                         // mid-window, shouldn't wait a quarter hour for its first check. A failure (WorkManager's
                         // database unavailable, say) is tried again, a little later each time, since nothing else
@@ -292,7 +301,7 @@ internal object JourneyAlertChecks {
         io: CoroutineDispatcher = Dispatchers.IO,
         now: () -> Instant = Instant::now,
     ): Unit = withContext(io) {
-        val can = JourneyAlertNotification.canAlert(context)
+        val can = JourneyAlertNotification.mayAlert(context)
         val flipped = lastCanAlert != null && lastCanAlert != can
         val waiting = WorkManager.getInstance(context).getWorkInfosForUniqueWork(JOURNEY_ALERTS_WORK).get()
             .filter { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.RUNNING }
@@ -396,7 +405,7 @@ internal object JourneyAlertChecks {
         val closeOnly = closeOnly && settings == lastSettings
         lastSettings = settings
         val at = JourneyAlerts.at(now)
-        val canAlert = JourneyAlertNotification.canAlert(context)
+        val canAlert = JourneyAlertNotification.mayAlert(context)
         lastCanAlert = canAlert
         // While alerts can't show, nothing counts as announced: Android has taken them down, and one
         // still under way is posted again once they can show (Codex on #700).
@@ -596,7 +605,8 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
         val active = JourneyAlerts.active(journeys, schedules, at)
         // A close check asks nothing: it clears what closed, and leaves the rest to the main check.
         val closeOnly = inputData.getBoolean(JourneyAlertChecks.CLOSE_ONLY, false)
-        val asking = !closeOnly && active.isNotEmpty() && JourneyAlertNotification.canAlert(context)
+        val paused = JourneyAlertPause.isPaused(context)
+        val asking = !closeOnly && active.isNotEmpty() && !paused && JourneyAlertNotification.canAlert(context)
         // Alerts fire only in London (maintainer, 2026-10-09): abroad by the phone's network, or away by its
         // position where location is allowed all the time, TfL isn't asked and what's up comes down.
         val abroad = asking && JourneyAlerts.abroad(JourneyAlertChecks.networkCountry(context))
@@ -616,7 +626,9 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
         val syncsBefore = JourneyAlertChecks.syncs()
         val journeysNow = store.journeys().first() ?: throw java.io.IOException("journeys unreadable")
         val schedulesNow = store.alertSchedules().first() ?: throw java.io.IOException("schedules unreadable")
-        val canAlertNow = JourneyAlertNotification.canAlert(context)
+        // Read again as the answer is: a Pause tapped while TfL was asked posts nothing, and the check says so.
+        val pausedNow = JourneyAlertPause.isPaused(context)
+        val canAlertNow = !pausedNow && JourneyAlertNotification.canAlert(context)
         // Abroad or away nothing counts as watched, so any alert up is taken down. The network is read again
         // as the answer is: a phone that crossed a border while TfL was asked posts nothing, and takes down
         // what's up (Codex on #712).
@@ -703,15 +715,7 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
         }
         // Every check says what it saw and did, not only a failing one: a missed alert has to be explainable
         // from a bug report (SPEC principle 2). A post Android refused also logs "alert refused".
-        val skipped = when {
-            closeOnly -> "asks nothing"
-            active.isEmpty() -> "no window open"
-            !asking -> "notifications off"
-            abroadNow -> "abroad, held back"
-            // Coarse by design: that the phone was outside London's area, never where (SPEC *Privacy*).
-            away -> "away from London, held back"
-            else -> null
-        }
+        val skipped = checkSkipReason(closeOnly, active.isEmpty(), paused || pausedNow, asking, abroadNow, away)
         logJourneyAlertWarning(
             JourneyAlertLog.check(
                 late, closeOnly, active.size, skipped,
@@ -979,6 +983,13 @@ internal object JourneyAlertNotification {
         GetOffSoonAlert.canNotify(context) &&
             NotificationManagerCompat.from(context).getNotificationChannel(CHANNEL_ID)?.importance != NotificationManager.IMPORTANCE_NONE
 
+    /**
+     * Whether alerts are to be shown at all: they [canAlert] and the rider hasn't paused them
+     * ([JourneyAlertPause]). Reads the pause from disk, so off the main thread.
+     */
+    @androidx.annotation.WorkerThread
+    fun mayAlert(context: Context): Boolean = canAlert(context) && !JourneyAlertPause.isPaused(context)
+
     /** What stands between the rider and seeing an alert, worst first; [Gate.OPEN] when nothing does. */
     enum class Gate { NEEDS_PERMISSION, APP_OFF, CHANNEL_OFF, OPEN }
 
@@ -1019,7 +1030,7 @@ internal object JourneyAlertNotification {
         if (lasts <= Duration.ZERO) return false
         // Made if missing; never remade over a channel the rider has changed in Android's settings.
         if (NotificationManagerCompat.from(context).getNotificationChannel(CHANNEL_ID) == null) ensureChannel(context)
-        if (!canAlert(context)) return false
+        if (!mayAlert(context)) return false
         val open = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         val pending = PendingIntent.getActivity(context, 3, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val heading = result.alerts.joinToString("\n") { context.getString(R.string.route_disruption_line, it.lineName, it.description) }
@@ -1037,6 +1048,17 @@ internal object JourneyAlertNotification {
             .setSilent(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(pending)
+            // Pauses every journey's alerts, until Unpause on the near-me list (maintainer, 2026-10-11).
+            .addAction(
+                0,
+                context.getString(R.string.journey_alerts_pause),
+                PendingIntent.getBroadcast(
+                    context,
+                    0,
+                    Intent(context, JourneyAlertPauseReceiver::class.java).setAction(JourneyAlertPauseReceiver.ACTION_PAUSE),
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                ),
+            )
             .setAutoCancel(true)
             .setTimeoutAfter(lasts.toMillis())
             // What it says, so a swipe that raced a renewal can find and take down the renewed copy.
@@ -1055,7 +1077,13 @@ internal object JourneyAlertNotification {
             )
             .build()
         return try {
-            NotificationManagerCompat.from(context).notify(result.key, NOTIFICATION_ID, notification)
+            // Gated again, and posted, under the lock a Pause takes its alerts down under: a post that passed
+            // the gate above just before a Pause was saved either lands before the takedown, which then removes
+            // it, or sees the pause here and posts nothing (Codex on #756).
+            synchronized(JourneyAlertPause.posting) {
+                if (!mayAlert(context)) return false
+                NotificationManagerCompat.from(context).notify(result.key, NOTIFICATION_ID, notification)
+            }
             true
         } catch (e: SecurityException) {
             // Permission revoked between the check and the post.
@@ -1124,4 +1152,27 @@ internal object JourneyAlertLocation {
         return android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED
     }
+}
+
+/**
+ * Why a check posted nothing, for its log line, or null when nothing held it back. [paused] counts a Pause
+ * tapped while TfL was asked as well as one in place before, since either is why the answer went unposted
+ * (Codex on #756). Coarse by design: away says the phone was outside London's area, never where (SPEC
+ * *Privacy*).
+ */
+internal fun checkSkipReason(
+    closeOnly: Boolean,
+    noWindow: Boolean,
+    paused: Boolean,
+    asking: Boolean,
+    abroad: Boolean,
+    away: Boolean,
+): String? = when {
+    closeOnly -> "asks nothing"
+    noWindow -> "no window open"
+    paused -> "paused"
+    !asking -> "notifications off"
+    abroad -> "abroad, held back"
+    away -> "away from London, held back"
+    else -> null
 }

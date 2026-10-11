@@ -90,6 +90,12 @@
             android:name=".JourneyAlertDismissReceiver"
             android:exported="false" />
 
+        <!-- Pause on a journey alert, sent by this app's own PendingIntent: pauses every
+             journey's alerts until Unpause on the near-me list. Not exported. -->
+        <receiver
+            android:name=".JourneyAlertPauseReceiver"
+            android:exported="false" />
+
         <!-- The trip's ongoing notification swiped away: not posted again for that trip. -->
         <receiver
             android:name=".OnTheWayDismissReceiver"

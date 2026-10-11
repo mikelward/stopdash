@@ -118,6 +118,9 @@ fun LocationGate(
     starredStations: List<StationMatch> = emptyList(),
     recentStations: List<StationMatch> = emptyList(),
     onOpenStation: (StationMatch) -> Unit = {},
+    // Unpauses journey alerts from the card saying they're paused ([AlertsPausedCard]), at the top of the
+    // gate's content as atop the list: the one way back, so it never waits on location. Null shows none.
+    onUnpauseAlerts: (() -> Unit)? = null,
 ) {
     // Saved so an open About dialog survives rotation on the gate.
     var showAbout by rememberSaveable { mutableStateOf(false) }
@@ -179,6 +182,9 @@ fun LocationGate(
                     // Full width, so each item centers across the screen as it did before this group existed.
                     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                         if (!pinned && banner != null) OnTheWayBanner(banner, now, Modifier.padding(bottom = 24.dp))
+                        // Over the Locating spinner too: a fix can take seconds, and unpausing never waits on
+                        // location (Codex on #756).
+                        onUnpauseAlerts?.let { AlertsPausedCard(it, Modifier.padding(bottom = 24.dp)) }
                         when (shown) {
                             NearbyStopsViewModel.State.PermissionRequired -> {
                                 Title(stringResource(R.string.location_title))

@@ -108,6 +108,40 @@ class LocationGateScreenshotTest {
     }
 
     @Test
+    fun `paused journey alerts can be unpaused while locating`() {
+        var unpaused = 0
+        capture("location-finding-alerts-paused.png") {
+            LocationGate(
+                NearbyStopsViewModel.State.Locating,
+                onAllow = {},
+                onRetry = {},
+                onOpenSettings = {},
+                onUnpauseAlerts = { unpaused++ },
+            )
+        }
+        composeRule.onNodeWithText("Unpause").performClick()
+        org.junit.Assert.assertEquals(1, unpaused)
+    }
+
+    @Test
+    fun `paused journey alerts can be unpaused without location`() {
+        var unpaused = 0
+        capture("location-alerts-paused.png") {
+            LocationGate(
+                NearbyStopsViewModel.State.PermissionRequired,
+                onAllow = {},
+                onRetry = {},
+                onOpenSettings = {},
+                permanentlyDenied = true,
+                onUnpauseAlerts = { unpaused++ },
+            )
+        }
+        composeRule.onNodeWithText("Alert notifications paused").assertExists()
+        composeRule.onNodeWithText("Unpause").performClick()
+        org.junit.Assert.assertEquals(1, unpaused)
+    }
+
+    @Test
     fun `a denied gate still offers Find a station`() {
         var opened = false
         capture("location-denied-find-station.png") {

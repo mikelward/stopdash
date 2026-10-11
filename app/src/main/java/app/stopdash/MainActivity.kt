@@ -1204,6 +1204,37 @@ class MainActivity : ComponentActivity() {
                 // takes its place at once rather than after the saved hold is cleared (Codex on #735).
                 val widgetCardHeld = WidgetPresence.holds(widgetCardHeldBy, gone = widgetCardGone)
                 LaunchedEffect(widgetCardGone) { if (widgetCardGone) widgetCardHeldBy = 0L }
+                // Journey alerts paused from an alert's Pause button (SPEC *Journeys → Alerts*): the card
+                // saying so, with Unpause, which re-arms the checks (they follow the pause). Read off the
+                // main thread; hidden until read.
+                val alertsPaused by JourneyAlertPause.paused.collectAsStateWithLifecycle()
+                LaunchedEffect(Unit) {
+                    try {
+                        JourneyAlertPause.load(applicationContext)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // No card then: the checks read the pause themselves, so nothing is sent that shouldn't be.
+                        logJourneyAlertWarning("pause unreadable: ${e::class.simpleName}")
+                    }
+                }
+                val unpauseAlerts: (() -> Unit)? = remember(alertsPaused) {
+                    if (alertsPaused == true) {
+                        {
+                            (appScope ?: watchScope).launch {
+                                // A failed write leaves alerts paused and the card up, and says so: the tap
+                                // would otherwise seem ignored (Codex on #756). Tapping again retries.
+                                if (!JourneyAlertPause.unpause(applicationContext)) {
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(applicationContext, R.string.journey_alerts_unpause_failed, Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        null
+                    }
+                }
                 val widgetUpdateCard = WidgetUpdateActions(
                     // Settings, at the widget rows; the card stays until automatic updates are on or it's dismissed.
                     onSettings = {
@@ -2710,6 +2741,7 @@ class MainActivity : ComponentActivity() {
                                             listWork = departuresWork,
                                             watchInstall = watchInstallCard.takeIf { !widgetCardHeld },
                                             widgetUpdate = widgetUpdateCard,
+                                            onUnpauseAlerts = unpauseAlerts,
                                         )
                                     }
                                     // A place chip on "No stops found nearby" opens the trip from where the
@@ -2817,6 +2849,8 @@ class MainActivity : ComponentActivity() {
                                                 openStationName = match.name
                                                 openStationLead = StationLead.of(match)
                                             },
+                                            // Here too, so Unpause never waits on location (Codex on #756).
+                                            onUnpauseAlerts = unpauseAlerts,
                                         )
                                     }
                                 }
@@ -3212,6 +3246,8 @@ class MainActivity : ComponentActivity() {
         // ([WatchInstallCard]); null (none, or dismissed, or a station's page) shows no card.
         watchInstall: WatchInstallActions? = null,
         widgetUpdate: WidgetUpdateActions? = null,
+        // Unpauses journey alerts from the card atop the near-me list; null (not paused) shows none.
+        onUnpauseAlerts: (() -> Unit)? = null,
     ) {
         // Each nearby set gets its own MainViewModel, and the previous one is CLEARED when
         // the set changes (the user moved and re-located) rather than left keyed in the
@@ -3792,6 +3828,7 @@ class MainActivity : ComponentActivity() {
                     onTelemetryInviteAnswer = if (telemetryUnanswered) TelemetryConsent::set else null,
                     watchInstall = watchInstall,
                     widgetUpdate = widgetUpdate,
+                    onUnpauseAlerts = onUnpauseAlerts,
                     // Hiding filters the list at once; the hidden mode's stops stop being fetched
                     // from the next re-locate. Showing them again re-picks the set from the same
                     // fix, so they come back now (SPEC *Finding stops → Hiding a mode*).
