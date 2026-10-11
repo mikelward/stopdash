@@ -243,8 +243,17 @@ The app finds stops two ways:
   Together they make a misfire, like station Wi-Fi placing the user at the wrong station,
   diagnosable from a bug report.
 
-  Both tiers draw from one TfL `/StopPoint` lookup within the **~1 mile reach** (the lookup's
-  own radius); the eager clusters' stops are fetched for arrivals at once, and a *more* cluster's
+  Both tiers draw from one lookup of the stops within the **~1 mile reach** (the lookup's
+  own radius). **The lookup is answered on the device** (maintainer, 2026-10-11) from a **bundled
+  list of every stop TfL's `/StopPoint` nearby search answers with** in and around London — bus and
+  tram stops, stations and piers, each with what the list reads from that search (name, position,
+  cluster, interchange, pole letter, compass, "towards", lines), built from TfL's own stop lists and
+  refreshed weekly with the station index. TfL's search took 10–25 s in central London when it hadn't
+  cached the area, and the near-me list waited on it with nothing else to show; the bundle answers as
+  soon as there's a fix, offline, and sends TfL no position. A search reaching past the bundle's area,
+  or a bundle that can't be read, is still TfL's. The cost is that a stop or route change reaches the
+  list only with the next weekly refresh and app update; the departures themselves are always live.
+  The eager clusters' stops are fetched for arrivals at once, and a *more* cluster's
   stops are fetched only when its farther card is tapped (*Farther stations*). **The reach and the two-per-mode cap are
   not yet validated on a device** — whether either wants tuning at a real interchange lives in
   `TODO.md`; what is durable is the two-tier shape and the constraints above. **The near-me list is ordered
@@ -3808,7 +3817,8 @@ the phone, and a phone with no watch (or no Wear OS app) never sees the offer.
 StopDash handles location and the set of stops the user watches — which together reveal
 where they live, work, and travel. StopDash itself sends none of it anywhere except the
 TfL requests that *are* the product (and, with the user's National Rail key, a rail station's
-code to National Rail, below): a nearby-stops lookup necessarily sends coordinates
+code to National Rail, below): a nearby-stops lookup outside the bundled stops' area (in and around
+London it is answered on the device, *Near me now*) necessarily sends coordinates
 to TfL — **precise** where the user granted precise and an accurate fix is available,
 approximate under an approximate-only grant or when no accurate fix can be obtained (see
 *Finding stops*) — and a departures lookup necessarily sends the watched stop

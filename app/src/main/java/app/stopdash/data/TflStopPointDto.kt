@@ -6,9 +6,9 @@ import app.stopdash.domain.StationFacility
 import app.stopdash.domain.StationFacts
 import app.stopdash.domain.StationPlaces
 import app.stopdash.domain.StopLocation
+import app.stopdash.domain.StopPole
 import app.stopdash.domain.cleanStopName
 import app.stopdash.domain.riderLineName
-import java.util.Locale
 import kotlinx.serialization.Serializable
 
 /**
@@ -200,17 +200,6 @@ fun TflStopPointDto.toStopLocationOrNull(): StopLocation? {
         }
     }
     val primaryMode = modes.firstOrNull().orEmpty()
-    // TfL is inconsistent about a bus pole's compass: some poles carry it in CompassPoint ("S"),
-    // others jam it into stopLetter as an arrow ("->N") in place of a real pole letter ("K"). An
-    // arrow-in-stopLetter is not a letter — drop it and take the compass as the bearing, so a
-    // compass-only pole renders the one way (the bearing path, a direction word like "Northbound")
-    // whichever field TfL used, rather than a raw "-> N" down the letter path beside a "Southbound"
-    // down the bearing path. A genuine pole letter ("K") is alphanumeric and stays on the letter path
-    // ("Stop K", SPEC D8).
-    val rawStopLetter = stopLetter.trim()
-    val isPoleLetter = rawStopLetter.isNotEmpty() && rawStopLetter.all { it.isLetterOrDigit() }
-    val poleBearing = compassBearing().trim().uppercase(Locale.ROOT)
-        .ifBlank { if (isPoleLetter) "" else rawStopLetter.filter { it.isLetter() }.uppercase(Locale.ROOT) }
     return StopLocation(
         id = stopId,
         name = stopName,
@@ -230,8 +219,8 @@ fun TflStopPointDto.toStopLocationOrNull(): StopLocation? {
         hubId = hubNaptanCode,
         // The pole's letter, bearing, and "towards" for the per-pole bus header (SPEC D8). All blank
         // for a station or a bus stop TfL gives none; an arrow-in-stopLetter drops to the bearing above.
-        stopLetter = if (isPoleLetter) rawStopLetter else "",
-        bearing = poleBearing,
+        stopLetter = StopPole.letter(stopLetter),
+        bearing = StopPole.bearing(stopLetter, compassBearing()),
         towards = towards().trim(),
     )
 }

@@ -48,6 +48,7 @@ import app.stopdash.domain.TflClient
 import app.stopdash.domain.WidgetFollow
 import app.stopdash.domain.WidgetRefresh
 import app.stopdash.domain.CachingStopFinder
+import app.stopdash.bundledStopFinder
 import app.stopdash.nearbyStopsCache
 import app.stopdash.ui.ARRIVALS_REUSE
 import app.stopdash.ui.FAR_ARRIVALS_REUSE
@@ -452,8 +453,9 @@ internal suspend fun refreshStoredSnapshot(
                 ))
                 ran = true
                 // Following the rider first, where allowed (SPEC D1): the stops where they are now are
-                // the ones fetched. Through the app's own nearby cache, so staying put asks TfL nothing.
-                val following = WidgetFollowing.follow(context, prior, CachingStopFinder(tfl, nearbyStopsCache(context)))
+                // the ones fetched. Through the app's own nearby cache and the bundled stops, so staying
+                // put, or moving anywhere the bundle covers, asks TfL nothing.
+                val following = WidgetFollowing.follow(context, prior, CachingStopFinder(bundledStopFinder(context, tfl), nearbyStopsCache(context)))
                 val followed = following?.moved
                 val working = followed?.snapshot ?: prior
                 stopCount = working.stops.size

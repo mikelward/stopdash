@@ -24,7 +24,10 @@ only approximate, or if no precise fix can be obtained) — or the stop or line 
 you've set an optional TfL API key (`app_key`), that key as your own credential, sent with your own
 TfL calls and nowhere else. Location is **sent only on demand**, never in the background: when
 you open the near-me list, refresh it, or come back to the app, and while the list is on screen,
-when you've walked 100 m or more since it was found (at most once a minute), so it follows you. The one
+when you've walked 100 m or more since it was found (at most once a minute), so it follows you. In and
+around London, the stops near you are found on the phone instead, from a list of TfL's stops built into
+the app, so finding them sends your location nowhere; TfL is asked for them, with your location, only
+when you're near or past the edge of that area. The one
 use beyond that is a trip you start: it's checked on the phone while you walk to a stop you're
 boarding at, while you wait there, just after you board, and as your train nears the station you get
 off at, app open or closed, and never sent (see *On the way*, below).
@@ -233,8 +236,8 @@ don't allow it, alerts show anywhere in the UK.
 The same permission lets the **widget follow you**. Each time the widget refreshes on its own (you tap
 its header, the every-minute refresh is on, or your watch asks), it reads the position your phone last
 had, without asking for a new one, and shows the stops near there. When those stops aren't ones the
-app has looked up nearby recently, it asks TfL for the stops around that position, exactly as the app
-does when you open it; that lookup is remembered on the phone with the app's own (see below). A
+app has looked up nearby recently, it finds the stops around that position exactly as the app
+does when you open it (on the phone in and around London, else by asking TfL); that lookup is remembered on the phone with the app's own (see below). A
 lookup that finds no stops is remembered too, so a phone left where there are none doesn't ask again
 each time: in memory only, never written to storage, and used for up to 15 minutes. It is cleared at
 the next widget refresh after that, or when the app's process ends, whichever comes first. The
@@ -243,7 +246,8 @@ settings, or from Settings → Automatic watch and widget location.
 
 **Held in memory only:** the last precise (GPS) position, for up to 10 minutes, so a rough
 network position that comes in while you haven't moved doesn't replace it. It is never written to
-storage or logged, is sent only as the position of a nearby-stop lookup or as the start of a trip
+storage or logged, is sent only as the position of a nearby-stop lookup TfL is asked for (outside the
+area the app's built-in stop list covers) or as the start of a trip
 you open from the near-me list (and, when a lookup used it, in a bug report you choose to send, as
 described below). Past 10 minutes it is no longer used,
 and it is deleted the next time the app takes a location or when the app's process ends, whichever
