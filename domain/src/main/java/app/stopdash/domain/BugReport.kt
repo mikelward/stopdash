@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
 import java.time.Instant
 import java.util.Locale
 
@@ -28,6 +29,42 @@ object BugReport {
         val capturedAt: Instant,
     )
 
+    /** How many of the nearby stops a report lists, the nearest; the rest are counted. */
+    const val MAX_STOPS = 20
+
+    /** The most the recent positions may take of a report, the newest kept. */
+    const val MAX_POSITIONS_CHARS = 2_000
+
+    /** The most of one recent position a report keeps: a dense lookup lists every stop it found. */
+    const val MAX_POSITION_CHARS = 300
+
+    /**
+     * [positions] (oldest first) held to [MAX_POSITIONS_CHARS], newest kept, each cut to
+     * [MAX_POSITION_CHARS], with a line counting any older ones left out.
+     */
+    @WorkerThread
+    fun boundPositions(positions: List<String>): List<String> {
+        val kept = ArrayDeque<String>()
+        var used = 0
+        for (line in positions.asReversed()) {
+            val cut = cutPosition(line)
+            if (used + cut.length + 1 > MAX_POSITIONS_CHARS) break
+            kept.addFirst(cut)
+            used += cut.length + 1
+        }
+        val dropped = positions.size - kept.size
+        return if (dropped == 0) kept.toList() else listOf("($dropped older left out)") + kept
+    }
+
+    // [line] held to [MAX_POSITION_CHARS], cut from its middle: the position it was taken at ends it
+    // ("… at 51.500000, -0.120000"), so a dense lookup loses some of its stops, never where it was.
+    private fun cutPosition(line: String): String {
+        if (line.length <= MAX_POSITION_CHARS) return line
+        val at = line.lastIndexOf(" at ")
+        val tail = if (at >= 0 && line.length - at < MAX_POSITION_CHARS / 2) line.substring(at) else ""
+        return line.take(MAX_POSITION_CHARS - tail.length - 1) + "…" + tail
+    }
+
     /** One nearby stop and, when known, the distance from the fix to it. */
     data class StopLine(val name: String, val id: String, val meters: Double?)
 
@@ -37,6 +74,7 @@ object BugReport {
      * user is watching with their distances, and this run's diagnostic [logLines] (the shared
      * `DebugLog` snapshot). Deterministic and side-effect-free.
      */
+    @WorkerThread
     fun compose(
         header: Header,
         location: Coordinates?,
@@ -69,9 +107,12 @@ object BugReport {
         if (stops.isEmpty()) {
             appendLine("  none")
         } else {
-            for (stop in stops) {
+            // The nearest few: the rest only crowd the log out of a report that has to fit where it's
+            // pasted. Sorted here, as the lookup's tiers are each nearest first but not together.
+            for (stop in stops.sortedWith(compareBy(nullsLast()) { it.meters }).take(MAX_STOPS)) {
                 appendLine("  • ${stop.name} (${stop.id}) — ${distance(stop.meters)}")
             }
+            if (stops.size > MAX_STOPS) appendLine("  (+${stops.size - MAX_STOPS} more)")
         }
         appendLine()
 
@@ -79,7 +120,7 @@ object BugReport {
             "--- recent positions (last ${RecentPositions.TTL_MILLIS / 60_000} min, " +
                 "at most ${RecentPositions.CAPACITY}) ---",
         )
-        appendLine(if (recentPositions.isEmpty()) "(none)" else recentPositions.joinToString("\n"))
+        appendLine(if (recentPositions.isEmpty()) "(none)" else boundPositions(recentPositions).joinToString("\n"))
         appendLine()
 
         appendLine("--- log (this run, newest last; older lines are dropped to keep the report shareable) ---")
