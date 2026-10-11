@@ -1337,9 +1337,6 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 - [x] **Drop the favorite place editor's postcode lookup** (maintainer, 2026-10-11: no
                       Journey Planner lookup from search): a complete postcode the bundle doesn't hold
                       (outside London) has no places; the chooser and its failure state are gone.
-                - [ ] **Show a bus row's stop letter and direction** ("Stop H, towards …"), which the
-                      file carries, so same-named rows read apart.
-                - [ ] **Find a bus stop by its route** ("73"), from the lines the file carries.
               - [ ] **Time the near-me list's first frame on a device** with the bundled stops: the
                   read (~22,000 stops, once per process) and search are measured only on a desktop JVM.
               - [ ] **A monthly refresh workflow** for `assets/places/place_index.tsv`, like
