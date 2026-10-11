@@ -3261,10 +3261,13 @@ been set, so none keeps showing what it judged before.
   board itself is kept once for the station, and read by every screen. Nothing is saved to storage.
 - **Shared line status** (maintainer, 2026-10-11): each line's last status answer is kept in memory
   for the process the same way, whichever surface asked — the near-me list, the widget's refresh (a
-  watch's request included), the app's check of the widget's lines — including that TfL was asked
-  and gave none. (Other screens still ask for themselves; routing them through it is a `TODO.md` item.) A line any of them checked within
-  the line-status reuse window (90 s) is shown from that answer rather than asked again, so no two
-  surfaces disagree about a line and none spends a request another just made. One whose request
+  watch's request included), the app's check of the widget's lines, a station's page, a trip and its
+  checks on the way — including that TfL was asked and gave none. (A line's own page and the journey
+  alerts' background check still ask for themselves; routing them through it is a `TODO.md` item.) A
+  line any of them checked within the line-status reuse window (90 s; a station's page two minutes) is
+  shown from that answer rather than asked again, so no two surfaces disagree about a line and none
+  spends a request another just made. A pull asks afresh. Dismissed alerts settle only on what TfL
+  answered for the screen settling them, never on another screen's answer. One whose request
   for a line is still out when another asks is waited on rather than doubled (one that fails is
   asked again). The widget's stored checks still carry its answers past the process.
 - The **widget** refreshes opportunistically — on tap, on host update, and on a

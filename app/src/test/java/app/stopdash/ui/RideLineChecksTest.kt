@@ -5,6 +5,7 @@ import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusCache
 import app.stopdash.domain.StopClosureCache
 import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.TflClient
@@ -65,12 +66,17 @@ class RideLineChecksTest {
         }
     }
 
-    private fun checks(dispatcher: kotlinx.coroutines.CoroutineDispatcher, cache: StopClosureCache = StopClosureCache()) = RideLineChecks(
+    private fun checks(
+        dispatcher: kotlinx.coroutines.CoroutineDispatcher,
+        cache: StopClosureCache = StopClosureCache(),
+        sharedLines: LineStatusCache = LineStatusCache(),
+    ) = RideLineChecks(
         client = client,
         closures = StopClosureChecks(client, cache, Duration.ofMinutes(5), dispatcher, dispatcher, { logged += it }, "on the way"),
         closureCache = cache,
         sequence = { if (it in routesFail) throw TflException.Offline(null) else sequences[it] },
         hidden = { hidden },
+        sharedLines = sharedLines,
         clock = { now },
         io = dispatcher,
         warn = { logged += it },
@@ -99,6 +105,18 @@ class RideLineChecksTest {
         assertTrue("Bn" in closureReads)
         // Bs's board alone: bus 2 isn't known there.
         assertEquals(listOf("1"), checks.running(plan, bus, mapOf("Bs" to emptyList())).lines.map { it.lineId })
+    }
+
+    // Shared with the other screens (SPEC *Freshness → Shared line status*): lines another screen checked
+    // moments ago are judged on those answers, not asked again.
+    @Test
+    fun `lines another screen checked moments ago are judged on those answers, not asked again`() = runTest {
+        val shared = LineStatusCache()
+        listOf("red", "blue", "purple").forEach { shared[it] = LineStatusCache.Held.Verdict(now.minusSeconds(10), good(it)) }
+        val checks = checks(StandardTestDispatcher(testScheduler), sharedLines = shared)
+        val found = checks.running(route, ride, listOf(due("red"), due("blue"), due("purple")))
+        assertEquals(0, statusReads)
+        assertEquals(listOf("red", "blue", "purple"), found.lines.map { it.lineId })
     }
 
     @Test

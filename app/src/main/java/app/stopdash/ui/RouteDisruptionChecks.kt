@@ -9,13 +9,14 @@ import app.stopdash.domain.HubInfoCache
 import app.stopdash.domain.TripClosures
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
-import app.stopdash.domain.LineStatusBatch
+import app.stopdash.domain.LineStatusCache
 import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StopClosureCache
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.TripProgress
+import java.time.Duration
 import java.time.Instant
 import kotlin.time.toJavaDuration
 import kotlin.time.toKotlinDuration
@@ -51,6 +52,10 @@ internal class RouteDisruptionChecks(
     private val sequence: suspend (String) -> LineSequence?,
     // A stop's interchange from the bundled index, where no route of the trip's names one.
     private val hubOf: (String) -> String?,
+    // Lines' last status answers, shared with the other screens (the app passes [LineStatusCache.SHARED]),
+    // each taken within [lineStatusReuse]: none by default (tests), [LINE_STATUS_REUSE] in the app.
+    private val sharedLines: LineStatusCache = LineStatusCache(),
+    private val lineStatusReuse: Duration = Duration.ZERO,
     private val clock: () -> Instant,
     private val io: CoroutineDispatcher,
     // Coarse facts only: an error kind, a count, never a stop or line the rider is going by.
@@ -105,7 +110,7 @@ internal class RouteDisruptionChecks(
             // Every live alert's identity, each line's under way ones included: on [io], never the caller's
             // (the main) thread (Codex on #519).
             val (live, checkedPlaces) = withContext(io) {
-                val lineCheck = statuses?.let { lineDismissalCheck(it.statuses, it.answered, at) } ?: (emptySet<DismissedAlert>() to emptySet())
+                val lineCheck = statuses?.let { lineDismissalCheck(it.freshStatuses, it.fresh, at) } ?: (emptySet<DismissedAlert>() to emptySet())
                 val stopCheck = stopDismissalCheck(current.filter { (id, _) -> checked.asks[id]?.let { newest.isNewest(id, it) } == true }, at)
                 (lineCheck.first + stopCheck.first) to (lineCheck.second + stopCheck.second)
             }
@@ -153,7 +158,7 @@ internal class RouteDisruptionChecks(
             // Stale no later than the oldest check behind a signal.
             val stamps = signals.mapNotNull { signal ->
                 when (signal) {
-                    is RouteDisruption.Signal.Line -> statuses?.at
+                    is RouteDisruption.Signal.Line -> statuses?.let { it.ats[signal.lineId] ?: it.at }
                     is RouteDisruption.Signal.Stop -> checked.at[signal.stopId]
                     // A change's board is the tracker's to read, never this check's, as is a branch it took.
                     is RouteDisruption.Signal.Unpredicted, is RouteDisruption.Signal.NoneDirect, is RouteDisruption.Signal.Missed -> null
@@ -170,7 +175,7 @@ internal class RouteDisruptionChecks(
             // go of one doesn't leave the rest standing only as long as it would have (Codex on #519).
             val stands = signals.mapNotNull { signal ->
                 when (signal) {
-                    is RouteDisruption.Signal.Line -> statuses?.at?.let(::staleAt)
+                    is RouteDisruption.Signal.Line -> statuses?.let { it.ats[signal.lineId] ?: it.at }?.let(::staleAt)
                     is RouteDisruption.Signal.Stop -> listOfNotNull(
                         checked.at[signal.stopId]?.let(::staleAt),
                         current[signal.stopId].orEmpty().filter { it.isActiveAt(at) }.mapNotNull { it.validTo }.minOrNull(),
@@ -183,21 +188,36 @@ internal class RouteDisruptionChecks(
         // Said, never quietly dropped (principle 1): which stops it named stays out of the log.
         if (leftOff > 0) warn("on the way: $leftOff line alert(s) left out, naming only stops off the ride")
         // Every line asked about, as it came: one with no status here couldn't be checked.
-        return found.copy(lines = RouteDisruption.LinesChecked(lines.toSet(), statuses?.statuses.orEmpty(), statuses?.at))
+        return found.copy(
+            lines = RouteDisruption.LinesChecked(lines.toSet(), statuses?.statuses.orEmpty(), statuses?.at, ats = statuses?.ats.orEmpty()),
+        )
     }
 
-    // What a check of the coming lines' statuses found: the [statuses] TfL returned, the lines it gave a
-    // verdict on ([answered], a status or none), and when ([at], by the steady clock, as a fetch is stamped).
-    private class LineCheck(val statuses: Map<String, LineStatus>, val answered: Set<String>, val at: Instant)
+    // What a check of the coming lines' statuses found: the [statuses] TfL gave, and when the oldest of
+    // them was had ([at], by the steady clock, as a fetch is stamped); and the lines TfL answered for this
+    // check ([fresh], a status or none) with what it gave ([freshStatuses]), the only ones its dismissals
+    // settle on: another screen's answer carries none of this check's dismissal marks.
+    private class LineCheck(
+        val statuses: Map<String, LineStatus>,
+        val at: Instant,
+        // When each line's answer was had: a signal ages from its own line's, never another's (Codex on #776).
+        val ats: Map<String, Instant>,
+        val fresh: Set<String>,
+        val freshStatuses: Map<String, LineStatus>,
+    )
 
-    // The [lines]' statuses, or null when none was answered. A line whose group failed is left out:
-    // unknown, not running normally.
+    // The [lines]' statuses, or null when none was had: through the line answers every screen shares, one
+    // answered within [lineStatusReuse] taken as it stands. A line whose group failed is left out: unknown,
+    // not running normally.
     private suspend fun statuses(lines: List<String>): LineCheck? {
         if (lines.isEmpty()) return null
-        val results = LineStatusBatch.request(lines) { chunk -> withContext(io) { client.lineStatuses(chunk) } }
-        results.failure?.let { warn("on the way: line status failed for ${results.failed.size} line(s): ${it::class.simpleName}") }
-        if (!results.anyAnswered) return null
-        return LineCheck(results.answers.flatMap { it.value }.associateBy { it.lineId }, results.answeredIds, SteadyClock.stamp(clock()))
+        // On [io], never the caller's (the main) thread: it walks the lines and the shared answers.
+        val checked = withContext(io) {
+            sharedLines.check(lines, clock, lineStatusReuse) { chunk -> client.lineStatuses(chunk) }
+        }
+        checked.failure?.let { warn("on the way: line status failed for ${checked.failed.size} line(s): ${it::class.simpleName}") }
+        val at = checked.oldest ?: return null
+        return LineCheck(checked.statuses, at, checked.answeredAt, checked.fresh, checked.freshStatuses)
     }
 
     // Where each of [stops] sits, as the trip's closure cards place it ([routeClosures]): its interchange

@@ -4477,6 +4477,7 @@ class MainActivity : ComponentActivity() {
                         closureCache = StopClosureCache.SHARED,
                         liftsOut = { liftOutages.current().ids },
                         arrivals = ArrivalsCache.SHARED,
+                        sharedLines = LineStatusCache.SHARED,
                         warn = ::logDepartureWarning,
                     )
                 }
@@ -4759,6 +4760,7 @@ class MainActivity : ComponentActivity() {
                         journeyPlanner(appContext), departuresClient(appContext, boardAtEveryStop = true), fromId,
                         destinations, warn = ::logDepartureWarning,
                         arrivals = ArrivalsCache.SHARED, departureSourceChanges = RailApiKeySetting.changes,
+                        sharedLines = LineStatusCache.SHARED, lineStatusReuse = LINE_STATUS_REUSE,
                         closureCache = StopClosureCache.SHARED,
                         poles = { area -> routeStops(appContext).loadPoles(area).map { it.id } },
                         savedState = createSavedStateHandle(),
@@ -4968,9 +4970,11 @@ class MainActivity : ComponentActivity() {
             pullRefreshing = pulling || directPulling || (here != null && relocatingNow),
             onPullRefresh = {
                 ArrivalsCache.SHARED.clear()
-                lastPull = trip.pullRefresh(awaitFix = here != null)
-                // The Direct section looks again too, the indicator held until it has.
-                direct?.pullRefresh()
+                val pull = trip.pullRefresh(awaitFix = here != null)
+                lastPull = pull
+                // The Direct section looks again too, the indicator held until it has: from the same
+                // pull, so a line either answers after it stands for both (Codex on #776).
+                direct?.pullRefresh(pull.stamp)
                 if (here != null) relocate()
             },
         )
@@ -5490,6 +5494,8 @@ class MainActivity : ComponentActivity() {
                 dismissedStore = DataStoreDismissedAlertsStore.from(context, warn = ::logDepartureWarning),
                 sequence = { lineId -> routeStops(context).let { it.cached(lineId, "") ?: it.load(lineId, "") } },
                 hubOf = { routeStops(context).hubOf(it) },
+                sharedLines = LineStatusCache.SHARED,
+                lineStatusReuse = LINE_STATUS_REUSE,
                 clock = Instant::now,
                 io = Dispatchers.IO,
                 warn = ::logDepartureWarning,
@@ -5507,6 +5513,8 @@ class MainActivity : ComponentActivity() {
                 dismissals = { DataStoreDismissedAlertsStore.from(context, warn = ::logDepartureWarning).mark() },
                 sequence = { lineId -> routeStops(context).let { it.cached(lineId, "") ?: it.load(lineId, "") } },
                 hidden = { HiddenModesSetting.current },
+                sharedLines = LineStatusCache.SHARED,
+                lineStatusReuse = LINE_STATUS_REUSE,
                 clock = Instant::now,
                 io = Dispatchers.IO,
                 warn = ::logDepartureWarning,

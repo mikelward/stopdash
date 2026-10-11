@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -95,5 +96,195 @@ class LineStatusCacheTest {
         assertFalse(asked)
         // Read again from a fresh mark, a line nobody answered since is asked.
         assertEquals(LineStatusCache.Asked.Ran(3), cache.asking(setOf("victoria"), cache.mark()) { 3 })
+    }
+
+    // [LineStatusCache.check], the one way every screen asks about a line (SPEC *Freshness → Shared line status*).
+
+    @Test
+    fun `a check asks what has no standing answer, holds it, and the next within the window asks nothing`() = runTest {
+        val cache = LineStatusCache()
+        var now = Instant.EPOCH.plusSeconds(1_000)
+        val asked = mutableListOf<List<String>>()
+        val first = cache.check(listOf("victoria", "jubilee"), { now }, Duration.ofSeconds(90)) { ids ->
+            asked += ids
+            listOf(severe)
+        }
+        assertEquals(listOf(setOf("victoria", "jubilee")), asked.map { it.toSet() })
+        assertEquals(mapOf("victoria" to severe), first.statuses)
+        assertEquals(setOf("victoria", "jubilee"), first.fresh)
+        // Jubilee was asked and left out: an answer, held as such.
+        assertEquals(LineStatusCache.Held.Omitted(now), first.answers["jubilee"])
+        now = now.plusSeconds(30)
+        val second = cache.check(listOf("victoria", "jubilee"), { now }, Duration.ofSeconds(90)) { ids ->
+            asked += ids
+            emptyList()
+        }
+        assertEquals(1, asked.size)
+        assertEquals(mapOf("victoria" to severe), second.statuses)
+        assertEquals(emptySet<String>(), second.fresh)
+    }
+
+    @Test
+    fun `a pull asks every line afresh`() = runTest {
+        val cache = LineStatusCache()
+        val now = Instant.EPOCH.plusSeconds(1_000)
+        cache["victoria"] = LineStatusCache.Held.Verdict(now, severe)
+        var asked: List<String>? = null
+        val checked = cache.check(listOf("victoria"), { now }, Duration.ofSeconds(90), refresh = true) { ids ->
+            asked = ids
+            listOf(good)
+        }
+        assertEquals(listOf("victoria"), asked)
+        assertEquals(mapOf("victoria" to good), checked.statuses)
+    }
+
+    // Codex on #776: a screen the rider pulled asks again for what it had before the pull.
+    @Test
+    fun `an answer had before the rider's pull is asked again, one had after it isn't`() = runTest {
+        val cache = LineStatusCache()
+        val now = Instant.EPOCH.plusSeconds(1_000)
+        cache["victoria"] = LineStatusCache.Held.Verdict(now.minusSeconds(20), severe)
+        cache["jubilee"] = LineStatusCache.Held.Verdict(now.minusSeconds(5), good.copy(lineId = "jubilee"))
+        var asked: List<String>? = null
+        val checked = cache.check(listOf("victoria", "jubilee"), { now }, Duration.ofSeconds(90),
+            pulledAt = now.minusSeconds(10)) { ids ->
+            asked = ids
+            listOf(good)
+        }
+        assertEquals(listOf("victoria"), asked)
+        assertEquals(good, checked.statuses["victoria"])
+    }
+
+    // Codex on #776: the pull and the answer are compared in the steady frame both were stamped in, so a
+    // clock set since doesn't make an answer from before the pull look newer.
+    @Test
+    fun `an answer from before the pull is asked again however the clock is set since`() = runTest {
+        var offset = Duration.ZERO
+        SteadyClock.source = object : SteadyClock.Source {
+            override val frame: SteadyClock.Frame? = null
+            override fun offset(): Duration = offset
+        }
+        try {
+            val cache = LineStatusCache()
+            val now = Instant.EPOCH.plusSeconds(1_000)
+            cache["victoria"] = LineStatusCache.Held.Verdict(SteadyClock.stamp(now.minusSeconds(20)), severe)
+            val pulled = SteadyClock.stamp(now.minusSeconds(10))
+            // The clock then set forward ten minutes: the wall time reads later, the steady time doesn't.
+            offset = Duration.ofMinutes(-10)
+            var asked: List<String>? = null
+            cache.check(listOf("victoria"), { now.plusSeconds(600) }, Duration.ofSeconds(90), pulledAt = pulled) { ids ->
+                asked = ids
+                listOf(good)
+            }
+            assertEquals(listOf("victoria"), asked)
+        } finally {
+            SteadyClock.source = null
+        }
+    }
+
+    // Codex on #776: a pull that fails shows the line unchecked, not the answer it was meant to replace.
+    @Test
+    fun `a pull that fails leaves its lines unchecked, however recent their last answer`() = runTest {
+        val cache = LineStatusCache()
+        val now = Instant.EPOCH.plusSeconds(1_000)
+        cache["victoria"] = LineStatusCache.Held.Verdict(now.minusSeconds(5), severe)
+        val checked = cache.check(listOf("victoria"), { now }, Duration.ofSeconds(90), refresh = true) {
+            throw TflException.Offline(null)
+        }
+        assertEquals(emptyMap<String, LineStatusCache.Held>(), checked.answers)
+        assertEquals(setOf("victoria"), checked.failed)
+    }
+
+    @Test
+    fun `a check with no window still takes an answer that landed while it waited`() = runTest {
+        val cache = LineStatusCache()
+        val now = Instant.EPOCH.plusSeconds(1_000)
+        val gate = CompletableDeferred<Unit>()
+        val first = launch {
+            cache.asking(setOf("victoria"), cache.mark()) {
+                gate.await()
+                cache["victoria"] = LineStatusCache.Held.Verdict(now, severe)
+            }
+        }
+        testScheduler.runCurrent()
+        var asked = false
+        val second = async { cache.check(listOf("victoria"), { now }, java.time.Duration.ZERO) { asked = true; emptyList() } }
+        testScheduler.runCurrent()
+        gate.complete(Unit)
+        first.join()
+        assertEquals(mapOf("victoria" to severe), second.await().statuses)
+        assertFalse(asked)
+    }
+
+    // Codex on #776: a request another surface has out is waited on even with an answer standing, so the
+    // answer it's replacing isn't shown meanwhile.
+    @Test
+    fun `a check waits for another surface's request even when an answer stands`() = runTest {
+        val cache = LineStatusCache()
+        val now = Instant.EPOCH.plusSeconds(1_000)
+        cache["victoria"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), good)
+        val gate = CompletableDeferred<Unit>()
+        val first = launch {
+            cache.asking(setOf("victoria"), cache.mark()) {
+                gate.await()
+                cache["victoria"] = LineStatusCache.Held.Verdict(now, severe)
+            }
+        }
+        testScheduler.runCurrent()
+        var asked = false
+        val second = async { cache.check(listOf("victoria"), { now }, Duration.ofSeconds(90)) { asked = true; emptyList() } }
+        testScheduler.runCurrent()
+        assertFalse(second.isCompleted)
+        gate.complete(Unit)
+        first.join()
+        assertEquals(mapOf("victoria" to severe), second.await().statuses)
+        assertFalse(asked)
+    }
+
+    @Test
+    fun `a line whose request failed is left unchecked once its last answer is out of the window`() = runTest {
+        val cache = LineStatusCache()
+        val now = Instant.EPOCH.plusSeconds(1_000)
+        cache["victoria"] = LineStatusCache.Held.Verdict(now.minusSeconds(300), severe)
+        val checked = cache.check(listOf("victoria"), { now }, Duration.ofSeconds(90)) { throw TflException.Offline(null) }
+        assertEquals(emptyMap<String, LineStatusCache.Held>(), checked.answers)
+        assertEquals(setOf("victoria"), checked.failed)
+        assertEquals(emptySet<String>(), checked.fresh)
+    }
+
+    // Codex on #776: a line held as unknown for good mustn't make every status shown with it read as old.
+    @Test
+    fun `the statuses' age is their own, not an omission's beside them`() = runTest {
+        val cache = LineStatusCache()
+        val now = Instant.EPOCH.plusSeconds(10_000)
+        cache["eurostar"] = LineStatusCache.Held.Omitted(now.minusSeconds(3_600), unrecognized = true)
+        cache["victoria"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), severe)
+        val checked = cache.check(listOf("eurostar", "victoria"), { now }, Duration.ofSeconds(90)) { emptyList() }
+        assertEquals(now.minusSeconds(10), checked.oldest)
+        val none = cache.check(listOf("eurostar"), { now }, Duration.ofSeconds(90)) { emptyList() }
+        assertEquals(now.minusSeconds(3_600), none.oldest)
+    }
+
+    @Test
+    fun `a line TfL doesn't know isn't asked about again`() = runTest {
+        val cache = LineStatusCache()
+        val now = Instant.EPOCH.plusSeconds(1_000)
+        cache.check(listOf("eurostar"), { now }, Duration.ofSeconds(90)) { throw TflException.NotFound(null) }
+        var asked = false
+        val later = cache.check(listOf("eurostar"), { now.plusSeconds(3_600) }, Duration.ofSeconds(90)) { asked = true; emptyList() }
+        assertFalse(asked)
+        assertEquals(LineStatusCache.Held.Omitted(now, unrecognized = true), later.answers["eurostar"])
+    }
+
+    @Test
+    fun `a line TfL doesn't know isn't asked about again on a pull either`() = runTest {
+        val cache = LineStatusCache()
+        val now = Instant.EPOCH.plusSeconds(1_000)
+        cache.check(listOf("eurostar"), { now }, Duration.ofSeconds(90)) { throw TflException.NotFound(null) }
+        val asked = mutableListOf<List<String>>()
+        val later = now.plusSeconds(600)
+        cache.check(listOf("eurostar", "victoria"), { later }, Duration.ofSeconds(90), refresh = true) { asked += it; listOf(severe) }
+        cache.check(listOf("eurostar"), { later }, Duration.ofSeconds(90), pulledAt = later) { asked += it; emptyList() }
+        assertEquals(listOf(listOf("victoria")), asked)
     }
 }

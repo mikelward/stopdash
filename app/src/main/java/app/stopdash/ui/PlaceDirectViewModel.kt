@@ -12,7 +12,7 @@ import app.stopdash.domain.DirectTrips
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
-import app.stopdash.domain.LineStatusBatch
+import app.stopdash.domain.LineStatusCache
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.NearbyStopsCache
 import app.stopdash.domain.PlaceStops
@@ -71,6 +71,8 @@ class PlaceDirectViewModel(
     // Stops' last closure lookups, shared with the other screens (the app passes [StopClosureCache.SHARED]).
     private val closureCache: StopClosureCache = StopClosureCache(),
     private val arrivals: ArrivalsCache = ArrivalsCache(),
+    // Lines' last status answers, shared with the other screens (the app passes [LineStatusCache.SHARED]).
+    private val sharedLines: LineStatusCache = LineStatusCache(),
     private val clock: () -> Instant = Instant::now,
     // Coarse facts only — a stop or line id, an error kind, never a coordinate (SPEC *Privacy*).
     private val warn: (String) -> Unit = {},
@@ -233,11 +235,11 @@ class PlaceDirectViewModel(
     val pulling: StateFlow<Boolean> = _pulling.asStateFlow()
 
     /** A pull on the trip: looks again now, every stop asked afresh, the indicator held until it lands. */
-    fun pullRefresh() {
+    fun pullRefresh(stamp: Instant = SteadyClock.stamp(clock())) {
         _pulling.value = true
         viewModelScope.launch {
             try {
-                refresh(pulled = true)
+                refresh(pulled = true, pullStamp = stamp)
             } finally {
                 _pulling.value = false
             }
@@ -269,6 +271,11 @@ class PlaceDirectViewModel(
     private var heldLines: Pair<Inputs, List<String>>? = null
     private var reportedMisses: Set<RouteMiss> = emptySet()
 
+    // When the rider last pulled, stamped in the steady frame as an answer is: a line's answer from before it is asked again at
+    // every look after, not only the pull's own, so a pull whose check failed stays unchecked until TfL
+    // answers (Codex on #776). Read and set only under [looking].
+    private var lastPullAt: Instant? = null
+
     /** The rows on show, put back to "Checking…" if they were published longer than a [TICK] ago. */
     internal fun ageShown() {
         val shown = _state.value as? State.Ready ?: return
@@ -284,10 +291,15 @@ class PlaceDirectViewModel(
     }
 
     /** One look: the place's stops if not yet in, the origin stops' arrivals, then the rows, on [compute]. */
-    internal suspend fun refresh(pulled: Boolean = false): Unit = withContext(compute) { looking.withLock { look(pulled) } }
+    internal suspend fun refresh(pulled: Boolean = false, pullStamp: Instant? = null): Unit =
+        withContext(compute) { looking.withLock { look(pulled, pullStamp) } }
 
     // [pulled]: every stop asked afresh, none answered from the shared arrivals, as a pull asks.
-    private suspend fun look(pulled: Boolean) {
+    private suspend fun look(pulled: Boolean, pullStamp: Instant?) {
+        // Stamped when the rider pulled, the trip's own stamp where it pulled too, not when this look got
+        // here: an answer either had after the pull stands for both. Kept before anything can end this
+        // look early, so a later look after one that couldn't run still honors the pull (Codex on #776).
+        if (pulled) lastPullAt = pullStamp ?: SteadyClock.stamp(clock())
         if (!inputs.loaded) {
             _state.value = State.Checking
             return
@@ -328,6 +340,7 @@ class PlaceDirectViewModel(
         val table = if (level == StepFree.ANY) access else withLifts(access, liftsOut())
         // When asked: what a fetch is stamped with.
         val askedAt = clock()
+        val pullCutoff = lastPullAt
         val fetched = coroutineScope { open.map { stop -> async { arrivalsOf(stop, askedAt, pulled) } }.awaitAll() }
         // Every shown line's status asked for while its route loads, not after: either can take TfL a
         // couple of seconds, and a row waits on both. A line that turns out to go elsewhere costs only a
@@ -336,7 +349,9 @@ class PlaceDirectViewModel(
             stop.departures.filterNot { HiddenModes.isHidden(it.mode, it.lineId, hidden) }.map { it.lineId }
         }.filter { it.isNotBlank() }.distinct()
         val (sequences, routesFailed) = coroutineScope {
-            val early = async { statusesFor(departing, clock(), pulled) }
+            // A line answered before the rider's pull is asked again, here and at every look after,
+            // never taken from before it; one answered since, by any screen, stands ([lastPullAt]).
+            val early = async { statusesFor(departing, pulledAt = pullCutoff) }
             sequencesFor(fetched.filterNotNull(), hidden).also { early.await() }
         }
         // The lines the rows would show, so their status is in hand before they do: a delayed or
@@ -345,7 +360,7 @@ class PlaceDirectViewModel(
         // Each cache judged at the time it's read, not when the look began: arrivals and route loads may
         // have taken a while, and an answer at the edge of its reuse mustn't vouch past it. Those asked for
         // above are fresh, so this asks TfL again only for one that wasn't answered then.
-        val held = statusesFor(rowLines.map { it.lineId }, clock(), false)
+        val held = statusesFor(rowLines.map { it.lineId }, pulledAt = pullCutoff)
         // And their stops' closures: where each boards, and the stops near the place it gets off at.
         val closureIds = rowLines.flatMap { row -> listOf(row.fromId) + row.reaches.map { it.id } }.distinct()
         val closuresAt = clock()
@@ -468,34 +483,21 @@ class PlaceDirectViewModel(
     // app): a stop checked within [DISRUPTION_REUSE] isn't asked about again.
     private val closureChecks = StopClosureChecks(client, closureCache, DISRUPTION_REUSE, io, compute, warn, "direct")
 
-    // The last status of each line asked about, and when: asked again past [STATUS_AGE], or on a pull.
-    private val heldStatuses = HashMap<String, Pair<LineStatus, Instant>>()
-
-    // [lineIds]' statuses: held ones while recent, the rest asked of TfL in one batch. A line TfL
-    // couldn't be asked about is absent, so its row counts as unchecked.
-    private suspend fun statusesFor(lineIds: List<String>, now: Instant, pulled: Boolean): Map<String, LineStatus> {
-        // A status still awaiting its directions is asked again on the next look, as the client asks of
-        // its callers, so the split verdict lands as soon as it's known.
-        val stale = lineIds.filter { id ->
-            // Aged by the steady clock it's stamped by ([SteadyClock]): a wall clock set back never keeps
-            // an old verdict fresh, and one dated after now is an age that can't be told, so asked again.
-            pulled || heldStatuses[id]?.let { (status, at) ->
-                val age = SteadyClock.age(at, now)
-                status.awaitingDirections || age.isNegative || age > STATUS_AGE
-            } ?: true
-        }
-        if (stale.isNotEmpty()) {
-            val results = LineStatusBatch.request(stale) { chunk -> withContext(io) { client.lineStatuses(chunk) } }
-            results.failure?.let { warn("direct line status failed for ${results.failed.size} line(s): ${it::class.simpleName}") }
-            val answered = results.answers.flatMap { it.value }.associateBy { it.lineId }
-            // Only a line TfL gave a status for is checked: one asked about and left out of the answer has
-            // no verdict, so its row reads as unchecked, as the list reads such a line.
-            stale.forEach { id ->
-                val status = answered[id]
-                if (status != null) heldStatuses[id] = status to SteadyClock.stamp(now) else heldStatuses.remove(id)
+    // [lineIds]' statuses, through the line answers every screen shares ([LineStatusCache.SHARED] in the
+    // app): one answered within [STATUS_AGE], and after the rider's last pull ([pulledAt]), is taken, the
+    // rest asked of TfL in one batch. A line TfL couldn't be asked about is absent, so its row counts as
+    // unchecked.
+    private suspend fun statusesFor(lineIds: List<String>, pulledAt: Instant?): Map<String, LineStatus> {
+        // On [compute]: it walks the lines and the shared answers (AGENTS.md *Main thread*).
+        val checked = withContext(compute) {
+            sharedLines.check(lineIds, clock, STATUS_AGE, pulledAt = pulledAt) { chunk ->
+                withContext(io) { client.lineStatuses(chunk) }
             }
         }
-        return lineIds.mapNotNull { id -> heldStatuses[id]?.let { id to it.first } }.toMap()
+        checked.failure?.let { warn("direct line status failed for ${checked.failed.size} line(s): ${it::class.simpleName}") }
+        // Only a line TfL gave a status for is checked: one asked about and left out of the answer has
+        // no verdict, so its row reads as unchecked, as the list reads such a line.
+        return checked.statuses
     }
 
     // A stop's arrivals: the shared cache's while recent, else fetched and kept for the other screens.

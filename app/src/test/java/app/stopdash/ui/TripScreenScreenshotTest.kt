@@ -5761,11 +5761,11 @@ class TripScreenScreenshotTest {
     @Test
     fun a_pull_on_the_routes_is_remembered_across_a_configuration_change() {
         val restoration = StateRestorationTester(composeRule)
-        var lastPull: MutableState<Instant?>? = null
+        var lastPull: MutableState<TripViewModel.Pull?>? = null
         restoration.setContent { lastPull = rememberLastPull("C") }
-        composeRule.runOnIdle { lastPull!!.value = now }
+        composeRule.runOnIdle { lastPull!!.value = TripViewModel.Pull(now, now.minusSeconds(1)) }
         restoration.emulateSavedInstanceStateRestore()
-        composeRule.runOnIdle { assertEquals(now, lastPull!!.value) }
+        composeRule.runOnIdle { assertEquals(TripViewModel.Pull(now, now.minusSeconds(1)), lastPull!!.value) }
     }
 
     @Test

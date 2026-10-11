@@ -8,6 +8,7 @@ import app.stopdash.domain.DirectTrips
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusCache
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.NearbyStopsCache
 import app.stopdash.domain.RouteSequenceSource
@@ -62,11 +63,13 @@ class PlaceDirectViewModelTest {
     private fun model(
         client: TflClient,
         ends: suspend (Int) -> List<DirectTrips.End> = { listOf(DirectTrips.End("BOT", "Bottom")) },
+        sharedLines: LineStatusCache = LineStatusCache(),
     ) = PlaceDirectViewModel(
         ends = ends,
         client = client,
         routes = routes,
         arrivals = ArrivalsCache(),
+        sharedLines = sharedLines,
         clock = { now },
         io = Dispatchers.Unconfined,
         compute = Dispatchers.Unconfined,
@@ -548,6 +551,91 @@ class PlaceDirectViewModelTest {
         model.refresh()
         model.refresh()
         assertEquals(2, asked)
+    }
+
+    // Shared with the other screens (SPEC *Freshness → Shared line status*): a line another one checked
+    // moments ago is shown from that answer, not asked again, and this screen's answers go back for them.
+    @Test
+    fun `a line another screen checked moments ago is shown from that answer, not asked again`() = runBlocking {
+        val shared = LineStatusCache()
+        shared["rail"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), LineStatus("rail", 6, "Severe Delays"))
+        var asked = 0
+        val model = model(client(statuses = { asked++; emptyList() }) { listOf(departure("Bottom", 60)) }, sharedLines = shared)
+        model.refresh()
+        assertEquals(0, asked)
+        assertEquals("Severe Delays", (model.state.value as PlaceDirectViewModel.State.Ready).rows.single().disruption)
+    }
+
+    // Codex on #776: a pull whose status request fails doesn't fall back to the answer from before it.
+    @Test
+    fun `a pull whose status check fails leaves the line unchecked, however recent its last answer`() = runBlocking {
+        Dispatchers.setMain(Dispatchers.Unconfined)
+        try {
+            routes.load("rail", "")
+            val shared = LineStatusCache()
+            shared["rail"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), LineStatus("rail", LineStatus.GOOD_SERVICE, "Good Service"))
+            val model = model(client(statuses = { throw TflException.Offline(null) }) { listOf(departure("Bottom", 60)) }, sharedLines = shared)
+            model.pullRefresh()
+            assertTrue((model.state.value as PlaceDirectViewModel.State.Ready).uncertain)
+            // Nor does the next look, a Retry or the periodic refresh, until TfL answers.
+            model.refresh()
+            assertTrue((model.state.value as PlaceDirectViewModel.State.Ready).uncertain)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    // Codex on #776: the Direct section's pull is the trip's, stamped when the rider pulled, so a line the
+    // trip answered since stands here too rather than being asked again.
+    @Test
+    fun `a pull takes a line another screen answered after it`() = runBlocking {
+        Dispatchers.setMain(Dispatchers.Unconfined)
+        try {
+            routes.load("rail", "")
+            val shared = LineStatusCache()
+            shared["rail"] = LineStatusCache.Held.Verdict(now.minusSeconds(5), LineStatus("rail", 6, "Severe Delays"))
+            var asked = 0
+            val model = model(client(statuses = { asked++; emptyList() }) { listOf(departure("Bottom", 60)) }, sharedLines = shared)
+            model.pullRefresh(now.minusSeconds(10))
+            assertEquals(0, asked)
+            assertEquals("Severe Delays", (model.state.value as PlaceDirectViewModel.State.Ready).rows.single().disruption)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    // Codex on #776: a pull whose look couldn't run (the place's stops not found) still holds for the next.
+    @Test
+    fun `a pull holds for the next look when its own couldn't run`() = runBlocking {
+        Dispatchers.setMain(Dispatchers.Unconfined)
+        try {
+            routes.load("rail", "")
+            val shared = LineStatusCache()
+            shared["rail"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), LineStatus("rail", LineStatus.GOOD_SERVICE, "Good Service"))
+            var found = false
+            var asked = 0
+            val model = model(
+                client(statuses = { asked++; listOf(LineStatus("rail", 6, "Severe Delays")) }) { listOf(departure("Bottom", 60)) },
+                ends = { if (found) listOf(DirectTrips.End("BOT", "Bottom")) else throw TflException.Offline(null) },
+                sharedLines = shared,
+            )
+            model.pullRefresh(now.minusSeconds(5))
+            assertTrue(model.state.value is PlaceDirectViewModel.State.Failed)
+            found = true
+            model.refresh()
+            assertEquals(1, asked)
+            assertEquals("Severe Delays", (model.state.value as PlaceDirectViewModel.State.Ready).rows.single().disruption)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `a line this screen checks is left for the others`() = runBlocking {
+        val shared = LineStatusCache()
+        val model = model(client(statuses = { listOf(LineStatus("rail", 6, "Severe Delays")) }) { listOf(departure("Bottom", 60)) }, sharedLines = shared)
+        model.refresh()
+        assertEquals("Severe Delays", (shared["rail"] as LineStatusCache.Held.Verdict).status.description)
     }
 
     @Test
