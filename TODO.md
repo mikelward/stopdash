@@ -1312,22 +1312,33 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               Watch the added per-search TfL request cost when choosing.
               The options, and how each fits the name matcher, are in `dev-docs/PLACES.md`.
               **Started: the bundled London place index** (Overture places, streets, OS postcodes;
-              option 4 there), searched on the device in *To…*, with TfL's geocoder only as the
-              fallback. Follow-ups:
+              option 4 there), searched on the device in *To…*; TfL's geocoder is no longer asked from
+              search (2026-10-11). Follow-ups:
               - [x] **Typed places in *From…* and adding a favorite place** (maintainer, 2026-10-11): the
                   same index wherever a place can be picked; a bundled complete postcode is adopted
                   without asking TfL.
               - [ ] **Typed places as a favorite journey's end**: the picker stores a saved place by id,
                   so a typed place there needs a new kind of journey end (its name and coordinate).
-              - [ ] **An address the bundle doesn't hold as a trip's start**: *From…* doesn't ask TfL's
-                  geocoder, so a house-number address can't start a trip yet.
+              - [ ] **A house number the bundle doesn't hold**: search finds an address by its street
+                  only, as TfL is no longer asked. Bundle house numbers (OS AddressBase isn't open; OSM
+                  holds some) if riders miss them.
               - [x] **Bundle London's bus stops** (`assets/stations/stops.tsv`, every stop TfL's
                   nearby search answers with, ~0.6 MB in the APK): the near-me list, the widget's
                   following, a trip's place stops and a journey's end stops now find their stops on the
                   device.
-              - [ ] **Search the bundled bus stops too**, so a *To…*/*From…* search needs no TfL
-                  request at all; first check which ids `/StopPoint/Search` returns for a bus query,
-                  so a bundled row opens the same page.
+              - [x] **Search the bundled bus stops too, and stop asking TfL from search** (maintainer,
+                  2026-10-11): *To…*, *From…*, the favorite-journey picker and the favorite place editor
+                  search the bundled stations, bus stops and places only, with no TfL stop search or
+                  Journey Planner lookup. Bus rows carry `stops.tsv`'s single-stop ids, the ones
+                  `/StopPoint/Search` returned, so a bundled row opens the same page. Follow-ups:
+                - [ ] **Drop the unused TfL search calls**: `searchStations`, `searchPlaces` and
+                      `PlaceHits.rank`, with their DTOs and tests, now that nothing calls them.
+                - [ ] **Drop the favorite place editor's postcode lookup** (maintainer, 2026-10-11: no
+                      Journey Planner lookup from search): a complete postcode the bundle doesn't hold
+                      (outside London) still goes to TfL; the chooser and its failure state go with it.
+                - [ ] **Show a bus row's stop letter and direction** ("Stop H, towards …"), which the
+                      file carries, so same-named rows read apart.
+                - [ ] **Find a bus stop by its route** ("73"), from the lines the file carries.
               - [ ] **Time the near-me list's first frame on a device** with the bundled stops: the
                   read (~22,000 stops, once per process) and search are measured only on a desktop JVM.
               - [ ] **A monthly refresh workflow** for `assets/places/place_index.tsv`, like

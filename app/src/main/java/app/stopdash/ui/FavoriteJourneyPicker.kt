@@ -19,7 +19,6 @@ fun FavoriteJourneyPicker(
     // The start picked, null while it's being picked.
     from: PendingEnd?,
     onQueryChange: (String) -> Unit,
-    onRetry: () -> Unit,
     // Reads the favorite places again after they couldn't be read, from either search's Retry.
     onRetryPlaces: () -> Unit,
     onPickFrom: (PendingEnd) -> Unit,
@@ -39,7 +38,6 @@ fun FavoriteJourneyPicker(
             state = state,
             onQueryChange = onQueryChange,
             onOpenStation = { onPickFrom(PendingEnd.Station(it.id, it.name)) },
-            onRetry = onRetry,
             onBack = onBack,
             autoFocus = autoFocus,
             hint = stringResource(R.string.journey_pick_from_hint),
@@ -55,7 +53,6 @@ fun FavoriteJourneyPicker(
             state = state,
             onQueryChange = onQueryChange,
             onOpenStation = { onPickTo(from, PendingEnd.Station(it.id, it.name)) },
-            onRetry = onRetry,
             onBack = onChangeFrom,
             autoFocus = autoFocus,
             hint = stringResource(R.string.station_search_hint),

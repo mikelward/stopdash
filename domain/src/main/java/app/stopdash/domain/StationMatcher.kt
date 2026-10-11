@@ -37,11 +37,28 @@ object StationMatcher {
      * search shows its prompt instead of every station.
      */
     fun tier(query: String, name: String, id: String = "", hubId: String = ""): StationMatchTier? {
-        val q = normalize(query).replace(" ", "")
+        val q = queryForm(query)
         if (q.isEmpty()) return null
-        val nameTier = namesOf(name, interchange = id.startsWith("HUB", ignoreCase = true)).mapNotNull { nameTier(q, it) }.minOrNull()
+        val nameTier = nameTierOf(q, namesOf(name, interchange = id.startsWith("HUB", ignoreCase = true)))
         val codeTier = listOf(id, hubId).filter { it.isNotBlank() }.mapNotNull { codeTier(q, it) }.minOrNull()
         return listOfNotNull(nameTier, codeTier).minOrNull()
+    }
+
+    /** [query] as the tiers compare it: normalized, its spaces dropped. Blank for no match at all. */
+    internal fun queryForm(query: String): String = normalize(query).replace(" ", "")
+
+    /**
+     * The best tier at which [q] (a [queryForm]) matches a name already split into its [forms]
+     * ([namesOf]), or null: for an index that holds many names and splits each once, not per search.
+     */
+    internal fun nameTierOf(q: String, forms: List<String>): StationMatchTier? {
+        var best: StationMatchTier? = null
+        for (form in forms) {
+            val t = nameTier(q, form) ?: continue
+            if (best == null || t < best) best = t
+            if (best == StationMatchTier.Prefix) break
+        }
+        return best
     }
 
     /**

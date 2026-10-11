@@ -203,6 +203,7 @@ import app.stopdash.data.RejectedApiKey
 import app.stopdash.data.RouteTopologyStore
 import app.stopdash.data.SharedTflRateLimiter
 import app.stopdash.data.SharedTflRequestPool
+import app.stopdash.data.BusStopIndexStore
 import app.stopdash.data.PlaceIndexStore
 import app.stopdash.data.StationIndexStore
 import app.stopdash.data.StepFreeSetting
@@ -1847,6 +1848,8 @@ class MainActivity : ComponentActivity() {
                                                 // The same bundled index From…/To… search uses, so the
                                                 // picker matches identically (SPEC *Finding stops*).
                                                 loadIndex = { StationIndexStore.load(applicationContext) },
+                                                // London's bus stops, bundled, found on the device as the stations are.
+                                                loadBusStops = { BusStopIndexStore.load(applicationContext) },
                                                 // The bundled London places, streets and postcodes, to save
                                                 // one as a favorite (maintainer, 2026-10-11).
                                                 loadPlaceIndex = { PlaceIndexStore.load(applicationContext) },
@@ -1918,7 +1921,6 @@ class MainActivity : ComponentActivity() {
                                     onChipShowsChange = favoritePlacesModel::onChipShowsChange,
                                     onSave = favoritePlacesModel::commit,
                                     onCancelEditor = favoritePlacesModel::cancelEditor,
-                                    onRetrySearch = favoritePlacesModel::retrySearch,
                                     onDismissWriteError = favoritePlacesModel::dismissWriteError,
                                 )
                             } else if (top == TopOverlay.FAVORITE_JOURNEYS) {
@@ -2132,15 +2134,15 @@ class MainActivity : ComponentActivity() {
                                                 // recorded as one: it opened no station.
                                                 val recents = recentSearches(appContext).store(RecentSearches.Kind.FROM)
                                                 StationSearchViewModel(
-                                                    stationFinder,
                                                     createSavedStateHandle(),
                                                     loadIndex = { StationIndexStore.load(appContext) },
+                                                    // London's bus stops, bundled, found on the device as the stations are.
+                                                    loadBusStops = { BusStopIndexStore.load(appContext) },
                                                     loadYours = { loadYourStops(appContext, recents) },
                                                     // The favorite places, as chips for either end (maintainer, 2026-10-10).
                                                     loadPlaces = { loadFavoritePlaces(appContext) },
                                                     // A Recent row removed here leaves From…'s list, which this is.
                                                     recordRemove = { withContext(Dispatchers.IO) { recents.remove(it) } },
-                                                    warn = ::logDepartureWarning,
                                                 )
                                             }
                                         },
@@ -2160,7 +2162,6 @@ class MainActivity : ComponentActivity() {
                                             if (journeyFromPlace) PendingEnd.Place(id, journeyFromName) else PendingEnd.Station(id, journeyFromName)
                                         },
                                         onQueryChange = search::onQueryChange,
-                                        onRetry = search::retry,
                                         onRetryPlaces = search::refreshYours,
                                         onAskRemoveRecent = search::askRemoveRecent,
                                         onCancelRemoveRecent = search::cancelRemoveRecent,
@@ -3935,22 +3936,22 @@ class MainActivity : ComponentActivity() {
                 // From…'s own recent opens, read and recorded alike.
                 val recents = recentSearches(appContext).store(RecentSearches.Kind.FROM)
                 StationSearchViewModel(
-                    stationFinder,
                     createSavedStateHandle(),
                     // The bundled index, read off the main thread on the search's first query.
                     loadIndex = { StationIndexStore.load(appContext) },
+                    // London's bus stops, bundled, found on the device as the stations are.
+                    loadBusStops = { BusStopIndexStore.load(appContext) },
                     // The user's own stops, from the device: listed before typing, matched as they type.
                     loadYours = { loadYourStops(appContext, recents) },
                     // The saved places, chips after "Here" to start from (maintainer, 2026-10-04).
                     loadPlaces = { loadFavoritePlaces(appContext) },
                     // The bundled London places, streets and postcodes, to start a trip from one
-                    // (maintainer, 2026-10-11): found on the device, never sent; TfL isn't geocoded here.
+                    // (maintainer, 2026-10-11): found on the device, never sent.
                     loadPlaceIndex = { PlaceIndexStore.load(appContext) },
                     recordOpen = { recents.add(it) },
                     // A place started from joins From…'s own Recent, as a station opened there does.
                     recordPlace = { recents.addPlace(it) },
                     recordRemove = { withContext(Dispatchers.IO) { recents.remove(it) } },
-                    warn = ::logDepartureWarning,
                 )
             }
         }
@@ -4040,7 +4041,6 @@ class MainActivity : ComponentActivity() {
                     search.onOpened(match)
                     onOpenStation(match)
                 },
-                onRetry = search::retry,
                 onBack = { leaveSearch(false) },
                 // From…'s "Here": start from the rider's position again — the near-me list, or its
                 // To… search when a From row opened this one.
@@ -4573,22 +4573,21 @@ class MainActivity : ComponentActivity() {
                     // first (maintainer, 2026-09-26), read and recorded alike.
                     val recents = recentSearches(appContext).store(RecentSearches.Kind.TO)
                     StationSearchViewModel(
-                        stationFinder,
                         createSavedStateHandle(),
                         loadIndex = { StationIndexStore.load(appContext) },
+                        // London's bus stops, bundled, found on the device as the stations are.
+                        loadBusStops = { BusStopIndexStore.load(appContext) },
                         loadYours = { loadYourStops(appContext, recents) },
-                        // Favorite places and geocoded place search for every To… (near me and each
-                        // station, which both route to a place), whichever trip made this shared model first.
+                        // Favorite places and place search for every To… (near me and each station, which
+                        // both route to a place), whichever trip made this shared model first.
                         loadPlaces = { loadFavoritePlaces(appContext) },
-                        searchPlaces = stationFinder::searchPlaces,
-                        // The bundled London places, streets and postcodes, found on the device; TfL's
-                        // geocoder above is asked only when they find nothing (dev-docs/PLACES.md).
+                        // The bundled London places, streets and postcodes, found on the device and never
+                        // sent (dev-docs/PLACES.md).
                         loadPlaceIndex = { PlaceIndexStore.load(appContext) },
                         recordOpen = { recents.add(it) },
-                        // A geocoded place picked is remembered with the stops, where only To… lists it.
+                        // A place picked is remembered with the stops, where only To… lists it.
                         recordPlace = { recents.addPlace(it) },
                         recordRemove = { withContext(Dispatchers.IO) { recents.remove(it) } },
-                        warn = ::logDepartureWarning,
                     )
                 }
             },
@@ -4652,7 +4651,6 @@ class MainActivity : ComponentActivity() {
                     search.clear()
                     onPickTo(match)
                 },
-                onRetry = search::retry,
                 onBack = {
                     search.clear()
                     if (toId == null && favorite == null) close() else onClosePicker()

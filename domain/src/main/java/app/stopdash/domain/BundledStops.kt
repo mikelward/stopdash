@@ -61,6 +61,17 @@ class BundledStops private constructor(
         return found.map { it.second }
     }
 
+    /**
+     * The bus stops among them: the single stops a bus route serves, for the stop search
+     * ([BusStopIndex.of]). Only those placed inside [bounds], so a stop the file mis-places (a
+     * zeroed position, say) can't be saved as a favorite far outside London; it isn't listed at all.
+     */
+    @WorkerThread
+    fun busStops(): List<StopLocation> = stops.filterIndexed { i, stop ->
+        types[i].toInt() == BUS_TYPE && stop.lines.any { it.mode == "bus" } &&
+            stop.latitude in bounds[0]..bounds[2] && stop.longitude in bounds[1]..bounds[3]
+    }
+
     companion object {
         const val FORMAT_VERSION = 1
 
@@ -71,6 +82,7 @@ class BundledStops private constructor(
         private val TYPE_NAMES = listOf("NaptanMetroStation", "NaptanRailStation", "NaptanPublicBusCoachTram", "NaptanFerryPort")
         private val TYPE_CODES = mapOf("NaptanMetroStation" to "M", "NaptanRailStation" to "R", "NaptanPublicBusCoachTram" to "B", "NaptanFerryPort" to "F")
         private val CODE_INDEX = mapOf("M" to 0, "R" to 1, "B" to 2, "F" to 3)
+        private const val BUS_TYPE = 2
 
         val EMPTY = BundledStops(emptyList(), ByteArray(0), DoubleArray(4), 0)
 

@@ -91,7 +91,6 @@ fun FavoritePlacesScreen(
     onChipShowsChange: (ChipLabel) -> Unit = {},
     onSave: () -> Unit,
     onCancelEditor: () -> Unit,
-    onRetrySearch: () -> Unit = {},
     onDismissWriteError: () -> Unit = {},
 ) {
     // Back closes the editor first, then the screen — so it unwinds a step at a time.
@@ -171,7 +170,6 @@ fun FavoritePlacesScreen(
                         onIconChange = onIconChange,
                         onChipShowsChange = onChipShowsChange,
                         onSave = onSave,
-                        onRetrySearch = onRetrySearch,
                     )
                 }
             }
@@ -344,7 +342,6 @@ private fun PlaceEditor(
     onIconChange: (String) -> Unit,
     onChipShowsChange: (ChipLabel) -> Unit,
     onSave: () -> Unit,
-    onRetrySearch: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
         OutlinedTextField(
@@ -375,17 +372,6 @@ private fun PlaceEditor(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            editor.searchFailed -> Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = stringResource(R.string.favorite_places_search_failed),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = onRetrySearch, modifier = Modifier.testTag("placeSearchRetry")) {
-                    Text(stringResource(R.string.route_stops_retry))
-                }
-            }
             // A place is chosen: confirm it rather than prompting to search — the query field can be
             // blank here (a draft restored after process death doesn't re-save the typed text), and Save
             // is enabled, so the user must see what they'd save (Codex).
@@ -421,29 +407,14 @@ private fun PlaceEditor(
             )
         }
         // The stops shown when the places appeared, then the bundled places, streets and postcodes
-        // (each tagged as on To…), then any stops TfL added after: a late answer goes below what the
-        // rider is reading rather than pushing it down.
+        // (each tagged as on To…), then the bus stops ranked in after: a late answer goes below what
+        // the rider is reading rather than pushing it down.
         val placesAfter = editor.placesAfter.coerceAtMost(editor.results.size)
         editor.results.subList(0, placesAfter).forEach { matchRow(it) }
         editor.places.forEach { place ->
             PlaceHitRow(place, onClick = { onPickPlace(place) })
         }
         editor.results.subList(placesAfter, editor.results.size).forEach { matchRow(it) }
-        // TfL's search failed but the bundled index matched: say bus stops weren't searched, as the
-        // station search does, rather than presenting the local list as the whole answer.
-        if (editor.remoteFailed) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = stringResource(R.string.station_search_bus_stops_missing),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = onRetrySearch, modifier = Modifier.testTag("placeRemoteRetry")) {
-                    Text(stringResource(R.string.route_stops_retry))
-                }
-            }
-        }
         Spacer(modifier = Modifier.height(8.dp))
         OutlinedTextField(
             value = editor.label,

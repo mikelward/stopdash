@@ -65,23 +65,23 @@ class PlaceHitsTest {
     }
 
     @Test
-    fun `the bundle answers a query only with a prefix or substring match`() {
-        val at = Coordinates(51.5, -0.12)
-        fun hit(name: String) = PlaceHit(name, at, PlaceKind.PLACE)
-        assertTrue(PlaceHits.answers("zeta gal", listOf(hit("Zeta Gallery"))))
-        assertTrue(PlaceHits.answers("gallery", listOf(hit("Zeta Gallery"))))
-        assertFalse(PlaceHits.answers("zgly", listOf(hit("Zeta Gallery"))))
-        assertFalse(PlaceHits.answers("50 zeta road", listOf(hit("350 Zeta Road"))))
-        assertFalse(PlaceHits.answers("zeta", emptyList()))
-    }
-
-    @Test
     fun `a house number then a word reads as an address`() {
         assertTrue(PlaceHits.looksLikeAddress("50 Euston Road"))
         assertTrue(PlaceHits.looksLikeAddress("12a Zeta Street"))
         assertTrue(PlaceHits.looksLikeAddress("10-12 Zeta Street"))
+        assertTrue(PlaceHits.looksLikeAddress("10–12 Zeta Street"))
+        assertTrue(PlaceHits.looksLikeAddress("10 - 12 Zeta Street"))
         assertFalse(PlaceHits.looksLikeAddress("Euston Road"))
         assertFalse(PlaceHits.looksLikeAddress("SW1A 1AA"))
         assertFalse(PlaceHits.looksLikeAddress("50"))
+    }
+
+    @Test
+    fun `an address's street is what's left without its house number`() {
+        assertEquals("Euston Road", PlaceHits.withoutHouseNumber("50 Euston Road"))
+        assertEquals("Zeta Street", PlaceHits.withoutHouseNumber(" 10-12, Zeta Street "))
+        assertEquals("Zeta Street", PlaceHits.withoutHouseNumber("10 – 12 Zeta Street"))
+        assertEquals("Euston Road", PlaceHits.withoutHouseNumber("Euston Road"))
+        assertEquals("SW1A 1AA", PlaceHits.withoutHouseNumber("SW1A 1AA"))
     }
 }

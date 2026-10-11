@@ -31,7 +31,7 @@ class StationSearchScrollTest {
         var state by mutableStateOf(StationSearchViewModel.State(query = "kin", result = matches("Kin"), yoursRead = true))
         composeRule.setContent {
             StopDashTheme {
-                StationSearchScreen(state = state, onQueryChange = {}, onOpenStation = {}, onRetry = {}, onBack = {}, autoFocus = false)
+                StationSearchScreen(state = state, onQueryChange = {}, onOpenStation = {}, onBack = {}, autoFocus = false)
             }
         }
         composeRule.onNodeWithTag("stationSearchMatches").performScrollToIndex(30)
