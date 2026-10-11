@@ -557,6 +557,36 @@ class StationSearchScreenshotTest {
     }
 
     @Test
+    fun station_search_rows_show_their_postcode_district() {
+        // Same-named bus stops told apart by their postcode district. Synthetic names and districts
+        // (AGENTS *Privacy*).
+        composeRule.setContent {
+            StopDashTheme {
+                StationSearchScreen(
+                    state = StationSearchViewModel.State(
+                        query = "zeta",
+                        result = StationSearchViewModel.Result.Matches(
+                            matches = listOf(
+                                StationMatch("940GZZZETA", "Zeta", listOf("tube")),
+                                StationMatch("49000001A", "Zeta Church", listOf("bus")),
+                                StationMatch("49000002B", "Zeta Church", listOf("bus")),
+                            ),
+                            areas = mapOf("940GZZZETA" to "X1", "49000001A" to "X1", "49000002B" to "X2"),
+                        ),
+                    ),
+                    onQueryChange = {},
+                    onOpenStation = {},
+                    onBack = {},
+                    autoFocus = false,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("X2 · Bus").assertIsDisplayed()
+        captureSnapshot("station-search-areas.png")
+    }
+
+    @Test
     fun station_search_to_offers_search_outside_london() {
         // Nothing bundled matched, so "Search outside London" is offered below; a tap asks TfL. A
         // synthetic place name (AGENTS *Privacy*).

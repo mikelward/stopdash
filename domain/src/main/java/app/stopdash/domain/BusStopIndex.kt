@@ -22,8 +22,17 @@ class BusStopIndex private constructor(
     private val names: Array<String>,
     private val forms: Array<List<String>>,
     private val stopsByName: Array<IntArray>,
+    // Each stop area (a stop's `clusterId`, "490G…") at the middle of its stops: a starred bus stop is
+    // saved under its area, not its pole.
+    private val areaPositions: Map<String, Coordinates> = emptyMap(),
 ) {
     val size: Int get() = ids.size
+
+    /** Where the stop or stop area with [id] is, or null when it's neither of these. */
+    @WorkerThread
+    fun positionOf(id: String): Coordinates? = byId[id]?.let { Coordinates(latitudes[it], longitudes[it]) } ?: areaPositions[id]
+
+    private val byId: Map<String, Int> by lazy { ids.withIndex().associate { it.value to it.index } }
 
     /**
      * The stops [query] finds, best match first, at most [limit]: by tier ([StationMatchTier]), then
@@ -82,6 +91,9 @@ class BusStopIndex private constructor(
                 names,
                 Array(names.size) { StationMatcher.namesOf(names[it]) },
                 byName.values.map { group -> group.sortedBy { stops[it].id }.toIntArray() }.toTypedArray(),
+                stops.filter { it.clusterId.isNotBlank() }.groupBy { it.clusterId }.mapValues { (_, members) ->
+                    Coordinates(members.map { it.latitude }.average(), members.map { it.longitude }.average())
+                },
             )
         }
     }

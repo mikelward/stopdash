@@ -77,6 +77,56 @@ class PlaceIndex private constructor(
         return best.sorted().map { entryAt((it and INDEX_MASK).toInt()) }
     }
 
+    /**
+     * The postcode district ("EC4M") of the postcode nearest [latitude], [longitude], within about a
+     * kilometer: what tells same-named stops apart in a search (maintainer, 2026-10-11). Null where
+     * no bundled postcode is that near (outside London). The first call builds a grid of the
+     * postcodes, once.
+     */
+    @WorkerThread
+    fun districtNear(latitude: Double, longitude: Double): String? {
+        val lat = Math.round(latitude * COORDINATE_SCALE).toInt()
+        val lon = Math.round(longitude * COORDINATE_SCALE).toInt()
+        val cellLat = latCell(lat)
+        val cellLon = lonCell(lon)
+        var best = -1
+        var bestDistance = Long.MAX_VALUE
+        for (dLat in -1..1) for (dLon in -1..1) {
+            val members = postcodeGrid[cellKey(cellLat + dLat, cellLon + dLon)] ?: continue
+            for (i in members) {
+                val north = (latitudes[i] - lat).toLong()
+                // A degree east is about 0.62 of a degree north at London's latitude.
+                val east = (longitudes[i] - lon).toLong() * 62 / 100
+                val distance = north * north + east * east
+                if (distance < bestDistance) {
+                    bestDistance = distance
+                    best = i
+                }
+            }
+        }
+        // The 3x3 cells reach further than a kilometer at their corners: farther than that is no answer.
+        if (best < 0 || bestDistance > MAX_DISTRICT_DISTANCE * MAX_DISTRICT_DISTANCE) return null
+        val name = String(names, nameStarts[best], nameStarts[best + 1] - nameStarts[best], Charsets.UTF_8)
+        return name.substringBefore(' ')
+    }
+
+    // The postcodes by grid cell (about 1.1 km a side), for [districtNear].
+    private val postcodeGrid: Map<Long, IntArray> by lazy {
+        val cells = HashMap<Long, IntList>()
+        val postcode = Kind.POSTCODE.ordinal.toByte()
+        for (i in 0 until size) {
+            if (kinds[i] != postcode) continue
+            cells.getOrPut(cellKey(latCell(latitudes[i]), lonCell(longitudes[i]))) { IntList(16) }.add(i)
+        }
+        cells.mapValues { it.value.toArray() }
+    }
+
+    private fun latCell(scaled: Int): Int = Math.floorDiv(scaled, LAT_CELL)
+
+    private fun lonCell(scaled: Int): Int = Math.floorDiv(scaled, LON_CELL)
+
+    private fun cellKey(lat: Int, lon: Int): Long = (lat.toLong() shl 32) or (lon.toLong() and 0xffffffffL)
+
     private fun entryAt(i: Int): Entry = Entry(
         name = String(names, nameStarts[i], nameStarts[i + 1] - nameStarts[i], Charsets.UTF_8),
         kind = Kind.entries[kinds[i].toInt()],
@@ -143,6 +193,13 @@ class PlaceIndex private constructor(
         const val CHECKPOINT_EVERY = 8192
         private const val MAX_RANK = 9
         private const val COORDINATE_SCALE = 1e5
+        // Grid cells for [districtNear], in scaled degrees: 0.01° north (1.1 km) by 0.017° east (1.2 km),
+        // each at least [MAX_DISTRICT_DISTANCE] across, so the 3x3 cells around a position hold every
+        // postcode it can accept (east, that's 1000 / 0.62 ≈ 1613 scaled units).
+        private const val LAT_CELL = 1000
+        private const val LON_CELL = 1700
+        // About 1.1 km, in scaled degrees north, for [districtNear].
+        private const val MAX_DISTRICT_DISTANCE = 1000L
         private const val INDEX_MASK = (1L shl 20) - 1
         // A key length past this scores as this, so it can't spill into the rank's bits.
         private const val MAX_SCORED_LENGTH = (1 shl 12) - 1
@@ -229,8 +286,8 @@ class PlaceIndex private constructor(
 }
 
 // A growable IntArray, so reading 440,000 entries boxes nothing.
-private class IntList {
-    private var items = IntArray(1 shl 16)
+private class IntList(capacity: Int = 1 shl 16) {
+    private var items = IntArray(capacity)
     var size = 0
         private set
 

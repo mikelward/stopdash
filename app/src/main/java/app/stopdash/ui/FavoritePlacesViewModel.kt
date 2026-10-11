@@ -141,6 +141,8 @@ class FavoritePlacesViewModel(
         // unresolvable — the row says so and stays tappable to retry, rather than presenting a temporary
         // outage as "no location". Reset per search. Codex.
         val resolveFailedIds: Set<String> = emptySet(),
+        // Each result's postcode district ("EC4M"), by [StationMatch.key], so same-named stops read apart.
+        val areas: Map<String, String> = emptyMap(),
         // TfL's places outside London for the query, below the bundled ones; reset when the query changes.
         val outside: OutsideLondon = OutsideLondon.Hidden,
         // The days this place is offered as a route chip on the near-me list; every day for a new place.
@@ -591,16 +593,19 @@ class FavoritePlacesViewModel(
             }
             // The bundled bus stops, ranked in with the stations; each carries its position.
             val buses = busStops.await()
-            val merged = withContext(compute) {
+            // The place index is read alongside, for each result's postcode district.
+            val placeIndexRead = placeIndex.await()
+            val (merged, areas) = withContext(compute) {
                 val busMatches = buses.search(trimmed, checkpoint = { ensureActive() })
-                holdStill(localShown, stations.withBundledPositions(stations.rank(trimmed, local, busMatches)))
+                val merged = holdStill(localShown, stations.withBundledPositions(stations.rank(trimmed, local, busMatches)))
+                merged to districtsOf(merged, placeIndexRead)
             }
             _state.update {
                 // Guard against a result landing after the editor closed or moved on.
                 val editor = it.editor?.takeIf { e -> e.query.trim() == trimmed } ?: return@update it
                 // Anything the bundle missed may be outside London: offered, asked only when tapped.
                 val offer = if (findOutside != null && editor.outside == OutsideLondon.Hidden) OutsideLondon.Offered else editor.outside
-                it.copy(editor = editor.copy(searching = false, results = merged, outside = offer))
+                it.copy(editor = editor.copy(searching = false, results = merged, areas = areas, outside = offer))
             }
         }
     }
@@ -638,6 +643,19 @@ class FavoritePlacesViewModel(
                 OutsideLondon.Failed
             }
             updateEditor { it.copy(outside = outcome) }
+        }
+    }
+
+    // Each match's postcode district, from the nearest bundled postcode to its position; called on [compute].
+    @androidx.annotation.WorkerThread
+    private fun districtsOf(matches: List<StationMatch>, places: PlaceIndex): Map<String, String> {
+        if (places.size == 0) return emptyMap()
+        return buildMap {
+            for (match in matches) {
+                val lat = match.latitude ?: continue
+                val lon = match.longitude ?: continue
+                places.districtNear(lat, lon)?.let { put(match.key, it) }
+            }
         }
     }
 

@@ -398,6 +398,7 @@ private fun PlaceEditor(
                 unresolvable = match.id in editor.unresolvableIds,
                 resolveFailed = match.id in editor.resolveFailedIds,
                 onPick = onPick,
+                area = editor.areas[match.key],
             )
         }
         // The stops shown when the places appeared, then the bundled places, streets and postcodes
@@ -614,6 +615,8 @@ private fun MatchResultRow(
     unresolvable: Boolean,
     resolveFailed: Boolean,
     onPick: (StationMatch) -> Unit,
+    // The stop's postcode district ("EC4M"), shown before its modes; null for none.
+    area: String? = null,
 ) {
     // Tappable unless it's already known unplaceable or currently being resolved. A positionless result
     // is still tappable: the tap resolves its coordinate from the stop's members (TfL) before giving up.
@@ -653,7 +656,8 @@ private fun MatchResultRow(
                 else -> {
                     // The modes disambiguate two same-named places TfL kept distinct (>250 m apart), so
                     // the user doesn't pick the wrong coordinate — as the station search's rows do (Codex).
-                    val modes = modesLabel(match.modes)
+                    // The postcode district leads them ("EC4M · Bus"), as on the station search's rows.
+                    val modes = listOfNotNull(area, modesLabel(match.modes).takeIf { it.isNotEmpty() }).joinToString(" · ")
                     if (modes.isNotEmpty()) {
                         Text(
                             text = modes,

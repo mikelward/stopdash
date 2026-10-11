@@ -121,6 +121,73 @@ class StationViewModelsTest {
         assertEquals(PlaceKind.POSTCODE, result.places.single().kind)
     }
 
+    @Test
+    fun `each stop row carries the postcode district it's in`() = runTest {
+        // Two same-named bus stops in different synthetic districts, told apart by the district.
+        val vm = StationSearchViewModel(
+            io = dispatcher, compute = dispatcher,
+            loadBusStops = { busStops(busStop("49000001A", "Zeta Church", 51.5, -0.12), busStop("49000002B", "Zeta Church", 51.55, -0.2)) },
+            loadPlaceIndex = { placeIndex("C\tX1 1AA\t\t51.50010\t-0.12000\t4", "C\tX2 2BB\t\t51.55010\t-0.20000\t4") },
+        )
+        runCurrent()
+        vm.onQueryChange("zeta church")
+        advanceUntilIdle()
+        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals(mapOf("49000001A" to "X1", "49000002B" to "X2"), result.areas)
+    }
+
+    @Test
+    fun `a typed starred stop saved under its stop area keeps its district`() = runTest {
+        val starred = StationMatch("490G00000001", "Zeta Church", listOf("bus"))
+        val vm = StationSearchViewModel(
+            io = dispatcher, compute = dispatcher,
+            loadYours = { YourStops(favorites = listOf(starred)) },
+            loadBusStops = { busStops(busStop("49000001A", "Zeta Church", 51.5, -0.12).copy(clusterId = "490G00000001")) },
+            loadPlaceIndex = { placeIndex("C\tX1 1AA\t\t51.50010\t-0.12000\t4") },
+        )
+        advanceUntilIdle()
+        vm.onQueryChange("zeta church")
+        advanceUntilIdle()
+        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals("X1", result.areas["490G00000001"])
+    }
+
+    @Test
+    fun `a search that lists no places still gives stops their district`() = runTest {
+        // The favorite-journey picker: the place index is read for districts only.
+        val vm = StationSearchViewModel(
+            io = dispatcher, compute = dispatcher, searchPlaces = false,
+            loadBusStops = { busStops(busStop("49000001A", "Zeta Church", 51.5, -0.12)) },
+            loadPlaceIndex = { placeIndex("C\tX1 1AA\t\t51.50010\t-0.12000\t4", "P\tZeta Church Hall\tcafe\t51.50000\t-0.12000\t9") },
+        )
+        runCurrent()
+        vm.onQueryChange("zeta church")
+        advanceUntilIdle()
+        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertTrue(result.places.isEmpty())
+        assertEquals(mapOf("49000001A" to "X1"), result.areas)
+    }
+
+    @Test
+    fun `starred and recent stops carry their postcode district too`() = runTest {
+        // A starred bus stop is saved under its stop area, not its pole: the area's position is its
+        // poles' middle, from the bundled bus stops.
+        val starred = StationMatch("490G00000001", "Zeta Church", listOf("bus"))
+        val vm = StationSearchViewModel(
+            io = dispatcher, compute = dispatcher,
+            loadYours = { YourStops(favorites = listOf(starred)) },
+            loadBusStops = {
+                busStops(
+                    busStop("49000001A", "Zeta Church", 51.4999, -0.12).copy(clusterId = "490G00000001"),
+                    busStop("49000001B", "Zeta Church", 51.5001, -0.12).copy(clusterId = "490G00000001"),
+                )
+            },
+            loadPlaceIndex = { placeIndex("C\tX1 1AA\t\t51.50010\t-0.12000\t4") },
+        )
+        advanceUntilIdle()
+        assertEquals(mapOf("490G00000001" to "X1"), vm.state.value.yourAreas)
+    }
+
     // TfL's places outside London, synthetic (AGENTS *Privacy*).
     private val zetaTown = PlaceCandidate("Zeta Town", Coordinates(52.0, -0.5))
 

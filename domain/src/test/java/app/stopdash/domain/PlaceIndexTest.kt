@@ -129,6 +129,36 @@ class PlaceIndexTest {
         assertEquals(0, PlaceIndex.read(BufferedReader(StringReader(""))).size)
     }
 
+    @Test
+    fun `a position takes the district of its nearest postcode, and none far from any`() {
+        val places = index(
+            "C\tX1 1AA\t\t51.50000\t-0.12000\t4",
+            "C\tX2 2BB\t\t51.50600\t-0.12000\t4",
+            "P\tX9 Hall\tcafe\t51.50010\t-0.12000\t9",
+        )
+        assertEquals("X1", places.districtNear(51.5001, -0.12))
+        assertEquals("X2", places.districtNear(51.5055, -0.12))
+        // A place named like a postcode is no postcode.
+        assertEquals("X1", places.districtNear(51.5002, -0.12))
+        assertEquals(null, places.districtNear(52.0, -0.5))
+    }
+
+    @Test
+    fun `a postcode in a neighboring cell but farther than a kilometer is no answer`() {
+        // 0.018 degrees north is 2 km, yet one grid cell over.
+        val places = index("C\tX1 1AA\t\t51.51800\t-0.12000\t4")
+        assertEquals(null, places.districtNear(51.5, -0.12))
+        assertEquals("X1", places.districtNear(51.512, -0.12))
+    }
+
+    @Test
+    fun `a postcode just under a kilometer east is found, whatever grid cell it falls in`() {
+        // 0.0161 degrees east is about 1.1 km at London's latitude, under the accepted distance; from
+        // a position at a cell's east edge, it once fell two cells over.
+        val places = index("C\tX1 1AA\t\t51.50000\t-0.09600\t4")
+        assertEquals("X1", places.districtNear(51.5, -0.1121))
+    }
+
     // The bundled index itself: it reads whole and finds the obvious answer first. Skipped where the
     // asset isn't beside this module (it is in the repository).
     @Test
@@ -145,6 +175,8 @@ class PlaceIndexTest {
         assertEquals("The British Museum", places.search("british museum").first().name)
         assertEquals(PlaceIndex.Kind.POSTCODE, places.search("sw1a 1aa").first().kind)
         assertTrue(places.search("brtmus").any { it.name == "The British Museum" })
+        // King's Cross (an interchange, public TfL data) is in an N1 district.
+        assertTrue(places.districtNear(51.5308, -0.1238)!!.startsWith("N1"))
         val search = (System.nanoTime() - searched) / 1_000_000 / 3
         println("place index: ${places.size} entries read in $read ms, $search ms a search")
     }

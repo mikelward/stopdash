@@ -89,6 +89,9 @@ class StationSearchViewModel(
     // device as the rider types. Only a To… picker supplies it — the default finds none. Read off the
     // main thread, once.
     loadPlaceIndex: suspend () -> PlaceIndex = { PlaceIndex.EMPTY },
+    // Whether a typed query searches the place index for places. False where none can be picked (the
+    // favorite-journey picker), which reads the index only for each stop's postcode district.
+    private val searchPlaces: Boolean = true,
     // London's bus stops, bundled, searched on the device with the stations. Empty by default, which
     // finds no bus stop. Read off the main thread, once.
     loadBusStops: suspend () -> BusStopIndex = { BusStopIndex.EMPTY },
@@ -138,6 +141,9 @@ class StationSearchViewModel(
         // are none (SPEC principle 2). A discarded corrupt file reads as genuinely empty, not failed.
         val favoritePlacesFailed: Boolean = false,
         val yoursRead: Boolean = false,
+        // Each starred and Recent stop's postcode district ("EC4M"), by [StationMatch.key], as the
+        // typed results' [Result.Matches.areas] are; filled in once the place index is read.
+        val yourAreas: Map<String, String> = emptyMap(),
         // TfL's places for the query, listed under the bundled rows ([OutsideLondon]).
         val outside: OutsideLondon = OutsideLondon.Hidden,
     )
@@ -154,6 +160,10 @@ class StationSearchViewModel(
             // The rows in the order shown. A search only ever appends to it, so a row never moves under
             // a finger about to tap it (maintainer, 2026-09-28); stops then places by default.
             val entries: List<SearchEntry> = matches.map(SearchEntry::Stop) + places.map(SearchEntry::Place),
+            // Each stop row's postcode district ("EC4M"), by [StationMatch.key], so same-named stops
+            // read apart (maintainer, 2026-10-11). A row without one (not yet worked out, or no
+            // postcode near it) shows none.
+            val areas: Map<String, String> = emptyMap(),
         ) : Result
         /** Nothing bundled matches. */
         data object NoMatches : Result
@@ -232,6 +242,7 @@ class StationSearchViewModel(
                 favoritePlaces = it.favoritePlaces,
                 favoritePlacesFailed = it.favoritePlacesFailed,
                 yoursRead = it.yoursRead,
+                yourAreas = it.yourAreas,
                 // Said until the next long press, not until the search closes (Codex, #745).
                 removeRecentFailed = it.removeRecentFailed,
             )
@@ -373,7 +384,8 @@ class StationSearchViewModel(
             // places are unchanged, so the ones already shown are kept.
             val result = withContext(compute) {
                 val ranked = stations.rank(trimmed, stations.search(trimmed), buses.search(trimmed, checkpoint = { ensureActive() }))
-                Result.Matches(ranked, places = shown.places, entries = SearchResults.merge(trimmed, ranked, shown.places))
+                val entries = SearchResults.merge(trimmed, ranked, shown.places)
+                Result.Matches(ranked, places = shown.places, entries = entries, areas = areasOf(entries, stations))
             }
             if (result.matches.isNotEmpty() || result.places.isNotEmpty()) _state.update { it.copy(result = result) }
         }
@@ -423,6 +435,7 @@ class StationSearchViewModel(
                             yoursRead = true,
                         )
                     }
+                    readYourAreas(read, generation)
                 }
             }
         }
@@ -465,7 +478,7 @@ class StationSearchViewModel(
             // The places, looked up the moment the place index is read, whatever else is still loading.
             // An address's house number isn't in the bundle, so its street is what's searched.
             val placeLookup: Deferred<List<PlaceHit>> =
-                async { bundledPlacesFor(placeIndex.await(), PlaceHits.withoutHouseNumber(trimmed)) }
+                async { if (searchPlaces) bundledPlacesFor(placeIndex.await(), PlaceHits.withoutHouseNumber(trimmed)) else emptyList() }
             launch {
                 val places = placeLookup.await()
                 if (places.isEmpty()) return@launch
@@ -475,7 +488,10 @@ class StationSearchViewModel(
                     val before = shown
                     shown = withContext(compute) { SearchResults.appended(before, trimmed, emptyList(), places) }
                     entriesFor = trimmed
-                    _state.update { it.copy(result = Result.Matches(stopsShown, places = places, entries = shown)) }
+                    _state.update {
+                        val areas = (it.result as? Result.Matches)?.areas.orEmpty()
+                        it.copy(result = Result.Matches(stopsShown, places = places, entries = shown, areas = areas))
+                    }
                 }
             }
             val read = yours
@@ -488,11 +504,14 @@ class StationSearchViewModel(
                 rows.withLock {
                     val before = shown
                     val first = local.take(LOCAL_PREVIEW)
-                    val (entries, listed) = withContext(compute) { SearchResults.appended(before, trimmed, first, emptyList()).let { it to shownPlaces(it) } }
+                    val (entries, listed, areas) = withContext(compute) {
+                        val entries = SearchResults.appended(before, trimmed, first, emptyList())
+                        Triple(entries, shownPlaces(entries), areasOf(entries, stations))
+                    }
                     shown = entries
                     stopsShown = first
                     entriesFor = trimmed
-                    _state.update { it.copy(result = Result.Matches(first, places = listed, entries = entries)) }
+                    _state.update { it.copy(result = Result.Matches(first, places = listed, entries = entries, areas = areas)) }
                 }
             }
             val buses = busStops.await()
@@ -510,23 +529,29 @@ class StationSearchViewModel(
                     val everyStop = stations.rank(trimmed, local, busMatches, limit = Int.MAX_VALUE)
                     val ranked = everyStop.take(StationIndex.DEFAULT_LIMIT)
                     val entries = SearchResults.appended(before, trimmed, ranked, places, everyStop = everyStop)
-                    Triple(ranked, entries, shownPlaces(entries))
+                    Triple(ranked, entries, shownPlaces(entries) to areasOf(entries, stations))
                 }
                 shown = entries
                 stopsShown = ranked
                 entriesFor = trimmed
                 if (shown.isNotEmpty()) {
-                    _state.update { it.copy(result = Result.Matches(ranked, places = listed, entries = entries)) }
+                    _state.update { it.copy(result = Result.Matches(ranked, places = listed.first, entries = entries, areas = listed.second)) }
                 }
             }
             // The places, if they weren't ready with the stops: below whatever is listed.
             val places = placeLookup.await()
+            // The place index too, for the rows' districts, where no place search waited on it (the
+            // favorite-journey picker): read once per process, so only a first search waits.
+            placeIndex.await()
             val result: Result = rows.withLock {
                 val before = shown
-                val (entries, listed) = withContext(compute) { SearchResults.appended(before, trimmed, emptyList(), places).let { it to shownPlaces(it) } }
+                val (entries, listed, areas) = withContext(compute) {
+                    val entries = SearchResults.appended(before, trimmed, emptyList(), places)
+                    Triple(entries, shownPlaces(entries), areasOf(entries, stations))
+                }
                 shown = entries
                 entriesFor = trimmed
-                if (entries.isEmpty()) Result.NoMatches else Result.Matches(stopsShown, places = listed, entries = entries)
+                if (entries.isEmpty()) Result.NoMatches else Result.Matches(stopsShown, places = listed, entries = entries, areas = areas)
             }
             _state.update { it.copy(result = result, searching = false) }
             offerOutside(trimmed, places)
@@ -580,6 +605,48 @@ class StationSearchViewModel(
             OutsideLondon.Failed
         }
         _state.update { it.copy(outside = outcome) }
+    }
+
+    // Each stop row's postcode district among [entries]; none until the place index is read. Called on
+    // [compute].
+    @androidx.annotation.WorkerThread
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private fun areasOf(entries: List<SearchEntry>, stations: StationIndex): Map<String, String> {
+        val places = placeIndex.takeIf { it.isCompleted }?.getCompleted() ?: return emptyMap()
+        // The bus stops, once read, place a saved stop known only by its stop area ("490G…").
+        val buses = busStops.takeIf { it.isCompleted }?.getCompleted()
+        return districtsOf(entries.mapNotNull { (it as? SearchEntry.Stop)?.match }, stations, buses, places)
+    }
+
+    // Each of [matches]' postcode district, from the nearest bundled postcode to where the stop is: its
+    // own position, else [stations]' or [buses]'. Called on [compute].
+    @androidx.annotation.WorkerThread
+    private fun districtsOf(matches: List<StationMatch>, stations: StationIndex, buses: BusStopIndex?, places: PlaceIndex): Map<String, String> {
+        if (places.size == 0) return emptyMap()
+        return buildMap {
+            for (match in matches) {
+                val lat = match.latitude
+                val lon = match.longitude
+                val at = if (lat != null && lon != null) Coordinates(lat, lon) else stations.positionOf(match.id) ?: buses?.positionOf(match.id)
+                at?.let { places.districtNear(it.latitude, it.longitude) }?.let { put(match.key, it) }
+            }
+        }
+    }
+
+    // The starred and Recent stops' districts, once the place index is read, published if [generation]
+    // is still the latest read: apart from the read itself, so neither the list nor a search waits on it.
+    private fun readYourAreas(read: YourStops, generation: Int) {
+        viewModelScope.launch {
+            val places = placeIndex.await()
+            if (places.size == 0) return@launch
+            val stations = index.await()
+            val buses = busStops.await()
+            val areas = withContext(compute) {
+                val stops = read.favorites + read.recentPicks.mapNotNull { (it as? SearchEntry.Stop)?.match }
+                districtsOf(stops, stations, buses, places)
+            }
+            if (generation == yoursGeneration) _state.update { it.copy(yourAreas = areas) }
+        }
     }
 
     // The places among [entries], in the order shown; called on [compute].

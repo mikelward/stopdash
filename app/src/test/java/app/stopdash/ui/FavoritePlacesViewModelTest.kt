@@ -360,6 +360,24 @@ class FavoritePlacesViewModelTest {
     }
 
     @Test
+    fun `each stop result carries the district of its nearest bundled postcode`() = runTest {
+        val model = FavoritePlacesViewModel(
+            FakeStore(), FakeFinder(),
+            loadIndex = { stations },
+            // A synthetic postcode beside Oxford Circus's synthetic position, none near Victoria's.
+            loadPlaceIndex = { placeIndex("C\tX1 1AA\t\t51.50010\t-0.12000\t4") },
+            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        model.onQueryChange("oxford")
+        advanceUntilIdle()
+        val editor = model.state.value.editor!!
+        assertEquals(listOf("940GZZLUOXC"), editor.results.map { it.id })
+        assertEquals(mapOf(editor.results.single().key to "X1"), editor.areas)
+    }
+
+    @Test
     fun `a complete postcode in the bundle is adopted`() = runTest {
         val model = FavoritePlacesViewModel(
             FakeStore(), FakeFinder(),
