@@ -210,13 +210,10 @@ object WidgetRefresh {
     ): DeparturesSnapshot {
         val lines = LineStatusCheck.linesOf(snapshot.stops)
         val kept = snapshot.lineStatuses.filterKeys { it in lines }
+        // Asked again unless its last check still stands, by the rule the app's list uses too.
         val toAsk = lines.filterTo(HashSet()) { id ->
             val prior = kept[id] ?: return@filterTo true
-            // By the steady clock, as every check is stamped ([LineStatusCheck]).
-            val age = SteadyClock.age(prior.checkedAt, now)
-            // One checked while a lookup of which way its alerts apply was running is asked again:
-            // reused, it would show them both ways for the whole reuse window.
-            age.isNegative || age >= reuse || prior.status.awaitingDirections
+            !LineStatusReuse.stands(prior.checkedAt, now, reuse, prior.status.awaitingDirections)
         }
         if (toAsk.isEmpty()) return snapshot.copy(lineStatuses = kept)
         val results = LineStatusBatch.request(toAsk) { chunk -> fetchStatuses(chunk.toSet()) }
