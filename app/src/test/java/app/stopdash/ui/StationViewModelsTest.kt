@@ -10,6 +10,7 @@ import app.stopdash.domain.PlaceHits
 import app.stopdash.domain.BusStopIndex
 import app.stopdash.domain.PlaceIndex
 import app.stopdash.domain.PlaceKind
+import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.SearchEntry
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.StationIndex
@@ -118,6 +119,83 @@ class StationViewModelsTest {
         val result = vm.state.value.result as StationSearchViewModel.Result.Matches
         assertEquals(listOf("XX1 1AA"), result.places.map { it.name })
         assertEquals(PlaceKind.POSTCODE, result.places.single().kind)
+    }
+
+    // TfL's places outside London, synthetic (AGENTS *Privacy*).
+    private val zetaTown = PlaceCandidate("Zeta Town", Coordinates(52.0, -0.5))
+
+    @Test
+    fun `a place outside London is offered, and asked of TfL only when tapped`() = runTest {
+        val asked = mutableListOf<String>()
+        val vm = StationSearchViewModel(
+            io = dispatcher, compute = dispatcher,
+            // One answer in London, which the bundle covers, is left out of "Outside London".
+            findOutside = { asked += it; listOf(PlaceCandidate("Zeta Town Hall", Coordinates(51.5, -0.12)), zetaTown) },
+        )
+        runCurrent()
+        vm.onQueryChange("zeta town")
+        advanceUntilIdle()
+        // Nothing bundled matches, and nothing is sent until the rider taps "Search outside London".
+        assertEquals(StationSearchViewModel.Result.NoMatches, vm.state.value.result)
+        assertEquals(OutsideLondon.Offered, vm.state.value.outside)
+        assertTrue(asked.isEmpty())
+        vm.searchOutside()
+        advanceUntilIdle()
+        assertEquals(listOf("zeta town"), asked)
+        val found = vm.state.value.outside as OutsideLondon.Found
+        assertEquals(listOf(PlaceHit("Zeta Town", Coordinates(52.0, -0.5), PlaceKind.PLACE)), found.places)
+        // A new query starts over: hidden until its own search finishes.
+        vm.onQueryChange("zeta")
+        assertEquals(OutsideLondon.Hidden, vm.state.value.outside)
+    }
+
+    @Test
+    fun `a failed search outside London says so and retries, leaving the bundled rows`() = runTest {
+        var fail = true
+        val vm = StationSearchViewModel(
+            io = dispatcher, compute = dispatcher,
+            loadPlaceIndex = { placeIndex("P\tZeta Gallery\tmuseum\t51.50000\t-0.12000\t9") },
+            findOutside = { if (fail) throw TflException.Unreachable("test", null) else listOf(zetaTown) },
+        )
+        runCurrent()
+        vm.onQueryChange("zeta")
+        advanceUntilIdle()
+        vm.searchOutside()
+        advanceUntilIdle()
+        assertEquals(OutsideLondon.Failed, vm.state.value.outside)
+        assertEquals(listOf("Zeta Gallery"), (vm.state.value.result as StationSearchViewModel.Result.Matches).places.map { it.name })
+        fail = false
+        vm.searchOutside()
+        advanceUntilIdle()
+        assertEquals(listOf("Zeta Town"), (vm.state.value.outside as OutsideLondon.Found).places.map { it.name })
+    }
+
+    @Test
+    fun `a complete postcode the bundle doesn't hold is asked of TfL at once, one it holds is not`() = runTest {
+        val asked = mutableListOf<String>()
+        val vm = StationSearchViewModel(
+            io = dispatcher, compute = dispatcher,
+            loadPlaceIndex = { placeIndex("C\tX1 9XX\t\t51.52000\t-0.11000\t4") },
+            findOutside = { asked += it; listOf(PlaceCandidate("X2 9XX", Coordinates(52.0, -0.5))) },
+        )
+        runCurrent()
+        vm.onQueryChange("X1 9XX")
+        advanceUntilIdle()
+        assertTrue(asked.isEmpty())
+        assertEquals(OutsideLondon.Offered, vm.state.value.outside)
+        vm.onQueryChange("X2 9XX")
+        advanceUntilIdle()
+        assertEquals(listOf("X2 9XX"), asked)
+        assertEquals(PlaceKind.POSTCODE, (vm.state.value.outside as OutsideLondon.Found).places.single().kind)
+    }
+
+    @Test
+    fun `a search with no outside lookup offers none`() = runTest {
+        val vm = StationSearchViewModel(io = dispatcher, compute = dispatcher)
+        runCurrent()
+        vm.onQueryChange("zeta town")
+        advanceUntilIdle()
+        assertEquals(OutsideLondon.Hidden, vm.state.value.outside)
     }
 
     // Bundled bus stops, synthetic (AGENTS *Privacy*): each a bus stop at a synthetic position.

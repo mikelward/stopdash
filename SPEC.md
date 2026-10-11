@@ -404,9 +404,14 @@ The app finds stops two ways:
     name's first letter), a leading "The" passed over, and a more prominent place ahead of an equal
     match. Overture's listings are cleaned when the index is built: near-duplicates of one place merge,
     and a famous place's mis-placed copies elsewhere in London (check-ins) are dropped.
-  - **Only on the device** (maintainer, 2026-10-11): TfL's geocoder (its Journey Planner) is no
-    longer asked, so a place the index doesn't hold, such as an exact house number, isn't offered; an
-    address is found by its street. Stops and places are **one list ranked by match**, so a place the query
+  - **On the device first** (maintainer, 2026-10-11): the index covers London, so an address is found
+    by its street, and a place it doesn't hold, such as an exact house number, isn't listed from it.
+  - **Outside London, from TfL** (maintainer, 2026-10-11): below everything bundled, a **Search
+    outside London** row asks TfL's Journey Planner for what's typed, only when tapped; a complete
+    postcode the index doesn't hold is asked at once. Only TfL's places outside the index's area are
+    listed, under an **Outside London** heading, so nothing above moves and nothing is listed twice; a failure says so
+    with a Retry, and the bundled rows stand. *To…*, *From…* and the favorite place editor offer it;
+    the favorite-journey picker, which takes saved places only, doesn't. Stops and places are **one list ranked by match**, so a place the query
   starts ("Tate Britain" for "tate") sits above a stop that only contains it ("… Estate"); a stop wins a
   tie, and a postcode's places follow the stops (maintainer, 2026-09-28). The list **never reorders
   under a finger**: what's listed first stays, and what arrives later (the bus stops, still being read
@@ -3825,8 +3830,10 @@ London it is answered on the device, *Near me now*) necessarily sends coordinate
 to TfL — **precise** where the user granted precise and an accurate fix is available,
 approximate under an approximate-only grant or when no accurate fix can be obtained (see
 *Finding stops*) — and a departures lookup necessarily sends the watched stop
-IDs. **Find a station** sends nothing typed: it searches the bundled stations, bus stops and places on the
-device (a later search-to-pin would send a stop-name or line query); the query is never saved or logged. The
+IDs. **Find a station** searches the bundled stations, bus stops and places on the device, sending
+nothing typed, except what the rider asks TfL to look up outside London (a tap on *Search outside
+London*, or a complete postcode the bundle doesn't hold), which sends only that text to TfL's Journey
+Planner; the query is never saved or logged. The
 places picked from it are remembered for its *Recent* lists (*From…*'s and *To…*'s apart), and each starred row's place (so
 a star is listed by name), in the app's no-backup storage: never logged, sent, or backed up. That is inherent to each feature and disclosed; precise location is the
 Play Data Safety type the nearby action may collect (and so declares), not a claim that
@@ -4247,8 +4254,9 @@ Mirrors the sibling fleet:
   below the stops, each carrying its coordinate, so picking one needs no lookup; a **complete
   postcode it holds is adopted from it** once typing pauses, with nothing sent (type → Save). A typed stop/station is matched against the bundled stations and bus stops (the
   *Find a station* path) and **sent nowhere**; a bundled bus stop carries its position, so picking one needs no lookup. A **complete**
-  postcode the bundle doesn't hold (outside London) is said to have no places (maintainer, 2026-10-11:
-  no Journey Planner lookup from search, so nothing typed is sent). While the postcode is still
+  postcode the bundle doesn't hold (outside London) is looked up with TfL's Journey Planner, and its
+  places listed to pick from; any other place outside London is looked up only when the rider taps
+  *Search outside London* (maintainer, 2026-10-11). While the postcode is still
   partial the editor shows a passive "Postcode …" hint (from two characters, the same floor station
   completions use) above the bundled postcodes it starts ("SW1A" lists SW1A's), each pickable at once
   with nothing sent. A postcode-shaped query (a digit present) lists postcodes only (a plain two-letter

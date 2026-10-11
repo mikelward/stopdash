@@ -98,8 +98,10 @@ between your phone and your watch, and between them over Bluetooth the link is e
 
 **Find a station** (the menu's *From…* and *To…*, and a station's *To…*) looks up what you type in lists of London's
 stations and bus stops that ship inside the app, on your device; in *From…* and *To…* also in a list of London places,
-streets and postcodes that ships inside the app. What you type is never sent anywhere: an address that starts with a
-house number is looked up by its street. After a pick, the app sends the chosen station's id to look up its stops and
+streets and postcodes that ships inside the app. What you type isn't sent anywhere, with two exceptions for places
+outside London, which those lists don't cover: if you tap *Search outside London*, or type a complete postcode the
+list doesn't hold, the text you typed (and nothing else) is sent to TfL's Journey Planner to find it. An address that
+starts with a house number is looked up in the lists by its street. After a pick, the app sends the chosen station's id to look up its stops and
 departures; a place picked in *From…* sends that place's position (a public place, street or postcode
 center from the bundled list, not yours) to find the stops around it, and as the start of any trip
 planned from it; and the station's own position (a public place, not yours) to find the stops around it (for *To…*, the stops and the routes of the lines leaving where you start from; a *To…* from the near-me list starts from the location the near-me list was found from, which goes to TfL's Journey Planner as the trip's start — see **Trips with a change** — and refreshing it or coming back to the app finds your location again, exactly as the near-me list does). The name isn't saved or
@@ -122,8 +124,9 @@ transfers; they are never logged or sent anywhere, and clearing the app's data r
 **location**. When you add or edit one, the stop or station you type is looked up the way *Find a station*
 does it, in the bundled lists of stations, bus stops and London places, streets and postcodes on your device, and
 sent nowhere. A **postcode** (what you type is shaped like one and has a digit) is found in the same list, also on the
-device; one it doesn't hold (outside London) isn't found. The text you type in
-the search field isn't saved, logged or sent anywhere; only the place you then **choose** is
+device; one it doesn't hold (outside London) is looked up with TfL's Journey Planner, sending only the postcode, and
+any other place outside London only if you tap *Search outside London*, sending what you typed. The text you type in
+the search field isn't saved or logged, and is sent nowhere else; only the place you then **choose** is
 saved — by its coordinate and the name it resolved to (for a postcode, that name may be the postcode
 itself), the same as choosing a stop. The saved place — its
 coordinate, its label, and the **name of the stop, station, place, street or postcode you chose**

@@ -1,6 +1,8 @@
 package app.stopdash.ui
 
 import app.stopdash.domain.BusStopIndex
+import app.stopdash.domain.Coordinates
+import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlacesSet
@@ -258,6 +260,50 @@ class SearchResultsOffMainTest {
         override fun places(): Flow<FavoritePlacesSet> = flowOf(FavoritePlacesSet.Loaded(emptyList<FavoritePlace>()))
         override suspend fun save(place: FavoritePlace) {}
         override suspend fun remove(id: String) {}
+    }
+
+    // A place outside London, synthetic (AGENTS.md *Privacy*).
+    private val zetaTown = PlaceCandidate("Zeta Town", Coordinates(52.0, -0.5))
+
+    @Test
+    fun searchingOutsideLondonTrimsAndRanksOnCompute() {
+        var asked = 0
+        val vm = StationSearchViewModel(findOutside = { asked++; listOf(zetaTown) }, io = main, compute = compute)
+        mainIdle()
+        vm.onQueryChange("zeta town")
+        repeat(4) { releaseCompute() }
+        assertEquals(OutsideLondon.Offered, vm.state.value.outside)
+        vm.searchOutside()
+        mainIdle()
+        assertEquals("asked TfL before trimming on compute", 0, asked)
+        // Trimmed, then asked (io runs on main), then ranked with compute held again.
+        releaseCompute()
+        assertEquals(1, asked)
+        assertEquals(OutsideLondon.Searching, vm.state.value.outside)
+        releaseCompute()
+        assertEquals(listOf("Zeta Town"), (vm.state.value.outside as OutsideLondon.Found).places.map { it.name })
+    }
+
+    @Test
+    fun aFavoriteSearchOutsideLondonTrimsAndRanksOnCompute() {
+        var asked = 0
+        val vm = FavoritePlacesViewModel(
+            store, Finder(), io = main, compute = compute,
+            debounceMillis = 0, newId = { "id-1" }, findOutside = { asked++; listOf(zetaTown) },
+        )
+        mainIdle()
+        vm.startAdd(FavoriteKind.CUSTOM, "")
+        vm.onQueryChange("zeta town")
+        repeat(4) { releaseCompute() }
+        assertEquals(OutsideLondon.Offered, vm.state.value.editor!!.outside)
+        vm.searchOutside()
+        mainIdle()
+        assertEquals("asked TfL before trimming on compute", 0, asked)
+        releaseCompute()
+        assertEquals(1, asked)
+        assertEquals(OutsideLondon.Searching, vm.state.value.editor!!.outside)
+        releaseCompute()
+        assertEquals(listOf("Zeta Town"), (vm.state.value.editor!!.outside as OutsideLondon.Found).places.map { it.name })
     }
 
     private fun placesVm(finder: StationFinder, index: StationIndex = StationIndex.EMPTY) =

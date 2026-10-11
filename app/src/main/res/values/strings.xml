@@ -568,6 +568,11 @@
     <!-- Shown under the empty search field. -->
     <string name="station_search_prompt">Type a name to search</string>
     <string name="station_search_no_matches">No matches</string>
+    <!-- A row below the search's results asking TfL for a place outside London, which the bundle doesn't hold. -->
+    <string name="station_search_outside_search">Search outside London</string>
+    <string name="station_search_outside_heading">Outside London</string>
+    <string name="station_search_outside_none">Nothing found outside London</string>
+    <string name="station_search_outside_failed">Couldn\'t search outside London</string>
     <!-- Headings over the user's own stops, listed before anything is typed. -->
     <string name="station_search_starred">Starred</string>
     <string name="station_search_recent">Recent</string>
@@ -753,10 +758,8 @@
     <string name="favorite_places_no_position">No location for this result</string>
     <!-- A picked result\'s location lookup failed transiently (TfL/network); the row stays tappable to retry. -->
     <string name="favorite_places_resolve_failed">Couldn\'t locate this place. Tap to retry</string>
-    <!-- Postcode entry (SPEC D9). %1$s is the postcode. The hint while still typing, and a complete
-         postcode the bundled list doesn't hold (outside London). -->
+    <!-- Postcode entry (SPEC D9). %1$s is the postcode. The hint while typing one. -->
     <string name="favorite_places_postcode_partial">Postcode %1$s</string>
-    <string name="favorite_places_postcode_none">No places for %1$s</string>
     <!-- Editor actions. -->
     <string name="favorite_place_save">Save</string>
     <string name="favorite_place_show_on_main">Show on main screen</string>

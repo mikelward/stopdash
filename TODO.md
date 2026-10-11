@@ -1331,12 +1331,15 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   search the bundled stations, bus stops and places only, with no TfL stop search or
                   Journey Planner lookup. Bus rows carry `stops.tsv`'s single-stop ids, the ones
                   `/StopPoint/Search` returned, so a bundled row opens the same page. Follow-ups:
-                - [ ] **Drop the unused TfL search calls**: `searchStations`, `searchPlaces`,
-                      `resolvePostcode` (`PostcodeResolver`) and `PlaceHits.rank`, with their DTOs and
-                      tests, now that nothing calls them.
+                - [ ] **Drop the unused TfL stop search**: `searchStations` and its DTOs and tests, now
+                      that nothing calls it. `searchPlaces`/`resolvePostcode` stay: places outside London
+                      use them.
                 - [x] **Drop the favorite place editor's postcode lookup** (maintainer, 2026-10-11: no
                       Journey Planner lookup from search): a complete postcode the bundle doesn't hold
                       (outside London) has no places; the chooser and its failure state are gone.
+                - [x] **Places outside London from TfL** (maintainer, 2026-10-11): a *Search outside
+                      London* row asks the Journey Planner when tapped, and a complete postcode the bundle
+                      doesn't hold is asked at once, in *To…*, *From…* and the favorite place editor.
               - [ ] **Time the near-me list's first frame on a device** with the bundled stops: the
                   read (~22,000 stops, once per process) and search are measured only on a desktop JVM.
               - [ ] **A monthly refresh workflow** for `assets/places/place_index.tsv`, like
@@ -1361,7 +1364,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   | Only 10 km around Reading, Brighton, Bedford, Peterborough, Cambridge, Rainham, Luton, Horsham and Sevenoaks | +50k | ~6 MB |
 
                   £0 either way (open data). The bundled bus stops stop near London's edge too, so a
-                  wider reach would want them widened with it.
+                  wider reach would want them widened with it. Places outside the box are now found
+                  from TfL (*Search outside London*), so widening only saves those a tap and a request.
               - [ ] **Nearer first**: rank equal matches by distance from the trip's start ("Tesco" finds
                   the nearest one), computed on the device.
               - [x] **Ship Foursquare's NOTICE file**: Overture's Foursquare places are Apache 2.0, so

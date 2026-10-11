@@ -163,8 +163,8 @@ class FavoritePlacesScreenshotTest {
 
     @Test
     fun favorite_places_editor_postcode() {
-        // The query is a complete postcode the bundled list doesn't hold (outside London), so it says so
-        // (SPEC D9). A synthetic postcode — no real place (SPEC *Privacy*).
+        // The query is a complete postcode the bundled list doesn't hold (outside London), so TfL was asked
+        // and found nothing (SPEC D9). A synthetic postcode — no real place (SPEC *Privacy*).
         show(
             FavoritePlacesViewModel.State(
                 places = FavoritePlacesSet.Loaded(emptyList()),
@@ -174,11 +174,11 @@ class FavoritePlacesScreenshotTest {
                     existingId = null,
                     label = "",
                     query = "X1 9XX",
-                    postcodeNoResults = true,
+                    outside = OutsideLondon.NoMatches,
                 ),
             ),
         )
-        composeRule.onNodeWithText("No places for X1 9XX").assertIsDisplayed()
+        composeRule.onNodeWithText("Nothing found outside London").assertIsDisplayed()
         captureSnapshot("favorite-places-editor-postcode.png")
     }
 

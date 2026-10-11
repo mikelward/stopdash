@@ -557,6 +557,68 @@ class StationSearchScreenshotTest {
     }
 
     @Test
+    fun station_search_to_offers_search_outside_london() {
+        // Nothing bundled matched, so "Search outside London" is offered below; a tap asks TfL. A
+        // synthetic place name (AGENTS *Privacy*).
+        var asked = false
+        composeRule.setContent {
+            StopDashTheme {
+                StationSearchScreen(
+                    state = StationSearchViewModel.State(
+                        query = "zeta town",
+                        result = StationSearchViewModel.Result.NoMatches,
+                        outside = OutsideLondon.Offered,
+                    ),
+                    onQueryChange = {},
+                    onOpenStation = {},
+                    onBack = {},
+                    autoFocus = false,
+                    hint = "To station or stop",
+                    onOpenPlace = {},
+                    onSearchOutside = { asked = true },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("No matches").assertIsDisplayed()
+        captureSnapshot("station-search-to-outside-offered.png")
+        composeRule.onNodeWithText("Search outside London").performClick()
+        assertTrue(asked)
+    }
+
+    @Test
+    fun station_search_to_lists_places_outside_london() {
+        // TfL's places outside London, under their heading below the bundled rows; tapping one routes to
+        // it. Synthetic names and positions (AGENTS *Privacy*).
+        var routed: TripDestination.Place? = null
+        composeRule.setContent {
+            StopDashTheme {
+                StationSearchScreen(
+                    state = StationSearchViewModel.State(
+                        query = "zeta",
+                        result = StationSearchViewModel.Result.Matches(
+                            matches = emptyList(),
+                            places = listOf(PlaceHit("Zeta Road", Coordinates(51.50, -0.10), PlaceKind.STREET)),
+                        ),
+                        outside = OutsideLondon.Found(listOf(PlaceHit("Zeta Town", Coordinates(52.0, -0.5), PlaceKind.PLACE))),
+                    ),
+                    onQueryChange = {},
+                    onOpenStation = {},
+                    onBack = {},
+                    autoFocus = false,
+                    hint = "To station or stop",
+                    onOpenPlace = { routed = it },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Outside London").assertIsDisplayed()
+        captureSnapshot("station-search-to-outside-found.png")
+        composeRule.onNodeWithText("Zeta Town").performClick()
+        assertEquals(TripDestination.Place(Coordinates(52.0, -0.5), "Zeta Town"), routed)
+    }
+
+    @Test
     fun station_search_prompt() {
         show(StationSearchViewModel.State(yoursRead = true))
         composeRule.onNodeWithText("Type a name to search").assertIsDisplayed()
