@@ -587,7 +587,9 @@ direction: its line budget is tight, so a direction split across platforms is on
 drops to the bare compass (or place) rather than name a platform only some of its trains use. A
 header costs a line of that budget, and a place is shown only with at least one departure under it,
 and a header is judged against every departure the widget has, not only those that fit: a place
-keeps its name when the others didn't fit;
+keeps its name when the others didn't fit. Unlike the app's list, the widget names its station
+even when it shows only one (maintainer, 2026-10-11): it has no other cue to where its departures
+are. The compact widget names none;
 a widget too short for a header and a departure drops headers rather than show no departures. A **bus** pole carries no platform in the arrivals feed, so it
 splits on its **stop letter** — the "D" a rider reads on the physical stop: "**Stop D**". The letter,
 bearing, and "towards" come from the near-me `/StopPoint` lookup (`stopLetter`, `CompassPoint`,

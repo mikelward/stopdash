@@ -218,8 +218,9 @@ class WidgetModelTest {
             fetchedAt = now.minusSeconds(30),
         )
         val snapshot = DeparturesSnapshot(stops = listOf(staleStop, freshStop), fetchedAt = now.minusSeconds(30))
+        // One station still takes a line for its name on the full widget (maintainer, 2026-10-11).
         val model = widgetModel(snapshot, now, maxLines = 6)
-        assertEquals(6, model.rows.size)
+        assertEquals(5, model.rows.size)
         assertTrue("the fresh stop's row must survive the cap", model.rows.any { it.row.lineId == "freshline" })
     }
 
@@ -232,8 +233,9 @@ class WidgetModelTest {
         val starredLater = stop("490000002B", listOf(departure("starredline", 900L)), now)
         val snapshot = DeparturesSnapshot(stops = listOf(soon, starredLater), fetchedAt = now)
         val starred = setOf(StarredRow("490000002B", "starredline", "inbound"))
+        // One station still takes a line for its name on the full widget (maintainer, 2026-10-11).
         val model = widgetModel(snapshot, now, starred = starred, maxLines = 6)
-        assertEquals(6, model.rows.size)
+        assertEquals(5, model.rows.size)
         assertEquals("the starred service is pinned to the top", "starredline", model.rows.first().row.lineId)
     }
 
@@ -246,8 +248,9 @@ class WidgetModelTest {
             stops = listOf(stop("490000001A", departures, now)),
             fetchedAt = now,
         )
+        // One station still takes a line for its name on the full widget (maintainer, 2026-10-11).
         val model = widgetModel(snapshot, now, maxLines = 6)
-        assertEquals(6, model.rows.size)
+        assertEquals(5, model.rows.size)
     }
 
     @Test
@@ -303,7 +306,8 @@ class WidgetModelTest {
         val model = widgetModel(snapshot, now, maxLines = 6)
 
         assertEquals("only the one service, bounded", 1, model.rows.size)
-        assertEquals("its lines are capped to the budget", 6, model.rows.first().groups.size)
+        // One station still takes a line for its name on the full widget (maintainer, 2026-10-11).
+        assertEquals("its lines are capped to the budget", 5, model.rows.first().groups.size)
     }
 
     // How many departure lines of one kind fit a widget [height] tall: its rows' height over one line's.
@@ -373,13 +377,13 @@ class WidgetModelTest {
         val checks = (listOf("busy") + (1..4).map { "quiet$it" })
             .associateWith { LineStatusCheck(LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service"), now) }
         val snapshot = DeparturesSnapshot(listOf(stop("490000001A", busy + quiet, now)), now, lineStatuses = checks)
-        // 180dp tall: 128dp for rows, an unstacked line 32dp and a stacked one 53dp.
+        // 180dp tall: 128dp for rows less the station's name, an unstacked line 32dp and a stacked one 53dp.
         val model = widgetModel(snapshot, now, geometry = WidgetGeometry(180.dp, 180.dp))
-        assertEquals(listOf("busy", "quiet1", "quiet2"), model.rows.map { it.row.lineId })
-        assertEquals(listOf(listOf(true), listOf(false), listOf(false)), model.rows.map { it.stackedLines })
-        // Wider, nothing stacks, and four unstacked lines fit.
+        assertEquals(listOf("busy", "quiet1"), model.rows.map { it.row.lineId })
+        assertEquals(listOf(listOf(true), listOf(false)), model.rows.map { it.stackedLines })
+        // Wider, nothing stacks, and three unstacked lines fit under the name.
         val wide = widgetModel(snapshot, now, geometry = WidgetGeometry(240.dp, 180.dp))
-        assertEquals(4, wide.rows.size)
+        assertEquals(3, wide.rows.size)
         assertTrue(wide.rows.none { true in it.stackedLines })
         // Without a cell (the line budgets), nothing stacks.
         assertTrue(widgetModel(snapshot, now, maxLines = 4).rows.none { true in it.stackedLines })
@@ -422,8 +426,9 @@ class WidgetModelTest {
         )
         // Room for three lines with a status under each, but not for six lines.
         val row = widgetLineHeight() + widgetStatusLineHeight()
-        val height = (100..400).first { widgetRowsHeight(it.dp) >= 3 * row }.dp
-        assertTrue(widgetRowsHeight(height) < 6 * widgetLineHeight())
+        // The station's name takes its header's height too.
+        val height = (100..400).first { widgetRowsHeight(it.dp) >= widgetHeaderHeight() + 3 * row }.dp
+        assertTrue(widgetRowsHeight(height) < widgetHeaderHeight() + 6 * widgetLineHeight())
         val model = widgetModel(snapshot, now, geometry = WidgetGeometry(380.dp, height))
         assertEquals(lines.toSet(), model.rows.map { it.row.lineId }.toSet())
         assertTrue(model.rows.all { it.row.status != null })
@@ -494,8 +499,9 @@ class WidgetModelTest {
         // Fresh and every line checked: nothing for a note to say.
         val checks = (1..6).associate { "line$it" to LineStatusCheck(LineStatus("line$it", LineStatus.GOOD_SERVICE, "Good Service"), now) }
         val fresh = DeparturesSnapshot(listOf(stop("490000001A", departures, now)), now, lineStatuses = checks)
-        assertEquals(3, widgetModel(stale, now, maxLines = 4, maxLinesWithNote = 3).rows.size)
-        assertEquals(4, widgetModel(fresh, now, maxLines = 4, maxLinesWithNote = 3).rows.size)
+        // One station still takes a line for its name on the full widget (maintainer, 2026-10-11).
+        assertEquals(2, widgetModel(stale, now, maxLines = 4, maxLinesWithNote = 3).rows.size)
+        assertEquals(3, widgetModel(fresh, now, maxLines = 4, maxLinesWithNote = 3).rows.size)
     }
 
     @Test
@@ -505,7 +511,8 @@ class WidgetModelTest {
         val fresh = DeparturesSnapshot(listOf(stop("490000001A", departures, now)), now, lineStatuses = checks)
         val model = widgetModel(fresh, now, maxLines = 4, maxLinesWithNote = 3, tap = WidgetTapNote.REFRESHING)
         assertEquals(WidgetTapNote.REFRESHING, model.tap)
-        assertEquals(3, model.rows.size)
+        // One station still takes a line for its name on the full widget (maintainer, 2026-10-11).
+        assertEquals(2, model.rows.size)
     }
 
     @Test
@@ -528,7 +535,7 @@ class WidgetModelTest {
     }
 
     @Test
-    fun `a single place draws no stop header`() {
+    fun `a single place is named on the full widget, not the compact one`() {
         val snapshot = DeparturesSnapshot(
             stops = listOf(
                 stop("490000001A", listOf(departure("victoria", 120)), now),
@@ -537,7 +544,9 @@ class WidgetModelTest {
             fetchedAt = now,
         )
         val model = widgetModel(snapshot, now)
-        assertTrue("one place, no qualifier: the place is implied", model.rows.all { it.header == null })
+        assertEquals("one place still names itself", listOf("Example Stop", null), model.rows.map { it.header?.text })
+        val compact = widgetModel(snapshot, now, geometry = WidgetGeometry(250.dp, 400.dp, bare = true))
+        assertTrue("the compact widget names none", compact.rows.all { it.header == null })
     }
 
     @Test
@@ -689,9 +698,10 @@ class WidgetModelTest {
             mode = "bus",
         )
         val stop = stop("490000001A", listOf(bus("73", "Stoke Newington", 60), bus("38", "Clapton Pond", 120)), now)
-        val model = widgetModel(DeparturesSnapshot(listOf(stop), now), now, maxLines = 2)
+        // One station still takes a line for its name on the full widget (maintainer, 2026-10-11).
+        val model = widgetModel(DeparturesSnapshot(listOf(stop), now), now, maxLines = 3)
         assertEquals(listOf("73", "38"), model.rows.map { it.row.lineId })
-        assertTrue("two termini: no shared-terminus header", model.rows.all { it.header == null })
+        assertEquals("two termini: the stop's name, no shared terminus", listOf("Example Stop", null), model.rows.map { it.header?.text })
     }
 
     @Test
@@ -740,6 +750,41 @@ class WidgetModelTest {
         // The journey's buses first (soonest first), then the nearby stop; the Dale bus isn't shown.
         assertEquals(listOf("b2", "b1", "victoria"), rows.map { it.lineId })
         assertTrue(rows.flatMap { it.upcoming }.none { it.destination == "Dale" })
+    }
+
+    // A station with a journey's departure and an ordinary one: named once, above the journey, not
+    // again where its other departures follow (Codex on #760).
+    @Test
+    fun `a station running on from the journey band is named once`() {
+        val journeyBus = departure("b1", 120).copy(mode = "bus")
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(stop("490000001A", listOf(journeyBus, departure("victoria", 240)), now)),
+            fetchedAt = now,
+            journeys = listOf(WidgetJourney("490000001A", setOf(JourneyCall.of(journeyBus)))),
+        )
+        val model = widgetModel(snapshot, now, maxLines = 3)
+        assertEquals(listOf("b1", "victoria"), model.rows.map { it.row.lineId })
+        assertEquals(listOf("Example Stop", null), model.rows.map { it.header?.text })
+    }
+
+    // The same, with another station in the rest: the rest's own grouping names the origin again, and
+    // the widget still names it once (Codex on #760).
+    @Test
+    fun `a station running on from the journey band is named once beside another station`() {
+        val journeyBus = departure("b1", 120).copy(mode = "bus")
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(
+                stop("490000001A", listOf(journeyBus, departure("victoria", 240)), now),
+                stop("940GZZLUEUS", listOf(departure("northern", 300)), now, name = "Euston"),
+            ),
+            fetchedAt = now,
+            journeys = listOf(WidgetJourney("490000001A", setOf(JourneyCall.of(journeyBus)))),
+        )
+        val model = widgetModel(snapshot, now, maxLines = 6)
+        assertEquals(listOf("b1", "victoria", "northern"), model.rows.map { it.row.lineId })
+        assertEquals(listOf("Example Stop", null, "Euston"), model.rows.map { it.header?.text })
+        // The line the repeat would have taken goes to a departure: four lines fit all three rows.
+        assertEquals(3, widgetModel(snapshot, now, maxLines = 5).rows.size)
     }
 
     @Test
@@ -877,12 +922,13 @@ class WidgetModelTest {
             fetchedAt = now,
             lineStatuses = mapOf("victoria" to LineStatusCheck(severe, now)),
         )
-        val model = widgetModel(snapshot, now, maxLines = 2)
-        // Two lines: Victoria's countdown and its status; Jubilee no longer fits.
+        // One station still takes a line for its name on the full widget (maintainer, 2026-10-11).
+        val model = widgetModel(snapshot, now, maxLines = 3)
+        // Two lines under the name: Victoria's countdown and its status; Jubilee no longer fits.
         assertEquals(listOf("victoria"), model.rows.map { it.row.lineId })
         assertEquals(severe, model.rows.single().row.status)
         // With room for all three, both rows show, only Victoria marked.
-        val roomy = widgetModel(snapshot, now, maxLines = 3)
+        val roomy = widgetModel(snapshot, now, maxLines = 4)
         assertEquals(listOf(severe, null), roomy.rows.map { it.row.status })
     }
 
@@ -926,14 +972,15 @@ class WidgetModelTest {
             fetchedAt = now,
             lineStatuses = mapOf("victoria" to LineStatusCheck(good, now)),
         )
-        val model = widgetModel(snapshot, now, maxLines = 2)
+        // One station still takes a line for its name on the full widget (maintainer, 2026-10-11).
+        val model = widgetModel(snapshot, now, maxLines = 3)
         // Both rows fit two lines: the calendar sits beside Victoria's countdown, not under it.
         assertEquals(listOf("victoria", "jubilee"), model.rows.map { it.row.lineId })
         assertEquals(listOf(listOf(closure), emptyList()), model.rows.map { it.row.plannedAlerts })
         assertNull(model.rows.first().row.status)
         // Dismissed in the app, it's put away here too.
         val dismissed = snapshot.withDismissals(setOf(DismissedAlert.ofPlanned("victoria", closure)))
-        assertEquals(emptyList<PlannedAlert>(), widgetModel(dismissed, now, maxLines = 2).rows.first().row.plannedAlerts)
+        assertEquals(emptyList<PlannedAlert>(), widgetModel(dismissed, now, maxLines = 3).rows.first().row.plannedAlerts)
     }
 
     @Test

@@ -563,7 +563,8 @@ class WidgetScreenshotTest {
     fun `a status that doesn't fit beside the pill starts under it`() {
         fun dep(lineId: String, lineName: String, destination: String, offsetSeconds: Long) =
             Departure(lineId, lineName, "inbound", destination, null, now.plusSeconds(offsetSeconds), "tube")
-        val size = DpSize(220.dp, 180.dp)
+        // Tall enough for the station's name and both rows.
+        val size = DpSize(220.dp, 220.dp)
         val snapshot = DeparturesSnapshot(
             stops = listOf(
                 StopArrivals(

@@ -57,7 +57,8 @@ object BudgetedRows {
      * The rows of [pinned] (already in priority order) that fit [budget] lines, each with the
      * destination lines of it that fit (at most [maxTimes] times each) and, on the first row of
      * each place group that shows one, its stop header. [grouped] groups rows by place for
-     * display; the widget passes its own to keep the journeys a band of their own.
+     * display; the widget passes its own to keep the journeys a band of their own, and to name a
+     * station even when it is the only one.
      */
     fun select(
         pinned: List<DepartureRow>,
@@ -99,10 +100,38 @@ object BudgetedRows {
         val headersOn = nextLeast == null || budget >= costs.header + nextLeast
         val fullGroups = StopGrouping.groupByStop(candidates, warningsLead = false).associateBy { it.key }
         fun context(group: StopGroup): StopGroup = fullGroups[group.key] ?: group
-        fun headed(group: StopGroup): Boolean = headersOn && context(group).showHeader
-        fun cost(rows: List<DepartureRow>): Int = grouped(rows).sumOf { group ->
-            (if (headed(group)) costs.header else 0) +
-                group.rows.sumOf { row -> shownLines.getValue(row).sumOf { costs.line(row, it) } + statusCost(row) }
+        // A header the caller's [grouped] turns on shows too (the full widget names even a single
+        // station). The default grouping never shows one its full context doesn't: a place group
+        // among the chosen rows is a place group among them all.
+        fun headed(group: StopGroup): Boolean = headersOn && (context(group).showHeader || group.showHeader)
+        fun headerOf(group: StopGroup): GroupHeader? = if (headed(group)) {
+            val full = context(group)
+            GroupHeader(
+                text = groupHeaderTitle(full.stopName, full.qualifier),
+                spoken = groupHeaderSpoken(full.qualifier)?.let { "${full.stopName}, $it" } ?: full.stopName,
+            )
+        } else {
+            null
+        }
+        // Each group's header, but never the same group's twice in a row: a group that runs on from
+        // one band into the next (a journey band's station continuing into the rest) is named once,
+        // and pays for its name once (Codex on #760). Matched on the group's key, not its title: two
+        // poles with the same name and towards are different groups, and each keeps its header.
+        fun headers(groups: List<StopGroup>): List<GroupHeader?> {
+            var lastKey: String? = null
+            return groups.map { group ->
+                val header = headerOf(group)
+                val shown = header?.takeIf { group.key != lastKey }
+                if (header != null) lastKey = group.key
+                shown
+            }
+        }
+        fun cost(rows: List<DepartureRow>): Int {
+            val groups = grouped(rows)
+            return groups.zip(headers(groups)).sumOf { (group, header) ->
+                (if (header != null) costs.header else 0) +
+                    group.rows.sumOf { row -> shownLines.getValue(row).sumOf { costs.line(row, it) } + statusCost(row) }
+            }
         }
         for ((row, lines) in pinned.zip(allLines)) {
             if (!shows(row, lines)) continue
@@ -133,16 +162,8 @@ object BudgetedRows {
             shownLines.remove(row)
         }
         return buildList {
-            for (group in grouped(selected)) {
-                val header = if (headed(group)) {
-                    val full = context(group)
-                    GroupHeader(
-                        text = groupHeaderTitle(full.stopName, full.qualifier),
-                        spoken = groupHeaderSpoken(full.qualifier)?.let { "${full.stopName}, $it" } ?: full.stopName,
-                    )
-                } else {
-                    null
-                }
+            val groups = grouped(selected)
+            for ((group, header) in groups.zip(headers(groups))) {
                 group.rows.forEachIndexed { index, row ->
                     add(BudgetedRow(row, shownLines.getValue(row), header.takeIf { index == 0 }))
                 }

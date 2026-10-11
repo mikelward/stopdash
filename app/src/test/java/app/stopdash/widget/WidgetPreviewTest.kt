@@ -35,9 +35,10 @@ class WidgetPreviewTest {
     }
 
     @Test
-    fun `the default cell shows every sample line`() {
+    fun `the default cell names the station above its first lines`() {
         val model = models().bySize.getValue(WidgetPreview.SIZES.first { it.width.value == 250f })
-        assertEquals(setOf("victoria", "northern", "piccadilly"), model.rows.mapTo(HashSet()) { it.row.lineId })
+        assertEquals(setOf("victoria", "northern"), model.rows.mapTo(HashSet()) { it.row.lineId })
+        assertEquals("the station is named", "King's Cross St. Pancras", model.rows.first().header?.text)
     }
 
     @Test
