@@ -5623,8 +5623,8 @@ internal fun bugReportHeader(): BugReport.Header = BugReport.Header(
 internal fun bugReportRequestFor(state: NearbyStopsViewModel.State): BugReportRequest =
     when (state) {
         is NearbyStopsViewModel.State.Ready ->
-            // Every resolved nearby stop (both tiers), so a report carries the farther stops too —
-            // matching distanceMeters and the consent's "each nearby stop".
+            // Every resolved nearby stop (both tiers); the report lists the nearest of them
+            // ([BugReport.MAX_STOPS]), as the consent's "the nearest stops" says.
             BugReportRequest(state.location, state.nearbyStops, state.distanceMeters)
         // Empty and Failed obtained a fix (the lookup ran) — carry it so a report from those gates
         // says where "no stops nearby" / "can't reach TfL" happened, the context they need.

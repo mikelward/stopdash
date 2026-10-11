@@ -4018,7 +4018,7 @@ Mirrors the sibling fleet:
   among them: the platform refuses it outright (it throws), which is kept, and an uncaught throw
   is a crash the process-exit lines already record.
 - **A bug report leaves the device only under explicit consent.** The overflow's *Send bug
-  report* composes the log plus the **exact location**, per-stop distances, and a **screenshot of
+  report* composes the log plus the **exact location**, the nearest stops' distances, and a **screenshot of
   the reporting screen** and hands it to the platform share sheet — user-initiated, £0, no service
   of stopdash's own. Because it carries the location the log itself never does, it is gated by a
   consent screen that names exactly what leaves, with a persisted "don't ask again"; nothing is
@@ -4026,7 +4026,10 @@ Mirrors the sibling fleet:
   routing bug is diagnosed from where you were, so it says so rather than stripping that context (a
   separate location-redacted export stays a distinct, planned tool). It rides the shared
   `mikelward/androidlog` `DebugReport`, which attaches the screenshot; the shot is of the app's own
-  window, so the consent dialog (a separate window) is not in it. See `docs/PRIVACY.md`.
+  window, so the consent dialog (a separate window) is not in it. Its own part is held well under
+  what survives being pasted on (a report was kept only to about its first 20,000 characters; bug
+  reports, 2026-10-11): the 20 nearest stops, the newest recent positions that fit, and the newest
+  log lines in the room left, so what's cut is the oldest. See `docs/PRIVACY.md`.
 
 ## Non-goals
 

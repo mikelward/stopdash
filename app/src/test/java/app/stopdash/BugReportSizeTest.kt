@@ -16,10 +16,9 @@ import org.robolectric.annotation.Config
 
 /**
  * The bug report's own section has to fit its share of a report androidlog holds to a size the
- * share sheet and the clipboard can carry. Past that share the library cuts the section from the
- * middle, which here would be the start of this run's log, so the log is given only the room the
- * rest of the section leaves. All inputs are synthetic — the stand-in `(51.5, -0.12)` fix and
- * made-up stop names and ids.
+ * share sheet and the clipboard can carry, and small enough to survive being pasted on whole, so
+ * the log is given only the room the rest of the section leaves. All inputs are synthetic — the
+ * stand-in `(51.5, -0.12)` fix and made-up stop names and ids.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -93,29 +92,40 @@ class BugReportSizeTest {
     }
 
     @Test
-    fun `a long stop list shortens the log instead of overrunning the share`() {
-        val few = section(stopCount = 10)
-        val many = section(stopCount = 250)
+    fun `a long stop list lists the nearest and leaves the log its room`() {
+        val few = section(stopCount = BugReport.MAX_STOPS)
+        val many = section(stopCount = 1_000)
 
-        // The premise: the stops alone take far more than a fixed reserve for them would leave.
-        assertTrue(stops(250).sumOf { it.name.length } > 15_000)
+        // The premise: the stops alone would take far more than the whole share.
+        assertTrue(stops(1_000).sumOf { it.name.length } > REPORT_SECTION_CHARS)
         assertTrue("${many.length}", many.length <= REPORT_SECTION_CHARS)
-        assertTrue(logLinesIn(many) < logLinesIn(few))
+        assertTrue(many.contains("(+${1_000 - BugReport.MAX_STOPS} more)"))
+        assertEquals(logLinesIn(few), logLinesIn(many))
         assertTrue(many.endsWith("the newest event"))
         assertTrue(many.contains("processExit reason=anr"))
     }
 
     @Test
-    fun `a stop list past the share still leaves the log why the last process ended`() {
+    fun `dense recent lookups don't push the section past its share`() {
+        // Each lookup lists every stop it found: twenty of them would fill the share by themselves.
+        val dense = List(RecentPositions.CAPACITY) { "2026-09-21T14:29:00Z nearby lookup: " + "EXAMPLE 123 m, ".repeat(100) }
+        val section = bugReportSection(header, Coordinates(51.5, -0.12), stops(1_000), dense, busyLog())
+
+        assertTrue("${section.length}", section.length <= REPORT_SECTION_CHARS)
+        assertTrue(section.endsWith("the newest event"))
+        assertTrue(section.contains("processExit reason=anr"))
+    }
+
+    @Test
+    fun `the section is shared whole, ahead of the earlier runs`() {
         val section = section(stopCount = 1_000)
-        assertTrue("${section.length}", section.length > REPORT_SECTION_CHARS)
 
         val report = DebugReport.collect(DebugLog(), null) { section }.text
 
-        // The library's cut takes the middle of the stop list, not the log at the end.
-        assertTrue("${report.length}", report.length <= DebugReport.MAX_REPORT_CHARS)
-        assertTrue(report.contains("processExit reason=anr"))
+        // Under the ~20,000 characters a pasted report was kept to, with its newest line in it.
+        assertTrue("${report.length}", report.length <= 20_000)
         assertTrue(report.startsWith("StopDash bug report"))
+        assertTrue(report.contains("the newest event"))
     }
 
     @Test

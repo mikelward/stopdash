@@ -1,5 +1,6 @@
 package app.stopdash
 
+import androidx.annotation.WorkerThread
 import app.stopdash.domain.BugReport
 import app.stopdash.domain.Coordinates
 import com.mikelward.androidlog.DebugLog
@@ -36,6 +37,7 @@ internal object StopdashDebugLog : DebugLog()
  * rest takes. Only a stop list far longer than any lookup returns needs it, and then the library's
  * cut takes the middle of that list rather than why the previous processes ended.
  */
+@WorkerThread
 internal fun bugReportSection(
     header: BugReport.Header,
     location: Coordinates?,
@@ -69,9 +71,10 @@ internal fun DebugLog.reportLines(budgetChars: Int = REPORT_SECTION_CHARS): List
 }
 
 /**
- * The app's share of a bug report. androidlog holds a whole report to
- * [DebugReport.MAX_REPORT_CHARS] and gives the earlier runs [DebugReport.MAX_EARLIER_RUNS_CHARS]
- * of it; this is the rest.
+ * The app's share of a bug report: well under what survives being pasted. androidlog allows a
+ * report [DebugReport.MAX_REPORT_CHARS], but pasted on, a report was kept only to about its first
+ * 20,000 characters, and the newest log lines, last in it, were what went (bug reports,
+ * 2026-10-11). This section comes first, so held to this it arrives whole; the earlier runs
+ * androidlog appends after it are what a cut takes.
  */
-internal const val REPORT_SECTION_CHARS =
-    DebugReport.MAX_REPORT_CHARS - DebugReport.MAX_EARLIER_RUNS_CHARS
+internal const val REPORT_SECTION_CHARS = 12_000

@@ -462,14 +462,15 @@ report carries:
   looking at, which is where a routing bug happened; it is labeled that way in the report, since
   the departures screen can stay open while you move, so it is not necessarily where you are the
   instant you send,
-- **where the app placed you in the last 15 minutes** (at most the last 20 positions): each
+- **where the app placed you in the last 15 minutes** (at most the last 20 positions, the oldest
+  left out where they don't fit, and a long one cut short): each
   location fix it got (including a rough one it set aside for a more precise remembered one) and
   each nearby lookup (with the stops it found and how far each was), with
   the time — so a fix that put you at the wrong station can be seen. These are kept **in memory only**, never in the diagnostic log or its
   file, are deleted when they turn 15 minutes old (if the phone is asleep then, within a minute of
 it waking — the app doesn't wake the phone just to delete them), and are gone when the app's
 process ends,
-- **how far you are from each nearby stop**.
+- **how far you are from the nearest stops** (the 20 nearest; the rest are only counted).
 
 It is **user-initiated and £0**: stopdash runs no service of its own for it. Tapping *Send bug
 report* opens the consent screen; on *Continue* the report is **copied to your clipboard**

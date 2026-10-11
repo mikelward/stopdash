@@ -979,7 +979,7 @@
          location-safe export. -->
     <string name="menu_send_bug_report">Send bug report</string>
     <string name="bug_report_consent_title">Send bug report</string>
-    <string name="bug_report_consent_body">To help fix a problem, this shares:\n\n• a diagnostic log (stops, lines, and errors the app saw)\n• a screenshot of this screen\n• your exact location for the past 15 minutes\n• how far you are from each nearby stop\n\nOn Continue, the report is copied to your clipboard and offered to an app you pick.</string>
+    <string name="bug_report_consent_body">To help fix a problem, this shares:\n\n• a diagnostic log (stops, lines, and errors the app saw)\n• a screenshot of this screen\n• your exact location for the past 15 minutes\n• how far you are from the nearest stops\n\nOn Continue, the report is copied to your clipboard and offered to an app you pick.</string>
     <string name="bug_report_consent_dont_ask">Don\'t ask again</string>
     <string name="bug_report_consent_continue">Continue</string>
     <string name="action_cancel">Cancel</string>
