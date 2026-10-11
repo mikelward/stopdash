@@ -30,6 +30,7 @@ import app.stopdash.domain.HubInfoCache
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusBatch
+import app.stopdash.domain.LineStatusReuse
 import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.lineAlertKey
 import app.stopdash.domain.NearbySelection
@@ -1745,15 +1746,17 @@ class MainViewModel(
     private val lineCheckLock = Mutex()
 
     private suspend fun checkLinesNow(lineIds: Set<String>, now: Instant): LineCheck {
-        // Not one still waiting on its alerts' directions: asked again, it splits by direction.
+        // Not one still waiting on its alerts' directions: asked again, it splits by direction. By the
+        // rule the widget uses too ([LineStatusReuse]).
         val cachedStatuses = lineIds.mapNotNull { id ->
-            (heldLines[id] as? HeldLine.Verdict)?.takeIf { isWithin(it.at, now, lineStatusReuse) && !it.status.awaitingDirections }?.status
+            (heldLines[id] as? HeldLine.Verdict)
+                ?.takeIf { LineStatusReuse.stands(it.at, now, lineStatusReuse, it.status.awaitingDirections) }?.status
         }
         // A line TfL left out within the same window isn't asked about again either: it still
         // reads as unchecked, but asking every cycle would spend the rate budget and the radio
         // on an answer that just came back empty.
         val recentlyOmitted = lineIds.filterTo(HashSet()) { id ->
-            (heldLines[id] as? HeldLine.Omitted)?.let { isWithin(it.at, now, lineStatusReuse) } == true
+            (heldLines[id] as? HeldLine.Omitted)?.let { LineStatusReuse.stands(it.at, now, lineStatusReuse) } == true
         }
         val toQuery = lineIds - cachedStatuses.mapTo(HashSet()) { it.lineId } - unknownLineIds - recentlyOmitted
         val cachedDismissals = cachedStatuses.associate { it.lineId to (lineStatusMarks[it.lineId] ?: 0L) }
