@@ -3231,6 +3231,12 @@ Builds on Phase 1's minimal line-status marking.
         the part-shown state on the main dispatcher, walking every shown stop (what failed, which
         lines are still checking, what's unknown). Build it on a worker and publish the result,
         newest wins (AGENTS *Main thread*).
+  - [ ] **Every line-status surface through the shared cache** (Codex on #765): the near-me list,
+        the widget's refresh (a watch's request included) and the app's check of the widget's lines
+        share `LineStatusCache.SHARED`, but a station opened directly (`PlaceDirectViewModel`), a trip
+        (`TripViewModel`), the ride checks (`RideLineChecks`) and route disruptions
+        (`RouteDisruptionChecks`) still ask TfL themselves and keep their own answers. Route each through the shared cache, then widen
+        *Freshness → Shared line status* to name them.
 
 ## Phase 4 — Widget
 

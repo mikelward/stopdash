@@ -20,6 +20,7 @@ import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FartherStations
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusCache
 import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.LineStatusBatch
 import app.stopdash.domain.NearbySelection
@@ -1291,6 +1292,50 @@ class MainViewModelTest {
         gate.complete(Unit)
         advanceUntilIdle()
         assertFalse((vm.state.value as DeparturesUiState.Loaded).disruptionUnknown)
+    }
+
+    // Codex on #765: a line the widget found TfL doesn't know is one the list doesn't ask about, and
+    // doesn't read as a check that failed.
+    @Test
+    fun `a line another surface found TfL doesn't know isn't asked about or counted as failed`() = runTest(dispatcher) {
+        val stops = listOf(StopRef("910GSTPX", "St Pancras International", listOf(LineRef("eurostar", "Eurostar", "national-rail"))))
+        val client = LinedClient(
+            "none",
+            CompletableDeferred(Unit),
+            predicted = mapOf("910GSTPX" to listOf("eurostar")),
+            statusOf = { throw TflException.Offline(null) },
+        )
+        val shared = LineStatusCache()
+        shared["eurostar"] = LineStatusCache.Held.Omitted(now.minusSeconds(10), unrecognized = true)
+        val vm = MainViewModel(client, stops, clock = { now }, io = dispatcher, lineStatusReuse = LINE_STATUS_REUSE, sharedLines = shared)
+        advanceUntilIdle()
+
+        assertFalse("eurostar" in client.asked.flatten())
+        assertFalse((vm.state.value as DeparturesUiState.Loaded).disruptionUnknown)
+    }
+
+    // Codex on #765: the cache alone says which lines TfL doesn't know, so a verdict another surface gets
+    // for one later puts it back in play here, rather than the list never asking about it again.
+    @Test
+    fun `a line TfL didn't know is asked about again once another surface gets a verdict for it`() = runTest(dispatcher) {
+        val stops = listOf(StopRef("910GSTPX", "St Pancras International", listOf(LineRef("eurostar", "Eurostar", "national-rail"))))
+        val client = LinedClient(
+            "none",
+            CompletableDeferred(Unit),
+            predicted = mapOf("910GSTPX" to listOf("eurostar")),
+        )
+        val shared = LineStatusCache()
+        shared["eurostar"] = LineStatusCache.Held.Omitted(now.minusSeconds(10), unrecognized = true)
+        var t = now
+        val vm = MainViewModel(client, stops, clock = { t }, io = dispatcher, lineStatusReuse = LINE_STATUS_REUSE, sharedLines = shared)
+        advanceUntilIdle()
+        assertFalse("eurostar" in client.asked.flatten())
+
+        shared["eurostar"] = LineStatusCache.Held.Verdict(now, LineStatus("eurostar", LineStatus.GOOD_SERVICE, "Good Service"))
+        t = now.plus(LINE_STATUS_REUSE).plusSeconds(1)
+        vm.refresh()
+        advanceUntilIdle()
+        assertTrue("eurostar" in client.asked.flatten())
     }
 
     @Test
@@ -4409,6 +4454,31 @@ class MainViewModelTest {
         assertEquals(20, store.lineStatusUpdates.last().getValue("central").status.severity)
     }
 
+    // Codex on #765: a line TfL doesn't know, checked for the widget's stored rows, is recorded as such in
+    // the shared answers and stored as no verdict, not treated as a failed check.
+    @Test
+    fun `a cold start's check of a widget line TfL doesn't know records it as such`() = runTest(dispatcher) {
+        val aged = now.minusSeconds(120)
+        val widget = DeparturesSnapshot(
+            stops = listOf(StopArrivals("910GSTPX", "St Pancras International", listOf(departure("eurostar", "Eurostar", 300)), aged)),
+            fetchedAt = aged,
+            lineStatuses = mapOf("eurostar" to LineStatusCheck(status("eurostar", 6, "Severe Delays"), aged)),
+        )
+        val store = FakeStore(widget, restores = false)
+        val client = FakeClient(
+            mapOf(
+                "940GZZLUOXC" to Result.failure(TflException.Offline(null)),
+                "940GZZLUKSX" to Result.failure(TflException.Offline(null)),
+            ),
+            statuses = Result.failure(TflException.NotFound(null)),
+        )
+        val shared = LineStatusCache()
+        MainViewModel(client, seeds, clock = { now }, io = dispatcher, snapshotStore = store, sharedLines = shared)
+        advanceUntilIdle()
+        assertEquals(true, (shared["eurostar"] as? LineStatusCache.Held.Omitted)?.unrecognized)
+        assertFalse(store.lineStatusUpdates.last().getValue("eurostar").known)
+    }
+
     @Test
     fun `a cold start's check of the widget's lines settles their dismissed alerts`() = runTest(dispatcher) {
         // A Central line alert dismissed earlier has since ended: the check for the widget, made with
@@ -4445,6 +4515,31 @@ class MainViewModelTest {
         )
         advanceUntilIdle()
         assertEquals(emptySet<DismissedAlert>(), backing.value)
+    }
+
+    // Codex on #765: a refresh that keeps its rows but contacts TfL for nothing still stores a check it
+    // took from the shared cache, another surface's newer answer, for the widget.
+    @Test
+    fun `a refresh whose arrivals and statuses fail stores a newer shared check`() = runTest(dispatcher) {
+        val aged = now.minusSeconds(120)
+        val store = FakeStore(
+            DeparturesSnapshot(stops = listOf(stopArrivals("940GZZLUOXC", "Oxford Circus", 300, aged)), fetchedAt = aged),
+        )
+        val shared = LineStatusCache()
+        shared["victoria"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), status("victoria", 20, "Suspended"))
+        MainViewModel(
+            FakeClient(
+                mapOf(
+                    "940GZZLUOXC" to Result.failure(TflException.Offline(null)),
+                    "940GZZLUKSX" to Result.failure(TflException.Offline(null)),
+                ),
+                statuses = Result.failure(TflException.Offline(null)),
+            ),
+            seeds, clock = { now }, io = dispatcher, snapshotStore = store, sharedLines = shared,
+        )
+        advanceUntilIdle()
+        assertTrue(store.saves.isEmpty())
+        assertEquals(20, store.lineStatusUpdates.last().getValue("victoria").status.severity)
     }
 
     @Test
@@ -6435,6 +6530,57 @@ class MainViewModelTest {
         assertFalse("214" in retried)
         assertFalse((vm.state.value as DeparturesUiState.Loaded).disruptionUnknown)
     }
+
+    // Shared with the widget and the watch (SPEC *Freshness → Shared line status*): a line one of them
+    // checked moments ago isn't asked again, and the list's own answers are left for them.
+    @Test
+    fun `a line another surface checked moments ago is shown, not asked again`() = runTest(dispatcher) {
+        val client = object : HubLinesClient() {
+            override fun answer(lineIds: Collection<String>): List<LineStatus> = lineIds.map { LineStatus(it, 10, "Good Service") }
+        }
+        val shared = LineStatusCache()
+        shared["214"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), LineStatus("214", 6, "Severe Delays"))
+        val vm = MainViewModel(client, listOf(seeds[0]), clock = { now }, io = dispatcher, lineStatusReuse = LINE_STATUS_REUSE, sharedLines = shared)
+        advanceUntilIdle()
+
+        assertFalse("214" in client.statusCalls.flatten())
+        assertTrue("lioness" in client.statusCalls.flatten())
+        val state = vm.state.value as DeparturesUiState.Loaded
+        assertEquals("Severe Delays", state.lineStatuses.getValue("214").description)
+        // The list's own answer is there for the others.
+        assertEquals("Good Service", (shared["lioness"] as LineStatusCache.Held.Verdict).status.description)
+    }
+
+    // AGENTS.md *Main thread*: the line check walks the lines and the shared cache, so it runs on the
+    // worker, not the caller (Codex on #765).
+    @Test
+    fun `the line check reads the shared answers off the caller`() = runTest(dispatcher) {
+        val client = object : HubLinesClient() {
+            override fun answer(lineIds: Collection<String>): List<LineStatus> = lineIds.map { LineStatus(it, 10, "Good Service") }
+        }
+        val read = ThreadRecorder()
+        val shared = object : LineStatusCache() {
+            override fun get(lineId: String): Held? = super.get(lineId).also { read.note() }
+        }
+        val pool = java.util.concurrent.Executors.newCachedThreadPool { Thread(it, "line-worker") }
+        // Runs what it's handed on a thread of its own, the caller waiting, so virtual time still drives the rest.
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                pool.submit(block).get()
+            }
+        }
+        try {
+            val vm = MainViewModel(client, listOf(seeds[0]), clock = { now }, io = dispatcher, compute = worker, sharedLines = shared)
+            advanceUntilIdle()
+            assertTrue("lioness" in client.statusCalls.flatten())
+            val readOn = read.threads()
+            assertTrue("$readOn", readOn.isNotEmpty() && readOn.all { it == "line-worker" })
+            assertTrue(vm.state.value is DeparturesUiState.Loaded)
+        } finally {
+            pool.shutdown()
+        }
+    }
+
 
     @Test
     fun `an empty answer before a failed request still counts as answered`() = runTest(dispatcher) {

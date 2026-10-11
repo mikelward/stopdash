@@ -252,6 +252,23 @@ class WidgetRefreshTest {
         assertEquals(t1, check.checkedAt)
     }
 
+    // Codex on #765: an answer another surface got counts as one, so the widget stops drawing the
+    // check it replaces rather than keeping it until it ages out.
+    @Test
+    fun `with no arrivals fresh, a newer status another surface got is stored too`() = runTest {
+        val good = LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service")
+        val prior = snapshot(stop("A", listOf(departure("Brixton"))))
+            .copy(lineStatuses = mapOf("victoria" to LineStatusCheck(LineStatus("victoria", 6, "Severe Delays"), t1.minusSeconds(30))))
+        val shared = LineStatusCache()
+        shared["victoria"] = LineStatusCache.Held.Verdict(t1.minusSeconds(5), good)
+        var asked = false
+        val outcome = WidgetRefresh.refresh(
+            prior, { t1 }, statusReuse = java.time.Duration.ofSeconds(90), sharedLines = shared, fetchStatuses = { asked = true; emptyList() },
+        ) { null }
+        assertFalse(asked)
+        assertEquals(WidgetRefresh.Outcome.Statuses(mapOf("victoria" to LineStatusCheck(good, t1.minusSeconds(5)))), outcome)
+    }
+
     @Test
     fun `with neither arrivals nor a status answer, nothing changes`() = runTest {
         val prior = snapshot(stop("A", listOf(departure("Brixton"))))

@@ -6,6 +6,7 @@ import app.stopdash.data.RailStationCodesStore
 import app.stopdash.data.StationIndexStore
 import app.stopdash.data.RejectedApiKey
 import app.stopdash.domain.ArrivalsCache
+import app.stopdash.domain.LineStatusCache
 import app.stopdash.domain.CachingTflClient
 import app.stopdash.domain.RailAwareTflClient
 import android.content.Context
@@ -488,6 +489,8 @@ internal suspend fun refreshStoredSnapshot(
                     source = client.arrivalsSource(),
                     railFeed = client::railFeed,
                     fetchedAt = client::fetchedAt,
+                    // Or a line another screen checked since.
+                    sharedLines = LineStatusCache.SHARED,
                     fetchStatuses = { lineIds ->
                         // Called once per request TfL accepts: every answered one's statuses count.
                         widgetLineStatuses(client, lineIds, onKeyRejected = { statusKeyRejected.set(true) })
@@ -718,9 +721,10 @@ private fun LineStatusCheck.isAnswer(status: LineStatus?): Boolean {
 /**
  * The widget refresh's status lookup for [lineIds]: TfL's answer, or null when the call failed, so
  * the prior checks age out ([WidgetRefresh.refreshedLineStatuses]). TfL not recognising any of the
- * lines (a National Rail-only set) is an answer, not a failure: an empty one, so each line gets a
- * no-verdict check and isn't asked about again until that check is past the reuse window, as the
- * app remembers the lines TfL doesn't know.
+ * lines (a National Rail-only set) is an answer, not a failure: [TflException.NotFound] is passed on
+ * for the request's batching ([LineStatusBatch]) to record as such, so each line gets a no-verdict
+ * check, isn't asked about again until that check is past the reuse window, and is marked as a line
+ * TfL doesn't know in the answers shared with the app.
  */
 internal suspend fun widgetLineStatuses(
     client: TflClient,
@@ -733,8 +737,10 @@ internal suspend fun widgetLineStatuses(
     } catch (e: CancellationException) {
         throw e
     } catch (e: TflException.NotFound) {
+        // Passed on, so the request's batching records the lines as ones TfL doesn't know: still no
+        // verdict here, and marked so in the shared answers for the app (Codex on #765).
         logWidgetSnapshotWarning("widget refresh: TfL doesn't know ${lineIds.size} line(s); recorded as no verdict")
-        emptyList()
+        throw e
     } catch (e: TflException.KeyRejected) {
         logWidgetSnapshotWarning("widget refresh line status failed for ${lineIds.size} line(s): key rejected")
         onKeyRejected()

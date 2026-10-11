@@ -3205,6 +3205,13 @@ been set, so none keeps showing what it judged before.
   added or removed forgets them too. A station whose National Rail board a screen places under one
   of its twin stop ids isn't shared by stop, since another screen may place it under the other; the
   board itself is kept once for the station, and read by every screen. Nothing is saved to storage.
+- **Shared line status** (maintainer, 2026-10-11): each line's last status answer is kept in memory
+  for the process the same way, whichever surface asked — the near-me list, the widget's refresh (a
+  watch's request included), the app's check of the widget's lines — including that TfL was asked
+  and gave none. (Other screens still ask for themselves; routing them through it is a `TODO.md` item.) A line any of them checked within
+  the line-status reuse window (90 s) is shown from that answer rather than asked again, so no two
+  surfaces disagree about a line and none spends a request another just made. The widget's stored
+  checks still carry its answers past the process.
 - The **widget** refreshes opportunistically — on tap, on host update, and on a
   bounded periodic schedule while it is plausibly visible — and degrades to on-demand
   rather than polling hard in the background (**D5**). The spec's guarantee is honesty

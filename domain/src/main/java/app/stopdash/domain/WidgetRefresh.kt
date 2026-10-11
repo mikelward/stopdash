@@ -80,17 +80,19 @@ object WidgetRefresh {
         source: Any? = null,
         railFeed: ((stopId: String) -> RailFeed?)? = null,
         fetchedAt: ((stopId: String) -> Instant?)? = null,
+        // Each line's last answer, shared with the other surfaces ([refreshedLineStatuses]).
+        sharedLines: LineStatusCache? = null,
         fetchStatuses: suspend (lineIds: Set<String>) -> List<LineStatus>?,
         fetchArrivals: suspend (stopId: String) -> List<Departure>?,
     ): Outcome {
         val arrivals = refreshedArrivals(prior, clock(), arrivalsReuse, farArrivalsReuse, shared, source, railFeed, fetchedAt, fetchArrivals)
-        var answered = false
-        val checked = refreshedLineStatuses(arrivals ?: prior, clock(), statusReuse, answeredAt = clock) { ids ->
-            fetchStatuses(ids)?.also { answered = true }
-        }
+        val base = arrivals ?: prior
+        val checked = refreshedLineStatuses(base, clock(), statusReuse, answeredAt = clock, shared = sharedLines, fetchStatuses = fetchStatuses)
         return when {
             arrivals != null -> Outcome.Save(checked)
-            answered -> Outcome.Statuses(checked.lineStatuses)
+            // A line answered now, by TfL or by another surface's check in the shared cache: stored,
+            // so the widget doesn't keep drawing the check it replaced (Codex on #765).
+            checked.answersNew(base) -> Outcome.Statuses(checked.lineStatuses)
             else -> Outcome.Unchanged
         }
     }
@@ -206,16 +208,33 @@ object WidgetRefresh {
         now: Instant,
         reuse: Duration = Duration.ZERO,
         answeredAt: () -> Instant = { now },
+        // Each line's last answer, whichever surface asked ([LineStatusCache.SHARED] in the app): one
+        // that still stands and is newer than the snapshot's own is taken rather than asked again, and
+        // this refresh's answers are kept there for the others. Null (tests) shares none.
+        shared: LineStatusCache? = null,
         fetchStatuses: suspend (lineIds: Set<String>) -> List<LineStatus>?,
     ): DeparturesSnapshot {
         val lines = LineStatusCheck.linesOf(snapshot.stops)
-        val kept = snapshot.lineStatuses.filterKeys { it in lines }
+        val taken = if (shared == null) emptyMap() else lines.mapNotNull { id ->
+            when (val held = shared[id]) {
+                // Taken within the window even while it waits on its alerts' directions: newer, it replaces
+                // the snapshot's own check, and still being asked again below (Codex on #765).
+                is LineStatusCache.Held.Verdict -> held.takeIf { LineStatusReuse.stands(it.at, now, reuse) }
+                    ?.let { id to LineStatusCheck(it.status, it.at) }
+                is LineStatusCache.Held.Omitted ->
+                    held.takeIf { LineStatusReuse.stands(it.at, now, reuse) }?.let { id to LineStatusCheck.noVerdict(id, it.at) }
+                null -> null
+            }
+        }.toMap()
+        val kept = LineStatusCheck.newest(snapshot.lineStatuses, taken, lines, now)
         // Asked again unless its last check still stands, by the rule the app's list uses too.
         val toAsk = lines.filterTo(HashSet()) { id ->
             val prior = kept[id] ?: return@filterTo true
             !LineStatusReuse.stands(prior.checkedAt, now, reuse, prior.status.awaitingDirections)
         }
         if (toAsk.isEmpty()) return snapshot.copy(lineStatuses = kept)
+        // Taken before asking, so a later request's answers aren't replaced by these landing after them.
+        val ticket = shared?.ticket() ?: 0L
         val results = LineStatusBatch.request(toAsk) { chunk -> fetchStatuses(chunk.toSet()) }
         if (!results.anyAnswered) return snapshot.copy(lineStatuses = kept)
         val answered = answeredAt()
@@ -228,6 +247,22 @@ object WidgetRefresh {
         // entry reads as "nothing new") until it ages out. Only lines in a request TfL answered: a
         // failed one's lines keep their prior checks.
         val fresh = results.answeredIds.filter { it in toAsk }.associateWith { returned[it] ?: LineStatusCheck.noVerdict(it, at) }
+        shared?.let { cache ->
+            fresh.forEach { (id, check) ->
+                val answer = if (check.known) {
+                    LineStatusCache.Held.Verdict(check.checkedAt, check.status)
+                } else {
+                    // A line TfL doesn't know stays marked so: the app then stops asking about it rather
+                    // than reading it as a check that failed (Codex on #765).
+                    LineStatusCache.Held.Omitted(check.checkedAt, unrecognized = id in results.unknown)
+                }
+                cache.set(id, answer, ticket)
+            }
+        }
         return snapshot.copy(lineStatuses = LineStatusCheck.newest(kept, fresh, lines, answered))
     }
+
+    /** Whether any line's check here is one [before] didn't have: a new answer, however it was had. */
+    fun DeparturesSnapshot.answersNew(before: DeparturesSnapshot): Boolean =
+        lineStatuses.any { (id, check) -> before.lineStatuses[id] != check }
 }
