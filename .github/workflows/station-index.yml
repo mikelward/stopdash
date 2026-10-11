@@ -4,7 +4,8 @@ name: station-index
 # the National Rail station codes beside it (crs_codes.json) from NaPTAN, and the step-free access
 # table (step_free.json) from TfL's station data, and commits them to the pull request's branch —
 # the list "Find a station" searches on the device (SPEC *Finding stops*), the codes National Rail
-# boards are asked for by, and how far each platform is step-free (SPEC *Step-free access*). It
+# boards are asked for by, and how far each platform is step-free (SPEC *Step-free access*), and
+# every stop the near-me list can find (stops.tsv, SPEC *Finding stops → Near me now*). It
 # runs when a pull request changes a builder or this workflow. The weekly refresh is
 # station-index-refresh.yml, which opens a pull request of its own.
 #
@@ -12,7 +13,7 @@ name: station-index
 # token, and the shared ci-commit-artifact workflow does the commit with its own credential,
 # never running PR code.
 #
-# Cost and reliability (AGENTS.md): 0 pounds — a few keyless TfL requests, one keyless NaPTAN
+# Cost and reliability (AGENTS.md): 0 pounds — a few dozen keyless TfL requests, one keyless NaPTAN
 # download, one keyless TfL station data download (~200 KB) and a minute of Actions time per run;
 # nothing the app sends, so no Play Data Safety or battery change. If TfL or NaPTAN is down or
 # answers oddly the script refuses to write, the run fails, and the committed files stay as they
@@ -23,6 +24,7 @@ on:
       - scripts/build_station_index.py
       - scripts/build_crs_index.py
       - scripts/build_step_free.py
+      - scripts/build_stops.py
       - .github/workflows/station-index.yml
 permissions: {}
 concurrency:
@@ -50,6 +52,10 @@ jobs:
         run: python3 scripts/build_step_free_test.py
       - name: Build step-free access from TfL's station data
         run: python3 scripts/build_step_free.py --out build/stations/step_free.json
+      - name: Test the stop list builder
+        run: python3 scripts/build_stops_test.py
+      - name: Build the stop list from TfL
+        run: python3 scripts/build_stops.py --out build/stations/stops.tsv
       - name: Upload the index
         uses: actions/upload-artifact@v4
         with:

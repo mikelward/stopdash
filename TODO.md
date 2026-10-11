@@ -1321,9 +1321,15 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   so a typed place there needs a new kind of journey end (its name and coordinate).
               - [ ] **An address the bundle doesn't hold as a trip's start**: *From…* doesn't ask TfL's
                   geocoder, so a house-number address can't start a trip yet.
-              - [ ] **Bundle London's bus stops** from TfL's `/StopPoint/Mode/bus` (with their routes, ~0.5 MB)
-                  so a search needs no TfL request at all; first check which ids `/StopPoint/Search`
-                  returns for a bus query, so a bundled row opens the same page.
+              - [x] **Bundle London's bus stops** (`assets/stations/stops.tsv`, every stop TfL's
+                  nearby search answers with, ~0.6 MB in the APK): the near-me list, the widget's
+                  following, a trip's place stops and a journey's end stops now find their stops on the
+                  device.
+              - [ ] **Search the bundled bus stops too**, so a *To…*/*From…* search needs no TfL
+                  request at all; first check which ids `/StopPoint/Search` returns for a bus query,
+                  so a bundled row opens the same page.
+              - [ ] **Time the near-me list's first frame on a device** with the bundled stops: the
+                  read (~22,000 stops, once per process) and search are measured only on a desktop JVM.
               - [ ] **A monthly refresh workflow** for `assets/places/place_index.tsv`, like
                   `station-index-refresh.yml` (needs `pyarrow` and `pyproj`; Overture releases monthly),
                   which also moves the year in the About screen's Ordnance Survey statements.

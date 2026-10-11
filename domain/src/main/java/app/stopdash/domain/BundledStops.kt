@@ -1,0 +1,190 @@
+package app.stopdash.domain
+
+import androidx.annotation.WorkerThread
+import java.io.BufferedReader
+import kotlin.math.cos
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.withContext
+
+/**
+ * The stops TfL's nearby search answers with, bundled (SPEC *Finding stops → Near me now*): every
+ * bus and tram stop, station and pier in and around London, with what the near-me list reads from
+ * that search — name, position, cluster, interchange, pole letter, compass, "towards" and lines.
+ * Built by `scripts/build_stops.py`, so the list is found the moment there's a fix rather
+ * than after a TfL search that takes 10–25 s in central London when TfL hasn't cached it.
+ *
+ * Covers [bounds] only: a search reaching past them ([covers] false) is TfL's to answer.
+ */
+class BundledStops private constructor(
+    private val stops: List<StopLocation>,
+    private val types: ByteArray,
+    /** South, west, north, east, in degrees. */
+    private val bounds: DoubleArray,
+    /** Records that couldn't be read and were left out, so the caller can say so. */
+    val skippedLines: Int,
+) {
+    val size: Int get() = stops.size
+
+    /**
+     * Whether a search of [radiusMeters] around ([latitude], [longitude]) lies wholly inside the
+     * bundle's area, so no stop it should find can be missing for being outside it.
+     */
+    fun covers(latitude: Double, longitude: Double, radiusMeters: Int): Boolean {
+        if (stops.isEmpty()) return false
+        val dLat = radiusMeters / METERS_PER_DEGREE
+        val dLon = radiusMeters / (METERS_PER_DEGREE * cos(Math.toRadians(latitude)))
+        return latitude - dLat >= bounds[0] && longitude - dLon >= bounds[1] &&
+            latitude + dLat <= bounds[2] && longitude + dLon <= bounds[3]
+    }
+
+    /** Whether every one of [stopTypes] is a kind the bundle holds, so none is missing for its type. */
+    fun holds(stopTypes: List<String>): Boolean = stopTypes.all { it in TYPE_CODES }
+
+    /** The stops of [stopTypes] within [radiusMeters] of ([latitude], [longitude]), nearest first. */
+    @WorkerThread
+    fun nearby(latitude: Double, longitude: Double, radiusMeters: Int, stopTypes: List<String>): List<StopLocation> {
+        val wanted = BooleanArray(TYPE_NAMES.size) { TYPE_NAMES[it] in stopTypes }
+        // A box around the circle first, so the distance is worked out for the few stops in it.
+        val dLat = radiusMeters / METERS_PER_DEGREE
+        val dLon = radiusMeters / (METERS_PER_DEGREE * cos(Math.toRadians(latitude)))
+        val found = ArrayList<Pair<Double, StopLocation>>()
+        for (i in stops.indices) {
+            if (!wanted[types[i].toInt()]) continue
+            val stop = stops[i]
+            if (stop.latitude < latitude - dLat || stop.latitude > latitude + dLat) continue
+            if (stop.longitude < longitude - dLon || stop.longitude > longitude + dLon) continue
+            val meters = NearestStops.distanceMeters(latitude, longitude, stop.latitude, stop.longitude)
+            if (meters <= radiusMeters) found += meters to stop
+        }
+        found.sortBy { it.first }
+        return found.map { it.second }
+    }
+
+    companion object {
+        const val FORMAT_VERSION = 1
+
+        private const val METERS_PER_DEGREE = 111_320.0
+        private const val STOP_FIELDS = 12
+
+        // The file's type codes and the NaPTAN stop types they stand for (StopFinder's defaults).
+        private val TYPE_NAMES = listOf("NaptanMetroStation", "NaptanRailStation", "NaptanPublicBusCoachTram", "NaptanFerryPort")
+        private val TYPE_CODES = mapOf("NaptanMetroStation" to "M", "NaptanRailStation" to "R", "NaptanPublicBusCoachTram" to "B", "NaptanFerryPort" to "F")
+        private val CODE_INDEX = mapOf("M" to 0, "R" to 1, "B" to 2, "F" to 3)
+
+        val EMPTY = BundledStops(emptyList(), ByteArray(0), DoubleArray(4), 0)
+
+        /**
+         * Reads the file (see `scripts/build_stops.py`). Throws [IllegalArgumentException] on
+         * a header for another format version or one without its bounds, since its records can't be
+         * trusted to mean the same; a single unreadable record is left out and counted in
+         * [skippedLines]. Each stop is read as the app reads TfL's own answer: its name cleaned, each
+         * line named as a rider knows it, its cluster its station's id or else its name.
+         */
+        @WorkerThread
+        fun read(reader: BufferedReader): BundledStops {
+            val header = reader.readLine() ?: return EMPTY
+            val headerFields = header.split('\t')
+            require(headerFields[0] == "# stopdash stops v$FORMAT_VERSION") {
+                "stops: unexpected header for format $FORMAT_VERSION"
+            }
+            val bounds = headerFields.drop(1).firstOrNull { it.startsWith("bounds=") }
+                ?.removePrefix("bounds=")?.split(',')?.mapNotNull { it.toDoubleOrNull() }
+            require(bounds != null && bounds.size == 4 && bounds[0] < bounds[2] && bounds[1] < bounds[3]) {
+                "stops: no bounds in the header"
+            }
+            val lines = HashMap<String, LineRef>()
+            val stops = ArrayList<StopLocation>(25_000)
+            val types = java.io.ByteArrayOutputStream(25_000)
+            var skipped = 0
+            while (true) {
+                val record = reader.readLine() ?: break
+                if (record.isEmpty()) continue
+                val fields = record.split('\t')
+                when (fields[0]) {
+                    "L" -> if (fields.size == 4 && fields[1].isNotBlank()) {
+                        lines[fields[1]] = LineRef(fields[1], riderLineName(fields[3], fields[2]), fields[2])
+                    } else {
+                        skipped++
+                    }
+                    "S" -> {
+                        val stop = stopOf(fields, lines)
+                        val type = fields.getOrNull(2)?.let(CODE_INDEX::get)
+                        if (stop == null || type == null) {
+                            skipped++
+                        } else {
+                            stops += stop
+                            types.write(type)
+                        }
+                    }
+                    else -> skipped++
+                }
+            }
+            return BundledStops(stops, types.toByteArray(), bounds.toDoubleArray(), skipped)
+        }
+
+        // A stop record, as the app reads TfL's answer for it (toStopLocationOrNull); null when it
+        // lacks what identifies or places it, or names a line the file doesn't.
+        private fun stopOf(record: List<String>, lines: Map<String, LineRef>): StopLocation? {
+            // Trailing empty fields may have been trimmed (a pier with no lines ends in tabs).
+            if (record.size !in 6..STOP_FIELDS) return null
+            val fields = record + List(STOP_FIELDS - record.size) { "" }
+            val id = fields[1]
+            val name = cleanStopName(fields[3])
+            val lat = fields[4].toDoubleOrNull()
+            val lon = fields[5].toDoubleOrNull()
+            if (id.isBlank() || name.isBlank() || lat == null || lon == null) return null
+            val stopLines = fields[11].split(',').filter { it.isNotEmpty() }.map { lines[it] ?: return null }
+            return StopLocation(
+                id = id,
+                name = name,
+                latitude = lat,
+                longitude = lon,
+                lines = stopLines,
+                clusterId = fields[6].ifBlank { name },
+                hubId = fields[7],
+                // Read as TfL's own answer is (StopPole): an arrow in the letter is a bearing.
+                stopLetter = StopPole.letter(fields[8]),
+                bearing = StopPole.bearing(fields[8], fields[9]),
+                towards = fields[10].trim(),
+            )
+        }
+    }
+}
+
+/**
+ * A [StopFinder] that answers from the bundled stops ([BundledStops]) when they cover the search,
+ * and asks [delegate] (TfL, through its cache) when they don't: outside the bundle's area, for a
+ * stop type it doesn't hold, or when the bundle couldn't be read. The search over the bundle runs
+ * on [compute], never the caller's thread.
+ */
+class BundledStopFinder(
+    private val delegate: StopFinder,
+    private val bundled: suspend () -> BundledStops,
+    private val compute: CoroutineDispatcher = Workers.compute,
+    private val warn: (String) -> Unit = {},
+) : StopFinder {
+    override suspend fun nearbyStops(
+        latitude: Double,
+        longitude: Double,
+        radiusMeters: Int,
+        stopTypes: List<String>,
+    ): List<StopLocation> {
+        val stops = try {
+            bundled()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Static public data: naming the failure carries nothing about the user.
+            warn("bundled stops unavailable: ${e::class.simpleName}; asking TfL")
+            BundledStops.EMPTY
+        }
+        // No coordinate in the log (SPEC Privacy): only that TfL was asked.
+        if (stops.size == 0) return delegate.nearbyStops(latitude, longitude, radiusMeters, stopTypes)
+        if (!stops.holds(stopTypes) || !stops.covers(latitude, longitude, radiusMeters)) {
+            warn("nearby: outside the bundled stops; asking TfL")
+            return delegate.nearbyStops(latitude, longitude, radiusMeters, stopTypes)
+        }
+        return withContext(compute) { stops.nearby(latitude, longitude, radiusMeters, stopTypes) }
+    }
+}
