@@ -54,7 +54,6 @@ import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlaceIcon
 import app.stopdash.domain.FavoritePlacesSet
-import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.PlaceHit
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.UkPostcode
@@ -82,8 +81,6 @@ fun FavoritePlacesScreen(
     onDelete: (String) -> Unit,
     onQueryChange: (String) -> Unit,
     onPick: (StationMatch) -> Unit,
-    onResolvePostcode: () -> Unit = {},
-    onPickCandidate: (PlaceCandidate) -> Unit = {},
     onPickPlace: (PlaceHit) -> Unit = {},
     onLabelChange: (String) -> Unit,
     onToggleDay: (DayOfWeek) -> Unit = {},
@@ -162,8 +159,6 @@ fun FavoritePlacesScreen(
                         loaded = state.loaded,
                         onQueryChange = onQueryChange,
                         onPick = onPick,
-                        onResolvePostcode = onResolvePostcode,
-                        onPickCandidate = onPickCandidate,
                         onPickPlace = onPickPlace,
                         onLabelChange = onLabelChange,
                         onToggleDay = onToggleDay,
@@ -334,8 +329,6 @@ private fun PlaceEditor(
     loaded: Boolean,
     onQueryChange: (String) -> Unit,
     onPick: (StationMatch) -> Unit,
-    onResolvePostcode: () -> Unit,
-    onPickCandidate: (PlaceCandidate) -> Unit,
     onPickPlace: (PlaceHit) -> Unit,
     onLabelChange: (String) -> Unit,
     onToggleDay: (DayOfWeek) -> Unit,
@@ -354,15 +347,13 @@ private fun PlaceEditor(
             modifier = Modifier.fillMaxWidth().testTag("placeSearchField"),
         )
         Spacer(modifier = Modifier.height(8.dp))
-        // When the text looks like a postcode, offer to resolve it (a station name search would never
-        // match one). Shown above the station results; only a complete postcode is tappable (SPEC D9).
+        // When the text looks like a postcode, say so (a station name search would never match one).
+        // Shown above the bundled postcodes it starts (SPEC D9).
         val showingPostcode = editor.coordinate == null && UkPostcode.looksLikePartial(editor.query)
         if (showingPostcode) {
             PostcodeSection(
                 query = editor.query,
                 editor = editor,
-                onResolve = onResolvePostcode,
-                onPickCandidate = onPickCandidate,
             )
             Spacer(modifier = Modifier.height(8.dp))
         }
@@ -596,68 +587,24 @@ private fun WriteErrorRow(onDismiss: () -> Unit) {
 }
 
 /**
- * What the editor shows for a postcode-shaped query (SPEC D9): a passive hint while it's still partial,
- * a spinner while a complete one resolves itself (no tap needed — a single place is adopted straight
- * away), a chooser when TfL returns several, or a "no places"/retryable-failure state.
+ * What the editor shows for a postcode-shaped query (SPEC D9): a passive hint while it's still partial
+ * (a complete one in the bundle is adopted straight away), or "not found" for one the bundle doesn't
+ * hold.
  */
 @Composable
 private fun PostcodeSection(
     query: String,
     editor: FavoritePlacesViewModel.Editor,
-    onResolve: () -> Unit,
-    onPickCandidate: (PlaceCandidate) -> Unit,
 ) {
     val code = UkPostcode.format(query) ?: query.trim().uppercase()
     when {
-        editor.postcodeResolving -> Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("postcodeResolving"),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(R.string.favorite_places_postcode_resolving, code),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f),
-            )
-            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-        }
-        editor.postcodeCandidates.isNotEmpty() -> Column(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text = stringResource(R.string.favorite_places_postcode_heading, code),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(vertical = 4.dp),
-            )
-            editor.postcodeCandidates.forEach { candidate ->
-                Text(
-                    text = candidate.name,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onPickCandidate(candidate) }
-                        .padding(vertical = 8.dp)
-                        .testTag("postcodeCandidate"),
-                )
-            }
-        }
-        editor.postcodeFailed -> Text(
-            text = stringResource(R.string.favorite_places_postcode_failed),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.error,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onResolve() }
-                .padding(vertical = 8.dp)
-                .testTag("postcodeFailed"),
-        )
         editor.postcodeNoResults -> Text(
             text = stringResource(R.string.favorite_places_postcode_none, code),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("postcodeNone"),
         )
-        // Still partial: a passive hint that a postcode was recognized; a complete one resolves itself.
+        // Still partial: a passive hint that a postcode was recognized; a complete one is adopted.
         else -> Text(
             text = stringResource(R.string.favorite_places_postcode_partial, code),
             style = MaterialTheme.typography.bodyMedium,

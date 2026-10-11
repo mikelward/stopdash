@@ -19,7 +19,6 @@ import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlaceIcon
 import app.stopdash.domain.FavoritePlacesSet
-import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.StationMatch
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -164,8 +163,8 @@ class FavoritePlacesScreenshotTest {
 
     @Test
     fun favorite_places_editor_postcode() {
-        // The query is a postcode, resolved to a couple of candidate places to choose from (SPEC D9).
-        // Synthetic postcodes/coordinates — no real place (SPEC *Privacy*).
+        // The query is a complete postcode the bundled list doesn't hold (outside London), so it says so
+        // (SPEC D9). A synthetic postcode — no real place (SPEC *Privacy*).
         show(
             FavoritePlacesViewModel.State(
                 places = FavoritePlacesSet.Loaded(emptyList()),
@@ -175,15 +174,11 @@ class FavoritePlacesScreenshotTest {
                     existingId = null,
                     label = "",
                     query = "X1 9XX",
-                    postcodeCandidates = listOf(
-                        PlaceCandidate("X1 9XX", Coordinates(51.5, -0.12)),
-                        PlaceCandidate("X1 9XY", Coordinates(51.5, -0.11)),
-                    ),
+                    postcodeNoResults = true,
                 ),
             ),
         )
-        composeRule.onNodeWithText("Postcode X1 9XX").assertIsDisplayed()
-        composeRule.onNodeWithText("X1 9XY").assertIsDisplayed()
+        composeRule.onNodeWithText("No places for X1 9XX").assertIsDisplayed()
         captureSnapshot("favorite-places-editor-postcode.png")
     }
 

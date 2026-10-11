@@ -753,12 +753,9 @@
     <string name="favorite_places_no_position">No location for this result</string>
     <!-- A picked result\'s location lookup failed transiently (TfL/network); the row stays tappable to retry. -->
     <string name="favorite_places_resolve_failed">Couldn\'t locate this place. Tap to retry</string>
-    <!-- Postcode entry (SPEC D9). %1$s is the postcode. A complete postcode resolves itself; this is
-         the partial-form hint while still typing, plus the in-progress and result states below. -->
+    <!-- Postcode entry (SPEC D9). %1$s is the postcode. The hint while still typing, and a complete
+         postcode the bundled list doesn't hold (outside London). -->
     <string name="favorite_places_postcode_partial">Postcode %1$s</string>
-    <string name="favorite_places_postcode_resolving">Looking up %1$s…</string>
-    <string name="favorite_places_postcode_heading">Postcode %1$s</string>
-    <string name="favorite_places_postcode_failed">Couldn\'t look up that postcode. Tap to retry</string>
     <string name="favorite_places_postcode_none">No places for %1$s</string>
     <!-- Editor actions. -->
     <string name="favorite_place_save">Save</string>

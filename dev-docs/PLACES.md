@@ -15,8 +15,7 @@ app uses it.
 - **Search sends nothing to TfL** (maintainer, 2026-10-11): neither TfL's Journey Planner geocoder nor
   its stop search is asked, from any search. An address with a house number is searched by its street.
   What the bundle lacks (a house number, a stop or place newer than the app) isn't found until the next
-  update. The favorite place editor still asks the Journey Planner for a complete postcode outside
-  London, which the bundle doesn't hold.
+  update, and a postcode outside London isn't found at all.
 
 ### Before the index
 
