@@ -34,6 +34,38 @@ class BudgetedRowsTest {
     private fun select(rows: List<DepartureRow>, budget: Int) =
         BudgetedRows.select(rows, budget, maxTimes = 3, topology = RouteTopology.EMPTY)
 
+    // One place reads as implied by default; a caller's grouping that names it (the full widget)
+    // gets its header, costed as one.
+    @Test
+    fun `a single place has no header unless the caller's grouping names it`() {
+        val rows = listOf(row("victoria", "Brixton"), row("jubilee", "Stratford"))
+        assertTrue(select(rows, budget = 3).all { it.header == null })
+        val named = BudgetedRows.select(rows, budget = 3, maxTimes = 3, topology = RouteTopology.EMPTY, grouped = { r ->
+            app.stopdash.domain.StopGrouping.groupByStop(r, warningsLead = false).map { it.copy(showHeader = true) }
+        })
+        assertEquals(listOf("Example Stop", null), named.map { it.header?.text })
+        assertEquals("the header takes a line", 2, named.size)
+        val tight = BudgetedRows.select(rows, budget = 2, maxTimes = 3, topology = RouteTopology.EMPTY, grouped = { r ->
+            app.stopdash.domain.StopGrouping.groupByStop(r, warningsLead = false).map { it.copy(showHeader = true) }
+        })
+        assertEquals("header and one row fit two lines", listOf("victoria"), tight.map { it.row.lineId })
+    }
+
+    // A group running on into the next band is named once; two groups that share a title but are
+    // different stops (same name and towards, another bearing) keep a header each (Codex on #760).
+    @Test
+    fun `a header repeats only for a different group, not a continuation`() {
+        val a = row("victoria", "Brixton")
+        val b = row("jubilee", "Stratford")
+        fun group(key: String, row: DepartureRow) =
+            app.stopdash.domain.StopGroup("Example Stop", key, showHeader = true, rows = listOf(row), placeKey = "Example Stop")
+        fun headers(secondKey: String) = BudgetedRows.select(listOf(a, b), budget = 4, maxTimes = 3, topology = RouteTopology.EMPTY, grouped = { rows ->
+            listOf(group("k1", a), group(secondKey, b)).map { g -> g.copy(rows = g.rows.filter { it in rows }) }.filter { it.rows.isNotEmpty() }
+        }).map { it.header?.text }
+        assertEquals(listOf("Example Stop", null), headers("k1"))
+        assertEquals(listOf("Example Stop", "Example Stop"), headers("k2"))
+    }
+
     @Test
     fun `a disrupted row costs its status line too`() {
         val delayed = row("victoria", "Brixton", status = LineStatus("victoria", 6, "Severe Delays"))

@@ -678,7 +678,12 @@ internal fun widgetModel(
         .apply { addAll(journeyRows) }
     fun grouped(rows: List<DepartureRow>): List<StopGroup> {
         val (band, rest) = rows.partition { it in journeyBand }
-        return StopGrouping.groupByStop(band, warningsLead = false) + StopGrouping.groupByStop(rest, warningsLead = false)
+        val groups = StopGrouping.groupByStop(band, warningsLead = false) + StopGrouping.groupByStop(rest, warningsLead = false)
+        // The full widget always names its station, even when it shows only one (maintainer,
+        // 2026-10-11): unlike the app, it has no other cue to where its departures are. The compact
+        // widget names none ([WidgetGeometry.bare]). A place running on from the journey band into the
+        // rest is named once: BudgetedRows never draws the same header twice in a row.
+        return if (geometry?.bare == true) groups else groups.map { if (it.showHeader) it else it.copy(showHeader = true) }
     }
     // Whether a drawn row with a live countdown has a line with no current status check (a stale
     // row's countdown is withheld anyway): the widget then says it couldn't check for disruptions.
