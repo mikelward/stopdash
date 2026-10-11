@@ -117,6 +117,8 @@ fun LocationGate(
     // opened), each opening its page: what near me would have shown, picked by hand.
     starredStations: List<StationMatch> = emptyList(),
     recentStations: List<StationMatch> = emptyList(),
+    // Each of those stops' postcode district, by [StationMatch.key], shown before its modes.
+    stationAreas: Map<String, String> = emptyMap(),
     onOpenStation: (StationMatch) -> Unit = {},
     // Unpauses journey alerts from the card saying they're paused ([AlertsPausedCard]), at the top of the
     // gate's content as atop the list: the one way back, so it never waits on location. Null shows none.
@@ -204,7 +206,7 @@ fun LocationGate(
                                         Text(stringResource(R.string.menu_find_station))
                                     }
                                 }
-                                YourStations(starredStations, recentStations, onOpenStation)
+                                YourStations(starredStations, recentStations, onOpenStation, stationAreas)
                             }
 
                             NearbyStopsViewModel.State.Locating -> {
@@ -365,14 +367,19 @@ private fun Title(text: String) {
  * lists them before anything is typed: a station picked once is a tap away without location.
  */
 @Composable
-private fun YourStations(starred: List<StationMatch>, recent: List<StationMatch>, onOpen: (StationMatch) -> Unit) {
+private fun YourStations(
+    starred: List<StationMatch>,
+    recent: List<StationMatch>,
+    onOpen: (StationMatch) -> Unit,
+    areas: Map<String, String> = emptyMap(),
+) {
     if (starred.isEmpty() && recent.isEmpty()) return
     Column(Modifier.fillMaxWidth().padding(top = 24.dp).testTag("gateYourStations")) {
         listOf(R.string.station_search_starred to starred, R.string.station_search_recent to recent).forEach { (heading, matches) ->
             if (matches.isEmpty()) return@forEach
             SectionHeading(stringResource(heading))
             matches.forEach { match ->
-                MatchRow(match, onClick = { onOpen(match) })
+                MatchRow(match, onClick = { onOpen(match) }, area = areas[match.key])
                 HorizontalDivider()
             }
         }

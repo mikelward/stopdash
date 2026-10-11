@@ -348,6 +348,10 @@ The app finds stops two ways:
   showing half the station as if it were whole.
   Same-named places farther apart ("Church Street" in two boroughs) both stay, and a
   result with no position is never folded.
+  Each stop row shows its **postcode district** before its modes ("EC4M · Bus"), from the nearest
+  bundled postcode, worked out on the device, so same-named stops in different places read apart
+  (maintainer, 2026-10-11). On an equal match a **station leads a bus stop**, and names are compared
+  without punctuation, so "St Paul's" lists St. Paul's station first.
 - **From… To…** (maintainer, 2026-09-24; planned since 2026-09-26) — **To…** plans a trip to a
   picked station or stop, as *Trips with a change* below describes; a pinned **Home/Work favorite**
   instead plans to its saved coordinate (D9). It is offered on the **near-me

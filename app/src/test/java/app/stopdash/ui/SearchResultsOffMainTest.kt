@@ -262,6 +262,21 @@ class SearchResultsOffMainTest {
         override suspend fun remove(id: String) {}
     }
 
+    @Test
+    fun theStopsDistrictsAreWorkedOutOnCompute() {
+        // A bus stop beside a synthetic postcode: its district is worked out with its ranking.
+        val places = PlaceIndex.read(
+            java.io.BufferedReader(java.io.StringReader("# stopdash place index v1\ttest\nC\tX1 1AA\t\t51.50010\t-0.12000\t4")),
+        )
+        val vm = StationSearchViewModel(loadBusStops = { busStops("Zeta Road") }, loadPlaceIndex = { places }, io = main, compute = compute)
+        mainIdle()
+        vm.onQueryChange("zeta")
+        mainIdle()
+        assertNull("districts published with compute held", vm.matches())
+        repeat(4) { releaseCompute() }
+        assertEquals(mapOf("49000" to "X1"), vm.matches()!!.areas)
+    }
+
     // A place outside London, synthetic (AGENTS.md *Privacy*).
     private val zetaTown = PlaceCandidate("Zeta Town", Coordinates(52.0, -0.5))
 

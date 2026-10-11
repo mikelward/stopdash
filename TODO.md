@@ -2505,20 +2505,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       location"), while a transient lookup failure (TfL unreachable) is shown as **retryable** (tap the
       row again), never as "no location". Still to fold the same fallback into From…/To… if/when they
       need a coordinate.
-      Also **disambiguate same-name results** across all three surfaces (maintainer via Codex,
-      2026-09-27): two same-named places TfL keeps distinct (>250 m apart, e.g. several bus-only "Church
-      Street"s) render identically — name + modes are all `StationMatch` carries. **For now: show the
-      full stop name and let the rider choose** (maintainer, 2026-09-27) — most collisions differ in the
-      full name (a distinguishing word, or a road/area prefix); only the handful of truly-identical ones
-      stay ambiguous. Finer disambiguation is **parked** — confirmed that
-      TfL `/StopPoint/Search` returns **no locality/suburb/postcode** (only `id`, `name`, `modes`,
-      `lat`/`lon`, and `towards`/`zone` on *some* stops; verified against a live "Church Street" search).
-      Options for later, in rough order of appeal: (a) show `towards`/`zone` where TfL provides them —
-      cheap, partial (helps some buses/trams, not the plain "Church Street"s); (b) a per-result parent
-      `/StopPoint/{id}` lookup — extra request each, and unconfirmed it even yields an area name; (c)
-      reverse-geocode each coordinate to an area — a **new external recipient** (Data Safety change +
-      cost/privacy), so a maintainer decision, not to be added unilaterally. Needs a new field on
-      `StationMatch` whichever way. Then the **To… Home/Work pins**.
+      Same-name results are **disambiguated** across all three surfaces (done): each stop row
+      shows the postcode district of its nearest bundled postcode, worked out on the device from the
+      place index (no TfL lookup, no new recipient), and a station ranks ahead of a same-named bus
+      stop. Ranking same-named stops nearer the trip's start first is the follow-up (*Nearer first*).
+      Then the **To… Home/Work pins**.
       **routing to a favorite** — IN PROGRESS: plan `to = lat,lon` so tapping a favorite routes to it
       (the coordinate-routing privacy disclosure lands with it); TfL's Journey Planner accepts a
       coordinate endpoint (verified against a live response) and returns a final walk leg to the place.

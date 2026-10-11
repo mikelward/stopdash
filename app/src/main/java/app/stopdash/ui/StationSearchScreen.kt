@@ -272,6 +272,7 @@ fun StationSearchScreen(
                             onRemoveRecent = onRemoveRecent,
                             pendingRemoval = state.pendingRemoval,
                             removeRecentFailed = state.removeRecentFailed,
+                            areas = state.yourAreas,
                             chipsStart = chipsStart,
                             chipsTop = if (onChangeFrom != null) 0.dp else 8.dp,
                         )
@@ -308,12 +309,20 @@ fun StationSearchScreen(
                         // lists stops alone.
                         val onPlace = onOpenPlace ?: onStartFromPlace
                         val entries = if (onPlace != null) result.entries else result.entries.filterIsInstance<SearchEntry.Stop>()
+                        // Only places matched, and this search lists none (the favorite-journey picker): say so.
+                        if (entries.isEmpty() && !state.searching) {
+                            item(key = "no-stop-matches") { Message(stringResource(R.string.station_search_no_matches)) }
+                        }
                         items(
                             entries,
                             key = { it.key },
                         ) { entry ->
                             when (entry) {
-                                is SearchEntry.Stop -> MatchRow(entry.match, onClick = { onOpenStation(entry.match) })
+                                is SearchEntry.Stop -> MatchRow(
+                                    entry.match,
+                                    onClick = { onOpenStation(entry.match) },
+                                    area = result.areas[entry.match.key],
+                                )
                                 is SearchEntry.Place -> PlaceHitRow(
                                     entry.hit,
                                     onClick = { openPlaceHit(entry.hit, onPlacePicked, onPlace) },
@@ -382,6 +391,8 @@ private fun YourStopsList(
     // Space above the chips: none right under the From/To bar, so they sit close to the To field
     // they serve.
     chipsTop: Dp = 8.dp,
+    // Each stop's postcode district, by [StationMatch.key] ([StationSearchViewModel.State.yourAreas]).
+    areas: Map<String, String> = emptyMap(),
 ) {
     val listState = rememberLazyListState()
     pendingRemoval?.let { entry ->
@@ -458,7 +469,7 @@ private fun YourStopsList(
             items(entries, key = { "$heading-${it.key}" }) { entry ->
                 val onLongClick = onLongPress?.let { ask -> { ask(entry) } }
                 when (entry) {
-                    is SearchEntry.Stop -> MatchRow(entry.match, onClick = { onOpenStation(entry.match) }, onLongClick = onLongClick)
+                    is SearchEntry.Stop -> MatchRow(entry.match, onClick = { onOpenStation(entry.match) }, onLongClick = onLongClick, area = areas[entry.match.key])
                     is SearchEntry.Place -> PlaceHitRow(
                         entry.hit,
                         onClick = { openPlaceHit(entry.hit, onPlacePicked, onOpenPlace ?: onStartFromPlace) },
@@ -661,13 +672,14 @@ internal fun PlaceHitRow(place: PlaceHit, onClick: () -> Unit, onLongClick: (() 
 }
 
 @Composable
-internal fun MatchRow(match: StationMatch, onClick: () -> Unit, onLongClick: (() -> Unit)? = null) {
+internal fun MatchRow(match: StationMatch, onClick: () -> Unit, onLongClick: (() -> Unit)? = null, area: String? = null) {
     // One line per result (name, then its modes on the right) so more fit on screen. The name takes
     // priority — it fills the row (pushing the modes to the right edge) and gets every pixel the modes
     // don't need, so a long name like "King's Cross & St Pancras International" shows as much as fits
     // and ellipsizes only what's left. The modes are bounded and single-line, so a many-mode station
     // (Stratford's five modes) can't grow to squeeze the name to nothing or wrap at large text scales.
-    val modes = modesLabel(match.modes)
+    // The stop's postcode district leads its modes ("EC4M · Bus"), so same-named stops read apart.
+    val modes = listOfNotNull(area, modesLabel(match.modes).takeIf { it.isNotEmpty() }).joinToString(" · ")
     // The clickable merges its children, so TalkBack reads one label for the whole row: give it the
     // FULL station name (not the visual "Intl" abbreviation) plus the modes. A per-child description
     // would be read alone and drop the modes; the visual modes text can ellipsize, but this doesn't.

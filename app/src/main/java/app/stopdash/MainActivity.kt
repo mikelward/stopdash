@@ -2140,6 +2140,10 @@ class MainActivity : ComponentActivity() {
                                                     loadYours = { loadYourStops(appContext, recents) },
                                                     // The favorite places, as chips for either end (maintainer, 2026-10-10).
                                                     loadPlaces = { loadFavoritePlaces(appContext) },
+                                                    // The bundled postcodes, for each stop row's district (no place is
+                                                    // offered here: the journey's ends are stops or saved places).
+                                                    loadPlaceIndex = { PlaceIndexStore.load(appContext) },
+                                                    searchPlaces = false,
                                                     // A Recent row removed here leaves From…'s list, which this is.
                                                     recordRemove = { withContext(Dispatchers.IO) { recents.remove(it) } },
                                                 )
@@ -2885,6 +2889,7 @@ class MainActivity : ComponentActivity() {
                                             onEditPlaces = { favoritePlacesOpen = true },
                                             starredStations = gateYours?.homeStarred.orEmpty(),
                                             recentStations = gateYours?.recentStations.orEmpty(),
+                                            stationAreas = gateYours?.yourAreas.orEmpty(),
                                             // Its page opens straight over the gate, and Back returns to it.
                                             onOpenStation = { match ->
                                                 gateSearch?.onOpened(match)
