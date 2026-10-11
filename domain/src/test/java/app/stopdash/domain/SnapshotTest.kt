@@ -228,4 +228,22 @@ class SnapshotTest {
             ),
         )
     }
+
+    // The one arrivals rule the app's merge and the widget's refresh share.
+    @Test
+    fun `a stop's arrivals are replaced by a fetch and kept, not fresh, when it fails`() {
+        val stop = prior(listOf(departure("victoria", 60))).copy(arrivalsFresh = true, railFeed = RailFeed.NO_KEY)
+        val failed = Snapshot.withArrivals(stop, null, now, railFeed = null)
+        assertEquals(stop.departures, failed.departures)
+        assertEquals(earlier, failed.fetchedAt)
+        assertFalse(failed.arrivalsFresh)
+        assertEquals("a failed fetch keeps its feed", RailFeed.NO_KEY, failed.railFeed)
+        val fetched = Snapshot.withArrivals(stop, emptyList(), now, railFeed = null)
+        assertEquals(emptyList<Departure>(), fetched.departures)
+        assertEquals(now, fetched.fetchedAt)
+        assertTrue(fetched.arrivalsFresh)
+        assertNull("the feed comes with the arrivals", fetched.railFeed)
+        // Everything else about the stop is left as it was.
+        assertEquals(stop.copy(departures = emptyList(), fetchedAt = now, arrivalsFresh = true, railFeed = null), fetched)
+    }
 }

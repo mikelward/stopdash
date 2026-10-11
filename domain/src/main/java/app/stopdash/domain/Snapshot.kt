@@ -81,7 +81,6 @@ object Snapshot {
         // arrivals are, as they share an age.
         freshUntimed: List<UntimedTrain> = emptyList(),
     ): StopArrivals? {
-        val departures = freshDepartures ?: prior?.departures ?: emptyList()
         // A failed disruption fetch drops the notice (no `?: prior`), rather than aging a
         // point-in-time closure the screen can't render as stale — see the KDoc.
         val disruptions = freshDisruptions ?: emptyList()
@@ -96,19 +95,16 @@ object Snapshot {
         // status row still needs the arrivals to have been fetched (see the KDoc).
         val known = freshDepartures != null || prior != null || disruptions.isNotEmpty()
         if (!known) return null
-        val fetchedAt = when {
-            freshDepartures != null -> now
-            prior != null -> prior.fetchedAt
-            else -> now
-        }
-        return StopArrivals(
+        // The seed's identity and notices, carrying [prior]'s arrivals at their own age (or, with no
+        // prior, none as of [now]) for [withArrivals] to replace when this refresh fetched them.
+        val carried = StopArrivals(
             stopId = stopId,
             stopName = stopName,
             clusterId = clusterId,
-            departures = departures,
+            departures = prior?.departures ?: emptyList(),
             lines = lines,
             disruptions = disruptions,
-            fetchedAt = fetchedAt,
+            fetchedAt = prior?.fetchedAt ?: now,
             hubId = hubId,
             hubName = hubName,
             placeAliases = placeAliases,
@@ -116,11 +112,29 @@ object Snapshot {
             bearing = bearing,
             towards = towards,
             nearer = nearer,
-            // Only a successful arrivals fetch this refresh lets a status row claim "No
-            // departures"; a kept-prior or disruption-only stop has no fetched arrivals.
-            arrivalsFresh = freshDepartures != null,
-            railFeed = if (freshDepartures != null) freshRailFeed else prior?.railFeed,
-            untimed = if (freshDepartures != null) freshUntimed else prior?.untimed.orEmpty(),
+            railFeed = prior?.railFeed,
+            untimed = prior?.untimed.orEmpty(),
         )
+        return withArrivals(carried, freshDepartures, now, freshRailFeed, freshUntimed)
+    }
+
+    /**
+     * [stop] after one arrivals refresh, the rule every surface shares (the app's list, the widget,
+     * the watch): [fresh] null means the fetch **failed**, so [stop]'s departures are kept at their own
+     * age but no longer count as fresh — a status row can't claim "No departures" on them, and they
+     * are withheld once stale (SPEC D4). Otherwise [fresh] (possibly empty) replaces them, as of
+     * [fetchedAt] (a fetch stamp, [SteadyClock.stamp]), with the National Rail feed and untimed trains
+     * that came with it, since those share the arrivals' age.
+     */
+    fun withArrivals(
+        stop: StopArrivals,
+        fresh: List<Departure>?,
+        fetchedAt: Instant,
+        railFeed: RailFeed?,
+        untimed: List<UntimedTrain> = emptyList(),
+    ): StopArrivals = if (fresh == null) {
+        stop.copy(arrivalsFresh = false)
+    } else {
+        stop.copy(departures = fresh, fetchedAt = fetchedAt, arrivalsFresh = true, railFeed = railFeed, untimed = untimed)
     }
 }
