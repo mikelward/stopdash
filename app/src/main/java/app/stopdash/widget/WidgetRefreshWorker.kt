@@ -49,6 +49,7 @@ import app.stopdash.domain.WidgetRefresh
 import app.stopdash.domain.CachingStopFinder
 import app.stopdash.nearbyStopsCache
 import app.stopdash.ui.ARRIVALS_REUSE
+import app.stopdash.ui.FAR_ARRIVALS_REUSE
 import app.stopdash.ui.LINE_STATUS_REUSE
 import java.time.Duration
 import java.time.Instant
@@ -239,7 +240,7 @@ class WidgetRefreshWorker(appContext: Context, params: WorkerParameters) :
         val keys = readRefreshKeys(applicationContext, settings)
         StoredSnapshotRefresh.lock.withLock {
             val prior = store.load() ?: return Result.success()
-            StoredSnapshotRefresh.refresh(applicationContext, prior, keys)
+            StoredSnapshotRefresh.refresh(applicationContext, prior, keys, automatic = true)
         }
         // Reschedule the next tick unless the setting was turned off or the last widget was removed
         // during this cycle. Best-effort even after a failure above, so a transient error doesn't
@@ -268,14 +269,23 @@ internal object StoredSnapshotRefresh {
      * A refresh of [input] that saved nothing, ended [at] with [outcome], sent with [tflKey]. Holds
      * the key only in memory, to compare; never logged, so deliberately not a data class.
      */
-    internal class Failed(val at: Instant, val outcome: WatchRefreshOutcome, val input: DeparturesSnapshot, val tflKey: String?) {
+    internal class Failed(
+        val at: Instant,
+        val outcome: WatchRefreshOutcome,
+        val input: DeparturesSnapshot,
+        val tflKey: String?,
+        // Whether the widget's timer ran it: one that reused a journey-only stop for the longer far
+        // window doesn't answer a tap or a watch's request, which reuse it no longer than the near one.
+        val automatic: Boolean = false,
+    ) {
         /**
          * Whether this answers a refresh of [prior] sent with [tflKey] at [now]: the same arrivals,
          * within the reuse window, and the same key. A key changed since (a rejected one cleared, a
          * key pasted over a rate limit) is asked of TfL, not answered from the old key's failure.
          */
-        fun answers(prior: DeparturesSnapshot, tflKey: String?, now: Instant): Boolean =
-            tflKey == this.tflKey &&
+        fun answers(prior: DeparturesSnapshot, tflKey: String?, now: Instant, automatic: Boolean = false): Boolean =
+            (automatic || !this.automatic) &&
+                tflKey == this.tflKey &&
                 sameArrivals(input, prior) &&
                 WatchRefreshOutcome.answersAgain(outcome, Duration.between(at, now), ARRIVALS_REUSE)
     }
@@ -290,9 +300,11 @@ internal object StoredSnapshotRefresh {
      * Refreshes [prior], the snapshot stored now, with [keys] ([readRefreshKeys]), which the caller
      * reads before taking [lock] so a stalled settings read never holds it. The caller holds [lock].
      */
-    suspend fun refresh(context: Context, prior: DeparturesSnapshot, keys: RefreshKeys?): Result {
+    // [automatic]: the widget's own timed cycle, not a tap or a watch's request, so a journey-only stop
+    // is carried over for the app's longer far window ([refreshStoredSnapshot]).
+    suspend fun refresh(context: Context, prior: DeparturesSnapshot, keys: RefreshKeys?, automatic: Boolean = false): Result {
         lastFailed?.let { last ->
-            if (last.answers(prior, keys?.tfl, Instant.now())) {
+            if (last.answers(prior, keys?.tfl, Instant.now(), automatic)) {
                 // Still re-render, as a refresh with nothing fresh does, so the widget ages honestly.
                 try {
                     redrawWidgets(context)
@@ -304,8 +316,8 @@ internal object StoredSnapshotRefresh {
                 return Result(last.outcome, saved = false)
             }
         }
-        val report = refreshStoredSnapshot(context, prior, keys)
-        lastFailed = if (report.savedNothing) Failed(Instant.now(), report.outcome, prior, keys?.tfl) else null
+        val report = refreshStoredSnapshot(context, prior, keys, automatic)
+        lastFailed = if (report.savedNothing) Failed(Instant.now(), report.outcome, prior, keys?.tfl, automatic) else null
         return Result(report.outcome, report.saved)
     }
 
@@ -374,6 +386,7 @@ internal suspend fun refreshStoredSnapshot(
     context: Context,
     prior: DeparturesSnapshot,
     keys: RefreshKeys?,
+    automatic: Boolean = false,
 ): SnapshotRefreshReport {
     val attempted = AtomicInteger()
     val succeeded = AtomicInteger()
@@ -467,6 +480,9 @@ internal suspend fun refreshStoredSnapshot(
                     // Skip a stop the app fetched moments ago: same data, same shared rate budget.
                     arrivalsReuse = ARRIVALS_REUSE,
                     statusReuse = LINE_STATUS_REUSE,
+                    // On the timer, a journey-only stop (one the rider isn't near) is refetched every
+                    // other minute, as the app's own timer does for a stop past the walking reach.
+                    farArrivalsReuse = if (automatic) FAR_ARRIVALS_REUSE else Duration.ZERO,
                     // Or one another screen fetched since.
                     shared = ArrivalsCache.SHARED,
                     source = client.arrivalsSource(),

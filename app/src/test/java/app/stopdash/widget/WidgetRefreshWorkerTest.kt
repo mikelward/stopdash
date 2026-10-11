@@ -180,4 +180,19 @@ class WidgetRefreshWorkerTest {
         // Past the reuse window, a new request fetches whatever the key.
         assertFalse(rejected.answers(prior, "EXAMPLE", at.plus(ARRIVALS_REUSE)))
     }
+
+    @Test
+    fun `a timed refresh's failure answers the next timed one, never a tap or a watch's request`() {
+        val prior = DeparturesSnapshot(listOf(StopArrivals("A", "Stop A", emptyList(), Instant.EPOCH)), Instant.EPOCH)
+        val at = Instant.parse("2026-09-18T08:00:00Z")
+        val soon = at.plusSeconds(10)
+        // It may have reused a journey-only stop for the longer far window, which a tap doesn't.
+        val timed = StoredSnapshotRefresh.Failed(at, WatchRefreshOutcome.RATE_LIMITED, prior, null, automatic = true)
+        assertTrue(timed.answers(prior, null, soon, automatic = true))
+        assertFalse(timed.answers(prior, null, soon, automatic = false))
+        // A tap's failure answers either, since it reused no stop for longer than the near window.
+        val tapped = StoredSnapshotRefresh.Failed(at, WatchRefreshOutcome.RATE_LIMITED, prior, null)
+        assertTrue(tapped.answers(prior, null, soon, automatic = true))
+        assertTrue(tapped.answers(prior, null, soon, automatic = false))
+    }
 }
