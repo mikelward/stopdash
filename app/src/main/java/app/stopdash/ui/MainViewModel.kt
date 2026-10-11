@@ -10,6 +10,7 @@ import app.stopdash.domain.Dismissals
 import app.stopdash.domain.GlanceRows
 import app.stopdash.domain.NearbyLayout
 import app.stopdash.domain.ArrivalsCache
+import app.stopdash.domain.DepartureSource
 import app.stopdash.domain.SaveGate
 import app.stopdash.domain.SnapshotPlan
 import app.stopdash.domain.SteadyClock
@@ -1067,16 +1068,19 @@ class MainViewModel(
         journeyStops: List<StopRef>,
         places: List<Terminating.Place>,
     ): BatchPlan {
-        fun newerShared(stop: StopRef) = isNewer(sharedOf(stop.id, prior, now, useShared, source), prior[stop.id])
         fun railBoard(stop: StopRef) = HiddenModes.wantsRailBoard(hidden, starredLines(journeyStops, stop.id))
         val board = BooleanArray(stops.size) { i -> railBoard(stops[i]) }
         val reusable = BooleanArray(stops.size) { i ->
             val stop = stops[i]
             stop.id in reuse && prior[stop.id] != null && !(stop.id in boardSkipped && board[i])
         }
+        // Whether a stop's departures stand as shown ([DepartureSource.choose]).
+        fun kept(i: Int) = DepartureSource.choose(
+            prior[stops[i].id], sharedOf(stops[i].id, prior, now, useShared, source), reusable[i],
+        ) == DepartureSource.Choice.Kept
         // As the caches stand now, for the pole batches only: each stop reads them again as it's launched.
         // A pole whose shown lookup is no longer the cache's ([closureStillShown]) is asked in its batch.
-        val reused = BooleanArray(stops.size) { i -> reusable[i] && !newerShared(stops[i]) && closureStillShown(stops[i].id) }
+        val reused = BooleanArray(stops.size) { i -> kept(i) && closureStillShown(stops[i].id) }
         val cached = BooleanArray(stops.size) { i -> cachedClosure(stops[i].id, now) != null }
         // Bus poles still to check share one request per [StopDisruptionBatch.MAX_PER_REQUEST] (a junction
         // is often 4-8 poles, each otherwise its own request against the keyless budget).
@@ -1096,17 +1100,13 @@ class MainViewModel(
     }
 
     // [stopId]'s arrivals another screen fetched within the TTL ([sharedArrivals]), unless older than this
-    // list's own ([prior]): taken over a carry-over, so two screens don't show different times. A stop not
-    // carried over takes one no older than its own; one carried over, only a newer one ([isNewer]).
+    // list's own ([prior]); whether it's taken, or the list's own kept, is [DepartureSource.choose]'s.
     private fun sharedOf(stopId: String, prior: Map<String, StopArrivals>, now: Instant, useShared: Boolean, source: Any?): ArrivalsCache.Entry? {
         if (!useShared || sharedArrivals == null) return null
         val entry = sharedArrivals.recent(stopId, now, source) ?: return null
         val held = prior[stopId]
         return if (held != null && entry.fetchedAt.isBefore(held.fetchedAt)) null else entry
     }
-
-    private fun isNewer(shared: ArrivalsCache.Entry?, held: StopArrivals?): Boolean =
-        shared != null && (held == null || shared.fetchedAt.isAfter(held.fetchedAt))
 
     // Whether the closure lookup [stopId] shows ([closureShown]) is still the one the cache answers with
     // ([StopClosureCache.get]): one asked after it, by a later batch whose arrivals failed or by a trip,
@@ -1313,10 +1313,18 @@ class MainViewModel(
         val (arrivalResults, disruptionResults, earlyLines) = coroutineScope {
             val arrivals = stops.mapIndexed { i, stop ->
                 val sharedNow = sharedOf(stop.id, prior, now, useShared, source)
-                // A stop's carry-over stands only while its shown closure lookup is still the cache's
-                // ([closureStillShown]) and no newer arrivals have been fetched for it since.
-                reused[i] = plan.reusable[i] && !isNewer(sharedNow, prior[stop.id]) && closureStillShown(stop.id)
-                val recent = if (reused[i]) null else sharedNow
+                val held = prior[stop.id]
+                // Kept, taken from another screen's fetch, or asked, by the rule the widget uses too
+                // ([DepartureSource]). A stop's carry-over stands only while its shown closure lookup is
+                // still the cache's ([closureStillShown]); otherwise its closure is asked again, and its
+                // departures, unchanged in the cache, are taken from there rather than asked again.
+                val choice = DepartureSource.choose(held, sharedNow, plan.reusable[i])
+                reused[i] = choice == DepartureSource.Choice.Kept && closureStillShown(stop.id)
+                val recent = when {
+                    choice is DepartureSource.Choice.Shared -> choice.entry
+                    choice == DepartureSource.Choice.Kept && !reused[i] -> sharedNow
+                    else -> null
+                }
                 when {
                     reused(i) -> null
                     recent != null -> {

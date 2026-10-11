@@ -119,4 +119,4 @@ data class HubInfo(val name: String = "", val aliases: List<String> = emptyList(
  * ago as the oldest part of them was ([TflClient.fetchedAt]).
  */
 fun TflClient.stampOf(stopId: String, askedAt: Instant): Instant =
-    fetchedAt(stopId)?.takeIf { it.isBefore(askedAt) } ?: askedAt
+    DepartureSource.stamp(askedAt, fetchedAt(stopId))
