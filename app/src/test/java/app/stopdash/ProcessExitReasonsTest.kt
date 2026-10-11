@@ -5,6 +5,7 @@ import android.app.ApplicationExitInfo
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.mikelward.androidlog.DebugLog
+import com.mikelward.androidlog.android.DebugReport
 import com.mikelward.androidlog.android.ProcessExits
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -66,7 +67,7 @@ class ProcessExitReasonsTest {
         // Only the pinned copy carries them now, so reading the ring alone loses them.
         assertTrue(log.snapshot().none { "processExit " in it })
 
-        val report = log.reportLines()
+        val report = DebugReport.logLines(log)
 
         assertEquals(
             report.take(10).toString(),
@@ -86,7 +87,7 @@ class ProcessExitReasonsTest {
         log.pinnedEvent("processExits none")
         log.event("later")
 
-        val report = log.reportLines()
+        val report = DebugReport.logLines(log)
 
         assertEquals(report.toString(), 1, report.count { "processExits none" in it })
         assertTrue(report.last().endsWith("later"))

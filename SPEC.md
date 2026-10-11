@@ -4042,10 +4042,11 @@ Mirrors the sibling fleet:
   routing bug is diagnosed from where you were, so it says so rather than stripping that context (a
   separate location-redacted export stays a distinct, planned tool). It rides the shared
   `mikelward/androidlog` `DebugReport`, which attaches the screenshot; the shot is of the app's own
-  window, so the consent dialog (a separate window) is not in it. Its own part is held well under
-  what survives being pasted on (a report was kept only to about its first 20,000 characters; bug
-  reports, 2026-10-11): the 20 nearest stops, the newest recent positions that fit, and the newest
-  log lines in the room left, so what's cut is the oldest. See `docs/PRIVACY.md`.
+  window, so the consent dialog (a separate window) is not in it. androidlog holds the whole report
+  to what survives being pasted on (a report was kept only to about its first 20,000 characters; bug
+  reports, 2026-10-11), and StopDash fills its share of it: the 20 nearest stops, the newest recent
+  positions that fit, and the newest log lines in the room left, so what's cut is the oldest. See
+  `docs/PRIVACY.md`.
 
 ## Non-goals
 

@@ -52,7 +52,7 @@ class BugReportSizeTest {
 
     @Test
     fun `a busy run's log keeps its newest lines within its budget`() {
-        val lines = busyLog().reportLines(30_000)
+        val lines = DebugReport.logLines(busyLog(), 30_000)
 
         assertTrue(lines.last().endsWith("the newest event"))
         assertTrue(lines.none { "line-0 " in it })
@@ -65,7 +65,7 @@ class BugReportSizeTest {
             repeat(DebugLog.DEFAULT_MAX_ENTRIES) { event("line-%s %s", it, "x".repeat(1_500)) }
         }
 
-        val used = log.reportLines(30_000).sumOf { it.length + 1 }
+        val used = DebugReport.logLines(log, 30_000).sumOf { it.length + 1 }
 
         assertTrue("$used", used in (30_000 - 2_000)..30_000)
     }
@@ -75,17 +75,17 @@ class BugReportSizeTest {
         val log = DebugLog()
         repeat(40) { log.event("line %s", it) }
 
-        assertEquals(40, log.reportLines().count { " line " in it })
+        assertEquals(40, DebugReport.logLines(log).count { " line " in it })
     }
 
     @Test
     fun `a busy run's section fills its share and keeps the newest lines`() {
         val section = section(stopCount = 10)
 
-        assertTrue("${section.length}", section.length <= REPORT_SECTION_CHARS)
+        assertTrue("${section.length}", section.length <= DebugReport.APP_SECTION_CHARS)
         // Short by less than a log line, so the log was given the room the rest left rather than a
         // fixed slice of it, and the pinned reserve kept none of it back.
-        val shortfall = REPORT_SECTION_CHARS - section.length
+        val shortfall = DebugReport.APP_SECTION_CHARS - section.length
         assertTrue("$shortfall", shortfall < 2_000)
         assertTrue(section.endsWith("the newest event"))
         assertTrue(section.contains("processExit reason=anr"))
@@ -97,8 +97,8 @@ class BugReportSizeTest {
         val many = section(stopCount = 1_000)
 
         // The premise: the stops alone would take far more than the whole share.
-        assertTrue(stops(1_000).sumOf { it.name.length } > REPORT_SECTION_CHARS)
-        assertTrue("${many.length}", many.length <= REPORT_SECTION_CHARS)
+        assertTrue(stops(1_000).sumOf { it.name.length } > DebugReport.APP_SECTION_CHARS)
+        assertTrue("${many.length}", many.length <= DebugReport.APP_SECTION_CHARS)
         assertTrue(many.contains("(+${1_000 - BugReport.MAX_STOPS} more)"))
         assertEquals(logLinesIn(few), logLinesIn(many))
         assertTrue(many.endsWith("the newest event"))
@@ -111,7 +111,7 @@ class BugReportSizeTest {
         val dense = List(RecentPositions.CAPACITY) { "2026-09-21T14:29:00Z nearby lookup: " + "EXAMPLE 123 m, ".repeat(100) }
         val section = bugReportSection(header, Coordinates(51.5, -0.12), stops(1_000), dense, busyLog())
 
-        assertTrue("${section.length}", section.length <= REPORT_SECTION_CHARS)
+        assertTrue("${section.length}", section.length <= DebugReport.APP_SECTION_CHARS)
         assertTrue(section.endsWith("the newest event"))
         assertTrue(section.contains("processExit reason=anr"))
     }
