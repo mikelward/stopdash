@@ -1886,6 +1886,27 @@ object OnTheWay {
     val END_WALK_GRACE: Duration = Duration.ofMinutes(10)
 
     /**
+     * How near the walk to the destination's end a fix must place the rider to see them there
+     * ([seen]), the fix's uncertainty included: [AT_STOP_WITHIN_METERS] while the walk's time runs,
+     * [END_WALK_LATE_WITHIN_METERS] once it's up.
+     */
+    fun walkEndWithin(trip: ActiveTrip, now: Instant): Double {
+        val leg = trip.leg ?: return AT_STOP_WITHIN_METERS
+        return if (now.isBefore(trip.legStartedAt.plus(leg.run))) AT_STOP_WITHIN_METERS else END_WALK_LATE_WITHIN_METERS
+    }
+
+    /**
+     * Past the walk's time, a rider this near the destination's point is there: a chosen place is
+     * one point for a whole building, and a rider at its door, with a fix's uncertainty on top, read
+     * 110 m out and kept the trip walking until [END_WALK_GRACE] ran out (bug report, 2026-10-11).
+     * Two arrival radii; before the walk's time, a rider still on their way that close isn't there yet.
+     * Only the distance widens: a fix still has to be sure to [AT_STOP_WITHIN_METERS] to count
+     * ([sureEnoughFor]), so a vaguer one never stands in for, or cuts short the wait for, a sharp one
+     * (Codex, PR #770).
+     */
+    const val END_WALK_LATE_WITHIN_METERS = 2 * AT_STOP_WITHIN_METERS
+
+    /**
      * How far, straight, the end of the walk [trip]'s rider is on is from [rider]: the nearest of
      * [walkEnd] and the [station] walked to's own point and entrances. Null off a walk, with an unplaced end, or with a fix
      * that doesn't place the rider (a fallback or coarse one).
@@ -1985,11 +2006,11 @@ object OnTheWay {
      * where they get off ([stationRiddenTo]), they're off when seen at that station the same way.
      */
     fun seen(trip: ActiveTrip, rider: LocationFix?, now: Instant, station: StationPlaces = StationPlaces()): ActiveTrip {
-        // On the walk to the destination: arrived once seen there (within [AT_STOP_WITHIN_METERS], the
-        // fix's uncertainty included), or once [END_WALK_GRACE] past its time (maintainer, 2026-10-03).
+        // On the walk to the destination: arrived once seen there (within [walkEndWithin], the fix's
+        // uncertainty included), or once [END_WALK_GRACE] past its time (maintainer, 2026-10-03).
         if (walksToEnd(trip, now)) {
             val end = walkEnd(trip)
-            return if (rider != null && end != null && near(rider, end, AT_STOP_WITHIN_METERS)) walked(trip, now) else trip
+            return if (rider != null && end != null && near(rider, end, walkEndWithin(trip, now))) walked(trip, now) else trip
         }
         walkingToRide(trip, now)?.let { ride ->
             val there = rider != null && atStation(rider, ride.fromAt, station) != null
@@ -2036,7 +2057,7 @@ object OnTheWay {
      */
     fun seenAtStop(trip: ActiveTrip, rider: LocationFix?, now: Instant, station: StationPlaces = StationPlaces()): SeenAt? {
         rider ?: return null
-        if (walksToEnd(trip, now)) return walkEnd(trip)?.takeIf { near(rider, it, AT_STOP_WITHIN_METERS) }?.let { SeenAt.POINT }
+        if (walksToEnd(trip, now)) return walkEnd(trip)?.takeIf { near(rider, it, walkEndWithin(trip, now)) }?.let { SeenAt.POINT }
         walkingToRide(trip, now)?.let { return atStation(rider, it.fromAt, station) }
         return stationRiddenTo(trip, now)?.let { atStation(rider, it.toAt, station) }
     }
