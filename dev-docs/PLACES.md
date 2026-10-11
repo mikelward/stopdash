@@ -149,6 +149,65 @@ that takes minutes.
   is wanted badly enough to justify running a service. Otherwise it is option 4 with an uptime
   problem added.
 
+## Measured sizes (bundled index, 2026-10-11)
+
+Measured from **Overture Maps** (release 2026-09-23) and **OS Code-Point Open**, over Greater
+London (longitude −0.51 to 0.34, latitude 51.28 to 51.70).
+
+### The sources
+
+- **Overture places:** 494,598 places in London, each with a name, a category, a coordinate and a
+  confidence score.
+  - They come from Meta, Microsoft, Foursquare and AllThePlaces, not from OpenStreetMap.
+  - Their licenses (CDLA Permissive 2.0, Apache 2.0) need attribution but carry no share-alike
+    condition.
+  - They're downloadable from Amazon S3, which this sandbox can reach.
+- **Streets:** Overture's road network, which is derived from OpenStreetMap (ODbL). That gives
+  51,507 distinct street names; keeping one entry per name per ~1 km cell gives 84,212 entries.
+- **Postcodes:** OS Code-Point Open, the postcodes in the 33 London boroughs: 180,837.
+- **Street addresses:** Overture has no UK addresses. Measuring OpenStreetMap's London
+  house-number coverage needs the Geofabrik extract, which this sandbox still can't reach.
+
+### The tiers
+
+An entry is name, category, latitude and longitude, stored as text sorted by name. "Deflate" is
+roughly what the APK would add, since assets are zipped; "xz" is a lower bound if the build
+precompresses the file.
+
+| Tier | Entries | Raw | Deflate | xz |
+|---|---:|---:|---:|---:|
+| A. Public places: embassies, theatres, schools, parks, leisure centers, worship, museums, hospitals, venues… (confidence ≥ 0.7) | 50,374 | 2.0 MB | 0.8 MB | 0.6 MB |
+| B. A + businesses with confidence ≥ 0.9 | 178,690 | 6.9 MB | 2.6 MB | 1.9 MB |
+| C. All places, confidence ≥ 0.7 | 380,373 | 14.5 MB | 5.4 MB | 4.0 MB |
+| D. All places | 494,598 | 18.8 MB | 7.1 MB | 5.3 MB |
+| Streets | 84,212 | 2.6 MB | 0.8 MB | 0.6 MB |
+| Postcodes | 180,837 | 4.4 MB | 1.4 MB | 0.7 MB |
+| **A + streets + postcodes** | 315,423 | 9.3 MB | **3.0 MB** | 2.0 MB |
+| **B + streets + postcodes** | 443,739 | 14.4 MB | **4.9 MB** | 3.4 MB |
+| **C + streets + postcodes** | 645,422 | 22.0 MB | **7.7 MB** | 5.4 MB |
+
+### Quality
+
+A spot check on famous places finds the right one at confidence 0.94–1.0: Tate Modern, the
+National Theatre, the embassies, the London Aquatics Centre, Westminster Abbey, the British
+Museum. The data still needs work at build time:
+
+- **Near-duplicates:** "The British Museum" and "British Museum London UK", or "Tate Modern" and
+  "Tate Modern Museum". Merge the same category within ~100 m when one name contains the other.
+- **Coarse categories:** the National Theatre is filed as a music venue, and the Aquatics Centre
+  as a gym. The tier A list is broad on purpose because of this.
+- **Low-confidence listings:** below 0.7, the listings are mostly small businesses with doubtful
+  names or positions.
+
+### Memory and search
+
+- **Memory:** about the raw size, plus an index. Tier B with streets and postcodes is roughly
+  15 MB of names, so it should be loaded off the main thread and kept as compact arrays, not
+  objects.
+- **Search speed:** a sorted-name prefix search is instant at this size. The trigram index for
+  the substring tier, and the first-letter scan for the fuzzy tier, are the parts to benchmark
+  on a low-end phone.
+
 ## How each option fits the fuzzy search
 
 ### What the matcher does today
@@ -209,9 +268,10 @@ The source ranks its results, and the app has to decide how far to trust that or
 
 ## Suggested path
 
-1. **Measure option 4 first.** Extract London's named places and streets with an importance score,
-   and record the count and compressed size. If it fits in a few MB, prototype it against the
-   bundled station index's matcher.
+1. **Option 4 measured from Overture** (above): public places, streets and postcodes add about
+   3 MB to the download; adding confident businesses brings it to about 5 MB. That's with the
+   run-time scan, so nothing else ships; prebuilt indexes would add to it. Next, prototype tier A or B
+   against the bundled station index's matcher, with the duplicate merging.
 2. **Add the typo tier and the importance tie-break** to the matcher. Both help stops too.
 3. **Bundle Code-Point Open for postcodes** if the size allows. On its own that drops TfL's
    second request only for postcode queries; together with the bundled places, it drops it for
