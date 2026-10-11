@@ -135,6 +135,31 @@ class WidgetRefreshTest {
     }
 
     @Test
+    fun `on the timer a journey-only stop is carried over for the far window`() = runTest {
+        val prior = snapshot(
+            stop("A", listOf(departure("Brixton")), fetchedAt = t1.minusSeconds(70)),
+            stop("B", listOf(departure("Walthamstow")), fetchedAt = t1.minusSeconds(70)),
+        ).copy(journeyOnlyStopIds = setOf("B"))
+        val asked = mutableListOf<String>()
+        val refreshed = WidgetRefresh.refreshedArrivals(
+            prior, t1, reuse = java.time.Duration.ofSeconds(50), farReuse = java.time.Duration.ofSeconds(90),
+        ) { id ->
+            asked += id
+            listOf(departure("Fresh $id"))
+        }!!
+        // The nearby stop is past the near window and refetched; the journey-only one isn't yet.
+        assertEquals(listOf("A"), asked)
+        assertEquals(listOf("Fresh A", "Walthamstow"), refreshed.stops.map { it.departures.single().destination })
+        // Without a far window (a tap, a watch's request), both are refetched.
+        asked.clear()
+        WidgetRefresh.refreshedArrivals(prior, t1, reuse = java.time.Duration.ofSeconds(50)) { id ->
+            asked += id
+            listOf(departure("Fresh $id"))
+        }
+        assertEquals(listOf("A", "B"), asked.sorted())
+    }
+
+    @Test
     fun `a cycle where every stop is recent fetches nothing and saves nothing`() = runTest {
         val prior = snapshot(stop("A", listOf(departure("Brixton")), fetchedAt = t1.minusSeconds(5)))
         var calls = 0

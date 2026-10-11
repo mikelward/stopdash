@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.stopdash.domain.AlertBehind
 import app.stopdash.domain.AlertsBehindStore
+import app.stopdash.domain.ArrivalsReuse
 import app.stopdash.domain.Dismissals
 import app.stopdash.domain.GlanceRows
 import app.stopdash.domain.NearbyLayout
@@ -1850,7 +1851,7 @@ class MainViewModel(
                 // On the timer, a stop past the walking reach is refreshed less often: its departures
                 // matter once the rider is closer, and the rate budget is better spent on the near ones.
                 val far = (distances[stop.stopId] ?: 0.0) > NearbySelection.EAGER_RADIUS_METERS
-                val window = if (automatic && far) maxOf(arrivalsReuse, farArrivalsReuse) else arrivalsReuse
+                val window = ArrivalsReuse.window(arrivalsReuse, farArrivalsReuse, automatic, far)
                 // The shown stop must BE that fetch (same stamp): a batch canceled after its
                 // arrivals came back but before it was published leaves a newer stamp here than the
                 // stop on screen, and carrying that older stop over would pass it off as just fetched.

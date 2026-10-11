@@ -3529,16 +3529,16 @@ and these carry the rest as their own PRs:
             both refreshes save only on a nearby stop's fresh arrivals, the app's rule; maintainer,
             2026-10-10), and one merge (every write keeps a stop the store holds newer,
             `keepingFresher`).
-      - [ ] One fetch. Shared already (checked 2026-10-11): the near-stop reuse window
-            (`ARRIVALS_REUSE`), the line-status one (`LINE_STATUS_REUSE`), and one arrivals cache
-            (`ArrivalsCache.SHARED`, written through `CachingTflClient`). Still apart (Codex on
-            #754): a stop beyond the eager radius (a far journey origin) is reused for
-            `FAR_ARRIVALS_REUSE` (90 s) by the app but 50 s by the widget, so the two can ask TfL
-            for it at different times; and the app orchestrates its own `fetchBatch` while only the
-            widget calls `WidgetRefresh.refresh`. Closing it means one domain fetch both call, with
-            the reuse window chosen per stop by distance. What the app fetches that the snapshot
-            deliberately leaves out (stop closures, trains with no time) is *Explore showing stop
-            closures* below, not this step.
+      - [ ] One fetch. Shared already: the reuse windows (`ARRIVALS_REUSE`, `LINE_STATUS_REUSE`,
+            and since 2026-10-11 the far one via `ArrivalsReuse`: on the widget's timer a
+            journey-only stop gets `FAR_ARRIVALS_REUSE`, as a stop past the walking reach does on
+            the app's) and one arrivals cache (`ArrivalsCache.SHARED`, written through
+            `CachingTflClient`). Still apart: the app orchestrates its own `fetchBatch` while
+            only the widget calls `WidgetRefresh.refresh`. Closing it means one domain fetch of
+            a stop's arrivals (shared cache, reuse, rail feed, stamping) both call, the app
+            adding its closure checks on top. What the app fetches that the snapshot deliberately
+            leaves out (stop closures, trains with no time) is *Explore showing stop closures*
+            below, not this step.
 - [ ] **Explore showing stop closures on the widget and watch (maintainer 2026-10-10).** The app
       checks every nearby stop for closures, but the stored snapshot deliberately carries none
       (`DeparturesSnapshot`: a closure has no age stamp, so the widget couldn't tell a stale one), so

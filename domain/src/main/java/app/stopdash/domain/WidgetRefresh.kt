@@ -74,6 +74,8 @@ object WidgetRefresh {
         clock: () -> Instant,
         arrivalsReuse: Duration = Duration.ZERO,
         statusReuse: Duration = Duration.ZERO,
+        // A journey-only stop's longer window on the timer ([refreshedArrivals]).
+        farArrivalsReuse: Duration = Duration.ZERO,
         shared: ArrivalsCache? = null,
         source: Any? = null,
         railFeed: ((stopId: String) -> RailFeed?)? = null,
@@ -81,7 +83,7 @@ object WidgetRefresh {
         fetchStatuses: suspend (lineIds: Set<String>) -> List<LineStatus>?,
         fetchArrivals: suspend (stopId: String) -> List<Departure>?,
     ): Outcome {
-        val arrivals = refreshedArrivals(prior, clock(), arrivalsReuse, shared, source, railFeed, fetchedAt, fetchArrivals)
+        val arrivals = refreshedArrivals(prior, clock(), arrivalsReuse, farArrivalsReuse, shared, source, railFeed, fetchedAt, fetchArrivals)
         var answered = false
         val checked = refreshedLineStatuses(arrivals ?: prior, clock(), statusReuse, answeredAt = clock) { ids ->
             fetchStatuses(ids)?.also { answered = true }
@@ -97,6 +99,10 @@ object WidgetRefresh {
         prior: DeparturesSnapshot,
         now: Instant,
         reuse: Duration = Duration.ZERO,
+        // On the timer, a journey-only stop (one the rider isn't near) is carried over for this longer
+        // window, as the app carries over a stop past the walking reach ([ArrivalsReuse]). Zero (the
+        // default) treats every stop alike, as a tap or a watch's request does.
+        farReuse: Duration = Duration.ZERO,
         // Arrivals another screen fetched within [ArrivalsCache.TTL] (SPEC *Freshness → Shared
         // arrivals*): taken, at their own fetch time, rather than asked for again.
         shared: ArrivalsCache? = null,
@@ -123,7 +129,8 @@ object WidgetRefresh {
         fun recent(stop: StopArrivals): Boolean {
             // By the steady clock, as every fetch is stamped ([SteadyClock]).
             val age = SteadyClock.age(stop.fetchedAt, now)
-            return stop.arrivalsFresh && !age.isNegative && age < reuse && sameSource(stop)
+            val window = ArrivalsReuse.window(reuse, farReuse, automatic = true, isFar = stop.stopId in prior.journeyOnlyStopIds)
+            return stop.arrivalsFresh && !age.isNegative && age < window && sameSource(stop)
         }
         // A newer fetch of the stop by another screen, where there is one: taken even over a recent
         // one of the widget's own, so it never shows older times than the app.
