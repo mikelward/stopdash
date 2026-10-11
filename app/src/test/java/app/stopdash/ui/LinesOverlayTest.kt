@@ -76,6 +76,8 @@ class LinesOverlayTest {
             compute = Dispatchers.Unconfined,
             elapsedMillis = { clock },
             saved = SavedStateHandle(),
+            // The wall clock the shared answers are judged by, moved with the page's own.
+            clock = { java.time.Instant.ofEpochMilli(1_000_000_000_000L + clock) },
         )
         composeRule.setContent {
             StopDashTheme {

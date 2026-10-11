@@ -30,6 +30,11 @@ exercises the whole spine the widget later renders from.
       dialog was constructed on the `licenses-worker` thread ("Can't create handler inside thread …
       that has not called Looper.prepare()"), so something resumes onto the worker that should hop
       back to the main thread. Found while rebasing #711, which doesn't touch the licenses screen.
+- [ ] Fix the flaky `MainViewModelTest.a relocation's farther cards are re-measured on the worker thread`.
+      It passes alone but failed once in a full `:app:testDebugUnitTest` run on 2026-10-11 with "work
+      reached the worker after it stopped": something still hands work to the test's worker after
+      `TestWorker.close` saw it go quiet. Found on the branch moving a line's page and the journey alerts
+      onto the shared line answers, which doesn't touch the farther cards.
 - [x] Trip page: work out its per-tick values off the main thread too. Each tick's estimates, cards,
       open route, what frames them, and each card's alerts, notices and times are one frame worked out on
       the page's worker (`tripFrame`), drawn against its own state and time.
@@ -3322,7 +3327,7 @@ Builds on Phase 1's minimal line-status marking.
         directly (`PlaceDirectViewModel`), a trip (`TripViewModel`), the ride checks (`RideLineChecks`)
         and route disruptions (`RouteDisruptionChecks`) now check lines through `LineStatusCache.check`,
         with the near-me list and the widget.
-  - [ ] **A line's page and the journey alerts through the shared cache too**: `LinesViewModel` (a
+  - [x] **A line's page and the journey alerts through the shared cache too**: `LinesViewModel` (a
         line's page, timed by its own monotonic clock) and `JourneyAlertWorker` (a background check) still
         ask TfL themselves. Route each through `LineStatusCache.check`.
   - [ ] **A pull on the near-me list asks its lines afresh** (Codex on #776): `MainViewModel.forceNextFetch`

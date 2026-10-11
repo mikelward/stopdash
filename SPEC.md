@@ -3262,13 +3262,16 @@ been set, so none keeps showing what it judged before.
 - **Shared line status** (maintainer, 2026-10-11): each line's last status answer is kept in memory
   for the process the same way, whichever surface asked — the near-me list, the widget's refresh (a
   watch's request included), the app's check of the widget's lines, a station's page, a trip and its
-  checks on the way — including that TfL was asked and gave none. (A line's own page and the journey
-  alerts' background check still ask for themselves; routing them through it is a `TODO.md` item.) A
-  line any of them checked within the line-status reuse window (90 s; a station's page two minutes) is
-  shown from that answer rather than asked again, so no two surfaces disagree about a line and none
-  spends a request another just made. A pull on a station's page or a trip asks again for any of its lines last answered before
-  the pull, whichever screen answers first serving both (the
-  near-me list's pull still reuses them within the window; a `TODO.md` item). Dismissed alerts settle only on what TfL
+  checks on the way, a line's own page, and the journey alerts' background check — including that TfL
+  was asked and gave none. A line any of them checked within the line-status reuse window (90 s; a
+  station's page two minutes; a line's own page its 45 s check interval, so it shows nothing older than
+  it would have asked again for) is shown from that answer rather than asked again, so no two surfaces
+  disagree about a line and none spends a request another just made. A line's page shows an answer for
+  its own age, taken down when that's up. The journey alerts' check splits no alert by direction, so
+  what it asks is held as still waiting on that, and a screen asks again rather than show it unsplit. A
+  pull on a station's page or a trip asks again for any of its lines last answered before the pull,
+  whichever screen answers first serving both (the near-me list's pull still reuses them within the
+  window; a `TODO.md` item). Dismissed alerts settle only on what TfL
   answered for the screen settling them, never on another screen's answer. One whose request
   for a line is still out when another asks is waited on rather than doubled (one that fails is
   asked again). The widget's stored checks still carry its answers past the process.
