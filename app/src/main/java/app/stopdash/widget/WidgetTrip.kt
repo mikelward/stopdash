@@ -184,12 +184,7 @@ internal object WidgetTripStore {
 
 /** Whether a widget is placed to show a trip on: none, and the trip isn't built or kept for it. */
 internal object WidgetTrips {
-    fun placed(context: Context): Boolean {
-        // Null on a device with no widget support.
-        val ids = android.appwidget.AppWidgetManager.getInstance(context)
-            ?.getAppWidgetIds(android.content.ComponentName(context, StopDashWidgetReceiver::class.java))
-        return ids != null && ids.isNotEmpty()
-    }
+    fun placed(context: Context): Boolean = placedWidgetIds(context).isNotEmpty()
 }
 
 /** A train row on the widget's trip: a line, where it goes, and its countdown or guessed time. */

@@ -555,6 +555,64 @@ class WidgetModelTest {
         assertEquals(listOf("Stop One", null, "Stop Two"), model.rows.map { it.header?.text })
     }
 
+    // The compact widget (StopDashCompactWidget): departures only, no stop headers or title row.
+    private fun placesSnapshot() = DeparturesSnapshot(
+        stops = listOf(
+            stop("490000001A", listOf(departure("victoria", 120), departure("central", 300)), now, name = "Stop One"),
+            stop("490000002B", listOf(departure("jubilee", 180)), now, name = "Stop Two"),
+            stop("490000003C", listOf(departure("district", 240)), now, name = "Stop Three"),
+            stop("490000004D", listOf(departure("circle", 360)), now, name = "Stop Four"),
+        ),
+        fetchedAt = now,
+    )
+
+    @Test
+    fun `the compact widget draws no stop headers`() {
+        val cell = WidgetGeometry(250.dp, 400.dp)
+        val full = widgetModel(placesSnapshot(), now, geometry = cell)
+        assertTrue("the full widget names its places", full.rows.any { it.header != null })
+        val bare = widgetModel(placesSnapshot(), now, geometry = cell.copy(bare = true))
+        assertEquals(full.rows.map { it.row.lineId }, bare.rows.map { it.row.lineId })
+        assertTrue(bare.rows.all { it.header == null })
+    }
+
+    @Test
+    fun `the compact widget fits more departures in the same cell`() {
+        val cell = WidgetGeometry(250.dp, 150.dp)
+        val full = widgetModel(placesSnapshot(), now, geometry = cell)
+        val bare = widgetModel(placesSnapshot(), now, geometry = cell.copy(bare = true))
+        assertTrue("${bare.rows.size} > ${full.rows.size}", bare.rows.size > full.rows.size)
+        assertFalse("no title row to drop", bare.compact)
+    }
+
+    @Test
+    fun `the compact widget's rows leave room for its warning`() {
+        val cell = WidgetGeometry(250.dp, 150.dp, bare = true)
+        val fresh = widgetRowsHeight(cell.height, bare = true)
+        val warned = widgetRowsHeight(cell.height, withNote = true, bare = true)
+        assertTrue(warned < fresh)
+        assertTrue("the padding alone is all a fresh compact widget gives up", fresh > widgetRowsHeight(cell.height))
+    }
+
+    // Two columns with nothing to split (one departure, or none): the layout ends, rather than retrying
+    // forever with headers that cost nothing (Codex on #759).
+    @Test(timeout = 10_000)
+    fun `a wide compact widget with one departure or none lays out`() {
+        val wide = WidgetGeometry(600.dp, 300.dp, bare = true)
+        val one = DeparturesSnapshot(stops = listOf(stop("490000001A", listOf(departure("victoria", 120)), now, name = "Stop One")), fetchedAt = now)
+        assertEquals(listOf("victoria"), widgetModel(one, now, geometry = wide).rows.map { it.row.lineId })
+        val none = DeparturesSnapshot(stops = listOf(stop("490000001A", emptyList(), now, name = "Stop One")), fetchedAt = now)
+        assertTrue(widgetModel(none, now, geometry = wide).rows.isEmpty())
+        val many = widgetModel(placesSnapshot(), now, geometry = wide)
+        assertTrue(many.rows.all { it.header == null })
+    }
+
+    @Test
+    fun `a compact widget too small for a departure says so`() {
+        val bare = widgetModel(placesSnapshot(), now, geometry = WidgetGeometry(180.dp, 30.dp, bare = true))
+        assertTrue(bare.tooSmall)
+    }
+
     @Test
     fun `a header costs a line of the budget and is never left orphaned`() {
         // Budget 3: "Stop One" header + its row (2 lines), then "Stop Two" would need its header plus

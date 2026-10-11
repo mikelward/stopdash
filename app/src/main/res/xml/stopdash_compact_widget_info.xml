@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The compact widget (StopDashCompactWidget): the same as stopdash_widget_info.xml, its own
+     description aside. Widget sizing and placement. widgetCategory="home_screen|keyguard" is what makes the
+     widget eligible for the lock screen where the OS allows it (Android 16 QPR), the same
+     surface the app targets (SPEC One widget, many surfaces). Glance owns the layout at
+     runtime, so initialLayout is only the pre-first-render placeholder Glance ships.
+     updatePeriodMillis=0: the app pushes updates via updateAll when it fetches, rather than
+     paying the OS's 30-min-floored periodic wake for nothing (battery). -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="180dp"
+    android:minHeight="110dp"
+    android:targetCellWidth="3"
+    android:targetCellHeight="2"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen|keyguard"
+    android:initialLayout="@layout/glance_default_loading_layout"
+    android:updatePeriodMillis="0"
+    android:description="@string/widget_compact_description" />

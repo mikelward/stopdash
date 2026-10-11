@@ -1,8 +1,6 @@
 package app.stopdash.widget
 
-import android.appwidget.AppWidgetManager
 import android.content.BroadcastReceiver
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import androidx.work.WorkManager
@@ -17,10 +15,7 @@ import androidx.work.WorkManager
 class WidgetClockChangeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_TIME_CHANGED) return
-        // Null on a device with no widget support.
-        val ids = AppWidgetManager.getInstance(context)
-            ?.getAppWidgetIds(ComponentName(context, StopDashWidgetReceiver::class.java))
-        if (ids == null || ids.isEmpty()) return
+        if (placedWidgetIds(context).isEmpty()) return
         redrawWidgetNow(WorkManager.getInstance(context.applicationContext))
     }
 }

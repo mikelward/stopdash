@@ -4,7 +4,9 @@ import androidx.test.core.app.ApplicationProvider
 import app.stopdash.ThreadRecorder
 import java.util.concurrent.Executors
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -37,8 +39,27 @@ class WidgetPlacedTest {
         val receiver = StopDashWidgetReceiver()
         receiver.onEnabled(context)
         assertEquals(true, WidgetPresence.placed.value)
+        // The last of a kind removed: the host is asked off the main thread whether the other kind is placed.
         receiver.onDisabled(context)
+        runBlocking { withTimeout(10_000) { WidgetPresence.placed.first { it == false } } }
+    }
+
+    @Test
+    fun `removing the last of one kind keeps presence while the other kind is placed`() = runBlocking {
+        WidgetPresence.set(true)
+        presenceAfterRemoval(ApplicationProvider.getApplicationContext(), WidgetPresence.generation()) { true }
+        assertEquals(true, WidgetPresence.placed.value)
+        presenceAfterRemoval(ApplicationProvider.getApplicationContext(), WidgetPresence.generation()) { false }
         assertEquals(false, WidgetPresence.placed.value)
+    }
+
+    @Test
+    fun `both kinds of widget count as placed`() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val manager = android.appwidget.AppWidgetManager.getInstance(context)
+        org.robolectric.Shadows.shadowOf(manager).setAllowedToBindAppWidgets(true)
+        manager.bindAppWidgetIdIfAllowed(8, android.content.ComponentName(context, StopDashCompactWidgetReceiver::class.java))
+        assertEquals(listOf(8), placedWidgetIds(context).toList())
     }
 
     @Test
@@ -97,7 +118,10 @@ class WidgetPlacedTest {
         val worker = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }.asCoroutineDispatcher()
         try {
             val threads = ThreadRecorder()
-            val widgets = listOf(object : androidx.glance.GlanceId {}, object : androidx.glance.GlanceId {})
+            val widgets = listOf(
+                object : androidx.glance.GlanceId {} to StopDashWidget(),
+                object : androidx.glance.GlanceId {} to StopDashCompactWidget(),
+            )
             runBlocking(caller) {
                 redrawWidgets(
                     ApplicationProvider.getApplicationContext(),
@@ -106,7 +130,7 @@ class WidgetPlacedTest {
                         threads.note()
                         widgets
                     },
-                    update = { threads.note() },
+                    update = { _, _ -> threads.note() },
                 )
             }
             // One lookup, then one update per widget, all on the worker.
