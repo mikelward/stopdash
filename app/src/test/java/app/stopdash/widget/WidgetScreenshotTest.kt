@@ -115,6 +115,13 @@ class WidgetScreenshotTest {
     }
 
     @Test
+    fun `the widget picker's example`() {
+        val size = WidgetPreview.SIZES.first { it.width.value == 250f }
+        val model = runBlocking { WidgetPreview.models(app.stopdash.domain.RouteTopology.EMPTY) }[size]
+        capture("widget-picker-preview.png", model, size = size)
+    }
+
+    @Test
     fun widget_trip_on_the_way_shows_the_step_and_the_trains_at_the_next_change() {
         // Public TfL interchanges only (SPEC *Privacy*).
         val trip = app.stopdash.data.WatchTrip(
