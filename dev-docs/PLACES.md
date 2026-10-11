@@ -56,6 +56,9 @@ choice is the maintainer's.
     couldn't be reached to confirm it from here. A typical pick takes a handful of requests, so
     nearly all of them are billed.
   - **The details call** that ends the session is billed too.
+  - **An abandoned session** (the rider backs out, or picks a stop instead of a place) has no
+    details call to end it, so every one of its autocomplete requests is billed, past the twelfth
+    too. In this app that is most searches, since most picks are stops.
   - Both have a monthly free allowance (about 10,000 each). Beyond it, autocomplete is a few
     dollars per 1,000 requests and details about $5 per 1,000 calls. Count both when costing it.
   - At family scale this is effectively $0. It needs a Google Cloud project with billing turned
@@ -85,8 +88,8 @@ OpenStreetMap, from Overture Maps, or from both; the measured sizes below are Ov
     London postcode centers, which would replace TfL for postcodes as well.
   - **House numbers:** OpenStreetMap's coverage in London is patchy, so house-number search is the
     one gap this option can't close.
-- **Size:** about 30 bytes an entry (name, coordinate, category, importance) gives roughly 3–8 MB
-  before compression. That needs measuring, and the store size limit matters.
+- **Size:** measured below: 13–25 MB raw, 3.6–8.2 MB added to the download (deflated) for the
+  tiers worth considering. The raw size is roughly what the app holds in memory.
 - **Cost:** £0 to run. The work is a build script and a weekly refresh job, beside the station
   list's.
 - **Privacy:** nothing leaves the phone, so this is the best option on privacy. There's no Data
@@ -95,7 +98,8 @@ OpenStreetMap, from Overture Maps, or from both; the measured sizes below are Ov
 - **Licensing:**
   - OpenStreetMap is ODbL. The app has to credit "© OpenStreetMap contributors", and a derived
     database we distribute must itself be offered under ODbL.
-  - Code-Point Open needs the Crown copyright and Royal Mail notices.
+  - Code-Point Open needs three statements: Ordnance Survey's Crown copyright and database right,
+    Royal Mail's, and National Statistics' Crown copyright and database right.
 - **Quality:** good for named places and streets, but **no popularity signal**. Without one,
   "Tate" can't tell Tate Modern from a corner shop. OpenStreetMap's Wikipedia and Wikidata links
   can stand in for popularity, which is what Nominatim does. Store it as an importance score per
@@ -109,9 +113,13 @@ OpenStreetMap, from Overture Maps, or from both; the measured sizes below are Ov
     each search.
   - **Prebuilt indexes**, shipped or built on the device, if the scan proves too slow on a phone.
     They cost download size or startup time that the sizes below don't include:
-  - a sorted array or trie of normalized names, for the prefix tier;
+  - a sorted array or trie of normalized names with their spaces removed, for the prefix tier,
+    holding every form the matcher treats as a prefix (each part of "City of Westminster, Tate
+    Britain", and "Cross" as "X"), each pointing back to its entry. The matcher drops spaces
+    from both the query and the name, so "tate m" has to find "tatemodern";
   - word starts, for the word-initials tier;
-  - trigrams, for the substring tier;
+  - trigrams of the same space-free forms, for the substring tier, with a scan (or bigrams) for
+    two-letter queries, which a trigram can't hold;
   - for the fuzzy tier, a list of names by each word's first letter, filtered by the existing
     matcher. Trigrams would lose its matches: "vctra" shares no three consecutive letters with
     "Victoria", yet matches it letter by letter in order.
@@ -127,17 +135,27 @@ Run a search server ourselves over the same OpenStreetMap data:
 - **Pelias** is capable, but heavier to run (several services plus Elasticsearch).
 
 For London alone, Photon fits on one small virtual server: 2 CPUs and 4 GB of RAM, with an import
-that takes minutes.
+that takes minutes. That covers serving, not building, its index. Photon imports either from a Nominatim
+database (Postgres plus Nominatim's import, which wants more memory and disk than serving does,
+and is also what Photon's incremental updates need) or from a prepared JSON dump, which someone
+else publishes on their own schedule. So the refresh is either a Nominatim build we run, on a bigger
+machine for an hour or so each time, or a dependency on an outside dump.
 
-- **Cost:** about €5–10 a month on a provider such as Hetzner, plus a domain. Scale-to-zero
+- **Cost:** about €5–10 a month for the serving machine on a provider such as Hetzner, plus a
+  domain, plus building its index: a bigger machine for an hour or so per refresh (around €1 a
+  month, run weekly, if hired by the hour) or nothing extra with an outside dump, whose provider
+  then has to keep publishing it. Scale-to-zero
   hosting (Cloud Run and the like) is a poor fit: the search index's cold start would land on the
   rider's first keystroke.
 - **Ops:**
   - It's ours to keep up: updates, TLS, monitoring, and a weekly data refresh.
   - It needs abuse protection. A key built into the app isn't any: it can be pulled out of the
     APK and replayed, using up every real user's quota. What does work is limits per client or IP
-    address (which shared networks and VPNs trip over), or Play Integrity attestation (which adds
-    a Google dependency, a check on each session, and fails on phones without Play services).
+    address (which shared networks and VPNs trip over), or Play Integrity attestation. Integrity
+    is a Google request on each session: free, but with a default quota of 10,000 requests a day
+    to raise with Google; Google collects app and device attestation data with each one, which
+    goes in Data Safety; it costs a little battery and latency per session; and it fails on phones
+    without Play services.
   - If it goes down, place results disappear. The stop results would still show, as with TfL's
     geocoder today.
 - **Privacy:** the typed text and the IP address go to a server we control. That is better than a
@@ -151,25 +169,35 @@ that takes minutes.
 
 ## Measured sizes (bundled index, 2026-10-11)
 
-Measured from **Overture Maps** (release 2026-09-23) and **OS Code-Point Open**, over Greater
-London (longitude −0.51 to 0.34, latitude 51.28 to 51.70).
+Measured from **Overture Maps** (release 2026-09-23) and **OS Code-Point Open**. Overture's
+features are taken from a rectangle around Greater London (longitude −0.51 to 0.34, latitude 51.28
+to 51.70), so they include a fringe outside the boundary (Watford, Dartford, Epsom). That is
+deliberate (maintainer, 2026-10-11): TfL's services reach those towns, so riders head there. The
+postcodes are taken from the same rectangle, so Watford's are found as its shops are.
 
 ### The sources
 
 - **Overture places:** 494,598 places in London, each with a name, a category, a coordinate and a
   confidence score.
-  - They come from Meta, Microsoft, Foursquare and AllThePlaces, not from OpenStreetMap.
-  - Their licenses (CDLA Permissive 2.0, Apache 2.0) need attribution but carry no share-alike
-    condition.
+  - They come from Meta, Microsoft, Foursquare, AllThePlaces and several smaller providers
+    (PinMeTo, Krick, RenderSEO, DAC, BrightQuery), not from OpenStreetMap.
+  - Their licenses carry no share-alike condition, but they aren't all credit-only (Overture's
+    [attribution table](https://docs.overturemaps.org/attribution/)): most are CDLA Permissive
+    2.0 (credit); AllThePlaces is CC0 (nothing required); Foursquare's are Apache 2.0, so the app
+    must ship the Apache license text, Foursquare's NOTICE file and its copyright line, and say
+    the data was changed (transformed to Overture's schema, then filtered by us).
   - They're downloadable from Amazon S3, which this sandbox can reach.
-- **Streets:** Overture's road network, which is derived from OpenStreetMap (ODbL). That gives
+- **Streets:** Overture's road network. Most of it is OpenStreetMap's (ODbL), but Overture also
+  carries about 7,900 TomTom segments around London, which would need their own credit; the
+  implementation keeps the OpenStreetMap ones only, as it does the neighborhoods. That gives
   51,507 distinct street names; keeping one entry per name per ~1 km cell gives 84,212 entries.
   Shown bare, those cells would list one street several times, and same-named streets in
   different areas identically, using up the result limit. So each street entry should carry its
   neighborhood ("High Street, Exampleton", from Overture's divisions data), with the cells of
   one name in one neighborhood collapsed to a single entry. As built, that's 75,546 entries,
   larger per entry than the bare cells because of the neighborhood names.
-- **Postcodes:** OS Code-Point Open, the postcodes in the 33 London boroughs: 180,837.
+- **Postcodes:** OS Code-Point Open, the postcodes in the same rectangle: 213,011 (180,837 of them
+  in the 33 London boroughs).
 - **Street addresses:** Overture has no UK addresses. Measuring OpenStreetMap's London
   house-number coverage needs the Geofabrik extract, which this sandbox still can't reach.
 
@@ -177,19 +205,24 @@ London (longitude −0.51 to 0.34, latitude 51.28 to 51.70).
 
 An entry is name, category, latitude and longitude, stored as text sorted by name. "Deflate" is
 roughly what the APK would add, since assets are zipped; "xz" is a lower bound if the build
-precompresses the file.
+precompresses the file. The rows marked "as built" are the real asset, whose lines also carry a kind
+letter and a rank, so they take more bytes per entry than the measured rows above them. The
+builder also cleans the places before writing them: it merges copies of one name within 250 m and
+drops a landmark's stray copies far from it (the British Museum's, say). That is why the as-built A
+and B rows hold fewer entries than their parts add up to: 748 fewer for A, 3,456 for B. The C row
+is a plain sum of the measured rows, with no such cleaning.
 
 | Tier | Entries | Raw | Deflate | xz |
 |---|---:|---:|---:|---:|
-| A. Public places: embassies, theatres, schools, parks, leisure centers, worship, museums, hospitals, venues… (confidence ≥ 0.7) | 50,374 | 2.0 MB | 0.8 MB | 0.6 MB |
+| A. Public places: embassies, theaters, schools, parks, leisure centers, worship, museums, hospitals, venues… (confidence ≥ 0.7) | 50,374 | 2.0 MB | 0.8 MB | 0.6 MB |
 | B. A + businesses with confidence ≥ 0.9 | 178,690 | 6.9 MB | 2.6 MB | 1.9 MB |
 | C. All places, confidence ≥ 0.7 | 380,373 | 14.5 MB | 5.4 MB | 4.0 MB |
 | D. All places | 494,598 | 18.8 MB | 7.1 MB | 5.3 MB |
-| Streets, with neighborhoods (as built) | 75,546 | 3.8 MB | 1.1 MB | 0.7 MB |
-| Postcodes | 180,837 | 4.4 MB | 1.4 MB | 0.7 MB |
-| **A + streets + postcodes** (sum of the rows) | 306,757 | 10.2 MB | **3.3 MB** | 2.0 MB |
-| **B + streets + postcodes** (as built: deduplicated, tab-separated) | 431,998 | 19.9 MB | **5.4 MB** | 3.5 MB |
-| **C + streets + postcodes** (sum of the rows) | 636,756 | 22.7 MB | **7.9 MB** | 5.4 MB |
+| Streets, with neighborhoods (as built) | 75,553 | 3.8 MB | 1.1 MB | 0.7 MB |
+| Postcodes (as built) | 213,011 | 6.6 MB | 1.7 MB | 0.9 MB |
+| **A + streets + postcodes** (as built) | 338,190 | 13.4 MB | **3.6 MB** | 2.2 MB |
+| **B + streets + postcodes** (as built) | 463,798 | 20.8 MB | **5.6 MB** | 3.6 MB |
+| **C + streets + postcodes** (sum of the rows) | 668,937 | 24.9 MB | **8.2 MB** | 5.6 MB |
 
 ### Bus stops: replacing TfL's stop search too
 
@@ -225,11 +258,32 @@ Museum. The data still needs work at build time:
 ### Memory and search
 
 - **Memory:** about the raw size, plus an index. Tier B with streets and postcodes is about
-  20 MB of text, so it should be loaded off the main thread and kept as compact arrays, not
+  21 MB of text, so it should be loaded off the main thread and kept as compact arrays, not
   objects.
 - **Search speed:** a sorted-name prefix search is instant at this size. The trigram index for
   the substring tier, and the first-letter scan for the fuzzy tier, are the parts to benchmark
   on a low-end phone.
+
+## OpenStreetMap or Overture for the bundled index?
+
+The sizes above were measured from Overture, because the OpenStreetMap extract (Geofabrik) wasn't
+reachable from the sandbox.
+
+| | OpenStreetMap | Overture places |
+|---|---|---|
+| Public places (parks, schools, worship, embassies, theaters, leisure centers) | **Cleaner**: mapped by people, with precise positions | Many duplicates and mis-placed check-ins to clean up |
+| Businesses | Thinner | **Broad** (Meta, Microsoft, Foursquare, AllThePlaces) |
+| House numbers | Partial London coverage (to measure) | None for the UK |
+| Ranking signal | Wikidata/Wikipedia links | **None**: its confidence score says how sure it is the place exists, isn't comparable across its sources, and so works only as a quality filter |
+| License | ODbL: credit, **share-alike** for a distributed database (publishing the derived database itself, or the full method to rebuild it from the source, satisfies it) | CDLA Permissive 2.0 and CC0, plus Foursquare's Apache 2.0: credit, and the license and NOTICE shipped |
+| Fixing errors | Upstream, by anyone | Not directly |
+
+Overture's streets already come from OpenStreetMap, so the index carries an ODbL obligation either
+way.
+
+**Likely best: both.** OpenStreetMap for public places, streets and house numbers; Overture for
+businesses (confidence ≥ 0.9). That changes only the build script; the on-device index and its
+search stay as they are. It needs measuring once the extract is reachable.
 
 ## How each option fits the fuzzy search
 
@@ -281,7 +335,7 @@ The source ranks its results, and the app has to decide how far to trust that or
 |---|---|---|---|---|---|
 | Place quality | Poor | Poor to fair | Best | Good, needs importance | Good |
 | House numbers | Some | Some | Yes | Patchy | Patchy |
-| Running cost | £0 | £0 | ~£0 at family scale, billing on | £0 | ~€5–10 a month |
+| Running cost | £0 | £0 | ~£0 at family scale, billing on | £0 | ~€6–11 a month |
 | Typed text goes to | TfL | The device's geocoder (usually Google) | Google | Nowhere | Us |
 | Data Safety change | No | Yes | Yes | No | Yes |
 | Works offline | No | No | No | Yes | No |
@@ -292,7 +346,7 @@ The source ranks its results, and the app has to decide how far to trust that or
 ## Suggested path
 
 1. **Option 4 measured from Overture** (above): public places, streets and postcodes add about
-   3.3 MB to the download; adding confident businesses brings it to about 5.4 MB. That's with the
+   3.6 MB to the download; adding confident businesses brings it to about 5.6 MB. That's with the
    run-time scan, so nothing else ships; prebuilt indexes would add to it. Next, prototype tier A or B
    against the bundled station index's matcher, with the duplicate merging.
 2. **Add the typo tier and the importance tie-break** to the matcher. Both help stops too.
