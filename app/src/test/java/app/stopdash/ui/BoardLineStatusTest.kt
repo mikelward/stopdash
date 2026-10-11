@@ -87,4 +87,18 @@ class BoardLineStatusTest {
         assertTrue(blank.unknown)
         assertFalse(blank.checking)
     }
+
+    // Codex on #776: a board line is as old as its own answer, not the oldest one checked beside it.
+    @Test
+    fun `a board line stands as long as its own answer`() {
+        val good = LineStatus("dlr", LineStatus.GOOD_SERVICE, "Good Service")
+        val mixed = RouteDisruption.LinesChecked(
+            setOf("jubilee", "dlr"), mapOf("jubilee" to delays, "dlr" to good), SteadyClock.stamp(now.minus(Duration.ofMinutes(4))),
+            ats = mapOf("jubilee" to SteadyClock.stamp(now.minus(Duration.ofMinutes(4))), "dlr" to SteadyClock.stamp(now)),
+        )
+        // Three minutes on: the older answer has gone stale, the newer one hasn't.
+        val later = now.plus(Duration.ofMinutes(3))
+        assertFalse(boardLineStatus(mixed, "dlr", later).unknown)
+        assertTrue(boardLineStatus(mixed, "jubilee", later).unknown)
+    }
 }

@@ -925,7 +925,7 @@ internal val LONDON: ZoneId = ZoneId.of("Europe/London")
  * here is waiting on (Codex, PR #373).
  */
 @Composable
-internal fun rememberLastPull(destKey: String): MutableState<Instant?> =
+internal fun rememberLastPull(destKey: String): MutableState<TripViewModel.Pull?> =
     rememberSaveable(destKey) { mutableStateOf(null) }
 
 /**

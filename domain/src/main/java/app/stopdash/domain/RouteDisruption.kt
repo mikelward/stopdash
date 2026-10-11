@@ -153,7 +153,9 @@ object RouteDisruption {
      * way is asking about, its answer not in yet; null while none is out. A line no check asks about is
      * never said to be being checked. [following]: the lines the trip follows now, each refresh's check
      * asking about them, kept up as the trip or its board moves on, not only as a check goes out: a line
-     * outside it is no longer followed, its last status no longer current (Codex, #627).
+     * outside it is no longer followed, its last status no longer current (Codex, #627). [ats]: when each
+     * line's own answer was had, where known: a line is as old as its own answer, [at] (the oldest) only
+     * where it has none here (Codex on #776).
      */
     data class LinesChecked(
         val asked: Set<String>,
@@ -161,7 +163,11 @@ object RouteDisruption {
         val at: Instant?,
         val asking: Set<String>? = null,
         val following: Set<String> = asking ?: asked,
-    )
+        val ats: Map<String, Instant> = emptyMap(),
+    ) {
+        /** When [lineId]'s answer was had: its own time, else the check's oldest. */
+        fun atOf(lineId: String): Instant? = ats[lineId] ?: at
+    }
 
     /**
      * What's known ([signals], worst first), and until when it stands ([until]): no later than its

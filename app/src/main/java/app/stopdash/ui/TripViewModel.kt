@@ -19,7 +19,7 @@ import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.JourneyPlanner
 import app.stopdash.domain.LineStatus
-import app.stopdash.domain.LineStatusBatch
+import app.stopdash.domain.LineStatusCache
 import app.stopdash.domain.StopClosureCache
 import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.TflClient
@@ -109,6 +109,10 @@ class TripViewModel(
     // The stops' last arrivals, shared with the other screens (the app passes [ArrivalsCache.SHARED]):
     // a boarding stop fetched within [ArrivalsCache.TTL] shows at once and isn't asked for again.
     private val arrivals: ArrivalsCache = ArrivalsCache(),
+    // Lines' last status answers, shared with the other screens (the app passes [LineStatusCache.SHARED]),
+    // each taken within [lineStatusReuse]: none by default (tests), [LINE_STATUS_REUSE] in the app.
+    private val sharedLines: LineStatusCache = LineStatusCache(),
+    private val lineStatusReuse: java.time.Duration = java.time.Duration.ZERO,
     // Emits when where departures come from changes (a National Rail key added or removed): the
     // current value first, then each change, as the list's model takes it.
     departureSourceChanges: Flow<Any?> = emptyFlow(),
@@ -921,6 +925,10 @@ class TripViewModel(
     // pull, here or carried from the trip this one took over from ([carryPull]).
     private var pulledAt: Instant? = null
 
+    // [pulledAt] stamped in the steady frame when the pull was made, as a line's answer is, for the
+    // shared line check to compare with however the clock is set since (Codex on #776).
+    private var pulledStamp: Instant? = null
+
     // A pull from here waiting on the fresh fix it took: its indicator holds past its own run until
     // the trip has refreshed for the re-pick that fix brings ([refreshFor]), which can plan again
     // after the pull's run has ended (Codex, PR #373), or the re-locate ends without one
@@ -933,15 +941,16 @@ class TripViewModel(
      * fetches every boarding stop's arrivals afresh, as the list's pull does. During a refresh, both
      * run once it ends. [awaitFix] when the pull also takes a fresh fix, whose re-pick the indicator
      * waits for. Returns when the pull came, for the screen to [carryPull] into a trip that takes this
-     * one's place.
+     * one's place, and to hand the Direct section the same cutoff.
      */
-    fun pullRefresh(awaitFix: Boolean = false): Instant {
+    fun pullRefresh(awaitFix: Boolean = false): Pull {
         val at = clock()
         _pulling.value = true
         pulledAt = at
+        pulledStamp = SteadyClock.stamp(at)
         awaitingFix = awaitFix
         start(replan = true)
-        return at
+        return Pull(at, pulledStamp!!)
     }
 
     /**
@@ -965,12 +974,26 @@ class TripViewModel(
      * has landed. The screen sets it on every composition, so a pull no later than this trip's own
      * does nothing.
      */
-    fun carryPull(at: Instant) {
-        if (pulledAt?.isBefore(at) == false) return
-        pulledAt = at
+    fun carryPull(pull: Pull) {
+        // Ordered by their steady stamps, not the wall clock, which can be set back between two pulls
+        // (Codex on #776).
+        if (pulledStamp?.isBefore(pull.stamp) == false) return
+        pulledAt = pull.at
+        // The stamp made at the pull, carried as is: one made now from [Pull.at] would move with any
+        // clock set since (Codex on #776).
+        pulledStamp = pull.stamp
         _pulling.value = true
         if (started) refresh()
     }
+
+    /** [carryPull] for a pull at [at] known only by the wall clock, stamped now. */
+    fun carryPull(at: Instant) = carryPull(Pull(at, SteadyClock.stamp(at)))
+
+    /**
+     * A pull: when it came by the wall clock ([at]), and [stamp]ed in the steady frame then, the
+     * cutoff the shared line answers are compared with whatever the clock does after.
+     */
+    data class Pull(val at: Instant, val stamp: Instant) : java.io.Serializable
 
     // A Retry tapped while a refresh runs: plan again when it ends rather than drop the tap.
     private var replanAgain = false
@@ -1354,7 +1377,7 @@ class TripViewModel(
             AroundWork(
                 AroundDelays.modesToLeaveOut(soonest, delayed, modes),
                 if (keep) base.statuses + fetched.filterKeys { it in fresh } else null,
-                check?.answeredAt()?.filterKeys { it in fresh }?.let { base.statusesAt + it } ?: base.statusesAt,
+                check?.answeredAt?.filterKeys { it in fresh }?.let { base.statusesAt + it } ?: base.statusesAt,
                 base.delayedLines + delayed,
                 // The day the fetched ones were sorted on, kept with them, so a planned alert is promoted when its day comes.
                 check?.takeIf { fresh.isNotEmpty() }?.let { earlier(base.statusesSortedOn, it.sortedOn) } ?: base.statusesSortedOn,
@@ -1522,7 +1545,7 @@ class TripViewModel(
                         statuses = fetched?.let { it.statuses + state.statuses.filterKeys { id -> id in it.failed } } ?: state.statuses,
                         // As [statuses]: the answer's, and a failed line's held one.
                         delayedLines = fetched?.let { f -> answeredDelayed.orEmpty() + state.delayedLines.filter { id -> id in f.failed } } ?: state.delayedLines,
-                        statusesAt = fetched?.let { state.statusesAt + it.answeredAt() } ?: state.statusesAt,
+                        statusesAt = fetched?.let { state.statusesAt + it.answeredAt } ?: state.statusesAt,
                         // A failed request's lines keep theirs, sorted when they were.
                         statusesSortedOn = fetched?.let { if (it.failed.isEmpty()) it.sortedOn else earlier(state.statusesSortedOn, it.sortedOn) } ?: state.statusesSortedOn,
                         statusFailed = fetched == null || fetched.failed.isNotEmpty(),
@@ -1577,7 +1600,7 @@ class TripViewModel(
                         failures = if (newlyFailed) it.failures + 1 else it.failures,
                         statuses = found?.let { f -> judged(it.statuses, f) + f.statuses } ?: it.statuses,
                         delayedLines = found?.let { f -> it.delayedLines.filter { id -> id !in late || id in f.failed }.toSet() + lateDelayed.orEmpty() } ?: it.delayedLines,
-                        statusesAt = found?.let { f -> judged(it.statusesAt, f) + f.answeredAt() } ?: it.statusesAt,
+                        statusesAt = found?.let { f -> judged(it.statusesAt, f) + f.answeredAt } ?: it.statusesAt,
                         statusesSortedOn = found?.let { f -> earlier(it.statusesSortedOn, f.sortedOn) } ?: it.statusesSortedOn,
                         statusFailedLines = it.statusFailedLines - late.toSet() + (found?.failed ?: late.toSet()),
                         // The late lines take this answer's verdict too: left out of it, settled (Codex, #559).
@@ -1867,9 +1890,22 @@ class TripViewModel(
     // What a status check found: the statuses TfL returned, answered [at], the lines it gave a verdict
     // on ([answered], a status or none), and the lines in a request that failed.
     // [since]: the store's [DismissedAlertsStore.mark] before it asked anything: one dismissed after stays.
-    private class StatusCheck(val statuses: Map<String, LineStatus>, val answered: Set<String>, val failed: Set<String>, val at: Instant, val sortedOn: LocalDate, val since: DismissalMarks) {
-        // Each returned line's answer time, for [State.statusesAt].
-        fun answeredAt(): Map<String, Instant> = statuses.mapValues { at }
+    // [fresh] are the lines TfL answered for this check and [freshStatuses] what it gave, the only
+    // ones its dismissals settle on: another screen's answer, taken from the shared ones, carries none
+    // of this check's dismissal marks.
+    private class StatusCheck(
+        val statuses: Map<String, LineStatus>,
+        val failed: Set<String>,
+        // Each line's answer time, by the steady clock, as a fetch is stamped.
+        val ats: Map<String, Instant>,
+        val sortedOn: LocalDate,
+        val since: DismissalMarks,
+        val fresh: Set<String>,
+        val freshStatuses: Map<String, LineStatus>,
+    ) {
+        // Each returned line's answer time, for [State.statusesAt]: worked out when this is made, on
+        // [compute] in [fetchStatuses], so the refresh reading it walks nothing (Codex on #776).
+        val answeredAt: Map<String, Instant> = statuses.mapValues { (id, _) -> ats.getValue(id) }
     }
 
     // One request per group TfL accepts (LineStatusBatch), each with its own outcome. Null when none
@@ -1903,10 +1939,9 @@ class TripViewModel(
 
     // Settles the dismissals of the lines [check] answered ([reconcileLineDismissals]).
     private suspend fun reconcileLineDismissals(check: StatusCheck) {
-        val answered = check.statuses.filterKeys { it !in check.failed }
         val since = check.since
         reconcileLineDismissals(
-            _dismissed.value, answered, check.answered, clock(), dismissedStore, io, warn, "trip", since,
+            _dismissed.value, check.freshStatuses, check.fresh, clock(), dismissedStore, io, warn, "trip", since,
             // What's let go of, from what's dismissed now: one made meanwhile stays (Codex on #519), as
             // does one dismissed again since the mark.
             pruned = { gone -> dismissedStore.prune(gone, since) { still -> _dismissed.update { it - still } } },
@@ -1918,12 +1953,38 @@ class TripViewModel(
         // The day they're sorted on, read before they're asked for: never later than it was.
         val sortedOn = clock().atZone(AlertStart.ZONE).toLocalDate()
         val since = DismissalMarks(dismissedStore.mark())
-        val results = LineStatusBatch.request(lineIds) { chunk -> withContext(io) { client.lineStatuses(chunk) } }
-        results.failure?.let { warn("trip line status failed for ${results.failed.size} line(s): ${it::class.simpleName}") }
-        if (results.unknown.isNotEmpty()) warn("trip line status: TfL doesn't know ${results.unknown.size} line(s)")
-        if (!results.anyAnswered) return null
-        // Stamped by the steady clock, as a fetch is ([SteadyClock]).
-        return StatusCheck(results.answers.flatMap { it.value }.associateBy { it.lineId }, results.answeredIds, results.failed.toSet(), SteadyClock.stamp(clock()), sortedOn, since)
+        // Through the line answers every screen shares ([LineStatusCache.SHARED] in the app): one answered
+        // within [lineStatusReuse], or while this check waited on another screen's request, is taken as it
+        // stands. On [compute], the [StatusCheck] made there too: it walks the lines and the shared answers,
+        // and nothing reading it after walks one (AGENTS.md *Main thread*).
+        return withContext(compute) {
+            // An answer had before the rider's last pull is asked again, as a stop's arrivals are ([needsFetch]).
+            val checked = sharedLines.check(lineIds, clock, lineStatusReuse, pulledAt = pulledStamp) { chunk ->
+                withContext(io) { client.lineStatuses(chunk) }
+            }
+            checked.failure?.let { warn("trip line status failed for ${checked.failed.size} line(s): ${it::class.simpleName}") }
+            if (checked.unknown.isNotEmpty()) warn("trip line status: TfL doesn't know ${checked.unknown.size} line(s)")
+            if (checked.answers.isEmpty()) return@withContext null
+            statusCheckOf(checked, sortedOn, since)
+        }
+    }
+
+    // [checked] as the trip holds it. [WorkerThread]: it walks the lines.
+    @androidx.annotation.WorkerThread
+    private fun statusCheckOf(checked: LineStatusCache.Checked, sortedOn: LocalDate, since: DismissalMarks): StatusCheck {
+        // A shared answer had before midnight was sorted for its own day: taken as of that day, so the
+        // next sort catches work starting today (Codex on #776). The earlier of its day as the clock now
+        // reads it and as its stamp reads: a clock set forward since can't carry it into today, and an
+        // earlier day only sorts it again, which is harmless.
+        val heldOn = checked.oldest?.let { at ->
+            fun day(wall: Instant) = wall.atZone(AlertStart.ZONE).toLocalDate()
+            earlier(day(at), day(SteadyClock.toWall(at)))
+        }
+        return StatusCheck(
+            checked.statuses, checked.failed, checked.answeredAt,
+            heldOn?.let { earlier(it, sortedOn) } ?: sortedOn, since,
+            checked.fresh, checked.freshStatuses,
+        )
     }
 
     // The earlier of [held] (none with no statuses held) and [day].

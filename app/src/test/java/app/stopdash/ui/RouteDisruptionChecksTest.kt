@@ -9,6 +9,7 @@ import app.stopdash.domain.HubInfo
 import app.stopdash.domain.HubInfoCache
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusCache
 import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.StopClosureCache
 import app.stopdash.domain.StopDisruption
@@ -86,7 +87,12 @@ class RouteDisruptionChecksTest {
         }
     }
 
-    private fun checks(cache: StopClosureCache, dispatcher: kotlinx.coroutines.CoroutineDispatcher) = RouteDisruptionChecks(
+    private fun checks(
+        cache: StopClosureCache,
+        dispatcher: kotlinx.coroutines.CoroutineDispatcher,
+        sharedLines: LineStatusCache = LineStatusCache(),
+        lineStatusReuse: Duration = Duration.ZERO,
+    ) = RouteDisruptionChecks(
         client = client,
         closures = StopClosureChecks(client, cache, Duration.ofMinutes(5), dispatcher, dispatcher, { logged += it }, "on the way"),
         closureCache = cache,
@@ -118,10 +124,42 @@ class RouteDisruptionChecksTest {
             }
         },
         hubOf = { hubs[it] },
+        sharedLines = sharedLines,
+        lineStatusReuse = lineStatusReuse,
         clock = { now },
         io = dispatcher,
         warn = { logged += it },
     )
+
+    // Shared with the other screens (SPEC *Freshness → Shared line status*): a coming line another screen
+    // checked moments ago is judged on that answer, not asked again; its dismissals settle only on TfL's
+    // own answers to this check, so another screen's answer never lets go of one.
+    @Test
+    fun `a coming line another screen checked moments ago is judged on that answer, not asked again`() = runTest {
+        val shared = LineStatusCache()
+        val severe = LineStatus("red", 6, "Severe Delays")
+        shared["red"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service"))
+        val gone = DismissedAlert.ofLineStatus(severe.copy(fullText = "Signal failure."))
+        dismissed = setOf(gone)
+        val checks = checks(StopClosureCache(), StandardTestDispatcher(testScheduler), shared, Duration.ofSeconds(90))
+        val found = checks.check(trip, waiting, emptyMap())
+        assertEquals(0, statusReads)
+        assertEquals(emptyList<RouteDisruption.Signal>(), found.signals.filterIsInstance<RouteDisruption.Signal.Line>())
+        assertEquals("Good Service", found.lines!!.statuses.getValue("red").description)
+        assertEquals(setOf(gone), dismissed)
+    }
+
+    // Codex on #776: a coming line's alert ages from its own line's answer, not an older one asked beside it.
+    @Test
+    fun `a coming line's alert stands as long as its own answer, not a board line's older one`() = runTest {
+        val shared = LineStatusCache()
+        shared["red"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), LineStatus("red", 6, "Severe Delays"))
+        shared["blue"] = LineStatusCache.Held.Verdict(now.minusSeconds(80), LineStatus("blue", LineStatus.GOOD_SERVICE, "Good Service"))
+        val checks = checks(StopClosureCache(), StandardTestDispatcher(testScheduler), shared, Duration.ofSeconds(90))
+        val found = checks.check(trip, waiting, emptyMap(), alsoLines = listOf("blue"))
+        val red = found.signals.filterIsInstance<RouteDisruption.Signal.Line>().single()
+        assertEquals(now.minusSeconds(10).plus(Duration.ofMinutes(5)), found.stands.getValue(red.key))
+    }
 
     @Test
     fun `a coming line's alert and a closed stop ahead, standing while their checks are current`() = runTest {

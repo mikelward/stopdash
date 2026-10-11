@@ -8,7 +8,7 @@ import kotlinx.coroutines.CompletableDeferred
 
 /**
  * Each line's last status answer, for the process: whichever surface asked (the app's list, the
- * widget's refresh, a watch's request), so a line checked by one is reused by the rest within
+ * widget's refresh, a watch's request, a station's page, a trip and its checks on the way), so a line checked by one is reused by the rest within
  * [LineStatusReuse]'s window rather than asked again, and no two surfaces hold different answers for
  * it (SPEC *Freshness → Shared line status*). In memory only; the widget's stored checks carry its
  * answers past the process.
@@ -136,6 +136,143 @@ open class LineStatusCache {
             synchronized(asking) { lineIds.forEach { if (asking[it] === done) asking.remove(it) } }
             done.complete(Unit)
         }
+    }
+
+    /**
+     * What [check] found: each line's answer that stands ([answers]), this check's own or another
+     * surface's; a line with none couldn't be checked. [fresh] are the lines TfL answered for this check
+     * (a status or none) and [freshStatuses] the statuses it gave, the only ones a check settles
+     * dismissals on, as another surface's answer carries none of this check's dismissal marks.
+     */
+    class Checked(
+        val answers: Map<String, Held>,
+        val fresh: Set<String>,
+        val freshStatuses: Map<String, LineStatus>,
+        val failed: Set<String>,
+        val unknown: Set<String>,
+        val failure: Exception?,
+        val requests: Int,
+    ) {
+        // Each worked out here, when [check] makes this on its worker, so a screen reading them walks
+        // nothing on its own thread (AGENTS.md *Main thread*; Codex on #776).
+
+        /** The lines' statuses where TfL gave one. */
+        val statuses: Map<String, LineStatus> =
+            answers.entries.mapNotNull { (id, held) -> (held as? Held.Verdict)?.let { id to it.status } }.toMap()
+
+        /** When each of [answers] was had. */
+        val answeredAt: Map<String, Instant> = answers.mapValues { it.value.at }
+
+        /**
+         * When the oldest of [statuses] was had: what a screen's status is as old as. Only with none is it
+         * the oldest omission, as an omission (TfL saying nothing, or a line it doesn't know, held for
+         * good) vouches for no status shown (Codex on #776). Null with no answers.
+         */
+        val oldest: Instant? = answers.values.filterIsInstance<Held.Verdict>().minOfOrNull { it.at }
+            ?: answers.values.minOfOrNull { it.at }
+    }
+
+    /**
+     * Checks [lineIds] through this cache, the way every screen asks about a line (SPEC *Freshness →
+     * Shared line status*): a request another surface has out for them is waited on; a line answered
+     * within [reuse] ([LineStatusReuse]), or since this check began, is taken as it stands; the rest are
+     * asked of TfL by [fetch], in as many requests as it accepts ([LineStatusBatch]), and the answers held
+     * here for the others. [refresh] (a pull) asks every line afresh, unless another surface's answer
+     * lands while this one waits; so does an answer had before [pulledAt] (the rider's last pull,
+     * [SteadyClock.stamp]ed when it was made, as an answer is, so setting the clock since moves neither;
+     * a screen's later refreshes honor it too). A line TfL said it doesn't know
+     * isn't asked again. A line whose request failed is left out, whatever was held for it: a check
+     * that couldn't be made never vouches on an older answer. Stamped by [clock] through
+     * [SteadyClock], as a fetch is.
+     */
+    @WorkerThread
+    suspend fun check(
+        lineIds: Collection<String>,
+        clock: () -> Instant,
+        reuse: java.time.Duration,
+        refresh: Boolean = false,
+        pulledAt: Instant? = null,
+        fetch: suspend (List<String>) -> List<LineStatus>?,
+    ): Checked {
+        val lines = lineIds.toSet()
+        // Answers landing after this point are this check's to take, whatever the window.
+        val began = mark()
+        fun since(id: String) = (answeredAt[id] ?: 0L) > began
+        // Had before the rider's last pull: asked again, however recent.
+        fun prePull(held: Held) = pulledAt != null && held.at.isBefore(pulledAt)
+        fun standsInWindow(id: String, held: Held, now: Instant): Boolean = when (held) {
+            is Held.Verdict -> since(id) && !held.status.awaitingDirections ||
+                LineStatusReuse.stands(held.at, now, reuse, held.status.awaitingDirections)
+            is Held.Omitted -> held.unrecognized || since(id) || LineStatusReuse.stands(held.at, now, reuse)
+        }
+        // A line TfL doesn't know stands for good, a pull's included: asking again only gets the 404 again
+        // (Codex on #776).
+        fun unrecognized(id: String) = (this[id] as? Held.Omitted)?.unrecognized == true
+        fun stands(id: String, now: Instant): Boolean = when (val held = this[id]) {
+            null -> false
+            else -> unrecognized(id) || !(prePull(held) && !since(id)) && standsInWindow(id, held, now)
+        }
+        // A request another surface has out is waited on whatever stands, so its newer answer is shown
+        // rather than the one it's replacing (Codex on #776); a pull it covered needn't ask again.
+        val waited = awaitAsking(lines)
+        var force = refresh && !waited
+        var results: LineStatusBatch.Results<List<LineStatus>>? = null
+        var fresh: Map<String, LineStatus> = emptyMap()
+        while (true) {
+            val read = mark()
+            val now = clock()
+            val toAsk = lines.filterTo(LinkedHashSet()) { if (force) !unrecognized(it) else !stands(it, now) }
+            if (toAsk.isEmpty()) break
+            when (val asked = asking(toAsk, read) { ask(toAsk, clock, fetch) }) {
+                is Asked.Ran -> {
+                    results = asked.value.first
+                    fresh = asked.value.second
+                    break
+                }
+                // Another surface asked first: its answers are read on the next pass, a pull's included.
+                Asked.Waited -> force = false
+            }
+        }
+        val now = clock()
+        val answered = results?.answeredIds.orEmpty()
+        val failed = results?.failed.orEmpty().toSet()
+        val answers = lines.mapNotNull { id ->
+            if (id in failed) return@mapNotNull null
+            val held = this[id] ?: return@mapNotNull null
+            // Shown when it's this check's, landed since it began, or still within the window; one still
+            // waiting on its alerts' directions is shown too, only asked again next time.
+            val shown = id in answered || since(id) || (held as? Held.Omitted)?.unrecognized == true ||
+                LineStatusReuse.stands(held.at, now, reuse)
+            if (shown) id to held else null
+        }.toMap()
+        return Checked(
+            answers = answers,
+            fresh = answered,
+            freshStatuses = fresh,
+            failed = failed,
+            unknown = results?.unknown.orEmpty().toSet(),
+            failure = results?.failure,
+            requests = results?.requests ?: 0,
+        )
+    }
+
+    // Asks TfL about [toAsk] and holds what it answered: each line it gave a status for, and each it was
+    // asked about and left out, the ones it doesn't know marked so.
+    private suspend fun ask(
+        toAsk: Set<String>,
+        clock: () -> Instant,
+        fetch: suspend (List<String>) -> List<LineStatus>?,
+    ): Pair<LineStatusBatch.Results<List<LineStatus>>, Map<String, LineStatus>> {
+        val ticket = ticket()
+        val results = LineStatusBatch.request(toAsk, fetch)
+        if (!results.anyAnswered) return results to emptyMap()
+        val at = SteadyClock.stamp(clock())
+        val returned = results.answers.flatMap { it.value }.filter { it.lineId in toAsk }.associateBy { it.lineId }
+        results.answeredIds.forEach { id ->
+            val answer = returned[id]?.let { Held.Verdict(at, it) } ?: Held.Omitted(at, unrecognized = id in results.unknown)
+            set(id, answer, ticket)
+        }
+        return results to returned
     }
 
     companion object {

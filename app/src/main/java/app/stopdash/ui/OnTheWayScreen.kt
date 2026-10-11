@@ -1128,7 +1128,7 @@ internal fun boardLineStatus(checks: RouteDisruption.LinesChecked?, lineId: Stri
     val status = checks?.takeIf { lineId in it.asked }?.statuses?.get(lineId)
     val asking = checks?.asking?.contains(lineId) == true
     val followed = checks != null && lineId in checks.following
-    if (status != null && followed && checkCurrent(checks?.at, now)) return BoardLineStatus(status, unknown = false, checking = false)
+    if (status != null && followed && checkCurrent(checks?.atOf(lineId), now)) return BoardLineStatus(status, unknown = false, checking = false)
     return BoardLineStatus(status, unknown = !asking, checking = asking)
 }
 

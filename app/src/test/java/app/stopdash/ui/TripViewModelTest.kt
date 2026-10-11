@@ -27,6 +27,7 @@ import app.stopdash.domain.LineSequence
 import app.stopdash.domain.PlacedStand
 import app.stopdash.domain.LineMap
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusCache
 import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.RideLines
 import app.stopdash.domain.RouteMiss
@@ -256,9 +257,12 @@ class TripViewModelTest {
         toIds: List<String> = listOf("C"),
         arrivals: ArrivalsCache = ArrivalsCache(),
         closures: StopClosureCache = StopClosureCache(),
+        sharedLines: LineStatusCache = LineStatusCache(),
+        lineStatusReuse: Duration = Duration.ZERO,
     ) = TripViewModel(
         planner, client, "A", toIds.map { TripDestination.Stop(it) },
         clock = { now }, plans = plans, io = dispatcher, arrivals = arrivals, closureCache = closures,
+        sharedLines = sharedLines, lineStatusReuse = lineStatusReuse,
     )
 
     // A ride, a walk between two named stations the Planner doesn't place, and a ride on.
@@ -321,6 +325,44 @@ class TripViewModelTest {
         } finally {
             // Cancel the model, let the worker finish what it holds, then drain what it handed back to
             // Main while this test's Main is still set.
+            store.clear()
+            executor.shutdown()
+            check(executor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS)) { "worker didn't stop" }
+            advanceUntilIdle()
+        }
+    }
+
+    // Codex on #776: the shared line answers are read and summed up on the worker, never the caller's thread.
+    @Test
+    fun `a trip's line statuses are worked out off the caller's thread`() = runTest(dispatcher) {
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }
+        val worker = executor.asCoroutineDispatcher()
+        val store = ViewModelStore()
+        try {
+            val threads = ThreadRecorder()
+            val shared = object : LineStatusCache() {
+                override fun get(lineId: String): Held? = super.get(lineId).also { threads.note() }
+            }
+            shared["red"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), LineStatus("red", 6, "Severe Delays"))
+            shared["blue"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), LineStatus("blue", LineStatus.GOOD_SERVICE, "Good Service"))
+            threads.clear()
+            val trip = ViewModelProvider.create(
+                store,
+                viewModelFactory {
+                    initializer {
+                        TripViewModel(
+                            FakePlanner(listOf(route)), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
+                            clock = { now }, plans = TripPlans(), io = worker, compute = worker,
+                            sharedLines = shared, lineStatusReuse = Duration.ofSeconds(90),
+                        )
+                    }
+                },
+            )[TripViewModel::class]
+            trip.refresh()
+            assertEquals("Severe Delays", trip.state.first { "red" in it.statuses }.statuses.getValue("red").description)
+            assertTrue(threads.threads().isNotEmpty())
+            assertEquals(setOf("worker"), threads.threads().toSet())
+        } finally {
             store.clear()
             executor.shutdown()
             check(executor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS)) { "worker didn't stop" }
@@ -3178,6 +3220,72 @@ class TripViewModelTest {
         assertEquals(setOf("red", "blue"), state.statuses.keys)
     }
 
+    // Shared with the other screens (SPEC *Freshness → Shared line status*): the trip's lines another
+    // screen checked moments ago are taken from those answers, not asked again; its own go back for them.
+    @Test
+    fun `the trip's lines another screen checked moments ago are taken, not asked again`() = runTest(dispatcher) {
+        val shared = LineStatusCache()
+        shared["red"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), LineStatus("red", 6, "Severe Delays"))
+        shared["blue"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), LineStatus("blue", LineStatus.GOOD_SERVICE, "Good Service"))
+        val client = FakeClient(mutableMapOf())
+        val trip = model(FakePlanner(listOf(route)), client, sharedLines = shared, lineStatusReuse = Duration.ofSeconds(90))
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(0, client.statusChecks)
+        assertEquals("Severe Delays", trip.state.value.statuses.getValue("red").description)
+        assertEquals(now.minusSeconds(10), trip.state.value.statusesAt.getValue("red"))
+    }
+
+    // Codex on #776: an answer another screen had before midnight is sorted for its own day, not today.
+    @Test
+    fun `a shared answer from before midnight keeps the day it was had`() = runTest(dispatcher) {
+        // Ten seconds past midnight in London (BST): the shared answers are from the day before.
+        now = Instant.parse("2026-09-25T23:00:10Z")
+        val shared = LineStatusCache()
+        shared["red"] = LineStatusCache.Held.Verdict(now.minusSeconds(20), LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service"))
+        shared["blue"] = LineStatusCache.Held.Verdict(now.minusSeconds(20), LineStatus("blue", LineStatus.GOOD_SERVICE, "Good Service"))
+        val trip = model(FakePlanner(listOf(route)), FakeClient(mutableMapOf()), sharedLines = shared, lineStatusReuse = Duration.ofSeconds(90))
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(java.time.LocalDate.parse("2026-09-25"), trip.state.value.statusesSortedOn)
+    }
+
+    // Codex on #776: a clock set forward across midnight since the answer was had doesn't carry it into today.
+    @Test
+    fun `a shared answer from before midnight keeps its day when the clock is set forward since`() = runTest(dispatcher) {
+        var offset = Duration.ZERO
+        SteadyClock.source = object : SteadyClock.Source {
+            override val frame: SteadyClock.Frame? = null
+            override fun offset(): Duration = offset
+        }
+        try {
+            // Had at 23:59:30 in London (BST), stamped then.
+            val had = Instant.parse("2026-09-25T22:59:30Z")
+            val shared = LineStatusCache()
+            shared["red"] = LineStatusCache.Held.Verdict(SteadyClock.stamp(had), LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service"))
+            shared["blue"] = LineStatusCache.Held.Verdict(SteadyClock.stamp(had), LineStatus("blue", LineStatus.GOOD_SERVICE, "Good Service"))
+            // The clock then set forward a minute: it reads 00:00:40, ten seconds of steady time on.
+            offset = Duration.ofSeconds(-60)
+            now = had.plusSeconds(70)
+            val trip = model(FakePlanner(listOf(route)), FakeClient(mutableMapOf()), sharedLines = shared, lineStatusReuse = Duration.ofSeconds(90))
+            trip.refresh()
+            advanceUntilIdle()
+            assertEquals(java.time.LocalDate.parse("2026-09-25"), trip.state.value.statusesSortedOn)
+        } finally {
+            SteadyClock.source = null
+        }
+    }
+
+    @Test
+    fun `the trip's line answers are left for the other screens`() = runTest(dispatcher) {
+        val shared = LineStatusCache()
+        val client = FakeClient(mutableMapOf()).apply { disruptedLines = setOf("red") }
+        val trip = model(FakePlanner(listOf(route)), client, sharedLines = shared, lineStatusReuse = Duration.ofSeconds(90))
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals("Severe Delays", (shared["red"] as LineStatusCache.Held.Verdict).status.description)
+    }
+
     @Test
     fun `reuses a plan for fifteen minutes, then plans again`() = runTest(dispatcher) {
         val planner = FakePlanner(listOf(route))
@@ -3544,6 +3652,38 @@ class TripViewModelTest {
         assertEquals(3, planner.calls)
         assertEquals(4, client.asked.size)
         assertFalse(next.pulling.value)
+    }
+
+    // Codex on #776: a carried pull keeps the stamp made when it came, so its line cutoff doesn't move
+    // with the clock: an answer had after that stamp stands, not asked again.
+    @Test
+    fun `a carried pull's line cutoff is the stamp made at the pull`() = runTest(dispatcher) {
+        val shared = LineStatusCache()
+        shared["red"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service"))
+        shared["blue"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), LineStatus("blue", LineStatus.GOOD_SERVICE, "Good Service"))
+        val client = FakeClient(mutableMapOf())
+        val trip = model(FakePlanner(listOf(route)), client, sharedLines = shared, lineStatusReuse = Duration.ofSeconds(90))
+        // Pulled 20 s ago by the wall clock, stamped then: both answers came after it.
+        trip.carryPull(TripViewModel.Pull(now, now.minusSeconds(20)))
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(0, client.statusChecks)
+    }
+
+    // Codex on #776: pulls are ordered by their stamps, so one after the clock was set back still counts.
+    @Test
+    fun `a later pull carried in counts even when the clock was set back between`() = runTest(dispatcher) {
+        val shared = LineStatusCache()
+        shared["red"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service"))
+        shared["blue"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), LineStatus("blue", LineStatus.GOOD_SERVICE, "Good Service"))
+        val client = FakeClient(mutableMapOf())
+        val trip = model(FakePlanner(listOf(route)), client, sharedLines = shared, lineStatusReuse = Duration.ofSeconds(90))
+        trip.carryPull(TripViewModel.Pull(now, now.minusSeconds(30)))
+        // The next pull came after both answers by the steady clock, though the wall clock reads earlier.
+        trip.carryPull(TripViewModel.Pull(now.minusSeconds(60), now.minusSeconds(5)))
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue(client.statusChecks > 0)
     }
 
     @Test

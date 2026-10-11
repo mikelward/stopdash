@@ -3,10 +3,9 @@ package app.stopdash.ui
 import app.stopdash.domain.Departure
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
-import app.stopdash.domain.LineStatusBatch
+import app.stopdash.domain.LineStatusCache
 import app.stopdash.domain.RideLines
 import app.stopdash.domain.Staleness
-import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StopClosureCache
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.TflException
@@ -19,8 +18,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -60,16 +57,16 @@ internal class RideLineChecks(
     private val sequence: suspend (String) -> LineSequence?,
     // The modes and lines the rider hides, an avoided line among them.
     private val hidden: () -> Set<String>,
+    // Lines' last status answers, shared with the other screens (the app passes [LineStatusCache.SHARED]),
+    // each taken within [lineStatusReuse]: a trip refreshes more often than a line's status changes, so
+    // one answer serves a few refreshes.
+    private val sharedLines: LineStatusCache = LineStatusCache(),
+    private val lineStatusReuse: Duration = STATUS_REUSE,
     private val clock: () -> Instant,
     private val io: CoroutineDispatcher,
     // Coarse facts only: an error kind, a count, never a stop or line the rider is going by.
     private val warn: (String) -> Unit,
 ) {
-    // Each line's status as last answered (null: TfL gave none) and when, by the steady clock: a trip
-    // refreshes more often than a line's status changes, so one answer serves a few refreshes.
-    private val statuses = HashMap<String, Pair<LineStatus?, Instant>>()
-    private val lock = Mutex()
-
     /**
      * The lines [ride] of [route] may be taken on now, given the [boards] read at its boarding stop, by
      * stop id: its own pole's, and those of its stop pair's other poles the trip read
@@ -117,24 +114,19 @@ internal class RideLineChecks(
         return RideLinesNow(running, routeUnread + hoped.map { it.lineId }.filterNot { it in offered })
     }
 
-    // [ids]' statuses, each reused for [STATUS_REUSE] and no longer; a line whose check failed is
-    // left out, its last answer with it once that's older: unknown, so not checked as running. A line
-    // TfL is down for isn't offered on an answer from before (Codex, PR #451). With them, the ids with
-    // no answer to go on (TfL saying it knows no status for a line is an answer).
-    private suspend fun statusesOf(ids: List<String>): Pair<Map<String, LineStatus>, Set<String>> = lock.withLock {
-        val now = clock()
-        val due = ids.filter { id -> statuses[id]?.let { (_, at) -> SteadyClock.age(at, now) >= STATUS_REUSE } ?: true }
-        if (due.isNotEmpty()) {
-            val results = LineStatusBatch.request(due) { chunk -> withContext(io) { client.lineStatuses(chunk) } }
-            results.failure?.let { warn("on the way: ride line status failed for ${results.failed.size} line(s): ${it::class.simpleName}") }
-            val stamp = SteadyClock.stamp(clock())
-            val answered = results.answers.flatMap { it.value }.associateBy { it.lineId }
-            results.answeredIds.forEach { id -> statuses[id] = answered[id] to stamp }
+    // [ids]' statuses, through the line answers every screen shares, each taken within
+    // [lineStatusReuse] and no longer; a line whose check failed is left out once its last answer is
+    // older: unknown, so not checked as running. A line TfL is down for isn't offered on an answer from
+    // before (Codex, PR #451). With them, the ids with no answer to go on (TfL saying it knows no status
+    // for a line is an answer).
+    private suspend fun statusesOf(ids: List<String>): Pair<Map<String, LineStatus>, Set<String>> {
+        // On [io], never the caller's (the main) thread: it walks the lines and the shared answers.
+        val (checked, unanswered) = withContext(io) {
+            val checked = sharedLines.check(ids, clock, lineStatusReuse) { chunk -> client.lineStatuses(chunk) }
+            checked to ids.filterTo(HashSet()) { it !in checked.answers }
         }
-        val at = clock()
-        val answered = ids.associateWith { id -> statuses[id]?.takeIf { (_, stamp) -> SteadyClock.age(stamp, at) < STATUS_REUSE } }
-        answered.mapNotNull { (id, answer) -> answer?.first?.let { id to it } }.toMap() to
-            answered.filterValues { it == null }.keys
+        checked.failure?.let { warn("on the way: ride line status failed for ${checked.failed.size} line(s): ${it::class.simpleName}") }
+        return checked.statuses to unanswered
     }
 
     // [line]'s route, or null without one; [unread] gains it when the read failed.
