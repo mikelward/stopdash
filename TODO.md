@@ -1344,6 +1344,24 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   which also moves the year in the About screen's Ordnance Survey statements.
               - [ ] **Check the index on a low-end device**: it reads in ~1 s and searches in ~20 ms on a
                   desktop JVM; a phone is slower. A binary format, or a prefix index, if either drags.
+              - [ ] **Decide how far the bundled places, streets and postcodes reach** (maintainer,
+                  2026-10-11): today a box around Greater London (Kingston, Watford, Enfield and
+                  Dartford are in; Reading, Brighton and the Thameslink ends aren't). One option is the
+                  alerts' **120 km from Charing Cross** (*Only in London*), so search reaches wherever
+                  alerts do. Postcodes counted in OS Code-Point Open; download sizes assume places and
+                  streets grow the same way, and the read time and memory grow by about the same factor:
+
+                  | Coverage | Postcodes | Download |
+                  |---|---|---|
+                  | Today's box | 213k | ~5 MB |
+                  | 60 km | 356k | ~8 MB |
+                  | 80 km | 436k | ~10 MB |
+                  | 100 km | 517k | ~12 MB |
+                  | 120 km | 596k | ~14 MB |
+                  | Only 10 km around Reading, Brighton, Bedford, Peterborough, Cambridge, Rainham, Luton, Horsham and Sevenoaks | +50k | ~6 MB |
+
+                  £0 either way (open data). The bundled bus stops stop near London's edge too, so a
+                  wider reach would want them widened with it.
               - [ ] **Nearer first**: rank equal matches by distance from the trip's start ("Tesco" finds
                   the nearest one), computed on the device.
               - [x] **Ship Foursquare's NOTICE file**: Overture's Foursquare places are Apache 2.0, so
