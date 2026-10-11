@@ -1853,6 +1853,9 @@ class MainActivity : ComponentActivity() {
                                                 // Restores an in-progress add/edit draft across process death.
                                                 savedState = createSavedStateHandle(),
                                                 warn = ::logStarWarning,
+                                                // A place or postcode outside London, from TfL
+                                                // (maintainer, 2026-10-11).
+                                                findOutside = stationFinder::searchPlaces,
                                             )
                                         }
                                     },
@@ -1910,6 +1913,7 @@ class MainActivity : ComponentActivity() {
                                     onQueryChange = favoritePlacesModel::onQueryChange,
                                     onPick = favoritePlacesModel::onPick,
                                     onPickPlace = favoritePlacesModel::onPickPlace,
+                                    onSearchOutside = favoritePlacesModel::searchOutside,
                                     onLabelChange = favoritePlacesModel::onLabelChange,
                                     onToggleDay = favoritePlacesModel::onToggleDay,
                                     onIconChange = favoritePlacesModel::onIconChange,
@@ -3943,6 +3947,10 @@ class MainActivity : ComponentActivity() {
                     // The bundled London places, streets and postcodes, to start a trip from one
                     // (maintainer, 2026-10-11): found on the device, never sent.
                     loadPlaceIndex = { PlaceIndexStore.load(appContext) },
+                    // A place outside London, asked of TfL only when the rider taps "Search outside
+                    // London", or for a complete postcode the bundle doesn't hold (maintainer, 2026-10-11).
+                    findOutside = stationFinder::searchPlaces,
+                    warn = ::logDepartureWarning,
                     recordOpen = { recents.add(it) },
                     // A place started from joins From…'s own Recent, as a station opened there does.
                     recordPlace = { recents.addPlace(it) },
@@ -4050,6 +4058,7 @@ class MainActivity : ComponentActivity() {
                 // A typed place started from is remembered under From…'s Recent (a chip isn't).
                 onPlacePicked = search::onPlaceOpened,
                 onRetryPlaces = search::refreshYours,
+                onSearchOutside = search::searchOutside,
                 // No long press to edit the places here: the places screen routes *to* a place, which
                 // From… can't show over its search (Codex on #558).
             )
@@ -4579,6 +4588,9 @@ class MainActivity : ComponentActivity() {
                         // The bundled London places, streets and postcodes, found on the device and never
                         // sent (dev-docs/PLACES.md).
                         loadPlaceIndex = { PlaceIndexStore.load(appContext) },
+                        // A place outside London, asked of TfL as From…'s is (maintainer, 2026-10-11).
+                        findOutside = stationFinder::searchPlaces,
+                        warn = ::logDepartureWarning,
                         recordOpen = { recents.add(it) },
                         // A place picked is remembered with the stops, where only To… lists it.
                         recordPlace = { recents.addPlace(it) },
@@ -4665,6 +4677,7 @@ class MainActivity : ComponentActivity() {
                 // Re-reads the saved places for the Retry when their read failed (offered only where the
                 // picker shows them).
                 onRetryPlaces = onOpenPlace?.let { { search.refreshYours() } },
+                onSearchOutside = search::searchOutside,
                 onEditPlaces = onEditPlaces,
                 fromStation = fromName,
                 // The destination search is kept (above): it's the start that changes.

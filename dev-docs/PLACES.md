@@ -12,10 +12,12 @@ app uses it.
   device: places, streets and postcodes, listed with the stops, each with its position.
 - London's **bus stops are bundled too** (the near-me list's `assets/stations/stops.tsv`, see *Bus
   stops* below).
-- **Search sends nothing to TfL** (maintainer, 2026-10-11): neither TfL's Journey Planner geocoder nor
-  its stop search is asked, from any search. An address with a house number is searched by its street.
-  What the bundle lacks (a house number, a stop or place newer than the app) isn't found until the next
-  update, and a postcode outside London isn't found at all.
+- **Search is on the device, London only** (maintainer, 2026-10-11): TfL's stop search is never asked,
+  and an address with a house number is searched by its street. A stop or place newer than the app
+  isn't found until the next update.
+- **Outside London, TfL's Journey Planner** (maintainer, 2026-10-11): a *Search outside London* row
+  asks it for the typed text when tapped, and a complete postcode the bundle doesn't hold is asked at
+  once. Its places list below the bundled rows (`OutsideLondon`).
 
 ### Before the index
 

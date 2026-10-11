@@ -15,6 +15,23 @@ object PlaceHits {
     /** How many geocoded places are kept after re-ranking, so they don't crowd out the stops. */
     const val DEFAULT_LIMIT = 8
 
+    // The box the bundled place index covers (`scripts/build_place_index.py`'s WEST, EAST, SOUTH,
+    // NORTH), so TfL's places outside London leave out what the bundle already lists.
+    const val BUNDLED_WEST = -0.51
+    const val BUNDLED_EAST = 0.34
+    const val BUNDLED_SOUTH = 51.28
+    const val BUNDLED_NORTH = 51.70
+
+    /**
+     * The [candidates] TfL found that lie outside the bundled index's box: what "Search outside London"
+     * lists (maintainer, 2026-10-11). One inside it is a place the bundle already offers (or, for an
+     * exact house number, its street), so listing it again under "Outside London" would mislabel it.
+     */
+    @androidx.annotation.WorkerThread
+    fun outsideBundle(candidates: List<PlaceCandidate>): List<PlaceCandidate> = candidates.filterNot {
+        it.coordinate.latitude in BUNDLED_SOUTH..BUNDLED_NORTH && it.coordinate.longitude in BUNDLED_WEST..BUNDLED_EAST
+    }
+
     // A house number, optionally a letter or a range ("50", "12a", "10-12", "10 – 12"), then a word:
     // an address.
     private const val NUMBER = """\d+[a-z]?(?:\s*[-‐‑‒–—]\s*\d+[a-z]?)?,?\s+"""
@@ -42,6 +59,7 @@ object PlaceHits {
      * a TODO tracks trying a better geocoder). A **postcode** query is kept in TfL's own order instead:
      * the resolved location's name needn't contain the digits, so name-matching would wrongly drop it.
      */
+    @androidx.annotation.WorkerThread
     fun rank(query: String, candidates: List<PlaceCandidate>, kind: PlaceKind, limit: Int = DEFAULT_LIMIT): List<PlaceHit> {
         val q = query.trim()
         if (q.isEmpty() || candidates.isEmpty()) return emptyList()

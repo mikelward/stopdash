@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import app.stopdash.domain.ChipLabel
 import app.stopdash.domain.BusStopIndex
 import app.stopdash.domain.Coordinates
+import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlaceIcon
@@ -502,23 +503,49 @@ class FavoritePlacesViewModelTest {
     }
 
     @Test
-    fun `a complete postcode the bundle doesn't hold says so, and a new query clears it`() = runTest {
+    fun `a complete postcode the bundle doesn't hold is looked up with TfL, and a new query clears it`() = runTest {
+        val asked = mutableListOf<String>()
         val model = FavoritePlacesViewModel(
             FakeStore(), FakeFinder(),
             loadPlaceIndex = { placeIndex("C\tX1 9XX\t\t51.52000\t-0.11000\t4") },
             io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
+            findOutside = { asked += it; listOf(PlaceCandidate("X2 9XX", Coordinates(52.0, -0.5))) },
         )
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
-        // Outside the bundle (outside London): nothing is sent anywhere to look it up.
+        // Outside the bundle (outside London): asked of TfL, and offered to pick rather than adopted.
         model.onQueryChange("X2 9XX")
         advanceUntilIdle()
+        assertEquals(listOf("X2 9XX"), asked)
         val editor = model.state.value.editor!!
-        assertTrue(editor.postcodeNoResults)
+        val found = editor.outside as OutsideLondon.Found
         assertNull(editor.coordinate)
+        model.onPickPlace(found.places.single())
+        assertEquals(Coordinates(52.0, -0.5), model.state.value.editor!!.coordinate)
+        assertEquals(OutsideLondon.Hidden, model.state.value.editor!!.outside)
         model.onQueryChange("X2")
         advanceUntilIdle()
-        assertFalse(model.state.value.editor!!.postcodeNoResults)
+        assertEquals(OutsideLondon.Hidden, model.state.value.editor!!.outside)
+    }
+
+    @Test
+    fun `a place the bundle lacks is offered outside London, asked only when tapped`() = runTest {
+        val asked = mutableListOf<String>()
+        val model = FavoritePlacesViewModel(
+            FakeStore(), FakeFinder(),
+            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
+            findOutside = { asked += it; throw TflException.Unreachable("test", null) },
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        model.onQueryChange("Zeta Town")
+        advanceUntilIdle()
+        assertEquals(OutsideLondon.Offered, model.state.value.editor!!.outside)
+        assertTrue(asked.isEmpty())
+        model.searchOutside()
+        advanceUntilIdle()
+        assertEquals(listOf("Zeta Town"), asked)
+        assertEquals(OutsideLondon.Failed, model.state.value.editor!!.outside)
     }
 
     @Test

@@ -9,7 +9,9 @@ import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FixedLocation
 import app.stopdash.domain.PlaceHit
 import app.stopdash.domain.PlaceHits
+import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.PlaceIndex
+import app.stopdash.domain.PlaceKind
 import app.stopdash.domain.SearchEntry
 import app.stopdash.domain.SearchResults
 import app.stopdash.domain.StationFinder
@@ -39,6 +41,21 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+
+/**
+ * Places outside London, asked of TfL (maintainer, 2026-10-11): the bundle covers London only. A
+ * complete postcode the bundle doesn't hold is asked at once; anything else waits for a tap on
+ * "Search outside London", so no other text typed leaves the phone unless the rider asks.
+ */
+sealed interface OutsideLondon {
+    /** Not offered: no search finished yet, or this picker can't route to a place. */
+    data object Hidden : OutsideLondon
+    data object Offered : OutsideLondon
+    data object Searching : OutsideLondon
+    data class Found(val places: List<PlaceHit>) : OutsideLondon
+    data object NoMatches : OutsideLondon
+    data object Failed : OutsideLondon
+}
 
 /**
  * "Find a station" search (SPEC *Finding stops*): the typed [State.query] and the bundled stations,
@@ -75,6 +92,12 @@ class StationSearchViewModel(
     // London's bus stops, bundled, searched on the device with the stations. Empty by default, which
     // finds no bus stop. Read off the main thread, once.
     loadBusStops: suspend () -> BusStopIndex = { BusStopIndex.EMPTY },
+    // Looks a place or postcode up with TfL's Journey Planner, for what the bundle can't hold: a place
+    // outside London (maintainer, 2026-10-11). Sends only the typed text. Null, the default, offers no
+    // such search; only a picker that routes to or from a place passes one.
+    private val findOutside: (suspend (String) -> List<PlaceCandidate>)? = null,
+    // Notes an outside-London lookup that failed, in the debug log; never the query.
+    private val warn: (String) -> Unit = {},
     // Remembers a station opened from the search, for the recent list; blocking, run on [io].
     private val recordOpen: suspend (StationMatch) -> Unit = {},
     // Remembers a geocoded place picked from a To… search, in the same recent list; blocking, run on
@@ -115,7 +138,10 @@ class StationSearchViewModel(
         // are none (SPEC principle 2). A discarded corrupt file reads as genuinely empty, not failed.
         val favoritePlacesFailed: Boolean = false,
         val yoursRead: Boolean = false,
+        // TfL's places for the query, listed under the bundled rows ([OutsideLondon]).
+        val outside: OutsideLondon = OutsideLondon.Hidden,
     )
+
 
     sealed interface Result {
         /** Nothing searched yet: the query is too short. */
@@ -143,6 +169,9 @@ class StationSearchViewModel(
     val state: StateFlow<State> = _state.asStateFlow()
 
     private var search: Job? = null
+
+    // The TfL lookup for places outside London, cancelled with each new query.
+    private var outsideSearch: Job? = null
 
     // Taken by each recent-list write in turn ([record]).
     private val recording = Mutex()
@@ -190,6 +219,7 @@ class StationSearchViewModel(
      */
     fun clear() {
         search?.cancel()
+        outsideSearch?.cancel()
         savedState.remove<String>(KEY_QUERY)
         savedState.remove<String>(KEY_PENDING_REMOVAL)
         entriesFor = null
@@ -410,15 +440,16 @@ class StationSearchViewModel(
 
     private fun start(query: String) {
         search?.cancel()
+        outsideSearch?.cancel()
         val trimmed = query.trim()
         if (trimmed.length < MIN_QUERY_LENGTH) {
-            _state.update { it.copy(result = Result.Idle, searching = false) }
+            _state.update { it.copy(result = Result.Idle, searching = false, outside = OutsideLondon.Hidden) }
             return
         }
         // Marked searching at once: the matches on screen are the previous query's until the new
         // answer lands, and the progress bar says so rather than letting them read as the answer to
         // what's now typed.
-        _state.update { it.copy(searching = true) }
+        _state.update { it.copy(searching = true, outside = OutsideLondon.Hidden) }
         search = viewModelScope.launch {
             // Everything is searched on the device (maintainer, 2026-10-11): the bundled stations, bus
             // stops and places, with nothing sent. The rows on screen for this query only ever grow: a
@@ -498,9 +529,57 @@ class StationSearchViewModel(
                 if (entries.isEmpty()) Result.NoMatches else Result.Matches(stopsShown, places = listed, entries = entries)
             }
             _state.update { it.copy(result = result, searching = false) }
+            offerOutside(trimmed, places)
             // The user's stops were read again meanwhile (a match opened mid-search): rank with that.
             if (yours !== read) rerank()
         }
+    }
+
+    // Once the bundle has answered [query]: a complete postcode it doesn't hold ([bundled] has no exact
+    // match) is asked of TfL at once, as it's outside London; anything else is
+    // offered as a "Search outside London" row, asked only when tapped.
+    private suspend fun offerOutside(query: String, bundled: List<PlaceHit>) {
+        val find = findOutside ?: return
+        // Classified on [compute]: the query is the rider's, of any length (AGENTS.md *Main thread*).
+        val unheldPostcode = withContext(compute) {
+            UkPostcode.isComplete(query) && bundled.none {
+                it.kind == PlaceKind.POSTCODE && UkPostcode.normalize(it.name) == UkPostcode.normalize(query)
+            }
+        }
+        if (unheldPostcode) {
+            outsideSearch = viewModelScope.launch { lookOutside(query, find) }
+        } else {
+            _state.update { it.copy(outside = OutsideLondon.Offered) }
+        }
+    }
+
+    /** Ask TfL for places outside London matching what's typed: "Search outside London", or its Retry. */
+    fun searchOutside() {
+        val find = findOutside ?: return
+        val typed = _state.value.query
+        outsideSearch?.cancel()
+        outsideSearch = viewModelScope.launch {
+            val query = withContext(compute) { typed.trim() }
+            if (query.length >= MIN_QUERY_LENGTH) lookOutside(query, find)
+        }
+    }
+
+    // Run in [outsideSearch], which a new query cancels, so what it publishes is always this query's.
+    private suspend fun lookOutside(query: String, find: suspend (String) -> List<PlaceCandidate>) {
+        _state.update { it.copy(outside = OutsideLondon.Searching) }
+        val outcome = try {
+            val candidates = withContext(io) { find(query) }
+            withContext(compute) {
+                val kind = if (UkPostcode.isComplete(query)) PlaceKind.POSTCODE else PlaceKind.PLACE
+                val places = PlaceHits.rank(query, PlaceHits.outsideBundle(candidates), kind)
+                if (places.isEmpty()) OutsideLondon.NoMatches else OutsideLondon.Found(places)
+            }
+        } catch (e: TflException) {
+            // Said on the row, with a Retry; the bundled rows above are untouched.
+            warn("search outside London failed: ${e.javaClass.simpleName}")
+            OutsideLondon.Failed
+        }
+        _state.update { it.copy(outside = outcome) }
     }
 
     // The places among [entries], in the order shown; called on [compute].

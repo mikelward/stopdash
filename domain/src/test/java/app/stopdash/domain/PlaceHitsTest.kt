@@ -84,4 +84,23 @@ class PlaceHitsTest {
         assertEquals("Euston Road", PlaceHits.withoutHouseNumber("Euston Road"))
         assertEquals("SW1A 1AA", PlaceHits.withoutHouseNumber("SW1A 1AA"))
     }
+
+    @Test
+    fun `places outside London leave out what lies in the bundled index's box`() {
+        // A hub inside London (King's Cross) and a synthetic place well outside it.
+        val inside = PlaceCandidate("King's Cross", Coordinates(51.5308, -0.1238))
+        val outside = PlaceCandidate("Zeta Town", Coordinates(52.0, -0.5))
+        assertEquals(listOf(outside), PlaceHits.outsideBundle(listOf(inside, outside)))
+    }
+
+    @Test
+    fun `the bundled box matches the place index builder's`() {
+        val script = listOf(java.io.File("../scripts/build_place_index.py"), java.io.File("scripts/build_place_index.py")).first { it.exists() }
+        val line = script.readLines().single { it.startsWith("WEST, EAST, SOUTH, NORTH = ") }
+        val bounds = line.substringAfter("= ").split(",").map { it.trim().toDouble() }
+        assertEquals(
+            listOf(PlaceHits.BUNDLED_WEST, PlaceHits.BUNDLED_EAST, PlaceHits.BUNDLED_SOUTH, PlaceHits.BUNDLED_NORTH),
+            bounds,
+        )
+    }
 }

@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -142,6 +143,9 @@ fun StationSearchScreen(
     onAskRemoveRecent: ((SearchEntry) -> Unit)? = null,
     onCancelRemoveRecent: () -> Unit = {},
     onRemoveRecent: (SearchEntry) -> Unit = {},
+    // "Search outside London", and its Retry: asks TfL for the typed place
+    // ([StationSearchViewModel.searchOutside]). Shown only where a place can be routed to or started from.
+    onSearchOutside: () -> Unit = {},
 ) {
     BackHandler(onBack = onBack)
     val focus = remember { FocusRequester() }
@@ -273,7 +277,21 @@ fun StationSearchScreen(
                         )
                     else -> Message(stringResource(R.string.station_search_prompt))
                 }
-                StationSearchViewModel.Result.NoMatches -> Message(stringResource(R.string.station_search_no_matches))
+                StationSearchViewModel.Result.NoMatches -> {
+                    val onPlace = onOpenPlace ?: onStartFromPlace
+                    if (onPlace == null || state.outside == OutsideLondon.Hidden) {
+                        Message(stringResource(R.string.station_search_no_matches))
+                    } else {
+                        // Nothing in London, but the place may be outside it: offer TfL's search below.
+                        LazyColumn(modifier = Modifier.fillMaxSize().testTag("stationSearchMatches")) {
+                            // Said until TfL lists places outside London, which then are the matches.
+                            if (state.outside !is OutsideLondon.Found) {
+                                item(key = "no-matches") { Message(stringResource(R.string.station_search_no_matches)) }
+                            }
+                            outsideLondon(state.outside, onSearchOutside) { openPlaceHit(it, onPlacePicked, onPlace) }
+                        }
+                    }
+                }
                 is StationSearchViewModel.Result.Matches -> {
                     // A new query's matches start at the top, best match first, not where the last
                     // query's list was scrolled to.
@@ -311,6 +329,10 @@ fun StationSearchScreen(
                                     CircularProgressIndicator(modifier = Modifier.size(24.dp).testTag(SEARCH_LOADING_MORE_TAG))
                                 }
                             }
+                        }
+                        // TfL's places outside London, below everything bundled, so no row above moves.
+                        if (onPlace != null) {
+                            outsideLondon(state.outside, onSearchOutside) { openPlaceHit(it, onPlacePicked, onPlace) }
                         }
                     }
                 }
@@ -507,6 +529,96 @@ private fun PlacesError(onRetry: (() -> Unit)?) {
         if (onRetry != null) {
             TextButton(onClick = onRetry) { Text(stringResource(R.string.route_stops_retry)) }
         }
+    }
+}
+
+/**
+ * Places outside London, from TfL (maintainer, 2026-10-11), below everything bundled so no row above
+ * moves: "Search outside London" until asked, then what TfL found under an "Outside London" heading, a
+ * row each, or why there's nothing, with a Retry.
+ */
+internal fun LazyListScope.outsideLondon(
+    outside: OutsideLondon,
+    onSearch: () -> Unit,
+    onPick: (PlaceHit) -> Unit,
+) {
+    when (outside) {
+        OutsideLondon.Hidden -> Unit
+        OutsideLondon.Offered -> item(key = "outside-offer") { OutsideOfferRow(onSearch) }
+        else -> {
+            item(key = "outside-heading") { SectionHeading(stringResource(R.string.station_search_outside_heading)) }
+            when (outside) {
+                is OutsideLondon.Found -> items(outside.places, key = { "outside-${it.name}-${it.coordinate}" }) { hit ->
+                    PlaceHitRow(hit, onClick = { onPick(hit) })
+                    HorizontalDivider()
+                }
+                else -> item(key = "outside-status") { OutsideStatusRow(outside, onSearch) }
+            }
+        }
+    }
+}
+
+/** [outsideLondon] for a screen that isn't a lazy list (the favorite place editor). */
+@Composable
+internal fun OutsideLondonRows(
+    outside: OutsideLondon,
+    onSearch: () -> Unit,
+    onPick: (PlaceHit) -> Unit,
+) {
+    when (outside) {
+        OutsideLondon.Hidden -> Unit
+        OutsideLondon.Offered -> OutsideOfferRow(onSearch)
+        else -> Column(modifier = Modifier.fillMaxWidth()) {
+            SectionHeading(stringResource(R.string.station_search_outside_heading))
+            if (outside is OutsideLondon.Found) {
+                outside.places.forEach { hit ->
+                    PlaceHitRow(hit, onClick = { onPick(hit) })
+                    HorizontalDivider()
+                }
+            } else {
+                OutsideStatusRow(outside, onSearch)
+            }
+        }
+    }
+}
+
+@Composable
+private fun OutsideOfferRow(onSearch: () -> Unit) {
+    Text(
+        stringResource(R.string.station_search_outside_search),
+        style = MaterialTheme.typography.bodyLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clickable(onClick = onSearch)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .testTag(SEARCH_OUTSIDE_TAG),
+    )
+    HorizontalDivider()
+}
+
+// Searching, nothing found, or failed with a Retry; nothing for the other states.
+@Composable
+private fun OutsideStatusRow(outside: OutsideLondon, onSearch: () -> Unit) {
+    when (outside) {
+        OutsideLondon.Searching -> Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+        }
+        OutsideLondon.NoMatches -> Message(stringResource(R.string.station_search_outside_none))
+        OutsideLondon.Failed -> Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                stringResource(R.string.station_search_outside_failed),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onSearch) { Text(stringResource(R.string.route_stops_retry)) }
+        }
+        else -> Unit
     }
 }
 
@@ -766,3 +878,4 @@ fun StationPlaceholderScreen(
 
 /** The spinner under the listed matches while more answers are on their way. */
 internal const val SEARCH_LOADING_MORE_TAG = "searchLoadingMore"
+internal const val SEARCH_OUTSIDE_TAG = "searchOutsideLondon"

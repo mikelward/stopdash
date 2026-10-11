@@ -12,6 +12,7 @@ import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FavoritePlacesStore
 import app.stopdash.domain.FixedLocation
+import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.PlaceHit
 import app.stopdash.domain.PlaceHits
 import app.stopdash.domain.PlaceIndex
@@ -51,7 +52,8 @@ import kotlinx.coroutines.withContext
  * carry no position at all can't anchor a place and stays unselectable (SPEC D9). Editing a place keeps
  * its saved coordinate until the user picks a new location. A complete **postcode** the user types is
  * adopted from the bundled postcodes (SPEC D9), with nothing sent; one the bundle doesn't hold (outside
- * London) is said not to be found.
+ * London) is looked up with TfL, and any other place outside London only when the rider taps "Search
+ * outside London" ([OutsideLondon]).
  *
  * The editor's draft (kind, label and picked coordinate) is mirrored into [SavedStateHandle], so a
  * process death while adding/editing restores the in-progress place rather than dropping it. The typed
@@ -82,6 +84,9 @@ class FavoritePlacesViewModel(
     // A fresh id for a newly-added place; overridable so tests get stable ids.
     private val newId: () -> String = { UUID.randomUUID().toString() },
     private val warn: (String) -> Unit = {},
+    // Looks a place or postcode up with TfL's Journey Planner, for one outside London (maintainer,
+    // 2026-10-11): only the typed text is sent. Null offers no such search.
+    private val findOutside: (suspend (String) -> List<PlaceCandidate>)? = null,
 ) : ViewModel() {
 
     data class State(
@@ -136,9 +141,8 @@ class FavoritePlacesViewModel(
         // unresolvable — the row says so and stays tappable to retry, rather than presenting a temporary
         // outage as "no location". Reset per search. Codex.
         val resolveFailedIds: Set<String> = emptySet(),
-        // A complete postcode the bundle doesn't hold (outside London): the row says so. Reset when the
-        // query changes.
-        val postcodeNoResults: Boolean = false,
+        // TfL's places outside London for the query, below the bundled ones; reset when the query changes.
+        val outside: OutsideLondon = OutsideLondon.Hidden,
         // The days this place is offered as a route chip on the near-me list; every day for a new place.
         val showOnDays: Set<DayOfWeek> = FavoritePlace.EVERY_DAY,
         // The place's icon, or null for none, and what its chip shows (null: the default).
@@ -158,6 +162,7 @@ class FavoritePlacesViewModel(
     private var search: Job? = null
     private var resolve: Job? = null
     private var postcode: Job? = null
+    private var outside: Job? = null
 
     // Bumped whenever the editor is opened, replaced or closed, so an in-flight save can tell whether
     // the editor it started for is still the one on screen (see [commit]). Not changed by field edits
@@ -304,12 +309,13 @@ class FavoritePlacesViewModel(
         // postcode lookup belongs to the old text, so drop it too.
         resolve?.cancel()
         postcode?.cancel()
+        outside?.cancel()
         updateEditor {
             it.copy(
                 query = query, coordinate = null, placeName = null, resolvingId = null, places = emptyList(),
                 // The rider is searching for another place: a restore no longer goes back to the stop.
                 pendingStop = null,
-                postcodeNoResults = false,
+                outside = OutsideLondon.Hidden,
             )
         }
         // A postcode-shaped query lists the bundled postcodes it starts, not stops (SPEC D9). The **digit**
@@ -407,8 +413,8 @@ class FavoritePlacesViewModel(
 
     /**
      * Adopt the bundled postcode [query] names, after the typing pause (SPEC D9). The bundle holds every
-     * London postcode at its center, and nothing is sent to TfL (maintainer, 2026-10-11); a postcode it
-     * doesn't hold (outside London) is said not to be found.
+     * London postcode at its center, and nothing is sent to TfL for one; a postcode it doesn't hold
+     * (outside London) is looked up with TfL (maintainer, 2026-10-11).
      */
     private fun startPostcodeResolve(query: String) {
         if (savingNow()) return
@@ -424,7 +430,7 @@ class FavoritePlacesViewModel(
             if (bundled != null) {
                 adoptLocation(bundled.name, bundled.coordinate)
             } else {
-                updateEditor { it.copy(postcodeNoResults = true) }
+                searchOutside()
             }
         }
     }
@@ -440,6 +446,7 @@ class FavoritePlacesViewModel(
         search?.cancel()
         resolve?.cancel()
         postcode?.cancel()
+        outside?.cancel()
         updateEditor {
             // Fill the label from the stop only when it's blank or was itself auto-filled by an earlier
             // pick — so repicking after changing the query updates the name too, but a user-typed label
@@ -456,7 +463,7 @@ class FavoritePlacesViewModel(
                 places = emptyList(),
                 searching = false,
                 resolvingId = null,
-                postcodeNoResults = false,
+                outside = OutsideLondon.Hidden,
             )
         }
     }
@@ -591,8 +598,46 @@ class FavoritePlacesViewModel(
             _state.update {
                 // Guard against a result landing after the editor closed or moved on.
                 val editor = it.editor?.takeIf { e -> e.query.trim() == trimmed } ?: return@update it
-                it.copy(editor = editor.copy(searching = false, results = merged))
+                // Anything the bundle missed may be outside London: offered, asked only when tapped.
+                val offer = if (findOutside != null && editor.outside == OutsideLondon.Hidden) OutsideLondon.Offered else editor.outside
+                it.copy(editor = editor.copy(searching = false, results = merged, outside = offer))
             }
+        }
+    }
+
+    /**
+     * Ask TfL for places outside London matching what's typed: "Search outside London", its Retry, or a
+     * complete postcode the bundle doesn't hold. Picked with [onPickPlace], as a bundled place is.
+     */
+    fun searchOutside() {
+        if (savingNow()) return
+        val typed = _state.value.editor?.query ?: return
+        val find = findOutside
+        outside?.cancel()
+        // A new query, a pick or another editor cancels this, so what it publishes is this query's.
+        outside = viewModelScope.launch {
+            // Trimmed and classified on [compute]: the query is the rider's, of any length (AGENTS.md
+            // *Main thread*).
+            val query = withContext(compute) { typed.trim() }
+            if (query.length < MIN_QUERY_LENGTH) return@launch
+            if (find == null) {
+                updateEditor { it.copy(outside = OutsideLondon.NoMatches) }
+                return@launch
+            }
+            updateEditor { it.copy(outside = OutsideLondon.Searching) }
+            val outcome = try {
+                val candidates = withContext(io) { find(query) }
+                withContext(compute) {
+                    val kind = if (UkPostcode.isComplete(query)) PlaceKind.POSTCODE else PlaceKind.PLACE
+                    val places = PlaceHits.rank(query, PlaceHits.outsideBundle(candidates), kind)
+                    if (places.isEmpty()) OutsideLondon.NoMatches else OutsideLondon.Found(places)
+                }
+            } catch (e: TflException) {
+                // Said on the row, with a Retry; the bundled rows above are untouched.
+                warn("favorite place search outside London failed: ${e.javaClass.simpleName}")
+                OutsideLondon.Failed
+            }
+            updateEditor { it.copy(outside = outcome) }
         }
     }
 
@@ -600,6 +645,8 @@ class FavoritePlacesViewModel(
 
     private fun setEditor(editor: Editor?) {
         editorEpoch++
+        // A lookup outside London belongs to the editor it started in.
+        outside?.cancel()
         _state.update { it.copy(editor = editor) }
         persistEditor(editor)
     }

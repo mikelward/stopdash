@@ -82,6 +82,8 @@ fun FavoritePlacesScreen(
     onQueryChange: (String) -> Unit,
     onPick: (StationMatch) -> Unit,
     onPickPlace: (PlaceHit) -> Unit = {},
+    // "Search outside London", and its Retry ([FavoritePlacesViewModel.searchOutside]).
+    onSearchOutside: () -> Unit = {},
     onLabelChange: (String) -> Unit,
     onToggleDay: (DayOfWeek) -> Unit = {},
     onIconChange: (String) -> Unit = {},
@@ -160,6 +162,7 @@ fun FavoritePlacesScreen(
                         onQueryChange = onQueryChange,
                         onPick = onPick,
                         onPickPlace = onPickPlace,
+                        onSearchOutside = onSearchOutside,
                         onLabelChange = onLabelChange,
                         onToggleDay = onToggleDay,
                         onIconChange = onIconChange,
@@ -330,6 +333,7 @@ private fun PlaceEditor(
     onQueryChange: (String) -> Unit,
     onPick: (StationMatch) -> Unit,
     onPickPlace: (PlaceHit) -> Unit,
+    onSearchOutside: () -> Unit,
     onLabelChange: (String) -> Unit,
     onToggleDay: (DayOfWeek) -> Unit,
     onIconChange: (String) -> Unit,
@@ -348,13 +352,11 @@ private fun PlaceEditor(
         )
         Spacer(modifier = Modifier.height(8.dp))
         // When the text looks like a postcode, say so (a station name search would never match one).
-        // Shown above the bundled postcodes it starts (SPEC D9).
+        // Shown above the bundled postcodes it starts (SPEC D9), until TfL is asked for one the bundle
+        // doesn't hold, which then answers below.
         val showingPostcode = editor.coordinate == null && UkPostcode.looksLikePartial(editor.query)
-        if (showingPostcode) {
-            PostcodeSection(
-                query = editor.query,
-                editor = editor,
-            )
+        if (showingPostcode && editor.outside == OutsideLondon.Hidden) {
+            PostcodeSection(query = editor.query)
             Spacer(modifier = Modifier.height(8.dp))
         }
         when {
@@ -377,7 +379,8 @@ private fun PlaceEditor(
             // The postcode section is the answer for a postcode-shaped query, so don't also say the
             // station search found "no matches" beneath it (Codex).
             editor.query.trim().length >= FavoritePlacesViewModel.MIN_QUERY_LENGTH &&
-                editor.results.isEmpty() && editor.places.isEmpty() && !showingPostcode -> Text(
+                editor.results.isEmpty() && editor.places.isEmpty() && !showingPostcode &&
+                editor.outside !is OutsideLondon.Found -> Text(
                 text = stringResource(R.string.station_search_no_matches),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -406,6 +409,8 @@ private fun PlaceEditor(
             PlaceHitRow(place, onClick = { onPickPlace(place) })
         }
         editor.results.subList(placesAfter, editor.results.size).forEach { matchRow(it) }
+        // TfL's places outside London, below everything bundled (maintainer, 2026-10-11).
+        if (editor.coordinate == null) OutsideLondonRows(editor.outside, onSearchOutside, onPickPlace)
         Spacer(modifier = Modifier.height(8.dp))
         OutlinedTextField(
             value = editor.label,
@@ -587,31 +592,19 @@ private fun WriteErrorRow(onDismiss: () -> Unit) {
 }
 
 /**
- * What the editor shows for a postcode-shaped query (SPEC D9): a passive hint while it's still partial
- * (a complete one in the bundle is adopted straight away), or "not found" for one the bundle doesn't
- * hold.
+ * What the editor shows for a postcode-shaped query (SPEC D9): a passive hint that a postcode was
+ * recognized. A complete one in the bundle is adopted straight away; one it doesn't hold is asked of
+ * TfL, whose answer replaces this ([OutsideLondonRows]).
  */
 @Composable
-private fun PostcodeSection(
-    query: String,
-    editor: FavoritePlacesViewModel.Editor,
-) {
+private fun PostcodeSection(query: String) {
     val code = UkPostcode.format(query) ?: query.trim().uppercase()
-    when {
-        editor.postcodeNoResults -> Text(
-            text = stringResource(R.string.favorite_places_postcode_none, code),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("postcodeNone"),
-        )
-        // Still partial: a passive hint that a postcode was recognized; a complete one is adopted.
-        else -> Text(
-            text = stringResource(R.string.favorite_places_postcode_partial, code),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("postcodeRow"),
-        )
-    }
+    Text(
+        text = stringResource(R.string.favorite_places_postcode_partial, code),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("postcodeRow"),
+    )
 }
 
 @Composable
