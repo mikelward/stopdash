@@ -200,6 +200,7 @@ import app.stopdash.data.RejectedApiKey
 import app.stopdash.data.RouteTopologyStore
 import app.stopdash.data.SharedTflRateLimiter
 import app.stopdash.data.SharedTflRequestPool
+import app.stopdash.data.PlaceIndexStore
 import app.stopdash.data.StationIndexStore
 import app.stopdash.data.StepFreeSetting
 import app.stopdash.data.SummaryNetworksSetting
@@ -4554,6 +4555,9 @@ class MainActivity : ComponentActivity() {
                         // station, which both route to a place), whichever trip made this shared model first.
                         loadPlaces = { loadFavoritePlaces(appContext) },
                         searchPlaces = stationFinder::searchPlaces,
+                        // The bundled London places, streets and postcodes, found on the device; TfL's
+                        // geocoder above is asked only when they find nothing (dev-docs/PLACES.md).
+                        loadPlaceIndex = { PlaceIndexStore.load(appContext) },
                         recordOpen = { recents.add(it) },
                         // A geocoded place picked is remembered with the stops, where only To… lists it.
                         recordPlace = { recents.addPlace(it) },

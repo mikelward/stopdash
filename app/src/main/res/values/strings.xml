@@ -429,8 +429,8 @@
     <string name="line_stop_open_line">Open %1$s</string>
     <string name="line_stop_favorite">Add to favorite places</string>
     <!-- Placeholder in the destination search opened by "To…", beside its "To" label; it finds
-         geocoded places too. -->
-    <string name="station_search_to_hint">Station, stop or place</string>
+         places, streets and postcodes too. -->
+    <string name="station_search_to_hint">Station, stop, place or postcode</string>
     <!-- The To… search's bar labels its two rows (maintainer, 2026-09-28): where the trip starts over
          where it goes. -->
     <string name="trip_ends_from">From</string>
@@ -578,8 +578,9 @@
     <string name="station_search_remove_recent_failed">Couldn\'t remove that from Recent</string>
     <!-- Atop the To… search when the saved places couldn't be read, with a Retry. -->
     <string name="station_search_places_error">Couldn\'t load your places</string>
-    <!-- Right-column tag on a geocoded To… result, telling a place/postcode apart from a stop. -->
+    <!-- Right-column tag on a To… place result, telling a place/street/postcode apart from a stop. -->
     <string name="station_search_kind_place">Place</string>
+    <string name="station_search_kind_street">Street</string>
     <string name="station_search_kind_postcode">Postcode</string>
     <!-- Under the station matches when TfL's search (which covers bus stops) failed. -->
     <string name="station_search_bus_stops_missing">Bus stops not searched</string>
@@ -898,8 +899,10 @@
     <string name="menu_about">About</string>
     <string name="about_title">About</string>
     <string name="settings_version">Version %1$s</string>
-    <!-- Where the times and stops come from. NaPTAN's licence (OGL v3) asks for this statement. -->
-    <string name="about_data_sources">Live times from TfL and National Rail. Contains public sector information licensed under the Open Government Licence v3.0.</string>
+    <!-- Where the times, stops and places come from. NaPTAN's licence (OGL v3) asks for the first
+         statement; Overture Maps and OpenStreetMap (ODbL) for the credit on places; OS Code-Point Open,
+         behind the postcodes, for its three statements word for word. -->
+    <string name="about_data_sources">Live times from TfL and National Rail. Places from the Overture Maps Foundation and © OpenStreetMap contributors (streets under the ODbL), including Foursquare data © 2025 Foursquare Labs, Inc. under Apache 2.0, changed to fit the app\'s place list. Contains public sector information licensed under the Open Government Licence v3.0. Contains Ordnance Survey data © Crown copyright and database right 2026. Contains Royal Mail data © Royal Mail copyright and database right 2026. Contains National Statistics data © Crown copyright and database right 2026.</string>
     <string name="settings_licenses_title">Open source licenses</string>
     <string name="settings_licenses_authors">By %1$s</string>
     <string name="action_back">Back</string>

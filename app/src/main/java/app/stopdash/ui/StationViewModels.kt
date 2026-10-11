@@ -9,6 +9,7 @@ import app.stopdash.domain.FixedLocation
 import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.PlaceHit
 import app.stopdash.domain.PlaceHits
+import app.stopdash.domain.PlaceIndex
 import app.stopdash.domain.PlaceKind
 import app.stopdash.domain.SearchEntry
 import app.stopdash.domain.SearchResults
@@ -30,6 +31,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -76,6 +78,11 @@ class StationSearchViewModel(
     // supplies it — the default searches no places — and it's additive: a geocode failure yields none
     // and the stops still stand.
     private val searchPlaces: suspend (String) -> List<PlaceCandidate> = { emptyList() },
+    // The bundled London place index (dev-docs/PLACES.md): places, streets and postcodes found on the
+    // device as the rider types, with nothing sent. Only a To… picker supplies it — the default finds
+    // none. When it finds something, TfL's geocoder ([searchPlaces]) isn't asked; it stays for what
+    // the bundle can't find (an address with a house number). Read off the main thread, once.
+    loadPlaceIndex: suspend () -> PlaceIndex = { PlaceIndex.EMPTY },
     // Remembers a station opened from the search, for the recent list; blocking, run on [io].
     private val recordOpen: suspend (StationMatch) -> Unit = {},
     // Remembers a geocoded place picked from a To… search, in the same recent list; blocking, run on
@@ -171,6 +178,9 @@ class StationSearchViewModel(
 
     // Loaded once, on first use, so opening the search never waits on the asset read.
     private val index = viewModelScope.async(io, start = CoroutineStart.LAZY) { loadIndex() }
+
+    // Started at once (it takes a moment to read), so it's usually ready by the first letter typed.
+    private val placeIndex = viewModelScope.async(io) { loadPlaceIndex() }
 
     // Which read is the latest: an older one that lands after a newer one started is ignored, so a
     // star changed between the two can't be overwritten by the stale list. Declared before [yours],
@@ -426,6 +436,13 @@ class StationSearchViewModel(
     private fun placeKindOf(query: String): PlaceKind =
         if (UkPostcode.isComplete(query)) PlaceKind.POSTCODE else PlaceKind.PLACE
 
+    // [index]'s places for [query], searched on [compute]; none, with no hop, when there's no index.
+    private suspend fun bundledPlacesFor(index: PlaceIndex, query: String): List<PlaceHit> =
+        if (index.size == 0) emptyList() else withContext(compute) {
+            // A search the rider has typed past stops partway rather than scanning the whole index.
+            PlaceHits.fromIndex(index, query, checkpoint = { ensureActive() })
+        }
+
     /** Search the current query again now — the Retry after a failure. */
     fun retry() = start(_state.value.query, debounce = false)
 
@@ -442,6 +459,33 @@ class StationSearchViewModel(
         _state.update { it.copy(searching = true) }
         remoteFor = null
         search = viewModelScope.launch {
+            // The rows on screen for this query, which later answers only ever add to: a row never
+            // moves once shown (maintainer, 2026-09-28). The index's best few go up at once; the rest
+            // join TfL's answer, ranked together, below them.
+            // A search of the query already on screen (a Retry) starts from its rows, so nothing moves.
+            var shown: List<SearchEntry> =
+                (_state.value.result as? Result.Matches)?.takeIf { entriesFor == trimmed }?.entries.orEmpty()
+            // Guards [shown] between this search and its bundled places below: each adds to the rows as read.
+            val rows = Mutex()
+            // The stops listed so far, for a result published before they are.
+            var localShown: List<StationMatch> = emptyList()
+            // Whether the bundled places are on screen yet, by whichever of the two paths below came first.
+            var placesListed = false
+            // The bundled places, looked up the moment the place index is read, whatever else is still
+            // loading: the stations or the saved stops being slow mustn't hold them back (Codex).
+            val placeLookup: Deferred<List<PlaceHit>> = async { bundledPlacesFor(placeIndex.await(), trimmed) }
+            launch {
+                val places = placeLookup.await()
+                if (places.isEmpty()) return@launch
+                rows.withLock {
+                    if (placesListed) return@withLock
+                    placesListed = true
+                    val before = shown
+                    shown = withContext(compute) { SearchResults.appended(before, trimmed, emptyList(), places) }
+                    entriesFor = trimmed
+                    _state.update { it.copy(result = Result.Matches(localShown, places = places, entries = shown)) }
+                }
+            }
             // The bundled index answers at once — an abbreviation or code finds its station before
             // the typing pause is over. TfL's search (for what the index doesn't hold, like bus
             // stops) follows the pause, and the two are merged and ranked together.
@@ -450,24 +494,35 @@ class StationSearchViewModel(
             val own = read.await()
             val stations = withContext(io) { bundled.withYours(own) }
             val local = withContext(io) { stations.search(trimmed) }
-            // The rows on screen for this query, which later answers only ever add to: a row never
-            // moves once shown (maintainer, 2026-09-28). The index's best few go up at once; the rest
-            // join TfL's answer, ranked together, below them.
-            // A search of the query already on screen (a Retry) starts from its rows, so nothing moves.
-            var shown: List<SearchEntry> =
-                (_state.value.result as? Result.Matches)?.takeIf { entriesFor == trimmed }?.entries.orEmpty()
-            if (local.isNotEmpty()) {
-                val before = shown
-                shown = withContext(compute) { SearchResults.appended(before, trimmed, local.take(LOCAL_PREVIEW), emptyList()) }
-                entriesFor = trimmed
-                _state.update { it.copy(result = Result.Matches(local, entries = shown), searching = true) }
+            rows.withLock {
+                // The places, when already found (the place index is read as the model is made, so
+                // usually they are): ranked in with the index's stops at once, rather than below them.
+                @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+                val places = if (!placesListed && placeLookup.isCompleted) placeLookup.getCompleted() else emptyList()
+                if (local.isNotEmpty() || places.isNotEmpty()) {
+                    if (places.isNotEmpty()) placesListed = true
+                    val before = shown
+                    val (entries, shownPlaces) = withContext(compute) {
+                        val all = SearchResults.appended(before, trimmed, local.take(LOCAL_PREVIEW), places)
+                        all to all.filterIsInstance<SearchEntry.Place>().map { it.hit }
+                    }
+                    shown = entries
+                    localShown = local
+                    entriesFor = trimmed
+                    _state.update { it.copy(result = Result.Matches(local, places = shownPlaces, entries = shown), searching = true) }
+                }
             }
             if (debounce) delay(debounceMillis)
-            // Geocode places in parallel with the stop search — a separate, heavier TfL call (SPEC *Cost*)
-            // that only a To… picker makes. Best-effort: its failure yields no places, never fails the
-            // stop search, so it's caught here rather than in the shared catch below.
+            // The places: the bundle's (already listed if the index was read in time), and TfL's geocoder
+            // unless the bundle answers the query (PlaceHits.answers: a prefix or substring match, and not
+            // an address with a house number, which it matches only loosely). It runs in parallel
+            // with the stop search: a separate, heavier TfL call (SPEC *Cost*) that only a To… picker
+            // makes, its answers below the bundle's. Best-effort: its failure yields no geocoded places,
+            // never fails the stop search, so it's caught here rather than in the shared catch below.
             val placesDeferred = async(io) {
-                try {
+                val fromBundle = placeLookup.await()
+                if (PlaceHits.answers(trimmed, fromBundle)) return@async fromBundle
+                val geocoded = try {
                     PlaceHits.rank(trimmed, searchPlaces(trimmed), placeKindOf(trimmed))
                 } catch (e: CancellationException) {
                     throw e
@@ -475,6 +530,7 @@ class StationSearchViewModel(
                     warn("place search failed: ${e.message}")
                     emptyList()
                 }
+                fromBundle + geocoded
             }
             // Resolve the stop search and publish it at once — the geocode is heavier and best-effort, so
             // it must not hold the stops back: a bus-stop query whose stops are ready would otherwise sit
@@ -483,16 +539,18 @@ class StationSearchViewModel(
             val stops: Result.Matches? = try {
                 val remote = withContext(io) { finder.searchStations(trimmed) }
                 remoteFor = trimmed to remote
-                val before = shown
-                val (ranked, entries) = withContext(compute) {
-                    // Uncapped, to tell a row folded into its twin from one only past the cap; capped for
-                    // what's newly added.
-                    val everyStop = stations.rank(trimmed, local, remote, limit = Int.MAX_VALUE)
-                    val ranked = everyStop.take(StationIndex.DEFAULT_LIMIT)
-                    ranked to SearchResults.appended(before, trimmed, ranked, emptyList(), everyStop = everyStop)
+                rows.withLock {
+                    val before = shown
+                    val (ranked, entries) = withContext(compute) {
+                        // Uncapped, to tell a row folded into its twin from one only past the cap; capped for
+                        // what's newly added.
+                        val everyStop = stations.rank(trimmed, local, remote, limit = Int.MAX_VALUE)
+                        val ranked = everyStop.take(StationIndex.DEFAULT_LIMIT)
+                        ranked to SearchResults.appended(before, trimmed, ranked, emptyList(), everyStop = everyStop)
+                    }
+                    shown = entries
+                    Result.Matches(ranked, entries = shown)
                 }
-                shown = entries
-                Result.Matches(ranked, entries = shown)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TflException) {
@@ -504,9 +562,11 @@ class StationSearchViewModel(
                 if (local.isEmpty()) {
                     null
                 } else {
-                    val before = shown
-                    shown = withContext(compute) { SearchResults.appended(before, trimmed, local, emptyList()) }
-                    Result.Matches(local, remoteFailure = failureKind, entries = shown)
+                    rows.withLock {
+                        val before = shown
+                        shown = withContext(compute) { SearchResults.appended(before, trimmed, local, emptyList()) }
+                        Result.Matches(local, remoteFailure = failureKind, entries = shown)
+                    }
                 }
             }
             if (stops != null && stops.matches.isNotEmpty()) {
@@ -516,15 +576,18 @@ class StationSearchViewModel(
             // Fold in the geocoded places (or none) — the stops are already on screen.
             val places = placesDeferred.await()
             // The places join below whatever is already listed, ranked among themselves.
-            val before = shown
             // The rows on screen are the answer: the stops and places the result carries are read off
             // them, so a row a Retry kept (a place an earlier geocode found) is neither dropped from
             // the state nor hidden behind a failure the new answer alone would have shown.
-            val (withPlaces, shownStops, shownPlaces) = withContext(compute) {
-                val rows = SearchResults.appended(before, trimmed, emptyList(), places)
-                Triple(rows, rows.filterIsInstance<SearchEntry.Stop>().map { it.match }, rows.filterIsInstance<SearchEntry.Place>().map { it.hit })
+            val (shownStops, shownPlaces) = rows.withLock {
+                val before = shown
+                val (withPlaces, listedStops, listedPlaces) = withContext(compute) {
+                    val all = SearchResults.appended(before, trimmed, emptyList(), places)
+                    Triple(all, all.filterIsInstance<SearchEntry.Stop>().map { it.match }, all.filterIsInstance<SearchEntry.Place>().map { it.hit })
+                }
+                shown = withPlaces
+                listedStops to listedPlaces
             }
-            shown = withPlaces
             val result: Result = when {
                 shown.isNotEmpty() -> Result.Matches(
                     stops?.matches ?: shownStops,

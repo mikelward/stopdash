@@ -1311,6 +1311,24 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               but a dedicated place/geocoding API (or TfL's `/Place`) would return better candidates.
               Watch the added per-search TfL request cost when choosing.
               The options, and how each fits the name matcher, are in `dev-docs/PLACES.md`.
+              **Started: the bundled London place index** (Overture places, streets, OS postcodes;
+              option 4 there), searched on the device in *To…*, with TfL's geocoder only as the
+              fallback. Follow-ups:
+              - [ ] **Typed places in *From…*, the favorite-journey picker, and adding a favorite place**
+                  (maintainer, 2026-10-11): the same index wherever a place can be picked.
+              - [ ] **Bundle London's bus stops** from TfL's `/StopPoint/Mode/bus` (with their routes, ~0.5 MB)
+                  so a search needs no TfL request at all; first check which ids `/StopPoint/Search`
+                  returns for a bus query, so a bundled row opens the same page.
+              - [ ] **A monthly refresh workflow** for `assets/places/place_index.tsv`, like
+                  `station-index-refresh.yml` (needs `pyarrow` and `pyproj`; Overture releases monthly),
+                  which also moves the year in the About screen's Ordnance Survey statements.
+              - [ ] **Check the index on a low-end device**: it reads in ~1 s and searches in ~20 ms on a
+                  desktop JVM; a phone is slower. A binary format, or a prefix index, if either drags.
+              - [ ] **Nearer first**: rank equal matches by distance from the trip's start ("Tesco" finds
+                  the nearest one), computed on the device.
+              - [x] **Ship Foursquare's NOTICE file**: Overture's Foursquare places are Apache 2.0, so
+                  `assets/places/` carries Foursquare's `NOTICE.txt` (our changes appended) and the
+                  license text, both fetched by the builder from Foursquare's release bucket.
         - [x] **Rank stops and places together, matching each part of a name** (maintainer,
               2026-09-28): one list by match tier, so "tate" puts "…, Tate Britain" above "… Estate"
               stops; a name's parts (" / ", ", ") each match as a prefix.

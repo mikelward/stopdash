@@ -50,6 +50,9 @@ class StationSearchScreenshotTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
+    // The To… field's real hint, so the recorded screen shows what riders see.
+    private val toHint: String get() = composeRule.activity.getString(app.stopdash.R.string.station_search_to_hint)
+
     private val matches = listOf(
         StationMatch("HUBKGX", "King's Cross St. Pancras", listOf("tube", "national-rail", "bus")),
         StationMatch("940GZZLUKSX", "King's Cross St. Pancras", listOf("tube")),
@@ -408,7 +411,7 @@ class StationSearchScreenshotTest {
                     onRetry = {},
                     onBack = {},
                     autoFocus = false,
-                    hint = "Station, stop or place",
+                    hint = toHint,
                     onOpenPlace = {},
                     onChangeFrom = { changed = true },
                 )
@@ -417,7 +420,7 @@ class StationSearchScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithContentDescription("From Here").assertIsDisplayed()
         composeRule.onNodeWithText("To").assertIsDisplayed()
-        composeRule.onNodeWithText("Station, stop or place").assertIsDisplayed()
+        composeRule.onNodeWithText(toHint).assertIsDisplayed()
         // From above To, and both above the places' chips.
         val fromTop = composeRule.onNodeWithTag("fromField").fetchSemanticsNode().boundsInRoot.top
         val toTop = composeRule.onNodeWithTag("stationSearchField").fetchSemanticsNode().boundsInRoot.top
@@ -449,7 +452,7 @@ class StationSearchScreenshotTest {
                     onRetry = {},
                     onBack = {},
                     autoFocus = false,
-                    hint = "Station, stop or place",
+                    hint = toHint,
                     fromStation = "King's Cross & St Pancras International",
                     onChangeFrom = {},
                 )

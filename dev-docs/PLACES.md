@@ -1,19 +1,29 @@
 # Searching for places
 
-**Status: design options, nothing decided.** This is a developer-facing write-up of how the *To…*
-search could find arbitrary destinations (a landmark, a shop, an address, a street) better than it
-does today. It is not a commitment. Each option changes cost, privacy and Play Data Safety, so the
-choice is the maintainer's.
+**Status: option 4, the bundled London index, is built** (maintainer, 2026-10-11; tier B, public
+places and confident businesses). This is the developer-facing write-up of how the *To…* search finds
+arbitrary destinations (a landmark, a shop, an address, a street), with the options that were
+weighed. `scripts/build_place_index.py` builds the index and SPEC *Finding stops* describes how the
+app uses it.
 
 ## Where it stands
 
-- *To…* already offers places: it sends the typed text to **TfL's Journey Planner**, which resolves
-  it to candidate locations (SPEC *To… a place or postcode*).
+- *To…* (and, with #768, *From…* and adding a favorite place) searches the **bundled index** on the
+  device: places, streets and postcodes, listed with the stops, each with its position.
+- **TfL's Journey Planner** geocoder is the fallback, asked unless the index has a close match (a
+  prefix or substring, not just letters in order) and the query isn't an address with a house number,
+  which the index can match only loosely.
+- So most *To…* searches no longer make the second TfL request (SPEC *Cost*); only the stop search
+  goes to TfL.
+
+### Before the index
+
+- *To…* sent the typed text to TfL's Journey Planner, which resolves it to candidate locations.
 - TfL's results are poor for places. A well-known landmark can be missing or ranked low, and the
   results arrive in a noisy order. The app re-ranks them with its own name matcher and drops any
   whose name doesn't match.
 - Postcodes work well through the same call, and stay tagged *Postcode*.
-- Each *To…* search costs a second TfL request for this (SPEC *Cost*), on top of the stop search.
+- Each *To…* search cost a second TfL request for this, on top of the stop search.
 
 ## What a better source must do
 
