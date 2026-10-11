@@ -680,8 +680,21 @@ class OnTheWayTest {
         val there = OnTheWay.seen(walkingHome, fix(Coordinates(51.5003, -0.12)), at(21))
         assertEquals(TripProgress.Arrived, OnTheWay.advance(there, null, at(21)).second)
         assertEquals(SeenAt.POINT, OnTheWay.seenAtStop(walkingHome, fix(Coordinates(51.5003, -0.12)), at(21)))
-        // A fix too vague to say they're within reach of it: not there.
-        assertEquals(walkingHome, OnTheWay.seen(walkingHome, fix(Coordinates(51.5003, -0.12), accuracyMeters = 90f), at(21)))
+        // While the walk's time runs, a fix too vague to say they're within reach of it: not there.
+        assertEquals(walkingHome, OnTheWay.seen(walkingHome, fix(Coordinates(51.5003, -0.12), accuracyMeters = 90f), at(19)))
+        // At the door of a place whose point is ~110 m in, sure to 30 m: not yet while the walk's time runs,
+        // there once it's up, rather than walking on until the grace runs out (bug report, 2026-10-11).
+        val door = fix(Coordinates(51.501, -0.12), accuracyMeters = 30f)
+        assertEquals(walkingHome, OnTheWay.seen(walkingHome, door, at(19)))
+        assertNull(OnTheWay.seenAtStop(walkingHome, door, at(19)))
+        assertEquals(TripProgress.Arrived, OnTheWay.advance(OnTheWay.seen(walkingHome, door, at(20)), null, at(20)).second)
+        assertEquals(SeenAt.POINT, OnTheWay.seenAtStop(walkingHome, door, at(20)))
+        // Only the distance widens: a fix sure only to 150 m still isn't taken, before the walk's time or after.
+        val vague = fix(Coordinates(51.5003, -0.12), accuracyMeters = 150f)
+        assertFalse(OnTheWay.sureEnoughFor(walkingHome, at(19))(vague))
+        assertFalse(OnTheWay.sureEnoughFor(walkingHome, at(21))(vague))
+        // Further out than that, still walking.
+        assertEquals(walkingHome, OnTheWay.seen(walkingHome, fix(Coordinates(51.502, -0.12), accuracyMeters = 30f), at(25)))
         // Off the ride while away, past the walk's time: on the walk, not arrived.
         val riding = OnTheWay.follow(walkingHome.copy(legIndex = 0, legStartedAt = t0), train("9", 5)).copy(boarded = true, dueOffAt = at(15))
         assertEquals(TripProgress.Walking(lastWalk, at(20)), OnTheWay.advance(riding, emptyList(), at(25)).second)
