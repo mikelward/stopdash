@@ -10,11 +10,13 @@ app uses it.
 
 - *To…* (and, with #768, *From…* and adding a favorite place) searches the **bundled index** on the
   device: places, streets and postcodes, listed with the stops, each with its position.
-- **TfL's Journey Planner** geocoder is the fallback, asked unless the index has a close match (a
-  prefix or substring, not just letters in order) and the query isn't an address with a house number,
-  which the index can match only loosely.
-- So most *To…* searches no longer make the second TfL request (SPEC *Cost*); only the stop search
-  goes to TfL.
+- London's **bus stops are bundled too** (the near-me list's `assets/stations/stops.tsv`, see *Bus
+  stops* below).
+- **Search sends nothing to TfL** (maintainer, 2026-10-11): neither TfL's Journey Planner geocoder nor
+  its stop search is asked, from any search. An address with a house number is searched by its street.
+  What the bundle lacks (a house number, a stop or place newer than the app) isn't found until the next
+  update. The favorite place editor still asks the Journey Planner for a complete postcode outside
+  London, which the bundle doesn't hold.
 
 ### Before the index
 
@@ -236,21 +238,15 @@ is a plain sum of the measured rows, with no such cleaning.
 
 ### Bus stops: replacing TfL's stop search too
 
-The stations are already bundled (`app/src/main/assets/stations`). TfL's `/StopPoint/Search` is
-mainly what finds **bus stops**, and TfL publishes them in bulk:
+**Built** (2026-10-11): the stop search reads its bus stops from `assets/stations/stops.tsv`, the
+file `scripts/build_stops.py` writes for the near-me list (#773): about 21,000 served bus stops, each
+with TfL's own single-stop id (`490…`), the same ids `/StopPoint/Search` answered a bus query with, so
+a bundled row opens the same page. The stations' ranking folds same-named stops either side of a road
+into one row, as it did TfL's. A stop the file places outside its bounds isn't listed.
 
-- **Source:** `/StopPoint/Mode/bus`, 33 pages and a few minutes of keyless requests a week from
-  CI. It lists 32,582 records in London: stops, stop pairs and clusters. 30,950 of them list the
-  routes they serve.
-- **What they carry:** TfL's own IDs (the `490…` NaPTAN codes the app already opens), names,
-  stop letters, positions, and the routes, which NaPTAN doesn't have.
-- **Size:** about 2 MB raw, or **0.5 MB** deflated with each stop's routes.
-
-With stations, bus stops, places, streets and postcodes all bundled, a *To…* search needs **no
-TfL request at all**. It would answer on each keystroke, offline, with one ranking. TfL's
-search would stay only as a fallback for anything the bundle can't find (a house number, a
-brand-new stop), or could be dropped. One thing to check first is which IDs TfL's search
-returns for a bus query (single stops or stop pairs), so the bundled rows open the same pages.
+With stations, bus stops, places, streets and postcodes all bundled, TfL's stop search and geocoder
+were dropped from search (maintainer, 2026-10-11): it answers on each keystroke, offline, with one
+ranking and nothing sent.
 
 ### Quality
 

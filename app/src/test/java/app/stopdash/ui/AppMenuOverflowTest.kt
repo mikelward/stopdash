@@ -157,7 +157,7 @@ class AppMenuOverflowTest {
 
     @Test
     fun station_search_sends_a_bug_report() {
-        show { StationSearchScreen(StationSearchViewModel.State(), onQueryChange = {}, onOpenStation = {}, onRetry = {}, onBack = {}, autoFocus = false) }
+        show { StationSearchScreen(StationSearchViewModel.State(), onQueryChange = {}, onOpenStation = {}, onBack = {}, autoFocus = false) }
         sendsABugReport()
     }
 
@@ -168,7 +168,6 @@ class AppMenuOverflowTest {
                 StationSearchViewModel.State(),
                 onQueryChange = {},
                 onOpenStation = {},
-                onRetry = {},
                 onBack = {},
                 autoFocus = false,
                 onChangeFrom = {},

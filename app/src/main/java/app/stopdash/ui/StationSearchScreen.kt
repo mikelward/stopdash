@@ -104,7 +104,6 @@ fun StationSearchScreen(
     state: StationSearchViewModel.State,
     onQueryChange: (String) -> Unit,
     onOpenStation: (StationMatch) -> Unit,
-    onRetry: () -> Unit,
     onBack: () -> Unit,
     // Off in the screenshot test, where a focused field would add a blinking cursor.
     autoFocus: Boolean = true,
@@ -275,14 +274,6 @@ fun StationSearchScreen(
                     else -> Message(stringResource(R.string.station_search_prompt))
                 }
                 StationSearchViewModel.Result.NoMatches -> Message(stringResource(R.string.station_search_no_matches))
-                is StationSearchViewModel.Result.Failed -> Column(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(stringResource(errorMessage(result.kind)), textAlign = TextAlign.Center)
-                    TextButton(onClick = onRetry) { Text(stringResource(R.string.route_stops_retry)) }
-                }
                 is StationSearchViewModel.Result.Matches -> {
                     // A new query's matches start at the top, best match first, not where the last
                     // query's list was scrolled to.
@@ -318,25 +309,6 @@ fun StationSearchScreen(
                             item(key = "loading-more") {
                                 Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
                                     CircularProgressIndicator(modifier = Modifier.size(24.dp).testTag(SEARCH_LOADING_MORE_TAG))
-                                }
-                            }
-                        }
-                        // The bundled stations matched but TfL's search (bus stops) failed: say so under
-                        // the matches rather than show them as the whole answer.
-                        result.remoteFailure?.let { kind ->
-                            item(key = "remote-failure") {
-                                Column(
-                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    Text(stringResource(R.string.station_search_bus_stops_missing), textAlign = TextAlign.Center)
-                                    Text(
-                                        stringResource(errorMessage(kind)),
-                                        textAlign = TextAlign.Center,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    TextButton(onClick = onRetry) { Text(stringResource(R.string.route_stops_retry)) }
                                 }
                             }
                         }

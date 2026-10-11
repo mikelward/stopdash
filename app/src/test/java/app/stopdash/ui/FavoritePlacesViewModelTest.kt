@@ -2,6 +2,7 @@ package app.stopdash.ui
 
 import androidx.lifecycle.SavedStateHandle
 import app.stopdash.domain.ChipLabel
+import app.stopdash.domain.BusStopIndex
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
@@ -10,6 +11,7 @@ import app.stopdash.domain.FavoritePlaces
 import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FavoritePlacesStore
 import app.stopdash.domain.IndexedStation
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.PlaceIndex
 import app.stopdash.domain.PostcodeResolution
@@ -21,6 +23,7 @@ import app.stopdash.domain.StopLocation
 import app.stopdash.domain.TflException
 import java.io.IOException
 import java.time.DayOfWeek
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
@@ -29,7 +32,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -76,7 +78,12 @@ class FavoritePlacesViewModelTest {
         val search: suspend (String) -> List<StationMatch> = { emptyList() },
         val stops: suspend (String) -> List<StopLocation> = { emptyList() },
     ) : StationFinder {
-        override suspend fun searchStations(query: String): List<StationMatch> = search(query)
+        // Every stop search sent to TfL: none, now the search is on the device.
+        val queries = mutableListOf<String>()
+        override suspend fun searchStations(query: String): List<StationMatch> {
+            queries += query
+            return search(query)
+        }
         override suspend fun stationStops(id: String): List<StopLocation> = stops(id)
     }
 
@@ -90,8 +97,37 @@ class FavoritePlacesViewModelTest {
     private val oxford = StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"), 51.5, -0.12)
     private val positionless = StationMatch("490000000A", "Somewhere Road", listOf("bus"))
 
+    // The bundled stations the editor's searches find on the device: two public TfL stations, and a
+    // positionless record whose position only its stops can give. Positions are synthetic.
+    private val stations = StationIndex(
+        listOf(
+            IndexedStation("940GZZLUOXC", "Oxford Circus", listOf("tube"), latitude = 51.5, longitude = -0.12),
+            IndexedStation("940GZZLUVIC", "Victoria", listOf("tube"), latitude = 51.49, longitude = -0.14),
+            IndexedStation(positionless.id, positionless.name, positionless.modes),
+        ),
+    )
+
     private fun vm(store: FavoritePlacesStore, finder: StationFinder) =
-        FavoritePlacesViewModel(store, finder, io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" })
+        FavoritePlacesViewModel(store, finder, io = dispatcher, compute = dispatcher, loadIndex = { stations }, debounceMillis = 300, newId = { "id-1" })
+
+    @Test
+    fun `a stop search finds stations and bus stops with nothing sent to TfL`() = runTest {
+        // Synthetic stop (AGENTS.md *Privacy*). The finder stays for picks; a search must not touch it.
+        val finder = FakeFinder()
+        val buses = BusStopIndex.of(listOf(StopLocation("4900A", "Oxford Lane", 51.5, -0.12, lines = listOf(LineRef("1", "1", "bus")))))
+        val model = FavoritePlacesViewModel(
+            FakeStore(), finder,
+            io = dispatcher, compute = dispatcher, loadIndex = { stations }, loadBusStops = { buses }, debounceMillis = 300, newId = { "id-1" },
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        model.onQueryChange("oxf")
+        advanceUntilIdle()
+        val editor = model.state.value.editor!!
+        assertEquals(listOf(oxford, StationMatch("4900A", "Oxford Lane", listOf("bus"), 51.5, -0.12)), editor.results)
+        assertFalse(editor.searching)
+        assertEquals(emptyList<String>(), finder.queries)
+    }
 
     @Test
     fun `saved places are exposed once the store loads`() = runTest {
@@ -185,12 +221,12 @@ class FavoritePlacesViewModelTest {
     @Test
     fun `adding searches, picks a positioned match, and saves it`() = runTest {
         val store = FakeStore()
-        val model = vm(store, FakeFinder(search = { listOf(oxford, positionless) }))
+        val model = vm(store, FakeFinder())
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
         model.onQueryChange("oxf")
         advanceUntilIdle()
-        assertEquals(listOf(oxford, positionless), model.state.value.editor?.results)
+        assertEquals(listOf(oxford), model.state.value.editor?.results)
         model.onPick(oxford)
         val editor = model.state.value.editor!!
         assertEquals(Coordinates(51.5, -0.12), editor.coordinate)
@@ -208,7 +244,7 @@ class FavoritePlacesViewModelTest {
     @Test
     fun `a positionless match that can't be resolved is left unselectable`() = runTest {
         // stationStops returns nothing, so there's no member center to anchor it.
-        val model = vm(FakeStore(), FakeFinder(search = { listOf(positionless) }, stops = { emptyList() }))
+        val model = vm(FakeStore(), FakeFinder(stops = { emptyList() }))
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
         model.onQueryChange("some")
@@ -228,7 +264,6 @@ class FavoritePlacesViewModelTest {
         val model = vm(
             FakeStore(),
             FakeFinder(
-                search = { listOf(positionless) },
                 stops = {
                     attempt++
                     if (attempt == 1) throw TflException.Offline(null) else members
@@ -260,7 +295,7 @@ class FavoritePlacesViewModelTest {
         // never offered as a retry (distinct from a transient failure above).
         val model = vm(
             FakeStore(),
-            FakeFinder(search = { listOf(positionless) }, stops = { throw TflException.NotFound(null) }),
+            FakeFinder(stops = { throw TflException.NotFound(null) }),
         )
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
@@ -284,7 +319,7 @@ class FavoritePlacesViewModelTest {
         )
         val model = vm(
             FakeStore(),
-            FakeFinder(search = { listOf(positionless) }, stops = { members }),
+            FakeFinder(stops = { members }),
         )
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
@@ -337,7 +372,7 @@ class FavoritePlacesViewModelTest {
     @Test
     fun `a bundled place is offered beside the stops and picking it adopts its position`() = runTest {
         val model = FavoritePlacesViewModel(
-            FakeStore(), FakeFinder(search = { listOf(oxford) }),
+            FakeStore(), FakeFinder(),
             loadPlaceIndex = { placeIndex("P\tZeta Gallery\tmuseum\t51.51000\t-0.13000\t7") },
             io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
         )
@@ -407,44 +442,48 @@ class FavoritePlacesViewModelTest {
     }
 
     @Test
-    fun `TfL's stops arriving late go below the bundled places, not above them`() = runTest {
+    fun `bus stops read late go below the bundled places, not above them`() = runTest {
         val road = StationMatch("490000000Z", "Zeta Road", listOf("bus"), 51.52, -0.14)
+        val busesRead = CompletableDeferred<BusStopIndex>()
         val model = FavoritePlacesViewModel(
-            FakeStore(), FakeFinder(search = { listOf(road) }),
+            FakeStore(), FakeFinder(),
             loadPlaceIndex = { placeIndex("P\tZeta Gallery\tmuseum\t51.51000\t-0.13000\t7") },
+            loadBusStops = { busesRead.await() },
             io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
         )
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
         model.onQueryChange("zeta")
-        advanceTimeBy(100)
         runCurrent()
-        // The place is listed before TfL answers, with no stop above it.
+        // The place is listed before the bus stops are read, with no stop above it.
         val early = model.state.value.editor!!
         assertEquals(listOf("Zeta Gallery"), early.places.map { it.name })
         assertEquals(0, early.placesAfter)
+        assertTrue(early.searching)
+        busesRead.complete(BusStopIndex.of(listOf(StopLocation(road.id, road.name, 51.52, -0.14, lines = listOf(LineRef("1", "1", "bus"))))))
         advanceUntilIdle()
-        // TfL's stop lands below it: still nothing above the place.
+        // The bus stop lands below it: still nothing above the place.
         val late = model.state.value.editor!!
         assertEquals(listOf(road), late.results)
         assertEquals(0, late.placesAfter.coerceAtMost(late.results.size))
     }
 
     @Test
-    fun `picking a bundled place before TfL answers drops the late stops`() = runTest {
-        val road = StationMatch("490000000Z", "Zeta Gallery", listOf("bus"), 51.52, -0.14)
+    fun `picking a bundled place before the bus stops are read drops the late stops`() = runTest {
+        val busesRead = CompletableDeferred<BusStopIndex>()
         val model = FavoritePlacesViewModel(
-            FakeStore(), FakeFinder(search = { listOf(road) }),
+            FakeStore(), FakeFinder(),
             loadPlaceIndex = { placeIndex("P\tZeta Gallery\tmuseum\t51.51000\t-0.13000\t7") },
+            loadBusStops = { busesRead.await() },
             io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
         )
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
         model.onQueryChange("Zeta Gallery")
-        advanceTimeBy(100)
         runCurrent()
-        // Picked with the stop search still pending, under the same name it sets as the query.
+        // Picked with the bus stops still unread, under the same name it sets as the query.
         model.onPickPlace(model.state.value.editor!!.places.single())
+        busesRead.complete(BusStopIndex.of(listOf(StopLocation("490000000Z", "Zeta Gallery", 51.52, -0.14, lines = listOf(LineRef("1", "1", "bus"))))))
         advanceUntilIdle()
         val editor = model.state.value.editor!!
         assertEquals(Coordinates(51.51, -0.13), editor.coordinate)
@@ -564,23 +603,24 @@ class FavoritePlacesViewModelTest {
     }
 
     @Test
-    fun `a postcode-shaped query is not sent to the station search`() = runTest {
-        var searchCalls = 0
+    fun `a postcode-shaped query is not searched as a stop`() = runTest {
+        // A synthetic station named like the postcode, which a stop search would find.
+        val index = StationIndex(listOf(IndexedStation("940GZZX1", "X1 Junction", listOf("tube"), latitude = 51.5, longitude = -0.12)) + stations.stations)
         val model = FavoritePlacesViewModel(
-            FakeStore(),
-            FakeFinder(search = { searchCalls++; emptyList() }),
+            FakeStore(), FakeFinder(),
             postcodes = { PostcodeResolution.None },
+            loadIndex = { index },
             io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
         )
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
-        model.onQueryChange("X1 9XX") // a postcode: resolved via the Journey Planner on tap, not searched
+        model.onQueryChange("X1") // a postcode: resolved via the Journey Planner on tap, not searched
         advanceUntilIdle()
-        assertEquals(0, searchCalls)
+        assertTrue(model.state.value.editor!!.results.isEmpty())
         // A plain two-letter prefix is how station names start ("Ox" → Oxford Circus), so it still searches.
         model.onQueryChange("Ox")
         advanceUntilIdle()
-        assertTrue(searchCalls >= 1)
+        assertEquals(listOf(oxford), model.state.value.editor!!.results)
     }
 
     @Test
@@ -621,7 +661,7 @@ class FavoritePlacesViewModelTest {
     @Test
     fun `a new place shows every day, and a turned-off day is saved`() = runTest {
         val store = FakeStore()
-        val model = vm(store, FakeFinder(search = { listOf(oxford) }))
+        val model = vm(store, FakeFinder())
         advanceUntilIdle()
         model.startAdd(FavoriteKind.WORK, "Work")
         assertEquals(FavoritePlace.EVERY_DAY, model.state.value.editor?.showOnDays)
@@ -655,7 +695,7 @@ class FavoritePlacesViewModelTest {
     @Test
     fun `a new place starts with its kind's icon, and the chosen icon and chip label save`() = runTest {
         val store = FakeStore()
-        val model = vm(store, FakeFinder(search = { listOf(oxford) }))
+        val model = vm(store, FakeFinder())
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
         assertNull(model.state.value.editor?.icon)
@@ -732,7 +772,7 @@ class FavoritePlacesViewModelTest {
 
     @Test
     fun `editing the query after a pick invalidates the selection`() = runTest {
-        val model = vm(FakeStore(), FakeFinder(search = { listOf(oxford) }))
+        val model = vm(FakeStore(), FakeFinder())
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
         model.onQueryChange("oxf")
@@ -749,7 +789,7 @@ class FavoritePlacesViewModelTest {
     fun `repicking after changing the query refreshes an auto-filled label`() = runTest {
         val victoria = StationMatch("940GZZLUVIC", "Victoria", listOf("tube"), 51.49, -0.14)
         val store = FakeStore()
-        val model = vm(store, FakeFinder(search = { q -> if (q.startsWith("oxf")) listOf(oxford) else listOf(victoria) }))
+        val model = vm(store, FakeFinder())
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
         model.onQueryChange("oxf")
@@ -770,7 +810,7 @@ class FavoritePlacesViewModelTest {
         val victoria = StationMatch("940GZZLUVIC", "Victoria", listOf("tube"), 51.49, -0.14)
         // Originally auto-labeled: label equals the resolved place name.
         val place = FavoritePlace("c", FavoriteKind.CUSTOM, "Oxford Circus", Coordinates(51.5, -0.12), "Oxford Circus")
-        val model = vm(FakeStore(listOf(place)), FakeFinder(search = { listOf(victoria) }))
+        val model = vm(FakeStore(listOf(place)), FakeFinder())
         advanceUntilIdle()
         model.startEdit(place)
         model.onQueryChange("vic")
@@ -784,7 +824,7 @@ class FavoritePlacesViewModelTest {
         val victoria = StationMatch("940GZZLUVIC", "Victoria", listOf("tube"), 51.49, -0.14)
         // User-chosen label differs from the resolved place name.
         val place = FavoritePlace("c", FavoriteKind.CUSTOM, "Gym", Coordinates(51.5, -0.12), "Oxford Circus")
-        val model = vm(FakeStore(listOf(place)), FakeFinder(search = { listOf(victoria) }))
+        val model = vm(FakeStore(listOf(place)), FakeFinder())
         advanceUntilIdle()
         model.startEdit(place)
         model.onQueryChange("vic")
@@ -796,7 +836,7 @@ class FavoritePlacesViewModelTest {
     @Test
     fun `a user-typed label survives a repick`() = runTest {
         val victoria = StationMatch("940GZZLUVIC", "Victoria", listOf("tube"), 51.49, -0.14)
-        val model = vm(FakeStore(), FakeFinder(search = { q -> if (q.startsWith("oxf")) listOf(oxford) else listOf(victoria) }))
+        val model = vm(FakeStore(), FakeFinder())
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
         model.onQueryChange("oxf")
@@ -814,7 +854,7 @@ class FavoritePlacesViewModelTest {
     @Test
     fun `a second Save while one is in flight does not add a duplicate`() = runTest {
         val store = FakeStore()
-        val model = vm(store, FakeFinder(search = { listOf(oxford) }))
+        val model = vm(store, FakeFinder())
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
         model.onQueryChange("oxf")
@@ -833,7 +873,7 @@ class FavoritePlacesViewModelTest {
         // A first session assigns the CUSTOM place its id, picks a location, and persists the draft (as
         // Android saves instance state while the save is in flight).
         val first = FavoritePlacesViewModel(
-            store, FakeFinder(search = { listOf(oxford) }),
+            store, FakeFinder(), loadIndex = { stations },
             io = dispatcher, compute = dispatcher, savedState = saved, debounceMillis = 300, newId = { "first-id" },
         )
         advanceUntilIdle()
@@ -860,7 +900,7 @@ class FavoritePlacesViewModelTest {
         val saved = SavedStateHandle()
         val store = FakeStore()
         val first = FavoritePlacesViewModel(
-            store, FakeFinder(search = { listOf(oxford) }),
+            store, FakeFinder(), loadIndex = { stations },
             io = dispatcher, compute = dispatcher, savedState = saved, debounceMillis = 300, newId = { "first-id" },
         )
         advanceUntilIdle()
@@ -887,7 +927,7 @@ class FavoritePlacesViewModelTest {
             override suspend fun save(place: FavoritePlace) = throw IOException("disk full")
             override suspend fun remove(id: String) {}
         }
-        val model = vm(store, FakeFinder(search = { listOf(oxford) }))
+        val model = vm(store, FakeFinder())
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
         model.onQueryChange("oxf")
@@ -909,7 +949,7 @@ class FavoritePlacesViewModelTest {
             override suspend fun save(place: FavoritePlace) { saved += place }
             override suspend fun remove(id: String) {}
         }
-        val model = vm(store, FakeFinder(search = { listOf(oxford) }))
+        val model = vm(store, FakeFinder())
         advanceUntilIdle()
         assertFalse(model.state.value.loaded)
         model.startAdd(FavoriteKind.CUSTOM, "")
@@ -931,7 +971,7 @@ class FavoritePlacesViewModelTest {
             override suspend fun save(place: FavoritePlace) { saved += place }
             override suspend fun remove(id: String) {}
         }
-        val model = vm(store, FakeFinder(search = { listOf(oxford) }))
+        val model = vm(store, FakeFinder())
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
         model.onQueryChange("oxf")
@@ -947,7 +987,7 @@ class FavoritePlacesViewModelTest {
     @Test
     fun `edits made while a save is in flight are ignored`() = runTest {
         val store = FakeStore()
-        val model = vm(store, FakeFinder(search = { listOf(oxford) }))
+        val model = vm(store, FakeFinder())
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
         model.onQueryChange("oxf")
@@ -989,13 +1029,13 @@ class FavoritePlacesViewModelTest {
     }
 
     @Test
-    fun `a bundled station stays selectable when TfL is offline`() = runTest {
+    fun `a bundled station is selectable at once by its bundled position`() = runTest {
         val index = StationIndex(
             listOf(IndexedStation("940GZZLUOXC", "Oxford Circus", listOf("tube"), latitude = 51.5, longitude = -0.12)),
         )
         val model = FavoritePlacesViewModel(
             FakeStore(),
-            FakeFinder(search = { throw TflException.Offline(null) }),
+            FakeFinder(),
             io = dispatcher, compute = dispatcher,
             loadIndex = { index },
             debounceMillis = 300,
@@ -1007,42 +1047,7 @@ class FavoritePlacesViewModelTest {
         advanceUntilIdle()
         val results = model.state.value.editor!!.results
         assertTrue(results.isNotEmpty())
-        // The bundled position anchors it, so it's pickable despite TfL being offline.
+        // The bundled position anchors it, so it's pickable with no lookup.
         assertNotNull(results.first().coordinate())
-    }
-
-    @Test
-    fun `retry re-runs the search after a failure`() = runTest {
-        var attempt = 0
-        val model = vm(
-            FakeStore(),
-            FakeFinder(search = {
-                attempt++
-                if (attempt == 1) throw TflException.Offline(null) else listOf(oxford)
-            }),
-        )
-        advanceUntilIdle()
-        model.startAdd(FavoriteKind.CUSTOM, "")
-        model.onQueryChange("oxf")
-        advanceUntilIdle()
-        assertTrue(model.state.value.editor!!.searchFailed)
-        model.retrySearch() // no retyping needed
-        advanceUntilIdle()
-        val editor = model.state.value.editor!!
-        assertFalse(editor.searchFailed)
-        assertEquals(listOf(oxford), editor.results)
-    }
-
-    @Test
-    fun `a failed search is reported without matches`() = runTest {
-        val model = vm(FakeStore(), FakeFinder(search = { throw TflException.Offline(null) }))
-        advanceUntilIdle()
-        model.startAdd(FavoriteKind.HOME, "Home")
-        model.onQueryChange("oxf")
-        advanceUntilIdle()
-        val editor = model.state.value.editor!!
-        assertTrue(editor.searchFailed)
-        assertTrue(editor.results.isEmpty())
-        assertFalse(editor.searching)
     }
 }

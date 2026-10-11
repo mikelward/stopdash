@@ -1,12 +1,12 @@
 package app.stopdash.ui
 
-import app.stopdash.domain.Coordinates
+import app.stopdash.domain.BusStopIndex
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FavoritePlacesStore
 import app.stopdash.domain.IndexedStation
-import app.stopdash.domain.PlaceCandidate
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.PlaceIndex
 import app.stopdash.domain.RecentStations
 import app.stopdash.domain.SearchEntry
@@ -14,7 +14,6 @@ import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StopLocation
-import app.stopdash.domain.TflException
 import app.stopdash.domain.YourStops
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -66,29 +65,33 @@ class SearchResultsOffMainTest {
     private val never = CompletableDeferred<Nothing>()
 
     private class Finder(
-        val search: suspend (String) -> List<StationMatch> = { emptyList() },
         val stops: suspend (String) -> List<StopLocation> = { emptyList() },
     ) : StationFinder {
-        override suspend fun searchStations(query: String): List<StationMatch> = search(query)
+        override suspend fun searchStations(query: String): List<StationMatch> = emptyList()
         override suspend fun stationStops(id: String): List<StopLocation> = stops(id)
     }
 
+    // Synthetic bus stops (AGENTS.md *Privacy*).
+    private fun busStops(vararg names: String) = BusStopIndex.of(
+        names.mapIndexed { i, name -> StopLocation("4900$i", name, 51.5, -0.12, lines = listOf(LineRef("1", "1", "bus"))) },
+    )
+
     private fun searchVm(
-        finder: StationFinder,
         index: StationIndex = StationIndex.EMPTY,
-        searchPlaces: suspend (String) -> List<PlaceCandidate> = { emptyList() },
         loadYours: suspend () -> YourStops = { YourStops.EMPTY },
         recordOpen: suspend (StationMatch) -> Unit = {},
+        loadBusStops: suspend () -> BusStopIndex = { BusStopIndex.EMPTY },
     ) = StationSearchViewModel(
-        finder, loadIndex = { index }, loadYours = loadYours, searchPlaces = searchPlaces, recordOpen = recordOpen,
-        io = main, compute = compute, debounceMillis = 0,
+        loadIndex = { index }, loadYours = loadYours, recordOpen = recordOpen,
+        loadBusStops = loadBusStops, io = main, compute = compute,
     )
 
     private fun StationSearchViewModel.matches() = state.value.result as? StationSearchViewModel.Result.Matches
 
     @Test
     fun theIndexPreviewIsBuiltOnCompute() {
-        val vm = searchVm(Finder(search = { never.await() }), index = StationIndex(bundled))
+        // The bus stops are never read, so the stations' preview is the pass to make.
+        val vm = searchVm(index = StationIndex(bundled), loadBusStops = { never.await() })
         vm.onQueryChange("zeta")
         mainIdle()
         assertNull("preview published with compute held", vm.matches())
@@ -97,55 +100,26 @@ class SearchResultsOffMainTest {
     }
 
     @Test
-    fun tflsAnswerIsRankedAndAppendedOnCompute() {
-        // No index matches and the places never answer: ranking TfL's answer is the only pass to make.
-        val vm = searchVm(Finder(search = { listOf(oxford) }), searchPlaces = { never.await() })
-        vm.onQueryChange("oxford")
-        mainIdle()
-        assertNull("TfL's answer published with compute held", vm.matches())
-        releaseCompute()
-        assertEquals(listOf(oxford.id), vm.matches()!!.matches.map { it.id })
-    }
-
-    @Test
-    fun aFailedSearchKeepsTheIndexMatchesOnCompute() {
-        val vm = searchVm(Finder(search = { throw TflException.Unreachable("down", null) }), index = StationIndex(bundled))
+    fun theBundledBusStopsAreSearchedAndRankedOnCompute() {
+        // No station matches and there are no places: searching the bus stops and ranking them is the pass.
+        val vm = searchVm(loadBusStops = { busStops("Zeta Road") })
         vm.onQueryChange("zeta")
         mainIdle()
-        releaseCompute() // the preview
-        assertNull("failure published with compute held", vm.matches()!!.remoteFailure)
-        // The rows the failure keeps, then the (no) places folded in, each a pass of its own.
+        assertNull("bus stops published with compute held", vm.matches())
         releaseCompute()
-        releaseCompute()
-        assertNotNull(vm.matches()!!.remoteFailure)
-        assertFalse(vm.state.value.searching)
-    }
-
-    @Test
-    fun thePlacesAreFoldedInOnCompute() {
-        // TfL's stop search fails with nothing local to keep, so folding in the places is the only pass.
-        val vm = searchVm(
-            Finder(search = { throw TflException.Unreachable("down", null) }),
-            searchPlaces = { listOf(PlaceCandidate("Example Gallery", Coordinates(51.5, -0.12))) },
-        )
-        vm.onQueryChange("gallery")
-        mainIdle()
-        assertTrue("finished with compute held", vm.state.value.searching)
+        assertEquals(listOf("49000"), vm.matches()!!.matches.map { it.id })
+        // The rows' last pass, the (no) places, finishes the search.
         releaseCompute()
         assertFalse(vm.state.value.searching)
-        assertTrue(vm.matches()!!.entries.single() is SearchEntry.Place)
     }
 
     @Test
     fun theBundledPlacesAreSearchedOnCompute() {
-        // TfL's stop search never answers and there are no stops: searching the place index is the pass.
+        // There are no stops: searching the place index is the pass.
         val places = PlaceIndex.read(
             java.io.BufferedReader(java.io.StringReader("# stopdash place index v1\ttest\nP\tExample Gallery\tmuseum\t51.50000\t-0.12000\t9")),
         )
-        val vm = StationSearchViewModel(
-            Finder(search = { never.await() }), loadPlaceIndex = { places },
-            io = main, compute = compute, debounceMillis = 0,
-        )
+        val vm = StationSearchViewModel(loadPlaceIndex = { places }, io = main, compute = compute)
         mainIdle()
         vm.onQueryChange("gallery")
         mainIdle()
@@ -161,11 +135,10 @@ class SearchResultsOffMainTest {
         val pick = SearchEntry.Stop(oxford)
         val file = mutableListOf(oxford)
         val vm = StationSearchViewModel(
-            Finder(),
             loadYours = { YourStops(recent = file.toList()) },
             // The write held until compute has run, so the filter alone can take the row off.
             recordRemove = { removed -> file.removeAll { it.key == removed.key }; true },
-            io = compute, compute = compute, debounceMillis = 0,
+            io = compute, compute = compute,
         )
         mainIdle()
         releaseCompute()
@@ -185,10 +158,9 @@ class SearchResultsOffMainTest {
         val file = stops.map<StationMatch, SearchEntry>(SearchEntry::Stop).toMutableList()
         fun write(picks: List<SearchEntry>) { file.clear(); file.addAll(picks) }
         val vm = StationSearchViewModel(
-            Finder(),
             recordOpen = { write(RecentStations.add(file.toList(), SearchEntry.Stop(it))) },
             recordRemove = { write(RecentStations.remove(file.toList(), it)); true },
-            io = main, compute = compute, debounceMillis = 0,
+            io = main, compute = compute,
         )
         mainIdle()
         releaseCompute()
@@ -208,10 +180,9 @@ class SearchResultsOffMainTest {
         val file = mutableListOf(oxford)
         var slowRead: CompletableDeferred<Unit>? = null
         val vm = StationSearchViewModel(
-            Finder(),
             loadYours = { slowRead?.await(); YourStops(recent = file.toList()) },
             recordRemove = { removed -> file.removeAll { it.key == removed.key }; true },
-            io = main, compute = compute, debounceMillis = 0,
+            io = main, compute = compute,
         )
         mainIdle()
         releaseCompute()
@@ -230,14 +201,13 @@ class SearchResultsOffMainTest {
         val park = StationMatch("940GZZPARK", "Zeta Park", listOf("tube"))
         val opened = mutableListOf<StationMatch>()
         val vm = searchVm(
-            Finder(search = { emptyList() }),
             index = StationIndex(bundled),
             loadYours = { YourStops(recent = opened.toList()) },
             recordOpen = { opened += it },
         )
         vm.onQueryChange("zeta")
         mainIdle()
-        // The preview, TfL's (empty) answer and the (no) places, a pass each.
+        // The stations ranked with the (no) bus stops, then the (no) places, a pass each.
         repeat(3) { releaseCompute() }
         assertFalse(vm.state.value.searching)
         vm.onOpened(park)
@@ -311,7 +281,7 @@ class SearchResultsOffMainTest {
             java.io.BufferedReader(java.io.StringReader("# stopdash place index v1\ttest\nP\tExample Gallery\tmuseum\t51.50000\t-0.12000\t7")),
         )
         val vm = FavoritePlacesViewModel(
-            store, Finder(search = { never.await() }), io = main, compute = compute,
+            store, Finder(), io = main, compute = compute,
             loadPlaceIndex = { places }, debounceMillis = 0, newId = { "id-1" },
         )
         mainIdle()
@@ -326,7 +296,7 @@ class SearchResultsOffMainTest {
 
     @Test
     fun aFavoriteSearchPlacesTheIndexMatchesOnCompute() {
-        val vm = placesVm(Finder(search = { never.await() }), index = StationIndex(bundled))
+        val vm = placesVm(Finder(), index = StationIndex(bundled))
         vm.startAdd(FavoriteKind.CUSTOM, "")
         vm.onQueryChange("zeta")
         mainIdle()
@@ -336,15 +306,19 @@ class SearchResultsOffMainTest {
     }
 
     @Test
-    fun aFavoriteSearchRanksTflsAnswerOnCompute() {
-        val vm = placesVm(Finder(search = { listOf(oxford) }))
-        vm.startAdd(FavoriteKind.CUSTOM, "")
-        vm.onQueryChange("oxford")
+    fun aFavoriteSearchRanksTheBusStopsOnCompute() {
+        val vm = FavoritePlacesViewModel(
+            store, Finder(), io = main, compute = compute,
+            loadBusStops = { busStops("Zeta Road") }, debounceMillis = 0, newId = { "id-1" },
+        )
         mainIdle()
-        // The (empty) index matches placed, then TfL's answer ranked: two passes.
+        vm.startAdd(FavoriteKind.CUSTOM, "")
+        vm.onQueryChange("zeta")
+        mainIdle()
+        // The (empty) index matches placed, then the bus stops searched and ranked: two passes.
         releaseCompute()
         assertTrue("ranked with compute held", vm.state.value.editor!!.searching)
         releaseCompute()
-        assertEquals(listOf(oxford.id), vm.state.value.editor!!.results.map { it.id })
+        assertEquals(listOf("49000"), vm.state.value.editor!!.results.map { it.id })
     }
 }

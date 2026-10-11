@@ -44,7 +44,6 @@ class StationSearchFieldTest {
                         state = StationSearchViewModel.State(query = query, yoursRead = true),
                         onQueryChange = { queries += it; query = it },
                         onOpenStation = {},
-                        onRetry = {},
                         onBack = {},
                         autoFocus = false,
                     )

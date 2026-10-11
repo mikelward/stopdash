@@ -66,7 +66,6 @@ class StationSearchScreenshotTest {
                     state = state,
                     onQueryChange = {},
                     onOpenStation = onOpen,
-                    onRetry = {},
                     onBack = {},
                     autoFocus = false,
                 )
@@ -132,7 +131,6 @@ class StationSearchScreenshotTest {
                     ),
                     onQueryChange = {},
                     onOpenStation = {},
-                    onRetry = {},
                     onBack = {},
                     autoFocus = false,
                     onAskRemoveRecent = { pending = it },
@@ -180,7 +178,6 @@ class StationSearchScreenshotTest {
                     ),
                     onQueryChange = {},
                     onOpenStation = {},
-                    onRetry = {},
                     onBack = {},
                     autoFocus = false,
                     hint = "To station or stop",
@@ -225,7 +222,6 @@ class StationSearchScreenshotTest {
                     ),
                     onQueryChange = {},
                     onOpenStation = {},
-                    onRetry = {},
                     onBack = {},
                     autoFocus = false,
                     hint = "To station or stop",
@@ -260,7 +256,6 @@ class StationSearchScreenshotTest {
                     ),
                     onQueryChange = {},
                     onOpenStation = {},
-                    onRetry = {},
                     onBack = {},
                     autoFocus = false,
                 )
@@ -283,7 +278,6 @@ class StationSearchScreenshotTest {
                     state = StationSearchViewModel.State(recent = listOf(SearchEntry.Place(gallery)), yoursRead = true),
                     onQueryChange = {},
                     onOpenStation = {},
-                    onRetry = {},
                     onBack = {},
                     autoFocus = false,
                     onPickHere = {},
@@ -312,7 +306,6 @@ class StationSearchScreenshotTest {
                     ),
                     onQueryChange = {},
                     onOpenStation = {},
-                    onRetry = {},
                     onBack = {},
                     autoFocus = false,
                     onPickHere = { here = true },
@@ -345,7 +338,6 @@ class StationSearchScreenshotTest {
                     ),
                     onQueryChange = {},
                     onOpenStation = {},
-                    onRetry = {},
                     onBack = {},
                     autoFocus = false,
                     onPickHere = {},
@@ -374,7 +366,6 @@ class StationSearchScreenshotTest {
                     state = StationSearchViewModel.State(yoursRead = false),
                     onQueryChange = {},
                     onOpenStation = {},
-                    onRetry = {},
                     onBack = {},
                     autoFocus = false,
                     onPickHere = {},
@@ -404,7 +395,6 @@ class StationSearchScreenshotTest {
                     ),
                     onQueryChange = {},
                     onOpenStation = {},
-                    onRetry = {},
                     onBack = {},
                     autoFocus = false,
                     hint = "To station or stop",
@@ -436,7 +426,6 @@ class StationSearchScreenshotTest {
                     ),
                     onQueryChange = { typed = it },
                     onOpenStation = {},
-                    onRetry = {},
                     onBack = {},
                     autoFocus = false,
                     hint = toHint,
@@ -477,7 +466,6 @@ class StationSearchScreenshotTest {
                     state = StationSearchViewModel.State(yoursRead = true),
                     onQueryChange = {},
                     onOpenStation = {},
-                    onRetry = {},
                     onBack = {},
                     autoFocus = false,
                     hint = toHint,
@@ -515,7 +503,6 @@ class StationSearchScreenshotTest {
                     ),
                     onQueryChange = {},
                     onOpenStation = {},
-                    onRetry = {},
                     onBack = {},
                     autoFocus = false,
                     hint = "To station or stop",
@@ -552,7 +539,6 @@ class StationSearchScreenshotTest {
                     ),
                     onQueryChange = {},
                     onOpenStation = {},
-                    onRetry = {},
                     onBack = {},
                     autoFocus = false,
                     hint = "To station or stop",
@@ -585,7 +571,6 @@ class StationSearchScreenshotTest {
                     state = StationSearchViewModel.State(yoursRead = true),
                     onQueryChange = {},
                     onOpenStation = {},
-                    onRetry = {},
                     onBack = {},
                     autoFocus = false,
                     hint = "To station or stop",
@@ -620,22 +605,9 @@ class StationSearchScreenshotTest {
     }
 
     @Test
-    fun station_search_failed() {
-        show(
-            StationSearchViewModel.State(
-                query = "kings",
-                result = StationSearchViewModel.Result.Failed(DeparturesUiState.Error.Kind.OFFLINE),
-            ),
-        )
-        composeRule.onNodeWithText("You're offline").assertIsDisplayed()
-        composeRule.onNodeWithText("Retry").assertIsDisplayed()
-        captureSnapshot("station-search-failed.png")
-    }
-
-    @Test
     fun station_search_more_on_its_way() {
-        // The index's best few are up while TfL's answer is still on its way: a spinner under them says
-        // where more will land (maintainer, 2026-09-28: append, don't reorder).
+        // The stations' best few are up while the bus stops are still being read: a spinner under them
+        // says where more will land (maintainer, 2026-09-28: append, don't reorder).
         show(StationSearchViewModel.State(query = "kings", result = StationSearchViewModel.Result.Matches(matches), searching = true))
         composeRule.onNodeWithTag(SEARCH_LOADING_MORE_TAG).assertExists()
         captureSnapshot("station-search-more-on-its-way.png")

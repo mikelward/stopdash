@@ -587,8 +587,6 @@
     <!-- Placeholder in the From… search: it starts a trip from a station, a stop, or a place. -->
     <string name="station_search_from_hint">Station, stop, place or postcode</string>
     <string name="station_search_kind_postcode">Postcode</string>
-    <!-- Under the station matches when TfL's search (which covers bus stops) failed. -->
-    <string name="station_search_bus_stops_missing">Bus stops not searched</string>
     <!-- A searched station that has no stops stopdash shows departures for. -->
     <string name="station_no_departures">No departures here</string>
     <!-- Settings row that opens the favorite-places editor (SPEC D9). -->
@@ -746,9 +744,8 @@
     <string name="favorite_place_edit_title">Edit place</string>
     <string name="favorite_places_search_hint">Stop, place or postcode</string>
     <string name="favorite_places_search_prompt">Type a stop, place or postcode</string>
-    <!-- While a stop/postcode search runs, and when it fails. -->
+    <!-- While a stop/postcode search runs. -->
     <string name="favorite_places_searching">Searching…</string>
-    <string name="favorite_places_search_failed">Couldn\'t search just now</string>
     <string name="favorite_places_label_hint">Label</string>
     <!-- Confirms the currently chosen place (e.g. after a restore, when the search field is blank). -->
     <string name="favorite_places_selected">Selected: %1$s</string>

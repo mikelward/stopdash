@@ -15,26 +15,23 @@ object PlaceHits {
     /** How many geocoded places are kept after re-ranking, so they don't crowd out the stops. */
     const val DEFAULT_LIMIT = 8
 
-    // A house number, optionally a letter or a range ("50", "12a", "10-12"), then a word: an address.
-    private val ADDRESS = Regex("""^\d+[a-z]?(?:-\d+[a-z]?)?,?\s+\p{L}.*""", RegexOption.IGNORE_CASE)
+    // A house number, optionally a letter or a range ("50", "12a", "10-12", "10 – 12"), then a word:
+    // an address.
+    private const val NUMBER = """\d+[a-z]?(?:\s*[-‐‑‒–—]\s*\d+[a-z]?)?,?\s+"""
+    private val ADDRESS = Regex("""^$NUMBER\p{L}.*""", RegexOption.IGNORE_CASE)
+    private val HOUSE_NUMBER = Regex("""^$NUMBER""", RegexOption.IGNORE_CASE)
 
     /**
      * Whether [query] reads as a street address ("50 Euston Road"). The bundled index holds streets
-     * and places, not house numbers, so its matches for one are loose ("350 Euston Road" for "50");
-     * such a query still goes to TfL's geocoder, which can place the number.
+     * and places but no house numbers, so its street ([withoutHouseNumber]) is what's searched.
      */
     fun looksLikeAddress(query: String): Boolean = ADDRESS.matches(query.trim())
 
-    /**
-     * Whether the bundled index's [hits] answer [query] well enough to leave TfL's geocoder unasked:
-     * one of them matches as a prefix or a substring, not just letters in order ("foobar" finding
-     * "Football Force Academy" is noise, not an answer), and the query isn't an address with a house
-     * number, which the index can match only loosely. At most a few hits, so cheap.
-     */
-    fun answers(query: String, hits: List<PlaceHit>): Boolean =
-        !looksLikeAddress(query) && hits.any { hit ->
-            StationMatcher.tier(query, hit.name)?.let { it <= StationMatchTier.Substring } == true
-        }
+    /** [query] without the house number an address starts with ("50 Euston Road" → "Euston Road"). */
+    fun withoutHouseNumber(query: String): String {
+        val trimmed = query.trim()
+        return if (looksLikeAddress(trimmed)) trimmed.replaceFirst(HOUSE_NUMBER, "") else trimmed
+    }
 
     /**
      * The geocoded [candidates] as the To… list should show them. TfL's Journey Planner geocoder

@@ -49,6 +49,15 @@ class BundledStopsTest {
     }
 
     @Test
+    fun `the bus stops are the served ones placed inside the bounds`() {
+        // A zeroed position is the file's own mistake: never listed, so it can't be saved as a favorite.
+        val zeroed = "S\t490000003Z\tB\tZeta Road\t0.000000\t0.000000\t\t\t\t\t\t1"
+        val bus = read(file + "\n" + zeroed).busStops()
+        // The tube station and pier aren't bus stops.
+        assertEquals(listOf("490000001A", "490000001B", "490000002Z"), bus.map { it.id })
+    }
+
+    @Test
     fun `a stop with no station clusters by its name, and an arrow in the letter is a bearing`() {
         val stops = read().nearby(51.5, -0.12, 5_000, types).associateBy { it.id }
         assertEquals("Example Road", stops.getValue("490000001B").clusterId)

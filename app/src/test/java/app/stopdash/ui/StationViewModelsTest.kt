@@ -5,9 +5,9 @@ import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.IndexedStation
-import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.PlaceHit
 import app.stopdash.domain.PlaceHits
+import app.stopdash.domain.BusStopIndex
 import app.stopdash.domain.PlaceIndex
 import app.stopdash.domain.PlaceKind
 import app.stopdash.domain.SearchEntry
@@ -22,7 +22,6 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -43,27 +42,27 @@ class StationViewModelsTest {
 
     @After fun tearDown() = Dispatchers.resetMain()
 
+    // For a station's stops (StationStopsViewModel); the search asks TfL nothing.
     private class FakeFinder(
-        val search: suspend (String) -> List<StationMatch> = { emptyList() },
         val stops: suspend (String) -> List<StopLocation> = { emptyList() },
     ) : StationFinder {
-        val queries = mutableListOf<String>()
-        override suspend fun searchStations(query: String): List<StationMatch> {
-            queries += query
-            return search(query)
-        }
+        override suspend fun searchStations(query: String): List<StationMatch> = emptyList()
         override suspend fun stationStops(id: String): List<StopLocation> = stops(id)
     }
 
     private val oxford = StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"))
+    private val oxfordStation = IndexedStation(oxford.id, oxford.name, oxford.modes)
 
-    private fun searchVm(finder: StationFinder, saved: SavedStateHandle = SavedStateHandle()) =
-        StationSearchViewModel(finder, saved, io = dispatcher, compute = dispatcher, debounceMillis = 300)
+    private fun searchVm(
+        saved: SavedStateHandle = SavedStateHandle(),
+        index: StationIndex = StationIndex.EMPTY,
+        buses: BusStopIndex = BusStopIndex.EMPTY,
+    ) = StationSearchViewModel(saved, loadIndex = { index }, loadBusStops = { buses }, io = dispatcher, compute = dispatcher)
 
     @Test
     fun `a To picker lists saved favorite places, kept across a clear`() = runTest {
         val places = listOf(FavoritePlace("home", FavoriteKind.HOME, "Home", Coordinates(51.5, -0.12)))
-        val vm = StationSearchViewModel(FakeFinder(), io = dispatcher, compute = dispatcher, debounceMillis = 300, loadPlaces = { places })
+        val vm = StationSearchViewModel(io = dispatcher, compute = dispatcher, loadPlaces = { places })
         advanceUntilIdle()
         assertEquals(places, vm.state.value.favoritePlaces)
         assertFalse(vm.state.value.favoritePlacesFailed)
@@ -78,7 +77,7 @@ class StationViewModelsTest {
     @Test
     fun `a favorite-places read failure is a retryable state, not silently empty`() = runTest {
         // Null from the loader = couldn't read (as opposed to an empty list = genuinely none).
-        val vm = StationSearchViewModel(FakeFinder(), io = dispatcher, compute = dispatcher, debounceMillis = 300, loadPlaces = { null })
+        val vm = StationSearchViewModel(io = dispatcher, compute = dispatcher, loadPlaces = { null })
         advanceUntilIdle()
         assertTrue(vm.state.value.favoritePlaces.isEmpty())
         assertTrue(vm.state.value.favoritePlacesFailed)
@@ -87,63 +86,30 @@ class StationViewModelsTest {
         assertTrue(vm.state.value.favoritePlacesFailed)
     }
 
-    @Test
-    fun `a To search surfaces geocoded places, re-ranked, alongside the stops`() = runTest {
-        val vm = StationSearchViewModel(
-            FakeFinder(search = { emptyList() }),
-            io = dispatcher, compute = dispatcher,
-            debounceMillis = 300,
-            // TfL's geocoder order is noisy; our matcher floats the prefix match above the weak partial.
-            // Synthetic names and coordinates (AGENTS *Privacy*).
-            searchPlaces = {
-                listOf(
-                    PlaceCandidate("Alpha Zeta", Coordinates(51.5, -0.10)),
-                    PlaceCandidate("Zeta Hall", Coordinates(51.50, -0.10)),
-                )
-            },
-        )
-        vm.onQueryChange("zeta")
-        advanceUntilIdle()
-        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
-        assertEquals(listOf("Zeta Hall", "Alpha Zeta"), result.places.map { it.name })
-        assertEquals(PlaceKind.PLACE, result.places.first().kind)
-    }
-
     // A bundled place index from synthetic lines (AGENTS *Privacy*).
     private fun placeIndex(vararg lines: String): PlaceIndex = PlaceIndex.read(
         java.io.BufferedReader(java.io.StringReader((listOf("# stopdash place index v1\ttest") + lines).joinToString("\n"))),
     )
 
     @Test
-    fun `a To search lists bundled places with the first matches, and asks TfL's geocoder nothing`() = runTest {
-        var geocoded = 0
+    fun `a To search lists the bundled places it finds`() = runTest {
         val vm = StationSearchViewModel(
-            FakeFinder(search = { emptyList() }),
             io = dispatcher, compute = dispatcher,
-            debounceMillis = 300,
-            searchPlaces = { geocoded++; listOf(PlaceCandidate("Zeta Hall", Coordinates(51.5, -0.1))) },
             loadPlaceIndex = { placeIndex("P\tZeta Gallery\tmuseum\t51.50000\t-0.12000\t9", "S\tZeta Road\t\t51.50000\t-0.12000\t4") },
         )
         runCurrent()
         vm.onQueryChange("zeta")
-        // Before the typing pause: the bundled places are already listed.
-        runCurrent()
-        val early = vm.state.value.result as StationSearchViewModel.Result.Matches
-        assertEquals(listOf("Zeta Gallery", "Zeta Road"), early.places.map { it.name })
-        assertEquals(listOf(PlaceKind.PLACE, PlaceKind.STREET), early.places.map { it.kind })
         advanceUntilIdle()
         val result = vm.state.value.result as StationSearchViewModel.Result.Matches
         assertEquals(listOf("Zeta Gallery", "Zeta Road"), result.places.map { it.name })
-        assertEquals(0, geocoded)
+        assertEquals(listOf(PlaceKind.PLACE, PlaceKind.STREET), result.places.map { it.kind })
     }
 
     @Test
     fun `a postcode-shaped query lists bundled postcodes, not places named like one`() = runTest {
         val places = Array(PlaceHits.DEFAULT_LIMIT + 2) { "P\tXX1$it Hall\tcafe\t51.50000\t-0.12000\t9" }
         val vm = StationSearchViewModel(
-            FakeFinder(search = { emptyList() }),
             io = dispatcher, compute = dispatcher,
-            debounceMillis = 300,
             loadPlaceIndex = { placeIndex(*places, "C\tXX1 1AA\t\t51.50000\t-0.12000\t4") },
         )
         runCurrent()
@@ -154,30 +120,71 @@ class StationViewModelsTest {
         assertEquals(PlaceKind.POSTCODE, result.places.single().kind)
     }
 
+    // Bundled bus stops, synthetic (AGENTS *Privacy*): each a bus stop at a synthetic position.
+    private fun busStop(id: String, name: String, latitude: Double = 51.5, longitude: Double = -0.12) =
+        StopLocation(id, name, latitude, longitude, lines = listOf(LineRef("1", "1", "bus")))
+
+    private fun busStops(vararg stops: StopLocation): BusStopIndex = BusStopIndex.of(stops.toList())
+
     @Test
-    fun `bundled places read late are listed without waiting for TfL's stop search`() = runTest {
-        val indexRead = CompletableDeferred<Unit>()
-        val stopSearch = CompletableDeferred<List<StationMatch>>()
+    fun `bundled bus stops are ranked with the stations by how well they match`() = runTest {
+        // The bus stop's name is the query; the station's only starts with it.
         val vm = StationSearchViewModel(
-            FakeFinder(search = { stopSearch.await() }),
+            loadIndex = { StationIndex(listOf(IndexedStation("940GZZZETA", "Zeta Roadside Junction", listOf("tube")))) },
+            loadBusStops = { busStops(busStop("4900A", "Zeta Road")) },
             io = dispatcher, compute = dispatcher,
-            debounceMillis = 300,
-            searchPlaces = { emptyList() },
+        )
+        runCurrent()
+        vm.onQueryChange("zeta road")
+        advanceUntilIdle()
+        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals(listOf("4900A", "940GZZZETA"), result.matches.map { it.id })
+        assertEquals(StationMatch("4900A", "Zeta Road", listOf("bus"), 51.5, -0.12), result.matches.first())
+        assertFalse(vm.state.value.searching)
+    }
+
+    @Test
+    fun `bundled bus stops stay after a stop is opened`() = runTest {
+        val station = IndexedStation("940GZZZOO", "Zoo Road", listOf("tube"))
+        val vm = StationSearchViewModel(
+            loadIndex = { StationIndex(listOf(station)) },
+            loadBusStops = { busStops(busStop("4900A", "Zeta Road")) },
+            io = dispatcher, compute = dispatcher,
+        )
+        runCurrent()
+        // Both match "zrd" only by letters in order.
+        vm.onQueryChange("zrd")
+        advanceUntilIdle()
+        val before = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals(setOf("940GZZZOO", "4900A"), before.matches.map { it.id }.toSet())
+        vm.onOpened(before.matches.first { it.id == "940GZZZOO" })
+        advanceUntilIdle()
+        val after = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals(setOf("940GZZZOO", "4900A"), after.matches.map { it.id }.toSet())
+    }
+
+    @Test
+    fun `bundled places read late are listed while the bus stops are still being read`() = runTest {
+        val indexRead = CompletableDeferred<Unit>()
+        val busesRead = CompletableDeferred<BusStopIndex>()
+        val vm = StationSearchViewModel(
+            io = dispatcher, compute = dispatcher,
+            loadBusStops = { busesRead.await() },
             loadPlaceIndex = { indexRead.await(); placeIndex("P\tZeta Gallery\tmuseum\t51.50000\t-0.12000\t9") },
         )
         vm.onQueryChange("zeta")
-        advanceTimeBy(1_000)
         runCurrent()
-        // The index is read only now, past the pause, with TfL's stop search still out.
+        // The index is read only now, with the bus stops still unread.
         indexRead.complete(Unit)
         runCurrent()
         val early = vm.state.value.result as StationSearchViewModel.Result.Matches
         assertEquals(listOf("Zeta Gallery"), early.places.map { it.name })
         assertTrue(vm.state.value.searching)
-        stopSearch.complete(emptyList())
+        busesRead.complete(BusStopIndex.EMPTY)
         advanceUntilIdle()
         val result = vm.state.value.result as StationSearchViewModel.Result.Matches
         assertEquals(listOf("Zeta Gallery"), result.places.map { it.name })
+        assertFalse(vm.state.value.searching)
     }
 
     @Test
@@ -185,10 +192,7 @@ class StationViewModelsTest {
         // The place index is ready; the rider's saved stops aren't. The places don't wait for them.
         val yoursRead = CompletableDeferred<Unit>()
         val vm = StationSearchViewModel(
-            FakeFinder(search = { emptyList() }),
             io = dispatcher, compute = dispatcher,
-            debounceMillis = 300,
-            searchPlaces = { emptyList() },
             loadYours = { yoursRead.await(); YourStops.EMPTY },
             loadPlaceIndex = { placeIndex("P\tZeta Gallery\tmuseum\t51.50000\t-0.12000\t9") },
         )
@@ -204,119 +208,41 @@ class StationViewModelsTest {
     }
 
     @Test
-    fun `TfL's geocoder is asked only when the bundled places find nothing`() = runTest {
+    fun `an address's street is found in the bundle`() = runTest {
+        // The house number isn't in the bundle, so the street is what's searched.
         val vm = StationSearchViewModel(
-            FakeFinder(search = { emptyList() }),
             io = dispatcher, compute = dispatcher,
-            debounceMillis = 300,
-            searchPlaces = { listOf(PlaceCandidate("12 Zeta Hall Road", Coordinates(51.5, -0.1))) },
-            loadPlaceIndex = { placeIndex("P\tAlpha Gallery\tmuseum\t51.50000\t-0.12000\t9") },
-        )
-        vm.onQueryChange("12 zeta hall")
-        advanceUntilIdle()
-        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
-        assertEquals(listOf("12 Zeta Hall Road"), result.places.map { it.name })
-    }
-
-    @Test
-    fun `an address still asks TfL's geocoder when the bundle matches it only loosely`() = runTest {
-        val vm = StationSearchViewModel(
-            FakeFinder(search = { emptyList() }),
-            io = dispatcher, compute = dispatcher,
-            debounceMillis = 300,
-            searchPlaces = { listOf(PlaceCandidate("50 Zeta Road", Coordinates(51.5, -0.1))) },
-            loadPlaceIndex = { placeIndex("P\t350 Zeta Road\toffice\t51.50000\t-0.12000\t2") },
+            loadPlaceIndex = { placeIndex("S\tZeta Road\t\t51.50000\t-0.12000\t4") },
         )
         vm.onQueryChange("50 zeta road")
         advanceUntilIdle()
         val result = vm.state.value.result as StationSearchViewModel.Result.Matches
-        assertTrue("50 Zeta Road" in result.places.map { it.name })
+        assertEquals(listOf("Zeta Road"), result.places.map { it.name })
     }
 
     @Test
-    fun `a loose bundled match still asks TfL's geocoder`() = runTest {
-        val vm = StationSearchViewModel(
-            FakeFinder(search = { emptyList() }),
-            io = dispatcher, compute = dispatcher,
-            debounceMillis = 300,
-            searchPlaces = { listOf(PlaceCandidate("Zgly Hall", Coordinates(51.5, -0.1))) },
-            loadPlaceIndex = { placeIndex("P\tZeta Gallery\tmuseum\t51.50000\t-0.12000\t9") },
-        )
-        vm.onQueryChange("zgly")
-        advanceUntilIdle()
-        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
-        assertTrue("Zgly Hall" in result.places.map { it.name })
-    }
-
-    @Test
-    fun `a plain station search geocodes no places`() = runTest {
-        // No searchPlaces seam (a From… or browse search): only stops, never a geocode call.
-        val vm = StationSearchViewModel(FakeFinder(search = { listOf(oxford) }), io = dispatcher, compute = dispatcher, debounceMillis = 300)
+    fun `a plain station search lists no places`() = runTest {
+        // No place index (a From… or browse search): only stops.
+        val vm = searchVm(index = StationIndex(listOf(oxfordStation)))
         vm.onQueryChange("oxford")
         advanceUntilIdle()
         val result = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals(listOf(oxford), result.matches)
         assertTrue(result.places.isEmpty())
     }
 
     @Test
-    fun `a geocode failure leaves the stops standing`() = runTest {
-        val vm = StationSearchViewModel(
-            FakeFinder(search = { listOf(oxford) }),
-            io = dispatcher, compute = dispatcher,
-            debounceMillis = 300,
-            searchPlaces = { throw RuntimeException("geocode down") },
-        )
-        vm.onQueryChange("oxford")
-        advanceUntilIdle()
-        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
-        assertEquals(listOf("Oxford Circus"), result.matches.map { it.name })
-        assertTrue(result.places.isEmpty())
-    }
-
-    @Test
-    fun `stop matches show before a slow geocode finishes, then places merge in`() = runTest {
-        val gate = CompletableDeferred<Unit>()
-        val vm = StationSearchViewModel(
-            FakeFinder(search = { listOf(oxford) }),
-            io = dispatcher, compute = dispatcher,
-            debounceMillis = 300,
-            searchPlaces = {
-                gate.await() // the geocode stalls until released
-                listOf(PlaceCandidate("Oxford Point", Coordinates(51.5, -0.1)))
-            },
-        )
-        vm.onQueryChange("oxford")
-        advanceUntilIdle()
-        // The stop matches are on screen although the geocode hasn't answered.
-        val partial = vm.state.value.result as StationSearchViewModel.Result.Matches
-        assertEquals(listOf("Oxford Circus"), partial.matches.map { it.name })
-        assertTrue(partial.places.isEmpty())
-        gate.complete(Unit)
-        advanceUntilIdle()
-        val full = vm.state.value.result as StationSearchViewModel.Result.Matches
-        assertEquals(listOf("Oxford Circus"), full.matches.map { it.name })
-        assertEquals(listOf("Oxford Point"), full.places.map { it.name })
-    }
-
-    @Test
-    fun `the index's best few show at once, and TfL's answers only add below them`() = runTest {
-        // Six bundled stations that contain "zeta" (Substring), and TfL answers a stop and a place the
-        // query starts (Prefix) that would rank above them. Synthetic names (AGENTS *Privacy*).
+    fun `the index's best few show while the bus stops are read, and the bus stops only add below them`() = runTest {
+        // Six bundled stations that contain "zeta" (Substring), and a bus stop and a place the query
+        // starts (Prefix) that would rank above them. Synthetic names (AGENTS *Privacy*).
         val bundled = (1..6).map { IndexedStation("940GZZ$it", "Upper Bezeta $it", listOf("tube")) }
-        val stopGate = CompletableDeferred<Unit>()
-        val placeGate = CompletableDeferred<Unit>()
+        val busesRead = CompletableDeferred<BusStopIndex>()
+        val placesRead = CompletableDeferred<Unit>()
         val vm = StationSearchViewModel(
-            FakeFinder(search = {
-                stopGate.await()
-                listOf(StationMatch("490ZETA", "Zeta Lane", listOf("bus")))
-            }),
             loadIndex = { StationIndex(bundled) },
+            loadBusStops = { busesRead.await() },
+            loadPlaceIndex = { placesRead.await(); placeIndex("P\tZeta Gallery\tmuseum\t51.50000\t-0.12000\t9") },
             io = dispatcher, compute = dispatcher,
-            debounceMillis = 300,
-            searchPlaces = {
-                placeGate.await()
-                listOf(PlaceCandidate("Alpha District, Zeta Gallery", Coordinates(51.5, -0.1)))
-            },
         )
         fun rows() = (vm.state.value.result as StationSearchViewModel.Result.Matches).entries.map {
             when (it) {
@@ -326,227 +252,90 @@ class StationViewModelsTest {
         }
         vm.onQueryChange("zeta")
         runCurrent()
-        // Before TfL answers: the index's best four, with more on its way.
+        // Before the bus stops are read: the index's best four, with more on its way.
         val preview = rows()
         assertEquals(StationSearchViewModel.LOCAL_PREVIEW, preview.size)
         assertTrue(vm.state.value.searching)
-        stopGate.complete(Unit)
-        advanceTimeBy(301)
+        busesRead.complete(busStops(busStop("490ZETA", "Zeta Lane")))
         runCurrent()
-        // TfL's stop, although it matches better, joins below the rows already up, with the rest of
+        // The bus stop, although it matches better, joins below the rows already up, with the rest of
         // the index's matches (maintainer, 2026-09-28: append, don't reorder).
         val withStops = rows()
         assertEquals(preview, withStops.take(preview.size))
         assertEquals("Zeta Lane", withStops[preview.size])
         assertEquals(7, withStops.size)
-        placeGate.complete(Unit)
+        placesRead.complete(Unit)
         advanceUntilIdle()
         val all = rows()
         assertEquals(withStops, all.take(withStops.size))
-        assertEquals("Alpha District, Zeta Gallery", all.last())
+        assertEquals("Zeta Gallery", all.last())
         assertFalse(vm.state.value.searching)
     }
 
     @Test
-    fun `a row already shown keeps its place but takes TfL's fuller copy of itself`() = runTest {
-        // The index knows the station without a position; TfL's answer for the same id lends it one.
-        val bundled = listOf(IndexedStation("940GZZZETA", "Zeta Cross", listOf("tube")))
-        val gate = CompletableDeferred<Unit>()
+    fun `a previewed row the bus stops' positions fold into its twin leaves rather than stay a duplicate`() = runTest {
+        // Two of the rider's own stops of one name, matched as typed, told apart only once the bundled
+        // bus stops place them side by side.
+        val a = StationMatch("490ZETAA", "Zeta Road", listOf("bus"))
+        val b = StationMatch("490ZETAB", "Zeta Road", listOf("bus"))
+        val busesRead = CompletableDeferred<BusStopIndex>()
         val vm = StationSearchViewModel(
-            FakeFinder(search = {
-                gate.await()
-                listOf(StationMatch("940GZZZETA", "Zeta Cross", listOf("tube"), latitude = 51.5, longitude = -0.1))
-            }),
-            loadIndex = { StationIndex(bundled) },
+            loadYours = { YourStops(recent = listOf(a, b)) },
+            loadBusStops = { busesRead.await() },
             io = dispatcher, compute = dispatcher,
-            debounceMillis = 300,
-        )
-        vm.onQueryChange("zeta")
-        runCurrent()
-        gate.complete(Unit)
-        advanceUntilIdle()
-        val rows = (vm.state.value.result as StationSearchViewModel.Result.Matches).entries
-        assertEquals(1, rows.size)
-        val stop = (rows.single() as SearchEntry.Stop).match
-        assertEquals(51.5, stop.latitude)
-        assertEquals(-0.1, stop.longitude)
-    }
-
-    @Test
-    fun `a previewed row TfL's ranking folds into its twin leaves rather than stay a duplicate`() = runTest {
-        // Two bundled records of one station, told apart only once TfL's positions show them side by side.
-        val bundled = listOf(
-            IndexedStation("910GZETAA", "Zeta Rail", listOf("national-rail")),
-            IndexedStation("910GZETAB", "Zeta Rail", listOf("national-rail")),
-        )
-        val gate = CompletableDeferred<Unit>()
-        val vm = StationSearchViewModel(
-            FakeFinder(search = {
-                gate.await()
-                listOf(
-                    StationMatch("910GZETAA", "Zeta Rail", listOf("national-rail"), latitude = 51.5, longitude = -0.1),
-                    StationMatch("910GZETAB", "Zeta Rail", listOf("national-rail"), latitude = 51.5, longitude = -0.1),
-                )
-            }),
-            loadIndex = { StationIndex(bundled) },
-            io = dispatcher, compute = dispatcher,
-            debounceMillis = 300,
         )
         fun keys() = (vm.state.value.result as StationSearchViewModel.Result.Matches).entries.map { it.key }
         vm.onQueryChange("zeta")
         runCurrent()
-        assertEquals(listOf("910GZETAA", "910GZETAB"), keys())
-        gate.complete(Unit)
+        assertEquals(listOf("490ZETAA", "490ZETAB"), keys())
+        busesRead.complete(busStops(busStop(a.id, a.name), busStop(b.id, b.name)))
         advanceUntilIdle()
-        assertEquals(listOf("910GZETAA"), keys())
+        assertEquals(listOf("490ZETAA"), keys())
     }
 
     @Test
-    fun `a previewed row pushed past the result cap by better TfL matches stays where it is`() = runTest {
-        // TfL answers more better matches than the cap holds; the index's rows are still up and stay.
+    fun `a previewed row pushed past the result cap by better bus stops stays where it is`() = runTest {
+        // More bus stops match better than the cap holds; the index's rows are still up and stay.
         val bundled = (1..4).map { IndexedStation("940GZZ$it", "Upper Bezeta $it", listOf("tube")) }
-        val gate = CompletableDeferred<Unit>()
+        val busesRead = CompletableDeferred<BusStopIndex>()
         val vm = StationSearchViewModel(
-            FakeFinder(search = {
-                gate.await()
-                (1..StationIndex.DEFAULT_LIMIT).map { StationMatch("490ZETA$it", "Zeta Lane $it", listOf("bus")) }
-            }),
             loadIndex = { StationIndex(bundled) },
+            loadBusStops = { busesRead.await() },
             io = dispatcher, compute = dispatcher,
-            debounceMillis = 300,
         )
         fun keys() = (vm.state.value.result as StationSearchViewModel.Result.Matches).entries.map { it.key }
         vm.onQueryChange("zeta")
         runCurrent()
         val preview = keys()
         assertEquals(4, preview.size)
-        gate.complete(Unit)
+        busesRead.complete(busStops(*(1..StationIndex.DEFAULT_LIMIT).map { busStop("490ZETA$it", "Zeta Lane $it") }.toTypedArray()))
         advanceUntilIdle()
         assertEquals(preview, keys().take(preview.size))
     }
 
     @Test
-    fun `a Retry of the same query keeps the rows already up`() = runTest {
-        // TfL's stop search fails once; the index's matches and a place are up. Retry must add to
-        // them, not drop back to the four-row preview while TfL answers.
-        val bundled = (1..6).map { IndexedStation("940GZZ$it", "Upper Bezeta $it", listOf("tube")) }
-        var fail = true
-        val gate = CompletableDeferred<Unit>()
-        val vm = StationSearchViewModel(
-            FakeFinder(search = {
-                if (fail) throw TflException.Offline(null)
-                gate.await()
-                listOf(StationMatch("490ZETA", "Zeta Lane", listOf("bus")))
-            }),
-            loadIndex = { StationIndex(bundled) },
-            io = dispatcher, compute = dispatcher,
-            debounceMillis = 300,
-            searchPlaces = { listOf(PlaceCandidate("Alpha District, Zeta Gallery", Coordinates(51.5, -0.1))) },
-        )
-        fun keys() = (vm.state.value.result as StationSearchViewModel.Result.Matches).entries.map { it.key }
-        vm.onQueryChange("zeta")
-        advanceUntilIdle()
-        val before = keys()
-        assertEquals(7, before.size)
-        fail = false
-        vm.retry()
-        runCurrent()
-        assertEquals(before, keys())
-        gate.complete(Unit)
-        advanceUntilIdle()
-        assertEquals(before, keys().take(before.size))
-        assertEquals("490ZETA", keys().last())
-    }
-
-    @Test
-    fun `a Retry that fails again keeps the places already up, with the failure noted`() = runTest {
-        // First try: TfL's stop search fails, the geocoder finds a place. Retry: both come back empty-handed.
-        var geocoded = listOf(PlaceCandidate("Alpha District, Zeta Gallery", Coordinates(51.5, -0.1)))
-        val vm = StationSearchViewModel(
-            FakeFinder(search = { throw TflException.Offline(null) }),
-            io = dispatcher, compute = dispatcher,
-            debounceMillis = 300,
-            searchPlaces = { geocoded },
-        )
-        vm.onQueryChange("zeta")
-        advanceUntilIdle()
-        val before = vm.state.value.result as StationSearchViewModel.Result.Matches
-        assertEquals(listOf("Alpha District, Zeta Gallery"), before.places.map { it.name })
-        geocoded = emptyList()
-        vm.retry()
-        advanceUntilIdle()
-        val after = vm.state.value.result as StationSearchViewModel.Result.Matches
-        assertEquals(before.entries, after.entries)
-        assertEquals(before.places, after.places)
-        assertTrue(after.remoteFailure != null)
-    }
-
-    @Test
     fun `a query restored after process death is kept and searched again`() = runTest {
+        val index = StationIndex(listOf(oxfordStation))
         val first = SavedStateHandle()
-        searchVm(FakeFinder(), first).onQueryChange("oxford")
-        val finder = FakeFinder(search = { listOf(oxford) })
-        val restored = searchVm(finder, SavedStateHandle(mapOf("query" to first.get<String>("query"))))
+        searchVm(first, index).onQueryChange("oxford")
+        val restored = searchVm(SavedStateHandle(mapOf("query" to first.get<String>("query"))), index)
         assertEquals("oxford", restored.state.value.query)
         advanceUntilIdle()
-        assertEquals(listOf("oxford"), finder.queries)
         assertEquals(StationSearchViewModel.Result.Matches(listOf(oxford)), restored.state.value.result)
     }
 
     @Test
-    fun `typing searches once, after the pause, for the trimmed query`() = runTest {
-        val finder = FakeFinder(search = { listOf(oxford) })
-        val vm = searchVm(finder)
-        vm.onQueryChange("ox")
-        advanceTimeBy(100)
-        vm.onQueryChange("oxf ")
-        advanceTimeBy(299)
-        runCurrent()
-        assertTrue("no request before the pause", finder.queries.isEmpty())
-        advanceUntilIdle()
-        assertEquals(listOf("oxf"), finder.queries)
-        assertEquals(StationSearchViewModel.Result.Matches(listOf(oxford)), vm.state.value.result)
-        assertFalse(vm.state.value.searching)
-    }
-
-    @Test
-    fun `closing the search forgets the query and cancels a pending request`() = runTest {
+    fun `closing the search forgets the query and its search`() = runTest {
         val saved = SavedStateHandle()
-        val finder = FakeFinder(search = { listOf(oxford) })
-        val vm = searchVm(finder, saved)
+        val vm = searchVm(saved, StationIndex(listOf(oxfordStation)))
         vm.onQueryChange("oxford")
-        advanceTimeBy(100)
         vm.clear()
         advanceUntilIdle()
-        assertTrue("the pending search never ran", finder.queries.isEmpty())
         assertEquals(StationSearchViewModel.State(yoursRead = true), vm.state.value)
         assertEquals(null, saved.get<String>("query"))
     }
 
     private val kingsCross = IndexedStation("HUBKGX", "King's Cross St. Pancras", listOf("tube"))
-
-    @Test
-    fun `the bundled index answers at once, before TfL`() = runTest {
-        val finder = FakeFinder(search = { listOf(StationMatch("490000000001A", "Kings Road", listOf("bus"))) })
-        val vm = StationSearchViewModel(finder, loadIndex = { StationIndex(listOf(kingsCross)) }, io = dispatcher, compute = dispatcher, debounceMillis = 300)
-        vm.onQueryChange("kx")
-        runCurrent()
-        assertEquals(listOf("HUBKGX"), (vm.state.value.result as StationSearchViewModel.Result.Matches).matches.map { it.id })
-        assertTrue("TfL's search is still to come", vm.state.value.searching)
-        advanceUntilIdle()
-        assertEquals(listOf("kx"), finder.queries)
-    }
-
-    @Test
-    fun `a failed TfL search keeps the index's matches and says what's missing`() = runTest {
-        val finder = FakeFinder(search = { throw TflException.Offline(null) })
-        val vm = StationSearchViewModel(finder, loadIndex = { StationIndex(listOf(kingsCross)) }, io = dispatcher, compute = dispatcher, debounceMillis = 300)
-        vm.onQueryChange("kings")
-        advanceUntilIdle()
-        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
-        assertEquals(listOf("HUBKGX"), result.matches.map { it.id })
-        assertEquals(DeparturesUiState.Error.Kind.OFFLINE, result.remoteFailure)
-    }
 
     private val favoriteStop = StationMatch("490000000001A", "Example Road", listOf("bus"))
 
@@ -554,7 +343,6 @@ class StationViewModelsTest {
     fun `the user's own stops are listed before anything is typed`() = runTest {
         val recent = StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"))
         val vm = StationSearchViewModel(
-            FakeFinder(),
             loadYours = { YourStops(favorites = listOf(favoriteStop), recent = listOf(recent)) },
             io = dispatcher, compute = dispatcher,
         )
@@ -569,7 +357,6 @@ class StationViewModelsTest {
     fun `the home's refresh while the first read is still going doesn't read again, a later one does`() = runTest {
         var reads = 0
         val vm = StationSearchViewModel(
-            FakeFinder(),
             loadYours = { reads++; YourStops(favorites = listOf(favoriteStop), recent = emptyList()) },
             io = dispatcher, compute = dispatcher,
         )
@@ -590,7 +377,6 @@ class StationViewModelsTest {
     fun `recent stations for the home without location leave out the starred ones`() = runTest {
         val recent = StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"))
         val vm = StationSearchViewModel(
-            FakeFinder(),
             loadYours = { YourStops(favorites = listOf(favoriteStop), recent = listOf(recent, favoriteStop)) },
             io = dispatcher, compute = dispatcher,
         )
@@ -606,7 +392,6 @@ class StationViewModelsTest {
         val starred = (1..15).map { StationMatch("HUB$it", "Station $it", listOf("tube")) }
         val recent = (1..15).map { StationMatch("940G$it", "Recent $it", listOf("tube")) }
         val vm = StationSearchViewModel(
-            FakeFinder(),
             loadYours = { YourStops(favorites = starred, recent = recent) },
             io = dispatcher, compute = dispatcher,
         )
@@ -620,7 +405,6 @@ class StationViewModelsTest {
     @Test
     fun `a starred station the device couldn't name is named from the bundled index`() = runTest {
         val vm = StationSearchViewModel(
-            FakeFinder(),
             loadIndex = { StationIndex(listOf(kingsCross)) },
             loadYours = { YourStops(unnamedStarred = listOf("HUBKGX")) },
             io = dispatcher, compute = dispatcher,
@@ -633,7 +417,7 @@ class StationViewModelsTest {
     fun `an older read of the user's stops that lands last doesn't overwrite a newer one`() = runTest {
         val first = CompletableDeferred<YourStops>()
         val reads = ArrayDeque(listOf<suspend () -> YourStops>({ first.await() }, { YourStops(favorites = listOf(favoriteStop)) }))
-        val vm = StationSearchViewModel(FakeFinder(), loadYours = { reads.removeFirst()() }, io = dispatcher, compute = dispatcher)
+        val vm = StationSearchViewModel(loadYours = { reads.removeFirst()() }, io = dispatcher, compute = dispatcher)
         runCurrent()
         vm.refreshYours()
         advanceUntilIdle()
@@ -644,19 +428,13 @@ class StationViewModelsTest {
     }
 
     @Test
-    fun `a starred bus stop matches as the user types, before TfL`() = runTest {
-        val finder = FakeFinder(search = { emptyList() })
+    fun `a starred bus stop matches as the user types`() = runTest {
         val vm = StationSearchViewModel(
-            finder,
             loadIndex = { StationIndex(listOf(kingsCross)) },
             loadYours = { YourStops(favorites = listOf(favoriteStop)) },
             io = dispatcher, compute = dispatcher,
-            debounceMillis = 300,
         )
         vm.onQueryChange("example")
-        runCurrent()
-        assertEquals(listOf(favoriteStop), (vm.state.value.result as StationSearchViewModel.Result.Matches).matches)
-        assertTrue("TfL's search is still to come", finder.queries.isEmpty())
         advanceUntilIdle()
         assertEquals(listOf(favoriteStop), (vm.state.value.result as StationSearchViewModel.Result.Matches).matches)
     }
@@ -665,7 +443,6 @@ class StationViewModelsTest {
     fun `opening a match remembers it and rereads the recent list`() = runTest {
         val opened = mutableListOf<StationMatch>()
         val vm = StationSearchViewModel(
-            FakeFinder(),
             loadYours = { YourStops(recent = opened.toList()) },
             recordOpen = { opened.add(0, it) },
             io = dispatcher, compute = dispatcher,
@@ -681,7 +458,6 @@ class StationViewModelsTest {
         val picks = mutableListOf<SearchEntry>()
         val gallery = PlaceHit("Example Gallery", Coordinates(51.5, -0.12), PlaceKind.PLACE)
         val vm = StationSearchViewModel(
-            FakeFinder(),
             loadYours = {
                 YourStops(
                     recent = picks.filterIsInstance<SearchEntry.Stop>().map { it.match },
@@ -707,7 +483,6 @@ class StationViewModelsTest {
         val gallery = PlaceHit("Example Gallery", Coordinates(51.5, -0.12), PlaceKind.PLACE)
         val picks = mutableListOf<SearchEntry>(SearchEntry.Stop(oxford), SearchEntry.Place(gallery))
         val vm = StationSearchViewModel(
-            FakeFinder(),
             loadYours = {
                 YourStops(
                     recent = picks.filterIsInstance<SearchEntry.Stop>().map { it.match },
@@ -734,7 +509,6 @@ class StationViewModelsTest {
         var gate: CompletableDeferred<Unit>? = null
         val writing = CompletableDeferred<Unit>()
         val vm = StationSearchViewModel(
-            FakeFinder(),
             loadYours = {
                 val read = YourStops(recent = picks.filterIsInstance<SearchEntry.Stop>().map { it.match }, recentPicks = picks.toList())
                 gate?.await()
@@ -763,7 +537,7 @@ class StationViewModelsTest {
 
     @Test
     fun `a long press's question is held until confirmed or canceled`() = runTest {
-        val vm = StationSearchViewModel(FakeFinder(), recordRemove = { true }, io = dispatcher, compute = dispatcher)
+        val vm = StationSearchViewModel(recordRemove = { true }, io = dispatcher, compute = dispatcher)
         advanceUntilIdle()
         vm.askRemoveRecent(SearchEntry.Stop(oxford))
         assertEquals(SearchEntry.Stop(oxford), vm.state.value.pendingRemoval)
@@ -781,7 +555,6 @@ class StationViewModelsTest {
         val first = CompletableDeferred<Unit>()
         val second = CompletableDeferred<Unit>()
         val vm = StationSearchViewModel(
-            FakeFinder(),
             loadYours = { YourStops(recent = file.filterIsInstance<SearchEntry.Stop>().map { it.match }, recentPicks = file.toList()) },
             recordRemove = { removed ->
                 (if (removed.key == oxford.key) first else second).await()
@@ -811,7 +584,6 @@ class StationViewModelsTest {
         val bank = StationMatch("940GZZLUBNK", "Bank", listOf("tube"))
         val file = mutableListOf<SearchEntry>(SearchEntry.Stop(oxford), SearchEntry.Stop(bank))
         val vm = StationSearchViewModel(
-            FakeFinder(),
             loadYours = { YourStops(recent = file.filterIsInstance<SearchEntry.Stop>().map { it.match }, recentPicks = file.toList()) },
             recordRemove = { removed -> if (removed.key == oxford.key) false else { file.removeAll { it.key == removed.key }; true } },
             io = dispatcher, compute = dispatcher,
@@ -828,12 +600,11 @@ class StationViewModelsTest {
     fun `a removal asked about before process death is asked again once Recent is read`() = runTest {
         val picks = listOf<SearchEntry>(SearchEntry.Stop(oxford))
         val saved = SavedStateHandle()
-        val before = StationSearchViewModel(FakeFinder(), saved, loadYours = { YourStops(recent = listOf(oxford), recentPicks = picks) }, io = dispatcher, compute = dispatcher)
+        val before = StationSearchViewModel(saved, loadYours = { YourStops(recent = listOf(oxford), recentPicks = picks) }, io = dispatcher, compute = dispatcher)
         advanceUntilIdle()
         before.askRemoveRecent(SearchEntry.Stop(oxford))
         // A new model over the saved state, as after process death.
         val after = StationSearchViewModel(
-            FakeFinder(),
             SavedStateHandle(mapOf("pendingRemoval" to saved.get<String>("pendingRemoval"))),
             loadYours = { YourStops(recent = listOf(oxford), recentPicks = picks) },
             io = dispatcher, compute = dispatcher,
@@ -853,7 +624,6 @@ class StationViewModelsTest {
         var gate: CompletableDeferred<Unit>? = null
         val writing = CompletableDeferred<Unit>()
         val vm = StationSearchViewModel(
-            FakeFinder(),
             loadYours = { YourStops(recent = listOf(oxford), recentPicks = picks) },
             loadPlaces = { gate?.await(); emptyList() },
             recordRemove = { writing.await(); true },
@@ -879,7 +649,6 @@ class StationViewModelsTest {
         val saved = SavedStateHandle()
         var gate: CompletableDeferred<Unit>? = null
         val vm = StationSearchViewModel(
-            FakeFinder(),
             saved,
             loadYours = { YourStops(recent = listOf(oxford), recentPicks = picks) },
             loadPlaces = { gate?.await(); emptyList() },
@@ -901,7 +670,6 @@ class StationViewModelsTest {
     fun `a removal that couldn't be saved lists the row again and says so, until another is asked about`() = runTest {
         val picks = listOf<SearchEntry>(SearchEntry.Stop(oxford))
         val vm = StationSearchViewModel(
-            FakeFinder(),
             loadYours = { YourStops(recent = listOf(oxford), recentPicks = picks) },
             recordRemove = { false },
             io = dispatcher, compute = dispatcher,
@@ -926,7 +694,7 @@ class StationViewModelsTest {
         val picks = listOf<SearchEntry>(SearchEntry.Stop(oxford))
         val saved = SavedStateHandle()
         val before = StationSearchViewModel(
-            FakeFinder(), saved,
+            saved,
             loadYours = { YourStops(recent = listOf(oxford), recentPicks = picks) },
             recordRemove = { false },
             io = dispatcher, compute = dispatcher,
@@ -934,7 +702,7 @@ class StationViewModelsTest {
         advanceUntilIdle()
         before.onRemoveRecent(SearchEntry.Stop(oxford))
         advanceUntilIdle()
-        val after = StationSearchViewModel(FakeFinder(), saved, loadYours = { YourStops(recent = listOf(oxford), recentPicks = picks) }, io = dispatcher, compute = dispatcher)
+        val after = StationSearchViewModel(saved, loadYours = { YourStops(recent = listOf(oxford), recentPicks = picks) }, io = dispatcher, compute = dispatcher)
         advanceUntilIdle()
         assertTrue(after.state.value.removeRecentFailed)
         after.askRemoveRecent(SearchEntry.Stop(oxford))
@@ -949,7 +717,6 @@ class StationViewModelsTest {
         val written = mutableListOf<SearchEntry>()
         val gallery = PlaceHit("Example Gallery", Coordinates(51.5, -0.12), PlaceKind.PLACE)
         val vm = StationSearchViewModel(
-            FakeFinder(),
             recordOpen = { written.add(0, SearchEntry.Stop(it)) },
             recordPlace = { if (it == gallery) gate.await(); written.add(0, SearchEntry.Place(it)) },
             io = dispatcher, compute = dispatcher,
@@ -970,12 +737,10 @@ class StationViewModelsTest {
         val park = IndexedStation("940GZZLUBBB", "Example Park", listOf("tube"))
         val opened = mutableListOf<StationMatch>()
         val vm = StationSearchViewModel(
-            FakeFinder(),
             loadIndex = { StationIndex(listOf(place, park)) },
             loadYours = { YourStops(recent = opened.toList()) },
             recordOpen = { opened.add(0, it) },
             io = dispatcher, compute = dispatcher,
-            debounceMillis = 300,
         )
         vm.onQueryChange("example")
         advanceUntilIdle()
@@ -989,31 +754,26 @@ class StationViewModelsTest {
     }
 
     @Test
-    fun `opening a match re-ranks TfL's matches without asking TfL again`() = runTest {
+    fun `opening a bus stop re-ranks it with the stations`() = runTest {
         val place = IndexedStation("940GZZLUAAA", "Example Place", listOf("tube"))
-        val busStop = StationMatch("490000000001A", "Example Road", listOf("bus"))
-        var up = true
-        val finder = FakeFinder(search = { if (up) listOf(busStop) else throw TflException.Offline(null) })
         val opened = mutableListOf<StationMatch>()
         val vm = StationSearchViewModel(
-            finder,
             loadIndex = { StationIndex(listOf(place)) },
+            loadBusStops = { busStops(busStop("490000000001A", "Example Ridge Road")) },
             loadYours = { YourStops(recent = opened.toList()) },
             recordOpen = { opened.add(0, it) },
             io = dispatcher, compute = dispatcher,
-            debounceMillis = 300,
         )
         vm.onQueryChange("example")
         advanceUntilIdle()
-        assertEquals(1, finder.queries.size)
-        // TfL goes down while the bus stop's page is open; Back still has both matches, the bus stop first.
-        up = false
-        vm.onOpened(busStop)
+        val before = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals(listOf("940GZZLUAAA", "490000000001A"), before.matches.map { it.id })
+        // On Back the bus stop just opened leads, still with its bundled position.
+        vm.onOpened(before.matches.last())
         advanceUntilIdle()
         val result = vm.state.value.result as StationSearchViewModel.Result.Matches
         assertEquals(listOf("490000000001A", "940GZZLUAAA"), result.matches.map { it.id })
-        assertEquals(null, result.remoteFailure)
-        assertEquals(1, finder.queries.size)
+        assertEquals(51.5, result.matches.first().latitude)
     }
 
     @Test
@@ -1021,103 +781,57 @@ class StationViewModelsTest {
         val place = IndexedStation("940GZZLUAAA", "Example Place", listOf("tube"))
         val park = IndexedStation("940GZZLUBBB", "Example Park", listOf("tube"))
         val opened = mutableListOf<StationMatch>()
+        val busesRead = CompletableDeferred<BusStopIndex>()
         val vm = StationSearchViewModel(
-            FakeFinder(),
             loadIndex = { StationIndex(listOf(place, park)) },
+            loadBusStops = { busesRead.await() },
             loadYours = { YourStops(recent = opened.toList()) },
             recordOpen = { opened.add(0, it) },
             io = dispatcher, compute = dispatcher,
-            debounceMillis = 300,
         )
         vm.onQueryChange("example")
         runCurrent()
-        // Picked from the index's matches, inside the typing pause, before TfL has answered.
+        // Picked from the index's matches before the bus stops are read.
         assertTrue(vm.state.value.searching)
         vm.onOpened(StationMatch("940GZZLUAAA", "Example Place", listOf("tube")))
+        runCurrent()
+        busesRead.complete(BusStopIndex.EMPTY)
         advanceUntilIdle()
         val after = (vm.state.value.result as StationSearchViewModel.Result.Matches).matches.map { it.id }
         assertEquals(listOf("940GZZLUAAA", "940GZZLUBBB"), after)
     }
 
     @Test
-    fun `a re-rank never brings back TfL matches from an earlier answer`() = runTest {
-        val place = IndexedStation("940GZZLUAAA", "Example Place", listOf("tube"))
-        val busStop = StationMatch("490000000001A", "Example Road", listOf("bus"))
-        var up = true
-        val finder = FakeFinder(search = { if (up) listOf(busStop) else throw TflException.Offline(null) })
-        val vm = StationSearchViewModel(
-            finder,
-            loadIndex = { StationIndex(listOf(place)) },
-            loadYours = { YourStops() },
-            io = dispatcher, compute = dispatcher,
-            debounceMillis = 300,
-        )
-        vm.onQueryChange("example")
-        advanceUntilIdle()
-        up = false
-        vm.onQueryChange("exampl")
-        advanceUntilIdle()
-        vm.onQueryChange("example")
-        advanceUntilIdle()
-        vm.onOpened(StationMatch("940GZZLUAAA", "Example Place", listOf("tube")))
-        advanceUntilIdle()
-        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
-        assertEquals(listOf("940GZZLUAAA"), result.matches.map { it.id })
-        assertEquals(DeparturesUiState.Error.Kind.OFFLINE, result.remoteFailure)
-    }
-
-    @Test
     fun `a query under two characters doesn't search`() = runTest {
-        val finder = FakeFinder(search = { listOf(oxford) })
-        val vm = searchVm(finder)
+        val vm = searchVm(index = StationIndex(listOf(oxfordStation)))
         vm.onQueryChange(" o ")
         advanceUntilIdle()
-        assertTrue(finder.queries.isEmpty())
         assertEquals(StationSearchViewModel.Result.Idle, vm.state.value.result)
+        assertFalse(vm.state.value.searching)
     }
 
     @Test
     fun `no matches is its own answer, not an error`() = runTest {
-        val vm = searchVm(FakeFinder(search = { emptyList() }))
-        vm.onQueryChange("zzz")
+        val vm = searchVm(index = StationIndex(listOf(oxfordStation)), buses = busStops(busStop("4900A", "Zeta Road")))
+        vm.onQueryChange("qqq")
         advanceUntilIdle()
         assertEquals(StationSearchViewModel.Result.NoMatches, vm.state.value.result)
-    }
-
-    @Test
-    fun `a failed search says why, and retry searches again`() = runTest {
-        var fail = true
-        val finder = FakeFinder(search = { if (fail) throw TflException.Offline(null) else listOf(oxford) })
-        val vm = searchVm(finder)
-        vm.onQueryChange("oxford")
-        advanceUntilIdle()
-        assertEquals(
-            StationSearchViewModel.Result.Failed(DeparturesUiState.Error.Kind.OFFLINE),
-            vm.state.value.result,
-        )
-        fail = false
-        vm.retry()
-        advanceUntilIdle()
-        assertEquals(StationSearchViewModel.Result.Matches(listOf(oxford)), vm.state.value.result)
+        assertFalse(vm.state.value.searching)
     }
 
     @Test
     fun `the previous matches stay up while the next search runs`() = runTest {
-        val gate = CompletableDeferred<Unit>()
-        val finder = FakeFinder(search = { q -> if (q == "oxfo") gate.await(); listOf(oxford.copy(name = q)) })
-        val vm = searchVm(finder)
-        vm.onQueryChange("oxf")
+        val oxbow = IndexedStation("940GZZOXB", "Oxbow Park", listOf("tube"))
+        val vm = searchVm(index = StationIndex(listOf(oxbow, oxfordStation)))
+        vm.onQueryChange("oxb")
         advanceUntilIdle()
         vm.onQueryChange("oxfo")
-        runCurrent()
-        assertTrue("marked searching during the typing pause, not only after it", vm.state.value.searching)
-        advanceTimeBy(301)
-        runCurrent()
+        // Marked searching at once, the last answer still up until the new one lands.
         assertTrue(vm.state.value.searching)
-        assertEquals(listOf("oxf"), (vm.state.value.result as StationSearchViewModel.Result.Matches).matches.map { it.name })
-        gate.complete(Unit)
+        assertEquals(listOf("Oxbow Park"), (vm.state.value.result as StationSearchViewModel.Result.Matches).matches.map { it.name })
         advanceUntilIdle()
-        assertEquals(listOf("oxfo"), (vm.state.value.result as StationSearchViewModel.Result.Matches).matches.map { it.name })
+        assertFalse(vm.state.value.searching)
+        assertEquals(listOf(oxford), (vm.state.value.result as StationSearchViewModel.Result.Matches).matches)
     }
 
     @Test
