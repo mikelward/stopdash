@@ -2053,7 +2053,19 @@ as it was.
   taking anyway, it costs no request and no extra fix. A walk just begun, before any fix on it, is
   estimated from the newest precise fix taken within the last 2 minutes (the trip's own, or the one
   the app remembers, such as the one the trip was planned from) and reads as approximate ("~450 m")
-  until a fix on the walk places the rider; with no such fix, nothing. A train ride ends the same way
+  until a fix on the walk places the rider; with no such fix, nothing. Beside the distance, the walk
+  says **which way** its end lies (maintainer, 2026-10-11): the compass point ("450 m NE") and, on the
+  trip's screen, an arrow before it that turns with the phone to point there. Both point at the place
+  the distance is measured to, an entrance of a station where one is nearest, straight rather than along
+  the streets. Within 25 m, inside a fix's own wobble, or from a fix less sure than half the distance left (it
+  could put the arrow down the wrong street), neither is shown, only the distance. The phone's
+  compass is followed only while the trip's screen is shown on a walk with a way to point (not on the
+  banner atop another screen, nor with the screen off): a low-power sensor, no request and no extra fix;
+  where it's missing or unreliable, the arrow is left off and the compass point stays. A screen reader
+  hears the direction spelled out ("450 m north-east"). The status-bar chip names the way the same way,
+  closed up to the seven characters Android suggests for it ("NE 450m", else "NE~450m"; maintainer,
+  2026-10-11), beside a compass icon, a fixed symbol rather than a pointer, since the chip can't follow
+  the phone turning; it changes with each fix the walk already takes. A train ride ends the same way
   at the station the rider gets off at (maintainer, 2026-09-28): from about two stops out (the
   train followed due there within 4 minutes) until the ride ends, or 5 minutes past that train's
   time (so a time gone stale, with TfL quiet, doesn't keep GPS on), each refresh takes one precise

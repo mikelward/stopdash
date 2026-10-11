@@ -37,4 +37,8 @@
     <string name="facility_car_park">Car park</string>
     <string name="facility_cash_machine">Cash machine</string>
     <string name="facility_taxi_rank">Taxi rank</string>
+    <string name="compass_ne">north-east</string>
+    <string name="compass_se">south-east</string>
+    <string name="compass_sw">south-west</string>
+    <string name="compass_nw">north-west</string>
 </resources>

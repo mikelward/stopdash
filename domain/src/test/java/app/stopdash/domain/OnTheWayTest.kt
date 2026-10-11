@@ -726,6 +726,36 @@ class OnTheWayTest {
         assertEquals(445.0, OnTheWay.metersLeft(placedStop, short)!!, 5.0)
         assertEquals(0.0, OnTheWay.metersLeft(placedStop, short, StationPlaces(entrances = listOf(Coordinates(51.504, -0.12))))!!, 1.0)
     }
+    @Test
+    fun `a walk says which way its end lies, toward the same place it measures to`() {
+        // 450 m north of the destination: it lies due south.
+        val short = fix(Coordinates(51.504, -0.12))
+        val left = OnTheWay.walkLeft(walkingHome, short)!!
+        assertEquals(445.0, left.meters, 5.0)
+        assertEquals(180.0, left.bearing!!, 0.5)
+        // A station walked to: toward the nearest of its entrances, not its placed point (maintainer, 2026-10-11).
+        val toStation = walkingHome.copy(route = TripRoute(listOf(lastWalk, ride.copy(fromAt = destination))), legIndex = 0, destinations = emptyList())
+        val east = Coordinates(51.504, -0.115)
+        val byEntrance = OnTheWay.walkLeft(toStation, short, StationPlaces(entrances = listOf(east)))!!
+        assertEquals(OnTheWay.metersLeft(toStation, short, StationPlaces(entrances = listOf(east)))!!, byEntrance.meters, 0.01)
+        assertEquals(Compass.Point.E, Compass.point(byEntrance.bearing!!))
+        // Within reach of a fix's own wobble: how far, but no way named.
+        val near = OnTheWay.walkLeft(walkingHome, fix(Coordinates(51.5001, -0.12)))!!
+        assertTrue(near.meters < OnTheWay.POINT_WITHIN_METERS)
+        assertNull(near.bearing)
+        // A fix too vague for the distance left: how far, but no way named (Codex, #775). Half the
+        // distance is the most; one that doesn't say how sure it is names none either.
+        assertNull(OnTheWay.walkLeft(walkingHome, fix(Coordinates(51.501, -0.12), accuracyMeters = 80f))!!.bearing)
+        assertEquals(180.0, OnTheWay.walkLeft(walkingHome, fix(Coordinates(51.501, -0.12), accuracyMeters = 50f))!!.bearing!!, 0.5)
+        val unsaid = LocationFix(Coordinates(51.504, -0.12), isFallback = false, accuracyMeters = null, ageMillis = 1_000L)
+        assertEquals(445.0, OnTheWay.walkLeft(walkingHome, unsaid)!!.meters, 5.0)
+        assertNull(OnTheWay.walkLeft(walkingHome, unsaid)!!.bearing)
+        // A fix that doesn't place the rider: neither.
+        assertNull(OnTheWay.walkLeft(walkingHome, fix(destination).copy(isFallback = true)))
+        // Off a walk: neither.
+        assertNull(OnTheWay.walkLeft(walkingHome.copy(legIndex = 0), short))
+    }
+
     private val stillThere = fix(Coordinates(51.5005, -0.12))
     private val downTheLine = fix(Coordinates(51.509, -0.12))
     private val placed = trip.copy(route = TripRoute(listOf(ride.copy(fromAt = platform), walk, second)))

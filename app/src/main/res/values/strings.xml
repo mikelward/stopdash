@@ -1099,6 +1099,22 @@
     <!-- The stop to get off at is next; %1$d the minutes until the train is due there. -->
     <!-- A walk's distance left estimated from a fix taken before the walk began: "~450 m". -->
     <string name="on_the_way_walk_left_estimated">~%1$s</string>
+    <!-- A walk's distance left (%1$s, "450 m" or "~450 m") and the compass point its end lies in (%2$s, "NE"). -->
+    <string name="on_the_way_walk_left_direction">%1$s %2$s</string>
+    <!-- The same as a screen reader hears it, %2$s the direction spelled out: "450 m northeast". -->
+    <string name="on_the_way_walk_left_spoken">%1$s %2$s</string>
+    <!-- The status-bar chip on a walk: the compass point first (%1$s, "NE"), then the distance left closed up (%2$s, "450m"). -->
+    <string name="on_the_way_chip_walk_direction">%1$s %2$s</string>
+    <!-- As on_the_way_chip_walk_direction with no space, where that's too long for the chip: "NE~450m". -->
+    <string name="on_the_way_chip_walk_direction_tight">%1$s%2$s</string>
+    <string name="compass_n">north</string>
+    <string name="compass_ne">northeast</string>
+    <string name="compass_e">east</string>
+    <string name="compass_se">southeast</string>
+    <string name="compass_s">south</string>
+    <string name="compass_sw">southwest</string>
+    <string name="compass_w">west</string>
+    <string name="compass_nw">northwest</string>
     <string name="on_the_way_next_stop_timed">Next stop (~%1$d min)</string>
     <!-- A change between two rides with no walk of its own: to the line, at the stop. -->
     <string name="on_the_way_change">Change to %1$s at %2$s</string>

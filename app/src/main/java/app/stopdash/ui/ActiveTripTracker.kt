@@ -1168,8 +1168,8 @@ class ActiveTripTracker(
                 val before = now.minusMillis(aged.ageMillis ?: 0).isBefore(trip.legStartedAt)
                 if (before && walking.metersLeft != null && !walking.estimated) return@withLock
                 val places = walkPlaces?.takeIf { it.first == trip.legIndex }?.second ?: StationPlaces()
-                val meters = OnTheWay.metersLeft(trip, aged, places) ?: return@withLock
-                _progress.value = walking.copy(metersLeft = meters, estimated = before)
+                val left = OnTheWay.walkLeft(trip, aged, places) ?: return@withLock
+                _progress.value = walking.copy(metersLeft = left.meters, estimated = before, bearing = left.bearing)
             }
         }
     }
@@ -1438,7 +1438,7 @@ class ActiveTripTracker(
                 places.takeIf { next.legIndex == before.legIndex && OnTheWay.stationWalkedTo(next, now) != null } ?: StationPlaces()
             }
             walkPlaces = next.legIndex to walkedTo
-            val seen = withContext(compute) { OnTheWay.metersLeft(next, measurable, walkedTo) }
+            val seen = withContext(compute) { OnTheWay.walkLeft(next, measurable, walkedTo) }
             val held = (_progress.value as? TripProgress.Walking)?.takeIf { it.leg == walking.leg && it.metersLeft != null }
             // From this refresh's fix; else as last seen on the same walk, so a refresh without one doesn't
             // blank it; else, a walk just begun, estimated from a fix taken lately (maintainer, 2026-10-04).
@@ -1446,11 +1446,12 @@ class ActiveTripTracker(
             // rider likely is, not where they're seen on it: an estimate, as in [onFix] (Codex, #542).
             val seenBefore = seenRider != null && now.minusMillis(seenRider.ageMillis ?: 0).isBefore(next.legStartedAt)
             progress = when {
-                seen != null && !(seenBefore && held != null && !held.estimated) -> walking.copy(metersLeft = seen, estimated = seenBefore)
-                held != null -> walking.copy(metersLeft = held.metersLeft, estimated = held.estimated)
+                seen != null && !(seenBefore && held != null && !held.estimated) ->
+                    walking.copy(metersLeft = seen.meters, estimated = seenBefore, bearing = seen.bearing)
+                held != null -> walking.copy(metersLeft = held.metersLeft, estimated = held.estimated, bearing = held.bearing)
                 else -> {
-                    val guessed = recentFix()?.let { fix -> withContext(compute) { OnTheWay.metersLeft(next, fix, walkedTo) } }
-                    walking.copy(metersLeft = guessed, estimated = guessed != null)
+                    val guessed = recentFix()?.let { fix -> withContext(compute) { OnTheWay.walkLeft(next, fix, walkedTo) } }
+                    walking.copy(metersLeft = guessed?.meters, estimated = guessed != null, bearing = guessed?.bearing)
                 }
             }
         }

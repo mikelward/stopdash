@@ -151,6 +151,29 @@ class OnTheWayLiveUpdateTest {
     }
 
     @Test
+    fun `the chip on a walk names the way its end lies, by a compass icon that doesn't turn`() {
+        val placed = TripProgress.Walking(walk, at(16), metersLeft = 450.0, bearing = 62.0)
+        // Within the chip's seven characters (maintainer, 2026-10-11): the distance closed up, then the
+        // space after the point dropped where that still runs over.
+        assertEquals("NE 450m", OnTheWayLiveUpdate.chipText(app.resources, placed, at(13), system = DistanceSystem.METERS))
+        assertEquals("NE~450m", OnTheWayLiveUpdate.chipText(app.resources, placed.copy(estimated = true), at(13), system = DistanceSystem.METERS))
+        val far = OnTheWayLiveUpdate.chipText(app.resources, placed.copy(metersLeft = 1_200.0), at(13), system = DistanceSystem.METERS)!!
+        assertTrue(far, far.startsWith("NE") && far.length <= OnTheWayLiveUpdate.CHIP_CHARS)
+        val miles = OnTheWayLiveUpdate.chipText(app.resources, placed.copy(metersLeft = 1_200.0), at(13), system = DistanceSystem.YARDS)!!
+        assertTrue(miles, miles.startsWith("NE") && miles.length <= OnTheWayLiveUpdate.CHIP_CHARS)
+        assertEquals(R.drawable.ic_stat_compass, OnTheWayLiveUpdate.smallIcon(app.resources, placed, null, DistanceSystem.METERS))
+        // No way named (too near), no distance shown, or not a walk: the app's own arrow.
+        assertEquals(R.drawable.ic_stat_route_arrow, OnTheWayLiveUpdate.smallIcon(app.resources, placed.copy(bearing = null), null, DistanceSystem.METERS))
+        assertEquals(R.drawable.ic_stat_route_arrow, OnTheWayLiveUpdate.smallIcon(app.resources, placed, null, null))
+        assertEquals(R.drawable.ic_stat_route_arrow, OnTheWayLiveUpdate.smallIcon(app.resources, waiting, null, DistanceSystem.METERS))
+        // Posted: the chip's own icon, in the units read for the app; the route arrow on one with no chip (failed).
+        val shown = OnTheWayNotification.build(app, trip.copy(legIndex = 1), placed, failed = false, updatedAt = at(13), now = at(13))
+        assertEquals(OnTheWayLiveUpdate.smallIcon(app.resources, placed, null, OnTheWayLiveUpdate.distanceSystem(app)), shown.smallIcon.resId)
+        val failed = OnTheWayNotification.build(app, trip.copy(legIndex = 1), placed, failed = true, updatedAt = at(13), now = at(13))
+        assertEquals(R.drawable.ic_stat_route_arrow, failed.smallIcon.resId)
+    }
+
+    @Test
     fun `the bar, a segment per leg in its line's color, the rider along it`() {
         val style = OnTheWayLiveUpdate.style(trip, TripProgress.Riding(victoria, "Oxford Circus", 3, at(12), getOffSoon = false), at(6))!!
         assertEquals(listOf(600, 240, 1320), style.progressSegments.map { it.length })
