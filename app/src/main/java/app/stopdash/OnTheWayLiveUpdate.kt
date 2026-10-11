@@ -66,14 +66,39 @@ internal object OnTheWayLiveUpdate {
             ?: walkLeft(resources, progress, system)
             ?: countText(resources, progress, now)
 
-    /** A walk's distance left, as the trip's screen writes it ("~450 m" while estimated); null unknown. */
+    /**
+     * A walk's distance left, as the trip's screen writes it ("~450 m" while estimated), after the
+     * compass point its end lies in where there's one: "NE 450m", the distance closed up to fit the
+     * chip ([CHIP_CHARS]), and the space after the point dropped too where even that doesn't ("NE~450m",
+     * "NE1.2km"; maintainer, 2026-10-11). Null unknown. The chip can't follow the phone turning, so it
+     * names the way rather than point it ([smallIcon]).
+     */
     private fun walkLeft(resources: Resources, progress: TripProgress?, system: DistanceSystem?): String? {
         val walking = progress as? TripProgress.Walking ?: return null
         val meters = walking.metersLeft ?: return null
         // Not until the rider's units are known: never a moment in the wrong ones.
         val label = StopDistance.label(meters, system ?: return null)
-        return if (walking.estimated) resources.getString(R.string.on_the_way_walk_left_estimated, label) else label
+            .let { if (walking.estimated) resources.getString(R.string.on_the_way_walk_left_estimated, it) else it }
+        val point = walking.point ?: return label
+        val closed = label.replace(" ", "")
+        return resources.getString(R.string.on_the_way_chip_walk_direction, point.name, closed)
+            .takeIf { it.length <= CHIP_CHARS }
+            ?: resources.getString(R.string.on_the_way_chip_walk_direction_tight, point.name, closed)
     }
+
+    /** The most characters Android suggests for a Live Update's chip; more may be cut off. */
+    const val CHIP_CHARS = 7
+
+    /**
+     * The notification's small icon, which the status-bar chip shows: a compass where the chip names a
+     * walk's compass point ([chipText]), else the app's route arrow. A symbol, not a pointer.
+     */
+    fun smallIcon(resources: Resources, progress: TripProgress?, boarding: Boarding?, system: DistanceSystem?): Int =
+        if (boarding == null && (progress as? TripProgress.Walking)?.point != null && walkLeft(resources, progress, system) != null) {
+            R.drawable.ic_stat_compass
+        } else {
+            R.drawable.ic_stat_route_arrow
+        }
 
     /**
      * The rider's distance units ([DistanceUnitsSetting], warmed in memory at process start) in

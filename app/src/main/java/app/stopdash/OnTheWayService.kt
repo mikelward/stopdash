@@ -410,8 +410,10 @@ internal object OnTheWayNotification {
         val stepText = if (failed) failedText else OnTheWayLiveUpdate.withBoarding(context.resources, boarding.takeIf { shown }, detail)
         // An alert takes the title, and its channel, so it's heard (once) and muted as its own notification
         // was; its text where it has more to say than the step, which otherwise stays below it.
+        val system = OnTheWayLiveUpdate.distanceSystem(context)
         val builder = NotificationCompat.Builder(context, alert?.kind?.channelId ?: CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_stat_route_arrow)
+            // The chip's icon: a compass where it names a walk's compass point, only while there's a chip.
+            .setSmallIcon(if (shown) OnTheWayLiveUpdate.smallIcon(context.resources, progress, boarding, system) else R.drawable.ic_stat_route_arrow)
             .setContentTitle(alert?.title ?: title)
             .setContentText(alert?.text ?: stepText)
             .setSubText(trip?.let { context.getString(R.string.on_the_way_title, it.destinationName) })
@@ -424,7 +426,7 @@ internal object OnTheWayNotification {
             .setDeleteIntent(trip?.let { dismissIntent(context, it) })
             .setRequestPromotedOngoing(true)
         if (trip != null && shown) OnTheWayLiveUpdate.style(trip, progress, now)?.let(builder::setStyle)
-        if (shown) OnTheWayLiveUpdate.chipText(context.resources, progress, now, boarding, OnTheWayLiveUpdate.distanceSystem(context))?.let(builder::setShortCriticalText)
+        if (shown) OnTheWayLiveUpdate.chipText(context.resources, progress, now, boarding, system)?.let(builder::setShortCriticalText)
         if (alert?.sound == true) builder.setPriority(NotificationCompat.PRIORITY_HIGH)
         return builder.build()
     }

@@ -5,6 +5,10 @@ import androidx.annotation.WorkerThread
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.graphicsLayer
+import app.stopdash.domain.Compass
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -294,7 +298,10 @@ internal fun OnTheWayScreen(
             // close enough to read as the card's own (4dp, as the board's rows; maintainer, 2026-10-03).
             item(key = "next") {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    NextStep(destination, eta?.takeIf { !stale || asOf != null }, progress, now, current, asOf = asOf)
+                    // The phone's compass only on a walk with a way to point, and not behind the line page a
+                    // train tapped opens over the trip (SPEC *On the way*; Codex, #775): battery.
+                    val heading = LocalHeadingSource.current.heading(boardLine == null && (progress as? TripProgress.Walking)?.bearing != null)
+                    NextStep(destination, eta?.takeIf { !stale || asOf != null }, progress, now, current, asOf = asOf, heading = heading, pointing = true)
                     // Why the ride now runs only to a change: none of the plan's trains was listed, so the trip
                     // took a branch by itself, said loudly until the rider is past it (maintainer, 2026-10-06).
                     trip?.takeIf { it.branchTakenLeg >= 0 && it.legIndex <= it.branchTakenLeg }?.let {
@@ -1365,6 +1372,12 @@ internal fun NextStep(
     // When the step's last answer was had ([ActiveTripTracker.answeredAt]): while it's too old to stand
     // behind ([current]), its time still shows, its stops "Checking…"; null holds them back.
     asOf: Instant? = null,
+    // Which way the phone faces ([LocalHeadingSource]), for the walk's arrow; null draws none, its compass
+    // point still named (the banner atop another screen, which doesn't follow the compass).
+    heading: Float? = null,
+    // Whether this card points the way (the trip's screen): its walk row then keeps the arrow's slot
+    // whether or not there's a heading yet, so the text never moves when one comes or goes.
+    pointing: Boolean = false,
 ) {
     val detail = nextStepText(progress, now, current, asOf).second
     // From an answer too old to stand behind, its time stays while its stops are checked (maintainer, 2026-10-06).
@@ -1377,9 +1390,17 @@ internal fun NextStep(
     val system = LocalDistanceSystem.current
     val walking = progress as? TripProgress.Walking
     val walkLeft = walking?.metersLeft
-    val words = if (walkLeft != null && system != null) {
+    val point = walking?.point
+    val walkLabel = if (walkLeft != null && system != null) {
         // Estimated from a fix taken before the walk began, it says so until a fix on the walk places the rider.
         StopDistance.label(walkLeft, system).let { if (walking?.estimated == true) stringResource(R.string.on_the_way_walk_left_estimated, it) else it }
+    } else {
+        null
+    }
+    // The way to the walk's end beside how far it is, as a compass point ("450 m NE"; maintainer, 2026-10-11).
+    val walkSpoken = walkLabel?.let { label -> point?.let { stringResource(R.string.on_the_way_walk_left_spoken, label, stringResource(compassWord(it))) } }
+    val words = if (walkLabel != null) {
+        point?.let { stringResource(R.string.on_the_way_walk_left_direction, walkLabel, it.name) } ?: walkLabel
     } else if (at == null) {
         detail
     } else if (checking) {
@@ -1415,11 +1436,62 @@ internal fun NextStep(
             )
             if (stopsSplit != null) {
                 CardRow(listOf(stopsSplit.count), listOf(stepAt), tail = stopsSplit)
+            } else if (walkLabel != null && (walkSpoken != null || pointing)) {
+                // The arrow turns with the phone, pointing where the letters say; a screen reader hears the
+                // direction spelled out, never the letters or a number of degrees. On the trip's screen its slot
+                // is held from the first frame, the heading coming a moment later, so the text holds still
+                // (AGENTS.md *hold still*; Codex, #775).
+                val spoken = walkSpoken?.let { listOf(it, stepAt).filter { part -> part.isNotEmpty() }.joinToString(", ") }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.fillMaxWidth().then(if (spoken != null) Modifier.clearAndSetSemantics { contentDescription = spoken } else Modifier),
+                ) {
+                    val bearing = walking?.bearing
+                    if (pointing) {
+                        Box(Modifier.size(24.dp)) {
+                            if (heading != null && bearing != null) WalkArrow(Compass.relative(bearing, heading.toDouble()).toFloat())
+                        }
+                    } else if (heading != null && bearing != null) {
+                        Box(Modifier.size(24.dp)) { WalkArrow(Compass.relative(bearing, heading.toDouble()).toFloat()) }
+                    }
+                    Box(Modifier.weight(1f)) { CardRow(listOf(words), listOf(stepAt)) }
+                }
             } else if (words.isNotEmpty() || stepAt.isNotEmpty()) {
                 CardRow(listOf(words), listOf(stepAt))
             }
         }
     }
+}
+
+// An arrow turned [turn] degrees clockwise from straight up the screen, the way to the walk's end: a
+// 16dp glyph in a 24dp slot, the height of the card's row text, so the row keeps its height.
+@Composable
+private fun WalkArrow(turn: Float) {
+    val color = LocalContentColor.current
+    Canvas(Modifier.fillMaxSize().padding(4.dp).graphicsLayer { rotationZ = turn }.testTag("onTheWayWalkArrow")) {
+        val w = size.width
+        val h = size.height
+        val path = Path().apply {
+            moveTo(w / 2, 0f)
+            lineTo(w * 0.85f, h)
+            lineTo(w / 2, h * 0.75f)
+            lineTo(w * 0.15f, h)
+            close()
+        }
+        drawPath(path, color)
+    }
+}
+
+/** A compass point spelled out, as a screen reader hears the walk's direction. */
+private fun compassWord(point: Compass.Point): Int = when (point) {
+    Compass.Point.N -> R.string.compass_n
+    Compass.Point.NE -> R.string.compass_ne
+    Compass.Point.E -> R.string.compass_e
+    Compass.Point.SE -> R.string.compass_se
+    Compass.Point.S -> R.string.compass_s
+    Compass.Point.SW -> R.string.compass_sw
+    Compass.Point.W -> R.string.compass_w
+    Compass.Point.NW -> R.string.compass_nw
 }
 
 // A row of the card: the first of [start]'s forms (longest first) that fits on the left, and [ends]'

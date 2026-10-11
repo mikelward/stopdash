@@ -163,7 +163,8 @@ sealed interface TripProgress {
      * On foot along [leg] (a walk to a change or the destination), until about [until]: the walk to
      * the destination can run past it, as it ends only when the rider is seen there ([walkingToEnd]).
      * [metersLeft] is how far its end is, straight, from where the rider was last seen on it; null
-     * with no fix yet, or none that places them.
+     * with no fix yet, or none that places them. [bearing] is which way that end is from there, in
+     * degrees from true north ([OnTheWay.walkLeft]); null where [metersLeft] is, or too near to point at.
      */
     data class Walking(
         val leg: TripLeg,
@@ -172,7 +173,11 @@ sealed interface TripProgress {
         // [metersLeft] is from a fix taken before this walk was seen ([ActiveTripTracker]'s estimate), so
         // it reads as approximate until a fix on the walk itself places the rider.
         val estimated: Boolean = false,
-    ) : TripProgress
+        val bearing: Double? = null,
+    ) : TripProgress {
+        /** [bearing] as the compass point the card and the chip name ("NE"); null without one. */
+        val point: Compass.Point? get() = bearing?.let(Compass::point)
+    }
 
     /**
      * The train followed can't be placed on [leg] — it doesn't call at the boarding stop or where
@@ -1916,14 +1921,50 @@ object OnTheWay {
      * [walkEnd] and the [station] walked to's own point and entrances. Null off a walk, with an unplaced end, or with a fix
      * that doesn't place the rider (a fallback or coarse one).
      */
-    fun metersLeft(trip: ActiveTrip, rider: LocationFix?, station: StationPlaces = StationPlaces()): Double? {
+    @WorkerThread
+    fun metersLeft(trip: ActiveTrip, rider: LocationFix?, station: StationPlaces = StationPlaces()): Double? =
+        walkLeft(trip, rider, station)?.meters
+
+    /**
+     * How far the end of a walk is ([meters]) and which way ([bearing], degrees from true north, null
+     * nearer than [POINT_WITHIN_METERS] or from a fix too vague for it, [POINT_ACCURACY_SHARE]),
+     * straight from where the rider was seen.
+     */
+    data class WalkLeft(val meters: Double, val bearing: Double?)
+
+    /**
+     * Nearer than this, no way to the walk's end is named: a fix's own uncertainty (often 10–20 m in
+     * a street) would swing the arrow about, and the end is in sight (maintainer, 2026-10-11).
+     */
+    const val POINT_WITHIN_METERS = 25.0
+
+    /**
+     * How sure a fix must be, as a share of the distance left, to name the way: at half of it the rider
+     * could be up to about 30° off the line drawn, as much as the compass itself is allowed
+     * ([Compass.MAX_HEADING_ERROR_DEGREES]). A vaguer fix, or one that doesn't say, could point the
+     * arrow down the wrong street or back the way they came (Codex, #775); its distance still shows.
+     */
+    const val POINT_ACCURACY_SHARE = 0.5
+
+    /**
+     * [metersLeft] and which way that nearest end lies ([WalkLeft]): the arrow points at the same place
+     * the distance is measured to, an entrance of a station walked to where one is nearest. Null as
+     * [metersLeft] is. Grows with the station's entrances, so off the main thread (Codex, #775).
+     */
+    @WorkerThread
+    fun walkLeft(trip: ActiveTrip, rider: LocationFix?, station: StationPlaces = StationPlaces()): WalkLeft? {
         val fix = rider?.takeIf { !it.isFallback && !it.isCoarse } ?: return null
         if (trip.leg?.isWalk != true) return null
         // The nearest place that ends the walk, as [seen] ends it: the walk's end, and for a station walked
         // to its own published point and each entrance (Codex, PR #521), so the rider nearing an entrance
         // isn't told they're hundreds of meters off.
         val ends = listOfNotNull(walkEnd(trip), station.point) + station.entrances
-        return ends.minOfOrNull { NearestStops.distanceMeters(fix.coordinates.latitude, fix.coordinates.longitude, it.latitude, it.longitude) }
+        val lat = fix.coordinates.latitude
+        val lon = fix.coordinates.longitude
+        val (end, meters) = ends.map { it to NearestStops.distanceMeters(lat, lon, it.latitude, it.longitude) }.minByOrNull { it.second } ?: return null
+        val sure = fix.accuracyMeters?.let { it <= meters * POINT_ACCURACY_SHARE } ?: false
+        val bearing = if (meters < POINT_WITHIN_METERS || !sure) null else Compass.bearingDegrees(lat, lon, end.latitude, end.longitude)
+        return WalkLeft(meters, bearing)
     }
 
     /**

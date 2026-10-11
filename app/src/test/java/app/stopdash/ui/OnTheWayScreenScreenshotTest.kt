@@ -21,6 +21,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -37,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Departure
 import app.stopdash.domain.LineStatus
@@ -58,6 +60,7 @@ import kotlinx.coroutines.asCoroutineDispatcher
 import java.time.Duration
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -115,8 +118,10 @@ class OnTheWayScreenScreenshotTest {
         lineChecks: RouteDisruption.LinesChecked? = null,
         dismissed: Set<app.stopdash.domain.DismissedAlert> = emptySet(),
         lineDismissal: LineAlertDismissal? = null,
+        heading: HeadingSource = HeadingSource { null },
     ) {
         composeRule.setContent {
+            androidx.compose.runtime.CompositionLocalProvider(LocalHeadingSource provides heading) {
             StopDashTheme(dynamicColor = false) {
                 OnTheWayScreen(
                     trip, progress, failed, now, onEnd, onBack, current = current, notKept = notKept, endFailed = endFailed, alertsOff = alertsOff,
@@ -125,6 +130,7 @@ class OnTheWayScreenScreenshotTest {
                     onDismissNote = onDismissNote, onTake = onTake, asOf = asOf, lineChecks = lineChecks,
                     dismissed = dismissed, lineDismissal = lineDismissal,
                 )
+            }
             }
         }
     }
@@ -854,6 +860,28 @@ class OnTheWayScreenScreenshotTest {
     }
 
     @Test
+    fun the_compass_stops_behind_a_trains_line_page() {
+        // The line page a train opens covers the trip: the walk's arrow isn't shown, so the compass is let
+        // go (Codex, #775), and asked for again once the page closes.
+        val asked = mutableListOf<Boolean>()
+        show(
+            trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24), metersLeft = 450.0, bearing = 62.0),
+            nextTrains = NextTrains(jubilee, listOf(jubileeTrain("Stanmore", 21)), readyAt = at(24)).withGroups(now),
+            heading = HeadingSource { enabled -> asked += enabled; null },
+        )
+        assertTrue(asked.last())
+        composeRule.onNodeWithText("Stanmore").performClick()
+        composeRule.waitForIdle()
+        assertFalse(asked.last())
+        composeRule.onNode(
+            androidx.compose.ui.test.hasContentDescription(composeRule.activity.getString(app.stopdash.R.string.action_back)) and
+                androidx.compose.ui.test.hasAnyAncestor(hasTestTag("tripLinesPage")),
+        ).performClick()
+        composeRule.waitForIdle()
+        assertTrue(asked.last())
+    }
+
+    @Test
     fun a_train_on_the_boards_line_page_honors_and_makes_the_near_me_dismissals() {
         // The near-me list's dismissals hold on a board line's page as on every line page (maintainer,
         // 2026-10-08): the alert dismissed says so, its work to come dismissed is left out, and the rest is
@@ -1215,6 +1243,49 @@ class OnTheWayScreenScreenshotTest {
         show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(3), metersLeft = 450.0))
         onCard("450 m").assertIsDisplayed()
         composeRule.onNodeWithText("3 min · 08:05").assertIsDisplayed()
+    }
+
+    @Test
+    fun a_walk_points_the_way_to_its_end() {
+        // An arrow turned from where the phone faces toward the walk's end, its compass point beside the
+        // distance (maintainer, 2026-10-11); a screen reader hears the direction spelled out.
+        val asked = mutableListOf<Boolean>()
+        composeRule.setContent {
+            androidx.compose.runtime.CompositionLocalProvider(LocalHeadingSource provides HeadingSource { enabled -> asked += enabled; if (enabled) 30f else null }) {
+                StopDashTheme(dynamicColor = false) {
+                    OnTheWayScreen(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(3), metersLeft = 450.0, bearing = 62.0), false, now, {}, {}, onGoTo = { _, _ -> })
+                }
+            }
+        }
+        composeRule.onNode(hasContentDescription("450 m north-east, 3 min · 08:05")).assertIsDisplayed()
+        assertTrue(asked.isNotEmpty() && asked.all { it })
+        captureSnapshot("on-the-way-walk-direction.png")
+    }
+
+    @Test
+    fun a_walks_distance_holds_still_while_the_compass_starts() {
+        // The arrow's slot is held from the first frame on the trip's screen, before any heading comes:
+        // the distance never moves when the arrow appears (AGENTS.md *hold still*; Codex, #775).
+        show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(3), metersLeft = 450.0))
+        val card = composeRule.onNodeWithTag("onTheWayNext").getUnclippedBoundsInRoot()
+        val text = onCard("450 m").getUnclippedBoundsInRoot()
+        // The card's 16dp padding, the 24dp slot and the 4dp gap before the text.
+        assertTrue("text at ${text.left - card.left}", text.left - card.left >= 44.dp)
+    }
+
+    @Test
+    fun a_walk_with_no_way_to_point_leaves_the_compass_off() {
+        // Too near its end to point at, or on a ride: the phone's compass isn't asked for (battery).
+        val asked = mutableListOf<Boolean>()
+        composeRule.setContent {
+            androidx.compose.runtime.CompositionLocalProvider(LocalHeadingSource provides HeadingSource { enabled -> asked += enabled; null }) {
+                StopDashTheme(dynamicColor = false) {
+                    OnTheWayScreen(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(3), metersLeft = 20.0), false, now, {}, {}, onGoTo = { _, _ -> })
+                }
+            }
+        }
+        onCard("20 m").assertIsDisplayed()
+        assertTrue(asked.isNotEmpty() && asked.none { it })
     }
 
     @Test
