@@ -34,6 +34,8 @@ import app.stopdash.domain.PendingJourney
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Assert.assertEquals
+import kotlinx.coroutines.asCoroutineDispatcher
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -86,6 +88,73 @@ class FavoriteJourneysScreenshotTest {
         captureSnapshot("favorite-journeys-list.png")
         composeRule.onNodeWithContentDescription("Remove Euston to Waterloo").performClick()
         assertEquals(listOf(northern), removed)
+    }
+
+    private fun showWithMenu(state: FavoriteJourneysUi, paused: Boolean?, onPause: (Boolean) -> Unit) {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalAppMenu provides AppMenuActions(false, {}, {}, {})) {
+                    FavoriteJourneysScreen(state = state, onBack = {}, onRemove = {}, alertsPaused = paused, onPauseAlerts = onPause)
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("More options").performClick()
+        composeRule.waitForIdle()
+    }
+
+    @Test
+    fun the_menu_pauses_alerts_while_some_are_on() {
+        val asked = mutableListOf<Boolean>()
+        showWithMenu(FavoriteJourneysUi(listOf(northern), alertSummaries = mapOf(northern.key to listOf("Alerts to Waterloo: Mon–Fri 08:00–10:00")), anyAlertsOn = true), paused = false) { asked += it }
+        if (capturing()) com.github.takahirom.roborazzi.captureScreenRoboImage("src/test/snapshots/images/favorite-journeys-pause-menu.png")
+        composeRule.onNodeWithText("Pause alerts").performClick()
+        assertEquals(listOf(true), asked)
+    }
+
+    @Test
+    fun the_menu_unpauses_alerts_while_paused() {
+        val asked = mutableListOf<Boolean>()
+        showWithMenu(FavoriteJourneysUi(listOf(northern)), paused = true) { asked += it }
+        composeRule.onNodeWithText("Unpause alerts").performClick()
+        assertEquals(listOf(false), asked)
+    }
+
+    @Test
+    fun the_menu_offers_no_pause_with_no_alerts_on() {
+        showWithMenu(FavoriteJourneysUi(listOf(northern)), paused = false) {}
+        composeRule.onNodeWithTag("pauseJourneyAlerts").assertDoesNotExist()
+    }
+
+    @Test
+    fun alerts_are_on_when_some_journey_says_so() = kotlinx.coroutines.runBlocking {
+        val worker = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        val dispatcher = worker.asCoroutineDispatcher()
+        try {
+            assertEquals(false, anyJourneyAlertsOn(emptyMap(), dispatcher))
+            assertEquals(false, anyJourneyAlertsOn(mapOf(northern.key to emptyList()), dispatcher))
+            // The scan runs on the worker, not the caller's thread (AGENTS.md *Main thread*): the map
+            // notes where its journeys are read.
+            val threads = app.stopdash.ThreadRecorder()
+            val summaries = object : AbstractMap<String, List<String>>() {
+                override val entries: Set<Map.Entry<String, List<String>>>
+                    get() {
+                        threads.note()
+                        return mapOf(northern.key to emptyList<String>(), victoriaLine.key to listOf("Alerts to Brixton: daily")).entries
+                    }
+            }
+            assertEquals(true, anyJourneyAlertsOn(summaries, dispatcher))
+            assertTrue(threads.threads().isNotEmpty())
+            assertEquals(setOf("test-worker"), threads.threads().toSet())
+        } finally {
+            dispatcher.close()
+        }
+    }
+
+    @Test
+    fun the_menu_offers_no_pause_until_the_pause_is_read() {
+        showWithMenu(FavoriteJourneysUi(listOf(northern), alertSummaries = mapOf(northern.key to listOf("Alerts to Waterloo: Mon–Fri 08:00–10:00")), anyAlertsOn = true), paused = null) {}
+        composeRule.onNodeWithTag("pauseJourneyAlerts").assertDoesNotExist()
     }
 
     @Test

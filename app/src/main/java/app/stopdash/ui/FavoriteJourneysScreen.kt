@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -86,6 +87,9 @@ data class FavoriteJourneysUi(
     // off the main thread): one line per watched direction, or none for "Tap to enable alerts". A journey
     // missing (not worked out yet, or the schedules unreadable) says nothing of alerts.
     val alertSummaries: Map<String, List<String>> = emptyMap(),
+    // Some journey's alerts are on ([anyJourneyAlertsOn], worked out off the main thread), so the menu
+    // offers Pause alerts.
+    val anyAlertsOn: Boolean = false,
     // Some journey's alerts are on but location isn't allowed all the time, so they can't tell when the
     // phone is away from London: a card at the top asks for it (maintainer, 2026-10-09).
     val askLocation: Boolean = false,
@@ -296,6 +300,11 @@ fun FavoriteJourneysScreen(
     // Asks for location all the time, so alerts fire only in London; or puts the card away for good.
     onAllowLocation: () -> Unit = {},
     onDeclineLocation: () -> Unit = {},
+    // Whether journey alerts are paused (SPEC *Journeys → Alerts → Pause*), null until read, and how to
+    // pause (true) or unpause (false) them from the overflow menu. The menu offers Pause alerts while some
+    // journey's alerts are on, and Unpause alerts while paused; nothing while not read, or no [onPauseAlerts].
+    alertsPaused: Boolean? = null,
+    onPauseAlerts: ((Boolean) -> Unit)? = null,
 ) {
     BackHandler(onBack = onBack)
     Surface(modifier = Modifier.fillMaxSize()) {
@@ -318,7 +327,21 @@ fun FavoriteJourneysScreen(
                             }
                         }
                         TextButton(onClick = onBack) { Text(stringResource(R.string.action_back)) }
-                        AppMenuOverflow()
+                        AppMenuOverflow { close ->
+                            val pausing = onPauseAlerts
+                            if (pausing != null && alertsPaused != null && (alertsPaused || state.anyAlertsOn)) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(stringResource(if (alertsPaused) R.string.journey_alerts_menu_unpause else R.string.journey_alerts_menu_pause))
+                                    },
+                                    onClick = {
+                                        close()
+                                        pausing(!alertsPaused)
+                                    },
+                                    modifier = Modifier.testTag("pauseJourneyAlerts"),
+                                )
+                            }
+                        }
                     }
                 }
                 // At the top, outside the scroll: worked out with the list, so it never pushes rows down after
@@ -572,6 +595,15 @@ private fun AlertsSummary(lines: List<String>?) {
         )
     }
 }
+
+/**
+ * Whether some journey's alerts are on, from its [summaries]: a scan, so on [worker], hopping there first
+ * (Codex on #757).
+ */
+internal suspend fun anyJourneyAlertsOn(
+    summaries: Map<String, List<String>>,
+    worker: CoroutineDispatcher = app.stopdash.domain.Workers.compute,
+): Boolean = withContext(worker) { summaries.values.any { it.isNotEmpty() } }
 
 /**
  * What each journey's row in Settings says of its alerts ([FavoriteJourneysUi.alertSummaries]): for

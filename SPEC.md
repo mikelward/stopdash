@@ -1250,7 +1250,8 @@ alerts at once: those showing come down, and no check runs until the rider unpau
 card atop the near-me list, "Alert notifications paused", says "Favorite journey alerts are paused.
 You will not be notified about service disruptions." with **Unpause**, the one way back, so it has no Dismiss and stays until tapped. It shows on the home
 without location, while finding the rider or loading departures, and over an error loading them, so unpausing never waits on location or TfL; an Unpause that couldn't be saved says
-"Couldn't unpause alerts", the card staying for another try. Unpause re-arms the checks as the saved schedules stand, checking at once if a window is
+"Couldn't unpause alerts", the card staying for another try. The favorite journeys page's overflow menu offers the same: **Pause alerts** while some
+journey's alerts are on, and **Unpause alerts** while paused, each saying so if it couldn't be saved. Unpause re-arms the checks as the saved schedules stand, checking at once if a window is
 open. The pause is kept on the phone (not backed up) and leaves each journey's settings as they are. The
 debug log notes each pause and unpause, and a check skipped for it.
 

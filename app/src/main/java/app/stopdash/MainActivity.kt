@@ -278,6 +278,7 @@ import app.stopdash.ui.FavoriteJourneyPicker
 import app.stopdash.ui.FavoriteJourneysScreen
 import app.stopdash.ui.LocationRationaleDialog
 import app.stopdash.ui.JourneyAlertsScreen
+import app.stopdash.ui.anyJourneyAlertsOn
 import app.stopdash.ui.journeyAlertSummaries
 import app.stopdash.ui.JourneyAlertsUi
 import app.stopdash.ui.JourneyAdds
@@ -1982,13 +1983,16 @@ class MainActivity : ComponentActivity() {
                                     val allTime = locationAllTime ?: return@produceState
                                     val journeys = loaded.journeys
                                     val schedules = alerts.schedules
+                                    val summaries = if (journeys == null || schedules == null) {
+                                        emptyMap()
+                                    } else {
+                                        withContext(Workers.compute) { journeyAlertSummaries(applicationContext, journeys, schedules) }
+                                    }
                                     value = FavoriteJourneysList(
                                         journeys,
-                                        if (journeys == null || schedules == null) {
-                                            emptyMap()
-                                        } else {
-                                            withContext(Workers.compute) { journeyAlertSummaries(applicationContext, journeys, schedules) }
-                                        },
+                                        summaries,
+                                        // A scan over the journeys, worked out off the main thread too.
+                                        anyAlertsOn = anyJourneyAlertsOn(summaries),
                                         askLocation = !allTime && !locationDeclined && !schedules.isNullOrEmpty(),
                                         // Carried with the journeys, so the two lists are shown together.
                                         pending = loaded.pending.orEmpty(),
@@ -2182,8 +2186,9 @@ class MainActivity : ComponentActivity() {
                                     )
                                 } else {
                                     val listAlertWriteFailed by JourneyAlertWrites.failed.collectAsStateWithLifecycle()
+                                    val journeyAlertsPaused by JourneyAlertPause.paused.collectAsStateWithLifecycle()
                                     FavoriteJourneysScreen(
-                                        state = FavoriteJourneysUi(journeysShown?.journeys, pending = journeysShown?.pending.orEmpty(), loaded = journeysShown != null, writeFailed = journeyRemoveFailed, alertWriteFailed = listAlertWriteFailed, adding = journeyAdding, alertSummaries = journeysShown?.summaries.orEmpty(), askLocation = journeysShown?.askLocation == true),
+                                        state = FavoriteJourneysUi(journeysShown?.journeys, pending = journeysShown?.pending.orEmpty(), loaded = journeysShown != null, writeFailed = journeyRemoveFailed, alertWriteFailed = listAlertWriteFailed, adding = journeyAdding, alertSummaries = journeysShown?.summaries.orEmpty(), anyAlertsOn = journeysShown?.anyAlertsOn == true, askLocation = journeysShown?.askLocation == true),
                                         onBack = { favoriteJourneysOpen = false },
                                         onAdd = {
                                             JourneyAdds.dismiss()
@@ -2206,6 +2211,24 @@ class MainActivity : ComponentActivity() {
                                         onDeclineLocation = {
                                             locationDeclined = true
                                             removeScope.launch(Dispatchers.IO) { JourneyAlertState.declineLocation(applicationContext) }
+                                        },
+                                        alertsPaused = journeyAlertsPaused,
+                                        // As an alert's Pause does (alerts showing come down), and as the near-me
+                                        // card's Unpause does; the checks follow the pause either way.
+                                        onPauseAlerts = { pause ->
+                                            removeScope.launch {
+                                                val done = if (pause) JourneyAlertPauseReceiver.pause(applicationContext) else JourneyAlertPause.unpause(applicationContext)
+                                                // Not saved: nothing changed, and the menu says so, to try again.
+                                                if (!done) {
+                                                    withContext(Dispatchers.Main) {
+                                                        Toast.makeText(
+                                                            applicationContext,
+                                                            if (pause) R.string.journey_alerts_pause_failed else R.string.journey_alerts_unpause_failed,
+                                                            Toast.LENGTH_SHORT,
+                                                        ).show()
+                                                    }
+                                                }
+                                            }
                                         },
                                     )
                                 }
@@ -6674,6 +6697,8 @@ internal data class FavoriteJourneysList(
     val summaries: Map<String, List<String>>,
     val askLocation: Boolean,
     val pending: List<app.stopdash.domain.PendingJourney> = emptyList(),
+    // Some journey's alerts are on, worked out with [summaries] off the main thread.
+    val anyAlertsOn: Boolean = false,
 )
 
 internal object JourneyAlertWrites {

@@ -680,6 +680,11 @@
     <string name="journey_alerts_unpause">Unpause</string>
     <!-- Said when Unpause couldn't be saved; alerts stay paused. -->
     <string name="journey_alerts_unpause_failed">Couldn\'t unpause alerts</string>
+    <!-- Said when Pause alerts couldn't be saved; nothing changed. -->
+    <string name="journey_alerts_pause_failed">Couldn\'t pause alerts</string>
+    <!-- The favorite journeys page's overflow menu: pausing every journey's alerts, or unpausing them. -->
+    <string name="journey_alerts_menu_pause">Pause alerts</string>
+    <string name="journey_alerts_menu_unpause">Unpause alerts</string>
     <string name="journey_alerts_channel_description">A favorite journey\'s line is disrupted during its alert times</string>
     <!-- Content description for a favorite journey's Remove button; %1$s and %2$s are its two stops. -->
     <string name="favorite_journey_remove_description">Remove %1$s to %2$s</string>
