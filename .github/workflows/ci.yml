@@ -124,6 +124,9 @@ jobs:
         run: python3 scripts/build_crs_index_test.py
       - name: Test the step-free access builder
         run: python3 scripts/build_step_free_test.py
+      - name: Test the place index builder
+        # Its selection rules only: the fetches (pyarrow, pyproj) aren't imported by the tests.
+        run: python3 scripts/build_place_index_test.py
       - name: Test the Analytics definitions registration
         # Run by hand against the Analytics property (dev-docs/firebase.md step 6), never by CI, so a
         # regression would first show up as a failed or wrong registration.
