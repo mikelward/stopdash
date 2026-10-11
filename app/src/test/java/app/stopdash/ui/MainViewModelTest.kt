@@ -4479,6 +4479,45 @@ class MainViewModelTest {
         assertFalse(store.lineStatusUpdates.last().getValue("eurostar").known)
     }
 
+    // AGENTS.md *Main thread*: the check of the widget's stored lines walks them and the shared answers,
+    // so it runs on the worker, not the caller (Codex on #766).
+    @Test
+    fun `a cold start's check of the widget's lines reads the shared answers off the caller`() = runTest(dispatcher) {
+        val aged = now.minusSeconds(120)
+        val widget = DeparturesSnapshot(
+            stops = listOf(StopArrivals("940GZZLUBNK", "Bank", listOf(departure("central", "Central", 300)), aged)),
+            fetchedAt = aged,
+        )
+        val store = FakeStore(widget, restores = false)
+        val client = FakeClient(
+            mapOf(
+                "940GZZLUOXC" to Result.failure(TflException.Offline(null)),
+                "940GZZLUKSX" to Result.failure(TflException.Offline(null)),
+            ),
+            statuses = Result.success(listOf(status("central", 20, "Suspended"))),
+        )
+        val read = ThreadRecorder()
+        val shared = object : LineStatusCache() {
+            override fun get(lineId: String): Held? = super.get(lineId).also { read.note() }
+        }
+        val pool = java.util.concurrent.Executors.newCachedThreadPool { Thread(it, "line-worker") }
+        // Runs what it's handed on a thread of its own, the caller waiting, so virtual time still drives the rest.
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                pool.submit(block).get()
+            }
+        }
+        try {
+            MainViewModel(client, seeds, clock = { now }, io = dispatcher, compute = worker, snapshotStore = store, sharedLines = shared)
+            advanceUntilIdle()
+            assertEquals(20, store.lineStatusUpdates.last().getValue("central").status.severity)
+            val readOn = read.threads()
+            assertTrue("$readOn", readOn.isNotEmpty() && readOn.all { it == "line-worker" })
+        } finally {
+            pool.shutdown()
+        }
+    }
+
     @Test
     fun `a cold start's check of the widget's lines settles their dismissed alerts`() = runTest(dispatcher) {
         // A Central line alert dismissed earlier has since ended: the check for the widget, made with
