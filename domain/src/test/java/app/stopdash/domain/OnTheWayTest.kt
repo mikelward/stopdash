@@ -42,6 +42,14 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `Start follows a doubtful train only when no other is listed`() {
+        // Ready at 4 min: the 5-minute train may be one TfL tracks twice, so the 6-minute one is followed.
+        val trains = listOf(train("7", 2), train("8", 5).copy(doubtful = true), train("9", 6))
+        assertEquals("9", OnTheWay.pickTrain(trains, at(4))?.vehicleId)
+        assertEquals("8", OnTheWay.pickTrain(listOf(train("8", 5).copy(doubtful = true)), at(4))?.vehicleId)
+    }
+
+    @Test
     fun `waits while the train is still due at the boarding stop`() {
         val following = OnTheWay.follow(trip, train("8", 5))
         val (next, progress) = OnTheWay.advance(following, listOf(call("A", 5), call("B", 9), call("C", 14)), at(3))
@@ -204,6 +212,13 @@ class OnTheWayTest {
         assertEquals(listOf("red/8", "blue/8"), OnTheWay.candidates(listOf(train("8", 5), sameId), lines, at(3)).map { "${it.lineId}/${it.vehicleId}" })
         assertEquals(blueRide, OnTheWay.lineOf(lines, other))
         assertNull(OnTheWay.lineOf(lines, green))
+    }
+
+    @Test
+    fun `a doubtful candidate comes after every other`() {
+        // The train ahead gone before the rider can be there, the copy behind it next, a believed train after.
+        val trains = listOf(train("1", 2), train("2", 4).copy(doubtful = true), train("3", 6))
+        assertEquals(listOf("3", "2"), OnTheWay.candidates(trains, listOf(ride), at(3)).map { it.vehicleId })
     }
 
     @Test
@@ -1048,6 +1063,10 @@ class OnTheWayTest {
         assertEquals(at(4), OnTheWay.nextDue(board, readyAt = at(2), now = at(4)))
         assertNull(OnTheWay.nextDue(board, readyAt = null, now = at(13)))
         assertNull(OnTheWay.nextDue(emptyList(), readyAt = null, now = at(5)))
+        // A doubtful train counts only when it's all there is.
+        val doubtful = listOf(train("1", 6).copy(doubtful = true), train("2", 9))
+        assertEquals(at(9), OnTheWay.nextDue(doubtful, readyAt = null, now = at(5)))
+        assertEquals(at(6), OnTheWay.nextDue(doubtful.take(1), readyAt = null, now = at(5)))
     }
 
     @Test

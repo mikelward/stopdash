@@ -1263,6 +1263,8 @@ private fun OffPlanCard(
                         )
                         // A row's few times, no more ([MAX_OFF_PLAN_TIMES]); none where TfL lists none.
                         if (row.trains.isNotEmpty()) {
+                            // Grayed whole already; a doubtful train is also said to be so ([doubtfulTimes]).
+                            val spoken = doubtfulTimes(Countdown.parts(row.trains, now)).second
                             Text(
                                 stringResource(
                                     R.string.on_the_way_off_plan_times,
@@ -1273,6 +1275,7 @@ private fun OffPlanCard(
                                 color = gray,
                                 maxLines = 1,
                                 softWrap = false,
+                                modifier = Modifier.semantics { spoken?.let { contentDescription = it } },
                             )
                         }
                     }

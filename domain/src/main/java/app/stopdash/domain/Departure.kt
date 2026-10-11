@@ -53,6 +53,10 @@ import java.time.Instant
  *
  * [railServiceId] is Darwin's id for a National Rail service, which pairs a train across two boards
  * of the same station (the plain one and the one with calling points). Blank on every TfL departure.
+ *
+ * [doubtful] marks a tube train predicted too soon behind another of its line at one platform to both be
+ * there, which TfL's tracking does when it follows one train twice ([DoubtfulTrains]): the app shows it
+ * grayed rather than as a train stopdash stands behind.
  */
 data class Departure(
     val lineId: String,
@@ -68,4 +72,5 @@ data class Departure(
     val via: String = "",
     val callingAt: List<CallingPortion>? = null,
     val railServiceId: String = "",
+    val doubtful: Boolean = false,
 )

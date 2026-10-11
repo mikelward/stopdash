@@ -307,10 +307,12 @@ object OnTheWay {
      * The train to follow for a leg: the soonest of its [trains] (the leg's line, heading its way,
      * as the trip lists them) that TfL names and the rider can reach by [readyAt]. The maintainer's
      * rule (2026-09-26): assume the next catchable train, and switch once another is seen to be the
-     * one they're on.
+     * one they're on. A [Departure.doubtful] train, which TfL may be tracking twice, is picked only
+     * when no other is listed.
      */
     fun pickTrain(trains: List<Departure>, readyAt: Instant): Departure? =
-        trains.filter { it.vehicleId.isNotBlank() && !it.expectedArrival.isBefore(readyAt) }.minByOrNull { it.expectedArrival }
+        trains.filter { it.vehicleId.isNotBlank() && !it.expectedArrival.isBefore(readyAt) }
+            .minWithOrNull(compareBy<Departure> { it.doubtful }.thenBy { it.expectedArrival })
 
     /**
      * The earliest a train can have been due at [trip]'s boarding stop and be the rider's: when they could be
@@ -329,11 +331,12 @@ object OnTheWay {
      * stretch, the Metropolitan past the Jubilee's stops), checked as running from stops checked open,
      * and not one the rider avoids. Which of the trains runs where the rider is going is for each
      * one's line route and calls to say, against its own line's ride ([lineOf], [mayTakeRide],
-     * [runsAlong]).
+     * [runsAlong]). A [Departure.doubtful] train, which TfL may be tracking twice, comes after every
+     * other, so it's followed only when none of them is the rider's.
      */
     fun candidates(departures: List<Departure>, lines: List<TripLeg>, readyAt: Instant): List<Departure> =
         departures.filter { train -> lineOf(lines, train) != null && train.vehicleId.isNotBlank() && !train.expectedArrival.isBefore(readyAt) }
-            .sortedBy { it.expectedArrival }
+            .sortedWith(compareBy<Departure> { it.doubtful }.thenBy { it.expectedArrival })
             // A train's id is TfL's within its line, so two lines' trains can share one.
             .distinctBy { it.lineId to it.vehicleId }
 
@@ -1005,11 +1008,13 @@ object OnTheWay {
     /**
      * When the next of [trains] (a ride's board, kept to those taking the rider where they get off) is
      * due that the rider can catch: at or after [readyAt], when they can be at the boarding stop, and
-     * [now]. Null with none. For [eta], once the train followed has gone by or isn't known.
+     * [now]. Null with none. For [eta], once the train followed has gone by or isn't known. A
+     * [Departure.doubtful] train counts only when no other is listed.
      */
     fun nextDue(trains: List<Departure>, readyAt: Instant?, now: Instant): Instant? {
         val from = if (readyAt != null && readyAt.isAfter(now)) readyAt else now
-        return trains.filter { !it.expectedArrival.isBefore(from) }.minOfOrNull { it.expectedArrival }
+        val catchable = trains.filter { !it.expectedArrival.isBefore(from) }
+        return (catchable.filter { !it.doubtful }.ifEmpty { catchable }).minOfOrNull { it.expectedArrival }
     }
 
     /**
