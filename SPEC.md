@@ -4226,24 +4226,19 @@ Mirrors the sibling fleet:
   Home/Work slots are identified by role, not by the mutable, possibly-duplicated label (a custom
   place may reuse the word "Home"; a label may change on edit or with localization). The coordinate is resolved from a **stop/station** in the
   bundled lists (a station by its stops' position when the list has none), or a **postcode** (the
-  bundle's, else TfL's **Journey Planner** — no third-party geocoder, £0); the favorite-setup field reads **"Stop, place
+  bundle's, £0; nothing typed is sent anywhere); the favorite-setup field reads **"Stop, place
   or postcode"**. The **bundled London place index** (*To… a place or postcode*; maintainer,
   2026-10-11) is searched on the device as the user types, its places, streets and postcodes listed
   below the stops, each carrying its coordinate, so picking one needs no lookup; a **complete
-  postcode it holds is adopted from it** at once, with nothing sent, and only one it doesn't hold
-  goes to the Journey Planner as below. A typed stop/station is matched against the bundled stations and bus stops (the
-  *Find a station* path) and **sent nowhere**; a bundled bus stop carries its position, so picking one needs no lookup. When the text instead
-  **looks like a postcode**, a **complete** one the bundle doesn't hold **resolves itself** through the
-  Journey Planner once typing pauses (no extra tap), which either geocodes it to one point or
-  returns **candidate places**. A postcode is unambiguous, so a **single place is adopted straight away**
-  (type → Save); only a genuine **multi-place** answer offers a chooser the user **picks** from, and an
-  empty or failed lookup is shown honestly (a failure stays retryable). While the postcode is still
+  postcode it holds is adopted from it** once typing pauses, with nothing sent (type → Save). A typed stop/station is matched against the bundled stations and bus stops (the
+  *Find a station* path) and **sent nowhere**; a bundled bus stop carries its position, so picking one needs no lookup. A **complete**
+  postcode the bundle doesn't hold (outside London) is said to have no places (maintainer, 2026-10-11:
+  no Journey Planner lookup from search, so nothing typed is sent). While the postcode is still
   partial the editor shows a passive "Postcode …" hint (from two characters, the same floor station
   completions use) above the bundled postcodes it starts ("SW1A" lists SW1A's), each pickable at once
   with nothing sent. A postcode-shaped query (a digit present) lists postcodes only (a plain two-letter
   prefix, how a station name starts, still searches stops). From… and To… find postcodes too, from the
-  bundled place index (*Finding stops*); the Journey Planner lookup for one the index doesn't hold is
-  favorite setup's alone. The **search query text is not persisted** (it isn't written to saved
+  bundled place index (*Finding stops*). The **search query text is not persisted** (it isn't written to saved
   state, `FavoritePlacesStore`, or backup — *Privacy*, `docs/PRIVACY.md`); the place the user then
   **chooses** is saved by its coordinate and its resolved name exactly as a chosen station is — and for
   a postcode that name may be the postcode itself, no more revealing than the coordinate already stored

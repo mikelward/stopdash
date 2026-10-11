@@ -12,10 +12,7 @@ import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FavoritePlacesStore
 import app.stopdash.domain.IndexedStation
 import app.stopdash.domain.LineRef
-import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.PlaceIndex
-import app.stopdash.domain.PostcodeResolution
-import app.stopdash.domain.PostcodeResolver
 import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StationMatch
@@ -335,35 +332,6 @@ class FavoritePlacesViewModelTest {
         assertTrue(editor.canSave)
     }
 
-    @Test
-    fun `a complete postcode with several places offers a chooser to pick from`() = runTest {
-        val candidates = listOf(
-            PlaceCandidate("X1 9XX", Coordinates(51.50, -0.10)),
-            PlaceCandidate("X1 9XY", Coordinates(51.52, -0.12)),
-        )
-        val model = FavoritePlacesViewModel(
-            FakeStore(), FakeFinder(), postcodes = { PostcodeResolution.Options(candidates) },
-            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
-        )
-        advanceUntilIdle()
-        model.startAdd(FavoriteKind.CUSTOM, "")
-        // Resolves on its own; TfL returns several places, so nothing is auto-adopted (SPEC D9).
-        model.onQueryChange("X1 9XX")
-        advanceUntilIdle()
-        val offered = model.state.value.editor!!
-        assertEquals(candidates, offered.postcodeCandidates)
-        assertFalse(offered.postcodeResolving)
-        assertNull(offered.coordinate)
-        // The rider picks one and it's adopted.
-        model.onPickCandidate(candidates[1])
-        advanceUntilIdle()
-        val editor = model.state.value.editor!!
-        assertEquals(Coordinates(51.52, -0.12), editor.coordinate)
-        assertEquals("X1 9XY", editor.placeName)
-        assertTrue(editor.postcodeCandidates.isEmpty())
-        assertTrue(editor.canSave)
-    }
-
     // A bundled place index from synthetic lines (AGENTS *Privacy*).
     private fun placeIndex(vararg lines: String): PlaceIndex = PlaceIndex.read(
         java.io.BufferedReader(java.io.StringReader((listOf("# stopdash place index v1\ttest") + lines).joinToString("\n"))),
@@ -391,10 +359,9 @@ class FavoritePlacesViewModelTest {
     }
 
     @Test
-    fun `a complete postcode in the bundle is adopted without asking TfL`() = runTest {
-        var asked = 0
+    fun `a complete postcode in the bundle is adopted`() = runTest {
         val model = FavoritePlacesViewModel(
-            FakeStore(), FakeFinder(), postcodes = { asked++; PostcodeResolution.None },
+            FakeStore(), FakeFinder(),
             loadPlaceIndex = { placeIndex("C\tX1 9XX\t\t51.52000\t-0.11000\t4") },
             io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
         )
@@ -405,7 +372,7 @@ class FavoritePlacesViewModelTest {
         val editor = model.state.value.editor!!
         assertEquals(Coordinates(51.52, -0.11), editor.coordinate)
         assertEquals("X1 9XX", editor.placeName)
-        assertEquals(0, asked)
+        assertTrue(editor.canSave)
     }
 
     @Test
@@ -515,106 +482,17 @@ class FavoritePlacesViewModelTest {
     }
 
     @Test
-    fun `a complete postcode adopts its single place automatically`() = runTest {
-        val candidate = PlaceCandidate("X1 9XX", Coordinates(51.50, -0.10))
-        val model = FavoritePlacesViewModel(
-            FakeStore(), FakeFinder(), postcodes = { PostcodeResolution.Resolved(candidate) },
-            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
-        )
-        advanceUntilIdle()
-        model.startAdd(FavoriteKind.CUSTOM, "")
-        // Typing a complete postcode resolves it — one unambiguous place, adopted without a tap.
-        model.onQueryChange("X1 9XX")
-        advanceUntilIdle()
-        val editor = model.state.value.editor!!
-        assertEquals(Coordinates(51.50, -0.10), editor.coordinate)
-        assertEquals("X1 9XX", editor.placeName)
-        assertTrue(editor.postcodeCandidates.isEmpty())
-        assertTrue(editor.canSave)
-    }
-
-    @Test
-    fun `a postcode resolve failure is retryable`() = runTest {
-        var attempt = 0
-        val candidate = PlaceCandidate("X1 9XX", Coordinates(51.50, -0.10))
-        val model = FavoritePlacesViewModel(
-            FakeStore(), FakeFinder(),
-            postcodes = {
-                attempt++
-                if (attempt == 1) throw TflException.Offline(null) else PostcodeResolution.Resolved(candidate)
-            },
-            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
-        )
-        advanceUntilIdle()
-        model.startAdd(FavoriteKind.CUSTOM, "")
-        // The automatic resolve on a complete postcode fails first.
-        model.onQueryChange("X1 9XX")
-        advanceUntilIdle()
-        assertTrue(model.state.value.editor!!.postcodeFailed)
-        // Retrying resolves, and the single place is adopted straight away.
-        model.resolvePostcode()
-        advanceUntilIdle()
-        val editor = model.state.value.editor!!
-        assertFalse(editor.postcodeFailed)
-        assertEquals(Coordinates(51.50, -0.10), editor.coordinate)
-    }
-
-    @Test
-    fun `resolvePostcode is a no-op until the postcode is complete`() = runTest {
-        var calls = 0
-        val model = FavoritePlacesViewModel(
-            FakeStore(), FakeFinder(), postcodes = { calls++; PostcodeResolution.None },
-            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
-        )
-        advanceUntilIdle()
-        model.startAdd(FavoriteKind.CUSTOM, "")
-        model.onQueryChange("X1") // a partial postcode
-        advanceUntilIdle()
-        model.resolvePostcode()
-        advanceUntilIdle()
-        assertEquals(0, calls) // not resolvable yet, so no request
-        assertTrue(model.state.value.editor!!.postcodeCandidates.isEmpty())
-    }
-
-    @Test
-    fun `changing the query clears postcode candidates`() = runTest {
-        val model = FavoritePlacesViewModel(
-            FakeStore(), FakeFinder(),
-            // Two places, so a complete postcode offers a chooser rather than auto-adopting.
-            postcodes = {
-                PostcodeResolution.Options(
-                    listOf(
-                        PlaceCandidate("X1 9XX", Coordinates(51.5, -0.1)),
-                        PlaceCandidate("X1 9XY", Coordinates(51.52, -0.12)),
-                    ),
-                )
-            },
-            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
-        )
-        advanceUntilIdle()
-        model.startAdd(FavoriteKind.CUSTOM, "")
-        model.onQueryChange("X1 9XX")
-        advanceUntilIdle()
-        assertTrue(model.state.value.editor!!.postcodeCandidates.isNotEmpty())
-        // A partial postcode isn't resolved, so the old candidates are dropped, not replaced.
-        model.onQueryChange("X2")
-        advanceUntilIdle()
-        assertTrue(model.state.value.editor!!.postcodeCandidates.isEmpty())
-    }
-
-    @Test
     fun `a postcode-shaped query is not searched as a stop`() = runTest {
         // A synthetic station named like the postcode, which a stop search would find.
         val index = StationIndex(listOf(IndexedStation("940GZZX1", "X1 Junction", listOf("tube"), latitude = 51.5, longitude = -0.12)) + stations.stations)
         val model = FavoritePlacesViewModel(
             FakeStore(), FakeFinder(),
-            postcodes = { PostcodeResolution.None },
             loadIndex = { index },
             io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
         )
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
-        model.onQueryChange("X1") // a postcode: resolved via the Journey Planner on tap, not searched
+        model.onQueryChange("X1") // a postcode: its bundled postcodes are listed, not stops
         advanceUntilIdle()
         assertTrue(model.state.value.editor!!.results.isEmpty())
         // A plain two-letter prefix is how station names start ("Ox" → Oxford Circus), so it still searches.
@@ -624,20 +502,23 @@ class FavoritePlacesViewModelTest {
     }
 
     @Test
-    fun `a postcode that resolves to nothing reports no places`() = runTest {
+    fun `a complete postcode the bundle doesn't hold says so, and a new query clears it`() = runTest {
         val model = FavoritePlacesViewModel(
-            FakeStore(), FakeFinder(), postcodes = { PostcodeResolution.None },
+            FakeStore(), FakeFinder(),
+            loadPlaceIndex = { placeIndex("C\tX1 9XX\t\t51.52000\t-0.11000\t4") },
             io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
         )
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
-        model.onQueryChange("X1 9XX")
-        advanceUntilIdle()
-        model.resolvePostcode()
+        // Outside the bundle (outside London): nothing is sent anywhere to look it up.
+        model.onQueryChange("X2 9XX")
         advanceUntilIdle()
         val editor = model.state.value.editor!!
         assertTrue(editor.postcodeNoResults)
-        assertTrue(editor.postcodeCandidates.isEmpty())
+        assertNull(editor.coordinate)
+        model.onQueryChange("X2")
+        advanceUntilIdle()
+        assertFalse(model.state.value.editor!!.postcodeNoResults)
     }
 
     @Test

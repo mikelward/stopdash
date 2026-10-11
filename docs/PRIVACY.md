@@ -121,11 +121,9 @@ transfers; they are never logged or sent anywhere, and clearing the app's data r
 **Favorite places** (Home, Work, School or a place of your own, saved from Settings) are stored by
 **location**. When you add or edit one, the stop or station you type is looked up the way *Find a station*
 does it, in the bundled lists of stations, bus stops and London places, streets and postcodes on your device, and
-sent nowhere. A **postcode** (what you type is shaped like one and has a digit) the list holds is found on the device
-too; one it doesn't hold (outside London) is sent only to **TfL's Journey Planner**, which returns the place(s) it
-names for you to choose from. A postcode is the same kind of location data the app
-already sends to plan a trip — no new kind of data leaves the device. Either way the text you type in
-the search field isn't saved, logged or sent anywhere else; only the place you then **choose** is
+sent nowhere. A **postcode** (what you type is shaped like one and has a digit) is found in the same list, also on the
+device; one it doesn't hold (outside London) isn't found. The text you type in
+the search field isn't saved, logged or sent anywhere; only the place you then **choose** is
 saved — by its coordinate and the name it resolved to (for a postcode, that name may be the postcode
 itself), the same as choosing a stop. The saved place — its
 coordinate, its label, and the **name of the stop, station, place, street or postcode you chose**

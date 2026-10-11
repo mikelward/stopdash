@@ -1331,11 +1331,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   search the bundled stations, bus stops and places only, with no TfL stop search or
                   Journey Planner lookup. Bus rows carry `stops.tsv`'s single-stop ids, the ones
                   `/StopPoint/Search` returned, so a bundled row opens the same page. Follow-ups:
-                - [ ] **Drop the unused TfL search calls**: `searchStations`, `searchPlaces` and
-                      `PlaceHits.rank`, with their DTOs and tests, now that nothing calls them.
-                - [ ] **Drop the favorite place editor's postcode lookup** (maintainer, 2026-10-11: no
+                - [ ] **Drop the unused TfL search calls**: `searchStations`, `searchPlaces`,
+                      `resolvePostcode` (`PostcodeResolver`) and `PlaceHits.rank`, with their DTOs and
+                      tests, now that nothing calls them.
+                - [x] **Drop the favorite place editor's postcode lookup** (maintainer, 2026-10-11: no
                       Journey Planner lookup from search): a complete postcode the bundle doesn't hold
-                      (outside London) still goes to TfL; the chooser and its failure state go with it.
+                      (outside London) has no places; the chooser and its failure state are gone.
                 - [ ] **Show a bus row's stop letter and direction** ("Stop H, towards …"), which the
                       file carries, so same-named rows read apart.
                 - [ ] **Find a bus stop by its route** ("73"), from the lines the file carries.
