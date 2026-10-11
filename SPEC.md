@@ -1245,6 +1245,15 @@ Each check, and each arming of the next, leaves a line in the debug log (princip
 and how late it ran, the lines it asked about with TfL's status for each, and what it posted or took
 down, so an alert that never came can be explained from a bug report. Never the journey's stops.
 
+**Pause** (maintainer, 2026-10-11). Each alert has a **Pause** button, which pauses every journey's
+alerts at once: those showing come down, and no check runs until the rider unpauses. While paused, a
+card atop the near-me list, "Alert notifications paused", says "Favorite journey alerts are paused.
+You will not be notified about service disruptions." with **Unpause**, the one way back, so it has no Dismiss and stays until tapped. It shows on the home
+without location, while finding the rider or loading departures, and over an error loading them, so unpausing never waits on location or TfL; an Unpause that couldn't be saved says
+"Couldn't unpause alerts", the card staying for another try. Unpause re-arms the checks as the saved schedules stand, checking at once if a window is
+open. The pause is kept on the phone (not backed up) and leaves each journey's settings as they are. The
+debug log notes each pause and unpause, and a check skipped for it.
+
 **Change at a fork.** When a line runs only one branch from the origin (a Northern line train to
 Edgware from King's Cross, none to High Barnet) and no direct train is due, the card shows the
 other branch's trains instead, under "King's Cross ➔ Camden Town (for High Barnet)", with "No direct

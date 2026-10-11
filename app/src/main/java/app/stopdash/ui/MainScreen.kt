@@ -428,6 +428,9 @@ fun MainScreen(
     // The "Automatically update widget?" card ([WidgetUpdateCard]), asked only when neither card
     // above is: one question at a time. Null (no widget, updates on, or dismissed) shows none.
     widgetUpdate: WidgetUpdateActions? = null,
+    // Unpauses journey alerts from the card saying they're paused ([AlertsPausedCard]), first atop the
+    // list: it asks nothing, so it doesn't wait on the questions. Null (not paused) shows none.
+    onUnpauseAlerts: (() -> Unit)? = null,
     // The screen this list counts as for usage stats ([ReportScreen]): the near-me list, or a searched
     // station's page. A row's route page, opened over either, counts as its own.
     usageScreen: UsageEvent.Screen = UsageEvent.Screen.HOME,
@@ -1439,6 +1442,9 @@ fun MainScreen(
             ) { departures ->
                 val shown = departures.state
                 val content = Modifier.fillMaxSize()
+                // The paused card's Unpause is the only way back, so every state of the full near-me list
+                // shows it, not just a loaded list: loading and erroring too (Codex on #756).
+                val unpauseHere = onUnpauseAlerts.takeIf { platformRows == null && stationTitle == null && journeyViewKey == null }
                 when (shown) {
                     // A more direct update prompt than the top-bar overflow dot, which is easy to miss
                     // while waiting on a cold load: at the bottom, in a slot kept (with one as tall at the
@@ -1457,6 +1463,7 @@ fun MainScreen(
                         ) {
                             UpdateAvailableButton(onClick = {}, modifier = Modifier.padding(bottom = 16.dp), shown = false)
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                unpauseHere?.let { AlertsPausedCard(it, Modifier.padding(bottom = 24.dp)) }
                                 CircularProgressIndicator()
                                 Text(
                                     text = stringResource(R.string.departures_loading),
@@ -1473,7 +1480,10 @@ fun MainScreen(
                         // The saved journeys are still loading, or the snapshot's rows are being worked out
                         // off the main thread for a list or view with none to stand in yet: a placeholder,
                         // never an empty list that reads as "No departures" (SPEC principle 1).
-                        Centered(content) { CircularProgressIndicator() }
+                        Centered(content) {
+                            unpauseHere?.let { AlertsPausedCard(it, Modifier.padding(bottom = 24.dp)) }
+                            CircularProgressIndicator()
+                        }
                     } else if (journeyViewCard != null) {
                         // A journey's own view: just its card, each group headed by where it boards, under
                         // Swap and Unstar. Rendered from the same snapshot as the list (SPEC D4).
@@ -1601,6 +1611,7 @@ fun MainScreen(
                             widgetUpdate = widgetUpdate.takeIf {
                                 onTelemetryInviteAnswer == null && watchInstall == null && platformRows == null && stationTitle == null
                             },
+                            onUnpauseAlerts = unpauseHere,
                             // The full list only, as the place chips: not a platform, station or searched page.
                             disruptionsRow = disruptionsRow.takeIf { platformRows == null && stationTitle == null },
                         )
@@ -1616,6 +1627,9 @@ fun MainScreen(
                                     .scrollEdgeCue(scrollState, scrollCueColors(MaterialTheme.colorScheme.background))
                                     .verticalScroll(scrollState),
                             ) {
+                                // An error is no reason to leave alerts stuck paused: the card's
+                                // Unpause is the only way back, so it shows here too (Codex on #756).
+                                unpauseHere?.let { AlertsPausedCard(it, Modifier.padding(bottom = 24.dp)) }
                                 Text(
                                     text = stringResource(errorMessage(shown.kind)),
                                     style = MaterialTheme.typography.bodyLarge,
@@ -1768,6 +1782,9 @@ private fun LoadedContent(
     // The "Automatically update widget?" card ([WidgetUpdateCard]), asked only when neither card
     // above is: one question at a time. Null (no widget, updates on, or dismissed) shows none.
     widgetUpdate: WidgetUpdateActions? = null,
+    // Unpauses journey alerts from the card saying they're paused ([AlertsPausedCard]), first atop the
+    // list: it asks nothing, so it doesn't wait on the questions. Null (not paused) shows none.
+    onUnpauseAlerts: (() -> Unit)? = null,
     // The disruptions row ([HomeDisruptionsRow]), under the place chips; null shows none.
     disruptionsRow: TripRow? = null,
 ) {
@@ -1850,6 +1867,9 @@ private fun LoadedContent(
                 ) {
                     // The telemetry question still leads where there's no list to lead (Codex, PR #447):
                     // a first run with nothing near has it asked all the same.
+                    onUnpauseAlerts.takeIf { !journeyView }?.let { unpause ->
+                        AlertsPausedCard(onUnpause = unpause, modifier = Modifier.padding(bottom = 16.dp))
+                    }
                     onTelemetryInviteAnswer.takeIf { !journeyView }?.let { answer ->
                         TelemetryInviteCard(onAnswer = answer, modifier = Modifier.padding(bottom = 16.dp))
                     }
@@ -1954,6 +1974,7 @@ private fun LoadedContent(
                     onTelemetryInviteAnswer = onTelemetryInviteAnswer.takeIf { !journeyView },
                     watchInstall = watchInstall.takeIf { !journeyView },
                     widgetUpdate = widgetUpdate.takeIf { !journeyView },
+                    onUnpauseAlerts = onUnpauseAlerts.takeIf { !journeyView },
                     disruptionsRow = disruptionsRow.takeIf { !journeyView },
                     nearbyEmptyNote = if (rows.isEmpty() && !journeyView && !nearbyShownAbove && shownPending.isEmpty() && dismissedClosures.isEmpty()) {
                         // With modes hidden, say so rather than "no departures": they may be running.
@@ -2455,6 +2476,9 @@ private fun DepartureList(
     // The "Automatically update widget?" card ([WidgetUpdateCard]), asked only when neither card
     // above is: one question at a time. Null (no widget, updates on, or dismissed) shows none.
     widgetUpdate: WidgetUpdateActions? = null,
+    // Unpauses journey alerts from the card saying they're paused ([AlertsPausedCard]), first atop the
+    // list: it asks nothing, so it doesn't wait on the questions. Null (not paused) shows none.
+    onUnpauseAlerts: (() -> Unit)? = null,
     // The disruptions row ([HomeDisruptionsRow]), under the place chips; null shows none.
     disruptionsRow: TripRow? = null,
     modifier: Modifier,
@@ -2738,6 +2762,10 @@ private fun DepartureList(
         // padding of its own — the list's 16dp inset already lines it up with the cards.
         // The telemetry question, put once to an install that never answered it (SPEC *Privacy*):
         // first, as the one card that asks something of the rider, and gone once answered.
+        // Journey alerts paused, ahead of the questions: what the rider set, and the one way back.
+        onUnpauseAlerts?.let { unpause ->
+            item(key = "alerts-paused") { AlertsPausedCard(onUnpause = unpause) }
+        }
         onTelemetryInviteAnswer?.let { answer ->
             item(key = "telemetry-invite") { TelemetryInviteCard(onAnswer = answer) }
         }

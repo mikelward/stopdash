@@ -20,6 +20,7 @@
     <string name="countdown_canceled_description">cancelled</string>
     <string name="journey_tip">Long-press a stop to favourite the journey there</string>
     <string name="settings_favorite_journeys_title">Favourite journeys</string>
+    <string name="journey_alerts_paused_body">Favourite journey alerts are paused. You will not be notified about service disruptions.</string>
     <string name="favorite_journeys_title">Favourite journeys</string>
     <string name="favorite_journeys_unavailable">Can\'t read your favourite journeys.</string>
     <string name="favorite_journeys_add_already">%1$s ⇄ %2$s is already a favourite</string>

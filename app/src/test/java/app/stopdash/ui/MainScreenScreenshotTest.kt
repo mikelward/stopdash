@@ -465,6 +465,66 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `paused journey alerts say so atop the list, and Unpause brings them back`() {
+        var unpaused = 0
+        capture("main-alerts-paused.png") {
+            MainScreen(
+                DeparturesUiState.Loaded(stops(now.minusSeconds(60)), now.minusSeconds(60), lineStatuses = statuses()),
+                now,
+                {},
+                favoritePlaces = places,
+                // Shown alongside a question: it asks nothing, so it doesn't wait its turn.
+                widgetUpdate = WidgetUpdateActions(onSettings = {}, onDismiss = {}),
+                onUnpauseAlerts = { unpaused++ },
+            )
+        }
+        composeRule.onNodeWithText("Alert notifications paused").assertExists()
+        // The tests render in en-GB, as the app's riders see it.
+        composeRule.onNodeWithText("Favourite journey alerts are paused. You will not be notified about service disruptions.").assertExists()
+        composeRule.onNodeWithTag("widgetUpdate").assertExists()
+        composeRule.onNodeWithText("Unpause").performClick()
+        assertEquals(1, unpaused)
+    }
+
+    @Test
+    fun `paused journey alerts can be unpaused while departures can't load`() {
+        var unpaused = 0
+        capture("main-error-alerts-paused.png") {
+            MainScreen(
+                DeparturesUiState.Error(DeparturesUiState.Error.Kind.OFFLINE),
+                now,
+                {},
+                onUnpauseAlerts = { unpaused++ },
+            )
+        }
+        composeRule.onNodeWithText("Alert notifications paused").assertExists()
+        composeRule.onNodeWithText("Unpause").performClick()
+        assertEquals(1, unpaused)
+    }
+
+    @Test
+    fun `paused journey alerts can be unpaused while departures load`() {
+        var unpaused = 0
+        capture("main-loading-alerts-paused.png") {
+            MainScreen(DeparturesUiState.Loading, now, {}, onUnpauseAlerts = { unpaused++ })
+        }
+        composeRule.onNodeWithText("Unpause").performClick()
+        assertEquals(1, unpaused)
+    }
+
+    @Test
+    fun `nothing says alerts are paused while they aren't`() {
+        composeRule.setContent {
+            MainScreen(
+                DeparturesUiState.Loaded(stops(now.minusSeconds(60)), now.minusSeconds(60), lineStatuses = statuses()),
+                now,
+                {},
+            )
+        }
+        composeRule.onNodeWithTag("alertsPaused").assertDoesNotExist()
+    }
+
+    @Test
     fun `the widget question waits while the watch offer is shown, and isn't reported shown`() {
         var shown = 0
         composeRule.setContent {
