@@ -1473,6 +1473,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               due soon (TfL bunches later times a minute apart, so real far-out trains get grayed), and
               whether the widget and watch gray them too (the widget can, drawing each time as its own
               text).
+        - [ ] **Work out the route detail's countdown off the main thread** (Codex on #769): the page
+              filters, orders and formats its uncapped list of trains in composition on every redraw
+              (before #769 too), and graying a doubtful one adds a pass. Precompute the rendered times
+              and their gray spans in `routeDetailWork` (the minutes tick, so on the worker per tick).
         - [ ] **Tell a doubtful train from a real one** (maintainer, 2026-10-11): keep collecting
               reports (each mark is logged with the feed's train ids) against what the station display
               showed, and hide a doubtful train outright only once a rule separates the two.
