@@ -93,8 +93,8 @@ internal fun installDiagnosticSinks(
 open class StopdashApp : Application() {
     /**
      * The persisted diagnostic sink once it is stood up — the shared logger's on-device file
-     * store. Handed to the consent-gated bug report so it can bundle (and, once shared, consume)
-     * the earlier runs the sink kept. Null before [onCreate] runs, if setup failed, or in the
+     * store. Handed to the consent-gated bug report so it can bundle the earlier runs the sink
+     * kept; sharing deletes none, so they stay under the sink's own retention. Null before [onCreate] runs, if setup failed, or in the
      * test Application that skips installation — a report then simply carries no earlier runs.
      */
     var diagnosticSink: DebugFileSink? = null

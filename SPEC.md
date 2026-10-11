@@ -4058,7 +4058,10 @@ Mirrors the sibling fleet:
   window, so the consent dialog (a separate window) is not in it. androidlog holds the whole report
   to what survives being pasted on (a report was kept only to about its first 20,000 characters; bug
   reports, 2026-10-11), and StopDash fills its share of it: the 20 nearest stops, the newest recent
-  positions that fit, and the newest log lines in the room left, so what's cut is the oldest. See
+  positions that fit, and the newest log lines in the room left, so what's cut is the oldest.
+  Sending a report deletes nothing: whether it was really sent is unknowable (the share sheet reports
+  nothing back, and a clipboard copy is only a copy), so the earlier runs stay on the device under
+  the log's own bound, the newest five, and a later report may carry some of them again. See
   `docs/PRIVACY.md`.
 
 ## Non-goals

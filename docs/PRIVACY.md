@@ -433,7 +433,9 @@ The log **never** carries:
 These diagnostics are written to Android's **Logcat** (visible to a developer with the
 device connected) **and to a persisted log file on the device** — a small rotating file in
 the app's private cache (excluded from backup), kept so that a crash or a silent process
-kill still leaves a record of the last thing the app saw. The persisted log **stays on the
+kill still leaves a record of the last thing the app saw. It holds the newest five runs of the
+app; sending a bug report doesn't delete them, so a later report may include some of the same
+lines. The persisted log **stays on the
 device**. The one off-device destination is Crashlytics, and only while you've opted in (above):
 it receives the log's **off-device** rendering, with every stop ID, line ID and coordinate
 replaced by `•••` before it leaves the app. The logging runs through one shared on-device buffer

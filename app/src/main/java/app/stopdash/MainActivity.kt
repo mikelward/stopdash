@@ -3099,7 +3099,7 @@ class MainActivity : ComponentActivity() {
      * exception to the on-device-only log rule, so it runs only past that gate (SPEC *Privacy*).
      *
      * The shared `mikelward/androidlog` `DebugReport` does the mechanism: [DebugReport.collect]
-     * reads (and, once shared, consumes) the persisted earlier runs off the main thread, wrapping
+     * reads the persisted earlier runs off the main thread (sharing deletes none), wrapping
      * this app's section; [DebugReport.deliver] copies to the clipboard, attaches the screenshot,
      * and opens the share sheet on the main thread. The shared androidlog [ReportScreenshot.capture]
      * takes the shot first — of this Activity's window, which excludes the consent dialog's separate
