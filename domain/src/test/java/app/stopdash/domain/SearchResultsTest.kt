@@ -75,4 +75,29 @@ class SearchResultsTest {
         val next = SearchResults.appended(shown, "zeta", emptyList(), listOf(place("Zeta Hall")))
         assertEquals(listOf("Zeta One", "Zeta Two", "Zeta Hall"), names(next))
     }
+
+    private fun suggestion(id: String, name: String) =
+        PlaceHit(name, coordinate = null, kind = PlaceKind.PLACE, placeId = id)
+
+    @Test
+    fun `a suggestion the matcher can't place follows the stops, still listed`() {
+        // "zetta": a typo Google corrected to "Zeta Gallery"; our matcher can't place it, so it goes last.
+        val stops = listOf(stop("Zetta Road"))
+        val merged = SearchResults.merge("zetta", stops, listOf(suggestion("g1", "Mu Gallery")))
+        assertEquals(listOf("Zetta Road", "Mu Gallery"), names(merged))
+    }
+
+    @Test
+    fun `a suggestion the query starts ranks among the stops like any place`() {
+        val stops = listOf(stop("Zeta Lane"), stop("Farm Bezeta"))
+        val merged = SearchResults.merge("zeta", stops, listOf(suggestion("g1", "Zeta Gallery")))
+        assertEquals(listOf("Zeta Lane", "Zeta Gallery", "Farm Bezeta"), names(merged))
+    }
+
+    @Test
+    fun `a suggestion is keyed by its place id, the same before and after its lookup`() {
+        val before = SearchEntry.Place(suggestion("g1", "Zeta Gallery"))
+        val after = SearchEntry.Place(PlaceHit("Zeta Gallery", Coordinates(51.5, -0.1), PlaceKind.PLACE, placeId = "g1"))
+        assertEquals(before.key, after.key)
+    }
 }

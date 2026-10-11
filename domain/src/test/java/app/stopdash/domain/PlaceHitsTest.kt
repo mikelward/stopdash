@@ -1,6 +1,8 @@
 package app.stopdash.domain
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlaceHitsTest {
@@ -60,5 +62,47 @@ class PlaceHitsTest {
     fun `de-duplicates candidates with the same name and coordinate`() {
         val candidates = listOf(candidate("Zeta Hall"), candidate("Zeta Hall"))
         assertEquals(1, PlaceHits.rank("zeta", candidates, PlaceKind.PLACE).size)
+    }
+
+    private fun suggestion(id: String, name: String, vararg types: String) =
+        PlaceSuggestion(id, name, detail = "Area $id", types = types.toList())
+
+    @Test
+    fun `keeps Google's order and doesn't drop a suggestion the matcher can't place`() {
+        // A typo Google corrected ("zetta") and a weaker match first: Google's ranking stands as given.
+        val hits = PlaceHits.fromSuggestions(listOf(suggestion("a", "Zeta Gallery"), suggestion("b", "Alpha Hall")))
+        assertEquals(listOf("Zeta Gallery", "Alpha Hall"), hits.map { it.name })
+        assertEquals(listOf("a", "b"), hits.map { it.placeId })
+        assertEquals("Area a", hits[0].detail)
+        hits.forEach {
+            assertEquals(PlaceKind.PLACE, it.kind)
+            assertNull(it.coordinate)
+            assertTrue(it.needsLookup)
+        }
+    }
+
+    @Test
+    fun `drops stations, which the stop rows already list with their ids`() {
+        val hits = PlaceHits.fromSuggestions(
+            listOf(
+                suggestion("a", "Zeta Station", "train_station", "transit_station"),
+                suggestion("b", "Zeta Gallery", "art_gallery"),
+                suggestion("c", "Zeta Stop", "bus_stop"),
+            ),
+        )
+        assertEquals(listOf("Zeta Gallery"), hits.map { it.name })
+    }
+
+    @Test
+    fun `de-duplicates suggestions by place id and caps them`() {
+        val many = (1..20).map { suggestion("id$it", "Zeta $it") } + suggestion("id1", "Zeta 1 again")
+        val hits = PlaceHits.fromSuggestions(many)
+        assertEquals(PlaceHits.DEFAULT_LIMIT, hits.size)
+        assertEquals(hits.size, hits.map { it.placeId }.toSet().size)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `a place with neither a coordinate nor a place id is refused`() {
+        PlaceHit("Nowhere", coordinate = null, kind = PlaceKind.PLACE)
     }
 }

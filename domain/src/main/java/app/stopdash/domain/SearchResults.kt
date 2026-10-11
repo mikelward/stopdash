@@ -10,7 +10,9 @@ sealed interface SearchEntry {
     }
 
     data class Place(val hit: PlaceHit) : SearchEntry {
-        override val key: String get() = "place-${hit.name}@${hit.coordinate.latitude},${hit.coordinate.longitude}"
+        // A suggestion by its Google place id, which stays the same whether or not it's been looked up.
+        override val key: String get() = hit.placeId?.let { "gplace-$it" }
+            ?: "place-${hit.name}@${hit.coordinate?.latitude},${hit.coordinate?.longitude}"
     }
 }
 
@@ -21,7 +23,8 @@ object SearchResults {
      * contains it ("… Estate") rather than after every stop (maintainer, 2026-09-28). Each list keeps
      * its own order, both already ranked; a place goes before the first stop that matches worse than
      * it does, and a stop wins a tie. A postcode's places, whose names needn't contain the query,
-     * follow the stops, as a match the matcher can't place does.
+     * follow the stops, as a match the matcher can't place does — and so does a Google suggestion the
+     * matcher can't place (a typo Google corrected): it's still listed, just below the stops.
      */
     fun merge(query: String, stops: List<StationMatch>, places: List<PlaceHit>): List<SearchEntry> {
         val unplaced = StationMatchTier.entries.size

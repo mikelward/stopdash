@@ -52,7 +52,11 @@ internal class FileRecentStationsStore(
 
     /** Put the geocoded place [picked] at the front of the list, as a station opened is, and save it. */
     @Synchronized
-    fun addPlace(picked: PlaceHit) { save(RecentStations.add(loadPicks(), SearchEntry.Place(picked))) }
+    fun addPlace(picked: PlaceHit) {
+        // A Google suggestion's coordinate isn't ours to keep (Google Maps Platform terms), so it isn't listed.
+        if (picked.coordinate == null) return
+        save(RecentStations.add(loadPicks(), SearchEntry.Place(picked)))
+    }
 
     /**
      * Take [removed], a pick as the search listed it, off the list ([RecentStations.remove]) and save it;
@@ -66,7 +70,7 @@ internal class FileRecentStationsStore(
         return try {
             // Its directory is named, not checked, when the store is built ([AppDirs]), so made here.
             tmp.parentFile?.mkdirs()
-            tmp.writeText(json.encodeToString(PersistedRecentStations(picks.map { it.toPersisted() })))
+            tmp.writeText(json.encodeToString(PersistedRecentStations(picks.mapNotNull { it.toPersisted() })))
             // Replace in one step, so a reader never sees a half-written file.
             tmp.renameTo(file).also { if (!it) warn("recent stations not saved: rename failed") }
         } catch (e: IOException) {
@@ -115,9 +119,10 @@ private fun PersistedRecentStation.toDomain(): SearchEntry =
         SearchEntry.Stop(StationMatch(id, name, modes, lead = lead))
     }
 
-private fun SearchEntry.toPersisted(): PersistedRecentStation = when (this) {
+// Null for a place with no coordinate (a Google suggestion never looked up), which isn't kept.
+private fun SearchEntry.toPersisted(): PersistedRecentStation? = when (this) {
     is SearchEntry.Stop -> PersistedRecentStation(match.id, match.name, match.modes, lead = match.lead)
-    is SearchEntry.Place -> PersistedRecentStation(
-        id = "", name = hit.name, latitude = hit.coordinate.latitude, longitude = hit.coordinate.longitude, placeKind = hit.kind.name,
-    )
+    is SearchEntry.Place -> hit.coordinate?.let { at ->
+        PersistedRecentStation(id = "", name = hit.name, latitude = at.latitude, longitude = at.longitude, placeKind = hit.kind.name)
+    }
 }
