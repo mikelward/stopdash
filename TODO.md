@@ -3325,6 +3325,10 @@ Builds on Phase 1's minimal line-status marking.
   - [ ] **A line's page and the journey alerts through the shared cache too**: `LinesViewModel` (a
         line's page, timed by its own monotonic clock) and `JourneyAlertWorker` (a background check) still
         ask TfL themselves. Route each through `LineStatusCache.check`.
+  - [ ] **A pull on the near-me list asks its lines afresh** (Codex on #776): `MainViewModel.forceNextFetch`
+        forces the stops' arrivals but `checkLinesNow` still reuses a line's answer from within the window,
+        so a pull can show fresh departures beside the status from before it. Pass the pull through, as a
+        station's page and a trip do (`LineStatusCache.check`'s `refresh` / `pulledAt`).
 
 ## Phase 4 — Widget
 

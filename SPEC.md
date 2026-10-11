@@ -3266,7 +3266,9 @@ been set, so none keeps showing what it judged before.
   alerts' background check still ask for themselves; routing them through it is a `TODO.md` item.) A
   line any of them checked within the line-status reuse window (90 s; a station's page two minutes) is
   shown from that answer rather than asked again, so no two surfaces disagree about a line and none
-  spends a request another just made. A pull asks afresh. Dismissed alerts settle only on what TfL
+  spends a request another just made. A pull on a station's page or a trip asks again for any of its lines last answered before
+  the pull, whichever screen answers first serving both (the
+  near-me list's pull still reuses them within the window; a `TODO.md` item). Dismissed alerts settle only on what TfL
   answered for the screen settling them, never on another screen's answer. One whose request
   for a line is still out when another asks is waited on rather than doubled (one that fails is
   asked again). The widget's stored checks still carry its answers past the process.
