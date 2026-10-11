@@ -132,17 +132,18 @@ object WidgetRefresh {
             val window = ArrivalsReuse.window(reuse, farReuse, automatic = true, isFar = stop.stopId in prior.journeyOnlyStopIds)
             return stop.arrivalsFresh && !age.isNegative && age < window && sameSource(stop)
         }
-        // A newer fetch of the stop by another screen, where there is one: taken even over a recent
-        // one of the widget's own, so it never shows older times than the app.
-        val sharedByStop = prior.stops.map { stop ->
-            shared?.recent(stop.stopId, now, source)?.takeIf { it.fetchedAt.isAfter(stop.fetchedAt) }
+        // Kept, taken from another screen's fetch, or asked, by the rule the app's list uses too
+        // ([DepartureSource]): a newer fetch by another screen is taken even over a recent one of the
+        // widget's own, so it never shows older times than the app.
+        val choices = prior.stops.map { stop ->
+            DepartureSource.choose(stop, shared?.recent(stop.stopId, now, source), reusable = recent(stop))
         }
         // Every stop's arrivals in parallel; the client's shared request pool bounds how many are in
         // flight. [fetchArrivals] returns null on failure rather than throwing, so one stop failing
         // never cancels the others.
         val fetchedByStop = coroutineScope {
             prior.stops.mapIndexed { i, stop ->
-                async { if (recent(stop) || sharedByStop[i] != null) null else fetchArrivals(stop.stopId) }
+                async { if (choices[i] == DepartureSource.Choice.Fetch) fetchArrivals(stop.stopId) else null }
             }.awaitAll()
         }
         // Worth storing only when something came back ([anyNew]) and a nearby stop's arrivals are fresh
@@ -151,15 +152,19 @@ object WidgetRefresh {
         var anyNew = false
         var anyFresh = false
         val stops = prior.stops.mapIndexed { i, stop ->
-            sharedByStop[i]?.let { entry ->
-                anyNew = true
-                if (stop.stopId in judged) anyFresh = true
-                // With the National Rail feed that fetch found ("No key" once a key is removed).
-                return@mapIndexed Snapshot.withArrivals(stop, entry.departures, entry.fetchedAt, entry.railFeed)
-            }
-            if (recent(stop)) {
-                if (stop.stopId in judged) anyFresh = true
-                return@mapIndexed stop
+            when (val choice = choices[i]) {
+                is DepartureSource.Choice.Shared -> {
+                    anyNew = true
+                    if (stop.stopId in judged) anyFresh = true
+                    // With the National Rail feed that fetch found ("No key" once a key is removed).
+                    val entry = choice.entry
+                    return@mapIndexed Snapshot.withArrivals(stop, entry.departures, entry.fetchedAt, entry.railFeed)
+                }
+                DepartureSource.Choice.Kept -> {
+                    if (stop.stopId in judged) anyFresh = true
+                    return@mapIndexed stop
+                }
+                DepartureSource.Choice.Fetch -> Unit
             }
             // A failed fetch keeps the aged last-good, marked not-fresh so its stale withhold fires
             // and it can't render as fresh within the freshness window (Codex P1 on #56); its own
@@ -173,7 +178,7 @@ object WidgetRefresh {
             Snapshot.withArrivals(
                 stop,
                 fetched,
-                fetchedAt = fetchedAt?.invoke(stop.stopId)?.takeIf { it.isBefore(stamp) } ?: stamp,
+                fetchedAt = DepartureSource.stamp(stamp, fetchedAt?.invoke(stop.stopId)),
                 railFeed = if (railFeed != null) railFeed(stop.stopId) else stop.railFeed,
             )
         }
