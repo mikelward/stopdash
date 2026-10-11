@@ -94,14 +94,15 @@ Google's Data Layer documentation says what passes through its servers is end-to
 between your phone and your watch, and between them over Bluetooth the link is encrypted too.
 
 **Find a station** (the menu's *From…* and *To…*, and a station's *To…*) sends the name you type to TfL's
-stop search, once you pause typing. In *To…*, places, streets and postcodes are first looked up in a
+stop search, once you pause typing. In *From…* and *To…*, places, streets and postcodes are first looked up in a
 list of London places that ships inside the app, so finding one sends nothing beyond that stop search; only when that list has
 no close match for what you typed, or what you typed is an address with a house number (which the list doesn't hold), is the text also
-sent to TfL's Journey Planner to look it up. After a pick, the app sends the chosen station's id to look up its stops and
-departures, and the station's own position (a public place, not yours) to find the stops around it (for *To…*, the stops and the routes of the lines leaving where you start from; a *To…* from the near-me list starts from the location the near-me list was found from, which goes to TfL's Journey Planner as the trip's start — see **Trips with a change** — and refreshing it or coming back to the app finds your location again, exactly as the near-me list does). The name isn't saved,
-logged or sent anywhere else. The last eight stations you open from *From…*, and separately the last eight
-destinations you pick in *To…* (a stop, or a place or postcode with the name and map position TfL
-gave it), are remembered on the device to list under *Recent*, in app storage
+sent to TfL's Journey Planner to look it up (*To…* only). After a pick, the app sends the chosen station's id to look up its stops and
+departures; a place picked in *From…* sends that place's position (a public place, street or postcode
+center from the bundled list, not yours) to find the stops around it, and as the start of any trip
+planned from it; and the station's own position (a public place, not yours) to find the stops around it (for *To…*, the stops and the routes of the lines leaving where you start from; a *To…* from the near-me list starts from the location the near-me list was found from, which goes to TfL's Journey Planner as the trip's start — see **Trips with a change** — and refreshing it or coming back to the app finds your location again, exactly as the near-me list does). The name isn't saved,
+logged or sent anywhere else. The last eight stations or places you pick from *From…*'s search list (not your saved places, which are already kept), and separately the last eight
+destinations you pick in *To…* (a stop, or a place or postcode with its name and map position), are remembered on the device to list under *Recent*, in app storage
 that Android never backs up or transfers; they are
 never logged or sent anywhere, and clearing the app's data removes them. So that a starred stop
 can be listed by name there, the place each starred row belongs to (its stop area or station, as
@@ -118,24 +119,28 @@ transfers; they are never logged or sent anywhere, and clearing the app's data r
 **Favorite places** (Home, Work, School or a place of your own, saved from Settings) are stored by
 **location**. When you add or edit one, the stop or station you type is sent to TfL's stop search,
 once you pause typing, to find its position — the same search *Find a station* uses. You can instead
-type a **postcode**: when you tap to look it up, it is sent to **TfL's Journey Planner**, which returns
-the place(s) it names for you to choose from. A postcode is the same kind of location data the app
+pick a place, street or postcode from the list of London places that ships inside the app. That list
+is searched on your device, so finding a place there sends nothing beyond the stop search above, which
+still gets a place's name as you type it. A **postcode** (what you type is shaped like one and has a digit)
+skips the stop search: one the list holds is found on the device and sends nothing at all, and one it
+doesn't is sent only to **TfL's Journey Planner**, when you tap to look it up, which returns the place(s) it names for you to choose from. A postcode is the same kind of location data the app
 already sends to plan a trip — no new kind of data leaves the device. Either way the text you type in
 the search field isn't saved, logged or sent anywhere else; only the place you then **choose** is
 saved — by its coordinate and the name it resolved to (for a postcode, that name may be the postcode
 itself), the same as choosing a stop. The saved place — its
-coordinate, its label, and the **name of the stop or station it resolved to** (shown under the label,
-e.g. "Oxford Circus") — is kept on the device with your other settings, so it rides your own Android
+coordinate, its label, and the **name of the stop, station, place, street or postcode you chose**
+(shown under the label, e.g. "Oxford Circus") — is kept on the device with your other settings, so it rides your own Android
 backup and device transfer like the rest (above); it is never logged or put in a bug report, and
 deleting the place or clearing the app's data removes it. Tapping a saved place plans a trip to it
 from where you are (see **Trips with a change** below).
 
-**Trips with a change** (*To…* from the near-me list or a *From…* station) send both ends of the
+**Trips with a change** (*To…* from the near-me list or a *From…* station or place) send both ends of the
 trip together to **TfL's Journey Planner**. A trip from the near-me list starts from **your
 location**, the position the near-me list was found from, so the Planner can walk you to whichever
 stop or station serves the trip best. That is usually the position the nearby-stops lookup has just
 sent TfL; when the app reused a recent lookup of the same spot instead (below), opening the trip is
-what sends it; a trip from a *From…* station starts from
+what sends it; a trip from a *From…* place starts from that place's position;
+a trip from a *From…* station starts from
 that station's stop id, as does **Plan again** on a trip on the way, which starts from a stop on its
 route (the one still ahead nearest you, worked out on your device: your location isn't sent). The destination goes as the stop you picked. When you pick a station complex
 such as King's Cross St. Pancras, the Planner is asked once for each of its stations and once for

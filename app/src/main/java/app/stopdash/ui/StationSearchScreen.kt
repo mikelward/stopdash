@@ -248,7 +248,7 @@ fun StationSearchScreen(
                     state.query.isBlank() && !state.yoursRead && onPickHere == null -> Unit
                     state.query.isBlank() && (
                         onPickHere != null || state.favorites.isNotEmpty() ||
-                            state.recent.any { onOpenPlace != null || it is SearchEntry.Stop } ||
+                            state.recent.any { onOpenPlace != null || onStartFromPlace != null || it is SearchEntry.Stop } ||
                             ((onOpenPlace != null || onPickPlace != null) && (state.favoritePlaces.isNotEmpty() || state.favoritePlacesFailed))
                         ) ->
                         YourStopsList(
@@ -295,8 +295,10 @@ fun StationSearchScreen(
                         // Stops and geocoded places in the order the search listed them: ranked by how well
                         // each name matches, and only ever added to as answers arrive, so a row doesn't move
                         // under a finger (maintainer, 2026-09-28). A place is tagged Place/Postcode and routed
-                        // to as a coordinate (SPEC D9); only a To… picker sets onOpenPlace, so only it lists places.
-                        val entries = if (onOpenPlace != null) result.entries else result.entries.filterIsInstance<SearchEntry.Stop>()
+                        // to as a coordinate (SPEC D9), or on From… started from; a search that can do neither
+                        // lists stops alone.
+                        val onPlace = onOpenPlace ?: onStartFromPlace
+                        val entries = if (onPlace != null) result.entries else result.entries.filterIsInstance<SearchEntry.Stop>()
                         items(
                             entries,
                             key = { it.key },
@@ -305,7 +307,7 @@ fun StationSearchScreen(
                                 is SearchEntry.Stop -> MatchRow(entry.match, onClick = { onOpenStation(entry.match) })
                                 is SearchEntry.Place -> PlaceHitRow(
                                     entry.hit,
-                                    onClick = { openPlaceHit(entry.hit, onPlacePicked, onOpenPlace) },
+                                    onClick = { openPlaceHit(entry.hit, onPlacePicked, onPlace) },
                                 )
                             }
                             HorizontalDivider()
@@ -348,8 +350,8 @@ fun StationSearchScreen(
 /** The search field's value for [query] on arrival: the text, with the cursor after it. */
 internal fun queryFieldValue(query: String): TextFieldValue = TextFieldValue(query, TextRange(query.length))
 
-// A geocoded place tapped, in the results or under Recent: remembered, then routed to as a coordinate
-// (SPEC D9). Only a To… picker routes to one.
+// A place tapped, in the results or under Recent: remembered, then routed to as a coordinate (SPEC D9)
+// by To…, or started from by From… — whichever [onOpenPlace] is; a search doing neither ignores it.
 private fun openPlaceHit(hit: PlaceHit, onPicked: (PlaceHit) -> Unit, onOpenPlace: ((TripDestination.Place) -> Unit)?) {
     val route = onOpenPlace ?: return
     onPicked(hit)
@@ -437,8 +439,9 @@ private fun YourStopsList(
                 HorizontalDivider()
             }
         }
-        // A place is routed to only where a trip can go to one, so elsewhere Recent lists stops alone.
-        val recentShown = if (onOpenPlace != null) recent else recent.filterIsInstance<SearchEntry.Stop>()
+        // A place is listed only where it can be routed to (To…) or started from (From…); elsewhere
+        // Recent lists stops alone.
+        val recentShown = if (onOpenPlace != null || onStartFromPlace != null) recent else recent.filterIsInstance<SearchEntry.Stop>()
         listOf(
             R.string.station_search_recent to recentShown,
             R.string.station_search_starred to favorites.map(SearchEntry::Stop),
@@ -464,7 +467,7 @@ private fun YourStopsList(
                     is SearchEntry.Stop -> MatchRow(entry.match, onClick = { onOpenStation(entry.match) }, onLongClick = onLongClick)
                     is SearchEntry.Place -> PlaceHitRow(
                         entry.hit,
-                        onClick = { openPlaceHit(entry.hit, onPlacePicked, onOpenPlace) },
+                        onClick = { openPlaceHit(entry.hit, onPlacePicked, onOpenPlace ?: onStartFromPlace) },
                         onLongClick = onLongClick,
                     )
                 }
@@ -535,10 +538,10 @@ private fun PlacesError(onRetry: (() -> Unit)?) {
     }
 }
 
-/** A geocoded place in the To… results: its name, and a Place/Postcode tag in the right column (where
+/** A place in the search results: its name, and a Place/Street/Postcode tag in the right column (where
  *  a stop shows its modes) so a place reads apart from a stop, on one line at [MatchRow]'s density. */
 @Composable
-private fun PlaceHitRow(place: PlaceHit, onClick: () -> Unit, onLongClick: (() -> Unit)? = null) {
+internal fun PlaceHitRow(place: PlaceHit, onClick: () -> Unit, onLongClick: (() -> Unit)? = null) {
     val tag = stringResource(
         when (place.kind) {
             PlaceKind.POSTCODE -> R.string.station_search_kind_postcode

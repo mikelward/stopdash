@@ -11,6 +11,7 @@ import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FavoritePlacesStore
 import app.stopdash.domain.IndexedStation
 import app.stopdash.domain.PlaceCandidate
+import app.stopdash.domain.PlaceIndex
 import app.stopdash.domain.PostcodeResolution
 import app.stopdash.domain.PostcodeResolver
 import app.stopdash.domain.StationFinder
@@ -28,6 +29,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -324,6 +327,152 @@ class FavoritePlacesViewModelTest {
         assertEquals("X1 9XY", editor.placeName)
         assertTrue(editor.postcodeCandidates.isEmpty())
         assertTrue(editor.canSave)
+    }
+
+    // A bundled place index from synthetic lines (AGENTS *Privacy*).
+    private fun placeIndex(vararg lines: String): PlaceIndex = PlaceIndex.read(
+        java.io.BufferedReader(java.io.StringReader((listOf("# stopdash place index v1\ttest") + lines).joinToString("\n"))),
+    )
+
+    @Test
+    fun `a bundled place is offered beside the stops and picking it adopts its position`() = runTest {
+        val model = FavoritePlacesViewModel(
+            FakeStore(), FakeFinder(search = { listOf(oxford) }),
+            loadPlaceIndex = { placeIndex("P\tZeta Gallery\tmuseum\t51.51000\t-0.13000\t7") },
+            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        model.onQueryChange("zeta gal")
+        advanceUntilIdle()
+        val found = model.state.value.editor!!.places.single()
+        assertEquals("Zeta Gallery", found.name)
+        model.onPickPlace(found)
+        val editor = model.state.value.editor!!
+        assertEquals(Coordinates(51.51, -0.13), editor.coordinate)
+        assertEquals("Zeta Gallery", editor.label)
+        assertTrue(editor.places.isEmpty())
+        assertTrue(editor.canSave)
+    }
+
+    @Test
+    fun `a complete postcode in the bundle is adopted without asking TfL`() = runTest {
+        var asked = 0
+        val model = FavoritePlacesViewModel(
+            FakeStore(), FakeFinder(), postcodes = { asked++; PostcodeResolution.None },
+            loadPlaceIndex = { placeIndex("C\tX1 9XX\t\t51.52000\t-0.11000\t4") },
+            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        model.onQueryChange("x1 9xx")
+        advanceUntilIdle()
+        val editor = model.state.value.editor!!
+        assertEquals(Coordinates(51.52, -0.11), editor.coordinate)
+        assertEquals("X1 9XX", editor.placeName)
+        assertEquals(0, asked)
+    }
+
+    @Test
+    fun `a partial postcode lists the bundled postcodes it starts`() = runTest {
+        val model = FavoritePlacesViewModel(
+            FakeStore(), FakeFinder(),
+            loadPlaceIndex = { placeIndex("C\tX1 9XX\t\t51.52000\t-0.11000\t4", "C\tX1 9XY\t\t51.52100\t-0.11000\t4") },
+            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        model.onQueryChange("X1 9")
+        advanceUntilIdle()
+        assertEquals(listOf("X1 9XX", "X1 9XY"), model.state.value.editor!!.places.map { it.name })
+    }
+
+    @Test
+    fun `a partial postcode lists postcodes, not places named like one`() = runTest {
+        val model = FavoritePlacesViewModel(
+            FakeStore(), FakeFinder(),
+            loadPlaceIndex = {
+                placeIndex(
+                    *Array(10) { "P\tX1$it Hall\tmuseum\t51.51000\t-0.13000\t7" },
+                    "C\tX1 9XX\t\t51.52000\t-0.11000\t4",
+                )
+            },
+            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        model.onQueryChange("X1")
+        advanceUntilIdle()
+        assertEquals(listOf("X1 9XX"), model.state.value.editor!!.places.map { it.name })
+    }
+
+    @Test
+    fun `TfL's stops arriving late go below the bundled places, not above them`() = runTest {
+        val road = StationMatch("490000000Z", "Zeta Road", listOf("bus"), 51.52, -0.14)
+        val model = FavoritePlacesViewModel(
+            FakeStore(), FakeFinder(search = { listOf(road) }),
+            loadPlaceIndex = { placeIndex("P\tZeta Gallery\tmuseum\t51.51000\t-0.13000\t7") },
+            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        model.onQueryChange("zeta")
+        advanceTimeBy(100)
+        runCurrent()
+        // The place is listed before TfL answers, with no stop above it.
+        val early = model.state.value.editor!!
+        assertEquals(listOf("Zeta Gallery"), early.places.map { it.name })
+        assertEquals(0, early.placesAfter)
+        advanceUntilIdle()
+        // TfL's stop lands below it: still nothing above the place.
+        val late = model.state.value.editor!!
+        assertEquals(listOf(road), late.results)
+        assertEquals(0, late.placesAfter.coerceAtMost(late.results.size))
+    }
+
+    @Test
+    fun `picking a bundled place before TfL answers drops the late stops`() = runTest {
+        val road = StationMatch("490000000Z", "Zeta Gallery", listOf("bus"), 51.52, -0.14)
+        val model = FavoritePlacesViewModel(
+            FakeStore(), FakeFinder(search = { listOf(road) }),
+            loadPlaceIndex = { placeIndex("P\tZeta Gallery\tmuseum\t51.51000\t-0.13000\t7") },
+            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        model.onQueryChange("Zeta Gallery")
+        advanceTimeBy(100)
+        runCurrent()
+        // Picked with the stop search still pending, under the same name it sets as the query.
+        model.onPickPlace(model.state.value.editor!!.places.single())
+        advanceUntilIdle()
+        val editor = model.state.value.editor!!
+        assertEquals(Coordinates(51.51, -0.13), editor.coordinate)
+        assertTrue(editor.results.isEmpty())
+    }
+
+    @Test
+    fun `holdStill keeps the shown stops first and in order, with TfL's added after`() {
+        val a = StationMatch("a", "Alpha", listOf("tube"))
+        val b = StationMatch("b", "Beta", listOf("tube"))
+        val bFromTfl = StationMatch("b", "Beta", listOf("tube", "bus"), 51.5, -0.12)
+        val c = StationMatch("c", "Gamma", listOf("bus"))
+        assertEquals(listOf(a, bFromTfl, c), FavoritePlacesViewModel.holdStill(listOf(a, b), listOf(c, bFromTfl, a)))
+    }
+
+    @Test
+    fun `holdStill adds TfL's stops only up to the usual limit`() {
+        val shown = List(3) { StationMatch("s$it", "Shown $it", listOf("tube")) }
+        val added = List(5) { StationMatch("t$it", "Added $it", listOf("bus")) }
+        val held = FavoritePlacesViewModel.holdStill(shown, added + shown, limit = 4)
+        assertEquals(shown + added.take(1), held)
+    }
+
+    @Test
+    fun `holdStill keeps an interchange's names apart, though they share an id`() {
+        val one = StationMatch("hub", "Alpha", listOf("tube"), lead = listOf("tube"))
+        val other = StationMatch("hub", "Beta", listOf("tube"), lead = listOf("tube"))
+        assertEquals(listOf(one, other), FavoritePlacesViewModel.holdStill(listOf(one, other), listOf(other, one)))
     }
 
     @Test

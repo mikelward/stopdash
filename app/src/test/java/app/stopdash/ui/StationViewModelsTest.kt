@@ -7,6 +7,7 @@ import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.IndexedStation
 import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.PlaceHit
+import app.stopdash.domain.PlaceHits
 import app.stopdash.domain.PlaceIndex
 import app.stopdash.domain.PlaceKind
 import app.stopdash.domain.SearchEntry
@@ -134,6 +135,23 @@ class StationViewModelsTest {
         val result = vm.state.value.result as StationSearchViewModel.Result.Matches
         assertEquals(listOf("Zeta Gallery", "Zeta Road"), result.places.map { it.name })
         assertEquals(0, geocoded)
+    }
+
+    @Test
+    fun `a postcode-shaped query lists bundled postcodes, not places named like one`() = runTest {
+        val places = Array(PlaceHits.DEFAULT_LIMIT + 2) { "P\tXX1$it Hall\tcafe\t51.50000\t-0.12000\t9" }
+        val vm = StationSearchViewModel(
+            FakeFinder(search = { emptyList() }),
+            io = dispatcher, compute = dispatcher,
+            debounceMillis = 300,
+            loadPlaceIndex = { placeIndex(*places, "C\tXX1 1AA\t\t51.50000\t-0.12000\t4") },
+        )
+        runCurrent()
+        vm.onQueryChange("xx1")
+        advanceUntilIdle()
+        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals(listOf("XX1 1AA"), result.places.map { it.name })
+        assertEquals(PlaceKind.POSTCODE, result.places.single().kind)
     }
 
     @Test

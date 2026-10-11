@@ -63,11 +63,18 @@ object PlaceHits {
 
     /**
      * The bundled index's matches for [query] ([PlaceIndex.search], already ranked) as the To… list
-     * shows them: a place, a street or a postcode, each with its coordinate.
+     * shows them: a place, a street or a postcode, each with its coordinate; only postcodes when
+     * [postcodesOnly].
      */
     @androidx.annotation.WorkerThread
-    fun fromIndex(index: PlaceIndex, query: String, limit: Int = DEFAULT_LIMIT, checkpoint: () -> Unit = {}): List<PlaceHit> =
-        index.search(query, limit, checkpoint).map { entry ->
+    fun fromIndex(
+        index: PlaceIndex,
+        query: String,
+        limit: Int = DEFAULT_LIMIT,
+        checkpoint: () -> Unit = {},
+        postcodesOnly: Boolean = false,
+    ): List<PlaceHit> =
+        index.search(query, limit, checkpoint, if (postcodesOnly) PlaceIndex.Kind.POSTCODE else null).map { entry ->
             val kind = when (entry.kind) {
                 PlaceIndex.Kind.PLACE -> PlaceKind.PLACE
                 PlaceIndex.Kind.STREET -> PlaceKind.STREET

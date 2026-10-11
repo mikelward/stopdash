@@ -1314,8 +1314,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               **Started: the bundled London place index** (Overture places, streets, OS postcodes;
               option 4 there), searched on the device in *To…*, with TfL's geocoder only as the
               fallback. Follow-ups:
-              - [ ] **Typed places in *From…*, the favorite-journey picker, and adding a favorite place**
-                  (maintainer, 2026-10-11): the same index wherever a place can be picked.
+              - [x] **Typed places in *From…* and adding a favorite place** (maintainer, 2026-10-11): the
+                  same index wherever a place can be picked; a bundled complete postcode is adopted
+                  without asking TfL.
+              - [ ] **Typed places as a favorite journey's end**: the picker stores a saved place by id,
+                  so a typed place there needs a new kind of journey end (its name and coordinate).
+              - [ ] **An address the bundle doesn't hold as a trip's start**: *From…* doesn't ask TfL's
+                  geocoder, so a house-number address can't start a trip yet.
               - [ ] **Bundle London's bus stops** from TfL's `/StopPoint/Mode/bus` (with their routes, ~0.5 MB)
                   so a search needs no TfL request at all; first check which ids `/StopPoint/Search`
                   returns for a bus query, so a bundled row opens the same page.

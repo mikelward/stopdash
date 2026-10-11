@@ -306,6 +306,25 @@ class SearchResultsOffMainTest {
     }
 
     @Test
+    fun aFavoriteSearchFindsTheBundledPlacesOnCompute() {
+        val places = PlaceIndex.read(
+            java.io.BufferedReader(java.io.StringReader("# stopdash place index v1\ttest\nP\tExample Gallery\tmuseum\t51.50000\t-0.12000\t7")),
+        )
+        val vm = FavoritePlacesViewModel(
+            store, Finder(search = { never.await() }), io = main, compute = compute,
+            loadPlaceIndex = { places }, debounceMillis = 0, newId = { "id-1" },
+        )
+        mainIdle()
+        vm.startAdd(FavoriteKind.CUSTOM, "")
+        vm.onQueryChange("gallery")
+        mainIdle()
+        assertTrue("places found with compute held", vm.state.value.editor!!.places.isEmpty())
+        releaseCompute()
+        releaseCompute()
+        assertEquals(listOf("Example Gallery"), vm.state.value.editor!!.places.map { it.name })
+    }
+
+    @Test
     fun aFavoriteSearchPlacesTheIndexMatchesOnCompute() {
         val vm = placesVm(Finder(search = { never.await() }), index = StationIndex(bundled))
         vm.startAdd(FavoriteKind.CUSTOM, "")

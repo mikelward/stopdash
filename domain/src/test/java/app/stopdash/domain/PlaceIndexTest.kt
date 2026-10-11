@@ -43,6 +43,21 @@ class PlaceIndexTest {
     }
 
     @Test
+    fun `only one kind is kept before the limit is applied`() {
+        val places = index(*Array(10) { line("P", "Xx1$it Hall", 9) }, line("C", "XX1 9XX", 4))
+        assertEquals(listOf("XX1 9XX"), places.search("xx1", limit = 3, only = PlaceIndex.Kind.POSTCODE).map { it.name })
+        assertEquals(3, places.search("xx1", limit = 3).count { it.kind == PlaceIndex.Kind.PLACE })
+    }
+
+    @Test
+    fun `postcodes alone match as prefixes only, so a partial postcode is only completed`() {
+        val places = index(line("C", "XX1 1BA"), line("C", "XX1 1AB"), line("C", "XX1 1JB"))
+        assertEquals(listOf("XX1 1BA"), places.search("xx1 1b", only = PlaceIndex.Kind.POSTCODE).map { it.name })
+        // Unfiltered, the same query still finds the others by their letters in order.
+        assertEquals(3, places.search("xx1 1b").size)
+    }
+
+    @Test
     fun `a prefix beats a substring, which beats letters in order`() {
         val places = index(line("P", "Lower Zeta Hall"), line("P", "Zigzag Eta Hall"), line("P", "Zeta Hall"))
         assertEquals(listOf("Zeta Hall", "Lower Zeta Hall", "Zigzag Eta Hall"), places.names("zeta"))

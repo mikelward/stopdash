@@ -439,8 +439,11 @@ class StationSearchViewModel(
     // [index]'s places for [query], searched on [compute]; none, with no hop, when there's no index.
     private suspend fun bundledPlacesFor(index: PlaceIndex, query: String): List<PlaceHit> =
         if (index.size == 0) emptyList() else withContext(compute) {
-            // A search the rider has typed past stops partway rather than scanning the whole index.
-            PlaceHits.fromIndex(index, query, checkpoint = { ensureActive() })
+            // A search the rider has typed past stops partway rather than scanning the whole index. A
+            // postcode-shaped query (a digit, as the favorite editor tells them apart) lists postcodes
+            // only, so places named like one ("E12 Cafe") can't take every slot.
+            val postcodesOnly = UkPostcode.looksLikePartial(query) && query.any(Char::isDigit)
+            PlaceHits.fromIndex(index, query, checkpoint = { ensureActive() }, postcodesOnly = postcodesOnly)
         }
 
     /** Search the current query again now — the Retry after a failure. */

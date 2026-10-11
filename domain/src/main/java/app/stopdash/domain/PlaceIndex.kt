@@ -46,17 +46,22 @@ class PlaceIndex private constructor(
     /**
      * The entries [query] finds, best first, at most [limit]. Short queries find prefixes only.
      * [checkpoint] runs every [CHECKPOINT_EVERY] entries, so a caller can stop a scan nobody will
-     * read (a coroutine's `ensureActive`, when the rider has typed on): it throws to stop.
+     * read (a coroutine's `ensureActive`, when the rider has typed on): it throws to stop. [only]
+     * keeps one [Kind] before the [limit] is applied, so "E1" finds postcodes rather than places
+     * named "E12…" crowding them out. Postcodes alone match as prefixes only: a partial postcode is
+     * completed, never answered with codes whose characters merely occur in it ("BR1 1B" isn't BR1 1AB).
      */
     @WorkerThread
-    fun search(query: String, limit: Int = DEFAULT_LIMIT, checkpoint: () -> Unit = {}): List<Entry> {
+    fun search(query: String, limit: Int = DEFAULT_LIMIT, checkpoint: () -> Unit = {}, only: Kind? = null): List<Entry> {
         val q = fold(query)
         if (q.size < MIN_QUERY_LENGTH || limit <= 0) return emptyList()
-        val prefixOnly = q.size < LOOSE_QUERY_LENGTH
+        val prefixOnly = q.size < LOOSE_QUERY_LENGTH || only == Kind.POSTCODE
         // The best [limit] so far, worst at the head, by a packed score: tier, then rank, then length.
         val best = java.util.PriorityQueue<Long>(limit + 1, compareByDescending { it })
+        val onlyKind = only?.ordinal?.toByte()
         for (i in 0 until size) {
             if (i % CHECKPOINT_EVERY == 0) checkpoint()
+            if (onlyKind != null && kinds[i] != onlyKind) continue
             val start = keyStarts[i]
             val end = keyStarts[i + 1]
             val tier = tierOf(q, start, end, prefixOnly) ?: continue

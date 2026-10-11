@@ -246,7 +246,8 @@ class StationSearchScreenshotTest {
 
     @Test
     fun station_search_recent_place_not_listed_where_no_place_can_be_routed() {
-        // A search that routes to no place (From…, a station browse) lists the recent stops alone.
+        // A search that neither routes to a place nor starts from one (a station browse) lists the
+        // recent stops alone.
         composeRule.setContent {
             StopDashTheme {
                 StationSearchScreen(
@@ -268,6 +269,33 @@ class StationSearchScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Oxford Circus").assertIsDisplayed()
         composeRule.onNodeWithText("Example Gallery").assertDoesNotExist()
+    }
+
+    @Test
+    fun station_search_from_lists_a_recent_place_and_starts_from_it() {
+        // A place started from in From… is remembered there, and a tap starts from it again (Codex, #768).
+        var picked: PlaceHit? = null
+        var started: TripDestination.Place? = null
+        val gallery = PlaceHit("Example Gallery", Coordinates(51.5, -0.12), PlaceKind.PLACE)
+        composeRule.setContent {
+            StopDashTheme {
+                StationSearchScreen(
+                    state = StationSearchViewModel.State(recent = listOf(SearchEntry.Place(gallery)), yoursRead = true),
+                    onQueryChange = {},
+                    onOpenStation = {},
+                    onRetry = {},
+                    onBack = {},
+                    autoFocus = false,
+                    onPickHere = {},
+                    onPlacePicked = { picked = it },
+                    onStartFromPlace = { started = it },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Example Gallery").performClick()
+        assertEquals(gallery, picked)
+        assertEquals(TripDestination.Place(Coordinates(51.5, -0.12), "Example Gallery"), started)
     }
 
     @Test
