@@ -41,7 +41,7 @@ class FontSizeUsageTest {
     @After
     fun reset() {
         UsageProperties.resetForTest()
-        FontSizeSetting.setScale(1f)
+        FontSizeSetting.resetForTest()
     }
 
     @Test
