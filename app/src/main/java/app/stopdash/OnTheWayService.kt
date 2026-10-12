@@ -97,6 +97,8 @@ class OnTheWayService : Service() {
         if (following?.isActive != true) {
             awake = awake ?: OnTheWayWakeLock.acquire(this)
             following = scope.launch {
+                // This follower's posts of the notification, shut as it stops ([NotificationGate]).
+                val gate = NotificationGate()
                 // Shown again on each change, and on each tick, so its minutes count down and an answer
                 // grown old turns to Checking… (or Updating…) though nothing else changed.
                 val shown = launch {
@@ -105,7 +107,7 @@ class OnTheWayService : Service() {
                     combine(tracker.trip, tracker.progress, tracker.failed, answers, ticks(NOTIFICATION_TICK)) { trip, progress, failed, (updatedAt, answeredAt, board), _ ->
                         if (trip != null) {
                             val boarding = OnTheWayLiveUpdate.boarding(trip, progress, board, Instant.now())
-                            OnTheWayNotification.show(this@OnTheWayService, trip, progress, failed, updatedAt, answeredAt, boarding)
+                            OnTheWayNotification.show(this@OnTheWayService, trip, progress, failed, updatedAt, answeredAt, boarding, gate)
                         }
                     }.flowOn(Dispatchers.Default).collect()
                 }
@@ -122,7 +124,10 @@ class OnTheWayService : Service() {
                         TripAlerts.clearAll()
                         // Off the watch too: a trip no longer followed isn't shown there as current.
                         WatchTripSync.clear(this@OnTheWayService)
-                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        // Through the gate: a showing already under way on its own thread finishes before
+                        // the notification comes down, and none after, so the trip's last step (a walk's
+                        // minutes, say) isn't left up over its arrival.
+                        gate.close { stopForeground(STOP_FOREGROUND_REMOVE) }
                         stopSelf()
                     },
                 ) {
@@ -454,18 +459,41 @@ internal object OnTheWayNotification {
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 
-    fun show(context: Context, trip: ActiveTrip, progress: TripProgress?, failed: Boolean, updatedAt: Instant?, answeredAt: Instant? = null, boarding: OnTheWayLiveUpdate.Boarding? = null) {
+    fun show(context: Context, trip: ActiveTrip, progress: TripProgress?, failed: Boolean, updatedAt: Instant?, answeredAt: Instant? = null, boarding: OnTheWayLiveUpdate.Boarding? = null, gate: NotificationGate = NotificationGate()) {
         if (!GetOffSoonAlert.canNotify(context)) return
         if (dismissedTrip == trip.startedAt) return
         val now = Instant.now()
         val alert = TripAlerts.top(context, now)
         try {
-            NotificationManagerCompat.from(context).notify(ID, build(context, trip, progress, failed, updatedAt, now, answeredAt, boarding, alert = alert))
+            val notification = build(context, trip, progress, failed, updatedAt, now, answeredAt, boarding, alert = alert)
+            val posted = gate.post { NotificationManagerCompat.from(context).notify(ID, notification) }
             // Heard: kept quiet on every showing after this one.
-            if (alert?.sound == true) TripAlerts.heard(alert.kind, alert)
+            if (posted && alert?.sound == true) TripAlerts.heard(alert.kind, alert)
         } catch (e: SecurityException) {
             StopdashDebugLog.warning("on the way: %s", "ongoing notification refused: ${e::class.simpleName}")
         }
+    }
+}
+
+/**
+ * The trip's notification posted only until it's taken down: a showing worked out on its own thread
+ * that comes to post after [close] is dropped, and [close] waits out one already posting, so the
+ * notification is never put back up stale once its service has stopped. One per follower: a trip
+ * started after another stopped posts through a gate of its own.
+ */
+internal class NotificationGate {
+    private var open = true
+
+    /** Runs [post] unless closed: whether it ran. */
+    fun post(post: () -> Unit): Boolean = synchronized(this) {
+        if (open) post()
+        open
+    }
+
+    /** Closes the gate, then runs [remove], after any post under way and before any later one would. */
+    fun close(remove: () -> Unit) = synchronized(this) {
+        open = false
+        remove()
     }
 }
 
