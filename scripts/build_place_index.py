@@ -10,9 +10,10 @@ anywhere. Each line is one destination:
 - kind: `P` a place (a venue, a business, a park…), `S` a street, `C` a postcode.
 - category: a place's Overture basic category (`museum`, `park`, …); empty for a street or postcode.
 - latitude, longitude: degrees to five places (about a meter).
-- rank: 0–9, how prominent the entry is, to order equal matches: a public place 7, a street or
-  postcode 4, any other place 2. Overture's confidence isn't used: it says how sure Overture is
-  that a place exists, isn't comparable across its sources, and so only filters.
+- rank: 0–9, how prominent the entry is, to order equal matches: a place Wikipedia covers in many
+  languages 9 (20 or more) or 8 (5 or more), any other public place 7, a street or postcode 4, any
+  other place 2. Overture's confidence isn't used: it says how sure Overture is that a place exists,
+  isn't comparable across its sources, and so only filters.
 
 The first line is a `#` header naming the format version and the sources. Lines are sorted, so a
 refresh's diff shows what moved.
@@ -28,6 +29,10 @@ Sources, all open data:
   macrohoods, also OpenStreetMap's only), so same-named streets read apart.
 - OS Code-Point Open (Open Government Licence v3.0; contains Royal Mail data): the postcodes in
   the same rectangle as the rest, Greater London and the towns around it.
+- Wikidata (CC0), from its public query service: the items in the same rectangle with an English
+  name, a position and a Wikipedia article in at least one language, and how many languages have
+  one. A public place of the same name within 300 m takes its prominence from them; Wikidata only
+  ranks, never dropping or moving a listing. Only names and positions of public things are read.
 
 Beside the index it writes Foursquare's `NOTICE.txt` (with our changes appended) and the Apache
 License 2.0 text, as `FOURSQUARE_NOTICE.txt` and `FOURSQUARE_LICENSE.txt`: Overture's Foursquare
@@ -41,12 +46,15 @@ about any user.
 """
 import argparse
 import csv
+import http.client
 import io
 import math
 import os
 import re
 import sys
+import time
 import unicodedata
+import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
@@ -85,6 +93,8 @@ FOURSQUARE_CHANGES = (
 )
 # A source with fewer rows than this is taken to have failed, not to have shrunk.
 MIN_PLACES, MIN_STREETS, MIN_POSTCODES, MIN_AREAS = 100_000, 30_000, 150_000, 500
+# London has some 23,000 Wikidata items with an article (2026-10); far fewer means a broken answer.
+MIN_NOTABLE = 10_000
 
 PUBLIC_CATEGORIES = {
     "embassy", "theatre_venue", "performing_arts_venue", "music_venue", "movie_theater", "museum",
@@ -119,20 +129,70 @@ UNIQUE_CATEGORIES = {
 # A landmark's own listing is at least this confident before its stray copies are dropped.
 LANDMARK_MIN_CONFIDENCE = 0.99
 LANDMARK_RADIUS_METERS = 1000
+# A Wikidata item lends its prominence to a same-named place within this many meters.
+NOTABLE_METERS = 300
+# How many Wikipedia languages cover a place, for its rank: (at least, rank), best first.
+NOTABLE_RANKS = ((20, 9), (5, 8))
 # The datasets Overture lists for itself alongside a listing's real source.
 OVERTURE_OWN = {"Overture", "Overture-signals"}
+# Where a listing says it is, as a clause of its own after its name ("Holland Park, London", "Omega
+# Hall - City of Westminster"): the postcode district the app shows says that, so the name drops it.
+# Run on without a comma or dash it stays, being part of many a name ("Cancer Research UK", "Guild of
+# Freemen of the City of London") (maintainer, 2026-10-12).
+def area_suffix(separator):
+    return re.compile(
+        rf"(?:{separator}(?:london|uk|united kingdom|england|great britain"
+        r"|(?:the\s+)?(?:royal\s+|london\s+)?borough\s+of\s+[a-z&' ]+)"
+        rf"|{separator}(?:city of london|city of westminster))+\s*$",
+        re.IGNORECASE,
+    )
+
+
+AREA_SUFFIX = area_suffix(r"(?:\s*,|\s+[\-\u2013\u2014])\s*")
+# A dash with no space before it ("Omega Church-London") is a clause too, but only after a name of
+# several words: after one it is as likely the name itself ("Hi-London", "VA-UK").
+GLUED_AREA_SUFFIX = area_suffix(r"[\-\u2013\u2014]\s*")
+# The same said first, as a clause of its own ("City of Westminster, Omega Gallery").
+AREA_PREFIX = re.compile(r"^\s*(?:city of london|city of westminster)\s*,\s*", re.IGNORECASE)
+
+
+def display_name(name):
+    """[name] less an [AREA_PREFIX] and [AREA_SUFFIX], unless that would leave nothing that names the place."""
+    trimmed = AREA_SUFFIX.sub("", AREA_PREFIX.sub("", name)).strip()
+    unglued = GLUED_AREA_SUFFIX.sub("", trimmed).strip()
+    if len(unglued.split()) > 1:
+        trimmed = unglued
+    # An area the rest leads into is part of the name: joined on by "&" or "and" ("Omega Care
+    # Westminster & City of London"), or the object of "of", "in" and the like ("Guild of Freemen of the
+    # City of London").
+    if re.search(r"(?:&|\b(?:and|of|the|in|at|for|to|on|by))$", trimmed, re.IGNORECASE):
+        return name
+    return trimmed if match_key(trimmed) not in ("", "london") else name
+
+
 # Words a listing tacks on that don't name the place ("British Museum London UK").
-TRAILING_NOISE = re.compile(r"(?:\s+(?:in\s+)?(?:london|uk|united kingdom|england))+$")
+TRAILING_NOISE = re.compile(r"(?:\s+(?:in\s+)?(?:city of london|city of westminster|london|uk|united kingdom|england))+$")
 
 
 def is_public(category):
     return category in PUBLIC_CATEGORIES or category.endswith("_place_of_worship") or category.endswith("_school")
 
 
-def match_key(name):
+APOSTROPHES = re.compile("[\u2018\u2019\u02bc\u02b9\u0060\u00b4]")
+
+
+def match_key(name, join_apostrophes=True):
     """A name as compared for duplicates: accents folded, case and punctuation dropped, a leading
-    "the" and trailing "London", "UK" and the like removed."""
+    "the" and trailing "London", "UK" and the like removed. [join_apostrophes]: an apostrophe joins
+    its word, so "St Paul's" and "St Pauls" are one name; without it, it splits one, as for the
+    [drop_misplaced_landmarks], where joining would make "St Pauls" start "St Paul's …" and a store
+    "For Art's Sake" the same place as a gallery "For Arts Sake"."""
+    # Every apostrophe form is an apostrophe (curly, reversed, the modifier letter, a backtick or acute
+    # accent typed for one): made straight before the ASCII fold, which would drop it.
+    name = APOSTROPHES.sub("'", name)
     folded = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower()
+    if join_apostrophes:
+        folded = folded.replace("'", "")
     words = re.sub(r"[^a-z0-9 ]+", " ", folded).split()
     key = " ".join(words)
     if key.startswith("the "):
@@ -177,28 +237,60 @@ def drop_misplaced_landmarks(places):
     one named starting with it ("Tate Modern Museum") goes only past LANDMARK_RADIUS_METERS, since a
     big site's own listings (a gallery, a room, an entrance) sit within that. A copy any other source
     vouches for is kept, as a chain's real branches are."""
+    # Each landmark by its name with apostrophes splitting words, for both tests: "St Pauls" doesn't
+    # start "St Paul's Church", and "For Arts Sake" isn't "For Art's Sake" -- a store isn't the gallery
+    # across London that happens to spell it without one.
     landmarks = {}
     for p in places:
         if p[1] in UNIQUE_CATEGORIES and p[2] >= LANDMARK_MIN_CONFIDENCE:
-            key = match_key(p[0])
+            key = match_key(p[0], join_apostrophes=False)
             if key not in landmarks or p[2] > landmarks[key][2]:
                 landmarks[key] = p
     dropped = set()
     for p in places:
         if not p[5]:
             continue
-        words = match_key(p[0]).split()
-        for n in range(1, len(words) + 1):
+        key = match_key(p[0], join_apostrophes=False)
+        same = landmarks.get(key)
+        if same is not None and same is not p and p[2] < same[2]:
+            dropped.add(id(p))
+            continue
+        words = key.split()
+        for n in range(1, len(words)):
             landmark = landmarks.get(" ".join(words[:n]))
             if landmark is None or landmark is p or p[2] >= landmark[2]:
                 continue
-            if n == len(words) or meters_apart((p[3], p[4]), (landmark[3], landmark[4])) > LANDMARK_RADIUS_METERS:
+            if meters_apart((p[3], p[4]), (landmark[3], landmark[4])) > LANDMARK_RADIUS_METERS:
                 dropped.add(id(p))
                 break
     return [p for p in places if id(p) not in dropped]
 
 
-def select_places(rows):
+class Notable:
+    """Wikidata's items (name, lat, lon, languages), by match key, for [select_places]."""
+
+    def __init__(self, items=()):
+        self.by_key = {}
+        for name, lat, lon, links in items:
+            key = match_key(name)
+            if key:
+                self.by_key.setdefault(key, []).append((lat, lon, links))
+
+    def rank_near(self, name, lat, lon):
+        """The rank Wikidata's coverage gives a place named [name] at [lat], [lon], or None: the most
+        languages among items of its very name within NOTABLE_METERS. Only its very name: a school or
+        a cafe named for a cathedral isn't the cathedral."""
+        links = 0
+        for item_lat, item_lon, item_links in self.by_key.get(match_key(name), ()):
+            if item_links > links and meters_apart((lat, lon), (item_lat, item_lon)) <= NOTABLE_METERS:
+                links = item_links
+        for at_least, rank in NOTABLE_RANKS:
+            if links >= at_least:
+                return rank
+        return None
+
+
+def select_places(rows, notable=None):
     """The places to bundle from Overture rows (name, category, confidence, status, lat, lon[,
     meta_only]: whether Meta is the listing's only source, taken as true when absent), as
     (name, category, lat, lon, rank), near-duplicates merged.
@@ -206,7 +298,10 @@ def select_places(rows):
     Two listings are one place when they share a category, sit within DUPLICATE_METERS, and one's
     match key equals the other's or starts it ("Tate Modern" and "Tate Modern Museum"), or when they
     have the same name within SAME_SPOT_METERS whatever their categories; the more confident listing,
-    then the shorter name, is kept."""
+    then the shorter name, is kept. [notable] (Wikidata's items) ranks the famous above the rest; it
+    never drops or moves a listing, since a name alone can't say a Wikidata item and a listing far from
+    it are one place (maintainer, 2026-10-12)."""
+    notable = notable or Notable()
     kept = []
     for name, category, confidence, status, lat, lon, *rest in rows:
         meta_only = rest[0] if rest else True
@@ -218,7 +313,7 @@ def select_places(rows):
         need = PUBLIC_MIN_CONFIDENCE if is_public(category) else OTHER_MIN_CONFIDENCE
         if (confidence or 0.0) < need:
             continue
-        kept.append((name.strip(), category, confidence, lat, lon, meta_only))
+        kept.append((display_name(name.strip()), category, confidence, lat, lon, meta_only))
     kept = drop_misplaced_landmarks(kept)
     # Best listing first, so a duplicate always meets the one it merges into already placed.
     kept.sort(key=lambda r: (-r[2], len(r[0]), r[0]))
@@ -247,7 +342,10 @@ def select_places(rows):
         if duplicate:
             continue
         cells.setdefault(cell, []).append((key, category, (lat, lon)))
-        out.append((name, category, lat, lon, rank_of(category)))
+        # Only a public place takes Wikidata's prominence: a shop or a cafe named like an area or a
+        # company ("Chiswick", a takeaway) isn't the famous thing.
+        boost = notable.rank_near(name, lat, lon) if is_public(category) else None
+        out.append((name, category, lat, lon, max(rank_of(category), boost or 0)))
     return out
 
 
@@ -412,6 +510,113 @@ def fetch_places(filesystem, release):
     return rows
 
 
+WIKIDATA_URL = "https://query.wikidata.org/sparql"
+# Every named, placed item in the box, with its sitelinks across all Wikimedia projects.
+WIKIDATA_QUERY = """SELECT ?item ?name ?loc ?links WHERE {
+  SERVICE wikibase:box {
+    ?item wdt:P625 ?loc .
+    bd:serviceParam wikibase:cornerSouthWest "Point(%(west)s %(south)s)"^^geo:wktLiteral ;
+                    wikibase:cornerNorthEast "Point(%(east)s %(north)s)"^^geo:wktLiteral .
+  }
+  ?item wikibase:sitelinks ?links .
+  FILTER(?links > 0)
+  ?item rdfs:label ?name . FILTER(LANG(?name) = "en")
+}"""
+# The Wikipedia editions alone of the given items: sitelinks also count Commons, Wikivoyage and the
+# other Wikimedia projects, which say nothing about how widely a place is written up. Asked only for
+# items whose sitelinks could reach a threshold, in batches: counting them for the whole box at once
+# times the query service out, and so does its optimizer's own plan for a batch: the hint keeps the
+# VALUES first, which answers a batch in under a second.
+WIKIPEDIA_QUERY = """SELECT ?item (COUNT(DISTINCT ?article) AS ?links) WHERE {
+  hint:Query hint:optimizer "None" .
+  VALUES ?item { %(items)s }
+  ?article schema:about ?item ; schema:isPartOf ?wiki .
+  ?wiki wikibase:wikiGroup "wikipedia" .
+} GROUP BY ?item"""
+WIKIPEDIA_BATCH = 100
+POINT = re.compile(r"Point\(\s*(-?[0-9.]+)\s+(-?[0-9.]+)\s*\)")
+ENTITY = re.compile(r"^http://www\.wikidata\.org/entity/(Q[0-9]+)$")
+
+
+def parse_wikidata(text):
+    """The query service's CSV answer as (name, lat, lon, links, item) rows; a row it can't read is left out."""
+    items = []
+    for row in csv.DictReader(io.StringIO(text)):
+        point = POINT.search(row.get("loc") or "")
+        try:
+            links = int(row.get("links") or "")
+        except ValueError:
+            continue
+        if point and row.get("name"):
+            items.append((row["name"], float(point.group(2)), float(point.group(1)), links, row.get("item") or ""))
+    return items
+
+
+def parse_wikipedia_counts(text):
+    """The Wikipedia-count answer as {item id ("Q42"): editions}; a row it can't read is left out."""
+    counts = {}
+    for row in csv.DictReader(io.StringIO(text)):
+        entity = ENTITY.match(row.get("item") or "")
+        try:
+            links = int(row.get("links") or "")
+        except ValueError:
+            continue
+        if entity:
+            counts[entity.group(1)] = links
+    return counts
+
+
+def with_wikipedia_counts(rows, count):
+    """[rows] (parse_wikidata's) as (name, lat, lon, Wikipedia editions): an item whose sitelinks reach
+    no threshold keeps 0, since its Wikipedia editions can't either; the rest are asked of [count] (a
+    list of item ids to {id: editions}), and one it doesn't answer for has none."""
+    floor = min(at_least for at_least, _ in NOTABLE_RANKS)
+    asked = sorted({m.group(1) for *_, links, item in rows if links >= floor for m in [ENTITY.match(item)] if m})
+    editions = {}
+    for start in range(0, len(asked), WIKIPEDIA_BATCH):
+        editions.update(count(asked[start:start + WIKIPEDIA_BATCH]))
+    out = []
+    for name, lat, lon, _, item in rows:
+        entity = ENTITY.match(item)
+        out.append((name, lat, lon, editions.get(entity.group(1), 0) if entity else 0))
+    return out
+
+
+# The query service limits a client's rate, and now and then cuts a long answer short; told to slow
+# down (429) or cut off, the builder waits (Retry-After, else a growing pause) and tries again, up to
+# this many times before failing the build.
+QUERY_ATTEMPTS = 5
+
+
+def query_service(query, urlopen=urllib.request.urlopen, sleep=time.sleep):
+    request = urllib.request.Request(
+        WIKIDATA_URL, data=urllib.parse.urlencode({"query": query}).encode(),
+        headers={"Accept": "text/csv", "User-Agent": "stopdash-place-index-builder (https://github.com/mikelward/stopdash)"},
+    )
+    for attempt in range(QUERY_ATTEMPTS):
+        try:
+            return urlopen(request, timeout=300).read().decode("utf-8")
+        except http.client.IncompleteRead as e:
+            if attempt == QUERY_ATTEMPTS - 1:
+                raise
+            pause = 10 * 2 ** attempt
+            print(f"Wikidata's answer was cut off after {len(e.partial)} bytes; waiting {pause} s", file=sys.stderr)
+            sleep(pause)
+        except urllib.error.HTTPError as e:
+            if e.code != 429 or attempt == QUERY_ATTEMPTS - 1:
+                raise
+            wait = e.headers.get("Retry-After") if e.headers else None
+            pause = int(wait) if wait and wait.isdigit() else 10 * 2 ** attempt
+            print(f"Wikidata asked us to slow down (429); waiting {pause} s", file=sys.stderr)
+            sleep(pause)
+
+
+def fetch_wikidata():
+    rows = parse_wikidata(query_service(WIKIDATA_QUERY % {"west": WEST, "south": SOUTH, "east": EAST, "north": NORTH}))
+    count = lambda ids: parse_wikipedia_counts(query_service(WIKIPEDIA_QUERY % {"items": " ".join("wd:" + i for i in ids)}))
+    return with_wikipedia_counts(rows, count)
+
+
 def from_osm_only(sources):
     """Whether OpenStreetMap is a listing's only real source, so its one credit covers it."""
     return {s.get("dataset") for s in sources or ()} - OVERTURE_OWN == {"OpenStreetMap"}
@@ -477,11 +682,12 @@ def main():
 
     filesystem = s3()
     release = latest_release(filesystem)
-    places = require("places", select_places(fetch_places(filesystem, release)), MIN_PLACES)
+    notable = Notable(require("Wikidata items", fetch_wikidata(), MIN_NOTABLE))
+    places = require("places", select_places(fetch_places(filesystem, release), notable), MIN_PLACES)
     areas = area_grid(require("neighborhoods", fetch_areas(filesystem, release), MIN_AREAS))
     streets = require("streets", select_streets(fetch_streets(filesystem, release), areas), MIN_STREETS)
     postcodes = require("postcodes", select_postcodes(fetch_postcode_rows(args.codepoint_zip), to_wgs84), MIN_POSTCODES)
-    sources = f"Overture Maps {release} (places: CDLA-Permissive-2.0, Apache-2.0; streets: ODbL); OS Code-Point Open (OGL v3.0)"
+    sources = f"Overture Maps {release} (places: CDLA-Permissive-2.0, Apache-2.0; streets: ODbL); OS Code-Point Open (OGL v3.0); Wikidata (CC0)"
     notice = foursquare_notice(fetch_text(FOURSQUARE_NOTICE_URL))
     license_text = foursquare_license(fetch_text(FOURSQUARE_LICENSE_URL))
     out_dir = os.path.dirname(os.path.abspath(args.out))

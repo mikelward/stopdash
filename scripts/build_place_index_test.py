@@ -9,7 +9,8 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from build_place_index import (  # noqa: E402
     AREA_RADIUS_METERS, DUPLICATE_METERS, area_grid, cell_of, match_key, meters_apart, near_cells, postcode_text, rank_of, render,
-    ODBL_NOTICE, foursquare_license, foursquare_notice, from_osm_only, select_places, select_postcodes, select_streets,
+    ODBL_NOTICE, Notable, display_name, foursquare_license, foursquare_notice, from_osm_only, parse_wikidata, parse_wikipedia_counts, query_service, select_places, with_wikipedia_counts, select_postcodes,
+    select_streets,
 )
 
 AT = (51.5, -0.12)
@@ -72,6 +73,19 @@ class SelectPlacesTest(unittest.TestCase):
                 place("Alpha Museum Of Art", confidence=0.9, at=FAR)]
         self.assertEqual(["Alpha Museum", "Alpha Museum Archives"], names(select_places(rows)))
 
+    def test_a_landmark_without_its_apostrophe_is_neither_named_nor_started_by_one_with_it(self):
+        # Across London, "Omega Pauls" isn't "Omega Paul's" (a store spelled one way, a gallery the
+        # other), and doesn't start "Omega Paul's Church": each is another place.
+        rows = [place("Omega Pauls", confidence=1.0), place("Omega Paul's", "clothing_store", 0.9, at=FAR),
+                place("Omega Paul's Church", "christian_place_of_worship", 0.9, at=FAR)]
+        self.assertEqual(["Omega Paul's", "Omega Paul's Church", "Omega Pauls"], names(select_places(rows)))
+        # The same with a curly apostrophe, as many listings write it.
+        curly = [place("Omega Pauls", confidence=1.0), place("Omega Paul\u2019s Church", "christian_place_of_worship", 0.9, at=FAR)]
+        self.assertEqual(["Omega Pauls", "Omega Paul\u2019s Church"], names(select_places(curly)))
+        for mark in "\u2018\u02bc`":
+            other = [place("Omega Pauls", confidence=1.0), place(f"Omega Paul{mark}s Church", "christian_place_of_worship", 0.9, at=FAR)]
+            self.assertEqual(2, len(select_places(other)), mark)
+
     def test_copies_another_source_vouches_for_are_branches_and_stay(self):
         spots = [(51.5 + i * 0.02, -0.12) for i in range(8)]
         rows = [place("Zeta Gallery", "art_gallery", 1.0 if i == 0 else 0.95, at=s, meta_only=False) for i, s in enumerate(spots)]
@@ -100,7 +114,142 @@ class SelectPlacesTest(unittest.TestCase):
         self.assertGreater(ranks["Alpha Park"], ranks["Beta Cafe"])
 
 
+class NotableTest(unittest.TestCase):
+    # Synthetic Wikidata items: (name, lat, lon, languages with an article).
+    notable = Notable([("Omega Cathedral", AT[0], AT[1], 70), ("Beta Chapel", AT[0], AT[1], 6), ("Gamma Hall", AT[0], AT[1], 2)])
+
+    def ranks(self, rows):
+        return {name: rank for name, _, _, _, rank in select_places(rows, self.notable)}
+
+    def test_a_place_wikipedia_covers_widely_ranks_above_other_public_places(self):
+        ranks = self.ranks([
+            place("Omega Cathedral", "christian_place_of_worship", 0.95),
+            place("Beta Chapel", "christian_place_of_worship", 0.95, at=MID),
+            place("Gamma Hall", "music_venue", 0.95, at=NEAR),
+            place("Delta Club", "bar", 0.95, at=(51.45, -0.12)),
+        ])
+        self.assertEqual({"Omega Cathedral": 9, "Beta Chapel": 7, "Gamma Hall": 7, "Delta Club": 2}, ranks)
+
+    def test_a_shop_named_like_a_famous_thing_isnt_it(self):
+        self.assertEqual({"Omega Cathedral": 2}, self.ranks([place("Omega Cathedral", "fast_food_restaurant", 0.95)]))
+
+    def test_prominence_needs_the_place_near_the_item(self):
+        near = self.ranks([place("Beta Chapel", "christian_place_of_worship", 0.95, at=NEAR)])
+        self.assertEqual({"Beta Chapel": 8}, near)
+
+    def test_a_place_named_for_a_famous_one_doesnt_share_its_prominence(self):
+        self.assertEqual({"Omega Cathedral School": 7}, self.ranks([place("Omega Cathedral School", "place_of_learning", 0.95, at=NEAR)]))
+
+    def test_a_shops_far_branches_stay_however_famous_the_name(self):
+        # A chain's head office is a Wikidata item too: its shops elsewhere aren't copies of it.
+        notable = Notable([("Delta Store", AT[0], AT[1], 40)])
+        rows = [place("Delta Store", "grocery_store", 0.95), place("Delta Store", "grocery_store", 0.95, at=FAR)]
+        self.assertEqual(2, len(select_places(rows, notable)))
+
+    def test_wikidata_never_drops_or_moves_a_listing(self):
+        # A name alone can't say a far listing is the famous item's stray rather than another place, so
+        # every copy stays where Overture puts it; only the one beside the item takes its prominence.
+        notable = Notable([("Omega Cathedral", AT[0], AT[1], 70), ("Omega Park", AT[0], AT[1], 21)])
+        rows = [place("Omega Cathedral", "christian_place_of_worship", 0.95),
+                place("Omega Cathedral", "christian_place_of_worship", 0.95, at=FAR),
+                place("Omega Park", "park", 0.9, at=FAR)]
+        self.assertEqual(
+            sorted([("Omega Cathedral", AT[0], 9), ("Omega Cathedral", FAR[0], 7), ("Omega Park", FAR[0], 7)]),
+            sorted((p[0], p[2], p[4]) for p in select_places(rows, notable)),
+        )
+
+    def test_reads_the_query_services_csv(self):
+        text = ('item,name,loc,links\nhttp://www.wikidata.org/entity/Q1,Omega Cathedral,Point(-0.12 51.5),70\n'
+                'http://www.wikidata.org/entity/Q2,No Place,,3\nhttp://www.wikidata.org/entity/Q3,Bad Links,Point(-0.12 51.5),x\n')
+        self.assertEqual([("Omega Cathedral", 51.5, -0.12, 70, "http://www.wikidata.org/entity/Q1")], parse_wikidata(text))
+
+    def test_the_query_service_is_retried_when_it_asks_us_to_slow_down(self):
+        import io as _io, urllib.error
+        calls, pauses = [], []
+        def urlopen(request, timeout):
+            calls.append(request)
+            if len(calls) < 3:
+                raise urllib.error.HTTPError(request.full_url, 429, "Too Many Requests", {"Retry-After": "7"} if len(calls) == 1 else {}, None)
+            return _io.BytesIO(b"name,loc,links\n")
+        self.assertEqual("name,loc,links\n", query_service("q", urlopen=urlopen, sleep=pauses.append))
+        self.assertEqual([7, 20], pauses)
+
+    def test_a_cut_off_answer_is_asked_for_again(self):
+        import http.client, io as _io
+        calls, pauses = [], []
+        class Cut:
+            def read(self):
+                raise http.client.IncompleteRead(b"name,lo")
+        def urlopen(request, timeout):
+            calls.append(request)
+            return Cut() if len(calls) == 1 else _io.BytesIO(b"name,loc,links\n")
+        self.assertEqual("name,loc,links\n", query_service("q", urlopen=urlopen, sleep=pauses.append))
+        self.assertEqual([10], pauses)
+
+    def test_any_other_query_service_failure_fails_the_build(self):
+        import urllib.error
+        def urlopen(request, timeout):
+            raise urllib.error.HTTPError(request.full_url, 500, "Server Error", {}, None)
+        with self.assertRaises(urllib.error.HTTPError):
+            query_service("q", urlopen=urlopen, sleep=lambda s: self.fail("slept"))
+
+    def test_reads_the_wikipedia_counts(self):
+        text = 'item,links\nhttp://www.wikidata.org/entity/Q1,40\nnot-an-item,3\nhttp://www.wikidata.org/entity/Q2,x\n'
+        self.assertEqual({"Q1": 40}, parse_wikipedia_counts(text))
+
+    def test_prominence_counts_wikipedia_editions_not_every_sitelink(self):
+        # Q1 has 30 sitelinks but 12 Wikipedia editions; Q2's 4 sitelinks can't reach a threshold, so
+        # it isn't asked about; Q3 isn't answered for, so it has none.
+        rows = [("Omega Hall", 51.5, -0.12, 30, "http://www.wikidata.org/entity/Q1"),
+                ("Omega Shed", 51.5, -0.12, 4, "http://www.wikidata.org/entity/Q2"),
+                ("Omega Arch", 51.5, -0.12, 9, "http://www.wikidata.org/entity/Q3")]
+        asked = []
+        def count(ids):
+            asked.extend(ids)
+            return {"Q1": 12}
+        self.assertEqual(
+            [("Omega Hall", 51.5, -0.12, 12), ("Omega Shed", 51.5, -0.12, 0), ("Omega Arch", 51.5, -0.12, 0)],
+            with_wikipedia_counts(rows, count),
+        )
+        self.assertEqual(["Q1", "Q3"], asked)
+
+
 class MatchKeyTest(unittest.TestCase):
+    def test_a_trailing_city_of_london_is_noise(self):
+        self.assertEqual(match_key("Omega Hall City of London"), match_key("Omega Hall"))
+
+    def test_a_place_name_drops_where_it_says_it_is(self):
+        self.assertEqual("Omega Park", display_name("Omega Park, London"))
+        self.assertEqual("Omega Wall", display_name("Omega Wall, City of London"))
+        # Only as a clause of its own (maintainer, 2026-10-12): run on, it may be part of the name.
+        self.assertEqual("Omega Wall City of London", display_name("Omega Wall City of London"))
+        self.assertEqual("Omega Trust", display_name("Omega Trust, London, UK"))
+        self.assertEqual("Omega Hall", display_name("Omega Hall - City of Westminster"))
+        self.assertEqual("Omega Park", display_name("Omega Park, London Borough of Omegaton"))
+        self.assertEqual("Omega Park", display_name("Omega Park, Royal Borough of Omega and Zeta"))
+        self.assertEqual("Omega Gallery", display_name("City of Westminster, Omega Gallery"))
+
+    def test_a_name_keeps_an_area_it_cant_do_without(self):
+        self.assertEqual("Omega Research UK", display_name("Omega Research UK"))
+        # A dash with no space before it is a clause only after a name of several words.
+        self.assertEqual("Hi-London", display_name("Hi-London"))
+        self.assertEqual("Omega-Link-UK", display_name("Omega-Link-UK"))
+        self.assertEqual("Omega Church", display_name("Omega Church-London"))
+        self.assertEqual("Omega Church", display_name("Omega Church- UK"))
+        self.assertEqual("Omega Hall", display_name("Omega Hall \u2013 London"))
+        self.assertEqual("City of Westminster", display_name("City of Westminster"))
+        self.assertEqual("London, UK", display_name("London, UK"))
+        self.assertEqual("London Borough of Omega", display_name("London Borough of Omega"))
+        # An area joined on by "&" or "and" is part of the name: no dangling "&".
+        self.assertEqual("Omega Care Westminster & City of London", display_name("Omega Care Westminster & City of London"))
+        self.assertEqual("Omega Care Soho and City of Westminster", display_name("Omega Care Soho and City of Westminster"))
+        # Nor one the name leads into.
+        self.assertEqual("Guild of Omegas of the City of London", display_name("Guild of Omegas of the City of London"))
+        self.assertEqual("Omega Gallery in The City of London", display_name("Omega Gallery in The City of London"))
+
+    def test_an_apostrophe_joins_its_word(self):
+        self.assertEqual(match_key("Saint Omega's Hall"), match_key("Saint Omegas Hall"))
+
     def test_drops_case_punctuation_a_leading_the_and_trailing_london(self):
         self.assertEqual("alpha museum", match_key("The Alpha Museum, London UK"))
         self.assertEqual("cafe eclair", match_key("Café Éclair"))
