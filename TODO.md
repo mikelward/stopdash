@@ -1342,11 +1342,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                       Cambridge, so Ely and Waterbeach are left out though they have direct trains to King's
                       Cross. Fill the gap from another timetable source, or a short list of known through
                       services.
-                - [ ] **Keep a stop's lines when one refresh loses them**: TfL's paged bus listing once
-                      came back with six stops of one name stripped of every line, which drops them from
-                      name search (a bus row needs a line), and the refresh committed it. Make
-                      `build_stops.py` refuse, or keep the previous lines for, a stop that suddenly loses all
-                      of them.
+                - [x] **Keep a stop's lines when one refresh loses them**: TfL's paged bus listing came
+                      back twice with six stops of one name stripped of every line, which drops them from
+                      name search (a bus row needs a line). `build_stops.py` now reads the list twice and
+                      merges the reads.
                 - [ ] **Drop the unused TfL stop search**: `searchStations` and its DTOs and tests, now
                       that nothing calls it. `searchPlaces`/`resolvePostcode` stay: places outside London
                       use them.

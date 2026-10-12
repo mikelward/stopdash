@@ -6,7 +6,7 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from build_stops import build, checked, collect, fetch_bus_pages, required, write  # noqa: E402
+from build_stops import build, checked, collect, fetch_bus_pages, read_bus_list, required, write  # noqa: E402
 
 
 def pole(sid, name="Example Road", lat=51.5, lon=-0.12, lines=(), letter="", compass="", towards="",
@@ -143,6 +143,17 @@ class BusPagesTest(unittest.TestCase):
 
         self.assertEqual(2005, len(fetch_bus_pages(fake)))
         self.assertEqual([1, 2, 3], asked)
+
+    def test_a_stop_one_read_of_the_list_skips_keeps_its_lines_from_another(self):
+        # Paging drifts between reads: the first read misses a stop, leaving only a copy without
+        # lines; the second read has it with them.
+        reads = iter([[pole("a", lines=("1",))], [pole("a", lines=("1",)), pole("b", lines=("2",))]])
+        def fake(path, params=None):
+            return {"stopPoints": next(reads)}
+        found = collect(read_bus_list(fake), {})
+        collect([pole("b")], found)
+        stops, _ = build(found)
+        self.assertEqual({"a": ["1"], "b": ["2"]}, {s["id"]: [line for line, _, _ in s["lines"]] for s in stops})
 
     def test_an_empty_list_is_refused(self):
         with self.assertRaises(SystemExit):

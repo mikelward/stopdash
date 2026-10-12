@@ -43,6 +43,10 @@ TYPE_CODES = {
 # The bus list's page size, and the most pages it's asked for: a page short of full is the last.
 BUS_PAGE_SIZE = 1000
 MAX_BUS_PAGES = 60
+# How many times the bus list is read. TfL's paging isn't stable from one read to the next: a stop can
+# fall between two pages, leaving only a copy without its lines from another listing (six stops of one
+# name lost their buses in one refresh), so the reads are merged and a stop any of them found keeps it.
+BUS_READS = 2
 # TfL's own network, mode by mode; National Rail's mode listing is nationwide and times out, so its
 # stations come from the type listings, which also hold piers the river-bus list leaves out.
 MODES = ["tube", "dlr", "overground", "elizabeth-line", "tram", "river-bus", "cable-car"]
@@ -208,12 +212,20 @@ def fetch_bus_pages(fetch_json=fetch):
     sys.exit(f"the bus list ran past {MAX_BUS_PAGES} pages; refusing to guess where it ends")
 
 
+def read_bus_list(fetch_json=fetch, reads=BUS_READS):
+    """Every bus stop TfL's paged list gives in [reads] reads of it, for [collect] to merge."""
+    points = []
+    for _ in range(reads):
+        points.extend(fetch_bus_pages(fetch_json))
+    return points
+
+
 def main(argv):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", required=True, help="where to write stops.tsv")
     args = parser.parse_args(argv)
     found = {}
-    collect(fetch_bus_pages(), found)
+    collect(read_bus_list(), found)
     for mode in MODES:
         collect(required(mode, (fetch(f"/StopPoint/Mode/{mode}") or {}).get("stopPoints")), found)
     for stop_type in TYPE_LISTINGS:
