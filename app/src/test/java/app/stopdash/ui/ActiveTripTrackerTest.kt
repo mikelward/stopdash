@@ -155,6 +155,8 @@ class ActiveTripTrackerTest {
     private val alsoLinesGiven = mutableListOf<Collection<String>>()
     // Called while a check is out, before it answers.
     private var duringCheck: () -> Unit = {}
+    // Holds a route disruption check until completed, as a slow TfL would.
+    private var checkGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
     private var knownLines: RouteDisruption.LinesChecked? = null
     // What happened to the "route disruption" notification, in order: each post (how, with what's
     // known, by key) or done.
@@ -278,6 +280,7 @@ class ActiveTripTrackerTest {
             directionsGiven += directions
             alsoLinesGiven += also
             duringCheck()
+            checkGate?.await()
             if (knownFails) throw TflException.Offline(null)
             RouteDisruption.Found(
                 known,
@@ -584,6 +587,106 @@ class ActiveTripTrackerTest {
         first.join()
         second.join()
         assertEquals(app.stopdash.domain.ReplanOrigin.Stop("E", "E"), tracker.replanFrom.value?.copy(to = app.stopdash.domain.ToChoice.NONE))
+    }
+
+    @Test
+    fun `Next cuts short a refresh waiting on TfL rather than wait behind it`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        // The next refresh holds the trip while TfL never answers it.
+        val slow = kotlinx.coroutines.CompletableDeferred<Unit>()
+        gate = slow
+        val stuck = backgroundScope.launch { tracker.refresh() }
+        runCurrent()
+        assertFalse(stuck.isCompleted)
+        gate = null
+        // The rider says they're on board: the move is made at once, the refresh let go.
+        tracker.goTo(Step(0), Step(0, onBoard = true))
+        assertEquals(Step(0, onBoard = true), OnTheWay.stepOf(tracker.trip.value!!))
+        assertEquals(tracker.trip.value, kept)
+        runCurrent()
+        assertTrue(stuck.isCompleted)
+        assertFalse(stuck.isCancelled)
+        assertTrue("on the way: refresh cut short for the rider's move" in logged)
+        // The next refresh runs in full.
+        tracker.refresh()
+        assertEquals(Step(0, onBoard = true), OnTheWay.stepOf(tracker.trip.value!!))
+    }
+
+    @Test
+    fun `End trip cuts short a refresh waiting on TfL rather than wait behind it`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        val slow = kotlinx.coroutines.CompletableDeferred<Unit>()
+        gate = slow
+        val stuck = backgroundScope.launch { tracker.refresh() }
+        runCurrent()
+        assertFalse(stuck.isCompleted)
+        gate = null
+        // Ended at once, forgotten on the device, and the refresh let go without touching it again.
+        assertTrue(tracker.end())
+        assertNull(tracker.trip.value)
+        assertNull(kept)
+        runCurrent()
+        assertTrue(stuck.isCompleted)
+        assertFalse(stuck.isCancelled)
+        assertNull(kept)
+        assertTrue("on the way: refresh cut short for the rider's move" in logged)
+    }
+
+    @Test
+    fun `a refresh canceled by something other than the rider's move passes the cancellation on`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        // The pick's save is canceled by its own caller, as a recreated screen's would be.
+        cancelNextSave = true
+        val thrown = try {
+            tracker.refresh()
+            null
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            e
+        }
+        assertEquals("recreated", thrown?.message)
+        assertFalse("on the way: refresh cut short for the rider's move" in logged)
+    }
+
+    @Test
+    fun `a refresh cut short in its disruption check leaves no line checking`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        checkGate = kotlinx.coroutines.CompletableDeferred()
+        val stuck = backgroundScope.launch { tracker.refresh() }
+        runCurrent()
+        assertNotNull(tracker.lineChecks.value?.asking)
+        checkGate = null
+        // A stale tap: the move isn't made, but the refresh it cut short is no longer asking.
+        tracker.goTo(Step(0, onBoard = true), Step(0))
+        runCurrent()
+        assertTrue(stuck.isCompleted)
+        assertNull(tracker.lineChecks.value?.asking)
+    }
+
+    @Test
+    fun `a step move not made says why`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        // Asked from a step the trip isn't at.
+        tracker.goTo(Step(0, onBoard = true), Step(1))
+        assertTrue("on the way: step move not made: the trip moved on before it" in logged)
     }
 
     @Test
