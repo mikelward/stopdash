@@ -29,13 +29,16 @@ import app.stopdash.domain.VehicleSource
 import java.io.IOException
 import java.time.Duration
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -304,6 +307,52 @@ class ActiveTripTracker(
     // thread, and its alerts are posted from any.
     private val lock = Mutex()
 
+    // The refresh holding [lock], and how many of the rider's moves wait for it ([aheadOfRefresh]). A
+    // refresh holds the lock while it waits on TfL, which on a slow network is many seconds, and a
+    // tap on Next waiting behind it did nothing visible all that time (maintainer, 2026-10-12).
+    private val refreshing = AtomicReference<RefreshRun?>(null)
+    private val movesWaiting = AtomicInteger(0)
+
+    // A refresh's job, and whether a move cut it short: only that cancellation ends it quietly; any
+    // other one, a dependency's own included, goes on to whoever asked for the refresh (Codex, #797).
+    // Settled once, by whichever comes first: the move cutting it short, or the body ending on its own,
+    // a cancellation of its own included, so one can't be taken for the other (Codex, #797).
+    private class RefreshRun {
+        private val state = AtomicInteger(RUNNING)
+        lateinit var job: Job
+
+        val cutShort: Boolean get() = state.get() == CUT
+
+        fun cutShort() {
+            if (state.compareAndSet(RUNNING, CUT)) job.cancel()
+        }
+
+        /** The body ended on its own: false if a move had cut it short first. */
+        fun ended(): Boolean = state.compareAndSet(RUNNING, ENDED)
+
+        private companion object {
+            const val RUNNING = 0
+            const val CUT = 1
+            const val ENDED = 2
+        }
+    }
+
+    /**
+     * [block] under [lock], ahead of any refresh: the one holding the lock is cut short, and one that
+     * takes it meanwhile stops at once, so the rider's word never waits on TfL. A refresh cut short is
+     * one that didn't finish, as one TfL failed is: the next refresh does it again, and the move itself
+     * reads what it needs.
+     */
+    private suspend fun <T> aheadOfRefresh(block: suspend () -> T): T {
+        movesWaiting.incrementAndGet()
+        try {
+            refreshing.get()?.cutShort()
+            return lock.withLock { block() }
+        } finally {
+            movesWaiting.decrementAndGet()
+        }
+    }
+
     // Each bus boarding stop pair's poles once read ([stopPoles]), by the stop asked about; one that
     // couldn't be read isn't kept.
     private val pairs = HashMap<String, List<StopLocation>>()
@@ -535,15 +584,18 @@ class ActiveTripTracker(
      * there now, and a ride's train is picked at once, as a refresh would.
      */
     suspend fun goTo(from: OnTheWay.Step, to: OnTheWay.Step) = withContext(compute) {
-        lock.withLock {
-            val before = _trip.value ?: return@withLock
-            if (_progress.value == TripProgress.Arrived) return@withLock
+        aheadOfRefresh {
+            // Each move not made is said: a tap that does nothing is otherwise a mystery (AGENTS.md).
+            val before = _trip.value ?: return@aheadOfRefresh warn("on the way: step move not made: no trip")
+            if (_progress.value == TripProgress.Arrived) return@aheadOfRefresh warn("on the way: step move not made: arrived")
             // Asked from step [from], as the screen showed it: a refresh that moved the trip on while the
             // tap waited makes it stale, and acting on it could send the trip back (Codex, PR #351).
-            if (OnTheWay.stepOf(before) != from) return@withLock
+            if (OnTheWay.stepOf(before) != from) {
+                return@aheadOfRefresh warn("on the way: step move not made: the trip moved on before it")
+            }
             val now = clock()
             // Never onto an arrival, which would forget the trip past any undoing ([OnTheWay.canGoTo]).
-            if (!OnTheWay.canGoTo(before, to, now)) return@withLock
+            if (!OnTheWay.canGoTo(before, to, now)) return@aheadOfRefresh warn("on the way: step move not made: it would arrive")
             // Leaving a leg whose "get off soon" was said, the move is saved marked as owing its
             // take-back, which a restart settles if the app dies before it's done ([restore]). On board
             // the same ride it was said for, it still stands.
@@ -558,7 +610,7 @@ class ActiveTripTracker(
             val saved = withContext(io) { save(moved) }
             unsaved = !saved
             _notKept.value = !saved
-            if (!saved) return@withLock
+            if (!saved) return@aheadOfRefresh warn("on the way: step move not made: not saved")
             // The "get off soon" said for the leg left is done with: the stop it named isn't where they
             // are. Its mark is cleared in the next save.
             if (moved.alertLeft) {
@@ -588,23 +640,23 @@ class ActiveTripTracker(
      * trip has moved past [ride] meanwhile.
      */
     suspend fun take(ride: TripLeg, branch: OffPlan.Branch) = withContext(compute) {
-        lock.withLock {
-            val before = _trip.value ?: return@withLock
-            if (_progress.value == TripProgress.Arrived) return@withLock
-            val index = before.route.legs.indexOf(ride).takeIf { it >= before.legIndex } ?: return@withLock
+        aheadOfRefresh {
+            val before = _trip.value ?: return@aheadOfRefresh
+            if (_progress.value == TripProgress.Arrived) return@aheadOfRefresh
+            val index = before.route.legs.indexOf(ride).takeIf { it >= before.legIndex } ?: return@aheadOfRefresh
             val now = clock()
             // Not a fork already behind a rider on board (Codex, #586), nor one judged from an answer too old to
             // say: their train may have passed it since.
             val aboard = index == before.legIndex && (before.boarded || before.onBoardSeen)
-            if (aboard && !isCurrent(_updatedAt.value, now)) return@withLock
+            if (aboard && !isCurrent(_updatedAt.value, now)) return@aheadOfRefresh
             // Lost with no calls that placed the train this time: where it is now isn't known (Codex, #586).
-            if (aboard && (_progress.value as? TripProgress.Lost)?.placed == false) return@withLock
-            if (index == before.legIndex && listOfNotNull(aheadOn(_progress.value, ride), keptAhead(before)).any { branch.forkIndex < it }) return@withLock
+            if (aboard && (_progress.value as? TripProgress.Lost)?.placed == false) return@aheadOfRefresh
+            if (index == before.legIndex && listOfNotNull(aheadOn(_progress.value, ride), keptAhead(before)).any { branch.forkIndex < it }) return@aheadOfRefresh
             // A "get off soon" said for the train the ride was on names a stop that's no longer theirs: it's
             // taken back once the reroute is saved, as a step moved past it is ([goTo]; Codex, #583).
             val split = OffPlan.take(before, index, branch, now)?.let { at ->
                 at.copy(alertLeft = before.warnedLeg == before.legIndex && at.warnedLeg != before.warnedLeg)
-            } ?: return@withLock
+            } ?: return@aheadOfRefresh
             val taken = if (aboard) {
                 when (val check = passedFork(split, now)) {
                     is ForkCheck.Taken -> check.trip
@@ -613,13 +665,13 @@ class ActiveTripTracker(
                     ForkCheck.Failed -> {
                         _failed.value = true
                         _updatedAt.value = null
-                        return@withLock
+                        return@aheadOfRefresh
                     }
                     // Not placed, or already past the fork: not rerouted, and the step is worked out afresh,
                     // so the screen shows where the train is now (Codex, #586).
                     ForkCheck.Refused -> {
                         if (step(null, HashMap())) step(null, HashMap())
-                        return@withLock
+                        return@aheadOfRefresh
                     }
                 }
             } else {
@@ -819,7 +871,7 @@ class ActiveTripTracker(
     }
 
     /** End the trip: forgotten here and on the device. */
-    suspend fun end(): Boolean = withContext(compute) { lock.withLock { endLocked() } }
+    suspend fun end(): Boolean = withContext(compute) { aheadOfRefresh { endLocked() } }
 
     // [end], under [lock].
     private suspend fun endLocked(): Boolean {
@@ -861,52 +913,83 @@ class ActiveTripTracker(
         val asked = elapsed()
         withContext(compute) {
             lock.withLock {
-                // The fix aged while this waited behind another refresh: one no longer fresh enough is
-                // no evidence the rider was left behind ([OnTheWay.sureEnough]).
-                // Precise location taken away since the fix came: it isn't used, and nothing kept stays (Codex, #542).
-                val allowed = preciseAllowed()
-                if (!allowed) {
-                    forgetFix?.cancel()
-                    lastFix = null
-                }
-                val fresh = rider?.takeIf { allowed }?.let { fix -> aged(fix, Duration.ofMillis(elapsed() - asked)) }
-                // A leg just done (a walk, or a ride straight into another) picks the next ride's train at
-                // once: one due before the next refresh is still the rider's to catch.
-                // Each boarding stop's board is asked for at most once a refresh, answer or failure,
-                // however long TfL takes: the steps share this refresh's attempts.
-                val boards = HashMap<TripLeg, Result<NextBoard>>()
-                // Each line's route too ([routesRead]).
-                routesRead = HashMap()
-                try {
-                    // The trip's own last fix let go once past its use, whether or not TfL answers (Codex, #542).
-                    expireFix()
-                    try {
-                        if (step(fresh, boards)) step(null, boards)
-                    } finally {
-                        expireFix()
-                    }
-                    // None of the plan's trains running, only branches off it: the trip takes one by itself.
-                    _trip.value?.let { trip ->
-                        val now = clock()
-                        branchToTake(trip, now)?.let { (index, branch) ->
-                            OffPlan.take(trip, index, branch, now)?.let { taken ->
-                                warn("on the way: none of the plan's trains listed; took the branch off at stop ${branch.forkIndex}")
-                                // Said until the rider is past the ride to the fork ([ActiveTrip.branchTakenLeg]).
-                                val said = OffPlan.takenBySelf(trip, taken, index, branch)
-                                // The board just read is the shortened ride's too: from the same stop, not asked for again (Codex, #630).
-                                rerouted(said, now, boards, boardOf = trip.route.legs[index])
-                            }
+                // In a job of its own, so the rider's move can cut it short ([aheadOfRefresh]) without
+                // canceling whoever asked for the refresh: it returns as one TfL failed would.
+                coroutineScope {
+                    // What ended the body, if a cancellation did: passed on unless a move asked for it.
+                    var canceled: CancellationException? = null
+                    val run = RefreshRun()
+                    run.job = launch(start = CoroutineStart.LAZY) {
+                        try {
+                            refreshLocked(rider, asked)
+                            run.ended()
+                        } catch (e: CancellationException) {
+                            if (run.ended()) canceled = e
+                            throw e
                         }
                     }
-                    // Seen past where they got off a ride, or back from it (maintainer, 2026-10-06): kept with the trip.
-                    notePast(rider?.takeIf { allowed }, asked)
-                    // The fix as given, with when: aged once, where it's used, for all the time since (Codex on #479).
-                    // Only a fix precise location still allows picks where to plan again from (Codex, #542).
-                    checkDisruptions(boards, rider?.takeIf { allowed && preciseAllowed() }, asked)
-                } finally {
-                    routesRead = null
+                    val job = run.job
+                    refreshing.set(run)
+                    // A move waiting already: it goes first, this refresh stops here.
+                    if (movesWaiting.get() > 0) run.cutShort()
+                    job.start()
+                    job.join()
+                    refreshing.compareAndSet(run, null)
+                    if (job.isCancelled) {
+                        if (!run.cutShort) throw canceled ?: CancellationException("refresh canceled")
+                        warn("on the way: refresh cut short for the rider's move")
+                    }
                 }
             }
+        }
+    }
+
+    // [refresh]'s work, under [lock].
+    private suspend fun refreshLocked(rider: LocationFix?, asked: Long) {
+        // The fix aged while this waited behind another refresh: one no longer fresh enough is
+        // no evidence the rider was left behind ([OnTheWay.sureEnough]).
+        // Precise location taken away since the fix came: it isn't used, and nothing kept stays (Codex, #542).
+        val allowed = preciseAllowed()
+        if (!allowed) {
+            forgetFix?.cancel()
+            lastFix = null
+        }
+        val fresh = rider?.takeIf { allowed }?.let { fix -> aged(fix, Duration.ofMillis(elapsed() - asked)) }
+        // A leg just done (a walk, or a ride straight into another) picks the next ride's train at
+        // once: one due before the next refresh is still the rider's to catch.
+        // Each boarding stop's board is asked for at most once a refresh, answer or failure,
+        // however long TfL takes: the steps share this refresh's attempts.
+        val boards = HashMap<TripLeg, Result<NextBoard>>()
+        // Each line's route too ([routesRead]).
+        routesRead = HashMap()
+        try {
+            // The trip's own last fix let go once past its use, whether or not TfL answers (Codex, #542).
+            expireFix()
+            try {
+                if (step(fresh, boards)) step(null, boards)
+            } finally {
+                expireFix()
+            }
+            // None of the plan's trains running, only branches off it: the trip takes one by itself.
+            _trip.value?.let { trip ->
+                val now = clock()
+                branchToTake(trip, now)?.let { (index, branch) ->
+                    OffPlan.take(trip, index, branch, now)?.let { taken ->
+                        warn("on the way: none of the plan's trains listed; took the branch off at stop ${branch.forkIndex}")
+                        // Said until the rider is past the ride to the fork ([ActiveTrip.branchTakenLeg]).
+                        val said = OffPlan.takenBySelf(trip, taken, index, branch)
+                        // The board just read is the shortened ride's too: from the same stop, not asked for again (Codex, #630).
+                        rerouted(said, now, boards, boardOf = trip.route.legs[index])
+                    }
+                }
+            }
+            // Seen past where they got off a ride, or back from it (maintainer, 2026-10-06): kept with the trip.
+            notePast(rider?.takeIf { allowed }, asked)
+            // The fix as given, with when: aged once, where it's used, for all the time since (Codex on #479).
+            // Only a fix precise location still allows picks where to plan again from (Codex, #542).
+            checkDisruptions(boards, rider?.takeIf { allowed && preciseAllowed() }, asked)
+        } finally {
+            routesRead = null
         }
     }
 
@@ -957,6 +1040,9 @@ class ActiveTripTracker(
         val found = try {
             disruptions(trip, progress, directionsOf(trip), boardLines)
         } catch (e: CancellationException) {
+            // Cut short (a rider's move goes first, or whoever asked gave up): no check is out any more, so
+            // no line page says "Checking…" for one until the next check (Codex, #797).
+            _lineChecks.value = _lineChecks.value?.copy(asking = null)
             throw e
         } catch (e: Exception) {
             // Unknown, never a signal: what's up comes down rather than stand on no evidence.

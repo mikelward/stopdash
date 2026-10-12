@@ -428,6 +428,9 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
   already been, that a watch asked for a refresh, that a trip on the way was queued for it or
   taken off it, and the failure type if a send failed —
   never which watch, its name or id, or what was sent.
+- **a trip step you asked for that wasn't made**, and why, by kind (no trip, already there, the
+  trip had moved on first, it would end the trip, it couldn't be saved), and that a trip refresh was
+  cut short so your step went first — never a stop, a line or where you're going.
 - **the app's own code reading or writing the disk on the screen's thread**, which can make
   the screen stutter: the kind (e.g. `DiskReadViolation`) and the place in the app's code that
   did it, once each per run, at most 20 — never what was read or written.
