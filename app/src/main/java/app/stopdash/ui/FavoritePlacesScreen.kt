@@ -55,6 +55,7 @@ import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlaceIcon
 import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.PlaceHit
+import app.stopdash.domain.SearchEntry
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.UkPostcode
 import java.time.DayOfWeek
@@ -407,7 +408,7 @@ private fun PlaceEditor(
         val placesAfter = editor.placesAfter.coerceAtMost(editor.results.size)
         editor.results.subList(0, placesAfter).forEach { matchRow(it) }
         editor.places.forEach { place ->
-            PlaceHitRow(place, onClick = { onPickPlace(place) })
+            PlaceHitRow(place, onClick = { onPickPlace(place) }, area = editor.placeAreas[SearchEntry.Place(place).key])
         }
         editor.results.subList(placesAfter, editor.results.size).forEach { matchRow(it) }
         // TfL's places outside London, below everything bundled (maintainer, 2026-10-11).

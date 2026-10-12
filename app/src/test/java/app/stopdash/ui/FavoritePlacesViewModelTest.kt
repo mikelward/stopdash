@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import app.stopdash.domain.ChipLabel
 import app.stopdash.domain.BusStopIndex
 import app.stopdash.domain.Coordinates
+import app.stopdash.domain.SearchEntry
 import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
@@ -357,6 +358,23 @@ class FavoritePlacesViewModelTest {
         assertEquals("Zeta Gallery", editor.label)
         assertTrue(editor.places.isEmpty())
         assertTrue(editor.canSave)
+    }
+
+    @Test
+    fun `each place result carries its postcode district`() = runTest {
+        val model = FavoritePlacesViewModel(
+            FakeStore(), FakeFinder(),
+            loadIndex = { stations },
+            loadPlaceIndex = { placeIndex("C\tX1 1AA\t\t51.50010\t-0.12000\t4", "P\tZeta Gallery\tmuseum\t51.50000\t-0.12000\t9") },
+            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        model.onQueryChange("zeta")
+        advanceUntilIdle()
+        val editor = model.state.value.editor!!
+        val gallery = editor.places.single()
+        assertEquals(mapOf(SearchEntry.Place(gallery).key to "X1"), editor.placeAreas)
     }
 
     @Test

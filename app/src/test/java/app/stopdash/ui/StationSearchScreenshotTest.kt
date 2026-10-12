@@ -558,8 +558,9 @@ class StationSearchScreenshotTest {
 
     @Test
     fun station_search_rows_show_their_postcode_district() {
-        // Same-named bus stops told apart by their postcode district. Synthetic names and districts
-        // (AGENTS *Privacy*).
+        // Same-named bus stops told apart by their postcode district, and a place with its own.
+        // Synthetic names and districts (AGENTS *Privacy*).
+        val zetaGallery = PlaceHit("Zeta Gallery", Coordinates(51.55, -0.2), PlaceKind.PLACE)
         composeRule.setContent {
             StopDashTheme {
                 StationSearchScreen(
@@ -571,18 +572,24 @@ class StationSearchScreenshotTest {
                                 StationMatch("49000001A", "Zeta Church", listOf("bus")),
                                 StationMatch("49000002B", "Zeta Church", listOf("bus")),
                             ),
-                            areas = mapOf("940GZZZETA" to "X1", "49000001A" to "X1", "49000002B" to "X2"),
+                            places = listOf(zetaGallery),
+                            areas = mapOf(
+                                "940GZZZETA" to "X1", "49000001A" to "X1", "49000002B" to "X2",
+                                SearchEntry.Place(zetaGallery).key to "X2",
+                            ),
                         ),
                     ),
                     onQueryChange = {},
                     onOpenStation = {},
                     onBack = {},
+                    onOpenPlace = {},
                     autoFocus = false,
                 )
             }
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("X2 · Bus").assertIsDisplayed()
+        composeRule.onNodeWithText("X2 · Place").assertIsDisplayed()
         captureSnapshot("station-search-areas.png")
     }
 

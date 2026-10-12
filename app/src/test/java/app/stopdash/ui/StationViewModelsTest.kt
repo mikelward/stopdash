@@ -188,6 +188,43 @@ class StationViewModelsTest {
         assertEquals(mapOf("490G00000001" to "X1"), vm.state.value.yourAreas)
     }
 
+    @Test
+    fun `each place row carries its postcode district, and a postcode none`() = runTest {
+        val vm = StationSearchViewModel(
+            io = dispatcher, compute = dispatcher,
+            loadPlaceIndex = {
+                placeIndex(
+                    "C\tX1 1AA\t\t51.50010\t-0.12000\t4",
+                    "C\tX2 2BB\t\t51.55010\t-0.20000\t4",
+                    "P\tZeta Gallery\tmuseum\t51.55000\t-0.20000\t9",
+                    "S\tZeta Road\t\t51.50000\t-0.12000\t4",
+                )
+            },
+        )
+        runCurrent()
+        vm.onQueryChange("zeta")
+        advanceUntilIdle()
+        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
+        val byName = result.entries.filterIsInstance<SearchEntry.Place>().associate { it.hit.name to result.areas[it.key] }
+        assertEquals(mapOf("Zeta Gallery" to "X2", "Zeta Road" to "X1"), byName)
+        vm.onQueryChange("x1 1aa")
+        advanceUntilIdle()
+        val postcode = (vm.state.value.result as StationSearchViewModel.Result.Matches).entries.single()
+        assertEquals(null, (vm.state.value.result as StationSearchViewModel.Result.Matches).areas[postcode.key])
+    }
+
+    @Test
+    fun `a recent place carries its postcode district too`() = runTest {
+        val place = SearchEntry.Place(PlaceHit("Zeta Gallery", Coordinates(51.5, -0.12), PlaceKind.PLACE))
+        val vm = StationSearchViewModel(
+            io = dispatcher, compute = dispatcher,
+            loadYours = { YourStops(recentPicks = listOf(place)) },
+            loadPlaceIndex = { placeIndex("C\tX1 1AA\t\t51.50010\t-0.12000\t4") },
+        )
+        advanceUntilIdle()
+        assertEquals(mapOf(place.key to "X1"), vm.state.value.yourAreas)
+    }
+
     // Two same-named synthetic bus stops, the farther from (51.55, -0.2) listed first by id.
     private fun twoZetaChurches() = busStops(busStop("49000001A", "Zeta Church", 51.5, -0.12), busStop("49000002B", "Zeta Church", 51.55, -0.2))
 

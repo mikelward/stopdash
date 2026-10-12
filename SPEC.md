@@ -350,7 +350,9 @@ The app finds stops two ways:
   result with no position is never folded.
   Each stop row shows its **postcode district** before its modes ("EC4M · Bus"), from the nearest
   bundled postcode, worked out on the device, so same-named stops in different places read apart
-  (maintainer, 2026-10-11). On an equal match a **station leads a bus stop**, and names are compared
+  (maintainer, 2026-10-11). A place or street row shows its district the same way ("EC4M · Place"),
+  so a place and the stops beside it read as one spot; a postcode row is its own district and shows
+  none. On an equal match a **station leads a bus stop**, and names are compared
   without punctuation, so "St Paul's" lists St. Paul's station first. After that, the **nearer of
   same-named stops, and of equally good place matches, lists first** (maintainer, 2026-10-12), so
   "Tesco" finds a nearer Tesco before an equally good farther one. It's measured from where the trip starts: in

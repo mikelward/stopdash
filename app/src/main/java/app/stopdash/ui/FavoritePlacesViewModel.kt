@@ -17,6 +17,7 @@ import app.stopdash.domain.PlaceHit
 import app.stopdash.domain.PlaceHits
 import app.stopdash.domain.PlaceIndex
 import app.stopdash.domain.PlaceKind
+import app.stopdash.domain.SearchEntry
 import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StationMatch
@@ -143,6 +144,8 @@ class FavoritePlacesViewModel(
         val resolveFailedIds: Set<String> = emptySet(),
         // Each result's postcode district ("EC4M"), by [StationMatch.key], so same-named stops read apart.
         val areas: Map<String, String> = emptyMap(),
+        // Each of [places]' postcode district, by [SearchEntry.Place.key]; a postcode row has none.
+        val placeAreas: Map<String, String> = emptyMap(),
         // TfL's places outside London for the query, below the bundled ones; reset when the query changes.
         val outside: OutsideLondon = OutsideLondon.Hidden,
         // The days this place is offered as a route chip on the near-me list; every day for a new place.
@@ -181,11 +184,23 @@ class FavoritePlacesViewModel(
     private val busStops = viewModelScope.async(io) { loadBusStops() }
 
     // The bundled places for [query], searched on [compute]; none, with no hop, when there's no index.
-    private suspend fun bundledPlaces(query: String, postcodesOnly: Boolean = false): List<PlaceHit> {
+    // The bundled places for [query], with each one's postcode district by [SearchEntry.Place.key].
+    private suspend fun bundledPlaces(query: String, postcodesOnly: Boolean = false): Pair<List<PlaceHit>, Map<String, String>> {
         val places = placeIndex.await()
-        return if (places.size == 0) emptyList() else withContext(compute) {
+        return if (places.size == 0) emptyList<PlaceHit>() to emptyMap() else withContext(compute) {
             // A search typed past stops partway rather than scanning the whole index.
-            PlaceHits.fromIndex(places, query, checkpoint = { ensureActive() }, postcodesOnly = postcodesOnly)
+            val hits = PlaceHits.fromIndex(places, query, checkpoint = { ensureActive() }, postcodesOnly = postcodesOnly)
+            hits to placeDistrictsOf(hits, places)
+        }
+    }
+
+    // Each place's postcode district, by [SearchEntry.Place.key]; a postcode's own row already reads as
+    // its district, so it gets none. Called on [compute].
+    @androidx.annotation.WorkerThread
+    private fun placeDistrictsOf(hits: List<PlaceHit>, places: PlaceIndex): Map<String, String> = buildMap {
+        for (hit in hits) {
+            if (hit.kind == PlaceKind.POSTCODE) continue
+            places.districtNear(hit.coordinate.latitude, hit.coordinate.longitude)?.let { put(SearchEntry.Place(hit).key, it) }
         }
     }
 
@@ -314,7 +329,7 @@ class FavoritePlacesViewModel(
         outside?.cancel()
         updateEditor {
             it.copy(
-                query = query, coordinate = null, placeName = null, resolvingId = null, places = emptyList(),
+                query = query, coordinate = null, placeName = null, resolvingId = null, places = emptyList(), placeAreas = emptyMap(),
                 // The rider is searching for another place: a restore no longer goes back to the stop.
                 pendingStop = null,
                 outside = OutsideLondon.Hidden,
@@ -335,10 +350,10 @@ class FavoritePlacesViewModel(
             // The bundled postcodes it starts, to pick from as it's typed ("SW1A" lists SW1A's): postcodes
             // only, so places named like one ("E12 Cafe") can't take every slot.
             search = viewModelScope.launch {
-                val places = bundledPlaces(query.trim(), postcodesOnly = true)
+                val (places, placeAreas) = bundledPlaces(query.trim(), postcodesOnly = true)
                 _state.update {
                     val editor = it.editor?.takeIf { e -> e.query == query } ?: return@update it
-                    it.copy(editor = editor.copy(places = places))
+                    it.copy(editor = editor.copy(places = places, placeAreas = placeAreas))
                 }
             }
             // A complete postcode is adopted from the bundle (debounced, so a pause confirms it), so the happy
@@ -427,7 +442,7 @@ class FavoritePlacesViewModel(
             // that slips through the debounce is dropped by the guard below.
             delay(debounceMillis)
             if (_state.value.editor?.query != query) return@launch
-            val bundled = bundledPlaces(code).firstOrNull { it.kind == PlaceKind.POSTCODE && it.name.equals(code, ignoreCase = true) }
+            val bundled = bundledPlaces(code).first.firstOrNull { it.kind == PlaceKind.POSTCODE && it.name.equals(code, ignoreCase = true) }
             if (_state.value.editor?.query != query) return@launch
             if (bundled != null) {
                 adoptLocation(bundled.name, bundled.coordinate)
@@ -462,7 +477,7 @@ class FavoritePlacesViewModel(
                 labelFromPick = deriveLabel,
                 query = name,
                 results = emptyList(),
-                places = emptyList(),
+                places = emptyList(), placeAreas = emptyMap(),
                 searching = false,
                 resolvingId = null,
                 outside = OutsideLondon.Hidden,
@@ -582,13 +597,13 @@ class FavoritePlacesViewModel(
             // rank/fold behavior stays identical to From…/To….
             val localShown = withContext(compute) { stations.withBundledPositions(local) }
             // An address's house number isn't in the bundle, so its street is what's searched.
-            val places = bundledPlaces(PlaceHits.withoutHouseNumber(trimmed))
+            val (places, placeAreas) = bundledPlaces(PlaceHits.withoutHouseNumber(trimmed))
             _state.update {
                 val editor = it.editor?.takeIf { e -> e.query.trim() == trimmed } ?: return@update it
                 if (localShown.isEmpty() && places.isEmpty()) {
                     it
                 } else {
-                    it.copy(editor = editor.copy(results = localShown, places = places, placesAfter = localShown.size))
+                    it.copy(editor = editor.copy(results = localShown, places = places, placeAreas = placeAreas, placesAfter = localShown.size))
                 }
             }
             // The bundled bus stops, ranked in with the stations; each carries its position.
