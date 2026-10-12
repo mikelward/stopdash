@@ -565,7 +565,10 @@ class JourneysTest {
     fun `a line whose route is loading or failed isn't a definite no`() {
         val segment = Journeys.segment(journey, rail)!!
         val rows = rowsAt("TOP", departure("Bottom A", 120, "other"))
-        assertTrue(Journeys.trains(segment, rows, mapOf("example" to rail)).pending)
+        val loading = Journeys.trains(segment, rows, mapOf("example" to rail))
+        assertTrue(loading.pending)
+        // Which line it waits on, for the debug log.
+        assertEquals(setOf("other"), loading.pendingLines)
         assertTrue(Journeys.trains(segment, rows, mapOf("example" to rail, "other" to null)).unresolved)
     }
 

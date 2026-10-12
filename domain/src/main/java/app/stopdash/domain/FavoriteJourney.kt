@@ -94,6 +94,8 @@ data class JourneyTrains(
     // The departures left out as unchecked (a cause of [unresolved]), by line, stop and reason, for
     // the debug log.
     val misses: Set<RouteMiss> = emptySet(),
+    // The lines whose routes [pending] waits on, for the debug log.
+    val pendingLines: Set<String> = emptySet(),
 )
 
 /**
@@ -338,6 +340,7 @@ object Journeys {
         lines: Set<String>? = null,
     ): JourneyTrains {
         var pending = false
+        val pendingLines = HashSet<String>()
         var unresolved = false
         var routeFailed = false
         val reached = HashSet<String>()
@@ -354,6 +357,7 @@ object Journeys {
             .mapNotNull { row ->
                 if (row.lineId !in sequences) {
                     pending = true
+                    pendingLines += row.lineId
                     return@mapNotNull null
                 }
                 // The row's own stop id (and the journey's ends) stand in for a sibling its routes
@@ -432,7 +436,7 @@ object Journeys {
                 }
                 if (calling.isEmpty()) null else row.copy(upcoming = calling, destination = calling.first().destination, untimed = row.untimedTo(calling))
             }
-        return JourneyTrains(kept, pending, unresolved, routeFailed, reached, changes, misses)
+        return JourneyTrains(kept, pending, unresolved, routeFailed, reached, changes, misses, pendingLines)
     }
 
     /**

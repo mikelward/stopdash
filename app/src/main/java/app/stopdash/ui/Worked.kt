@@ -89,12 +89,14 @@ internal class JourneyStops(val fetched: Reported<List<StopRef>>, val stopIds: R
 /**
  * What the journey cards report, from one judging of them ([cardReportsOf]): the widget's pins
  * ([widget]), the far ends to check for a closure ([destinations]), and the departures the cards
- * couldn't check ([misses]).
+ * couldn't check ([misses]), and what a card still checking waits on ([checking]).
  */
 internal class CardReports(
     val widget: Reported<WidgetJourneysReport>,
     val destinations: Reported<List<StopRef>>,
     val misses: Reported<Set<RouteMiss>>,
+    // What each card still checking waits on ([JourneyCardState.Checking.waitingOn]), for the debug log.
+    val checking: Reported<Set<String>>,
 )
 
 /**

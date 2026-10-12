@@ -384,6 +384,9 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
   and, by line id only,
   a starred journey its line's route can't place (never its two ends together, which would
   record a route you travel),
+- **what a journey card still "Checking trains" waits on**, once it has for a few seconds, one line
+  per card: a line's route by line id, or departures at its nearer end or at how many stops beside
+  it — never a stop ID or either end, so cards sharing a stop can't pair up a journey's ends,
 - **a trip board that may count a train twice**, when that changes: on the way to a ride, a train
   its stop's board lists twice, or two of a line's trains due at one platform under a minute
   apart, as TfL sent them (with the stop ID) and as the trip's screen holds them (its cards and branch rows) — each by line id,

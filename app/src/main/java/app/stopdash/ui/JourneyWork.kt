@@ -176,6 +176,7 @@ internal fun cardReportsOf(
         Reported.of(WidgetJourneysReport(keys, checks, shownFrom, boarding), last?.widget),
         Reported.of(destinations, last?.destinations),
         Reported.of(cards.flatMapTo(LinkedHashSet()) { it.misses }, last?.misses),
+        Reported.of(cards.mapNotNullTo(LinkedHashSet()) { (it.state as? JourneyCardState.Checking)?.waitingOn }, last?.checking),
     )
 }
 

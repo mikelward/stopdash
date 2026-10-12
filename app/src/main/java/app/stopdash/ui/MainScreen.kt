@@ -765,19 +765,20 @@ fun MainScreen(
             val fetchedId = segment?.originId ?: journey.from.stopId.takeUnless { journey.bus }
             val state = when {
                 // Its route in but the stops not yet placed on it as it stands.
-                segmentsPending && starSequences[journey.lineId] != null -> JourneyCardState.Checking
+                segmentsPending && starSequences[journey.lineId] != null -> JourneyCardState.Checking("its stops placed on ${journey.lineId}'s route")
                 // Asked for and not come back: the fetch failed with nothing earlier to show.
                 origin == null && fetchedId != null && fetchedId in ld?.unavailableStopIds.orEmpty() ->
                     JourneyCardState.NotChecked()
-                journey.lineId !in journeySequences -> JourneyCardState.Checking
+                journey.lineId !in journeySequences -> JourneyCardState.Checking("${journey.lineId}'s route")
                 journeySequences[journey.lineId] == null -> JourneyCardState.RouteFailed
                 // The route can't place the stops this way round (no single way-back stop).
                 segment == null -> JourneyCardState.NotChecked()
-                origin == null -> JourneyCardState.Checking
+                origin == null -> JourneyCardState.Checking("departures at its origin")
                 // A bus origin's neighboring poles still being looked up, or their lines' routes loading.
-                journey.key in journeyPoleKeys && journey.key !in journeyPoles -> JourneyCardState.Checking
-                siblingsPending && journeyPoles[journey.key] != null -> JourneyCardState.Checking
-                journeySiblings[journey.key]?.pendingLines.orEmpty().isNotEmpty() -> JourneyCardState.Checking
+                journey.key in journeyPoleKeys && journey.key !in journeyPoles -> JourneyCardState.Checking("the stops around its origin")
+                siblingsPending && journeyPoles[journey.key] != null -> JourneyCardState.Checking("which stops beside its origin board it")
+                journeySiblings[journey.key]?.pendingLines.orEmpty().isNotEmpty() ->
+                    JourneyCardState.Checking("routes of ${journeySiblings[journey.key]?.pendingLines.orEmpty().sorted().joinToString(",")} beside its origin")
                 else -> {
                     val siblings = journeySiblings[journey.key]?.poles.orEmpty()
                     val siblingStops = siblings.map { pole -> ld?.stops?.firstOrNull { it.stopId == pole.id } }
@@ -792,6 +793,7 @@ fun MainScreen(
                     val trains = JourneyTrains(
                         rows = parts.flatMap { it.rows },
                         pending = parts.any { it.pending },
+                        pendingLines = parts.flatMapTo(HashSet()) { it.pendingLines },
                         unresolved = parts.any { it.unresolved },
                         routeFailed = parts.any { it.routeFailed },
                         misses = parts.flatMapTo(LinkedHashSet()) { it.misses },
@@ -819,10 +821,14 @@ fun MainScreen(
                     // aren't shown as if they were all; one that couldn't be checked is said so beneath
                     // the rest.
                     when {
-                        trains.pending -> JourneyCardState.Checking
+                        trains.pending -> JourneyCardState.Checking("routes of ${trains.pendingLines.sorted().joinToString(",")} at its boarding stops")
                         // A neighboring pole asked for and not in yet.
                         siblings.zip(siblingStops).any { (pole, stop) -> stop == null && pole.id !in ld?.unavailableStopIds.orEmpty() } ->
-                            JourneyCardState.Checking
+                            JourneyCardState.Checking(
+                                "departures at " +
+                                    siblings.zip(siblingStops).count { (pole, stop) -> stop == null && pole.id !in ld?.unavailableStopIds.orEmpty() } +
+                                    " stop(s) beside its origin",
+                            )
                         trains.rows.isNotEmpty() || changes.isNotEmpty() ->
                             JourneyCardState.Trains(
                                 trains.rows,
@@ -973,6 +979,14 @@ fun MainScreen(
     // The cards say only "Some routes couldn't be checked"; the log says which trains and why, once
     // per distinct set (a refresh finding the same misses logs nothing new).
     ReportChanges(cardReports?.misses, listWork) { routeStopsRepository?.reportMisses(it) }
+    // A card still "Checking trains" a while on says in the log what it waits on (SPEC principle 2): a
+    // route, a stop's departures, the stops around its origin. Only once it has held for
+    // [CHECKING_LOGGED_AFTER], so the moment every card checks as the list loads says nothing.
+    ReportChanges(cardReports?.checking, listWork) { waiting ->
+        if (waiting.isEmpty()) return@ReportChanges
+        delay(CHECKING_LOGGED_AFTER.toMillis())
+        routeStopsRepository?.reportChecking(waiting, CHECKING_LOGGED_AFTER)
+    }
     // The far ends to check for a closure.
     ReportChanges(cardReports?.destinations, listWork, onJourneyDestinations)
     // What each placed journey's card found for the widget (it can't load routes itself): the
@@ -2735,7 +2749,7 @@ private fun DepartureList(
                             }
                         }
                     }
-                    JourneyCardState.Checking -> item(key = "journey-note|${card.journey.key}") {
+                    is JourneyCardState.Checking -> item(key = "journey-note|${card.journey.key}") {
                         JourneyNote(
                             stringResource(if (card.journey.bus) R.string.journey_checking_bus else R.string.journey_checking),
                         )
@@ -3952,13 +3966,19 @@ internal data class JourneyCard(
     val misses: Set<RouteMiss> = emptySet(),
 )
 
+/** How long a journey card stays "Checking trains" before the log says what it waits on. */
+internal val CHECKING_LOGGED_AFTER: java.time.Duration = java.time.Duration.ofSeconds(5)
+
 /** What a journey card can say about its trains. */
 /** How many rows a journey card draws on the near-me list before "+N more", as a trip's Direct section does. */
 internal const val JOURNEY_ROWS = DIRECT_ROWS
 
 internal sealed interface JourneyCardState {
-    /** The origin's departures or the line's route aren't in yet. */
-    data object Checking : JourneyCardState
+    /**
+     * The origin's departures or the line's route aren't in yet: [waitingOn] says which, for the debug
+     * log ([CardReports.checking]); by line id and the kind of wait alone, never a stop.
+     */
+    data class Checking(val waitingOn: String) : JourneyCardState
 
     /** The line's route couldn't be loaded, so which trains call at the far end is unknown. */
     data object RouteFailed : JourneyCardState
