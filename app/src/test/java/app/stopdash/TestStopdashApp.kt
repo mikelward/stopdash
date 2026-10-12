@@ -36,6 +36,11 @@ class TestStopdashApp : StopdashApp() {
         // background collector. Tests that exercise the holder drive it directly.
     }
 
+    override fun warmBundledStops() {
+        // Intentionally empty — reading the 2 MB stop file in every test's process start would slow
+        // the suite for nothing; BusStopIndexStoreWarmTest drives the warm-up directly.
+    }
+
     override fun installCrashRedaction() {
         // Intentionally empty — no Firebase in the test suite, and no process-wide crash handler
         // to chain; RedactingCrashHandlerTest covers the handler.

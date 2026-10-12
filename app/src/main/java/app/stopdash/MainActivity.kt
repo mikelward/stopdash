@@ -607,6 +607,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // The bundled stops and bus stop index, read in the background now the screen is opening,
+        // so the first near-me lookup or search finds them in memory; a no-op once they're read.
+        (application as? StopdashApp)?.warmBundledStops()
         // Read before the first frame, so a restored screen's location controls hold still.
         noteLocationAllowed(hasLocationPermission())
         // Read once: a recreation (rotation) keeps the overlay's own saved state instead.
