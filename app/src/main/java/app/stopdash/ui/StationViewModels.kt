@@ -144,6 +144,10 @@ class StationSearchViewModel(
         // are none (SPEC principle 2). A discarded corrupt file reads as genuinely empty, not failed.
         val favoritePlacesFailed: Boolean = false,
         val yoursRead: Boolean = false,
+        // A read of the user's own stops and places is under way ([refreshYours] and every write's
+        // reread): what is listed may be about to change, as a place just saved, so a row's menu offers
+        // neither favorite item until it lands.
+        val yoursReading: Boolean = false,
         // Each starred and Recent row's postcode district ("EC4M"), by [SearchEntry.key], as the
         // typed results' [Result.Matches.areas] are; filled in once the place index is read.
         val yourAreas: Map<String, String> = emptyMap(),
@@ -304,7 +308,24 @@ class StationSearchViewModel(
     }
 
     private fun reread() {
+        _state.update { it.copy(yoursReading = true) }
         yours = readYours()
+    }
+
+    /**
+     * Where [entry] is: its own position, else (a station carrying none, as the bundled rail and Tube
+     * stations do) the bundled index's, worked out on [compute] since an interchange's is found among
+     * its members. Null when neither knows. For a search row's menu (Show on map, favorites).
+     */
+    suspend fun positionOf(entry: SearchEntry): Coordinates? = withContext(compute) {
+        when (entry) {
+            is SearchEntry.Place -> entry.hit.coordinate
+            is SearchEntry.Stop -> {
+                val lat = entry.match.latitude
+                val lon = entry.match.longitude
+                if (lat != null && lon != null) Coordinates(lat, lon) else index.await().positionOf(entry.match.id) ?: busStops.await().positionOf(entry.match.id)
+            }
+        }
     }
 
     /**
@@ -485,6 +506,7 @@ class StationSearchViewModel(
                             favoritePlaces = places.orEmpty(),
                             favoritePlacesFailed = places == null,
                             yoursRead = true,
+                            yoursReading = false,
                         )
                     }
                     readYourAreas(read, generation)

@@ -31,6 +31,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -1220,5 +1221,40 @@ class StationViewModelsTest {
     fun `modes read as a rider says them`() {
         assertEquals("Tube · Elizabeth · National Rail", modesLabel(listOf("tube", "elizabeth-line", "national-rail")))
         assertEquals("Some mode", modesLabel(listOf("some-mode", "")))
+    }
+
+    @Test
+    fun `a station row carrying no position is placed from the bundled index`() = runTest {
+        val station = IndexedStation(oxford.id, oxford.name, oxford.modes, latitude = 51.515, longitude = -0.142)
+        val vm = searchVm(index = StationIndex(listOf(station)))
+        assertEquals(Coordinates(51.515, -0.142), vm.positionOf(SearchEntry.Stop(oxford)))
+        // A row with its own position keeps it; one the index doesn't know has none.
+        assertEquals(Coordinates(51.5, -0.12), vm.positionOf(SearchEntry.Stop(oxford.copy(latitude = 51.5, longitude = -0.12))))
+        assertNull(vm.positionOf(SearchEntry.Stop(StationMatch("940GZZZNONE", "Nowhere"))))
+    }
+
+    @Test
+    fun `a bus stop row carrying no position is placed from the bus stop index`() = runTest {
+        val vm = searchVm(buses = busStops(busStop("49000001A", "Zeta Church", 51.5, -0.12)))
+        // As a Recent or Starred bus stop comes back: its id and name, no position.
+        assertEquals(Coordinates(51.5, -0.12), vm.positionOf(SearchEntry.Stop(StationMatch("49000001A", "Zeta Church"))))
+    }
+
+    @Test
+    fun `the user's places read again are marked as being read until they land`() = runTest {
+        var gate = CompletableDeferred<Unit>().apply { complete(Unit) }
+        val vm = StationSearchViewModel(io = dispatcher, compute = dispatcher, loadPlaces = { gate.await(); emptyList() })
+        advanceUntilIdle()
+        assertTrue(vm.state.value.yoursRead)
+        assertFalse(vm.state.value.yoursReading)
+        gate = CompletableDeferred()
+        vm.refreshYours()
+        // Read once already, but what it lists may be about to change (a place just saved).
+        assertTrue(vm.state.value.yoursReading)
+        advanceUntilIdle()
+        assertTrue(vm.state.value.yoursReading)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(vm.state.value.yoursReading)
     }
 }

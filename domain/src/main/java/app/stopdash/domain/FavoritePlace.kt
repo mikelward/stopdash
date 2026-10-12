@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
 import java.time.DayOfWeek
 
 /**
@@ -91,4 +92,20 @@ object FavoritePlaces {
     /** Remove the favorite with [id], if present. */
     fun remove(places: List<FavoritePlace>, id: String): List<FavoritePlace> =
         places.filterNot { it.id == id }
+
+    /**
+     * The saved place at [coordinate], or null: one within [SAME_PLACE_METERS], the nearest if several
+     * are. A search row saved as a place is stored at the row's own position, so this finds it again to
+     * offer its removal from the row's long press.
+     */
+    @WorkerThread
+    fun at(places: List<FavoritePlace>, coordinate: Coordinates): FavoritePlace? =
+        places
+            .map { it to NearestStops.distanceMeters(it.coordinate.latitude, it.coordinate.longitude, coordinate.latitude, coordinate.longitude) }
+            .filter { (_, meters) -> meters <= SAME_PLACE_METERS }
+            .minByOrNull { (_, meters) -> meters }
+            ?.first
+
+    // Close enough to be the same place: a stop's pole and its station's center can sit this far apart.
+    const val SAME_PLACE_METERS = 25.0
 }

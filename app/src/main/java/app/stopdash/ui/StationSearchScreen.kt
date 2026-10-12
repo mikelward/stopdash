@@ -82,6 +82,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.ChipLabel
+import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.ModeGroups
@@ -137,8 +138,8 @@ fun StationSearchScreen(
     // Null keeps the plain search bar.
     fromStation: String? = null,
     onChangeFrom: (() -> Unit)? = null,
-    // A long press on a Recent row asks to take it off the list ([onAskRemoveRecent], null offering no
-    // long press); the question is [StationSearchViewModel.State.pendingRemoval], so it outlives a
+    // A Recent row's menu asks to take it off the list ([onAskRemoveRecent], null offering no such
+    // item); the question is [StationSearchViewModel.State.pendingRemoval], so it outlives a
     // rotation, and Remove calls [onRemoveRecent], Cancel [onCancelRemoveRecent].
     onAskRemoveRecent: ((SearchEntry) -> Unit)? = null,
     onCancelRemoveRecent: () -> Unit = {},
@@ -146,8 +147,50 @@ fun StationSearchScreen(
     // "Search outside London", and its Retry: asks TfL for the typed place
     // ([StationSearchViewModel.searchOutside]). Shown only where a place can be routed to or started from.
     onSearchOutside: () -> Unit = {},
+    // A long press on any row, a result or one of the user's own, opens its menu ([SearchRowMenu]):
+    // Show on map, Remove from Recent (a Recent row: [onAskRemoveRecent]), and Add to or Remove from
+    // favorite places (maintainer, 2026-10-12). Null leaves that item out.
+    // The activity's by default ([LocalSearchRowHost]); a removed place reads the places again ([onRetryPlaces]).
+    onShowOnMap: ((String, Coordinates) -> Unit)? = LocalSearchRowHost.current?.showOnMap,
+    onAddPlace: ((StationMatch) -> Unit)? = LocalSearchRowHost.current?.addPlace,
+    onRemovePlace: ((FavoritePlace) -> Unit)? = LocalSearchRowHost.current?.let { host ->
+        { place -> host.removePlace(place, { onRetryPlaces?.invoke() }) }
+    },
+    // Where a row carrying no position is (a bundled station), for its menu: the view model's
+    // [StationSearchViewModel.positionOf]. Null uses only the row's own.
+    positionOf: (suspend (SearchEntry) -> Coordinates?)? = null,
 ) {
     BackHandler(onBack = onBack)
+    val rowActions = SearchRowActions(onShowOnMap, onAskRemoveRecent, onAddPlace, onRemovePlace)
+    // The row whose menu is up. Not kept across a rotation, which closes it.
+    var menuFor by remember { mutableStateOf<SearchEntry?>(null) }
+    // A long press opens the row's menu; where the screen offers no action it does nothing, rather
+    // than counting as a tap that opens the row (and adds it to Recent).
+    val onLongPress: (SearchEntry) -> Unit = { entry -> if (rowActions.any) menuFor = entry }
+    menuFor?.let { entry ->
+        SearchRowMenu(
+            entry = entry,
+            recent = state.recent,
+            savedPlaces = state.favoritePlaces,
+            actions = rowActions,
+            onDismiss = { menuFor = null },
+            // Known once read, and read whole: before a read lands (the first, or one after a place was
+            // saved), or when it failed, a row may be saved already, so neither favorite item is offered.
+            placesKnown = state.yoursRead && !state.yoursReading && !state.favoritePlacesFailed,
+            positionOf = positionOf,
+        )
+    }
+    // Asked from a row's menu, a typed result's or a Recent row's, so asked here over either list.
+    state.pendingRemoval?.let { entry ->
+        RemoveRecentDialog(
+            name = when (entry) {
+                is SearchEntry.Stop -> abbreviateStationName(entry.match.name)
+                is SearchEntry.Place -> entry.hit.name
+            },
+            onRemove = { onRemoveRecent(entry) },
+            onDismiss = onCancelRemoveRecent,
+        )
+    }
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     if (autoFocus) LaunchedEffect(Unit) { focus.requestFocus() }
@@ -267,10 +310,7 @@ fun StationSearchScreen(
                             onStartFromPlace = onStartFromPlace,
                             onPickPlace = onPickPlace,
                             onEditPlaces = onEditPlaces,
-                            onAskRemoveRecent = onAskRemoveRecent,
-                            onCancelRemoveRecent = onCancelRemoveRecent,
-                            onRemoveRecent = onRemoveRecent,
-                            pendingRemoval = state.pendingRemoval,
+                            onLongPress = onLongPress,
                             removeRecentFailed = state.removeRecentFailed,
                             areas = state.yourAreas,
                             chipsStart = chipsStart,
@@ -289,7 +329,7 @@ fun StationSearchScreen(
                             if (state.outside !is OutsideLondon.Found) {
                                 item(key = "no-matches") { Message(stringResource(R.string.station_search_no_matches)) }
                             }
-                            outsideLondon(state.outside, onSearchOutside) { openPlaceHit(it, onPlacePicked, onPlace) }
+                            outsideLondon(state.outside, onSearchOutside, onLongPress = { onLongPress(SearchEntry.Place(it)) }) { openPlaceHit(it, onPlacePicked, onPlace) }
                         }
                     }
                 }
@@ -321,11 +361,13 @@ fun StationSearchScreen(
                                 is SearchEntry.Stop -> MatchRow(
                                     entry.match,
                                     onClick = { onOpenStation(entry.match) },
+                                    onLongClick = { onLongPress(entry) },
                                     area = result.areas[entry.match.key],
                                 )
                                 is SearchEntry.Place -> PlaceHitRow(
                                     entry.hit,
                                     onClick = { openPlaceHit(entry.hit, onPlacePicked, onPlace) },
+                                    onLongClick = { onLongPress(entry) },
                                     area = result.areas[entry.key],
                                 )
                             }
@@ -342,7 +384,7 @@ fun StationSearchScreen(
                         }
                         // TfL's places outside London, below everything bundled, so no row above moves.
                         if (onPlace != null) {
-                            outsideLondon(state.outside, onSearchOutside) { openPlaceHit(it, onPlacePicked, onPlace) }
+                            outsideLondon(state.outside, onSearchOutside, onLongPress = { onLongPress(SearchEntry.Place(it)) }) { openPlaceHit(it, onPlacePicked, onPlace) }
                         }
                     }
                 }
@@ -382,10 +424,7 @@ private fun YourStopsList(
     onStartFromPlace: ((TripDestination.Place) -> Unit)? = null,
     onPickPlace: ((FavoritePlace, String) -> Unit)? = null,
     onEditPlaces: (() -> Unit)? = null,
-    onAskRemoveRecent: ((SearchEntry) -> Unit)? = null,
-    onCancelRemoveRecent: () -> Unit = {},
-    onRemoveRecent: (SearchEntry) -> Unit = {},
-    pendingRemoval: SearchEntry? = null,
+    onLongPress: (SearchEntry) -> Unit = {},
     removeRecentFailed: Boolean = false,
     // Where the chips start: the screen's margin, or the To field's edge under the From/To bar.
     chipsStart: Dp = 16.dp,
@@ -396,16 +435,6 @@ private fun YourStopsList(
     areas: Map<String, String> = emptyMap(),
 ) {
     val listState = rememberLazyListState()
-    pendingRemoval?.let { entry ->
-        RemoveRecentDialog(
-            name = when (entry) {
-                is SearchEntry.Stop -> abbreviateStationName(entry.match.name)
-                is SearchEntry.Place -> entry.hit.name
-            },
-            onRemove = { onRemoveRecent(entry) },
-            onDismiss = onCancelRemoveRecent,
-        )
-    }
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -465,10 +494,8 @@ private fun YourStopsList(
                     )
                 }
             }
-            // Only Recent's rows come off with a long press: a starred stop is removed where it was starred.
-            val onLongPress = onAskRemoveRecent.takeIf { heading == R.string.station_search_recent }
             items(entries, key = { "$heading-${it.key}" }) { entry ->
-                val onLongClick = onLongPress?.let { ask -> { ask(entry) } }
+                val onLongClick = { onLongPress(entry) }
                 when (entry) {
                     is SearchEntry.Stop -> MatchRow(entry.match, onClick = { onOpenStation(entry.match) }, onLongClick = onLongClick, area = areas[entry.match.key])
                     is SearchEntry.Place -> PlaceHitRow(
@@ -553,6 +580,8 @@ private fun PlacesError(onRetry: (() -> Unit)?) {
 internal fun LazyListScope.outsideLondon(
     outside: OutsideLondon,
     onSearch: () -> Unit,
+    // A row's long press: its menu, as any other search row's. Null gives none.
+    onLongPress: ((PlaceHit) -> Unit)? = null,
     onPick: (PlaceHit) -> Unit,
 ) {
     when (outside) {
@@ -562,7 +591,7 @@ internal fun LazyListScope.outsideLondon(
             item(key = "outside-heading") { SectionHeading(stringResource(R.string.station_search_outside_heading)) }
             when (outside) {
                 is OutsideLondon.Found -> items(outside.places, key = { "outside-${it.name}-${it.coordinate}" }) { hit ->
-                    PlaceHitRow(hit, onClick = { onPick(hit) })
+                    PlaceHitRow(hit, onClick = { onPick(hit) }, onLongClick = onLongPress?.let { press -> { press(hit) } })
                     HorizontalDivider()
                 }
                 else -> item(key = "outside-status") { OutsideStatusRow(outside, onSearch) }
@@ -649,11 +678,11 @@ internal fun PlaceHitRow(place: PlaceHit, onClick: () -> Unit, onLongClick: (() 
     // The place's postcode district leads its kind ("EC4M · Place"), as a stop's leads its modes, so a
     // place and the stops beside it read as the same spot.
     val tag = listOfNotNull(area, kind).joinToString(" · ")
-    val removeLabel = stringResource(R.string.station_search_remove_recent_action)
+    val menuLabel = stringResource(R.string.station_search_row_menu_action)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .rowClicks(onClick, onLongClick, removeLabel)
+            .rowClicks(onClick, onLongClick, menuLabel)
             .heightIn(min = 48.dp)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -689,11 +718,11 @@ internal fun MatchRow(match: StationMatch, onClick: () -> Unit, onLongClick: (()
     // FULL station name (not the visual "Intl" abbreviation) plus the modes. A per-child description
     // would be read alone and drop the modes; the visual modes text can ellipsize, but this doesn't.
     val spoken = if (modes.isEmpty()) match.name else "${match.name}, $modes"
-    val removeLabel = stringResource(R.string.station_search_remove_recent_action)
+    val menuLabel = stringResource(R.string.station_search_row_menu_action)
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .rowClicks(onClick, onLongClick, removeLabel)
+            .rowClicks(onClick, onLongClick, menuLabel)
             // 8dp padding keeps the denser look; the min height holds the row at Android's 48dp tap
             // target, which a one-mode row's ~40dp would otherwise miss (more so at large text scales).
             .heightIn(min = 48.dp)
