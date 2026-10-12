@@ -176,6 +176,64 @@ class BundledStopsTest {
     }
 
     @Test
+    fun `the on-device finder never asks TfL, and caches only what the bundle covers`() = runBlocking {
+        val cache = NearbyStopsCache()
+        val warnings = mutableListOf<String>()
+        val bundle = read()
+        val finder = OnDeviceStopFinder(bundled = { bundle }, cache = cache, warn = { warnings += it })
+        // Inside the area: the bundle's answer, cached for the app's near-me list to reuse.
+        assertEquals(4, finder.nearbyStops(51.5, -0.12, 500).size)
+        assertEquals(4, cache.lookup(51.5, -0.12, 500, types)?.size)
+        // Past the area: what the bundle holds there (nothing), not cached, so the app may still ask TfL.
+        assertEquals(emptyList<StopLocation>(), finder.nearbyStops(53.48, -2.24, 500))
+        assertEquals(null, cache.lookup(53.48, -2.24, 500, types))
+        assertEquals(listOf("nearby: past the bundled stops; answered on the device"), warnings)
+    }
+
+    @Test
+    fun `the on-device finder reuses a lookup the app made, even past the bundle`() = runBlocking {
+        val cache = NearbyStopsCache()
+        val fromTfl = listOf(StopLocation("tfl", "From TfL", 53.48, -2.24))
+        cache.put(53.48, -2.24, 500, types, fromTfl)
+        val finder = OnDeviceStopFinder(bundled = { read() }, cache = cache)
+        assertEquals(fromTfl, finder.nearbyStops(53.48, -2.24, 500))
+    }
+
+    @Test
+    fun `the on-device finder says it has no answer rather than none nearby`() = runBlocking {
+        assertThrows(BundledStopsUnavailableException::class.java) {
+            runBlocking { OnDeviceStopFinder(bundled = { BundledStops.EMPTY }).nearbyStops(51.5, -0.12, 500) }
+        }
+        assertThrows(BundledStopsUnavailableException::class.java) {
+            runBlocking { OnDeviceStopFinder(bundled = { error("unreadable") }).nearbyStops(51.5, -0.12, 500) }
+        }
+        assertThrows(BundledStopsUnavailableException::class.java) {
+            runBlocking { OnDeviceStopFinder(bundled = { read() }).nearbyStops(51.5, -0.12, 500, listOf("NaptanCoachBay")) }
+        }
+        Unit
+    }
+
+    @Test
+    fun `the on-device search runs on the compute dispatcher, not the caller's thread`() = runBlocking {
+        val worker = Executors.newSingleThreadExecutor { Thread(it, "bundle-worker") }.asCoroutineDispatcher()
+        try {
+            var ranOn: String? = null
+            val finder = OnDeviceStopFinder(
+                bundled = { read() },
+                compute = object : kotlinx.coroutines.CoroutineDispatcher() {
+                    override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) {
+                        worker.dispatch(context, Runnable { ranOn = Thread.currentThread().name; block.run() })
+                    }
+                },
+            )
+            assertEquals(4, finder.nearbyStops(51.5, -0.12, 500).size)
+            assertTrue(ranOn.orEmpty().startsWith("bundle-worker"))
+        } finally {
+            worker.close()
+        }
+    }
+
+    @Test
     fun `the bundled asset reads whole and covers central London`() {
         val asset = listOf(File("../app/src/main/assets/stations/stops.tsv"), File("app/src/main/assets/stations/stops.tsv"))
             .first { it.exists() }

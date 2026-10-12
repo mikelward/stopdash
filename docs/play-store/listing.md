@@ -62,7 +62,7 @@ this directory. **Category:** Maps & Navigation.
 | Government app | No (uses TfL data but isn't a TfL or government app) |
 | Financial features | None |
 | Health | No |
-| Location permissions | Foreground only, so no background-location declaration |
+| Location permissions | Background location declared. Features: (1) the home-screen widget and watch show the stops near you, (2) journey alerts stay quiet when you're away from London. Both work out the position on the phone and never send it anywhere. Video: show Yes please on the "Alerts only in London?" card, the disclosure (Google's wording, with the Privacy policy link), then Android's "Allow all the time" |
 
 ## Data Safety
 

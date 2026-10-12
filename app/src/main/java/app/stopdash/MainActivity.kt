@@ -39,6 +39,7 @@ import app.stopdash.domain.NearestStops
 import app.stopdash.domain.ON_THE_WAY_FIX_DISTANCE_METERS
 import app.stopdash.domain.ON_THE_WAY_FIX_EVERY
 import app.stopdash.domain.OffPlan
+import app.stopdash.domain.OnDeviceStopFinder
 import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.OriginChange
 import app.stopdash.domain.PlaceStart
@@ -6439,6 +6440,16 @@ private fun ComponentActivity.rememberLocationAllTimeAsk(onAnswered: () -> Unit)
 internal fun bundledStopFinder(context: Context, tfl: StopFinder): StopFinder {
     val appContext = context.applicationContext
     return BundledStopFinder(tfl, bundled = { BundledStopsStore.load(appContext) }, warn = ::logLocationWarning)
+}
+
+/**
+ * The widget's follow, location's one use in the background: the rider's nearby lookups and the bundled
+ * stops, and never TfL, so a position read while the app isn't open never leaves the phone (SPEC D1,
+ * *Privacy*; the background location disclosure says so).
+ */
+internal fun onDeviceStopFinder(context: Context): StopFinder {
+    val appContext = context.applicationContext
+    return OnDeviceStopFinder(bundled = { BundledStopsStore.load(appContext) }, cache = nearbyStopsCache(appContext), warn = ::logLocationWarning)
 }
 
 /** The rider's own nearby lookups, on file: the app's near me, and the widget following the rider. */

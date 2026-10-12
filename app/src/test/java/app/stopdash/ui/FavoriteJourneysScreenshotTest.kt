@@ -607,13 +607,15 @@ class FavoriteJourneysScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        // Google Play's disclosure: location used when the app is not open, each feature, who it's shared
-        // with, and the choice Android offers next. Play rejected an earlier version that blurred these.
+        // Google Play's disclosure in Google's own words: that location data is collected, each feature,
+        // even when the app is closed, that it stays on the phone, a privacy policy, and the choice Android
+        // offers next. Play rejected two earlier versions that blurred these.
         composeRule.onNodeWithText("Background location permission").assertIsDisplayed()
-        composeRule.onNodeWithText("access your location when the app is not open", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("StopDash collects location data, even when the app is closed or not in use, to:", substring = true).assertIsDisplayed()
         composeRule.onNodeWithText("show nearby stops on your widget and watch", substring = true).assertIsDisplayed()
-        composeRule.onNodeWithText("not in London", substring = true).assertIsDisplayed()
-        composeRule.onNodeWithText("sent to the transport operator, TfL", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("away from London", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("This location data stays on your phone", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("privacyPolicy").assertIsDisplayed()
         composeRule.onNodeWithText("choose Allow all the time", substring = true).assertIsDisplayed()
         if (capturing()) {
             composeRule.onNode(isDialog()).captureRoboImage(filePath = "src/test/snapshots/images/location-disclosure.png")
@@ -636,6 +638,25 @@ class FavoriteJourneysScreenshotTest {
         if (capturing()) {
             composeRule.onNode(isDialog()).captureRoboImage(filePath = "src/test/snapshots/images/location-disclosure-no-location.png")
         }
+    }
+
+    @Test
+    fun the_location_disclosure_scrolls_so_a_large_font_still_reaches_the_privacy_policy() {
+        composeRule.setContent {
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, fontScale = 3f),
+            ) {
+                StopDashTheme(dynamicColor = false) {
+                    LocationRationaleDialog(onContinue = {}, onDismiss = {}, foregroundGranted = false)
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        // A screen's worth of disclosure at three times the text size: the link scrolls into view rather
+        // than being clipped under the buttons (Codex on #788).
+        composeRule.onNodeWithTag("privacyPolicy").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("continueJourneyAlertsLocation").assertIsDisplayed()
     }
 
     @Test

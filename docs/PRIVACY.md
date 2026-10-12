@@ -27,7 +27,7 @@ you open the near-me list, refresh it, or come back to the app, and while the li
 when you've walked 100 m or more since it was found (at most once a minute), so it follows you. In and
 around London, the stops near you are found on the phone instead, from a list of TfL's stops built into
 the app, so finding them sends your location nowhere; TfL is asked for them, with your location, only
-when you're near or past the edge of that area. The one
+when you're near or past the edge of that area, and only by the app, never the widget (below). The one
 use beyond that is a trip you start: it's checked on the phone while you walk to a stop you're
 boarding at, while you wait there, just after you board, and as your train nears the station you get
 off at, app open or closed, and never sent (see *On the way*, below).
@@ -234,11 +234,13 @@ don't allow it, alerts show anywhere in the UK.
 The same permission lets the **widget follow you**. Each time the widget refreshes on its own (you tap
 its header, the every-minute refresh is on, or your watch asks), it reads the position your phone last
 had, without asking for a new one, and shows the stops near there. When those stops aren't ones the
-app has looked up nearby recently, it finds the stops around that position exactly as the app
-does when you open it (on the phone in and around London, else by asking TfL); that lookup is remembered on the phone with the app's own (see below). A
-lookup that finds no stops is remembered too, so a phone left where there are none doesn't ask again
-each time: in memory only, never written to storage, and used for up to 15 minutes. It is cleared at
-the next widget refresh after that, or when the app's process ends, whichever comes first. The
+app has looked up nearby recently, it finds the stops around that position on the phone, from the list
+of TfL's stops built into the app. **That position never leaves your phone**: unlike the app, the
+widget never asks TfL for the stops near you, so away from London it shows the stops the app last
+found there, or none until you open the app there. A lookup in and around London is remembered on the phone with the app's own (see below). The
+widget then asks TfL for the departures at those stops, by their IDs, as it does for any stops it
+shows; TfL handles those requests under its own privacy policy
+(<https://tfl.gov.uk/corporate/privacy-and-cookies/>). The
 debug log notes only how many stops the widget moved to, never where. Turn it off in Android's
 settings, or from Settings → Automatic watch and widget location.
 

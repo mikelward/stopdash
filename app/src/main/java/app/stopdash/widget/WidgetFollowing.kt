@@ -10,7 +10,6 @@ import app.stopdash.data.HiddenModesSetting
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.AlertBehind
 import app.stopdash.domain.Dismissals
-import app.stopdash.domain.EmptyNearbyMemo
 import app.stopdash.domain.LocationFix
 import app.stopdash.domain.NearbySelection
 import app.stopdash.domain.StopFinder
@@ -26,13 +25,11 @@ import java.time.Instant
 /**
  * The widget's refresh following the rider (SPEC D1, [WidgetFollow]): with location allowed all the
  * time, the phone's last known position re-picks the nearby stops before their arrivals are fetched.
- * Asks Android for no fix, so it costs no radio; the stops are looked up through the app's own nearby
- * cache, so a rider who stays put asks TfL nothing more — nor, for a while, one where none were found.
+ * Asks Android for no fix, so it costs no radio; the stops are looked up on the phone, from the app's own
+ * nearby cache or the bundled stops, never TfL ([app.stopdash.domain.OnDeviceStopFinder]), so the position never leaves it.
+ * No "no stops here" memo: with no TfL request to save, it would only hide stops the app found since.
  */
 internal object WidgetFollowing {
-    /** A lookup here that found no stops, so a phone left beyond any route doesn't ask TfL each cycle. */
-    private val noStops = EmptyNearbyMemo()
-
     /** Where the phone last was, by each provider, when following is allowed: swappable in tests. */
     @Volatile
     internal var lastKnown: (Context) -> List<LocationFix> = { context ->
@@ -57,20 +54,14 @@ internal object WidgetFollowing {
         nearbySet: DataStoreNearbySetStore = DataStoreNearbySetStore.from(context.applicationContext, warn = ::logWidgetSnapshotWarning),
         now: Instant = Instant.now(),
     ): WidgetFollow.Followed? {
-        // Before anything can return: an expired empty lookup's position goes even when there's no fix.
-        noStops.forgetExpired()
         try {
             val fix = WidgetFollow.best(withContext(Dispatchers.IO) { lastKnown(context) }) ?: return null
             val at = fix.coordinates
             val stored = nearbySet.read()
             // An unreadable set can't be compared with, so it isn't replaced from here.
             if (stored.failed) return null
-            val found = if (noStops.knownEmpty(at)) {
-                emptyList()
-            } else {
-                withContext(Dispatchers.IO) {
-                    finder.nearbyStops(at.latitude, at.longitude, NearbySelection.OUTER_RADIUS_METERS)
-                }.also { noStops.record(at, it) }
+            val found = withContext(Dispatchers.IO) {
+                finder.nearbyStops(at.latitude, at.longitude, NearbySelection.OUTER_RADIUS_METERS)
             }
             val hidden = HiddenModesSetting.loaded()
             // What the widget applies before it draws, so the line choices are worked out over the rows it draws.

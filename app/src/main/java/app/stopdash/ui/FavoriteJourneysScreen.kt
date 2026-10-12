@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -680,9 +682,9 @@ internal fun LondonOnlyCard(
 
 /**
  * The disclosure before the background-location prompt, which Google Play's declaration requires precede
- * it: that location is used when the app is not open, each feature as a bullet, that the widget's stop
- * lookup sends it to TfL, and the steps Android shows next, which depend on [foregroundGranted]. Play
- * rejected an earlier, vaguer version.
+ * it, in Google's own words: that StopDash collects location data, each feature as a bullet, even when the
+ * app is closed or not in use, that it stays on the phone, the steps Android shows next, which depend on
+ * [foregroundGranted], and a privacy policy link. Play rejected two earlier versions.
  * Snoozemo's in shape; Continue opens Android's prompt.
  */
 @Composable
@@ -699,7 +701,14 @@ internal fun LocationRationaleDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.journey_alerts_location_rationale_title)) },
-        text = { Text(stringResource(R.string.journey_alerts_location_rationale_body) + "\n\n" + steps) },
+        text = {
+            // Scrolls, so a large font or a short screen can't clip the text or the privacy policy link
+            // below it: the dialog keeps its buttons and gives the text what height is left (Codex on #788).
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(stringResource(R.string.journey_alerts_location_rationale_body) + "\n\n" + steps)
+                PrivacyPolicyLink(Modifier.padding(top = 8.dp))
+            }
+        },
         confirmButton = {
             TextButton(onClick = onContinue, modifier = Modifier.testTag("continueJourneyAlertsLocation")) {
                 Text(stringResource(R.string.journey_alerts_location_rationale_continue))
