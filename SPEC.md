@@ -1561,6 +1561,21 @@ be read ("Couldn't read your places"), never opening a trip silently or nowhere.
 only the place's saved id, never its coordinate, so what the launcher keeps names no position and a
 tap routes to the place as it is saved now.
 
+**Sharing a place in** (maintainer, 2026-10-12): StopDash is offered in other apps' **Share** sheet for
+text, and under **Open with** for a `geo:` link. A shared place's **name is searched as To…** from the
+rider's position, on the device, as if typed: Google Maps shares a place as its name, sometimes its
+address, and a short link, so the first line that isn't a link is the search, and the rider picks the
+match. A `geo:` link with a **point** plans the trip straight to it, titled by the link's label or
+"Shared place"; one naming an address or a place by text (`geo:0,0?q=…`, as Contacts and Calendar send)
+searches that text. **The shared text goes only where typed text would**: a complete postcode the
+bundle doesn't hold, or *Search outside London* tapped, asks TfL's Journey Planner, as typing it does.
+**The link is never opened or sent**: following Google's short link to its exact spot would ask
+Google, so it isn't (`TODO.md`). A shared point is the trip's destination, sent to TfL's Journey
+Planner as any destination is (`docs/PRIVACY.md`). Without a location grant it says so, as a favorite's
+chip does; a share with nothing to search for says "No place to search for in what was shared".
+A share into the app already open lands where a fresh start would: whatever screen was open over the
+near-me list closes first, so the trip or search it opens is the one shown (a trip on the way goes on).
+
 The trip's top bar carries the app's **overflow** as the list's does — its red dot while an update
 is available, "Update available", "Send bug report" and About — so a problem seen on a trip can be
 reported from it (maintainer, 2026-09-26). So does **every other screen** with no menu of its own —

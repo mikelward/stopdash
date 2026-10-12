@@ -4011,6 +4011,15 @@ and these carry the rest as their own PRs:
       - [ ] **Device check:** the icon on a watch face and in the launcher, a tap opening the trip,
             the permission prompt, and the activity going when the trip ends or the phone stops.
 
+### Sharing a place in — follow-ups
+
+- [ ] **Follow a Google Maps share's link to its exact spot** (maintainer, 2026-10-12). A share is
+      searched by its name today (SPEC *Sharing a place in*); a place missing from the bundled index
+      finds nothing. Resolving `maps.app.goo.gl` to its coordinate would place any share, but asks
+      Google: a first off-device request for search, so a Data Safety change, an undocumented URL
+      shape that can move, and the rider's shared place sent to Google, which it came from anyway.
+      Decide before building.
+
 ## Beyond MVP (not planned)
 
 Directions that would change what stopdash *is*, not steps in the London MVP. Recorded so

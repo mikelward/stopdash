@@ -52,6 +52,7 @@ import app.stopdash.domain.ReplanOrigin
 import app.stopdash.domain.RouteRide
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.SavedTrip
+import app.stopdash.domain.SharedPlace
 import app.stopdash.domain.AlertsBehindStore
 import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.StarredRowSet
@@ -463,6 +464,13 @@ class MainActivity : ComponentActivity() {
     // A launcher shortcut's place (SPEC *Launcher shortcuts*): its saved id, until the trip there opens.
     private val routeToPlaceAsked = MutableStateFlow<String?>(null)
 
+    // A place shared in or opened with StopDash (SPEC *Sharing a place in*), as it came, until it's read
+    // and the trip to it opens. Never logged: it's the rider's own text.
+    private val sharedPlaceAsked = MutableStateFlow<SharedIn?>(null)
+
+    // What the To… search starts with, from a shared place, until the search shows it.
+    private val toQueryAsked = MutableStateFlow<String?>(null)
+
     // Whether a location grant is held, for [LocalLocationAllowed].
     private val locationAllowed = mutableStateOf(true)
 
@@ -574,12 +582,44 @@ class MainActivity : ComponentActivity() {
         UsageEvents.log(UsageEvent.Opened(openedFrom(intent)))
         takeOpenOnTheWay(intent)
         takeRouteToPlace(intent)
+        takeSharedPlace(intent)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         // Its extra is already off the intent, so a recreation would otherwise drop the tap.
         routeToPlaceAsked.value?.let { outState.putString(PENDING_PLACE_ID, it) }
+        // The same for a share not yet read, and a search not yet shown.
+        sharedPlaceAsked.value?.let { shared ->
+            // Marked apart from its strings: a share with nothing readable is all nulls, and still owes its
+            // "No place to search for" (Codex on #800).
+            outState.putBoolean(PENDING_SHARED, true)
+            outState.putString(PENDING_SHARED_TEXT, shared.text)
+            outState.putString(PENDING_SHARED_SUBJECT, shared.subject)
+            outState.putString(PENDING_SHARED_GEO, shared.geo)
+        }
+        toQueryAsked.value?.let { outState.putString(PENDING_TO_QUERY, it) }
+    }
+
+    // Takes a shared place (text from Share, or a geo: link from Open with) off [intent], so it's read once.
+    private fun takeSharedPlace(intent: Intent?) {
+        when (intent?.action) {
+            Intent.ACTION_SEND -> {
+                if (intent.type?.startsWith("text/") != true) return
+                // Any CharSequence (styled text comes as one), and no more of it than [SharedPlace.MAX_SHARED],
+                // so a huge share is never held, nor saved in a recreation's state.
+                val text = SharedPlace.bounded(intent.getCharSequenceExtra(Intent.EXTRA_TEXT))
+                val subject = SharedPlace.bounded(intent.getCharSequenceExtra(Intent.EXTRA_SUBJECT))
+                intent.removeExtra(Intent.EXTRA_TEXT)
+                intent.removeExtra(Intent.EXTRA_SUBJECT)
+                sharedPlaceAsked.value = SharedIn(text = text, subject = subject)
+            }
+            Intent.ACTION_VIEW -> {
+                val geo = intent.data?.takeIf { it.scheme.equals("geo", ignoreCase = true) } ?: return
+                intent.data = null
+                sharedPlaceAsked.value = SharedIn(geo = SharedPlace.bounded(geo.toString()))
+            }
+        }
     }
 
     // Takes a launcher shortcut's place off [intent], so it's routed to once.
@@ -620,9 +660,18 @@ class MainActivity : ComponentActivity() {
             UsageEvents.log(UsageEvent.Opened(openedFrom(intent)))
             takeOpenOnTheWay(intent)
             takeRouteToPlace(intent)
+            takeSharedPlace(intent)
         } else {
             // A shortcut's trip still waiting on the places when the screen was recreated (a rotation).
             routeToPlaceAsked.value = savedInstanceState.getString(PENDING_PLACE_ID)
+            // A share likewise, read or not.
+            val sharedText = savedInstanceState.getString(PENDING_SHARED_TEXT)
+            val sharedSubject = savedInstanceState.getString(PENDING_SHARED_SUBJECT)
+            val sharedGeo = savedInstanceState.getString(PENDING_SHARED_GEO)
+            if (savedInstanceState.getBoolean(PENDING_SHARED)) {
+                sharedPlaceAsked.value = SharedIn(sharedText, sharedSubject, sharedGeo)
+            }
+            toQueryAsked.value = savedInstanceState.getString(PENDING_TO_QUERY)
         }
         // The launcher's long-press shortcuts follow the saved places (SPEC *Launcher shortcuts*):
         // published off the main thread on each change. A place list that can't be read leaves the
@@ -1409,6 +1458,77 @@ class MainActivity : ComponentActivity() {
                     }
                     routeToPlace(TripDestination.Place(place.coordinate, favoriteRouteName(place)))
                     PlaceShortcuts.reportUsed(applicationContext, placeId, warn = ::logStarWarning)
+                }
+                // A place shared in or opened with StopDash (SPEC *Sharing a place in*): read off the main
+                // thread, as shared text can be any length. A point plans the trip to it, as a favorite
+                // place's chip does; a name or an address opens To… searching it, on the device; nothing
+                // to go on says so.
+                val sharedPlace by sharedPlaceAsked.collectAsStateWithLifecycle()
+                LaunchedEffect(sharedPlace) {
+                    val shared = sharedPlace ?: return@LaunchedEffect
+                    val ask = readSharedIn(shared)
+                    sharedPlaceAsked.value = null
+                    // A share into the app already open lands on the near-me list, as a fresh start would: whatever
+                    // was open over it (Settings, Licenses, Lines…, a station, the trip on the way's screen, a stop's
+                    // details, a dialog) is closed, or the trip or search it opens would stay hidden under it (Codex on #800).
+                    // The trip on the way itself goes on; only its screen closes.
+                    if (ask != null) {
+                        // The dialogs drawn over everything too: the location gate's About, the bug report's consent.
+                        gateAboutOpen = false
+                        bugReportConsent.open = false
+                        licensesOpen = false
+                        settingsOpen = false
+                        favoritePlacesOpen = false
+                        favoriteJourneysOpen = false
+                        placeToAdd = null
+                        placesFromStop = false
+                        placesFromStation = false
+                        onTheWayOpen = false
+                        if (linesPresence.isOpen) closeLines(null)
+                        if (stationSearchOpen || openStationId != null || originChange != null) {
+                            ViewModelProvider(this@MainActivity)["station-stores", NearbyDeparturesStores::class.java].clearAll()
+                            if (!clearFromSearch()) stationSearchReset = true
+                        }
+                        stationSearchOpen = false
+                        openStationId = null
+                        openStationName = ""
+                        openStationLead = null
+                        stationTo = ToChoice.NONE
+                        originChange = null
+                        replanning = false
+                        replanningHere = false
+                        departuresStationId = null
+                        departuresStationName = ""
+                        routeStopSaveable.removeState(routeStopSession)
+                        routeStopTrail = null
+                        routeStopOpened = null
+                    }
+                    when (ask) {
+                        null -> Toast.makeText(applicationContext, R.string.shared_place_unreadable, Toast.LENGTH_SHORT).show()
+                        is SharedPlace.Ask.Point -> {
+                            // The trip's To… opens fresh, as the shared search's does: no query left from before,
+                            // and no earlier share's text still waiting to go into it (Codex on #800).
+                            toQueryAsked.value = null
+                            shownModels().toSearch?.clear()
+                            routeToPlace(TripDestination.Place(ask.coordinate, ask.label ?: getString(R.string.shared_place_name)))
+                        }
+                        is SharedPlace.Ask.Search -> {
+                            // As To… from the near-me list, which a search needs to plan from here.
+                            if (!locationAllowed.value) {
+                                Toast.makeText(applicationContext, R.string.route_needs_location, Toast.LENGTH_SHORT).show()
+                                return@LaunchedEffect
+                            }
+                            listStores.clearAll()
+                            hereFavorite = null
+                            hereToId = null
+                            // Over a fresh To…, as a point's trip gets: no dialog left from before (a Recent removal
+                            // being asked about) sits over the shared search (Codex on #800).
+                            shownModels().toSearch?.clear()
+                            toQueryAsked.value = ask.query
+                            herePicking = true
+                            hereTripOpen = true
+                        }
+                    }
                 }
                 // Whether "get off soon" can alert, checked again on every return (the user may have
                 // changed it in Settings); asked for on Start, the one time an alert is wanted.
@@ -3966,6 +4086,7 @@ class MainActivity : ComponentActivity() {
 
     internal class ShownModels : ViewModel() {
         var fromSearch: StationSearchViewModel? = null
+        var toSearch: StationSearchViewModel? = null
     }
 
     private fun shownModels(): ShownModels = ViewModelProvider(this)["shown-models", ShownModels::class.java]
@@ -4660,6 +4781,8 @@ class MainActivity : ComponentActivity() {
                 }
             },
         )
+        // Reachable from a share that routes a point, which clears it ([SharedPlace.Ask.Point]).
+        SideEffect { shownModels().toSearch = search }
         // Same-named stops and places nearer where this trip starts list first (maintainer, 2026-10-12):
         // the rider, or the From… station's center.
         val rankFrom = here ?: fromCenter
@@ -4711,44 +4834,56 @@ class MainActivity : ComponentActivity() {
             val state by search.state.collectByIdentityWithLifecycle()
             LaunchedEffect(Unit) { search.refreshYours() }
             ReportScreen(UsageEvent.Screen.TRIP_TO)
-            StationSearchScreen(
-                state = state,
-                onQueryChange = search::onQueryChange,
-                onAskRemoveRecent = search::askRemoveRecent,
-                onCancelRemoveRecent = search::cancelRemoveRecent,
-                onRemoveRecent = search::onRemoveRecent,
-                positionOf = search::positionOf,
-                onOpenStation = { match ->
-                    toStores.clearAll()
-                    search.onOpened(match)
-                    search.clear()
-                    onPickTo(match)
-                },
-                onBack = {
-                    search.clear()
-                    if (toId == null && favorite == null) close() else onClosePicker()
-                },
-                hint = stringResource(R.string.station_search_to_hint),
-                // Tapping a favorite place routes the trip to its coordinate: drop any prior To…
-                // stores, forget the search, and hand the destination up (which sets the trip's
-                // favorite, so the branch above falls through to the trip).
-                onOpenPlace = onOpenPlace?.let { route ->
-                    { place ->
+            // A shared place's name (SPEC *Sharing a place in*) goes in as if typed. The field takes its
+            // text once, as it's first shown, so it's shown again with the query in it.
+            val sharedQuery by toQueryAsked.collectAsStateWithLifecycle()
+            var fieldSeed by rememberSaveable { mutableIntStateOf(0) }
+            LaunchedEffect(sharedQuery) {
+                val query = sharedQuery ?: return@LaunchedEffect
+                search.onQueryChange(query)
+                toQueryAsked.value = null
+                fieldSeed++
+            }
+            key(fieldSeed) {
+                StationSearchScreen(
+                    state = state,
+                    onQueryChange = search::onQueryChange,
+                    onAskRemoveRecent = search::askRemoveRecent,
+                    onCancelRemoveRecent = search::cancelRemoveRecent,
+                    onRemoveRecent = search::onRemoveRecent,
+                    positionOf = search::positionOf,
+                    onOpenStation = { match ->
                         toStores.clearAll()
+                        search.onOpened(match)
                         search.clear()
-                        route(place)
-                    }
-                },
-                onPlacePicked = search::onPlaceOpened,
-                // Re-reads the saved places for the Retry when their read failed (offered only where the
-                // picker shows them).
-                onRetryPlaces = onOpenPlace?.let { { search.refreshYours() } },
-                onSearchOutside = search::searchOutside,
-                onEditPlaces = onEditPlaces,
-                fromStation = fromName,
-                // The destination search is kept (above): it's the start that changes.
-                onChangeFrom = onChangeFrom,
-            )
+                        onPickTo(match)
+                    },
+                    onBack = {
+                        search.clear()
+                        if (toId == null && favorite == null) close() else onClosePicker()
+                    },
+                    hint = stringResource(R.string.station_search_to_hint),
+                    // Tapping a favorite place routes the trip to its coordinate: drop any prior To…
+                    // stores, forget the search, and hand the destination up (which sets the trip's
+                    // favorite, so the branch above falls through to the trip).
+                    onOpenPlace = onOpenPlace?.let { route ->
+                        { place ->
+                            toStores.clearAll()
+                            search.clear()
+                            route(place)
+                        }
+                    },
+                    onPlacePicked = search::onPlaceOpened,
+                    // Re-reads the saved places for the Retry when their read failed (offered only where the
+                    // picker shows them).
+                    onRetryPlaces = onOpenPlace?.let { { search.refreshYours() } },
+                    onSearchOutside = search::searchOutside,
+                    onEditPlaces = onEditPlaces,
+                    fromStation = fromName,
+                    // The destination search is kept (above): it's the start that changes.
+                    onChangeFrom = onChangeFrom,
+                )
+            }
             return
         }
         val title = if (fromName == null) {
@@ -5325,6 +5460,11 @@ class MainActivity : ComponentActivity() {
     companion object {
         // A launcher shortcut's place still to route to, kept across a recreation.
         private const val PENDING_PLACE_ID = "pending_shortcut_place_id"
+        private const val PENDING_SHARED = "pending_shared"
+        private const val PENDING_SHARED_TEXT = "pending_shared_text"
+        private const val PENDING_SHARED_SUBJECT = "pending_shared_subject"
+        private const val PENDING_SHARED_GEO = "pending_shared_geo"
+        private const val PENDING_TO_QUERY = "pending_to_query"
 
         // FINE first so the runtime dialog leads with precise; COARSE alongside so the dialog
         // offers the approximate choice and an approximate grant still finds stops.

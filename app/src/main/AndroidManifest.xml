@@ -68,6 +68,21 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- A place shared from another app (Google Maps' Share): its name is searched as To…
+                 (SPEC *Sharing a place in*). Text only: the shared text goes only where typed text would,
+                 and the link that comes with it is never opened or sent. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <!-- "Open with" for a geo: link: a point plans the trip to it, an address is searched. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="geo" />
+            </intent-filter>
         </activity>
 
         <!-- The home-screen (and, where the OS allows, lock-screen) widget. Glance's receiver
