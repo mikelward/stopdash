@@ -1336,6 +1336,17 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   search the bundled stations, bus stops and places only, with no TfL stop search or
                   Journey Planner lookup. Bus rows carry `stops.tsv`'s single-stop ids, the ones
                   `/StopPoint/Search` returned, so a bundled row opens the same page. Follow-ups:
+                - [ ] **Commuter-belt stations TfL's route data cuts short**: a station counts when one
+                      of its routes calls in London (maintainer, 2026-10-12: direct routes only), but TfL's
+                      route sequences end some through trains early, Great Northern's King's Lynn trains at
+                      Cambridge, so Ely and Waterbeach are left out though they have direct trains to King's
+                      Cross. Fill the gap from another timetable source, or a short list of known through
+                      services.
+                - [ ] **Keep a stop's lines when one refresh loses them**: TfL's paged bus listing once
+                      came back with six stops of one name stripped of every line, which drops them from
+                      name search (a bus row needs a line), and the refresh committed it. Make
+                      `build_stops.py` refuse, or keep the previous lines for, a stop that suddenly loses all
+                      of them.
                 - [ ] **Drop the unused TfL stop search**: `searchStations` and its DTOs and tests, now
                       that nothing calls it. `searchPlaces`/`resolvePostcode` stay: places outside London
                       use them.
@@ -1416,9 +1427,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               - [ ] **Station prominence** (maintainer, 2026-10-12): equal matches put a station before a
                   bus stop, but every station counts the same. Options: rank by the number of lines or
                   modes (in the index already), or by Wikidata coverage as places are.
-              - [ ] **Rail stations outside London** (maintainer, 2026-10-12): bundle the National Rail
+              - [x] **Rail stations outside London** (maintainer, 2026-10-12): bundle the National Rail
                   stations beyond London within the app's London catchment (every Thameslink station,
-                  Reading and the like), stations only: no bus stops or places there.
+                  Reading and the like), stations only: no bus stops or places there. Done: every
+                  station within 120 km of Charing Cross on a route that calls in London (direct routes
+                  only, maintainer 2026-10-12).
               - [ ] **Results list jumping** (maintainer, 2026-10-12): the To… list was seen to jump,
                   either as later answers arrived or when the keyboard hid. Reproduce and find which.
               - [ ] **Flaky trip-screen test**: `TripScreenScreenshotTest.a_line_page_stays_open_while_the_page_waits_for_its_frame`
