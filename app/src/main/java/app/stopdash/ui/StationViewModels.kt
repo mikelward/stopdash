@@ -144,7 +144,7 @@ class StationSearchViewModel(
         // are none (SPEC principle 2). A discarded corrupt file reads as genuinely empty, not failed.
         val favoritePlacesFailed: Boolean = false,
         val yoursRead: Boolean = false,
-        // Each starred and Recent stop's postcode district ("EC4M"), by [StationMatch.key], as the
+        // Each starred and Recent row's postcode district ("EC4M"), by [SearchEntry.key], as the
         // typed results' [Result.Matches.areas] are; filled in once the place index is read.
         val yourAreas: Map<String, String> = emptyMap(),
         // TfL's places for the query, listed under the bundled rows ([OutsideLondon]).
@@ -163,9 +163,9 @@ class StationSearchViewModel(
             // The rows in the order shown. A search only ever appends to it, so a row never moves under
             // a finger about to tap it (maintainer, 2026-09-28); stops then places by default.
             val entries: List<SearchEntry> = matches.map(SearchEntry::Stop) + places.map(SearchEntry::Place),
-            // Each stop row's postcode district ("EC4M"), by [StationMatch.key], so same-named stops
-            // read apart (maintainer, 2026-10-11). A row without one (not yet worked out, or no
-            // postcode near it) shows none.
+            // Each row's postcode district ("EC4M"), by [SearchEntry.key], so same-named stops read
+            // apart (maintainer, 2026-10-11) and a place reads as near the stops beside it. A row
+            // without one (not yet worked out, no postcode near it, or a postcode) shows none.
             val areas: Map<String, String> = emptyMap(),
         ) : Result
         /** Nothing bundled matches. */
@@ -540,10 +540,15 @@ class StationSearchViewModel(
                     if (placesListed) return@withLock
                     placesListed = true
                     val before = shown
-                    shown = withContext(compute) { SearchResults.appended(before, trimmed, emptyList(), places) }
+                    val (entries, placeAreas) = withContext(compute) {
+                        val entries = SearchResults.appended(before, trimmed, emptyList(), places)
+                        // The places' districts go up with them, so a row doesn't change once shown.
+                        entries to placeDistrictsOf(entries, placeIndex.await())
+                    }
+                    shown = entries
                     entriesFor = trimmed
                     _state.update {
-                        val areas = (it.result as? Result.Matches)?.areas.orEmpty()
+                        val areas = (it.result as? Result.Matches)?.areas.orEmpty() + placeAreas
                         it.copy(result = Result.Matches(stopsShown, places = places, entries = shown, areas = areas))
                     }
                 }
@@ -662,15 +667,29 @@ class StationSearchViewModel(
         _state.update { it.copy(outside = outcome) }
     }
 
-    // Each stop row's postcode district among [entries]; none until the place index is read. Called on
-    // [compute].
+    // Each row's postcode district among [entries], stops and places alike; none until the place index
+    // is read. Called on [compute].
     @androidx.annotation.WorkerThread
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private fun areasOf(entries: List<SearchEntry>, stations: StationIndex): Map<String, String> {
         val places = placeIndex.takeIf { it.isCompleted }?.getCompleted() ?: return emptyMap()
         // The bus stops, once read, place a saved stop known only by its stop area ("490G…").
         val buses = busStops.takeIf { it.isCompleted }?.getCompleted()
-        return districtsOf(entries.mapNotNull { (it as? SearchEntry.Stop)?.match }, stations, buses, places)
+        return districtsOf(entries.mapNotNull { (it as? SearchEntry.Stop)?.match }, stations, buses, places) +
+            placeDistrictsOf(entries, places)
+    }
+
+    // Each place row's postcode district among [entries], by [SearchEntry.key]. A postcode's own row
+    // already reads as its district, so it gets none. Called on [compute].
+    @androidx.annotation.WorkerThread
+    private fun placeDistrictsOf(entries: List<SearchEntry>, places: PlaceIndex): Map<String, String> {
+        if (places.size == 0) return emptyMap()
+        return buildMap {
+            for (entry in entries) {
+                if (entry !is SearchEntry.Place || entry.hit.kind == PlaceKind.POSTCODE) continue
+                places.districtNear(entry.hit.coordinate.latitude, entry.hit.coordinate.longitude)?.let { put(entry.key, it) }
+            }
+        }
     }
 
     // Each of [matches]' postcode district, from the nearest bundled postcode to where the stop is: its
@@ -688,7 +707,7 @@ class StationSearchViewModel(
         }
     }
 
-    // The starred and Recent stops' districts, once the place index is read, published if [generation]
+    // The starred and Recent rows' districts, once the place index is read, published if [generation]
     // is still the latest read: apart from the read itself, so neither the list nor a search waits on it.
     private fun readYourAreas(read: YourStops, generation: Int) {
         viewModelScope.launch {
@@ -698,7 +717,7 @@ class StationSearchViewModel(
             val buses = busStops.await()
             val areas = withContext(compute) {
                 val stops = read.favorites + read.recentPicks.mapNotNull { (it as? SearchEntry.Stop)?.match }
-                districtsOf(stops, stations, buses, places)
+                districtsOf(stops, stations, buses, places) + placeDistrictsOf(read.recentPicks, places)
             }
             if (generation == yoursGeneration) _state.update { it.copy(yourAreas = areas) }
         }

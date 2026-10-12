@@ -326,6 +326,7 @@ fun StationSearchScreen(
                                 is SearchEntry.Place -> PlaceHitRow(
                                     entry.hit,
                                     onClick = { openPlaceHit(entry.hit, onPlacePicked, onPlace) },
+                                    area = result.areas[entry.key],
                                 )
                             }
                             HorizontalDivider()
@@ -391,7 +392,7 @@ private fun YourStopsList(
     // Space above the chips: none right under the From/To bar, so they sit close to the To field
     // they serve.
     chipsTop: Dp = 8.dp,
-    // Each stop's postcode district, by [StationMatch.key] ([StationSearchViewModel.State.yourAreas]).
+    // Each row's postcode district, by [SearchEntry.key] ([StationSearchViewModel.State.yourAreas]).
     areas: Map<String, String> = emptyMap(),
 ) {
     val listState = rememberLazyListState()
@@ -474,6 +475,7 @@ private fun YourStopsList(
                         entry.hit,
                         onClick = { openPlaceHit(entry.hit, onPlacePicked, onOpenPlace ?: onStartFromPlace) },
                         onLongClick = onLongClick,
+                        area = areas[entry.key],
                     )
                 }
                 HorizontalDivider()
@@ -636,14 +638,17 @@ private fun OutsideStatusRow(outside: OutsideLondon, onSearch: () -> Unit) {
 /** A place in the search results: its name, and a Place/Street/Postcode tag in the right column (where
  *  a stop shows its modes) so a place reads apart from a stop, on one line at [MatchRow]'s density. */
 @Composable
-internal fun PlaceHitRow(place: PlaceHit, onClick: () -> Unit, onLongClick: (() -> Unit)? = null) {
-    val tag = stringResource(
+internal fun PlaceHitRow(place: PlaceHit, onClick: () -> Unit, onLongClick: (() -> Unit)? = null, area: String? = null) {
+    val kind = stringResource(
         when (place.kind) {
             PlaceKind.POSTCODE -> R.string.station_search_kind_postcode
             PlaceKind.PLACE -> R.string.station_search_kind_place
             PlaceKind.STREET -> R.string.station_search_kind_street
         },
     )
+    // The place's postcode district leads its kind ("EC4M · Place"), as a stop's leads its modes, so a
+    // place and the stops beside it read as the same spot.
+    val tag = listOfNotNull(area, kind).joinToString(" · ")
     val removeLabel = stringResource(R.string.station_search_remove_recent_action)
     Row(
         modifier = Modifier
