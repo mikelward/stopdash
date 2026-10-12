@@ -108,6 +108,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -3145,41 +3146,37 @@ class TripScreenScreenshotTest {
     fun a_line_page_stays_open_while_the_page_waits_for_its_frame() {
         // A re-locate starts with the worker held: the last frame can't stand in, but the line page open
         // isn't judged gone without one, and shows again once the new frame is in (Codex, #529).
-        val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
-        val worker = threads.asCoroutineDispatcher()
-        val gate = CountDownLatch(1)
+        // The worker is a test dispatcher the test runs by hand, so holding it is not running it, and no
+        // real thread races Compose's measure pass.
+        val worker = StandardTestDispatcher()
+        fun settle() = repeat(SETTLE_PASSES) {
+            worker.scheduler.advanceUntilIdle()
+            composeRule.waitForIdle()
+        }
         var relocating by mutableStateOf(false)
-        try {
-            composeRule.setContent {
-                StopDashTheme(dynamicColor = false) {
-                    CompositionLocalProvider(LocalWorker provides worker) {
-                        TripScreen(
-                            title = "To Canary Wharf", state = planned, now = now, access = Duration.ofMinutes(2),
-                            routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {}, relocating = relocating,
-                        )
-                    }
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalWorker provides worker) {
+                    TripScreen(
+                        title = "To Canary Wharf", state = planned, now = now, access = Duration.ofMinutes(2),
+                        routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {}, relocating = relocating,
+                    )
                 }
             }
-            composeRule.waitUntil(timeoutMillis = 5_000) {
-                composeRule.onAllNodesWithText("27 min · ~08:29").fetchSemanticsNodes().isNotEmpty()
-            }
-            composeRule.onNodeWithText("27 min · ~08:29").performClick()
-            composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodesWithText("Stratford").fetchSemanticsNodes().isNotEmpty() }
-            composeRule.onNodeWithText("Stratford").performClick()
-            composeRule.waitForIdle()
-            composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(0)
-            threads.execute { gate.await() }
-            relocating = true
-            composeRule.waitForIdle()
-            gate.countDown()
-            composeRule.waitUntil(timeoutMillis = 5_000) {
-                composeRule.onAllNodesWithText("Minor Delays", substring = true).fetchSemanticsNodes().isNotEmpty()
-            }
-            composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(0)
-        } finally {
-            gate.countDown()
-            worker.close()
         }
+        settle()
+        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        settle()
+        composeRule.onNodeWithText("Stratford").performClick()
+        settle()
+        composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(0)
+        // Held: the re-locate's frame is queued on the worker and not run.
+        relocating = true
+        composeRule.waitForIdle()
+        composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(0)
+        settle()
+        composeRule.onAllNodesWithText("Minor Delays", substring = true).onFirst().assertExists()
+        composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(0)
     }
 
     @Test
@@ -5799,3 +5796,7 @@ class TripScreenScreenshotTest {
         System.getProperty("roborazzi.test.record") == "true" ||
             System.getProperty("roborazzi.test.verify") == "true"
 }
+
+// How many rounds of running the test worker and letting Compose settle a page takes: each frame the
+// worker hands back can queue the next (a line page's frame waits on the trip's).
+private const val SETTLE_PASSES = 4
