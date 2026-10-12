@@ -14,6 +14,8 @@ import app.stopdash.domain.TripFixes
 import app.stopdash.domain.TripRoute
 import java.time.Duration
 import java.time.Instant
+import java.util.concurrent.CountDownLatch
+import kotlin.concurrent.thread
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
@@ -301,6 +303,37 @@ class OnTheWayNotificationTest {
         assertEquals(2, stops)
         assertEquals(1, failed)
         assertEquals(1, said.size)
+    }
+
+    @Test
+    fun `a showing that comes to post after the trip's notification is taken down is dropped`() {
+        val events = mutableListOf<String>()
+        val gate = NotificationGate()
+        assertTrue(gate.post { events += "walk" })
+        gate.close { events += "removed" }
+        assertFalse(gate.post { events += "walk again" })
+        assertEquals(listOf("walk", "removed"), events)
+    }
+
+    @Test
+    fun `taking the notification down waits out a showing already posting`() {
+        val events = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val gate = NotificationGate()
+        val posting = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val shower = thread {
+            gate.post {
+                posting.countDown()
+                release.await()
+                events += "posted"
+            }
+        }
+        posting.await()
+        val closer = thread { gate.close { events += "removed" } }
+        release.countDown()
+        shower.join()
+        closer.join()
+        assertEquals(listOf("posted", "removed"), events)
     }
 
     @Test
