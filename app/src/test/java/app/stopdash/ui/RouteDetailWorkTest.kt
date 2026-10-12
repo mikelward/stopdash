@@ -63,10 +63,12 @@ class RouteDetailWorkTest {
             val tapped = runBlocking { routeDetailWork(row, RouteFocus("Brixton", null), RouteTopology.EMPTY, worker) }
             assertEquals(listOf(120L, 360L), tapped.departures.map { it.expectedArrival.epochSecond - now.epochSecond })
             assertEquals(listOf("Brixton"), tapped.destinations)
-            // Whether any train is doubtful is found there too, so the page only walks them to gray one.
-            assertEquals(false, work.doubtful)
+            // Whether any train is grayed is found there too, so the page only walks them to gray one.
+            assertEquals(false, work.unsure)
             val withDoubtful = row.copy(upcoming = row.upcoming.mapIndexed { i, d -> if (i == 2) d.copy(doubtful = true) else d })
-            assertEquals(true, runBlocking { routeDetailWork(withDoubtful, focus = null, RouteTopology.EMPTY, worker) }.doubtful)
+            assertEquals(true, runBlocking { routeDetailWork(withDoubtful, focus = null, RouteTopology.EMPTY, worker) }.unsure)
+            val withSpaced = row.copy(upcoming = row.upcoming.mapIndexed { i, d -> if (i == 2) d.copy(spaced = true) else d })
+            assertEquals(true, runBlocking { routeDetailWork(withSpaced, focus = null, RouteTopology.EMPTY, worker) }.unsure)
         } finally {
             pool.shutdown()
         }

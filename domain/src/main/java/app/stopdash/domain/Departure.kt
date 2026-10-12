@@ -57,6 +57,9 @@ import java.time.Instant
  * [doubtful] marks a tube train predicted too soon behind another of its line at one platform to both be
  * there, which TfL's tracking does when it follows one train twice ([DoubtfulTrains]): the app shows it
  * grayed rather than as a train stopdash stands behind.
+ *
+ * [spaced] marks a tube train shown later than TfL's time, a gap behind the train ahead of it in a
+ * bunched queue ([SpacedTrains]): the time is stopdash's estimate, not TfL's, so it's grayed too.
  */
 data class Departure(
     val lineId: String,
@@ -73,4 +76,8 @@ data class Departure(
     val callingAt: List<CallingPortion>? = null,
     val railServiceId: String = "",
     val doubtful: Boolean = false,
-)
+    val spaced: Boolean = false,
+) {
+    /** Whether the app grays this train's time: one it isn't sure of, [doubtful] or [spaced]. */
+    val unsure: Boolean get() = doubtful || spaced
+}

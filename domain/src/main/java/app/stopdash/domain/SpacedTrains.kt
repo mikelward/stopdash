@@ -15,9 +15,11 @@ import java.time.Instant
  * between trains, so it can't be one number for every line. A line without one is left as TfL gives
  * it until it's measured.
  *
- * A train [DoubtfulTrains] marked is left out: it may not be there at all, so it holds no train back,
- * and it keeps its own time, grayed, rather than being moved into a slot as a train stopdash stands
- * behind. A train TfL still lists after it was due has gone, so it holds no train back either.
+ * Every train moved is marked [Departure.spaced], so the app grays it: its time is stopdash's estimate,
+ * not TfL's (maintainer, 2026-10-12). A train [DoubtfulTrains] marked is spaced like any other, as the
+ * measured case was: it stays grayed either way, and a queue whose copies held no slot would let the
+ * real train behind them through too soon. A train TfL still lists after it was due has gone, so it
+ * holds no train back.
  *
  * Only a numbered platform says two trains queue for one track: a platform TfL names by direction
  * alone, TfL's "Platform Unknown" (which can be either direction), or another mode, is left as it is.
@@ -41,7 +43,7 @@ object SpacedTrains {
         val times = HashMap<Int, Instant>()
         departures.indices.filter { i ->
             val d = departures[i]
-            d.lineId in GAPS && !d.doubtful &&
+            d.lineId in GAPS &&
                 d.mode.ifBlank { lineMode[d.lineId].orEmpty() }.equals("tube", ignoreCase = true) &&
                 PlatformDirection.platformNumber(d.platform).let { it != null && !it.equals("Unknown", ignoreCase = true) } &&
                 !Countdown.hasDeparted(d, now)
@@ -62,7 +64,7 @@ object SpacedTrains {
         if (times.isEmpty()) return Result(departures, emptyList())
         val moved = ArrayList<Pair<Departure, Duration>>()
         val all = departures.mapIndexed { i, d ->
-            times[i]?.let { at -> d.copy(expectedArrival = at).also { moved += it to Duration.between(d.expectedArrival, at) } } ?: d
+            times[i]?.let { at -> d.copy(expectedArrival = at, spaced = true).also { moved += it to Duration.between(d.expectedArrival, at) } } ?: d
         }
         return Result(all, moved)
     }

@@ -462,8 +462,8 @@ class KtorTflClient(
         return result.departures
     }
 
-    // A bunched queue is spaced, after the doubtful ones are marked so none is moved into a slot as a
-    // train stopdash stands behind; how far each moved is logged against what TfL said.
+    // A bunched queue is spaced, after the doubtful ones are marked: that's judged on TfL's own times,
+    // which spacing moves apart. How far each moved is logged against what TfL said.
     @WorkerThread
     private fun withSpacing(stopId: String, departures: List<Departure>): List<Departure> {
         val result = SpacedTrains.space(departures, clock())

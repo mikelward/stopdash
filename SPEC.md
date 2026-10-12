@@ -611,9 +611,12 @@ about two minutes apart. On the lines measured, each train at a numbered platfor
 than its line's gap behind the train ahead, as already moved, so the spacing cascades down the queue;
 the soonest keeps its own time. The gap is measured per line, since it follows the line's own gap
 between trains: **Victoria 90 s, Northern 120 s**, all day for now; every other line shows TfL's
-times until it's measured. A doubtful train (above) is left out: it holds no train back and keeps its
-grayed time, rather than being moved into a slot as a train stopdash stands behind. Each train moved
-is noted in the debug log with how far, so what TfL said can be compared with what the rider saw.
+times until it's measured. A doubtful train (above) is spaced like any other, as in the measured
+case, and stays grayed. **Gray means stopdash isn't sure of a time** (maintainer, 2026-10-12): a train
+moved from TfL's time is grayed too, since its time is stopdash's estimate, and read aloud as "about"
+that many minutes, where a doubtful one is read as maybe not running. At peak most of a bunched
+platform is grayed; off-peak, with trains further apart, little moves. Each train moved is noted in
+the debug log with how far, so what TfL said can be compared with what the rider saw.
 
 **The unit of display is one card per platform or pole** (maintainer, 2026-09-22) — a
 group of same-cluster stops split by platform / stop letter (see below). Each card is

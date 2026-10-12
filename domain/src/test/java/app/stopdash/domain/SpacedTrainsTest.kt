@@ -31,10 +31,10 @@ class SpacedTrainsTest {
         val board = listOf(train(20, "1"), train(40, "2"), train(70, "3"), train(130, "4"), train(150, "5"))
         assertEquals(listOf(20L, 110, 200, 290, 380), secondsOf(board))
         val result = SpacedTrains.space(board, now)
-        // The soonest isn't moved; each other one is, and nothing else about it changes.
+        // The soonest isn't moved; each other one is, marked spaced, and nothing else about it changes.
         assertEquals(listOf("2", "3", "4", "5"), result.moved.map { it.first.vehicleId })
         assertEquals(Duration.ofSeconds(70), result.moved.first().second)
-        assertEquals(board, result.departures.mapIndexed { i, d -> d.copy(expectedArrival = board[i].expectedArrival) })
+        assertEquals(board, result.departures.mapIndexed { i, d -> d.copy(expectedArrival = board[i].expectedArrival, spaced = false) })
     }
 
     @Test
@@ -57,9 +57,18 @@ class SpacedTrainsTest {
     }
 
     @Test
-    fun `a doubtful train holds no train back and keeps its own time`() {
+    fun `a doubtful train is spaced like any other, and stays doubtful`() {
         val board = listOf(train(20, "1"), train(60, "copy", doubtful = true), train(150, "2"))
-        assertEquals(listOf(20L, 60, 150), secondsOf(board))
+        assertEquals(listOf(20L, 110, 200), secondsOf(board))
+        val spaced = SpacedTrains.space(board, now).departures
+        assertEquals(listOf(true, false), spaced.drop(1).map { it.doubtful })
+    }
+
+    @Test
+    fun `a moved train is marked spaced, and one at TfL's own time isn't`() {
+        val spaced = SpacedTrains.space(listOf(train(20, "1"), train(40, "2"), train(300, "3")), now).departures
+        assertEquals(listOf(false, true, false), spaced.map { it.spaced })
+        assertEquals(listOf(false, true, false), spaced.map { it.unsure })
     }
 
     @Test

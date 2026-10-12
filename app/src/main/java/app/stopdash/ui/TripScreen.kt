@@ -2860,11 +2860,13 @@ internal const val SHOWN_SLACK_MINUTES = 1
  * How TalkBack reads a first-leg train: plain when [catchable]; "can't catch" when it leaves before the
  * rider can board at [reachable], whether or not its route is still [checking]; "checking route" for
  * one the rider could reach whose route isn't vouched for yet; "can't catch" otherwise. A catchable
- * train TfL may be tracking twice ([Departure.doubtful]) says it may not be running.
+ * train TfL may be tracking twice ([Departure.doubtful]) says it may not be running, and one shown later
+ * than TfL's time ([Departure.spaced]) that its time is about that.
  */
 @StringRes
 internal fun trainDescription(train: Departure, catchable: Boolean, checking: Boolean, reachable: Instant): Int = when {
     catchable && train.doubtful -> R.string.trip_train_doubtful_description
+    catchable && train.spaced -> R.string.trip_train_spaced_description
     catchable -> R.string.trip_train_description
     checking && !train.expectedArrival.isBefore(reachable) -> R.string.trip_train_checking_description
     else -> R.string.trip_train_unusable_description
@@ -2882,8 +2884,8 @@ internal fun destinationsLadder(names: List<String>): List<String> = listOf(
 ).distinct()
 
 /**
- * "3 · 11 min" in time order, trains the rider can't use grayed, and a doubtful one too
- * ([Departure.doubtful]); "Loading" while the boarding stop's
+ * "3 · 11 min" in time order, trains the rider can't use grayed, and one it isn't sure of too
+ * ([Departure.unsure]); "Loading" while the boarding stop's
  * arrivals haven't been fetched yet ([loading]); "–" with none StopDash can vouch for.
  */
 @Composable
@@ -2895,7 +2897,7 @@ private fun trainTimes(shown: List<Pair<Departure, Boolean>>, now: Instant, load
     shown.forEachIndexed { i, (train, catchable) ->
         if (i > 0) append(" · ")
         val minutes = Countdown.mergedLabel(listOf(train), now).removeSuffix(" min")
-        if (catchable && !train.doubtful) {
+        if (catchable && !train.unsure) {
             append(minutes)
         } else {
             withStyle(SpanStyle(color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.Normal)) { append(minutes) }

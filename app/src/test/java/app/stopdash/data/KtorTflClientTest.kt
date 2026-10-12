@@ -726,7 +726,8 @@ class KtorTflClientTest {
         assertTrue(departures.size > 40)
         val doubtful = departures.filter { it.doubtful }
         assertEquals(9, doubtful.size)
-        assertTrue(doubtful.any { it.vehicleId == "231" && it.expectedArrival == Instant.parse("2026-10-09T12:28:04Z") })
+        // Northern 231, TfL's 12:28:04, is doubtful, and spaced its line's gap behind 216 like any other.
+        assertTrue(doubtful.any { it.vehicleId == "231" && it.spaced && it.expectedArrival.isAfter(Instant.parse("2026-10-09T12:28:04Z")) })
         // Every train is still there.
         val raw = Json { ignoreUnknownKeys = true }.decodeFromString<List<TflArrivalDto>>(body)
         assertEquals(raw.size, departures.size)

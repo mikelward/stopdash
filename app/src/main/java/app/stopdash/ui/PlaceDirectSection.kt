@@ -163,8 +163,8 @@ private fun DirectRow(shown: PlaceDirectViewModel.ShownRow, onOpen: ((PlaceDirec
         Spacer(Modifier.width(8.dp))
         Box(Modifier.heightIn(min = 40.dp), contentAlignment = Alignment.CenterEnd) {
             when {
-                mine == null -> if (shown.doubtful) {
-                    // A doubtful train's time grayed and said so, as a board's row does ([doubtfulTimes]).
+                mine == null -> if (shown.unsure) {
+                    // A grayed train's time said as such, as a board's row does ([doubtfulTimes]).
                     val (text, spoken) = doubtfulTimes(shown.parts)
                     Text(text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.semantics { spoken?.let { contentDescription = it } })
                 } else {

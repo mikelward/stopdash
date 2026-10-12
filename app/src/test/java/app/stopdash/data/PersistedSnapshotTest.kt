@@ -158,6 +158,18 @@ class PersistedSnapshotTest {
     }
 
     @Test
+    fun `a grayed train stays grayed through the round trip`() {
+        val board = listOf(
+            Departure("victoria", "Victoria", "inbound", "Brixton", "Platform 4", now, "tube", doubtful = true),
+            Departure("victoria", "Victoria", "inbound", "Brixton", "Platform 4", now.plusSeconds(90), "tube", spaced = true),
+        )
+        val snapshot = DeparturesSnapshot(stops = listOf(StopArrivals("940GZZLUEUS", "Euston", board, now)), fetchedAt = now)
+        val restored = snapshot.toPersisted().toDomain()!!.stops.single().departures
+        assertEquals(listOf(true, false), restored.map { it.doubtful })
+        assertEquals(listOf(false, true), restored.map { it.spaced })
+    }
+
+    @Test
     fun `the bus pole letter, bearing, and towards survive the round trip`() {
         // They are grouping inputs like clusterId, so a restored snapshot must keep its per-pole
         // "Stop D (towards Farringdon)" / "(Eastbound)" sub-headers instead of collapsing to bare/terminus

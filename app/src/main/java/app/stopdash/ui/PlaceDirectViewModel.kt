@@ -116,11 +116,11 @@ class PlaceDirectViewModel(
         val notice: String? = null,
         val endIds: Set<String> = emptySet(),
         val endKey: String = "",
-        // [times] train by train, worked out with it, so the row grays a doubtful one and says so
+        // [times] train by train, worked out with it, so the row grays one it isn't sure of and says so
         // without walking the departures in composition.
         val parts: List<Countdown.Part> = emptyList(),
-        // Whether any of them is doubtful, so the row checks a flag rather than the list.
-        val doubtful: Boolean = false,
+        // Whether any of them is grayed ([Departure.unsure]), so the row checks a flag rather than the list.
+        val unsure: Boolean = false,
     )
 
     private val _state = MutableStateFlow<State>(State.Checking)
@@ -427,7 +427,7 @@ class PlaceDirectViewModel(
                     val ends = row.reaches.flatMapTo(HashSet()) { listOf(it.id, it.hubId) }.apply { remove("") }
                     ShownRow(
                         row, Countdown.mergedLabel(row.departures, now), status?.description, closureNotice(row, closures.found, now),
-                        ends, ends.sorted().joinToString(","), Countdown.parts(row.departures, now), row.departures.any { it.doubtful },
+                        ends, ends.sorted().joinToString(","), Countdown.parts(row.departures, now), row.departures.any { it.unsure },
                     )
                 },
                 checking = result.pending,

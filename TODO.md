@@ -1596,10 +1596,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               Open: off-peak recordings to check the fraction, whether to cap the cascade to near
               trains, and that it keeps TfL's order (a junction can swap two trains).
               - [x] First step: Victoria at 90 s and Northern at 120 s, all day; other lines as TfL gives
-                    them (maintainer, 2026-10-12). A doubtful train is left out of spacing, so on Victoria,
-                    whose gap matches the doubtful one, it changes nothing yet.
-              - [ ] Whether spacing replaces graying on the spaced lines (the measured case) or only
-                    adds to it — maintainer's call.
+                    them (maintainer, 2026-10-12). Every train is spaced, doubtful ones included, and
+                    any train moved is grayed too: gray means stopdash isn't sure of a time.
+              - [x] A late-night sample (Monday 23:46–00:20, four hubs): trains 4–6 min apart, so 90 s
+                    changes nothing on Victoria and 120 s helps Northern slightly. Not typical off-peak.
               - [ ] Record an evening, a weekend morning and a quiet midday; if the best gap still
                     follows each line's own gap, replace the fixed gaps with a per-line time-of-day
                     table and add the lines the data supports.
