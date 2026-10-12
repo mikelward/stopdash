@@ -605,6 +605,16 @@ counts for nothing. A trip follows, and times its arrival by, a doubtful train o
 listed. Each one marked is noted in the debug log, so what the feed looked like can be compared with
 what the rider saw. Buses, and platforms TfL names by direction alone, are left as they are.
 
+**A bunched queue of tube trains is spaced** (maintainer, 2026-10-12). TfL times each train at a
+platform as if the line ahead were clear, so a queue reads 0 · 0 · 1 · 2 · 2 min for trains that come
+about two minutes apart. On the lines measured, each train at a numbered platform is shown no sooner
+than its line's gap behind the train ahead, as already moved, so the spacing cascades down the queue;
+the soonest keeps its own time. The gap is measured per line, since it follows the line's own gap
+between trains: **Victoria 90 s, Northern 120 s**, all day for now; every other line shows TfL's
+times until it's measured. A doubtful train (above) is left out: it holds no train back and keeps its
+grayed time, rather than being moved into a slot as a train stopdash stands behind. Each train moved
+is noted in the debug log with how far, so what TfL said can be compared with what the rider saw.
+
 **The unit of display is one card per platform or pole** (maintainer, 2026-09-22) — a
 group of same-cluster stops split by platform / stop letter (see below). Each card is
 headed by a **single title-case line** naming the place and that platform/pole, and holds

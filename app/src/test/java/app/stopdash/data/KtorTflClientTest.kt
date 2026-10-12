@@ -765,6 +765,48 @@ class KtorTflClientTest {
     }
 
     @Test
+    fun `a bunched queue is spaced as it's fetched, off the caller's thread`() {
+        // Two Northern trains 100 s apart at one platform: too close for the line, not close enough to be
+        // doubtful. The second comes back 120 s behind the first.
+        val body = """[
+            {"vehicleId":"201","lineId":"northern","lineName":"Northern","platformName":"Southbound - Platform 2",
+             "destinationName":"Morden Underground Station","expectedArrival":"2026-10-12T08:00:30Z","modeName":"tube",
+             "direction":"inbound"},
+            {"vehicleId":"202","lineId":"northern","lineName":"Northern","platformName":"Southbound - Platform 2",
+             "destinationName":"Morden Underground Station","expectedArrival":"2026-10-12T08:02:10Z","modeName":"tube",
+             "direction":"inbound"}
+        ]"""
+        val engine = MockEngine {
+            respond(ByteReadChannel(body), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val loggedOn = app.stopdash.ThreadRecorder()
+        val logged = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val client = KtorTflClient(
+            httpClient = http,
+            baseUrl = "https://tfl.example",
+            clock = { Instant.parse("2026-10-12T08:00:00Z") },
+            logDoubtful = { logged += it; loggedOn.note() },
+        )
+        val caller = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            val callerThread = caller.submit<Thread> { Thread.currentThread() }.get()
+            val departures = kotlinx.coroutines.runBlocking(caller.asCoroutineDispatcher()) { client.arrivals("940GZZLUEUS") }
+            assertEquals(
+                listOf(Instant.parse("2026-10-12T08:00:30Z"), Instant.parse("2026-10-12T08:02:30Z")),
+                departures.map { it.expectedArrival }.sorted(),
+            )
+            assertEquals(listOf("spaced at 940GZZLUEUS: northern P2 202 +20s"), logged.toList())
+            assertTrue(loggedOn.threads().none { it == callerThread.name.substringBefore(" @") })
+        } finally {
+            caller.shutdown()
+        }
+    }
+
+    @Test
     fun `retains TfL direction, defaulting to empty when the field is absent`() = runTest {
         val departures = client(arrivalsJson).arrivals("940GZZLUVIC")
 

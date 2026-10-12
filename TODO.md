@@ -1595,6 +1595,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               (maintainer's call: per line, empirical or by frequency). Spacing does little where trains aren't bunched (Piccadilly, sub-surface).
               Open: off-peak recordings to check the fraction, whether to cap the cascade to near
               trains, and that it keeps TfL's order (a junction can swap two trains).
+              - [x] First step: Victoria at 90 s and Northern at 120 s, all day; other lines as TfL gives
+                    them (maintainer, 2026-10-12). A doubtful train is left out of spacing, so on Victoria,
+                    whose gap matches the doubtful one, it changes nothing yet.
+              - [ ] Whether spacing replaces graying on the spaced lines (the measured case) or only
+                    adds to it — maintainer's call.
+              - [ ] Record an evening, a weekend morning and a quiet midday; if the best gap still
+                    follows each line's own gap, replace the fixed gaps with a per-line time-of-day
+                    table and add the lines the data supports.
         - [ ] **Tell a doubtful train from a real one** (maintainer, 2026-10-11): keep collecting
               reports (each mark is logged with the feed's train ids) against what the station display
               showed, and hide a doubtful train outright only once a rule separates the two.

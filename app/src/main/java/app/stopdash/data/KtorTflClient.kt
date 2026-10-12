@@ -38,6 +38,7 @@ import app.stopdash.domain.Turnback
 import androidx.annotation.WorkerThread
 import app.stopdash.domain.PlatformDirection
 import app.stopdash.domain.DoubtfulTrains
+import app.stopdash.domain.SpacedTrains
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.VehicleCall
@@ -439,7 +440,7 @@ class KtorTflClient(
                 // Already on the decode dispatcher; the hop names it here, where lint can see it.
                 .let {
                     withContext(decodeDispatcher) {
-                        withDoubtfulMarked(stopId, Turnback.relabel(it, stopId, stationIndex()?.terminusEnds(stopId).orEmpty()))
+                        withSpacing(stopId, withDoubtfulMarked(stopId, Turnback.relabel(it, stopId, stationIndex()?.terminusEnds(stopId).orEmpty())))
                     }
                 }
                 .let(DepartureRows::inferDirections)
@@ -455,6 +456,21 @@ class KtorTflClient(
                 "doubtful at $stopId: " + result.marked.joinToString { d ->
                     "${d.lineId} P${PlatformDirection.platformNumber(d.platform)} ${d.vehicleId.ifBlank { "no id" }} " +
                         "${d.destination}${d.branch?.let { " via $it" }.orEmpty()}"
+                },
+            )
+        }
+        return result.departures
+    }
+
+    // A bunched queue is spaced, after the doubtful ones are marked so none is moved into a slot as a
+    // train stopdash stands behind; how far each moved is logged against what TfL said.
+    @WorkerThread
+    private fun withSpacing(stopId: String, departures: List<Departure>): List<Departure> {
+        val result = SpacedTrains.space(departures, clock())
+        if (result.moved.isNotEmpty()) {
+            logDoubtful(
+                "spaced at $stopId: " + result.moved.joinToString { (d, by) ->
+                    "${d.lineId} P${PlatformDirection.platformNumber(d.platform)} ${d.vehicleId.ifBlank { "no id" }} +${by.seconds}s"
                 },
             )
         }
