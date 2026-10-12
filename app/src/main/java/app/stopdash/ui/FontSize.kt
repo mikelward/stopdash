@@ -1,6 +1,7 @@
 package app.stopdash.ui
 
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateZoom
@@ -33,6 +34,7 @@ import app.stopdash.domain.pinchPassedSlop
 import app.stopdash.telemetry.UsageEvents
 import app.stopdash.telemetry.UsageProperties
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -40,6 +42,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -55,7 +58,8 @@ import kotlinx.coroutines.launch
  */
 internal object FontSizeSetting {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // Replaced only by [resetForTest], so a test can run the read and the writes on its own dispatcher.
+    private var scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var settings: AppSettings = AppSettings.NONE
     private var collectJob: Job? = null
 
@@ -92,8 +96,9 @@ internal object FontSizeSetting {
     private val shown = MutableStateFlow<Float?>(null)
 
     /**
-     * Begins reading the stored size into [current], off the main thread, and keeps it live for
-     * later writes. Idempotent — a second call is ignored — so it can be called from
+     * Begins reading the stored size into [current], off the main thread, once: every later
+     * change comes through this object, which already holds it. Idempotent — a second call is
+     * ignored — so it can be called from
      * `MainActivity.onCreate` without stacking collectors. Narrows the first-frame window rather
      * than closing it: a screen composed in the very first instant can still draw at the default
      * and resize a frame later, which is cheaper than holding the frame back on a disk read.
@@ -127,10 +132,19 @@ internal object FontSizeSetting {
         }
         if (collectJob != null) return
         collectJob = scope.launch {
-            appSettings.fontSize().collect {
-                current = it
+            // Read once. Only this object writes the store, so after this read nothing in it is
+            // newer than [current]: reading it again could only bring back a value the rider has
+            // since changed, whose write is queued or failed.
+            val stored = appSettings.fontSize().first()
+            synchronized(lock) {
+                // A size or switch the rider set before the read landed is newer than what it
+                // found: keep it, and take only the rest from the store.
+                current = stored.copy(
+                    scale = if (scaleSetEarly) current.scale else stored.scale,
+                    pinchEnabled = if (pinchSetEarly) current.pinchEnabled else stored.pinchEnabled,
+                )
+                shown.value = clampFontScale(current.scale)
                 loaded = true
-                shown.value = clampFontScale(it.scale)
             }
         }
     }
@@ -138,6 +152,31 @@ internal object FontSizeSetting {
     // Whether the stored size has been read into [current], so it's the rider's own.
     @Volatile
     private var loaded = false
+
+    // Guards [current], [loaded] and these flags between the store's read and a change the rider
+    // makes at the same moment, so neither undoes the other.
+    private val lock = Any()
+    private var scaleSetEarly = false
+    private var pinchSetEarly = false
+
+    /** Back to before [warm], for tests that warm it with their own settings, its work on [dispatcher]. */
+    @VisibleForTesting
+    internal fun resetForTest(dispatcher: CoroutineDispatcher = Dispatchers.Default) {
+        collectJob?.cancel()
+        collectJob = null
+        writeJob?.cancel()
+        writeJob = null
+        while (writes.tryReceive().isSuccess) Unit
+        settings = AppSettings.NONE
+        scope = CoroutineScope(SupervisorJob() + dispatcher)
+        synchronized(lock) {
+            current = FontSizeSettings()
+            shown.value = null
+            loaded = false
+            scaleSetEarly = false
+            pinchSetEarly = false
+        }
+    }
 
     /**
      * The text size the app is drawn at, once the stored one has been read, else null: a change that
@@ -148,17 +187,25 @@ internal object FontSizeSetting {
     /** The size a drag or a pinch settled on: shown at once, persisted in order in the background. */
     fun setScale(scale: Float) {
         val clamped = clampFontScale(scale)
-        val before = current.scale
-        current = current.copy(scale = clamped)
-        shown.value = clamped
+        val before: Float
+        synchronized(lock) {
+            before = current.scale
+            current = current.copy(scale = clamped)
+            shown.value = clamped
+            if (!loaded) scaleSetEarly = true
+        }
         writes.trySend(Write.Scale(clamped))
         if (clamped != before) UsageEvents.log(UsageEvent.SettingChanged.textSize(clamped))
     }
 
     /** The "Pinch to resize text" switch was set to [enabled]. */
     fun setPinchEnabled(enabled: Boolean) {
-        val before = current.pinchEnabled
-        current = current.copy(pinchEnabled = enabled)
+        val before: Boolean
+        synchronized(lock) {
+            before = current.pinchEnabled
+            current = current.copy(pinchEnabled = enabled)
+            if (!loaded) pinchSetEarly = true
+        }
         writes.trySend(Write.Pinch(enabled))
         if (enabled != before) UsageEvents.log(UsageEvent.SettingChanged.pinchToResize(enabled))
     }
