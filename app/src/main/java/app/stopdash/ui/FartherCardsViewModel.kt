@@ -232,9 +232,13 @@ class FartherCardsViewModel(
         for (model in models.values) model.refresh()
     }
 
-    /** Makes every opened card's next refresh ask for each stop afresh, as a pull does the list's. */
+    /**
+     * Makes every opened card's next refresh ask for each stop afresh, as a pull does the list's. Their
+     * lines hold to the list's own pull, recorded once for the near-me surface they share: one recorded
+     * again here would turn away an answer asked for between the two (Codex on #783).
+     */
     fun forceNextFetch() {
-        for (model in models.values) model.forceNextFetch()
+        for (model in models.values) model.forceNextFetch(lines = false)
     }
 
     override fun onCleared() {

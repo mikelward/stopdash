@@ -1314,6 +1314,133 @@ class MainViewModelTest {
         assertFalse((vm.state.value as DeparturesUiState.Loaded).disruptionUnknown)
     }
 
+    // A pull on the list asks its lines again, as a station's page and a trip do (SPEC *Freshness → Shared
+    // line status*): an answer had before the pull doesn't stand however recent, one had after it does.
+    @Test
+    fun `a pull asks again for a line answered before it, not one answered after`() = runTest(dispatcher) {
+        val stops = listOf(StopRef("A", "A", listOf(LineRef("victoria", "Victoria", "tube"))))
+        val client = LinedClient("none", CompletableDeferred(Unit))
+        val shared = LineStatusCache()
+        var t = now
+        val vm = MainViewModel(client, stops, clock = { t }, io = dispatcher, lineStatusReuse = LINE_STATUS_REUSE, sharedLines = shared)
+        advanceUntilIdle()
+        assertEquals(1, client.asked.count { "victoria" in it })
+        // Ten seconds on: within the reuse window, a plain refresh asks nothing.
+        t = now.plusSeconds(10)
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(1, client.asked.count { "victoria" in it })
+        // A pull asks again.
+        vm.forceNextFetch()
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(2, client.asked.count { "victoria" in it })
+        // Another pull, but another screen answered since: that answer stands.
+        t = now.plusSeconds(20)
+        vm.forceNextFetch()
+        shared["victoria"] = LineStatusCache.Held.Verdict(SteadyClock.stamp(t), LineStatus("victoria", 6, "Severe Delays"))
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(client.asked.toString(), 2, client.asked.count { "victoria" in it })
+    }
+
+    @Test
+    fun `a pull asks again for an answer asked for in the same clock tick, just before it`() = runTest(dispatcher) {
+        val stops = listOf(StopRef("A", "A", listOf(LineRef("victoria", "Victoria", "tube"))))
+        val client = LinedClient("none", CompletableDeferred(Unit))
+        val shared = LineStatusCache()
+        val t = now
+        val vm = MainViewModel(client, stops, clock = { t }, io = dispatcher, lineStatusReuse = LINE_STATUS_REUSE, sharedLines = shared)
+        advanceUntilIdle()
+        assertEquals(1, client.asked.count { "victoria" in it })
+        // Another screen sends its request, the rider pulls, then its answer lands: all on one clock tick.
+        val sentBefore = shared.ticket()
+        vm.forceNextFetch()
+        shared.set("victoria", LineStatusCache.Held.Verdict(SteadyClock.stamp(t), LineStatus("victoria", 6, "Severe Delays")), sentBefore)
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(2, client.asked.count { "victoria" in it })
+    }
+
+    // Codex on #783: a pull that moves the nearby set makes a new model, which still honors it.
+    @Test
+    fun `a model made after a pull asks again for a line answered before it`() = runTest(dispatcher) {
+        val stops = listOf(StopRef("A", "A", listOf(LineRef("victoria", "Victoria", "tube"))))
+        val shared = LineStatusCache()
+        shared["victoria"] = LineStatusCache.Held.Verdict(SteadyClock.stamp(now), LineStatus("victoria", 6, "Severe Delays"))
+        val old = MainViewModel(LinedClient("none", CompletableDeferred(Unit)), stops, clock = { now }, io = dispatcher,
+            lineStatusReuse = LINE_STATUS_REUSE, sharedLines = shared)
+        advanceUntilIdle()
+        old.forceNextFetch()
+        // A list on another surface, pulled nowhere: the answer stands there.
+        val elsewhere = LinedClient("none", CompletableDeferred(Unit))
+        MainViewModel(elsewhere, stops, clock = { now }, io = dispatcher, lineStatusReuse = LINE_STATUS_REUSE,
+            sharedLines = shared, linesPullSurface = "station:A")
+        advanceUntilIdle()
+        assertEquals(0, elsewhere.asked.count { "victoria" in it })
+        // The model that takes the pulled one's place asks again.
+        val client = LinedClient("none", CompletableDeferred(Unit))
+        MainViewModel(client, stops, clock = { now }, io = dispatcher, lineStatusReuse = LINE_STATUS_REUSE, sharedLines = shared)
+        advanceUntilIdle()
+        assertEquals(1, client.asked.count { "victoria" in it })
+    }
+
+    @Test
+    fun `a pull whose line check fails leaves the line unchecked, that refresh and the next`() = runTest(dispatcher) {
+        val stops = listOf(StopRef("A", "A", listOf(LineRef("victoria", "Victoria", "tube"))))
+        var down = false
+        val client = LinedClient("none", CompletableDeferred(Unit), statusOf = {
+            if (down) throw TflException.Unreachable("boom", null)
+            status(it, LineStatus.GOOD_SERVICE, "Good Service")
+        })
+        val shared = LineStatusCache()
+        var t = now
+        val vm = MainViewModel(client, stops, clock = { t }, io = dispatcher, lineStatusReuse = LINE_STATUS_REUSE, sharedLines = shared)
+        advanceUntilIdle()
+        assertFalse((vm.state.value as DeparturesUiState.Loaded).disruptionUnknown)
+        down = true
+        t = now.plusSeconds(10)
+        vm.forceNextFetch()
+        vm.refresh()
+        advanceUntilIdle()
+        assertTrue((vm.state.value as DeparturesUiState.Loaded).disruptionUnknown)
+        // The next refresh, still within the old answer's window, doesn't fall back on it.
+        t = now.plusSeconds(20)
+        vm.refresh()
+        advanceUntilIdle()
+        assertTrue((vm.state.value as DeparturesUiState.Loaded).disruptionUnknown)
+    }
+
+    @Test
+    fun `a pull doesn't ask again about a line TfL doesn't know`() = runTest(dispatcher) {
+        val stops = listOf(StopRef("910GSTPX", "St Pancras International", listOf(LineRef("eurostar", "Eurostar", "national-rail"))))
+        val client = LinedClient("none", CompletableDeferred(Unit), predicted = mapOf("910GSTPX" to listOf("eurostar")))
+        val shared = LineStatusCache()
+        shared["eurostar"] = LineStatusCache.Held.Omitted(now.minusSeconds(10), unrecognized = true)
+        val vm = MainViewModel(client, stops, clock = { now }, io = dispatcher, lineStatusReuse = LINE_STATUS_REUSE, sharedLines = shared)
+        advanceUntilIdle()
+        vm.forceNextFetch()
+        vm.refresh()
+        advanceUntilIdle()
+        assertFalse("eurostar" in client.asked.flatten())
+    }
+
+    // An answer is stamped when asked, not when it lands: no older than TfL's answer, so never fresher-looking.
+    @Test
+    fun `a line's answer is stamped when it was asked for`() = runTest(dispatcher) {
+        val stops = listOf(StopRef("A", "A", listOf(LineRef("victoria", "Victoria", "tube"))))
+        var t = now
+        val client = LinedClient("none", CompletableDeferred(Unit), statusOf = {
+            // The answer lands five seconds after it was asked for.
+            t = now.plusSeconds(5)
+            status(it, LineStatus.GOOD_SERVICE, "Good Service")
+        })
+        val shared = LineStatusCache()
+        MainViewModel(client, stops, clock = { t }, io = dispatcher, lineStatusReuse = LINE_STATUS_REUSE, sharedLines = shared)
+        advanceUntilIdle()
+        assertTrue(shared["victoria"]!!.at.isBefore(SteadyClock.stamp(now.plusSeconds(5))))
+    }
+
     // Codex on #765: the cache alone says which lines TfL doesn't know, so a verdict another surface gets
     // for one later puts it back in play here, rather than the list never asking about it again.
     @Test
@@ -5366,6 +5493,26 @@ class MainViewModelTest {
         cards.refresh()
         advanceUntilIdle()
         assertEquals(listOf("MA", "MA"), client.arrivalsCalls)
+    }
+
+    // Codex on #783: the list's pull records the near-me line cutoff once; the farther cards' doesn't again.
+    @Test
+    fun `a pull on the farther cards leaves the list's line cutoff as it was`() = runTest(dispatcher) {
+        val shared = LineStatusCache()
+        val cards = FartherCardsViewModel(
+            stationStops = { listOf(fartherStop) },
+            newModel = { stops, distances ->
+                MainViewModel(CountingClient(emptyMap()), stops, clock = { now }, io = dispatcher, stopDistanceMeters = distances,
+                    sharedLines = shared, linesPullSurface = "nearby")
+            },
+            io = dispatcher,
+        )
+        cards.open(fartherPlace, Coordinates(0.0, 0.0))
+        advanceUntilIdle()
+        shared.pull("nearby")
+        val cutoff = shared.pulledAfter("nearby")
+        cards.forceNextFetch()
+        assertEquals(cutoff, shared.pulledAfter("nearby"))
     }
 
     @Test

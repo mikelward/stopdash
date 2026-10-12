@@ -575,6 +575,8 @@ class PlaceDirectViewModelTest {
             val shared = LineStatusCache()
             shared["rail"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), LineStatus("rail", LineStatus.GOOD_SERVICE, "Good Service"))
             val model = model(client(statuses = { throw TflException.Offline(null) }) { listOf(departure("Bottom", 60)) }, sharedLines = shared)
+            // The trip's pull, as it records it, then the section's.
+            shared.pull(TripViewModel.linePullsTo(""))
             model.pullRefresh()
             assertTrue((model.state.value as PlaceDirectViewModel.State.Ready).uncertain)
             // Nor does the next look, a Retry or the periodic refresh, until TfL answers.
@@ -593,10 +595,12 @@ class PlaceDirectViewModelTest {
         try {
             routes.load("rail", "")
             val shared = LineStatusCache()
+            // The trip's pull, as it records it, then a screen's answer after it.
+            shared.pull(TripViewModel.linePullsTo(""))
             shared["rail"] = LineStatusCache.Held.Verdict(now.minusSeconds(5), LineStatus("rail", 6, "Severe Delays"))
             var asked = 0
             val model = model(client(statuses = { asked++; emptyList() }) { listOf(departure("Bottom", 60)) }, sharedLines = shared)
-            model.pullRefresh(now.minusSeconds(10))
+            model.refresh(pulled = true)
             assertEquals(0, asked)
             assertEquals("Severe Delays", (model.state.value as PlaceDirectViewModel.State.Ready).rows.single().disruption)
         } finally {
@@ -619,7 +623,9 @@ class PlaceDirectViewModelTest {
                 ends = { if (found) listOf(DirectTrips.End("BOT", "Bottom")) else throw TflException.Offline(null) },
                 sharedLines = shared,
             )
-            model.pullRefresh(now.minusSeconds(5))
+            // The trip's pull, as it records it, then the section's.
+            shared.pull(TripViewModel.linePullsTo(""))
+            model.pullRefresh()
             assertTrue(model.state.value is PlaceDirectViewModel.State.Failed)
             found = true
             model.refresh()

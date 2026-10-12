@@ -194,8 +194,9 @@ object WidgetRefresh {
      * [snapshot] with its line statuses re-checked (SPEC D3): every line its stops show, less those
      * checked within [reuse] (the app's own check a moment ago, sharing the rate budget), asked in
      * one [fetchStatuses] call per request TfL accepts ([LineStatusBatch.request]) and stamped by
-     * [answeredAt] once they return — when TfL actually answered, so a slow call neither loses a
-     * merge to an earlier check nor lands already expiring ([now] decides only what to ask). A line
+     * [answeredAt] as the request goes out, so an answer asked for before a pull never stands as
+     * checked after it ([now] decides only what to ask; [answeredAt] once they return is the time
+     * the answers are judged at). A line
      * TfL gave no status for gets a no-verdict check ([LineStatusCheck.known] false), so it isn't
      * marked on a verdict nobody gave. A failed call ([fetchStatuses] returns null) leaves its lines'
      * prior checks as they were, while the other calls' answers apply, to age out at the staleness
@@ -245,11 +246,12 @@ object WidgetRefresh {
             suspend fun request(): Pair<Instant, Map<String, LineStatusCheck>>? {
                 // Taken before asking, so a later request's answers aren't replaced by these landing after them.
                 val ticket = shared?.ticket() ?: 0L
+                // Dated when asked, by the steady clock as a fetch is ([SteadyClock]): an answer to a
+                // request sent before a pull then doesn't count as checked since it, however late it lands.
+                val at = SteadyClock.stamp(answeredAt())
                 val results = LineStatusBatch.request(toAsk) { chunk -> fetchStatuses(chunk.toSet()) }
                 if (!results.anyAnswered) return null
                 val answered = answeredAt()
-                // Stamped by the steady clock, as a fetch is ([SteadyClock]).
-                val at = SteadyClock.stamp(answered)
                 val returned = results.answers.flatMap { it.value }
                     .filter { it.lineId in toAsk }.associate { it.lineId to LineStatusCheck(it, at) }
                 // A line asked about that TfL left out gets a no-verdict check, so it replaces the old one

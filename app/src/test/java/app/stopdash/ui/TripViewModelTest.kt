@@ -225,10 +225,13 @@ class TripViewModelTest {
         // Answered with the lookup of which way their alerts go still under way.
         var awaitingLines = emptySet<String>()
         var statusChecks = 0
+        // Each check's lines, in order.
+        val statusAsked = mutableListOf<Set<String>>()
         // Checks past this many fail.
         var statusChecksAnswered = Int.MAX_VALUE
         override suspend fun lineStatuses(lineIds: Collection<String>): List<LineStatus> {
             statusChecks++
+            statusAsked += lineIds.toSet()
             if (failStatus || statusChecks > statusChecksAnswered || lineIds.any { it in failLines }) throw TflException.Offline(null)
             return lineIds.filterNot { it in omitLines }.map {
                 if (it in disruptedLines) LineStatus(it, 6, "Severe Delays") else LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service")
@@ -259,10 +262,11 @@ class TripViewModelTest {
         closures: StopClosureCache = StopClosureCache(),
         sharedLines: LineStatusCache = LineStatusCache(),
         lineStatusReuse: Duration = Duration.ZERO,
+        linePulls: String = TripViewModel.linePullsTo(""),
     ) = TripViewModel(
         planner, client, "A", toIds.map { TripDestination.Stop(it) },
         clock = { now }, plans = plans, io = dispatcher, arrivals = arrivals, closureCache = closures,
-        sharedLines = sharedLines, lineStatusReuse = lineStatusReuse,
+        sharedLines = sharedLines, lineStatusReuse = lineStatusReuse, linePulls = linePulls,
     )
 
     // A ride, a walk between two named stations the Planner doesn't place, and a ride on.
@@ -3654,17 +3658,34 @@ class TripViewModelTest {
         assertFalse(next.pulling.value)
     }
 
-    // Codex on #776: a carried pull keeps the stamp made when it came, so its line cutoff doesn't move
-    // with the clock: an answer had after that stamp stands, not asked again.
+    // Codex on #783: a pull is held in the shared cache, so the trip its fresh fix opens, or one remade with
+    // the activity, asks again for an answer from before it and takes one from after it.
     @Test
-    fun `a carried pull's line cutoff is the stamp made at the pull`() = runTest(dispatcher) {
+    fun `a trip made after another's pull holds to that pull's line cutoff`() = runTest(dispatcher) {
+        val shared = LineStatusCache()
+        shared["red"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service"))
+        // Another trip's pull, as [TripViewModel.pullRefresh] records it.
+        shared.pull(TripViewModel.linePullsTo(""))
+        val pull = TripViewModel.Pull(now, now)
+        shared["blue"] = LineStatusCache.Held.Verdict(now.minusSeconds(5), LineStatus("blue", LineStatus.GOOD_SERVICE, "Good Service"))
+        val client = FakeClient(mutableMapOf())
+        val trip = model(FakePlanner(listOf(route)), client, sharedLines = shared, lineStatusReuse = Duration.ofSeconds(90))
+        trip.carryPull(pull)
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf(setOf("red")), client.statusAsked)
+    }
+
+    // Codex on #783: a pull holds for trips to its own destination, not for one elsewhere.
+    @Test
+    fun `a pull on a trip to one place doesn't hold a trip to another`() = runTest(dispatcher) {
         val shared = LineStatusCache()
         shared["red"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service"))
         shared["blue"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), LineStatus("blue", LineStatus.GOOD_SERVICE, "Good Service"))
+        shared.pull(TripViewModel.linePullsTo("X"))
         val client = FakeClient(mutableMapOf())
-        val trip = model(FakePlanner(listOf(route)), client, sharedLines = shared, lineStatusReuse = Duration.ofSeconds(90))
-        // Pulled 20 s ago by the wall clock, stamped then: both answers came after it.
-        trip.carryPull(TripViewModel.Pull(now, now.minusSeconds(20)))
+        val trip = model(FakePlanner(listOf(route)), client, sharedLines = shared, lineStatusReuse = Duration.ofSeconds(90),
+            linePulls = TripViewModel.linePullsTo("C"))
         trip.refresh()
         advanceUntilIdle()
         assertEquals(0, client.statusChecks)
@@ -3673,17 +3694,19 @@ class TripViewModelTest {
     // Codex on #776: pulls are ordered by their stamps, so one after the clock was set back still counts.
     @Test
     fun `a later pull carried in counts even when the clock was set back between`() = runTest(dispatcher) {
-        val shared = LineStatusCache()
-        shared["red"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service"))
-        shared["blue"] = LineStatusCache.Held.Verdict(now.minusSeconds(10), LineStatus("blue", LineStatus.GOOD_SERVICE, "Good Service"))
-        val client = FakeClient(mutableMapOf())
-        val trip = model(FakePlanner(listOf(route)), client, sharedLines = shared, lineStatusReuse = Duration.ofSeconds(90))
-        trip.carryPull(TripViewModel.Pull(now, now.minusSeconds(30)))
-        // The next pull came after both answers by the steady clock, though the wall clock reads earlier.
-        trip.carryPull(TripViewModel.Pull(now.minusSeconds(60), now.minusSeconds(5)))
-        trip.refresh()
+        val planner = FakePlanner(listOf(route))
+        val trip = model(planner, FakeClient(mutableMapOf()))
+        trip.refreshFor(null)
         advanceUntilIdle()
-        assertTrue(client.statusChecks > 0)
+        trip.carryPull(TripViewModel.Pull(now, now.minusSeconds(30)))
+        advanceUntilIdle()
+        // One from before it by the steady clock is the same pull or older: nothing to do.
+        trip.carryPull(TripViewModel.Pull(now.plusSeconds(60), now.minusSeconds(40)))
+        assertFalse(trip.pulling.value)
+        // The next pull came after the first by the steady clock, though the wall clock reads earlier.
+        trip.carryPull(TripViewModel.Pull(now.minusSeconds(60), now.minusSeconds(5)))
+        assertTrue(trip.pulling.value)
+        advanceUntilIdle()
     }
 
     @Test

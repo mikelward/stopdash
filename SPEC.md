@@ -3273,9 +3273,10 @@ been set, so none keeps showing what it judged before.
   disagree about a line and none spends a request another just made. A line's page shows an answer for
   its own age, taken down when that's up. The journey alerts' check splits no alert by direction, so
   what it asks is held as still waiting on that, and a screen asks again rather than show it unsplit. A
-  pull on a station's page or a trip asks again for any of its lines last answered before the pull,
-  whichever screen answers first serving both (the near-me list's pull still reuses them within the
-  window; a `TODO.md` item). Dismissed alerts settle only on what TfL
+  pull on the near-me list, a station's page or a trip asks again for any of its lines last answered
+  before the pull, whichever screen answers first serving both; until it does, a line whose check failed
+  reads unchecked rather than falling back on the answer the pull was to replace. An answer is dated by
+  when it was asked for, never when it landed, so it never looks fresher than it is. Dismissed alerts settle only on what TfL
   answered for the screen settling them, never on another screen's answer. One whose request
   for a line is still out when another asks is waited on rather than doubled (one that fails is
   asked again). The widget's stored checks still carry its answers past the process.
