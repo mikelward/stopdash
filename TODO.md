@@ -1582,6 +1582,19 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               filters, orders and formats its uncapped list of trains in composition on every redraw
               (before #769 too), and graying a doubtful one adds a pass. Precompute the rendered times
               and their gray spans in `routeDetailWork` (the minutes tick, so on the worker per tick).
+        - [ ] **Space out bunched Tube trains** (maintainer, 2026-10-12): TfL times a queue of trains as
+              if the line ahead were clear, so one platform read 0 · 0 · 1 · 2 · 2 min for trains that
+              came about two minutes apart. Showing each no sooner than a gap after the one ahead may
+              beat graying. Measure it first: `scripts/arrivals_recorder.py` records arrivals and scores
+              TfL's times against spaced ones (and the gaps actually seen) over peak hours at hubs and
+              junctions, per line. One morning peak: the best gap is close to a line's median gap
+              between trains (Victoria's is about 100 s: errors are least at 90 s and the count of
+              trains shown matches those that came near 110 s; Northern's is about 165 s, both near
+              120–135 s); a gap wider than the trains' own gap makes times late, so it can't be one
+              number. The gap follows each line's service frequency at that time of day
+              (maintainer's call: per line, empirical or by frequency). Spacing does little where trains aren't bunched (Piccadilly, sub-surface).
+              Open: off-peak recordings to check the fraction, whether to cap the cascade to near
+              trains, and that it keeps TfL's order (a junction can swap two trains).
         - [ ] **Tell a doubtful train from a real one** (maintainer, 2026-10-11): keep collecting
               reports (each mark is logged with the feed's train ids) against what the station display
               showed, and hide a doubtful train outright only once a rule separates the two.
