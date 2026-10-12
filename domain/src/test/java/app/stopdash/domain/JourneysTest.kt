@@ -408,6 +408,16 @@ class JourneysTest {
         val trains = Journeys.trains(JourneySegment("TOPB", emptySet()), rows, mapOf("b7" to b7), journey, farEnd)
         assertEquals(listOf("b7"), trains.rows.map { it.lineId })
         assertEquals(setOf("MIDB"), trains.reachedIds)
+        // Another line at that stop, one that reaches nothing near Mid, has no route loaded: weighed only
+        // for the lines it boards, the card isn't held checking on a route never asked for.
+        val busier = rowsAt("TOPB", departure("Mid Road", 60, "b7", "bus"), departure("Elsewhere", 90, "b9", "bus"))
+        assertTrue(Journeys.trains(JourneySegment("TOPB", emptySet()), busier, mapOf("b7" to b7), journey, farEnd).pending)
+        val boarded = Journeys.trains(JourneySegment("TOPB", emptySet()), busier, mapOf("b7" to b7), journey, farEnd, lines = setOf("b7"))
+        assertFalse(boarded.pending)
+        assertEquals(listOf("b7"), boarded.rows.map { it.lineId })
+        // A departure TfL gave no line id may still be one that gets there: never filtered out as another line.
+        val unnamed = rowsAt("TOPB", departure("Mid Road", 60, "b7", "bus"), departure("Somewhere", 90, "", "bus"))
+        assertTrue(Journeys.trains(JourneySegment("TOPB", emptySet()), unnamed, mapOf("b7" to b7), journey, farEnd, lines = setOf("b7")).unresolved)
     }
 
     @Test

@@ -331,13 +331,18 @@ object Journeys {
         // Every stop within the rider's walk of the far end ([farEnd]): a departure calling at one
         // reaches it too, as a trip's Direct section counts.
         farEnd: FarEnd? = null,
+        // The only lines weighed, where set: a stop beside the origin boards just those that may reach
+        // the far end ([siblingPoles]), and only their routes are loaded, so another line there must not
+        // hold the card at "checking" waiting on a route never asked for. A departure with no line id
+        // is kept: it can't be ruled out, so it still leaves the card unsure.
+        lines: Set<String>? = null,
     ): JourneyTrains {
         var pending = false
         var unresolved = false
         var routeFailed = false
         val reached = HashSet<String>()
         val changes = ArrayList<JourneyChange>()
-        val atOrigin = rows.filter { it.stopId == segment.originId && it.stopDisruption == null }
+        val atOrigin = rows.filter { it.stopId == segment.originId && it.stopDisruption == null && (lines == null || it.lineId.isBlank() || it.lineId in lines) }
         // A departure TfL gave no line id can't be checked against any route: it may well call there.
         val misses = LinkedHashSet<RouteMiss>()
         atOrigin.filter { it.lineId.isBlank() && it.upcoming.isNotEmpty() }.forEach { row ->

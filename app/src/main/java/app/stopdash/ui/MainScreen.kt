@@ -784,7 +784,11 @@ fun MainScreen(
                     // The origin's trains, then each neighboring pole's (matched to the far end the same way).
                     val farEnds = journeyFarEnds[journey.key]
                     val parts = listOf(Journeys.trains(segment, across, journeySequences, journey, farEnds)) +
-                        siblings.map { pole -> Journeys.trains(JourneySegment(pole.id, emptySet()), across, journeySequences, journey, farEnds) }
+                        siblings.map { pole ->
+                            // Only the lines it boards toward the far end: the rest have no route loaded.
+                            val boarded = pole.lines.filter { Journeys.boardsTowards(it, journey, farEnds) }.mapTo(HashSet()) { it.id }
+                            Journeys.trains(JourneySegment(pole.id, emptySet()), across, journeySequences, journey, farEnds, boarded)
+                        }
                     val trains = JourneyTrains(
                         rows = parts.flatMap { it.rows },
                         pending = parts.any { it.pending },
