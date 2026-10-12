@@ -50,23 +50,28 @@ class PlaceIndex private constructor(
      * keeps one [Kind] before the [limit] is applied, so "E1" finds postcodes rather than places
      * named "E12…" crowding them out. Postcodes alone match as prefixes only: a partial postcode is
      * completed, never answered with codes whose characters merely occur in it ("BR1 1B" isn't BR1 1AB).
+     * [near], where the trip starts, puts the nearer of equal matches first: "Tesco" finds the nearest
+     * one (maintainer, 2026-10-12).
      */
     @WorkerThread
-    fun search(query: String, limit: Int = DEFAULT_LIMIT, checkpoint: () -> Unit = {}, only: Kind? = null): List<Entry> {
+    fun search(query: String, limit: Int = DEFAULT_LIMIT, checkpoint: () -> Unit = {}, only: Kind? = null, near: Coordinates? = null): List<Entry> {
         val q = fold(query)
         if (q.size < MIN_QUERY_LENGTH || limit <= 0) return emptyList()
         val prefixOnly = q.size < LOOSE_QUERY_LENGTH || only == Kind.POSTCODE
-        // The best [limit] so far, worst at the head, by a packed score: tier, then rank, then length.
+        // The best [limit] so far, worst at the head, by a packed score: tier, then rank, then length,
+        // then distance from [near].
         val best = java.util.PriorityQueue<Long>(limit + 1, compareByDescending { it })
         val onlyKind = only?.ordinal?.toByte()
+        val nearLat = near?.let { Math.round(it.latitude * COORDINATE_SCALE).toInt() }
+        val nearLon = near?.let { Math.round(it.longitude * COORDINATE_SCALE).toInt() }
         for (i in 0 until size) {
             if (i % CHECKPOINT_EVERY == 0) checkpoint()
             if (onlyKind != null && kinds[i] != onlyKind) continue
             val start = keyStarts[i]
             val end = keyStarts[i + 1]
             val tier = tierOf(q, start, end, prefixOnly) ?: continue
-            val score = (tier.toLong() shl 40) or ((MAX_RANK - ranks[i]).toLong() shl 32) or
-                (minOf(end - start, MAX_SCORED_LENGTH).toLong() shl 20) or i.toLong()
+            val score = (tier.toLong() shl 56) or ((MAX_RANK - ranks[i]).toLong() shl 48) or
+                (minOf(end - start, MAX_SCORED_LENGTH).toLong() shl 36) or (distanceStep(i, nearLat, nearLon) shl 20) or i.toLong()
             if (best.size < limit) {
                 best.add(score)
             } else if (score < best.peek()) {
@@ -126,6 +131,15 @@ class PlaceIndex private constructor(
     private fun lonCell(scaled: Int): Int = Math.floorDiv(scaled, LON_CELL)
 
     private fun cellKey(lat: Int, lon: Int): Long = (lat.toLong() shl 32) or (lon.toLong() and 0xffffffffL)
+
+    // Entry [i]'s distance from a position in scaled degrees, in steps of about 18 m (16 scaled units
+    // north), capped to fit its 16 bits of a search's score; 0 for every entry when there's no position.
+    private fun distanceStep(i: Int, nearLat: Int?, nearLon: Int?): Long {
+        if (nearLat == null || nearLon == null) return 0
+        val north = (latitudes[i] - nearLat).toDouble()
+        val east = (longitudes[i] - nearLon) * EAST_SCALE
+        return minOf(Math.sqrt(north * north + east * east).toLong() / DISTANCE_STEP, MAX_DISTANCE_STEP)
+    }
 
     private fun entryAt(i: Int): Entry = Entry(
         name = String(names, nameStarts[i], nameStarts[i + 1] - nameStarts[i], Charsets.UTF_8),
@@ -201,6 +215,10 @@ class PlaceIndex private constructor(
         // About 1.1 km, in scaled degrees north, for [districtNear].
         private const val MAX_DISTRICT_DISTANCE = 1000L
         private const val INDEX_MASK = (1L shl 20) - 1
+        // A scaled degree east is 0.62 of one north at London's latitude, as [districtNear] reckons it.
+        private const val EAST_SCALE = 0.62
+        private const val DISTANCE_STEP = 16L
+        private const val MAX_DISTANCE_STEP = (1L shl 16) - 1
         // A key length past this scores as this, so it can't spill into the rank's bits.
         private const val MAX_SCORED_LENGTH = (1 shl 12) - 1
         private val THE = "the".toByteArray()

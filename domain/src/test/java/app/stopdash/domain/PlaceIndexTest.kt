@@ -77,6 +77,21 @@ class PlaceIndexTest {
     }
 
     @Test
+    fun `equal matches go to the one nearer where the trip starts, and the limit keeps it`() {
+        val places = index(
+            "P\tZeta Shop\tshop\t51.55000\t-0.12000\t5",
+            "P\tZeta Shop\tshop\t51.50100\t-0.12000\t5",
+            "P\tZeta Shop\tshop\t51.52000\t-0.12000\t5",
+        )
+        val start = Coordinates(51.5, -0.12)
+        assertEquals(listOf(51.501, 51.52, 51.55), places.search("zeta shop", near = start).map { it.coordinate.latitude })
+        assertEquals(listOf(51.501), places.search("zeta shop", limit = 1, near = start).map { it.coordinate.latitude })
+        // A better match still leads a nearer worse one.
+        val mixed = index("P\tZeta Shop\tshop\t51.50100\t-0.12000\t2", "P\tZeta Shop\tshop\t51.55000\t-0.12000\t9")
+        assertEquals(listOf(51.55, 51.501), mixed.search("zeta shop", near = start).map { it.coordinate.latitude })
+    }
+
+    @Test
     fun `letters in order may start after a leading the`() {
         val places = index(line("P", "The Zeta Gallery"))
         assertEquals(listOf("The Zeta Gallery"), places.names("ztglry"))

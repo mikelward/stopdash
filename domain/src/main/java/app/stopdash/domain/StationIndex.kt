@@ -49,15 +49,17 @@ class StationIndex(
      * The stations matching [query], best first ([rank]), at most [limit]. A station whose
      * interchange also matches is left out: the interchange's page already holds it, and listing
      * both reads as the same place twice ("King's Cross St. Pancras" hub and tube station).
+     * [near], where the trip starts, puts the nearer of same-named stations first, as [rank] does.
      */
-    fun search(query: String, limit: Int = DEFAULT_LIMIT): List<StationMatch> {
+    fun search(query: String, limit: Int = DEFAULT_LIMIT, near: Coordinates? = null): List<StationMatch> {
         val scored = stations.mapNotNull { station ->
             StationMatcher.tier(query, station.name, station.id, station.hubId)?.let {
-                Scored(StationMatch(station.id, station.name, station.modes), station.hubId, it)
+                val at = if (station.latitude != null && station.longitude != null) Coordinates(station.latitude, station.longitude) else null
+                Scored(StationMatch(station.id, station.name, station.modes), station.hubId, it, distanceFrom(near, at))
             }
         } + hubNames.mapNotNull { name ->
             // By its name alone: a station code ("kgx") is the interchange's, and finds that row.
-            StationMatcher.tier(query, name.name)?.let { Scored(name, "", it) }
+            StationMatcher.tier(query, name.name)?.let { Scored(name, "", it, if (near == null) 0.0 else distanceFrom(near, positionOf(name.id))) }
         }
         val matchedIds = scored.mapTo(HashSet()) { it.match.id }
         return scored
@@ -69,6 +71,8 @@ class StationIndex(
                     // [rank]: the name as matched first, so this only ever splits identical names.
                     { it.matched },
                     { it.match.modes.isNotEmpty() && it.match.modes.all { mode -> mode == "bus" } },
+                    // Then the nearer of same-named stops, from where the trip starts.
+                    { it.distance },
                     { it.match.name },
                 ),
             )
@@ -76,7 +80,7 @@ class StationIndex(
             .map { it.match }
     }
 
-    private class Scored(val match: StationMatch, val hubId: String, val tier: StationMatchTier) {
+    private class Scored(val match: StationMatch, val hubId: String, val tier: StationMatchTier, val distance: Double) {
         // The name as matched, punctuation and case dropped, so "St. Paul's" ties "St Paul's".
         val matched = StationMatcher.normalize(match.name).lowercase()
         val length = matched.length
@@ -157,7 +161,7 @@ class StationIndex(
      * doesn't share goes last rather than being dropped. Deduplicated by id, and a station the index
      * knows belongs to an interchange that either source matched stays folded into it, as in [search].
      */
-    fun rank(query: String, local: List<StationMatch>, remote: List<StationMatch>, limit: Int = DEFAULT_LIMIT): List<StationMatch> {
+    fun rank(query: String, local: List<StationMatch>, remote: List<StationMatch>, limit: Int = DEFAULT_LIMIT, near: Coordinates? = null): List<StationMatch> {
         // A bundled station has no position of its own; TfL's copy of it lends one, for the fold below.
         val placed = remote.filter { it.latitude != null && it.longitude != null }.associateBy { it.id }
         // An interchange's station name stays unplaced, so it never folds into the interchange's own row
@@ -171,6 +175,12 @@ class StationIndex(
         // A match the matcher can't place (TfL found it by a rule this one doesn't share) goes last.
         // Each name as matched, punctuation and case dropped, so "St. Paul's" ties "St Paul's".
         val matched = candidates.associate { it.key to StationMatcher.normalize(it.name).lowercase() }
+        // Each one's distance from where the trip starts, its own position or the index's: none (all
+        // equal) without a start.
+        val distances = if (near == null) emptyMap() else candidates.associate { match ->
+            val at = if (match.latitude != null && match.longitude != null) Coordinates(match.latitude, match.longitude) else positionOf(match.id)
+            match.key to distanceFrom(near, at)
+        }
         return candidates
             .filter { hubOf[it.id]?.let { hub -> hub in matchedIds } != true }
             .withIndex()
@@ -184,6 +194,8 @@ class StationIndex(
                     // matched first, so this only ever splits identical names.
                     { matched[it.value.key] },
                     { it.value.modes.isNotEmpty() && it.value.modes.all { mode -> mode == "bus" } },
+                    // Then the nearer of same-named stops, from where the trip starts (maintainer, 2026-10-12).
+                    { distances[it.value.key] ?: 0.0 },
                     { it.value.name },
                     { it.index },
                 ),
@@ -191,6 +203,14 @@ class StationIndex(
             .map { it.value }
             .let(::foldNeighbors)
             .take(limit)
+    }
+
+    // How far [at] is from [near], in meters; 0 without a start, and past every known stop without a
+    // position, so a stop that can't be placed follows those that can.
+    private fun distanceFrom(near: Coordinates?, at: Coordinates?): Double = when {
+        near == null -> 0.0
+        at == null -> Double.MAX_VALUE
+        else -> NearestStops.distanceMeters(near.latitude, near.longitude, at.latitude, at.longitude)
     }
 
     // An interchange's station name matches by its name alone, as in [search].

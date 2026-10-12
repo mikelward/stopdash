@@ -36,11 +36,12 @@ class BusStopIndex private constructor(
 
     /**
      * The stops [query] finds, best match first, at most [limit]: by tier ([StationMatchTier]), then
-     * the shorter name, then the name; a name's stops together, in TfL id order. [checkpoint] runs
+     * the shorter name, then the name; a name's stops together, in TfL id order, or nearest [near]
+     * (where the trip starts) first. [checkpoint] runs
      * every [CHECKPOINT_EVERY] names, so a caller can stop a scan nobody will read: it throws to stop.
      */
     @WorkerThread
-    fun search(query: String, limit: Int = DEFAULT_LIMIT, checkpoint: () -> Unit = {}): List<StationMatch> {
+    fun search(query: String, limit: Int = DEFAULT_LIMIT, checkpoint: () -> Unit = {}, near: Coordinates? = null): List<StationMatch> {
         val q = StationMatcher.queryForm(query)
         if (q.length < MIN_QUERY_LENGTH || limit <= 0) return emptyList()
         val hits = ArrayList<Long>()
@@ -55,7 +56,12 @@ class BusStopIndex private constructor(
         val found = ArrayList<StationMatch>()
         for (hit in hits) {
             val name = names[(hit and 0xFFFFFFFFL).toInt()]
-            for (stop in stopsByName[(hit and 0xFFFFFFFFL).toInt()]) {
+            // A name's stops nearest [near] first, where the trip starts, so the [limit] keeps those.
+            val stops = stopsByName[(hit and 0xFFFFFFFFL).toInt()]
+            val ordered = if (near == null) stops.asIterable() else stops.sortedBy { stop ->
+                NearestStops.distanceMeters(near.latitude, near.longitude, latitudes[stop], longitudes[stop])
+            }
+            for (stop in ordered) {
                 if (found.size >= limit) return found
                 found += StationMatch(ids[stop], name, BUS, latitudes[stop], longitudes[stop])
             }
