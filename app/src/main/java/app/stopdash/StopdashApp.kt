@@ -3,6 +3,7 @@ package app.stopdash
 import android.app.Application
 import android.content.Context
 import android.util.Log
+import app.stopdash.data.BusStopIndexStore
 import app.stopdash.data.DataStoreAppSettings
 import app.stopdash.data.DataStoreFavoriteJourneysStore
 import app.stopdash.data.DataStoreFavoritePlacesStore
@@ -304,6 +305,18 @@ open class StopdashApp : Application() {
      * `open` so the test [Application] skips it — a unit test needs no real DataStore-backed holder
      * or its background collector. Launches coroutines only (no first-frame I/O), like the log setup.
      */
+    /**
+     * The bundled stops (`stops.tsv`) and the bus stop index built from them, read in the background
+     * when the app's screen opens ([MainActivity]), so the first near-me lookup or search after a cold
+     * start finds them in memory instead of waiting on the read (SPEC principle 4). Not from
+     * [onCreate]: a process started only for a widget refresh or a journey alert has no search to
+     * build the index for, and reads the stops itself if it follows the rider. Once per process;
+     * `open` so the test [Application] skips it.
+     */
+    open fun warmBundledStops() {
+        BusStopIndexStore.warm(this, applicationScope)
+    }
+
     protected open fun warmSharedState() {
         UserApiKeySetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         RailApiKeySetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))

@@ -1346,7 +1346,25 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                       London* row asks the Journey Planner when tapped, and a complete postcode the bundle
                       doesn't hold is asked at once, in *To…*, *From…* and the favorite place editor.
               - [ ] **Time the near-me list's first frame on a device** with the bundled stops: the
-                  read (~22,000 stops, once per process) and search are measured only on a desktop JVM.
+                  read (~22,000 stops, once per process, now started in the background as the app's screen opens)
+                  and search are measured only on a desktop JVM.
+              - [ ] **Log which source answered a nearby lookup**: the bundled stops, or TfL and why
+                  (outside the bundle's area, a stop type it doesn't hold, the bundle unreadable). Today
+                  only the fallbacks are logged, so a bug report about a missing stop can't say whether
+                  the list came from the phone or from TfL. One coarse line per lookup, no coordinate.
+              - [ ] **Look at the stops TfL's nearby search leaves out**: a handful of bundled stops
+                  (about one per mile radius tested, e.g. near Victoria and Canary Wharf) never appear
+                  in TfL's own answer. If TfL hides them because they're closed or out of service, the
+                  builder should drop them too (a status field, or a check against TfL's search).
+              - [ ] **Check the bundle against a recorded TfL answer in CI**: the match with TfL's
+                  live nearby search (same stops, names, clusters, letters, directions, lines) was
+                  checked by hand at six interchanges. A test against one recorded `/StopPoint` answer
+                  at an interchange would catch the builder or reader drifting from it.
+              - [ ] **Drop the places that are really a station or pier** (29 today: Embankment Pier,
+                  "Tufnell Park Station" filed as a park, …): the place builder drops a place whose
+                  name, less station/Underground/rail/pier words, matches a station or pier in
+                  `stops.tsv` within 300 m, when the name carries a transit word. Police and fire
+                  stations and shops named after a station stay.
               - [ ] **A monthly refresh workflow** for `assets/places/place_index.tsv`, like
                   `station-index-refresh.yml` (needs `pyarrow` and `pyproj`; Overture releases monthly),
                   which also moves the year in the About screen's Ordnance Survey statements.
