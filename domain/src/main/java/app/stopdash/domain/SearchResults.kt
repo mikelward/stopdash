@@ -25,7 +25,15 @@ object SearchResults {
      * however exactly the place is named, as the stops' own ranking puts it first. A postcode's places, whose names needn't contain the query,
      * follow the stops, as a match the matcher can't place does.
      */
-    fun merge(query: String, stops: List<StationMatch>, places: List<PlaceHit>, leads: (StationMatch) -> Boolean = { false }): List<SearchEntry> {
+    fun merge(
+        query: String,
+        stops: List<StationMatch>,
+        places: List<PlaceHit>,
+        leads: (StationMatch) -> Boolean = { false },
+        // How well a stop matches, as the stops' ranking placed it ([StationIndex.tier]); by its own name
+        // and id without the index.
+        tier: (StationMatch) -> StationMatchTier? = { StationMatcher.tier(query, it.name, it.id.takeIf { _ -> it.lead.isEmpty() }.orEmpty()) },
+    ): List<SearchEntry> {
         val unplaced = StationMatchTier.entries.size
         // How well a name matches, as both lists rank it: its tier, then whether it's exactly the query,
         // then whether the query starts it (maintainer, 2026-10-12), packed so a smaller number is better.
@@ -33,8 +41,8 @@ object SearchResults {
             tier * 4 + (if (StationMatcher.isExact(query, name)) 0 else 2) + (if (StationMatcher.startsName(query, name)) 0 else 1)
         // An interchange's station name by its name alone, as the index ranks it ([StationIndex.search]).
         fun scoreOf(stop: StationMatch): Int {
-            val tier = StationMatcher.tier(query, stop.name, stop.id.takeIf { stop.lead.isEmpty() }.orEmpty())?.ordinal ?: unplaced
-            return if (leads(stop)) tier * 4 else scoreOf(tier, stop.name)
+            val stopTier = tier(stop)?.ordinal ?: unplaced
+            return if (leads(stop)) stopTier * 4 else scoreOf(stopTier, stop.name)
         }
         fun scoreOf(place: PlaceHit) =
             if (place.kind == PlaceKind.POSTCODE) unplaced * 4 + 3 else scoreOf(StationMatcher.tier(query, place.name)?.ordinal ?: unplaced, place.name)
@@ -69,8 +77,10 @@ object SearchResults {
         everyStop: List<StationMatch>? = null,
         // Which stops lead their tier ([merge]).
         leads: (StationMatch) -> Boolean = { false },
+        // How well a stop matches ([merge]).
+        tier: ((StationMatch) -> StationMatchTier?)? = null,
     ): List<SearchEntry> {
-        val incoming = merge(query, stops, places, leads)
+        val incoming = if (tier == null) merge(query, stops, places, leads) else merge(query, stops, places, leads, tier)
         val fresher = (everyStop.orEmpty().map(SearchEntry::Stop) + incoming).associateBy { it.key }
         val kept = if (everyStop != null) shown.filter { it !is SearchEntry.Stop || it.key in fresher } else shown
         val listed = kept.mapTo(HashSet()) { it.key }

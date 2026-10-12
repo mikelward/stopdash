@@ -55,7 +55,7 @@ class StationIndex(
         val scored = stations.mapNotNull { station ->
             StationMatcher.tier(query, station.name, station.id, station.hubId)?.let {
                 val at = if (station.latitude != null && station.longitude != null) Coordinates(station.latitude, station.longitude) else null
-                Scored(StationMatch(station.id, station.name, station.modes), station.hubId, it, query, distanceFrom(near, at))
+                Scored(StationMatch(station.id, station.name, station.modes), station.hubId, it, query, distanceFrom(near, at), station)
             }
         } + hubNames.mapNotNull { name ->
             // By its name alone: a station code ("kgx") is the interchange's, and finds that row.
@@ -77,11 +77,68 @@ class StationIndex(
                     { it.match.name },
                 ),
             )
+            .let { foldTwins(it, query) }
             .take(limit)
             .map { it.match }
     }
 
-    private class Scored(val match: StationMatch, val hubId: String, val tier: StationMatchTier, query: String, val distance: Double) {
+    /**
+     * [ranked] with a station TfL lists under two ids ([sameStation]: Reading's two records at one spot) as
+     * one row, at the better-ranked one's place, under the user's own twin or else the one with the most
+     * modes, and with every twin's modes, so search shows Reading once with its Elizabeth line, whichever record matched ("RDNG4AB" finds
+     * only the leaner one). Opened, its page asks the other ids too ([sameStationIds]).
+     */
+    private fun foldTwins(ranked: List<Scored>, query: String): List<Scored> {
+        val kept = ArrayList<Scored>(ranked.size)
+        val leads = HashSet<String>()
+        for (scored in ranked) {
+            val station = scored.station
+            val group = station?.let { twins[it.id] }
+            if (group == null) {
+                kept += scored
+                continue
+            }
+            // One lead per group, whichever twin matched: the user's own twin if they have one (a recent or
+            // starred stop keeps its key, so it isn't listed again under another), then the most modes,
+            // then the lowest id.
+            val lead = group.minWith(
+                compareBy<IndexedStation> { leadOf(StationMatch(it.id, it.name, it.modes)) }
+                    .thenByDescending { it.modes.size }
+                    .thenBy { it.id },
+            )
+            if (!leads.add(lead.id)) continue
+            val modes = (scored.match.modes + group.flatMap { it.modes }).distinct()
+            kept += Scored(StationMatch(lead.id, lead.name, modes), scored.hubId, scored.tier, query, scored.distance, lead)
+        }
+        return kept
+    }
+
+    /**
+     * Each station TfL lists under several ids ([sameStation]), by each id, to the whole group, itself
+     * included; a station under one id is absent. Built on first read from the whole index: a worker's work.
+     */
+    @get:WorkerThread
+    private val twins: Map<String, List<IndexedStation>> by lazy {
+        val byName = stations.filter { it.hubId.isBlank() && !it.isHub }.groupBy { cleanStopName(it.name) }
+        buildMap {
+            for (same in byName.values) {
+                if (same.size < 2) continue
+                for (station in same) {
+                    val group = same.filter { it === station || sameStation(it, station) }
+                    if (group.size > 1) put(station.id, group)
+                }
+            }
+        }
+    }
+
+    private class Scored(
+        val match: StationMatch,
+        val hubId: String,
+        val tier: StationMatchTier,
+        query: String,
+        val distance: Double,
+        val station: IndexedStation? = null,
+    ) {
         val exact = StationMatcher.isExact(query, match.name)
         val startsName = StationMatcher.startsName(query, match.name)
     }
@@ -218,9 +275,19 @@ class StationIndex(
     }
 
     // An interchange's station name matches by its name alone, as in [search].
-    private fun tierOf(query: String, match: StationMatch): StationMatchTier? =
-        if (match.lead.isNotEmpty()) StationMatcher.tier(query, match.name)
-        else StationMatcher.tier(query, match.name, match.id, hubOf[match.id].orEmpty())
+    private fun tierOf(query: String, match: StationMatch): StationMatchTier? = tier(query, match)
+
+    /**
+     * How well [match] matches [query], as [rank] places it: a station TfL lists twice by any of its
+     * twins' ids, so the row [search] folds them into keeps a code only the other twin carries
+     * ("rdng4ab" for Reading). An interchange's station name matches by its name alone. A worker's work.
+     */
+    @WorkerThread
+    fun tier(query: String, match: StationMatch): StationMatchTier? {
+        if (match.lead.isNotEmpty()) return StationMatcher.tier(query, match.name)
+        val ids = twins[match.id]?.map { it.id } ?: listOf(match.id)
+        return ids.mapNotNull { StationMatcher.tier(query, match.name, it, hubOf[it].orEmpty()) }.minOrNull()
+    }
 
     // Each indexed station's interchange, for folding TfL's matches the way [search] folds its own.
     private val hubOf: Map<String, String> =

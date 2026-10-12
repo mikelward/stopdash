@@ -8,7 +8,7 @@ from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from build_station_index import (  # noqa: E402
-    add_route_ends, add_terminus_ends, build_index, fetch, checked_hub_batch, modes_without_lines, required_points, route_ends, station_points, terminus_ends,
+    add_route_ends, add_terminus_ends, build_index, checked_reach, london_reach, fetch, checked_hub_batch, modes_without_lines, required_points, route_ends, station_points, terminus_ends,
 )
 
 
@@ -204,6 +204,54 @@ class BuildIndexTest(unittest.TestCase):
             [],
         )
         self.assertEqual([], index["stations"])
+
+    def test_commuter_belt_stations_on_a_london_line_join_the_index(self):
+        # Reading and Bedford (public TfL data) sit past the London box but within reach of Charing
+        # Cross on lines that call in London; a station that far on a line that never reaches London
+        # stays out, and so does one on a London line past the commuter radius.
+        def rail(sid, name, lines, lat, lon, mode="national-rail"):
+            s = stop(sid, name, [mode], "NaptanRailStation", lat=lat, lon=lon)
+            s["lineModeGroups"] = [{"modeName": mode, "lineIdentifier": lines}]
+            return s
+        index = build_index(
+            [
+                rail("910GLNDNBDE", "London Bridge Rail Station", ["thameslink"], 51.5052, -0.0864),
+                rail("910GPADTON", "Paddington Rail Station", ["great-western-railway"], 51.5170, -0.1774),
+                rail("910GPADTLL", "Paddington", ["elizabeth"], 51.5170, -0.1774, mode="elizabeth-line"),
+                rail("910GRDNGSTN", "Reading Rail Station", ["great-western-railway"], 51.4588, -0.9719),
+                rail("910GRDNGLL", "Reading", ["elizabeth"], 51.4588, -0.9719, mode="elizabeth-line"),
+                rail("910GBEDFMDL", "Bedford Rail Station", ["thameslink"], 52.1362, -0.4795),
+                rail("910GOTHER", "Other Line Station", ["other-railway"], 51.4588, -0.9719),
+                rail("910GFARLDN", "Far London Line Station", ["great-western-railway"], 51.0, -2.6),
+            ],
+            [],
+        )
+        self.assertEqual(
+            ["910GBEDFMDL", "910GLNDNBDE", "910GPADTLL", "910GPADTON", "910GRDNGLL", "910GRDNGSTN"],
+            [s["id"] for s in index["stations"]],
+        )
+
+    def test_a_commuter_belt_station_needs_a_route_that_calls_in_london(self):
+        # One operator runs a London route and a cross-country branch: Bedford is on the London
+        # route, a branch-only stop isn't, though both are on the operator's line.
+        def rail(sid, name, lat, lon):
+            s = stop(sid, name, ["national-rail"], "NaptanRailStation", lat=lat, lon=lon)
+            s["lineModeGroups"] = [{"modeName": "national-rail", "lineIdentifier": ["zeta-trains"]}]
+            return s
+        stops = [rail("910GEUSTON", "Euston Rail Station", 51.5282, -0.1337),
+                 rail("910GBEDFMDL", "Bedford Rail Station", 52.1362, -0.4795),
+                 rail("910GBRANCH", "Branch Rail Station", 52.05, -0.6)]
+        def route(*ids):
+            return {"orderedLineRoutes": [{"naptanIds": list(ids)}]}
+        reach = london_reach({"zeta-trains": [route("910GEUSTON", "910GBEDFMDL"), route("910GBEDFMDL", "910GBRANCH")]},
+                             {"910GEUSTON"})
+        self.assertEqual({"zeta-trains": {"910GEUSTON", "910GBEDFMDL"}}, reach)
+        self.assertEqual(["910GBEDFMDL", "910GEUSTON"], [s["id"] for s in build_index(stops, [], reach)["stations"]])
+        # A line TfL answered for with no route through London stops the build.
+        with self.assertRaises(SystemExit):
+            checked_reach(london_reach({"zeta-trains": [{}, {}]}, {"910GEUSTON"}))
+        # A line without route data counts whole, as before.
+        self.assertEqual(3, len(build_index(stops, [])["stations"]))
 
     def test_a_hub_with_no_indexed_member_is_left_out(self):
         index = build_index([], [{"id": "HUBEXA", "commonName": "Example"}])
