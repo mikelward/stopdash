@@ -1602,6 +1602,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               the text names the destination and the platform or stop letter.
           - [ ] Device check: promoted on a real phone, the chip's width for a long label, and the
                 Northern line's black segment against a dark shade.
+          - [ ] **Taking the notification down off the main thread** (maintainer, 2026-10-12, kept
+                for now; Codex, #790): the stop closes the posting gate on the main thread, so it can
+                wait out one `notify()` already in flight. The alternative serializes posting and
+                removal on one worker, the removal dispatched with a generation guard so a queued old
+                one can't take down a newer trip's notification. Revisit if a teardown stall shows up.
+          - [ ] Device check (#790): the notification goes on arrival, never left on the last walk.
           - [x] The chip on a walk (maintainer, 2026-10-09): the distance left, minutes until a fix.
           - [x] **More help on a walk: a compass toward where it goes** (maintainer, 2026-10-11;
                 mock A; SPEC *On the way*). The distance names the compass point the walk's end
