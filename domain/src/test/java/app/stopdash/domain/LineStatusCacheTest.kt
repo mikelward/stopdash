@@ -28,6 +28,34 @@ class LineStatusCacheTest {
         assertEquals(LineStatusCache.Held.Verdict(Instant.EPOCH.plusSeconds(10), good), cache["victoria"])
     }
 
+    // Codex on #783: a pull is ordered among requests by ticket, so one sent just before it on the same
+    // clock tick is still before it.
+    @Test
+    fun `an answer counts as after a point only if its request was sent after it`() {
+        val cache = LineStatusCache()
+        val before = cache.ticket()
+        val point = cache.ticket()
+        val answer = LineStatusCache.Held.Verdict(Instant.EPOCH, severe)
+        cache.set("victoria", answer, before)
+        assertEquals(null, cache.get("victoria", askedAfter = point))
+        assertEquals(answer, cache.get("victoria", askedAfter = 0L))
+        cache.set("victoria", answer, cache.ticket())
+        assertEquals(answer, cache.get("victoria", askedAfter = point))
+        assertEquals(null, cache.get("jubilee", askedAfter = 0L))
+    }
+
+    // Codex on #783: a surface's pull is held here, beside the answers, rather than by a screen's model.
+    @Test
+    fun `a pull is held per surface, ordered among the requests`() {
+        val cache = LineStatusCache()
+        assertEquals(0L, cache.pulledAfter("nearby"))
+        val before = cache.ticket()
+        cache.pull("nearby")
+        val after = cache.ticket()
+        assertTrue(cache.pulledAfter("nearby") in (before + 1) until after)
+        assertEquals(0L, cache.pulledAfter("trip"))
+    }
+
     // Ordered by request, not by stamp: after the clock moves back, a later request's earlier-stamped
     // answer still replaces the one before it.
     @Test
@@ -144,10 +172,10 @@ class LineStatusCacheTest {
         val cache = LineStatusCache()
         val now = Instant.EPOCH.plusSeconds(1_000)
         cache["victoria"] = LineStatusCache.Held.Verdict(now.minusSeconds(20), severe)
+        val pulled = cache.ticket()
         cache["jubilee"] = LineStatusCache.Held.Verdict(now.minusSeconds(5), good.copy(lineId = "jubilee"))
         var asked: List<String>? = null
-        val checked = cache.check(listOf("victoria", "jubilee"), { now }, Duration.ofSeconds(90),
-            pulledAt = now.minusSeconds(10)) { ids ->
+        val checked = cache.check(listOf("victoria", "jubilee"), { now }, Duration.ofSeconds(90), askedAfter = pulled) { ids ->
             asked = ids
             listOf(good)
         }
@@ -155,31 +183,28 @@ class LineStatusCacheTest {
         assertEquals(good, checked.statuses["victoria"])
     }
 
-    // Codex on #776: the pull and the answer are compared in the steady frame both were stamped in, so a
-    // clock set since doesn't make an answer from before the pull look newer.
+    // Codex on #783: a request another surface had in flight when the rider pulled is from before the
+    // pull, though its answer lands after it and during this check: the pull still asks again.
     @Test
-    fun `an answer from before the pull is asked again however the clock is set since`() = runTest {
-        var offset = Duration.ZERO
-        SteadyClock.source = object : SteadyClock.Source {
-            override val frame: SteadyClock.Frame? = null
-            override fun offset(): Duration = offset
-        }
-        try {
-            val cache = LineStatusCache()
-            val now = Instant.EPOCH.plusSeconds(1_000)
-            cache["victoria"] = LineStatusCache.Held.Verdict(SteadyClock.stamp(now.minusSeconds(20)), severe)
-            val pulled = SteadyClock.stamp(now.minusSeconds(10))
-            // The clock then set forward ten minutes: the wall time reads later, the steady time doesn't.
-            offset = Duration.ofMinutes(-10)
-            var asked: List<String>? = null
-            cache.check(listOf("victoria"), { now.plusSeconds(600) }, Duration.ofSeconds(90), pulledAt = pulled) { ids ->
+    fun `a request already in flight when the rider pulled doesn't stand for the pull`() = runTest {
+        val cache = LineStatusCache()
+        val now = Instant.EPOCH.plusSeconds(1_000)
+        val gate = CompletableDeferred<Unit>()
+        val inFlight = async { cache.check(listOf("victoria"), { now }, Duration.ofSeconds(90)) { gate.await(); listOf(severe) } }
+        testScheduler.runCurrent()
+        val pulled = cache.ticket()
+        var asked: List<String>? = null
+        val pull = async {
+            cache.check(listOf("victoria"), { now }, Duration.ofSeconds(90), refresh = true, askedAfter = pulled) { ids ->
                 asked = ids
                 listOf(good)
             }
-            assertEquals(listOf("victoria"), asked)
-        } finally {
-            SteadyClock.source = null
         }
+        testScheduler.runCurrent()
+        gate.complete(Unit)
+        inFlight.await()
+        assertEquals(good, pull.await().statuses["victoria"])
+        assertEquals(listOf("victoria"), asked)
     }
 
     // Codex on #776: a pull that fails shows the line unchecked, not the answer it was meant to replace.
@@ -284,7 +309,20 @@ class LineStatusCacheTest {
         val asked = mutableListOf<List<String>>()
         val later = now.plusSeconds(600)
         cache.check(listOf("eurostar", "victoria"), { later }, Duration.ofSeconds(90), refresh = true) { asked += it; listOf(severe) }
-        cache.check(listOf("eurostar"), { later }, Duration.ofSeconds(90), pulledAt = later) { asked += it; emptyList() }
+        cache.check(listOf("eurostar"), { later }, Duration.ofSeconds(90), askedAfter = cache.ticket()) { asked += it; emptyList() }
         assertEquals(listOf(listOf("victoria")), asked)
+    }
+
+    // Stamped when asked, before the request goes out: an answer landing late never passes for newer than it is.
+    @Test
+    fun `an answer is stamped when it was asked for, not when it landed`() = runTest {
+        val cache = LineStatusCache()
+        var now = Instant.EPOCH.plusSeconds(1_000)
+        val asked = now
+        cache.check(listOf("victoria"), { now }, Duration.ofSeconds(90)) { ids ->
+            now = now.plusSeconds(5)
+            ids.map { severe }
+        }
+        assertEquals(asked, cache["victoria"]!!.at)
     }
 }

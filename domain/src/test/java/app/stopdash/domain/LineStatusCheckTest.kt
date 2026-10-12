@@ -273,15 +273,17 @@ class LineStatusCheckTest {
     }
 
     @Test
-    fun `a slow lookup is stamped when TfL answered, not when the refresh began`() = runTest {
+    fun `a slow lookup is stamped when it was asked for, not when TfL answered`() = runTest {
         val began = t0.plusSeconds(120)
-        val answered = began.plusSeconds(200)
-        val refreshed = WidgetRefresh.refreshedLineStatuses(snapshot(emptyMap()), began, answeredAt = { answered }) {
+        val asked = began.plusSeconds(30)
+        var clock = asked
+        val refreshed = WidgetRefresh.refreshedLineStatuses(snapshot(emptyMap()), began, answeredAt = { clock }) {
+            clock = asked.plusSeconds(20)
             listOf(severe)
         }
-        assertEquals(LineStatusCheck(severe, answered), refreshed.lineStatuses["victoria"])
-        // Still marked a moment after the answer, though the refresh began over three minutes before.
-        assertEquals(severe, refreshed.liveLineStatuses(answered.plusSeconds(150))["victoria"])
+        // Dated when the request went out: an answer asked for before a pull doesn't pass as checked after it.
+        assertEquals(LineStatusCheck(severe, asked), refreshed.lineStatuses["victoria"])
+        assertEquals(severe, refreshed.liveLineStatuses(asked.plusSeconds(60))["victoria"])
     }
 
     @Test

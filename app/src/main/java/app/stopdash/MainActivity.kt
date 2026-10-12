@@ -3359,6 +3359,8 @@ class MainActivity : ComponentActivity() {
                             arrivalsReuse = ARRIVALS_REUSE,
                             sharedArrivals = ArrivalsCache.SHARED,
                             sharedLines = LineStatusCache.SHARED,
+                            // One surface across the nearby sets: a pull that moved the set still holds for the new set's lines.
+                            linesPullSurface = NEARBY_LINE_PULLS,
                             disruptionReuse = DISRUPTION_REUSE,
                             disruptionCache = StopClosureCache.SHARED,
                             hubNames = HubInfoCache.SHARED,
@@ -4465,6 +4467,8 @@ class MainActivity : ComponentActivity() {
         place: TripDestination.Place,
         inputs: PlaceDirectViewModel.Inputs,
         lifecycleOwner: LifecycleOwner,
+        // The trip's surface for its line pulls ([TripViewModel.linePullsTo]).
+        linePulls: String,
     ): PlaceDirectViewModel {
         val appContext = applicationContext
         val direct: PlaceDirectViewModel = viewModel(
@@ -4483,6 +4487,7 @@ class MainActivity : ComponentActivity() {
                         liftsOut = { liftOutages.current().ids },
                         arrivals = ArrivalsCache.SHARED,
                         sharedLines = LineStatusCache.SHARED,
+                        linePulls = linePulls,
                         warn = ::logDepartureWarning,
                     )
                 }
@@ -4766,6 +4771,7 @@ class MainActivity : ComponentActivity() {
                         destinations, warn = ::logDepartureWarning,
                         arrivals = ArrivalsCache.SHARED, departureSourceChanges = RailApiKeySetting.changes,
                         sharedLines = LineStatusCache.SHARED, lineStatusReuse = LINE_STATUS_REUSE,
+                        linePulls = TripViewModel.linePullsTo(destKey),
                         closureCache = StopClosureCache.SHARED,
                         poles = { area -> routeStops(appContext).loadPoles(area).map { it.id } },
                         savedState = createSavedStateHandle(),
@@ -4867,7 +4873,7 @@ class MainActivity : ComponentActivity() {
             // stop's row never shows before the edit lands.
             val walkMeters = PlaceStops.walkMeters(maxWalk, walkingSpeed)
             val inputs = PlaceDirectViewModel.Inputs(origin, distanceMeters, hiddenModes, avoidedLines, stepFree, tripModes, walkMeters, planOptionsLoaded && !avoidedSaving)
-            rememberPlaceDirect(owner, place, inputs, lifecycleOwner)
+            rememberPlaceDirect(owner, place, inputs, lifecycleOwner, TripViewModel.linePullsTo(destKey))
         }
         val directState = direct?.state?.collectByIdentityWithLifecycle()?.value
         val directPulling = direct?.pulling?.collectAsStateWithLifecycle()?.value == true
@@ -4979,7 +4985,7 @@ class MainActivity : ComponentActivity() {
                 lastPull = pull
                 // The Direct section looks again too, the indicator held until it has: from the same
                 // pull, so a line either answers after it stands for both (Codex on #776).
-                direct?.pullRefresh(pull.stamp)
+                direct?.pullRefresh()
                 if (here != null) relocate()
             },
         )
@@ -4993,6 +4999,8 @@ class MainActivity : ComponentActivity() {
         MainViewModel(
             client = departuresClient(appContext),
             departureSourceChanges = RailApiKeySetting.changes,
+            // A pull on a station's page holds for that station's lines alone.
+            linesPullSurface = "station:" + stops.joinToString(",") { it.id },
             // No hidden modes: a searched station's page shows all of its services, so
             // it asks for its National Rail board whatever the near-me list hides.
             seedStops = stops,
@@ -6041,6 +6049,10 @@ internal fun NearbyArea(
 
 private const val NEARBY_BODY = "nearby-body"
 
+// The near-me list's surface in the shared line cache's pulls ([LineStatusCache.pull]): its own and its
+// farther cards' models, whichever nearby set they show.
+private const val NEARBY_LINE_PULLS = "nearby"
+
 /**
  * Holds the one bit "a background→foreground return is pending re-location," retained across a
  * configuration change but reset on process recreation. A rotation while a Settings/Licenses overlay
@@ -6831,6 +6843,8 @@ private fun fartherCardModel(
 ) = MainViewModel(
     client = client,
     departureSourceChanges = RailApiKeySetting.changes,
+    // Pulled with the near-me list it opens from.
+    linesPullSurface = NEARBY_LINE_PULLS,
     hiddenModes = { HiddenModesSetting.current },
     seedStops = stops,
     stopDistanceMeters = distanceMeters,

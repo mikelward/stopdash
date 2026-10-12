@@ -41,8 +41,31 @@ open class LineStatusCache {
     // Open so a test can note where it's read (AGENTS.md *Main thread*).
     open operator fun get(lineId: String): Held? = held[lineId]?.answer
 
+    /**
+     * [lineId]'s latest answer if it answers a request sent after [ticket] was taken, else null: by
+     * request order, not the clock, so one sent in the same clock tick as a pull is still before it.
+     */
+    open fun get(lineId: String, askedAfter: Long): Held? = held[lineId]?.takeIf { it.ticket > askedAfter }?.answer
+
     /** The order of a request about to be sent, taken before it is: pass it to [set] with its answers. */
     fun ticket(): Long = tickets.incrementAndGet()
+
+    // Each surface's last pull, as the [ticket] taken when it was made. Held here, beside the answers it is
+    // ordered against, rather than by the screen: a screen's models come and go (a pull that moves the
+    // nearby set or the trip makes new ones, an activity is recreated), and the cutoff has to outlive
+    // them for exactly as long as the answers do (Codex on #783).
+    private val pulls: MutableMap<String, Long> = ConcurrentHashMap()
+
+    /**
+     * Records the rider's pull on [surface] now: from here, a line answer asked for before it doesn't
+     * stand there ([pulledAfter]), however recent, until one asked for since replaces it.
+     */
+    fun pull(surface: String) {
+        pulls[surface] = ticket()
+    }
+
+    /** The cutoff of [surface]'s last [pull], for [check]'s `askedAfter`: zero, no pull. */
+    fun pulledAfter(surface: String): Long = pulls[surface] ?: 0L
 
     /**
      * Holds [answer] as [lineId]'s latest, unless an answer to a later request ([ticket]) is held
@@ -178,9 +201,10 @@ open class LineStatusCache {
      * within [reuse] ([LineStatusReuse]), or since this check began, is taken as it stands; the rest are
      * asked of TfL by [fetch], in as many requests as it accepts ([LineStatusBatch]), and the answers held
      * here for the others. [refresh] (a pull) asks every line afresh, unless another surface's answer
-     * lands while this one waits; so does an answer had before [pulledAt] (the rider's last pull,
-     * [SteadyClock.stamp]ed when it was made, as an answer is, so setting the clock since moves neither;
-     * a screen's later refreshes honor it too). A line TfL said it doesn't know
+     * lands while this one waits; so does an answer to a request sent before [askedAfter] (the rider's
+     * last pull, as a [ticket] taken when it was made: ordered among requests, not by the clock, so one
+     * sent in the same clock tick just before it, or still in flight when it came, is before it; a
+     * screen's later refreshes honor it too; zero, no pull). A line TfL said it doesn't know
      * isn't asked again. A line whose request failed is left out, whatever was held for it: a check
      * that couldn't be made never vouches on an older answer. Stamped by [clock] through
      * [SteadyClock], as a fetch is.
@@ -191,15 +215,13 @@ open class LineStatusCache {
         clock: () -> Instant,
         reuse: java.time.Duration,
         refresh: Boolean = false,
-        pulledAt: Instant? = null,
+        askedAfter: Long = 0L,
         fetch: suspend (List<String>) -> List<LineStatus>?,
     ): Checked {
         val lines = lineIds.toSet()
         // Answers landing after this point are this check's to take, whatever the window.
         val began = mark()
         fun since(id: String) = (answeredAt[id] ?: 0L) > began
-        // Had before the rider's last pull: asked again, however recent.
-        fun prePull(held: Held) = pulledAt != null && held.at.isBefore(pulledAt)
         fun standsInWindow(id: String, held: Held, now: Instant): Boolean = when (held) {
             is Held.Verdict -> since(id) && !held.status.awaitingDirections ||
                 LineStatusReuse.stands(held.at, now, reuse, held.status.awaitingDirections)
@@ -210,7 +232,9 @@ open class LineStatusCache {
         fun unrecognized(id: String) = (this[id] as? Held.Omitted)?.unrecognized == true
         fun stands(id: String, now: Instant): Boolean = when (val held = this[id]) {
             null -> false
-            else -> unrecognized(id) || !(prePull(held) && !since(id)) && standsInWindow(id, held, now)
+            // Asked for before the rider's last pull: asked again, however recent, landing during this
+            // check included (Codex on #783).
+            else -> unrecognized(id) || get(id, askedAfter) != null && standsInWindow(id, held, now)
         }
         // A request another surface has out is waited on whatever stands, so its newer answer is shown
         // rather than the one it's replacing (Codex on #776); a pull it covered needn't ask again.
@@ -264,9 +288,12 @@ open class LineStatusCache {
         fetch: suspend (List<String>) -> List<LineStatus>?,
     ): Pair<LineStatusBatch.Results<List<LineStatus>>, Map<String, LineStatus>> {
         val ticket = ticket()
+        // Stamped when asked, before the request goes out: TfL's answer is no older than that, so the
+        // stamp never makes it look fresher than it is, and one asked before a pull never passes for one
+        // asked after it, however late it lands.
+        val at = SteadyClock.stamp(clock())
         val results = LineStatusBatch.request(toAsk, fetch)
         if (!results.anyAnswered) return results to emptyMap()
-        val at = SteadyClock.stamp(clock())
         val returned = results.answers.flatMap { it.value }.filter { it.lineId in toAsk }.associateBy { it.lineId }
         results.answeredIds.forEach { id ->
             val answer = returned[id]?.let { Held.Verdict(at, it) } ?: Held.Omitted(at, unrecognized = id in results.unknown)

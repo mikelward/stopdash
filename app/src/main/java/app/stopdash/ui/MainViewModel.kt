@@ -225,6 +225,9 @@ class MainViewModel(
     // status*): a line any of them checked within [lineStatusReuse] isn't asked again. Tests get their
     // own; the app passes [LineStatusCache.SHARED].
     private val sharedLines: LineStatusCache = LineStatusCache(),
+    // The surface a pull here is recorded for in [sharedLines] ([LineStatusCache.pull]): the near-me list
+    // keeps one across the models a moving nearby set makes, so a pull holds for the new set's too.
+    private val linesPullSurface: String = "list",
     // Resolved interchange info (hubId → name + member aliases), so a hub with a disruption is
     // looked up once and reused across refreshes and across the stops sharing it (King's Cross and
     // St Pancras both resolve `HUBKGX` from one call). Only a real result is cached here — a failed
@@ -808,7 +811,8 @@ class MainViewModel(
                 // Arrivals fetched under the old source (a National Rail key added or removed) no
                 // longer stand, on this screen or any other.
                 sharedArrivals?.clear()
-                forceNextFetch()
+                // The arrivals' source changed, not the lines': their answers stand.
+                forceNextFetch(lines = false)
                 refresh()
             }
         }
@@ -1768,17 +1772,21 @@ class MainViewModel(
         // did fail ([disruptionUnknownOf]). Read from the cache alone, so a verdict another surface gets
         // for one later puts it back in play here too (Codex on #765).
         val unknownLineIds = heldLines.unrecognized()
+        // An answer asked for before the rider's last pull doesn't stand, however recent: the pull is
+        // for one from after it ([LineStatusCache.pull]). One a screen asked for since, this one's or another's,
+        // does.
+        val pulled = heldLines.pulledAfter(linesPullSurface)
         // Not one still waiting on its alerts' directions: asked again, it splits by direction. By the
         // rule the widget uses too ([LineStatusReuse]).
         val cachedStatuses = lineIds.mapNotNull { id ->
-            (heldLines[id] as? LineStatusCache.Held.Verdict)
+            (heldLines.get(id, askedAfter = pulled) as? LineStatusCache.Held.Verdict)
                 ?.takeIf { LineStatusReuse.stands(it.at, now, lineStatusReuse, it.status.awaitingDirections) }?.status
         }
         // A line TfL left out within the same window isn't asked about again either: it still
         // reads as unchecked, but asking every cycle would spend the rate budget and the radio
         // on an answer that just came back empty.
         val recentlyOmitted = lineIds.filterTo(HashSet()) { id ->
-            (heldLines[id] as? LineStatusCache.Held.Omitted)?.let { LineStatusReuse.stands(it.at, now, lineStatusReuse) } == true
+            (heldLines.get(id, askedAfter = pulled) as? LineStatusCache.Held.Omitted)?.let { LineStatusReuse.stands(it.at, now, lineStatusReuse) } == true
         }
         val toQuery = lineIds - cachedStatuses.mapTo(HashSet()) { it.lineId } - unknownLineIds - recentlyOmitted
         val cachedDismissals = cachedStatuses.associate { it.lineId to (lineStatusMarks[it.lineId] ?: 0L) }
@@ -1793,6 +1801,11 @@ class MainViewModel(
         val asked = heldLines.asking(toQuery, since) {
             // Taken before asking, so a later request's answers aren't replaced by these landing after them.
             val ticket = heldLines.ticket()
+            // Stamped when asked, before the request goes out: TfL's answer is no older than that, so
+            // the stamp never makes it look fresher than it is, and one asked before a pull never
+            // passes for one asked after it, however late it lands. By the steady clock, as a fetch
+            // is ([SteadyClock]).
+            val answeredAt = SteadyClock.stamp(clock())
             try {
                 // One call per request TfL accepts, each with its own outcome (LineStatusBatch), so
                 // the stats count only what was sent and one part failing or unknown doesn't
@@ -1814,11 +1827,6 @@ class MainViewModel(
                     // no refresh asks again.
                     warn("line status: TfL doesn't know line(s) ${unknown.joinToString(",")}; not asked again")
                 }
-                // Stamped when TfL answered, not when this batch began: a slow batch neither loses
-                // the store's newest-wins merge to a check made meanwhile nor saves an answer
-                // already near its expiry (SPEC D3/D4). By the steady clock, as a fetch is
-                // ([SteadyClock]).
-                val answeredAt = SteadyClock.stamp(clock())
                 // The latest answer for a line replaces the other kind outright ([heldLines]).
                 fetched.forEach {
                     heldLines.set(it.lineId, LineStatusCache.Held.Verdict(answeredAt, it), ticket)
@@ -1968,10 +1976,12 @@ class MainViewModel(
     /**
      * Makes the next [refresh] — this one's, or the one a relocation's [reconcile] runs — ask TfL for
      * every stop, reusing neither this list's recent fetches nor another screen's: a pull-to-refresh
-     * (SPEC *Freshness → Shared arrivals*).
+     * (SPEC *Freshness → Shared arrivals*). With [lines] (a pull), its lines' statuses too: any
+     * asked for before now is asked again, by this model or one that takes its place ([LineStatusCache.pull]).
      */
-    fun forceNextFetch() {
+    fun forceNextFetch(lines: Boolean = true) {
         forceNext = true
+        if (lines) heldLines.pull(linesPullSurface)
     }
 
     /**

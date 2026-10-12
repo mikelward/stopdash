@@ -526,14 +526,15 @@ class LinesViewModelTest {
     fun `a week ahead that runs out while the status is asked isn't shown, and is asked again`() {
         // Read once the status is in: work that started while it was asked never reaches Coming up (Codex, #704).
         ahead = { listOf(weekend) }
-        aheadStartsIn = java.time.Duration.ofMinutes(20)
+        aheadStartsIn = java.time.Duration.ofMinutes(10).plusSeconds(30)
         val vm = vm()
         vm.page(n299)
         repeat(3) { releaseCompute() }
         assertEquals(1, aheadAsked)
         clock += java.time.Duration.ofMinutes(10).toMillis()
-        // Its status takes long enough that the week's work starts meanwhile.
-        status = { clock += java.time.Duration.ofMinutes(11).toMillis(); LineStatus(lineId = "299", severity = LineStatus.GOOD_SERVICE, description = "Good Service") }
+        // Its status takes long enough that the week's work starts meanwhile; not so long that the answer,
+        // dated from when it was asked for, is already past its age.
+        status = { clock += java.time.Duration.ofSeconds(60).toMillis(); LineStatus(lineId = "299", severity = LineStatus.GOOD_SERVICE, description = "Good Service") }
         ahead = { emptyList() }
         vm.check(n299)
         repeat(3) { releaseCompute() }

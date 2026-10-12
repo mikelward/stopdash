@@ -112,6 +112,9 @@ class TripViewModel(
     // Lines' last status answers, shared with the other screens (the app passes [LineStatusCache.SHARED]),
     // each taken within [lineStatusReuse]: none by default (tests), [LINE_STATUS_REUSE] in the app.
     private val sharedLines: LineStatusCache = LineStatusCache(),
+    // This trip's surface in [sharedLines]' pulls ([linePullsTo]): one per destination, shared by the trips a
+    // pull's fresh fix or a recreated activity makes to it and by its Direct section, not by a trip elsewhere.
+    private val linePulls: String = linePullsTo(""),
     private val lineStatusReuse: java.time.Duration = java.time.Duration.ZERO,
     // Emits when where departures come from changes (a National Rail key added or removed): the
     // current value first, then each change, as the list's model takes it.
@@ -925,8 +928,8 @@ class TripViewModel(
     // pull, here or carried from the trip this one took over from ([carryPull]).
     private var pulledAt: Instant? = null
 
-    // [pulledAt] stamped in the steady frame when the pull was made, as a line's answer is, for the
-    // shared line check to compare with however the clock is set since (Codex on #776).
+    // [pulledAt] stamped in the steady frame when the pull was made, to order a carried pull against this
+    // one's however the clock is set since (Codex on #776).
     private var pulledStamp: Instant? = null
 
     // A pull from here waiting on the fresh fix it took: its indicator holds past its own run until
@@ -948,6 +951,9 @@ class TripViewModel(
         _pulling.value = true
         pulledAt = at
         pulledStamp = SteadyClock.stamp(at)
+        // Recorded in the shared cache, which every trip and its Direct section read it from: a trip a
+        // pull's fresh fix opens, or one remade with the activity, holds to it without carrying it.
+        sharedLines.pull(linePulls)
         awaitingFix = awaitFix
         start(replan = true)
         return Pull(at, pulledStamp!!)
@@ -990,8 +996,8 @@ class TripViewModel(
     fun carryPull(at: Instant) = carryPull(Pull(at, SteadyClock.stamp(at)))
 
     /**
-     * A pull: when it came by the wall clock ([at]), and [stamp]ed in the steady frame then, the
-     * cutoff the shared line answers are compared with whatever the clock does after.
+     * A pull: when it came by the wall clock ([at]), and [stamp]ed in the steady frame then to order pulls
+     * whatever the clock does after. Its line cutoff isn't carried: the shared cache holds it ([linePullsTo]).
      */
     data class Pull(val at: Instant, val stamp: Instant) : java.io.Serializable
 
@@ -1959,7 +1965,7 @@ class TripViewModel(
         // and nothing reading it after walks one (AGENTS.md *Main thread*).
         return withContext(compute) {
             // An answer had before the rider's last pull is asked again, as a stop's arrivals are ([needsFetch]).
-            val checked = sharedLines.check(lineIds, clock, lineStatusReuse, pulledAt = pulledStamp) { chunk ->
+            val checked = sharedLines.check(lineIds, clock, lineStatusReuse, askedAfter = sharedLines.pulledAfter(linePulls)) { chunk ->
                 withContext(io) { client.lineStatuses(chunk) }
             }
             checked.failure?.let { warn("trip line status failed for ${checked.failed.size} line(s): ${it::class.simpleName}") }
@@ -1991,6 +1997,13 @@ class TripViewModel(
     private fun earlier(held: LocalDate?, day: LocalDate): LocalDate = if (held != null && held.isBefore(day)) held else day
 
     companion object {
+        /**
+         * The surface in the shared line cache's pulls ([LineStatusCache.pull]) of the trips to [destKey], and
+         * of their Direct section: one per destination, as the screen keeps its last pull ([rememberLastPull]),
+         * so a pull holds for the trip its fresh fix opens and for one remade with the activity, as long as the
+         * answers it's ordered against are kept, and a trip elsewhere isn't held to it (Codex on #783).
+         */
+        fun linePullsTo(destKey: String) = "trip:$destKey"
         private const val KEY_DIRECT_RIDE = "directRide"
         private const val KEY_DIRECT_AWAITING = "directAwaiting"
         const val KEY_OPEN_ROUTE = "openRoute"
