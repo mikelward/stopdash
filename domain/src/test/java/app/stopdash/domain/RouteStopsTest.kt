@@ -348,11 +348,16 @@ class RouteStopsTest {
         )
         repository.reportMisses(emptyList())
         repository.reportUnplaced("43")
+        repository.reportChecking(listOf("43's route", "departures at its origin"), java.time.Duration.ofSeconds(5))
+        // Nothing waited on: nothing said.
+        repository.reportChecking(emptyList(), java.time.Duration.ofSeconds(5))
         assertEquals(
             listOf(
                 "route stops unavailable for line 43 at stop P: destination matches no route (bound for Elsewhere)",
                 "route stops unavailable for line (none) at stop P: no line id",
                 "journey not placed on line 43: no single boarding stop before the far end",
+                "journey card checking after 5 s, waiting on 43's route",
+                "journey card checking after 5 s, waiting on departures at its origin",
             ),
             warnings,
         )
@@ -805,7 +810,7 @@ class RouteStopsTest {
     }
 
     @Test
-    fun `a miss is formatted and logged on the worker, not a single-thread caller`() {
+    fun `a miss or a card still checking is formatted and logged on the worker, not a single-thread caller`() {
         // AGENTS.md *Main thread: read and dispatch only*: the screens report misses from a
         // LaunchedEffect on the main thread, and formatting walks TfL's destination text.
         val caller = Executors.newSingleThreadExecutor { Thread(it, "test-caller") }.asCoroutineDispatcher()
@@ -822,8 +827,9 @@ class RouteStopsTest {
             runBlocking(caller) {
                 repository.reportUnresolved("43", "P", RouteStops.Resolution.NoMatch, "Elsewhere")
                 repository.reportMisses(listOf(RouteMiss("43", "P", RouteStops.Resolution.NoMatch, "Elsewhere")))
+                repository.reportChecking(listOf("43's route"), java.time.Duration.ofSeconds(5))
             }
-            assertEquals(2, loggedOn.threads().size)
+            assertEquals(3, loggedOn.threads().size)
             assertEquals(setOf("test-worker"), loggedOn.threads().toSet())
         } finally {
             caller.close()

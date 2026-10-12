@@ -862,6 +862,18 @@ class RouteStopsRepository(
     }
 
     /**
+     * Logs what journey cards still "Checking trains" after [after] wait on ([waiting]: a line's route,
+     * a stop's departures), so a card that never settles says why (SPEC principle 2). One line per
+     * card, by line id and the kind of wait alone: never a stop, so cards that share a stop can't
+     * pair up a journey's two ends (docs/PRIVACY.md). Formatted on [compute]: the screen reports from
+     * the main thread.
+     */
+    suspend fun reportChecking(waiting: Collection<String>, after: java.time.Duration) {
+        if (waiting.isEmpty()) return
+        withContext(compute) { waiting.forEach { warn("journey card checking after ${after.seconds} s, waiting on $it") } }
+    }
+
+    /**
      * Logs that a favorite journey on [lineId] can't be placed on its line's route this way round —
      * no route calls at both ends in order, or the origin comes out as more than one stop — so a
      * card reading "Couldn't check" says why (SPEC principle 2). The line only: a journey's two ends
