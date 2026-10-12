@@ -430,10 +430,23 @@ def select_postcodes(rows, to_wgs84):
     return out
 
 
+# "St." for Saint (or Street) reads "St", as the app cleans TfL's stop names, so "St. Paul's Cathedral"
+# lists beside the "St Paul's" stops: the full stop dropped, and a space kept before a word it ran into.
+# Whatever its case ("ST. John", "st.georges"), keeping the name's own capitals.
+SAINT_DOT = re.compile(r"\b(St)\.(?:(?=\w)|\s*)", re.IGNORECASE)
+
+
+def without_saint_dot(name):
+    """[name] with each "St." read "St" ("St.Mary's" → "St Mary's", "Wardour St." → "Wardour St")."""
+    def replace(m):
+        return m.group(1) + (" " if m.end() < len(name) and name[m.end()].isalnum() else "")
+    return SAINT_DOT.sub(replace, name).strip()
+
+
 def render(places, streets, postcodes, sources):
     """The index file's text: the header, then every entry, sorted."""
     def clean(text):
-        return text.replace("\t", " ").replace("\n", " ")
+        return without_saint_dot(text.replace("\t", " ").replace("\n", " "))
     # A name with no letter or digit the app can match ("ピカデリー・サーカス") can't be found by typing.
     places = [p for p in places if match_key(p[0])]
     streets = [s for s in streets if match_key(s[0])]

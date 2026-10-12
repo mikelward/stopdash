@@ -35,11 +35,11 @@ class WidgetPreviewTest {
     }
 
     @Test
-    fun `the full example names its station above its rows, and the compact one doesn't`() {
+    fun `the full example names its station above its rows, spelled as the app shows it, and the compact one doesn't`() {
         for (size in WidgetPreview.SIZES.filter { it.height.value > 110f }) {
             val full = models().bySize.getValue(size)
-            assertEquals("$size", listOf("King's Cross St. Pancras"), full.rows.mapNotNull { it.header?.text })
-            assertEquals("$size: the header leads", "King's Cross St. Pancras", full.rows.first().header?.text)
+            assertEquals("$size", listOf("King's Cross St Pancras"), full.rows.mapNotNull { it.header?.text })
+            assertEquals("$size: the header leads", "King's Cross St Pancras", full.rows.first().header?.text)
             assertEquals("$size: one station's rows", setOf("940GZZLUKSX"), full.rows.mapTo(HashSet()) { it.row.stopId })
         }
     }

@@ -4,7 +4,7 @@
 The app's route-lines mark and wordmark on the left, and on the right a card of three
 departure rows styled like the app's list (line pills in the official TfL colors, as
 LinePill draws them). The mark mirrors scripts/render-store-icon.py. The rows are real
-services from King's Cross St. Pancras (the 390 bus, the Victoria line southbound, the Circle
+services from King's Cross St Pancras (the 390 bus, the Victoria line southbound, the Circle
 line clockwise) in the icon's red, blue and yellow order, with made-up countdowns, not
 anyone's watched stops.
 
@@ -78,7 +78,7 @@ d.text((s(64), s(348)), "at a glance", font=tag, fill=INK_MUTED)
 
 # The place header and its departures card.
 CX1, CY1, CX2 = 464, 108, 960
-d.text((s(CX1 + 8), s(CY1 - 16)), "King's Cross St. Pancras", font=font(500, 24), fill=INK_MUTED,
+d.text((s(CX1 + 8), s(CY1 - 16)), "King's Cross St Pancras", font=font(500, 24), fill=INK_MUTED,
        anchor="ls")
 ROW_H = 104
 CY2 = CY1 + ROW_H * len(ROWS)

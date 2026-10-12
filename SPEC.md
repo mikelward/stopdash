@@ -712,7 +712,9 @@ trimmed** the way stop names are — TfL's "Brixton Underground Station" shows a
 (*Concise copy*); "Bus Station" and "Coach Station" go whole the same way ("Canada Water Bus
 Station" → "Canada Water", the bus pill saying it's a bus, maintainer 2026-09-27); the bare
 " Station" is dropped too, so a terminus like "Battersea Power
-Station" reads "Battersea Power". A trailing **line-name parenthetical** is kept but
+Station" reads "Battersea Power". **"St." reads "St"** wherever a name is shown (maintainer,
+2026-10-12): TfL spells one place both ways ("St. Paul's" station, "St Paul's" bus stop), and the
+bundled places take the same form, so a search lists them alike. A trailing **line-name parenthetical** is kept but
 shortened to its lines — "Hammersmith (H&C Line)" shows as "Hammersmith (H&C)", "Edgware Road
 (Circle Line)" as "Edgware Road (Circle)" (maintainer, 2026-10-03). TfL adds that bracket only to
 tell apart two stations of one name a street apart, so it is shown wherever such a station is

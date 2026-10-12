@@ -357,6 +357,22 @@ class RenderTest(unittest.TestCase):
         self.assertEqual(["C\tXX1 1XX\t\t51.50000\t-0.12000\t4", "P\tBeta Hall\tmuseum\t51.50000\t-0.12000\t9",
                           "S\tAlpha Road\t\t51.50000\t-0.12000\t4"], lines[1:])
 
+    def test_saint_reads_st_without_its_full_stop(self):
+        text = render([("Alpha St. Omega's Church", "church", 51.5, -0.12, 9), ("Beta St.Omega Hall", "museum", 51.5, -0.12, 9)],
+                      [("Gamma St.", 51.5, -0.12)], [], "test sources")
+        names = [line.split("\t")[1] for line in text.splitlines()[1:]]
+        self.assertEqual(["Alpha St Omega's Church", "Beta St Omega Hall", "Gamma St"], names)
+
+    def test_saint_in_any_case_keeps_its_own_capitals(self):
+        text = render([("ST. Omega Church", "church", 51.5, -0.12, 9), ("st.omegas Hall", "museum", 51.5, -0.12, 9)],
+                      [("Delta ST.", 51.5, -0.12)], [], "test sources")
+        names = [line.split("\t")[1] for line in text.splitlines()[1:]]
+        self.assertEqual(["ST Omega Church", "st omegas Hall", "Delta ST"], names)
+
+    def test_a_word_starting_st_is_left_alone(self):
+        text = render([("Stamford Hall", "museum", 51.5, -0.12, 9)], [], [], "test sources")
+        self.assertIn("P\tStamford Hall\t", text)
+
 
 if __name__ == "__main__":
     unittest.main()

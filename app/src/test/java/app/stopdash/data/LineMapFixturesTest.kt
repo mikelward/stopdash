@@ -135,7 +135,7 @@ class LineMapFixturesTest {
     fun `a starred interchange on the Circle stays out of its fold`() {
         val map = LineMap.of(circle, starred = setOf("940GZZLUKSX"))!!
         assertEquals(
-            listOf("Edgware Road (Circle)", "[Paddington to Farringdon]", "King's Cross St. Pancras", "[Euston Square to Goldhawk Road]", "Hammersmith (H&C)"),
+            listOf("Edgware Road (Circle)", "[Paddington to Farringdon]", "King's Cross St Pancras", "[Euston Square to Goldhawk Road]", "Hammersmith (H&C)"),
             map.folded(emptySet()).labels(),
         )
     }
