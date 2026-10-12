@@ -100,7 +100,7 @@ between your phone and your watch, and between them over Bluetooth the link is e
 stations and bus stops that ship inside the app, on your device; in *From…* and *To…* also in a list of London places,
 streets and postcodes that ships inside the app. What you type isn't sent anywhere, with two exceptions for places
 outside London, which those lists don't cover: if you tap *Search outside London*, or type a complete postcode the
-list doesn't hold, the text you typed (and nothing else) is sent to TfL's Journey Planner to find it. An address that
+list doesn't hold, the text you typed (and nothing else) is sent to TfL's Journey Planner to find it. A place you **share** to StopDash from another app (Google Maps' *Share*, say), or open with it, is treated the same way: its name or address goes into *To…* as if you'd typed it, on your device, and the link that came with it is never opened or sent; a shared point (a `geo:` link with a position) is the destination of the trip, sent to TfL's Journey Planner as any destination is. An address that
 starts with a house number is looked up in the lists by its street. After a pick, the app sends the chosen station's id to look up its stops and
 departures; a place picked in *From…* sends that place's position (a public place, street or postcode
 center from the bundled list, not yours) to find the stops around it, and as the start of any trip

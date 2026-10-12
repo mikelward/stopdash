@@ -329,6 +329,10 @@
     <string name="location_denied">Turn on location access in Settings to see nearby stops.</string>
     <!-- A favorite place or place shortcut tapped with no location grant: a trip from here needs one. -->
     <string name="route_needs_location">Allow location to plan a trip from here</string>
+    <!-- A place shared in or opened with StopDash with no name, address or point to go on. -->
+    <string name="shared_place_unreadable">No place to search for in what was shared</string>
+    <!-- The trip title's name for a point shared in or opened with no name ("To Shared place"). -->
+    <string name="shared_place_name">Shared place</string>
     <string name="open_settings">Open settings</string>
 
     <!-- Top banner over the departures list when the shown stops are backed by a low-confidence
