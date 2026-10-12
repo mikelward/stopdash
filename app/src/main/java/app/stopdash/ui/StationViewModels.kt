@@ -436,7 +436,7 @@ class StationSearchViewModel(
                 val ranked = stations.rank(
                     trimmed, stations.search(trimmed, near = from), buses.search(trimmed, checkpoint = { ensureActive() }, near = from), near = from,
                 )
-                val entries = SearchResults.merge(trimmed, ranked, places)
+                val entries = SearchResults.merge(trimmed, ranked, places, stations::leads)
                 Result.Matches(ranked, places = places, entries = entries, areas = areasOf(entries, stations))
             }
             if (result.matches.isNotEmpty() || result.places.isNotEmpty()) _state.update { it.copy(result = result) }
@@ -587,7 +587,7 @@ class StationSearchViewModel(
                     val busMatches = buses.search(trimmed, checkpoint = { ensureActive() }, near = from)
                     val everyStop = stations.rank(trimmed, local, busMatches, limit = Int.MAX_VALUE, near = from)
                     val ranked = everyStop.take(StationIndex.DEFAULT_LIMIT)
-                    val entries = SearchResults.appended(before, trimmed, ranked, places, everyStop = everyStop)
+                    val entries = SearchResults.appended(before, trimmed, ranked, places, everyStop = everyStop, leads = stations::leads)
                     Triple(ranked, entries, shownPlaces(entries) to areasOf(entries, stations))
                 }
                 shown = entries

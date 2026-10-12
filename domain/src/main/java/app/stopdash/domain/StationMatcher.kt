@@ -44,6 +44,36 @@ object StationMatcher {
         return listOfNotNull(nameTier, codeTier).minOrNull()
     }
 
+    /**
+     * Whether [name] is exactly what [query] says, punctuation, case and spaces aside, or that after a
+     * leading "The" ("british museum", The British Museum): the best of equal matches, whatever its
+     * length (maintainer, 2026-10-12).
+     */
+    fun isExact(query: String, name: String): Boolean {
+        val q = queryForm(query).lowercase()
+        if (q.isEmpty()) return false
+        return namesWithoutThe(name).any { it == q }
+    }
+
+    /**
+     * Whether [query] starts the whole of [name] (after any leading "The"), rather than one of its
+     * parts ([namesOf]): "st pa" starts "St Pancras International" but only a part of "King's Cross
+     * & St Pancras International", so of equal matches the one the rider is spelling leads.
+     */
+    fun startsName(query: String, name: String): Boolean {
+        val q = queryForm(query).lowercase()
+        if (q.isEmpty()) return false
+        return namesWithoutThe(name).any { it.startsWith(q) }
+    }
+
+    // [name] as [isExact] and [startsName] compare it, spaces and case dropped: whole, and without a
+    // leading word "The" ("The Zeta Gallery"), never a "the" that starts a longer word ("Theodore").
+    private fun namesWithoutThe(name: String): List<String> {
+        val n = normalize(name).lowercase()
+        val whole = n.replace(" ", "")
+        return if (n.startsWith("the ")) listOf(whole, n.removePrefix("the ").replace(" ", "")) else listOf(whole)
+    }
+
     /** [query] as the tiers compare it: normalized, its spaces dropped. Blank for no match at all. */
     internal fun queryForm(query: String): String = normalize(query).replace(" ", "")
 

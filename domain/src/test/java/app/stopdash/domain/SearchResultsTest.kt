@@ -36,6 +36,29 @@ class SearchResultsTest {
     }
 
     @Test
+    fun `a place named exactly what's typed ranks above stops the query only starts`() {
+        // Exact, then whole name, as each list ranks itself (maintainer, 2026-10-12).
+        val stops = listOf(stop("Zeta Road"), stop("Alpha / Zeta Lane"))
+        val places = listOf(place("Zeta"), place("Zeta Gallery"))
+        assertEquals(
+            listOf("Zeta", "Zeta Road", "Zeta Gallery", "Alpha / Zeta Lane"),
+            names(SearchResults.merge("zeta", stops, places)),
+        )
+    }
+
+    @Test
+    fun `a stop that leads its tier stays ahead of an exactly named place`() {
+        // The user's own stop or an interchange leads its tier however exactly a place is named.
+        val recent = stop("Zeta Road")
+        val hub = StationMatch("HUBZZZ", "Zeta Cross", emptyList())
+        val places = listOf(place("Zeta"))
+        assertEquals(
+            listOf("Zeta Road", "Zeta Cross", "Zeta"),
+            names(SearchResults.merge("zeta", listOf(recent, hub), places, leads = { it == recent || it.id.startsWith("HUB") })),
+        )
+    }
+
+    @Test
     fun `a postcode's places follow the stops`() {
         val stops = listOf(stop("Zeta Lane"))
         val places = listOf(place("Somewhere", PlaceKind.POSTCODE))

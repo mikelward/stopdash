@@ -25,7 +25,7 @@ class PlaceHitsTest {
         // Prefix match ("Zeta …") ahead of the Anchored one ("Alpha Zeta").
         val candidates = listOf(candidate("Alpha Zeta"), candidate("Zeta Gardens"), candidate("Zeta Hall"))
         val hits = PlaceHits.rank("zeta", candidates, PlaceKind.PLACE)
-        assertEquals(listOf("Zeta Hall", "Zeta Gardens", "Alpha Zeta"), hits.map { it.name })
+        assertEquals(listOf("Zeta Gardens", "Zeta Hall", "Alpha Zeta"), hits.map { it.name })
         hits.forEach { assertEquals(PlaceKind.PLACE, it.kind) }
     }
 
@@ -34,6 +34,16 @@ class PlaceHitsTest {
         // Only an interchange's name parts at an "&"; a place's would beat the prefix match on length.
         val candidates = listOf(candidate("Alpha & Zeta"), candidate("Zeta Gardens Hall"))
         assertEquals(listOf("Zeta Gardens Hall", "Alpha & Zeta"), PlaceHits.rank("zeta", candidates, PlaceKind.PLACE).map { it.name })
+    }
+
+    @Test
+    fun `an exact name leads a nearer one the query only starts`() {
+        val nearer = PlaceCandidate("Zeta Hall Annexe", Coordinates(51.5, -0.12))
+        val exact = PlaceCandidate("Zeta Hall", Coordinates(51.6, -0.12))
+        val start = Coordinates(51.5, -0.12)
+        assertEquals(listOf("Zeta Hall", "Zeta Hall Annexe"), PlaceHits.rank("zeta hall", listOf(nearer, exact), PlaceKind.PLACE, near = start).map { it.name })
+        // Without an exact name, the nearer leads, whatever its length.
+        assertEquals(listOf("Zeta Hall Annexe", "Zeta Hall"), PlaceHits.rank("zeta h", listOf(exact, nearer), PlaceKind.PLACE, near = start).map { it.name })
     }
 
     @Test

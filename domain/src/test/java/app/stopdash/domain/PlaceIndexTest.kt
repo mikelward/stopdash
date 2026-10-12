@@ -71,9 +71,14 @@ class PlaceIndexTest {
     }
 
     @Test
-    fun `equal matches go to the higher rank, then the shorter name`() {
-        val places = index(line("P", "Zeta Long Name", 9), line("P", "Zeta Short", 9), line("P", "Zeta", 2))
-        assertEquals(listOf("Zeta Short", "Zeta Long Name", "Zeta"), places.names("zeta"))
+    fun `an exact name leads, then the better known, whatever the names' lengths`() {
+        // Length is no measure of a match (maintainer, 2026-10-12): a well-known long name leads a
+        // lesser short one.
+        val places = index(line("P", "Zeta Short", 2), line("P", "Zeta Cathedral of Long Name", 9), line("P", "Zeta", 2))
+        assertEquals(listOf("Zeta", "Zeta Cathedral of Long Name", "Zeta Short"), places.names("zeta"))
+        // "The" before an exact name is still exact.
+        val the = index(line("P", "Zeta Gallery Shop", 9), line("P", "The Zeta Gallery", 7))
+        assertEquals(listOf("The Zeta Gallery", "Zeta Gallery Shop"), the.names("zeta gallery"))
     }
 
     @Test
@@ -89,6 +94,14 @@ class PlaceIndexTest {
         // A better match still leads a nearer worse one.
         val mixed = index("P\tZeta Shop\tshop\t51.50100\t-0.12000\t2", "P\tZeta Shop\tshop\t51.55000\t-0.12000\t9")
         assertEquals(listOf(51.55, 51.501), mixed.search("zeta shop", near = start).map { it.coordinate.latitude })
+    }
+
+    @Test
+    fun `only a leading word the is passed over, not a word starting with it`() {
+        // "odore" is inside "Theodore", not after a "The": no better than any other substring match.
+        val places = index(line("P", "Theodore Zeta Hall", 9), line("P", "Odore", 2), line("P", "Zeta Odores", 2))
+        assertEquals(listOf("Odore", "Theodore Zeta Hall", "Zeta Odores"), places.names("odore"))
+        assertEquals(listOf("Odore"), places.names("od"))
     }
 
     @Test
@@ -190,6 +203,8 @@ class PlaceIndexTest {
         assertEquals("The British Museum", places.search("british museum").first().name)
         assertEquals(PlaceIndex.Kind.POSTCODE, places.search("sw1a 1aa").first().kind)
         assertTrue(places.search("brtmus").any { it.name == "The British Museum" })
+        // A well-known place leads the lesser ones its query also starts (Wikidata's coverage).
+        assertEquals("St Paul's Cathedral", places.search("st paul").first().name)
         // King's Cross (an interchange, public TfL data) is in an N1 district.
         assertTrue(places.districtNear(51.5308, -0.1238)!!.startsWith("N1"))
         val search = (System.nanoTime() - searched) / 1_000_000 / 3

@@ -36,37 +36,31 @@ class BusStopIndex private constructor(
 
     /**
      * The stops [query] finds, best match first, at most [limit]: by tier ([StationMatchTier]), then
-     * the shorter name, then the name; a name's stops together, in TfL id order, or nearest [near]
-     * (where the trip starts) first. [checkpoint] runs
+     * the exact name, a name the query starts rather than one of its parts, then nearest [near] (where the trip starts), then the name and TfL id order, as
+     * the stations rank (maintainer, 2026-10-12). [checkpoint] runs
      * every [CHECKPOINT_EVERY] names, so a caller can stop a scan nobody will read: it throws to stop.
      */
     @WorkerThread
     fun search(query: String, limit: Int = DEFAULT_LIMIT, checkpoint: () -> Unit = {}, near: Coordinates? = null): List<StationMatch> {
         val q = StationMatcher.queryForm(query)
         if (q.length < MIN_QUERY_LENGTH || limit <= 0) return emptyList()
-        val hits = ArrayList<Long>()
+        // Each matching stop, with what orders it: tier, whether its name is exactly the query, its
+        // distance from [near] (none without one), its name's place in the (alphabetical) names.
+        class Hit(val tier: Int, val inexact: Boolean, val partOnly: Boolean, val distance: Double, val name: Int, val stop: Int)
+        val hits = ArrayList<Hit>()
         for (i in names.indices) {
             if (i % CHECKPOINT_EVERY == 0) checkpoint()
             val tier = StationMatcher.nameTierOf(q, forms[i]) ?: continue
-            // Packed so a plain sort orders them: tier, then name length, then the name's place in
-            // the (alphabetical) name list.
-            hits.add((tier.ordinal.toLong() shl 48) or (minOf(names[i].length, 0xFFFF).toLong() shl 32) or i.toLong())
-        }
-        hits.sort()
-        val found = ArrayList<StationMatch>()
-        for (hit in hits) {
-            val name = names[(hit and 0xFFFFFFFFL).toInt()]
-            // A name's stops nearest [near] first, where the trip starts, so the [limit] keeps those.
-            val stops = stopsByName[(hit and 0xFFFFFFFFL).toInt()]
-            val ordered = if (near == null) stops.asIterable() else stops.sortedBy { stop ->
-                NearestStops.distanceMeters(near.latitude, near.longitude, latitudes[stop], longitudes[stop])
-            }
-            for (stop in ordered) {
-                if (found.size >= limit) return found
-                found += StationMatch(ids[stop], name, BUS, latitudes[stop], longitudes[stop])
+            val inexact = !StationMatcher.isExact(query, names[i])
+            val partOnly = !StationMatcher.startsName(query, names[i])
+            for (stop in stopsByName[i]) {
+                val distance = if (near == null) 0.0 else NearestStops.distanceMeters(near.latitude, near.longitude, latitudes[stop], longitudes[stop])
+                hits += Hit(tier.ordinal, inexact, partOnly, distance, i, stop)
             }
         }
-        return found
+        // A stable sort, so a name's stops keep TfL id order.
+        hits.sortWith(compareBy<Hit>({ it.tier }, { it.inexact }, { it.partOnly }, { it.distance }, { it.name }))
+        return hits.take(limit).map { StationMatch(ids[it.stop], names[it.name], BUS, latitudes[it.stop], longitudes[it.stop]) }
     }
 
     companion object {

@@ -55,23 +55,24 @@ class StationIndex(
         val scored = stations.mapNotNull { station ->
             StationMatcher.tier(query, station.name, station.id, station.hubId)?.let {
                 val at = if (station.latitude != null && station.longitude != null) Coordinates(station.latitude, station.longitude) else null
-                Scored(StationMatch(station.id, station.name, station.modes), station.hubId, it, distanceFrom(near, at))
+                Scored(StationMatch(station.id, station.name, station.modes), station.hubId, it, query, distanceFrom(near, at))
             }
         } + hubNames.mapNotNull { name ->
             // By its name alone: a station code ("kgx") is the interchange's, and finds that row.
-            StationMatcher.tier(query, name.name)?.let { Scored(name, "", it, if (near == null) 0.0 else distanceFrom(near, positionOf(name.id))) }
+            StationMatcher.tier(query, name.name)?.let {
+                Scored(name, "", it, query, if (near == null) 0.0 else distanceFrom(near, positionOf(name.id)))
+            }
         }
         val matchedIds = scored.mapTo(HashSet()) { it.match.id }
         return scored
             .filter { it.hubId.isBlank() || it.hubId !in matchedIds }
             .sortedWith(
                 compareBy(
-                    { it.tier }, { leadOf(it.match) }, { !it.match.id.startsWith("HUB", ignoreCase = true) }, { it.length },
-                    // A station before a bus stop of the same name (one of the user's, joined by withYours), as in
-                    // [rank]: the name as matched first, so this only ever splits identical names.
-                    { it.matched },
+                    { it.tier }, { leadOf(it.match) }, { !it.match.id.startsWith("HUB", ignoreCase = true) },
+                    // As in [rank]: the exact name, one the query starts, then a station before a bus stop
+                    // (one of the user's, joined by withYours), then the nearer to where the trip starts.
+                    { !it.exact }, { !it.startsName },
                     { it.match.modes.isNotEmpty() && it.match.modes.all { mode -> mode == "bus" } },
-                    // Then the nearer of same-named stops, from where the trip starts.
                     { it.distance },
                     { it.match.name },
                 ),
@@ -80,10 +81,9 @@ class StationIndex(
             .map { it.match }
     }
 
-    private class Scored(val match: StationMatch, val hubId: String, val tier: StationMatchTier, val distance: Double) {
-        // The name as matched, punctuation and case dropped, so "St. Paul's" ties "St Paul's".
-        val matched = StationMatcher.normalize(match.name).lowercase()
-        val length = matched.length
+    private class Scored(val match: StationMatch, val hubId: String, val tier: StationMatchTier, query: String, val distance: Double) {
+        val exact = StationMatcher.isExact(query, match.name)
+        val startsName = StationMatcher.startsName(query, match.name)
     }
 
     /**
@@ -170,11 +170,14 @@ class StationIndex(
             .distinctBy { it.key }
         val matchedIds = candidates.mapTo(HashSet()) { it.id }
         // One ranking over both sources, by the same rules as [search] — tier, the user's own stops
-        // first, then interchanges, shorter name, then name — so a TfL bus stop that matches as well
+        // first, then interchanges, the exact name, a name the query starts, a station before a bus
+        // stop, then the nearer —
+        // so a TfL bus stop that matches as well
         // as a bundled station sorts among them rather than after all of them. Source order only breaks an exact tie.
         // A match the matcher can't place (TfL found it by a rule this one doesn't share) goes last.
-        // Each name as matched, punctuation and case dropped, so "St. Paul's" ties "St Paul's".
-        val matched = candidates.associate { it.key to StationMatcher.normalize(it.name).lowercase() }
+        // Which names are exactly what's typed, punctuation and case aside, so "St. Paul's" is "St Paul's".
+        val exact = candidates.associate { it.key to StationMatcher.isExact(query, it.name) }
+        val starts = candidates.associate { it.key to StationMatcher.startsName(query, it.name) }
         // Each one's distance from where the trip starts, its own position or the index's: none (all
         // equal) without a start.
         val distances = if (near == null) emptyMap() else candidates.associate { match ->
@@ -189,12 +192,13 @@ class StationIndex(
                     { tierOf(query, it.value)?.ordinal ?: StationMatchTier.entries.size },
                     { leadOf(it.value) },
                     { !it.value.id.startsWith("HUB", ignoreCase = true) },
-                    { matched[it.value.key]?.length },
-                    // A station before a bus stop of the same name: "St Paul's" means the station. The name as
-                    // matched first, so this only ever splits identical names.
-                    { matched[it.value.key] },
+                    // The exact name first, then the better known: a station before a bus stop, so "St Paul's"
+                    // means the station. A name's length is no measure of a match (maintainer, 2026-10-12).
+                    { exact[it.value.key] != true },
+                    // Then a name the query starts, not just one of its parts ("st pa", St Pancras International).
+                    { starts[it.value.key] != true },
                     { it.value.modes.isNotEmpty() && it.value.modes.all { mode -> mode == "bus" } },
-                    // Then the nearer of same-named stops, from where the trip starts (maintainer, 2026-10-12).
+                    // Then the nearer, from where the trip starts (maintainer, 2026-10-12).
                     { distances[it.value.key] ?: 0.0 },
                     { it.value.name },
                     { it.index },
@@ -232,6 +236,12 @@ class StationIndex(
     }
 
     private fun leadOf(match: StationMatch): Int = leads[match.key] ?: Int.MAX_VALUE
+
+    /**
+     * Whether [match] leads its tier ahead of how well its name matches: one of the user's own stops,
+     * or an interchange, as [search] and [rank] order them. [SearchResults.merge] keeps a place behind it.
+     */
+    fun leads(match: StationMatch): Boolean = leadOf(match) != Int.MAX_VALUE || match.id.startsWith("HUB", ignoreCase = true)
 
     private val byId: Map<String, IndexedStation> by lazy { stations.associateBy { it.id } }
 
