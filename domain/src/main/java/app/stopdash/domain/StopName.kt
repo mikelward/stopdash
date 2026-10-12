@@ -66,11 +66,24 @@ fun cleanStopName(raw: String): String = clean(raw, forMatching = false)
 fun matchStopName(raw: String): String = clean(raw, forMatching = true)
 
 private fun clean(raw: String, forMatching: Boolean): String {
-    val name = raw.trim().replace(WHITESPACE_RUN, " ")
+    val name = withoutSaintDot(raw).replace(WHITESPACE_RUN, " ").trim()
     return name.split(CROSS_STREET).joinToString("/") { cleanPart(it, forMatching) }
 }
 
 private val WHITESPACE_RUN = Regex("\\s+")
+
+/**
+ * "St." for Saint (or Street): TfL spells the same stops both ways ("St. Paul's" station, "St Paul's"
+ * bus stop), so each reads "St" and the two list alike. Matching never cared (punctuation is dropped
+ * there); alert text is read with the same fold ([AlertStops]). A "St." run into the next word
+ * ("St.Mary's") keeps a space between them. Any case ("ST.", "st."), keeping the name's own capitals.
+ * For a bus pole's "towards" text as well as a name [cleanStopName] cleans.
+ */
+fun withoutSaintDot(name: String): String =
+    name.trim().replace(SAINT_DOT_GLUED) { "${it.groupValues[1]} " }.replace(SAINT_DOT) { it.groupValues[1] }
+
+private val SAINT_DOT_GLUED = Regex("""\b(St)\.(?=\p{L})""", RegexOption.IGNORE_CASE)
+private val SAINT_DOT = Regex("""\b(St)\.""", RegexOption.IGNORE_CASE)
 
 /**
  * Between a bus stop's own name and the street or place it's by: TfL's "Aldwych / Somerset House",

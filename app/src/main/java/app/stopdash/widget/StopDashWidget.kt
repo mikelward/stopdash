@@ -565,7 +565,7 @@ internal data class WidgetGeometry(
 
 /**
  * A stop header above a group of widget rows — the same place name and qualifier the in-app list
- * shows ("King's Cross St. Pancras – Platform 1", via [groupHeaderTitle]), so the widget tells the
+ * shows ("King's Cross St Pancras – Platform 1", via [groupHeaderTitle]), so the widget tells the
  * rider where to board. [spoken] is what TalkBack reads, keeping the direction the visible text drops.
  */
 internal data class WidgetHeader(val text: String, val spoken: String)

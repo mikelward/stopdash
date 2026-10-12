@@ -26,7 +26,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * The example the launcher's widget picker shows before the widget is placed (SPEC *One widget,
- * many surfaces*): made-up departures at King's Cross St. Pancras, drawn by the widget's own
+ * many surfaces*): made-up departures at King's Cross St Pancras, drawn by the widget's own
  * layout, so the picker shows what the widget looks like rather than the app's icon. Public TfL
  * line and station names only, and never the user's own stops (SPEC *Privacy*). The clock is
  * fixed, so the preview reads the same however long after publishing the picker shows it.
@@ -42,7 +42,7 @@ internal object WidgetPreview {
     val SIZES: Set<DpSize> = setOf(DpSize(180.dp, 110.dp), DpSize(270.dp, 220.dp), DpSize(360.dp, 220.dp))
 
     /**
-     * King's Cross St. Pancras, its rows filling the cell under its name on the full widget and with
+     * King's Cross St Pancras, its rows filling the cell under its name on the full widget and with
      * no header on the compact one, as placed widgets draw them. Every line checked and running well,
      * so the example has no warning line (SPEC *One widget, many surfaces*).
      */
@@ -51,7 +51,7 @@ internal object WidgetPreview {
             Departure(lineId, lineName, "outbound", destination, null, NOW.plusSeconds(inSeconds), mode, branch = branch)
         val kingsCross = StopArrivals(
             stopId = "940GZZLUKSX",
-            stopName = "King's Cross St. Pancras",
+            stopName = "King's Cross St Pancras",
             departures = listOf(
                 dep("victoria", "Victoria", "tube", "Brixton", 90),
                 dep("victoria", "Victoria", "tube", "Brixton", 330),

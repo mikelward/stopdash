@@ -4337,7 +4337,7 @@ class TripScreenScreenshotTest {
         assertEquals(1, acknowledged)
     }
 
-    // A route page for a Northern line train from King's Cross St. Pancras, a big interchange, with its
+    // A route page for a Northern line train from King's Cross St Pancras, a big interchange, with its
     // line opened from the overflow's "View line"; the route page's own Back counted in [back].
     // [disruptionUnknown] the route page's own doubt, its stop's check included; [lineUnknown] its line's
     // alone, by default the same as the route page's.
@@ -4375,7 +4375,7 @@ class TripScreenScreenshotTest {
     private val kingsCrossNorthern: DepartureRow by lazy {
         val stop = StopArrivals(
             stopId = "940GZZLUKSX",
-            stopName = "King's Cross St. Pancras",
+            stopName = "King's Cross St Pancras",
             departures = listOf(Departure("northern", "Northern", "outbound", "Morden", null, at(2), "tube")),
             fetchedAt = now,
         )
@@ -4392,9 +4392,9 @@ class TripScreenScreenshotTest {
         var back = 0
         openLineFromRoutePage(kingsCrossNorthern) { back++ }
         composeRule.waitUntil(10_000) {
-            runCatching { composeRule.onNode(hasScrollAction() and onLinePage).performScrollToNode(hasText("King's Cross St. Pancras")) }.isSuccess
+            runCatching { composeRule.onNode(hasScrollAction() and onLinePage).performScrollToNode(hasText("King's Cross St Pancras")) }.isSuccess
         }
-        composeRule.onNode(hasText("King's Cross St. Pancras") and onLinePage)
+        composeRule.onNode(hasText("King's Cross St Pancras") and onLinePage)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, composeRule.activity.getString(R.string.route_stop_current)))
         // Back closes the line's page alone, onto the route page, never to a list of lines.
         composeRule.onNode(hasContentDescription(composeRule.activity.getString(R.string.action_back)) and onLinePage).performClick()
@@ -4707,8 +4707,8 @@ class TripScreenScreenshotTest {
 
     @Test
     fun a_closure_off_the_riders_stops_folds_saying_how_bad_and_opens_on_a_tap() {
-        // King's Cross St. Pancras starred: a big interchange, standing in for the rider's own.
-        showLinePage(TripLine(northernLeg(), northernPartSuspended), northernLine, shown = "King's Cross St. Pancras ★", starred = setOf("940GZZLUKSX"))
+        // King's Cross St Pancras starred: a big interchange, standing in for the rider's own.
+        showLinePage(TripLine(northernLeg(), northernPartSuspended), northernLine, shown = "King's Cross St Pancras ★", starred = setOf("940GZZLUKSX"))
         // Nine Elms folded, saying there's no service in it without naming where; the line's end, Battersea
         // Power Station, always on the page (maintainer, 2026-10-06).
         assertFalse(hasLine("Nine Elms"))
@@ -4739,7 +4739,7 @@ class TripScreenScreenshotTest {
 
     @Test
     fun a_closure_on_the_stretch_the_trip_rides_shows_in_full() {
-        // A made-up closure between Angel and Moorgate, on a ride from King's Cross St. Pancras to Bank.
+        // A made-up closure between Angel and Moorgate, on a ride from King's Cross St Pancras to Bank.
         val shut = listOf("940GZZLUAGL", "940GZZLUODS", "940GZZLUMGT")
         val words = "No service between Angel and Moorgate."
         val status = LineStatus(
@@ -4747,7 +4747,7 @@ class TripScreenScreenshotTest {
             closures = listOf(PartClosure(3, "Part Suspended", words, listOf(shut, shut.asReversed()))),
         )
         // The Planner's path, every stop it calls at after boarding.
-        val leg = northernLeg("940GZZLUKSX" to "King's Cross St. Pancras", "940GZZLUBNK" to "Bank").copy(path = shut + "940GZZLUBNK")
+        val leg = northernLeg("940GZZLUKSX" to "King's Cross St Pancras", "940GZZLUBNK" to "Bank").copy(path = shut + "940GZZLUBNK")
         showLinePage(TripLine(leg, status), northernLine, shown = "Old Street")
         composeRule.onAllNodesWithText("No service").assertCountEquals(1)
         lineMapRow("Edgware · High Barnet · Mill Hill East")
@@ -5187,57 +5187,57 @@ class TripScreenScreenshotTest {
 
     @Test
     fun line_page_nearest_station() {
-        // King's Cross St. Pancras nearest the rider, Bank starred: big interchanges standing in for the
+        // King's Cross St Pancras nearest the rider, Bank starred: big interchanges standing in for the
         // rider's own. The nearest stays on the page, saying why, with no star; the closure still folds.
         val line = TripLine(northernLeg(), northernPartSuspended, nearby = setOf("940GZZLUKSX"))
-        showLinePage(line, northernLine, shown = "King's Cross St. Pancras", starred = setOf("940GZZLUBNK"))
-        lineMapRow("King's Cross St. Pancras").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Nearest"))
+        showLinePage(line, northernLine, shown = "King's Cross St Pancras", starred = setOf("940GZZLUBNK"))
+        lineMapRow("King's Cross St Pancras").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Nearest"))
         lineMapRow("Nearest")
         lineMapRow("Bank ★")
         lineMapRow("1 station")
-        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText("King's Cross St. Pancras"))
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText("King's Cross St Pancras"))
         captureSnapshot("line-page-nearest.png")
     }
 
     @Test
     fun a_searched_line_marks_its_stop_nearest_the_rider_with_how_far() {
         // Opened from Lines…, no near-me pick: the line's own stop nearest the rider's fix, a few steps from
-        // King's Cross St. Pancras (a big interchange standing in for where they are), says how far it is.
+        // King's Cross St Pancras (a big interchange standing in for where they are), says how far it is.
         val sequence = northernLine.copy(stopPositions = northernLine.stopPositions + ("940GZZLUKSX" to (51.5308 to -0.1238)))
-        showLinePage(TripLine(northernLeg(), northernPartSuspended), sequence, shown = "King's Cross St. Pancras", here = Coordinates(51.5302, -0.1238))
-        lineMapRow("King's Cross St. Pancras").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Nearest \u00B7 70 m"))
+        showLinePage(TripLine(northernLeg(), northernPartSuspended), sequence, shown = "King's Cross St Pancras", here = Coordinates(51.5302, -0.1238))
+        lineMapRow("King's Cross St Pancras").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Nearest \u00B7 70 m"))
         lineMapRow("Nearest \u00B7 70 m")
     }
 
     @Test
     fun a_ridden_stop_nearest_the_rider_says_both() {
-        // A trip boarding at King's Cross St. Pancras, the rider a few steps from it: their stop says it's
+        // A trip boarding at King's Cross St Pancras, the rider a few steps from it: their stop says it's
         // theirs and how far it is, never one hiding the other.
         val sequence = northernLine.copy(stopPositions = northernLine.stopPositions + ("940GZZLUKSX" to (51.5308 to -0.1238)))
-        val line = TripLine(northernLeg("940GZZLUKSX" to "King's Cross St. Pancras", "940GZZLUBNK" to "Bank"), LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service"))
-        showLinePage(line, sequence, shown = "King's Cross St. Pancras", here = Coordinates(51.5302, -0.1238))
-        lineMapRow("King's Cross St. Pancras").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your stop, Nearest \u00B7 70 m"))
+        val line = TripLine(northernLeg("940GZZLUKSX" to "King's Cross St Pancras", "940GZZLUBNK" to "Bank"), LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service"))
+        showLinePage(line, sequence, shown = "King's Cross St Pancras", here = Coordinates(51.5302, -0.1238))
+        lineMapRow("King's Cross St Pancras").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your stop, Nearest \u00B7 70 m"))
         lineMapRow("Nearest \u00B7 70 m")
     }
 
     @Test
     fun the_nearest_station_closed_says_both() {
-        // A made-up closure through King's Cross St. Pancras, the station nearest the rider: it says it has
+        // A made-up closure through King's Cross St Pancras, the station nearest the rider: it says it has
         // no service and that it's the nearest, never one in place of the other (Codex, #626).
         val shut = listOf("940GZZLUEUS", "940GZZLUKSX", "940GZZLUAGL")
         val status = LineStatus("northern", 3, "Part Suspended", closures = listOf(PartClosure(3, "Part Suspended", null, listOf(shut, shut.asReversed()))))
-        showLinePage(TripLine(northernLeg(), status, nearby = setOf("940GZZLUKSX")), northernLine, shown = "King's Cross St. Pancras")
-        lineMapRow("King's Cross St. Pancras")
+        showLinePage(TripLine(northernLeg(), status, nearby = setOf("940GZZLUKSX")), northernLine, shown = "King's Cross St Pancras")
+        lineMapRow("King's Cross St Pancras")
         composeRule.onNodeWithText("No service").assertExists()
         composeRule.onNodeWithText("Nearest").assertExists()
     }
 
     @Test
     fun line_page_good_service() {
-        // A trip riding the Northern from King's Cross St. Pancras to Bank: both its stops stay out of the folds.
-        val line = TripLine(northernLeg("940GZZLUKSX" to "King's Cross St. Pancras", "940GZZLUBNK" to "Bank"), LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service"))
+        // A trip riding the Northern from King's Cross St Pancras to Bank: both its stops stay out of the folds.
+        val line = TripLine(northernLeg("940GZZLUKSX" to "King's Cross St Pancras", "940GZZLUBNK" to "Bank"), LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service"))
         showLinePage(line, northernLine, shown = "Show all stations")
-        composeRule.onNodeWithText("King's Cross St. Pancras").assertExists()
+        composeRule.onNodeWithText("King's Cross St Pancras").assertExists()
         composeRule.onNodeWithText("Show all stations").assertExists()
         captureSnapshot("line-page-good-service.png")
     }

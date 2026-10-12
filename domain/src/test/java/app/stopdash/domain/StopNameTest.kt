@@ -8,6 +8,20 @@ import org.junit.Test
 
 class StopNameTest {
     @Test
+    fun `a saint's full stop is dropped, so TfL's two spellings read alike`() {
+        assertEquals("St Paul's", cleanStopName("St. Paul's Underground Station"))
+        assertEquals("St Paul's", cleanStopName("St Paul's"))
+        assertEquals("King's Cross St Pancras", cleanStopName("King's Cross St. Pancras Underground Station"))
+        assertEquals("St Mary's", cleanStopName("St.Mary's"))
+        assertEquals("Liverpool St", cleanStopName("Liverpool St."))
+        assertEquals("St James Street/St Mary's Road", cleanStopName("St. James Street / St. Mary's Road"))
+        assertEquals("Stamford Brook", cleanStopName("Stamford Brook Underground Station"))
+        assertEquals("ST John's", cleanStopName("ST. John's"))
+        assertEquals("st georges", cleanStopName("st.georges"))
+        assertEquals(cleanStopName("St. Paul's"), matchStopName("St Paul's"))
+    }
+
+    @Test
     fun `strips the Underground Station suffix`() {
         assertEquals("Charing Cross", cleanStopName("Charing Cross Underground Station"))
         assertEquals("Oxford Circus", cleanStopName("Oxford Circus Underground Station"))

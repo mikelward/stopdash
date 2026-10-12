@@ -9,6 +9,7 @@ import app.stopdash.domain.StopLocation
 import app.stopdash.domain.StopPole
 import app.stopdash.domain.cleanStopName
 import app.stopdash.domain.riderLineName
+import app.stopdash.domain.withoutSaintDot
 import kotlinx.serialization.Serializable
 
 /**
@@ -143,7 +144,7 @@ fun TflStopPointDto.compassBearing(): String = additionalProperty("CompassPoint"
 
 /** The pole's direction description ("Farringdon Or Holborn Circus") from TfL's `Towards`, else
  *  blank — the human-readable "towards …" cue on a bus header. */
-fun TflStopPointDto.towards(): String = additionalProperty("Towards")
+fun TflStopPointDto.towards(): String = withoutSaintDot(additionalProperty("Towards"))
 
 /**
  * Every distinct station-name spelling in this hub tree — this node's cleaned [commonName] plus all

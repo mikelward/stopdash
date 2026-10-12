@@ -139,7 +139,7 @@ class WidgetScreenshotTest {
         fun place(id: String, name: String, vararg deps: Departure) = app.stopdash.domain.StopArrivals(id, name, deps.toList(), now)
         return app.stopdash.domain.DeparturesSnapshot(
             stops = listOf(
-                place("940GZZLUKSX", "King's Cross St. Pancras", dep("victoria", "Victoria", "Brixton", 90), dep("piccadilly", "Piccadilly", "Heathrow T5", 240)),
+                place("940GZZLUKSX", "King's Cross St Pancras", dep("victoria", "Victoria", "Brixton", 90), dep("piccadilly", "Piccadilly", "Heathrow T5", 240)),
                 place("940GZZLUEUS", "Euston", dep("northern", "Northern", "Morden", 150), dep("victoria", "Victoria", "Walthamstow Central", 300)),
             ),
             fetchedAt = now,
@@ -173,7 +173,7 @@ class WidgetScreenshotTest {
         val trip = app.stopdash.data.WatchTrip(
             title = "Board Victoria at Oxford Circus",
             detail = "3 min",
-            steps = listOf(app.stopdash.data.WatchTrip.Step("Victoria to King's Cross St. Pancras", "victoria", "Victoria", "tube")),
+            steps = listOf(app.stopdash.data.WatchTrip.Step("Victoria to King's Cross St Pancras", "victoria", "Victoria", "tube")),
             current = 0,
             departures = listOf(
                 app.stopdash.data.WatchTrip.Train("victoria", "Victoria", "tube", "Walthamstow Central", now.plusSeconds(180).toEpochMilli()),
@@ -627,7 +627,7 @@ class WidgetScreenshotTest {
             stops = listOf(
                 StopArrivals(
                     "940GZZLUKSX",
-                    "King's Cross St. Pancras",
+                    "King's Cross St Pancras",
                     listOf(
                         dep("victoria", "Victoria", "Brixton", 60),
                         dep("victoria", "Victoria", "Brixton", 180),
@@ -670,7 +670,7 @@ class WidgetScreenshotTest {
         fun dep(lineId: String, lineName: String, destination: String, offsetSeconds: Long, mode: String = "tube") =
             Departure(lineId, lineName, "outbound", destination, null, now.plusSeconds(offsetSeconds), mode)
         val tube = { id: String, name: String -> app.stopdash.domain.LineRef(id, name, "tube") }
-        val kingsCross = app.stopdash.domain.StopLocation("940GZZLUKSX", "King's Cross St. Pancras", 51.5308, -0.1238, listOf(tube("victoria", "Victoria"), tube("piccadilly", "Piccadilly")), clusterId = "940GZZLUKSX")
+        val kingsCross = app.stopdash.domain.StopLocation("940GZZLUKSX", "King's Cross St Pancras", 51.5308, -0.1238, listOf(tube("victoria", "Victoria"), tube("piccadilly", "Piccadilly")), clusterId = "940GZZLUKSX")
         val stPancras = app.stopdash.domain.StopLocation("910GSTPX", "St Pancras International", 51.5320, -0.1270, listOf(app.stopdash.domain.LineRef("thameslink", "Thameslink", "national-rail")), clusterId = "910GSTPX")
         val found = listOf(kingsCross, stPancras)
         val tubeTrains = listOf(
@@ -713,7 +713,7 @@ class WidgetScreenshotTest {
         RuntimeEnvironment.setFontScale(1f)
         fun drawn(snapshot: DeparturesSnapshot) =
             texts(inflate(ApplicationProvider.getApplicationContext(), widgetModel(snapshot, now), DpSize(380.dp, 900.dp)))
-        val stops = listOf("King's Cross St. Pancras", "St Pancras International")
+        val stops = listOf("King's Cross St Pancras", "St Pancras International")
         assertEquals(stops[0], drawn(before).first { it in stops })
         assertEquals(stops[1], drawn(after).first { it in stops })
         capture("widget-follow-before.png", widgetModel(before, now, geometry = WidgetGeometry(size.width, size.height, 1f)), size = size)

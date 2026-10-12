@@ -2704,7 +2704,7 @@ private fun DepartureList(
                         // Any bus boarding elsewhere than the origin (a pole beside it), even when it's the
                         // only one: each stop's buses go under its own heading and pole letter, so none
                         // reads as leaving from the stop the rider is at. The journey's own view heads
-                        // every group that way ("King's Cross St. Pancras – Platform 7"), so it shows
+                        // every group that way ("King's Cross St Pancras – Platform 7"), so it shows
                         // where to board; the list's card otherwise leaves that to the journey heading.
                         val severalStops = state.rows.any { it.stopId != card.boardingIds.firstOrNull() }
                         state.groups.forEachIndexed { groupIndex, group ->
@@ -2810,7 +2810,7 @@ private fun DepartureList(
             StopClosureCard(row, onDismiss = { onDismissAlert(row) })
         }
         // One combined one-line header per group, then the group's card (SPEC D8): the place name and
-        // its platform/pole qualifier read on one title-case line ("King's Cross St. Pancras – Platform
+        // its platform/pole qualifier read on one title-case line ("King's Cross St Pancras – Platform
         // 1 (120 m)"), and every route of the group's stop(s) sits as an interior row of the one card
         // below. The place name repeats on each platform header of a station (as does the distance) —
         // the near-me rider judges each platform on its own line.
@@ -3609,7 +3609,7 @@ private fun FartherCardView(
 
 /**
  * The one combined header above a group's card (SPEC D8): the place name and its platform/pole
- * qualifier on a single title-case line — "King's Cross St. Pancras – Platform 1", "Cranley Gardens –
+ * qualifier on a single title-case line — "King's Cross St Pancras – Platform 1", "Cranley Gardens –
  * Stop G", "Highgate – Eastbound" — with [distanceLabel] ("(120 m)", null on the location-free watched
  * list, D1) appended dimmed. No small caps, no tracking: the place name and the qualifier share one
  * [MaterialTheme.typography.labelLarge] / [FontWeight.SemiBold] / `onSurface` style, and only the
@@ -3617,7 +3617,7 @@ private fun FartherCardView(
  *
  * The place name is the one element that clips: it takes the row's slack and ellipsizes when long,
  * while the " – <qualifier>" and " (<distance>)" are reserved (measured first) so they stay fully
- * visible — a long "King's Cross St. Pancras – Platform 7 (120 m)" keeps "– Platform 7 (120 m)" and
+ * visible — a long "King's Cross St Pancras – Platform 7 (120 m)" keeps "– Platform 7 (120 m)" and
  * clips the name. The whole row announces one screen-reader label — the place name, the spoken
  * qualifier (which keeps the direction/towards the visible segment drops), then the distance. Extra
  * top space marks the break between groups; the first on screen takes none.
@@ -4151,7 +4151,7 @@ private fun JourneyActions(journey: FavoriteJourney, onSwap: () -> Unit, onUnsta
 }
 
 /**
- * A journey card's heading, "Highgate ➔ King's Cross St. Pancras ★": the direction shown, styled like
+ * A journey card's heading, "Highgate ➔ King's Cross St Pancras ★": the direction shown, styled like
  * a stop group header (same weight and group-break space) so the list reads as one. A tap on the
  * heading opens the journey's own view ([onOpen], null leaves it inert — as in that view); the ⇄
  * button at the end swaps the direction in place ([onSwap]), for planning the way back without

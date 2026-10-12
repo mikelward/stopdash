@@ -68,6 +68,19 @@ class TflStopPointDtoTest {
     }
 
     @Test
+    fun `a towards with a dotted St loses the dot, like the stop names`() {
+        val stop = TflStopPointDto(
+            id = "490000129D",
+            commonName = "King's Cross Station",
+            lat = 51.5,
+            lon = -0.12,
+            modes = listOf("bus"),
+            additionalProperties = listOf(TflAdditionalPropertyDto(key = "Towards", value = "St. Paul's")),
+        ).toStopLocationOrNull()
+        assertEquals("St Paul's", stop?.towards)
+    }
+
+    @Test
     fun `an arrow in stopLetter is treated as the compass, not a pole letter`() {
         // TfL is inconsistent: some poles put the compass in CompassPoint, others jam it into
         // stopLetter as an arrow ("->N") in place of a real letter. An arrow-in-stopLetter is not a

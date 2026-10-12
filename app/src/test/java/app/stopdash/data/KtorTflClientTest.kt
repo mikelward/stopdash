@@ -1145,7 +1145,7 @@ class KtorTflClientTest {
 
         assertEquals("/StopPoint/HUBKGX", checkNotNull(captured).url.encodedPath)
         // The type suffix is stripped, like any stop name (SPEC *Concise copy*).
-        assertEquals("King's Cross St. Pancras", info.name)
+        assertEquals("King's Cross St Pancras", info.name)
     }
 
     @Test
@@ -1155,7 +1155,7 @@ class KtorTflClientTest {
         // repeated King's Cross platform collapses to one). These are the spellings the strip matches.
         assertEquals(
             listOf(
-                "King's Cross St. Pancras",
+                "King's Cross St Pancras",
                 "King's Cross",
                 "London St Pancras International LL",
                 "St Pancras International",
