@@ -1266,10 +1266,11 @@ missing; a refusal Android answers at once opens the app's settings). The card i
 Snoozemo's location banner is ("Alerts only in London?", **Yes please** / **No thanks**); No thanks
 puts the list's card away for good, and the Alerts screen's stays as the way back. Yes please opens
 Google Play's prominent disclosure, a dialog before Android's prompt, Snoozemo's in shape. Play
-rejected an earlier version as an "Inadequate Prominent Disclosure" (2026-10-09), so it now says
-plainly that StopDash wants location **when the app is not open**, lists each feature as a bullet (the
-widget and watch following the rider, D1, and this), says finding stops sends the position to TfL and no one
-else, and ends by naming the steps Android shows next: tap Continue, then **Allow all the time**, or,
+rejected earlier versions as an "Inadequate Prominent Disclosure" (2026-10-09, and 2026-10-12 for not
+saying location data is collected), so it now follows Google's own wording: StopDash **collects location
+data** to do each feature, listed as a bullet (the widget and watch following the rider, D1, and this),
+**even when the app is closed or not in use**; that location data **stays on the phone**, sent to neither
+TfL nor anyone else (true of both uses, D1); a **Privacy policy** link; and the steps Android shows next: tap Continue, then **Allow all the time**, or,
 when location isn't allowed at all yet, **While using the app** first and then **Allow all the time**
 (**Continue** / **Not now**). Settings' "Automatic watch and widget location" switch opens the
 same disclosure. Without it, or with no fix to be
@@ -3844,8 +3845,9 @@ the phone, and a phone with no watch (or no Wear OS app) never sees the offer.
 StopDash handles location and the set of stops the user watches — which together reveal
 where they live, work, and travel. StopDash itself sends none of it anywhere except the
 TfL requests that *are* the product (and, with the user's National Rail key, a rail station's
-code to National Rail, below): a nearby-stops lookup outside the bundled stops' area (in and around
-London it is answered on the device, *Near me now*) necessarily sends coordinates
+code to National Rail, below): the in-app near-me list's lookup outside the bundled stops' area (in and around
+London it is answered on the device, *Near me now*; the widget's background lookup never asks TfL, D1)
+necessarily sends coordinates
 to TfL — **precise** where the user granted precise and an accurate fix is available,
 approximate under an approximate-only grant or when no accurate fix can be obtained (see
 *Finding stops*) — and a departures lookup necessarily sends the watched stop
@@ -4126,10 +4128,15 @@ Mirrors the sibling fleet:
     each of the widget's own refreshes (its header tap, the live refresh, a watch's request) first
     reads the phone's **last known position**, never asking for a fix: one at most ten minutes old
     and accurate to 200 m. Where the stops the app would pick there differ from the widget's, the
-    widget and the watch move to them (the stops looked up through the app's own nearby cache, so
-    staying put asks TfL nothing), with the old place's trains taken off at once and a new stop not
+    widget and the watch move to them, with the old place's trains taken off at once and a new stop not
     fetched yet shown as missing (principle 1). A pinned journey's origin stays, for its journey. The
-    position isn't kept or logged; the lookup's place joins the nearby cache as the app's own do. A
+    position isn't kept or logged, and **never leaves the phone** (maintainer, 2026-10-12): the stops come
+    from the app's own nearby cache, a TfL answer the app got there included, or else the bundled stops,
+    and TfL is never asked. Past the bundle's area (Greater London with a margin) the widget has only
+    the bundled stops there, usually none, until the app is opened there; a bundle that can't be read
+    leaves the widget where it was. The background location disclosure promises this, so a widget lookup
+    must not reach TfL. A lookup the bundle covers joins the nearby cache as the app's own do; one past it
+    doesn't, so the app's near-me list still asks TfL there. A
     set the app stores meanwhile, from a fresher fix of its own, wins. Where both refresh the same stops at once, each stop keeps the later-fetched arrivals, whichever side fetched them. Battery: no radio for the
     position; one stop lookup per move of more than a short walk. It reverses the part of this
     decision below that kept location off the widget's refresh, for a rider who allows it; without

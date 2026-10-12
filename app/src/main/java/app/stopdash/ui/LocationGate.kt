@@ -198,6 +198,7 @@ fun LocationGate(
                                 } else {
                                     // The better experience leads, so saying yes is one tap (maintainer, 2026-10-09).
                                     Body(stringResource(R.string.location_rationale))
+                                    PrivacyPolicyLink(Modifier.padding(top = 4.dp))
                                     Action(stringResource(R.string.location_allow), onAllow)
                                 }
                                 // Everything below works without location.

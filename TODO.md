@@ -3208,7 +3208,10 @@ Builds on Phase 1's minimal line-status marking.
   - [ ] **Open the journey from its notification**, not just the app.
   - [ ] **Play declaration for background location** before release: alerts fire only in London, and the
         widget follows the rider (SPEC D1), both of which need `ACCESS_BACKGROUND_LOCATION`; Play asks for
-        a declaration and a demo video of the features that use it, and may refuse it. The video, from
+        a declaration and a demo video of the features that use it, and may refuse it. Play rejected the
+        disclosure twice (2026-10-09, 2026-10-12); it now uses Google's wording, links the privacy policy, and
+        says background location stays on the phone (the widget's follow never asks TfL), which the
+        declaration should say too (`docs/play-store/listing.md`). The video, from
         a fresh install with no location permission, so every grant is on camera:
         1. Open StopDash; at its location prompt (for stops near you) choose **While using the app**.
         2. Tap **Yes please** on the "Alerts only in London?" card (or turn on "Automatic watch and widget location").

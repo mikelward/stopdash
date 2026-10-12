@@ -200,3 +200,50 @@ class BundledStopFinder(
         return withContext(compute) { stops.nearby(latitude, longitude, radiusMeters, stopTypes) }
     }
 }
+
+/** The bundled stops couldn't be read, or don't hold a stop type asked for: [OnDeviceStopFinder] has no answer. */
+class BundledStopsUnavailableException(message: String) : Exception(message)
+
+/**
+ * A [StopFinder] that never sends the position anywhere: the widget's follow, the one use of location in
+ * the background (SPEC D1, *Privacy*). It answers from [cache] (the nearby lookups the app already made,
+ * a TfL answer near the area's edge among them) or else from the bundled stops ([BundledStops]), and never
+ * asks TfL. A search reaching past the bundle's area gets the bundled stops within it; the bundle is TfL's
+ * network with a margin, so past it there are few stops to miss. That answer isn't cached, so the in-app
+ * near-me list, which may ask TfL, doesn't reuse it. Throws [BundledStopsUnavailableException] when the
+ * bundle can't be read or doesn't hold a type asked for, so a caller keeps what it had rather than reading
+ * "no stops". The search runs on [compute], never the caller's thread.
+ */
+class OnDeviceStopFinder(
+    private val bundled: suspend () -> BundledStops,
+    private val cache: NearbyStopsCache? = null,
+    private val compute: CoroutineDispatcher = Workers.compute,
+    private val warn: (String) -> Unit = {},
+) : StopFinder {
+    override suspend fun nearbyStops(
+        latitude: Double,
+        longitude: Double,
+        radiusMeters: Int,
+        stopTypes: List<String>,
+    ): List<StopLocation> {
+        // The cache's file is read and written blocking, as for [CachingStopFinder]: call this off the main thread.
+        cache?.lookup(latitude, longitude, radiusMeters, stopTypes)?.let { return it }
+        val stops = try {
+            bundled()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw BundledStopsUnavailableException("bundled stops unavailable: ${e::class.simpleName}")
+        }
+        if (stops.size == 0) throw BundledStopsUnavailableException("no bundled stops")
+        if (!stops.holds(stopTypes)) throw BundledStopsUnavailableException("a stop type the bundle doesn't hold")
+        val found = withContext(compute) { stops.nearby(latitude, longitude, radiusMeters, stopTypes) }
+        if (stops.covers(latitude, longitude, radiusMeters)) {
+            cache?.put(latitude, longitude, radiusMeters, stopTypes, found)
+        } else {
+            // No coordinate in the log (SPEC Privacy): only that the search reached past the bundle.
+            warn("nearby: past the bundled stops; answered on the device")
+        }
+        return found
+    }
+}

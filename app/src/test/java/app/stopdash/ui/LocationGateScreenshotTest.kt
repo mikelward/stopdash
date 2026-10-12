@@ -65,6 +65,11 @@ class LocationGateScreenshotTest {
             LocationGate(NearbyStopsViewModel.State.PermissionRequired, onAllow = {}, onRetry = {}, onOpenSettings = {})
         }
         composeRule.onNodeWithText("Departures near you").assertExists()
+        // Google Play's prominent disclosure for location while in use: that it's collected, what for, who
+        // it may go to, and a privacy policy (Play rejected a vaguer version, 2026-10-12).
+        composeRule.onNodeWithText("StopDash collects location data to show the stops nearest you", substring = true).assertExists()
+        composeRule.onNodeWithText("may be sent to the transport operator, TfL", substring = true).assertExists()
+        composeRule.onNodeWithTag("privacyPolicy").assertExists()
         composeRule.onNodeWithText("Show stations near me").assertExists()
     }
 

@@ -312,11 +312,12 @@
     <!-- A change to the TfL key (a Clear, or a paste) didn't save: it holds until a restart. -->
     <string name="api_key_write_failed">Couldn\'t save your API key change; it resets when StopDash restarts</string>
 
-    <!-- Location gate: the nearby-stops search (SPEC Finding stops). The rationale is
-         honest about the location leaving the device, since it does — it's sent to TfL to
-         find nearby stops (SPEC Privacy). -->
+    <!-- Location gate: the nearby-stops search (SPEC Finding stops). Google Play's prominent disclosure for
+         location while in use: Play rejected the earlier "StopDash shows the stops nearest you" for not saying
+         location data is collected and what for (2026-10-12). It says who it goes to, since it does: TfL, to
+         find stops past the bundled area and to plan a trip from where you are (SPEC Privacy). -->
     <string name="location_title">Departures near you</string>
-    <string name="location_rationale">StopDash shows the stops nearest you.\nYour location is sent to the transport operator, TfL.</string>
+    <string name="location_rationale">StopDash collects location data to show the stops nearest you and plan trips from where you are, while you use the app.\n\nTo do that, your location may be sent to the transport operator, TfL. It isn\'t shared with anyone else.</string>
     <string name="location_allow">Show stations near me</string>
     <string name="location_finding">Finding stops near you…</string>
     <string name="location_no_fix">Couldn\'t get your location</string>
@@ -358,6 +359,8 @@
          description too. -->
     <string name="update_available">Update available</string>
     <!-- Toast when neither the Play app nor a browser can open the Play listing. -->
+    <!-- A link to the privacy policy under each location disclosure, as Google Play's prominent disclosure asks. -->
+    <string name="privacy_policy">Privacy policy</string>
     <string name="link_open_failed">No app to open this link</string>
     <string name="update_open_failed">No app to open Google Play</string>
 
@@ -666,10 +669,12 @@
     <string name="journey_alerts_london_allow">Yes please</string>
     <string name="journey_alerts_london_decline">No thanks</string>
     <!-- The disclosure before the background-location prompt, which Google Play's declaration requires precede it.
-         Play rejected an earlier version ("Inadequate Prominent Disclosure"): keep it saying that location is used
-         when the app is not open, each feature it's for, who it's shared with, and the choice Android offers next. -->
+         Play rejected earlier versions ("Inadequate Prominent Disclosure", 2026-10-09 and 2026-10-12): keep it in
+         Google's own words, that StopDash collects location data, each feature it's for, even when the app is closed
+         or not in use, that it stays on the phone (the widget's follow never asks TfL, SPEC Privacy), and the
+         choice Android offers next. -->
     <string name="journey_alerts_location_rationale_title">Background location permission</string>
-    <string name="journey_alerts_location_rationale_body">StopDash wants to access your location when the app is not open to:\n• show nearby stops on your widget and watch\n• disable alerts when you\'re not in London\n\nTo find stops, your location is sent to the transport operator, TfL. It isn\'t shared with anyone else.</string>
+    <string name="journey_alerts_location_rationale_body">StopDash collects location data, even when the app is closed or not in use, to:\n• show nearby stops on your widget and watch\n• silence journey alerts when you\'re away from London\n\nThis location data stays on your phone. It isn\'t sent to TfL or anyone else.</string>
     <!-- The disclosure's last paragraph: the steps Android shows next. With location already allowed while
          in use, Android offers "Allow all the time" at once; without it, it asks for "While using the app" first. -->
     <string name="journey_alerts_location_rationale_steps">To allow this functionality, tap Continue then choose Allow all the time.</string>

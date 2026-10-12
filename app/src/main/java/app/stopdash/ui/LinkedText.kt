@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.annotation.WorkerThread
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
@@ -16,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
@@ -99,5 +101,33 @@ internal fun linkified(text: String, onOpen: LinkInteractionListener): Annotated
             at = link.range.last + 1
         }
         append(text, at, text.length)
+    }
+}
+
+/** The privacy policy, as the Play listing gives it (`docs/play-store/listing.md`). */
+internal const val PRIVACY_POLICY_URL = "https://mikelward.github.io/stopdash/PRIVACY.html"
+
+/**
+ * "Privacy policy", a button opening [PRIVACY_POLICY_URL], under each location disclosure, as Google Play's
+ * prominent disclosure asks. A button, not a link in the text: a [LinkAnnotation] inside the disclosure's
+ * dialog never let Compose settle under test, and a button is the larger tap target anyway. A device with
+ * no browser says so, as a link does ([rememberLinkOpener]).
+ */
+@Composable
+internal fun PrivacyPolicyLink(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val linkFailed = stringResource(R.string.link_open_failed)
+    TextButton(
+        onClick = {
+            try {
+                context.startActivity(Intent(Intent.ACTION_VIEW, PRIVACY_POLICY_URL.toUri()))
+            } catch (e: ActivityNotFoundException) {
+                Log.w("Privacy", "No activity to open the privacy policy", e)
+                Toast.makeText(context, linkFailed, Toast.LENGTH_SHORT).show()
+            }
+        },
+        modifier = modifier.testTag("privacyPolicy"),
+    ) {
+        Text(stringResource(R.string.privacy_policy))
     }
 }
