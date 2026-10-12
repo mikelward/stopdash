@@ -1404,9 +1404,9 @@ class OnTheWayScreenScreenshotTest {
         shown = shown.copy(nextStop = "Tottenham Court Road")
         next().assertTextEquals("· next Tottenham Court Rd").assertContentDescriptionEquals("· next Tottenham Court Road")
         // No word to shorten: straight from as named to its floor, where only that fits.
-        shown = shown.copy(nextStop = "Alpha Hill Broadway")
+        shown = shown.copy(nextStop = "Alpha Hill Broadwalk")
         width = Dp(NARROW_FOR_ALPHA)
-        next().assertTextEquals("· next Alpha H. B.").assertContentDescriptionEquals("· next Alpha Hill Broadway")
+        next().assertTextEquals("· next Alpha H. B.").assertContentDescriptionEquals("· next Alpha Hill Broadwalk")
         // The stop where they get off is next: "Next stop" alone, nothing beside it; nor one not named.
         val resources = composeRule.activity.resources
         assertNull(rideStopsSplit(resources, TripProgress.Riding(mildmay, "Stratford", 1, at(1), getOffSoon = true)))
@@ -2028,7 +2028,7 @@ class OnTheWayScreenScreenshotTest {
             System.getProperty("roborazzi.test.verify") == "true"
 
     private companion object {
-        // The card's width beside "2 stops" and the time, and one where "Alpha Hill Broadway" no longer fits.
+        // The card's width beside "2 stops" and the time, and one where "Alpha Hill Broadwalk" no longer fits.
         const val FULL_WIDTH = 400f
         const val NARROW_FOR_ALPHA = 300f
     }

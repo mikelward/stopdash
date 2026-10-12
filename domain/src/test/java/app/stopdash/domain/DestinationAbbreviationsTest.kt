@@ -31,6 +31,25 @@ class DestinationAbbreviationsTest {
     }
 
     @Test
+    fun `street, place and landmark words take their address forms`() {
+        assertEquals("Ealing Bwy", abbrev("Ealing Broadway"))
+        assertEquals("Sloane Sq", abbrev("Sloane Square"))
+        assertEquals("Kensington Gdns", abbrev("Kensington Gardens"))
+        assertEquals("Bethnal Gn", abbrev("Bethnal Green"))
+        assertEquals("Shaftesbury Ave", abbrev("Shaftesbury Avenue"))
+        assertEquals("Ladbroke Grove / Westbourne Pl", abbrev("Ladbroke Grove / Westbourne Place"))
+        assertEquals("Mornington Cres", abbrev("Mornington Crescent"))
+        assertEquals("London Br", abbrev("London Bridge"))
+        assertEquals("Hampstead Hth", abbrev("Hampstead Heath"))
+        assertEquals("St Thomas' Hosp", abbrev("St Thomas' Hospital"))
+    }
+
+    @Test
+    fun `a branch takes the new forms too`() {
+        assertEquals("Ealing Bwy", abbreviateBranch("Ealing Broadway"))
+    }
+
+    @Test
     fun `several words in one name are all abbreviated`() {
         assertEquals("H. St Kensington", abbrev("High Street Kensington"))
         assertEquals("N. Pk", abbrev("North Park"))
@@ -43,7 +62,8 @@ class DestinationAbbreviationsTest {
         assertEquals("Eastcote", abbrev("Eastcote"))
         assertEquals("Upminster", abbrev("Upminster"))
         assertEquals("Streatham", abbrev("Streatham"))
-        assertEquals("Parsons Green", abbrev("Parsons Green"))
+        assertEquals("Greenford", abbrev("Greenford"))
+        assertEquals("Bridgewater", abbrev("Bridgewater"))
         assertEquals("Northwood", abbrev("Northwood"))
         assertEquals("Southgate", abbrev("Southgate"))
     }
@@ -69,6 +89,8 @@ class DestinationAbbreviationsTest {
         assertEquals(once, abbrev(once))
         val gt = abbrev("Great Portland Street")
         assertEquals(gt, abbrev(gt))
+        val bdwy = abbrev("Ealing Broadway")
+        assertEquals(bdwy, abbrev(bdwy))
     }
 
     @Test

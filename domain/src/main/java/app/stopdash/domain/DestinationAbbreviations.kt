@@ -14,6 +14,10 @@ package app.stopdash.domain
  *
  * The map is maintainer-chosen copy (2026-09-21): single-letter forms take a trailing
  * period so they read as abbreviations, not initials; multi-letter contractions take none.
+ * A form is chosen to be useful to a rider: TfL's own form where it has one (`Charing X`),
+ * otherwise a conventional one a Londoner reads at once. Ordnance Survey's road-name forms
+ * (`Bwy`, `Sq`, `Gdns`, `Gn`, …) are a guide, not a closed list — `Br`, `Hth` and `Hosp` are
+ * added though OS leaves those words whole (maintainer, 2026-10-12).
  */
 object DestinationAbbreviations {
     private val forms = mapOf(
@@ -34,6 +38,16 @@ object DestinationAbbreviations {
         "Market" to "Mkt",
         "Station" to "Stn",
         "Point" to "Pt",
+        "Broadway" to "Bwy",
+        "Square" to "Sq",
+        "Gardens" to "Gdns",
+        "Green" to "Gn",
+        "Avenue" to "Ave",
+        "Place" to "Pl",
+        "Crescent" to "Cres",
+        "Bridge" to "Br",
+        "Heath" to "Hth",
+        "Hospital" to "Hosp",
     )
 
     /**

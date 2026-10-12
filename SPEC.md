@@ -812,7 +812,7 @@ Green or Finchley Central shows no "/Bank".
 
 Where the pair won't fit, the **branch is kept whole** — it is the cue that tells the two trunks
 apart, so truncating it would lose which train this is — and the **terminus yields**: it shortens
-common whole words to a compact form (`East`→`E.`, `Street`→`St`, `Lane`→`Ln`, `Market`→`Mkt`, `Station`→`Stn`, and the rest —
+common whole words to a compact form (`East`→`E.`, `Street`→`St`, `Lane`→`Ln`, `Market`→`Mkt`, `Station`→`Stn`, `Broadway`→`Bwy`, `Square`→`Sq`, and the rest —
 `DestinationAbbreviations`; each part of a slash-separated name alike, so "Shepherd's Bush
 Market/Wood Lane" keeps both places, and below the floor each place elides on its own rather than all but
 the first behind one trailing `…`), then, for a name no word maps, drops to its **floor** — the first word
