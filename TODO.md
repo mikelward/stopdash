@@ -1433,9 +1433,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   only, maintainer 2026-10-12).
               - [ ] **Results list jumping** (maintainer, 2026-10-12): the To… list was seen to jump,
                   either as later answers arrived or when the keyboard hid. Reproduce and find which.
-              - [ ] **Flaky trip-screen test**: `TripScreenScreenshotTest.a_line_page_stays_open_while_the_page_waits_for_its_frame`
-                  failed once in a full run and passes alone; a real worker thread races Compose's
-                  measure pass. Drive it from a test dispatcher instead.
+              - [x] **Flaky trip-screen test**: `TripScreenScreenshotTest.a_line_page_stays_open_while_the_page_waits_for_its_frame`
+                  failed once in a full run and passes alone; a real worker thread raced Compose's
+                  measure pass. Done: the page's worker is a test dispatcher the test runs by hand.
               - [x] **Ship Foursquare's NOTICE file**: Overture's Foursquare places are Apache 2.0, so
                   `assets/places/` carries Foursquare's `NOTICE.txt` (our changes appended) and the
                   license text, both fetched by the builder from Foursquare's release bucket.
