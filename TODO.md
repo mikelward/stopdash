@@ -1374,6 +1374,38 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               - [x] **Nearer first**: equal matches rank by distance from the trip's start ("Tesco" finds
                   the nearest one), computed on the device (maintainer, 2026-10-12): To… from the trip's
                   start; From… from the rider, else the last start picked.
+              - [ ] **Neighborhood names on rows** (maintainer, 2026-10-12): the nearest OpenStreetMap
+                  neighborhood ("Holloway") from the points the builder already reads for streets, in
+                  place of the postcode district where it's clearly nearest. Parked: the postcode stays
+                  for now. A station's name often is its neighborhood, so a station keeps the district
+                  either way, and the same outcode on a place and a bus stop ("EC4M") is itself the
+                  sign you've found the right St Paul's.
+              - [ ] **One row per station, stations and places deduped** (maintainer, 2026-10-12): the
+                  place builder drops Overture's stations, so a station is a stop row only. Consider
+                  keeping the place (Wikidata prominence, From… and To… by its coordinate, departures
+                  from the stops near it) and folding the station's stop row into it, keeping the King's
+                  Cross & St Pancras interchange fold (one row, each station name findable beside it).
+              - [ ] **A famous place's stray copies** (maintainer, 2026-10-12): Overture lists check-in
+                  copies of famous places all over London ("Hyde Park" ten times, St Paul's Cathedral at
+                  homes). Wikidata no longer drops or moves them: matched by name alone it moved real
+                  places kilometers away. To clean them up again, match a listing to a Wikidata item only
+                  when they're the same kind of place (Wikidata's types mapped to Overture's categories),
+                  and drop rather than move.
+              - [ ] **Prominence reach for big sites** (maintainer, 2026-10-12): a listing takes a
+                  Wikidata item's prominence only within 300 m, so a big park or campus whose listing
+                  sits away from Wikidata's one point misses out (Bushy, Brockwell and Richmond Parks,
+                  Wimbledon Common, Kingston University). Consider ~1 km for parks, commons and campuses.
+              - [ ] **Station prominence** (maintainer, 2026-10-12): equal matches put a station before a
+                  bus stop, but every station counts the same. Options: rank by the number of lines or
+                  modes (in the index already), or by Wikidata coverage as places are.
+              - [ ] **Rail stations outside London** (maintainer, 2026-10-12): bundle the National Rail
+                  stations beyond London within the app's London catchment (every Thameslink station,
+                  Reading and the like), stations only: no bus stops or places there.
+              - [ ] **Results list jumping** (maintainer, 2026-10-12): the To… list was seen to jump,
+                  either as later answers arrived or when the keyboard hid. Reproduce and find which.
+              - [ ] **Flaky trip-screen test**: `TripScreenScreenshotTest.a_line_page_stays_open_while_the_page_waits_for_its_frame`
+                  failed once in a full run and passes alone; a real worker thread races Compose's
+                  measure pass. Drive it from a test dispatcher instead.
               - [x] **Ship Foursquare's NOTICE file**: Overture's Foursquare places are Apache 2.0, so
                   `assets/places/` carries Foursquare's `NOTICE.txt` (our changes appended) and the
                   license text, both fetched by the builder from Foursquare's release bucket.
