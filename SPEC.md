@@ -305,9 +305,13 @@ The app finds stops two ways:
   last eight places picked from that search, the most recent on top, less a stop with no lines,
   which would open to nothing), then **Starred** (the ends
   of favorite journeys, then the places holding a starred row, each recorded when starred), less
-  any picked lately. A **long press on a Recent row** asks "Remove from Recent?" and, confirmed,
-  takes it off that list (maintainer, 2026-10-10); if that can't be saved the row stays and the
-  search says so until the next long press, even if it was closed meanwhile; a starred row is removed where it was starred.
+  any picked lately. A **long press on any row**, typed result or the user's own, opens a menu
+  titled with its name (maintainer, 2026-10-12): **Show on map**; **Remove from Recent**, on a row
+  that is one of the recent picks, which asks "Remove from Recent?" and, confirmed, takes it off that list
+  (maintainer, 2026-10-10); and **Add favorite**, which opens the favorite-place editor filled in
+  with the row, or **Remove favorite** when a saved place sits at its position. A long press
+  never opens the row. If a removal from Recent can't be saved the row stays and the search says so
+  until the next long press, even if it was closed meanwhile; a starred row is unstarred where it was starred.
   *From…* and *To…* keep **separate recent lists** — where the rider looks from
   and where they go — so each search lists its own history. As the user types, those and every place the app has lately shown near them (the
   widget's last departures and the nearby-lookup cache, less any stop TfL lists with no lines,

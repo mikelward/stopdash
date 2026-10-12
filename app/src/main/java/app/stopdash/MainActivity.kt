@@ -253,6 +253,8 @@ import app.stopdash.ui.WorkAheadCache
 import app.stopdash.ui.LocalDismissLineAlert
 import app.stopdash.ui.LineAlertDismissal
 import app.stopdash.ui.LocalAppMenu
+import app.stopdash.ui.LocalSearchRowHost
+import app.stopdash.ui.SearchRowHost
 import app.stopdash.ui.LocalHideUndoCarrier
 import app.stopdash.ui.LocalLiftsOut
 import app.stopdash.ui.LocalLocationAllowed
@@ -1602,6 +1604,17 @@ class MainActivity : ComponentActivity() {
                     routeStopTrail = LineStopRef(open.stopId, open.name, fixDistance(open.position), position = open.position)
                 } }
                 CompositionLocalProvider(
+                    // A search row's menu: the row on the map, or the favorite-places editor filled in with it,
+                    // Save or Cancel returning to the search, as from a stop's details.
+                    LocalSearchRowHost provides SearchRowHost(
+                        showOnMap = { name, at -> openStopMap(at.latitude, at.longitude, name) },
+                        addPlace = { pick ->
+                            placeToAdd = pick
+                            placesFromStop = true
+                            favoritePlacesOpen = true
+                        },
+                        removePlace = ::removeFavoritePlace,
+                    ),
                     LocalOpenRouteStop provides openRouteStop,
                     LocalHideUndoCarrier provides hideUndoCarrier,
                     LocalAppMenu provides AppMenuActions(
@@ -2173,6 +2186,7 @@ class MainActivity : ComponentActivity() {
                                         onAskRemoveRecent = search::askRemoveRecent,
                                         onCancelRemoveRecent = search::cancelRemoveRecent,
                                         onRemoveRecent = search::onRemoveRecent,
+                                        positionOf = search::positionOf,
                                         onPickFrom = { end ->
                                             search.clear()
                                             journeyFromName = end.name
@@ -3087,6 +3101,27 @@ class MainActivity : ComponentActivity() {
         }
         Toast.makeText(this, R.string.update_open_failed, Toast.LENGTH_SHORT).show()
         logUpdateWarning("No app to open the Play listing")
+    }
+
+    /**
+     * Removes the saved place [place] (a search row's "Remove from favorites"), off the main thread, then
+     * [onRemoved] so the search reads its places again. A write that fails says so and leaves the place.
+     */
+    private fun removeFavoritePlace(place: FavoritePlace, onRemoved: () -> Unit) {
+        lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    DataStoreFavoritePlacesStore.from(applicationContext, warn = ::logStarWarning).remove(place.id)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logStarWarning("favorite place remove failed: ${e.javaClass.simpleName}")
+                Toast.makeText(this@MainActivity, R.string.favorite_places_write_failed, Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            onRemoved()
+        }
     }
 
     /**
@@ -4058,6 +4093,7 @@ class MainActivity : ComponentActivity() {
                 onAskRemoveRecent = search::askRemoveRecent,
                 onCancelRemoveRecent = search::cancelRemoveRecent,
                 onRemoveRecent = search::onRemoveRecent,
+                positionOf = search::positionOf,
                 onOpenStation = { match ->
                     search.onOpened(match)
                     onOpenStation(match)
@@ -4681,6 +4717,7 @@ class MainActivity : ComponentActivity() {
                 onAskRemoveRecent = search::askRemoveRecent,
                 onCancelRemoveRecent = search::cancelRemoveRecent,
                 onRemoveRecent = search::onRemoveRecent,
+                positionOf = search::positionOf,
                 onOpenStation = { match ->
                     toStores.clearAll()
                     search.onOpened(match)

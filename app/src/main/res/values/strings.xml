@@ -586,6 +586,10 @@
     <string name="station_search_remove_recent_confirm">Remove</string>
     <string name="station_search_remove_recent_cancel">Cancel</string>
     <!-- Under the Recent heading when a removal couldn't be saved on the device, so the row is still listed. -->
+    <!-- A search row's long press: what it opens, for TalkBack, and its menu's favorite items. -->
+    <string name="station_search_row_menu_action">More options</string>
+    <string name="station_search_add_favorite">Add favorite</string>
+    <string name="station_search_remove_favorite">Remove favorite</string>
     <string name="station_search_remove_recent_failed">Couldn\'t remove that from Recent</string>
     <!-- Atop the To… search when the saved places couldn't be read, with a Retry. -->
     <string name="station_search_places_error">Couldn\'t load your places</string>

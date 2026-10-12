@@ -30,6 +30,8 @@ import app.stopdash.domain.ChipLabel
 import app.stopdash.domain.FavoritePlaceIcon
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
+import kotlinx.coroutines.Dispatchers
+import androidx.compose.runtime.CompositionLocalProvider
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -114,35 +116,40 @@ class StationSearchScreenshotTest {
 
     @Test
     fun station_search_remove_recent() {
-        // A long press on a Recent row asks before taking it off; Cancel keeps it, Remove takes it off.
-        // A starred row offers no long press. The question is held as the view model holds it.
-        // Public station names only.
+        // A long press on a row opens its menu; on a Recent row it offers Remove from Recent, which asks
+        // before taking it off: Cancel keeps it, Remove takes it off. A starred row's menu offers no
+        // removal. The question is held as the view model holds it. Public station names only.
         val oxford = SearchEntry.Stop(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube")))
         val removed = mutableListOf<SearchEntry>()
         var pending by mutableStateOf<SearchEntry?>(null)
         composeRule.setContent {
-            StopDashTheme {
-                StationSearchScreen(
-                    state = StationSearchViewModel.State(
-                        recent = listOf(oxford),
-                        favorites = listOf(StationMatch("940GZZLUBNK", "Bank", listOf("tube"))),
-                        yoursRead = true,
-                        pendingRemoval = pending,
-                    ),
-                    onQueryChange = {},
-                    onOpenStation = {},
-                    onBack = {},
-                    autoFocus = false,
-                    onAskRemoveRecent = { pending = it },
-                    onCancelRemoveRecent = { pending = null },
-                    onRemoveRecent = { pending = null; removed += it },
-                )
+            // The menu's facts worked out in place, so the test sees them as the frame settles.
+            CompositionLocalProvider(LocalWorker provides Dispatchers.Unconfined) {
+                StopDashTheme {
+                    StationSearchScreen(
+                        state = StationSearchViewModel.State(
+                            recent = listOf(oxford),
+                            favorites = listOf(StationMatch("940GZZLUBNK", "Bank", listOf("tube"))),
+                            yoursRead = true,
+                            pendingRemoval = pending,
+                        ),
+                        onQueryChange = {},
+                        onOpenStation = {},
+                        onBack = {},
+                        autoFocus = false,
+                        onAskRemoveRecent = { pending = it },
+                        onCancelRemoveRecent = { pending = null },
+                        onRemoveRecent = { pending = null; removed += it },
+                    )
+                }
             }
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Bank").performTouchInput { longClick() }
-        composeRule.onNodeWithText("Remove from Recent?").assertDoesNotExist()
+        composeRule.onNodeWithTag("rowMenuRemoveRecent").assertDoesNotExist()
+        composeRule.onNodeWithText("Cancel").performClick()
         composeRule.onNodeWithText("Oxford Circus").performTouchInput { longClick() }
+        composeRule.onNodeWithTag("rowMenuRemoveRecent").performClick()
         assertEquals(oxford, pending)
         composeRule.onNodeWithText("Remove from Recent?").assertIsDisplayed()
         if (capturing()) {
@@ -152,6 +159,7 @@ class StationSearchScreenshotTest {
         composeRule.onNodeWithText("Remove from Recent?").assertDoesNotExist()
         assertTrue(removed.isEmpty())
         composeRule.onNodeWithText("Oxford Circus").performTouchInput { longClick() }
+        composeRule.onNodeWithTag("rowMenuRemoveRecent").performClick()
         composeRule.onNodeWithTag("removeRecent").performClick()
         assertEquals(listOf<SearchEntry>(oxford), removed)
     }

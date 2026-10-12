@@ -41,4 +41,6 @@
     <string name="compass_se">south-east</string>
     <string name="compass_sw">south-west</string>
     <string name="compass_nw">north-west</string>
+    <string name="station_search_add_favorite">Add favourite</string>
+    <string name="station_search_remove_favorite">Remove favourite</string>
 </resources>

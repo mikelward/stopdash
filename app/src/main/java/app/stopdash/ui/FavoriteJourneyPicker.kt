@@ -3,6 +3,7 @@ package app.stopdash.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import app.stopdash.R
+import app.stopdash.domain.Coordinates
 import app.stopdash.domain.PendingEnd
 import app.stopdash.domain.SearchEntry
 
@@ -32,6 +33,8 @@ fun FavoriteJourneyPicker(
     onAskRemoveRecent: ((SearchEntry) -> Unit)? = null,
     onCancelRemoveRecent: () -> Unit = {},
     onRemoveRecent: (SearchEntry) -> Unit = {},
+    // Where a row carrying no position is, for its long-press menu ([StationSearchScreen]).
+    positionOf: (suspend (SearchEntry) -> Coordinates?)? = null,
 ) {
     if (from == null) {
         StationSearchScreen(
@@ -47,6 +50,7 @@ fun FavoriteJourneyPicker(
             onAskRemoveRecent = onAskRemoveRecent,
             onCancelRemoveRecent = onCancelRemoveRecent,
             onRemoveRecent = onRemoveRecent,
+            positionOf = positionOf,
         )
     } else {
         StationSearchScreen(
@@ -63,6 +67,7 @@ fun FavoriteJourneyPicker(
             onAskRemoveRecent = onAskRemoveRecent,
             onCancelRemoveRecent = onCancelRemoveRecent,
             onRemoveRecent = onRemoveRecent,
+            positionOf = positionOf,
         )
     }
 }

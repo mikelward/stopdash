@@ -120,4 +120,16 @@ class FavoritePlacesTest {
         assertEquals(ChipLabel.BOTH, home.copy(chipShows = ChipLabel.BOTH).chipLabel)
         assertEquals(ChipLabel.NAME, home.copy(chipShows = ChipLabel.NAME).chipLabel)
     }
+
+    @Test
+    fun `the saved place at a position is the nearest one within a few meters, else none`() {
+        // About 11 m and 33 m north of the synthetic point.
+        val near = place("near", FavoriteKind.CUSTOM, coordinate = Coordinates(51.5001, -0.12))
+        val nearer = place("nearer", FavoriteKind.CUSTOM, coordinate = here)
+        val beyond = place("beyond", FavoriteKind.CUSTOM, coordinate = Coordinates(51.5003, -0.12))
+        assertEquals("nearer", FavoritePlaces.at(listOf(near, nearer, beyond), here)?.id)
+        assertEquals("near", FavoritePlaces.at(listOf(near, beyond), here)?.id)
+        assertNull(FavoritePlaces.at(listOf(beyond), here))
+        assertNull(FavoritePlaces.at(emptyList(), here))
+    }
 }
