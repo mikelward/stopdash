@@ -101,6 +101,9 @@ class StationSearchViewModel(
     private val findOutside: (suspend (String) -> List<PlaceCandidate>)? = null,
     // Notes an outside-London lookup that failed, in the debug log; never the query.
     private val warn: (String) -> Unit = {},
+    // With no start set ([setNear]), rank same-named stops and places from the latest Recent pick that
+    // has a position: From…'s last start, where the rider's position isn't known (maintainer, 2026-10-12).
+    private val nearFromRecent: Boolean = false,
     // Remembers a station opened from the search, for the recent list; blocking, run on [io].
     private val recordOpen: suspend (StationMatch) -> Unit = {},
     // Remembers a geocoded place picked from a To… search, in the same recent list; blocking, run on
@@ -180,6 +183,9 @@ class StationSearchViewModel(
 
     private var search: Job? = null
 
+    // Where the trip starts, as last set ([setNear]): what puts the nearer of same-named stops first.
+    @Volatile private var near: Coordinates? = null
+
     // The TfL lookup for places outside London, cancelled with each new query.
     private var outsideSearch: Job? = null
 
@@ -258,6 +264,45 @@ class StationSearchViewModel(
     }
 
     // The user's stops read again after a write of this model's own.
+    /**
+     * Where the trip starts, for the next search: same-named stops and places nearer it list first
+     * (maintainer, 2026-10-12). To… passes the trip's start: the rider's position, else the From…
+     * station's center. From… passes the rider's position when known.
+     * Rows already listed don't move. A search under way when the start changes (a query restored after
+     * process death, searched before its screen set the start) runs again from the new one, adding to
+     * the rows it has listed.
+     */
+    fun setNear(at: Coordinates?) {
+        if (at == near) return
+        near = at
+        val current = _state.value
+        if (current.searching && search?.isActive == true) start(current.query)
+    }
+
+    // The start a search ranks from: as set, else (From…) the latest Recent pick's position. Placing a
+    // stop waits on the bundle, off the main thread.
+    private suspend fun nearNow(): Coordinates? {
+        near?.let { return it }
+        if (!nearFromRecent) return null
+        // The latest pick, a stop placed from the bundle: the Recent file keeps a stop's id, not its position.
+        // From the read itself, not the state it publishes, which a search restored at once can precede. On
+        // [compute], the hop first: the pick is found by walking the list.
+        val read = yours
+        return withContext(compute) {
+            when (val latest = read.await().recentPicks.firstOrNull { it.key !in removing }) {
+                null -> null
+                is SearchEntry.Place -> latest.hit.coordinate
+                is SearchEntry.Stop -> {
+                    val match = latest.match
+                    val lat = match.latitude
+                    val lon = match.longitude
+                    if (lat != null && lon != null) Coordinates(lat, lon)
+                    else index.await().positionOf(match.id) ?: busStops.await().positionOf(match.id)
+                }
+            }
+        }
+    }
+
     private fun reread() {
         yours = readYours()
     }
@@ -286,12 +331,14 @@ class StationSearchViewModel(
 
     /**
      * Remember the geocoded place [hit] as picked, for the recent list, as [onOpened] does a station;
-     * the write finishes even if the search closes. A place matches nothing typed, so nothing re-ranks.
+     * the write finishes even if the search closes. In From… the place is now the last start, which
+     * same-named stops rank from where the rider's position isn't known, so they re-rank as [onOpened]'s do.
      */
     fun onPlaceOpened(hit: PlaceHit) {
         viewModelScope.launch {
             record { recordPlace(hit) }
             reread()
+            if (nearFromRecent) rerank()
         }
     }
 
@@ -380,12 +427,17 @@ class StationSearchViewModel(
             val stations = withContext(io) { index.await().withYours(yours.await()) }
             val buses = busStops.await()
             val shown = _state.value.result as? Result.Matches ?: return@launch
-            // Nothing is being tapped on the way back, so the whole list is ranked afresh here; the
-            // places are unchanged, so the ones already shown are kept.
+            val from = nearNow()
+            // Nothing is being tapped on the way back, so the whole list is ranked afresh here, its
+            // places too: the same ones, ordered from the start as it now is.
+            val places = if (shown.places.isEmpty()) shown.places
+            else bundledPlacesFor(placeIndex.await(), PlaceHits.withoutHouseNumber(trimmed), from).ifEmpty { shown.places }
             val result = withContext(compute) {
-                val ranked = stations.rank(trimmed, stations.search(trimmed), buses.search(trimmed, checkpoint = { ensureActive() }))
-                val entries = SearchResults.merge(trimmed, ranked, shown.places)
-                Result.Matches(ranked, places = shown.places, entries = entries, areas = areasOf(entries, stations))
+                val ranked = stations.rank(
+                    trimmed, stations.search(trimmed, near = from), buses.search(trimmed, checkpoint = { ensureActive() }, near = from), near = from,
+                )
+                val entries = SearchResults.merge(trimmed, ranked, places)
+                Result.Matches(ranked, places = places, entries = entries, areas = areasOf(entries, stations))
             }
             if (result.matches.isNotEmpty() || result.places.isNotEmpty()) _state.update { it.copy(result = result) }
         }
@@ -442,13 +494,13 @@ class StationSearchViewModel(
     }
 
     // [index]'s places for [query], searched on [compute]; none, with no hop, when there's no index.
-    private suspend fun bundledPlacesFor(index: PlaceIndex, query: String): List<PlaceHit> =
+    private suspend fun bundledPlacesFor(index: PlaceIndex, query: String, near: Coordinates?): List<PlaceHit> =
         if (index.size == 0) emptyList() else withContext(compute) {
             // A search the rider has typed past stops partway rather than scanning the whole index. A
             // postcode-shaped query (a digit, as the favorite editor tells them apart) lists postcodes
             // only, so places named like one ("E12 Cafe") can't take every slot.
             val postcodesOnly = UkPostcode.looksLikePartial(query) && query.any(Char::isDigit)
-            PlaceHits.fromIndex(index, query, checkpoint = { ensureActive() }, postcodesOnly = postcodesOnly)
+            PlaceHits.fromIndex(index, query, checkpoint = { ensureActive() }, postcodesOnly = postcodesOnly, near = near)
         }
 
     private fun start(query: String) {
@@ -464,6 +516,8 @@ class StationSearchViewModel(
         // what's now typed.
         _state.update { it.copy(searching = true, outside = OutsideLondon.Hidden) }
         search = viewModelScope.launch {
+            // Read once, so every part of this search ranks from the same start.
+            val from = nearNow()
             // Everything is searched on the device (maintainer, 2026-10-11): the bundled stations, bus
             // stops and places, with nothing sent. The rows on screen for this query only ever grow: a
             // row never moves once shown (maintainer, 2026-09-28).
@@ -478,7 +532,7 @@ class StationSearchViewModel(
             // The places, looked up the moment the place index is read, whatever else is still loading.
             // An address's house number isn't in the bundle, so its street is what's searched.
             val placeLookup: Deferred<List<PlaceHit>> =
-                async { if (searchPlaces) bundledPlacesFor(placeIndex.await(), PlaceHits.withoutHouseNumber(trimmed)) else emptyList() }
+                async { if (searchPlaces) bundledPlacesFor(placeIndex.await(), PlaceHits.withoutHouseNumber(trimmed), from) else emptyList() }
             launch {
                 val places = placeLookup.await()
                 if (places.isEmpty()) return@launch
@@ -497,7 +551,7 @@ class StationSearchViewModel(
             val read = yours
             val own = read.await()
             val stations = withContext(io) { index.await().withYours(own) }
-            val local = withContext(io) { stations.search(trimmed) }
+            val local = withContext(io) { stations.search(trimmed, near = from) }
             // While the bus stops are still being read (the first letters typed), the stations' first
             // few go up at once, and the rest join the bus stops below them.
             if (!busStops.isCompleted && local.isNotEmpty()) {
@@ -525,8 +579,8 @@ class StationSearchViewModel(
                 val (ranked, entries, listed) = withContext(compute) {
                     // Uncapped, to tell a row folded into its twin from one only past the cap; capped
                     // for what's newly added.
-                    val busMatches = buses.search(trimmed, checkpoint = { ensureActive() })
-                    val everyStop = stations.rank(trimmed, local, busMatches, limit = Int.MAX_VALUE)
+                    val busMatches = buses.search(trimmed, checkpoint = { ensureActive() }, near = from)
+                    val everyStop = stations.rank(trimmed, local, busMatches, limit = Int.MAX_VALUE, near = from)
                     val ranked = everyStop.take(StationIndex.DEFAULT_LIMIT)
                     val entries = SearchResults.appended(before, trimmed, ranked, places, everyStop = everyStop)
                     Triple(ranked, entries, shownPlaces(entries) to areasOf(entries, stations))
@@ -592,11 +646,12 @@ class StationSearchViewModel(
     // Run in [outsideSearch], which a new query cancels, so what it publishes is always this query's.
     private suspend fun lookOutside(query: String, find: suspend (String) -> List<PlaceCandidate>) {
         _state.update { it.copy(outside = OutsideLondon.Searching) }
+        val from = nearNow()
         val outcome = try {
             val candidates = withContext(io) { find(query) }
             withContext(compute) {
                 val kind = if (UkPostcode.isComplete(query)) PlaceKind.POSTCODE else PlaceKind.PLACE
-                val places = PlaceHits.rank(query, PlaceHits.outsideBundle(candidates), kind)
+                val places = PlaceHits.rank(query, PlaceHits.outsideBundle(candidates), kind, near = from)
                 if (places.isEmpty()) OutsideLondon.NoMatches else OutsideLondon.Found(places)
             }
         } catch (e: TflException) {

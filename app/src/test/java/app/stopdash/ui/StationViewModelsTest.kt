@@ -188,6 +188,125 @@ class StationViewModelsTest {
         assertEquals(mapOf("490G00000001" to "X1"), vm.state.value.yourAreas)
     }
 
+    // Two same-named synthetic bus stops, the farther from (51.55, -0.2) listed first by id.
+    private fun twoZetaChurches() = busStops(busStop("49000001A", "Zeta Church", 51.5, -0.12), busStop("49000002B", "Zeta Church", 51.55, -0.2))
+
+    private suspend fun kotlinx.coroutines.test.TestScope.idsFor(vm: StationSearchViewModel, query: String): List<String> {
+        vm.onQueryChange(query)
+        advanceUntilIdle()
+        return (vm.state.value.result as StationSearchViewModel.Result.Matches).matches.map { it.id }
+    }
+
+    @Test
+    fun `same-named stops nearer where the trip starts list first`() = runTest {
+        val vm = StationSearchViewModel(io = dispatcher, compute = dispatcher, loadBusStops = { twoZetaChurches() })
+        runCurrent()
+        assertEquals(listOf("49000001A", "49000002B"), idsFor(vm, "zeta church"))
+        vm.setNear(Coordinates(51.55, -0.2))
+        assertEquals(listOf("49000002B", "49000001A"), idsFor(vm, "zeta chur"))
+    }
+
+    @Test
+    fun `without the rider's position, From ranks from the last start picked`() = runTest {
+        val lastStart = StationMatch("940GZZZETA9", "Zeta Junction", listOf("tube"), 51.55, -0.2)
+        val withFallback = StationSearchViewModel(
+            io = dispatcher, compute = dispatcher, nearFromRecent = true,
+            loadYours = { YourStops(recentPicks = listOf(SearchEntry.Stop(lastStart))) }, loadBusStops = { twoZetaChurches() },
+        )
+        advanceUntilIdle()
+        assertEquals(listOf("49000002B", "49000001A"), idsFor(withFallback, "zeta church"))
+        // To… doesn't fall back to where the rider last went.
+        val without = StationSearchViewModel(
+            io = dispatcher, compute = dispatcher,
+            loadYours = { YourStops(recentPicks = listOf(SearchEntry.Stop(lastStart))) }, loadBusStops = { twoZetaChurches() },
+        )
+        advanceUntilIdle()
+        assertEquals(listOf("49000001A", "49000002B"), idsFor(without, "zeta church"))
+    }
+
+    @Test
+    fun `a Recent stop saved without its position is placed from the bundle`() = runTest {
+        // The Recent file keeps a stop's id, not its position.
+        val lastStart = IndexedStation("940GZZZETA9", "Zeta Junction", listOf("tube"), latitude = 51.55, longitude = -0.2)
+        val vm = StationSearchViewModel(
+            io = dispatcher, compute = dispatcher, nearFromRecent = true,
+            loadIndex = { StationIndex(listOf(lastStart)) },
+            loadYours = { YourStops(recentPicks = listOf(SearchEntry.Stop(StationMatch(lastStart.id, lastStart.name, lastStart.modes)))) },
+            loadBusStops = { twoZetaChurches() },
+        )
+        advanceUntilIdle()
+        assertEquals(listOf("49000002B", "49000001A"), idsFor(vm, "zeta church"))
+    }
+
+    @Test
+    fun `a From query restored after process death ranks from the last start once Recent is read`() = runTest {
+        // The query searches at once; the Recent list is read after.
+        val lastStart = StationMatch("940GZZZETA9", "Zeta Junction", listOf("tube"), 51.55, -0.2)
+        val recentRead = kotlinx.coroutines.CompletableDeferred<YourStops>()
+        val vm = StationSearchViewModel(
+            SavedStateHandle(mapOf("query" to "zeta church")),
+            io = dispatcher, compute = dispatcher, nearFromRecent = true,
+            loadYours = { recentRead.await() }, loadBusStops = { twoZetaChurches() },
+        )
+        runCurrent()
+        recentRead.complete(YourStops(recentPicks = listOf(SearchEntry.Stop(lastStart))))
+        advanceUntilIdle()
+        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals(listOf("49000002B", "49000001A"), result.matches.map { it.id })
+    }
+
+    @Test
+    fun `a place picked in From re-ranks the search from it`() = runTest {
+        // No rider position: the place just picked is the last start.
+        var recent = emptyList<SearchEntry>()
+        val vm = StationSearchViewModel(
+            io = dispatcher, compute = dispatcher, nearFromRecent = true,
+            loadYours = { YourStops(recentPicks = recent) }, loadBusStops = { twoZetaChurches() },
+            recordPlace = { recent = listOf(SearchEntry.Place(it)) },
+        )
+        advanceUntilIdle()
+        assertEquals(listOf("49000001A", "49000002B"), idsFor(vm, "zeta church"))
+        vm.onPlaceOpened(PlaceHit("Zeta Hall", Coordinates(51.55, -0.2), PlaceKind.PLACE))
+        advanceUntilIdle()
+        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals(listOf("49000002B", "49000001A"), result.matches.map { it.id })
+    }
+
+    @Test
+    fun `a place picked in From re-ranks same-named places from it too`() = runTest {
+        var recent = emptyList<SearchEntry>()
+        val vm = StationSearchViewModel(
+            io = dispatcher, compute = dispatcher, nearFromRecent = true,
+            loadYours = { YourStops(recentPicks = recent) },
+            loadPlaceIndex = { placeIndex("P\tZeta Shop\tshop\t51.50000\t-0.12000\t5", "P\tZeta Shop\tshop\t51.55000\t-0.20000\t5") },
+            recordPlace = { recent = listOf(SearchEntry.Place(it)) },
+        )
+        advanceUntilIdle()
+        vm.onQueryChange("zeta shop")
+        advanceUntilIdle()
+        fun latitudes() = (vm.state.value.result as StationSearchViewModel.Result.Matches).places.map { it.coordinate.latitude }
+        assertEquals(listOf(51.5, 51.55), latitudes())
+        vm.onPlaceOpened(PlaceHit("Zeta Hall", Coordinates(51.551, -0.2), PlaceKind.PLACE))
+        advanceUntilIdle()
+        assertEquals(listOf(51.55, 51.5), latitudes())
+    }
+
+    @Test
+    fun `a search under way when the start is set runs again from it`() = runTest {
+        // A query restored after process death searches before its screen sets the start.
+        val busesRead = kotlinx.coroutines.CompletableDeferred<BusStopIndex>()
+        val vm = StationSearchViewModel(io = dispatcher, compute = dispatcher, loadBusStops = { busesRead.await() })
+        runCurrent()
+        vm.onQueryChange("zeta church")
+        runCurrent()
+        assertTrue(vm.state.value.searching)
+        vm.setNear(Coordinates(51.55, -0.2))
+        busesRead.complete(twoZetaChurches())
+        advanceUntilIdle()
+        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals(listOf("49000002B", "49000001A"), result.matches.map { it.id })
+    }
+
     // TfL's places outside London, synthetic (AGENTS *Privacy*).
     private val zetaTown = PlaceCandidate("Zeta Town", Coordinates(52.0, -0.5))
 

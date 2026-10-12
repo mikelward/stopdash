@@ -30,6 +30,16 @@ class BusStopIndexTest {
     }
 
     @Test
+    fun `a name's stops nearest where the trip starts come first, and the limit keeps those`() {
+        // Synthetic stops of one name, the farthest first in id order.
+        val stops = index(stop("4900A", "Zeta Road", 51.55), stop("4900B", "Zeta Road", 51.52), stop("4900C", "Zeta Road", 51.501))
+        val start = Coordinates(51.5, -0.12)
+        assertEquals(listOf("4900C", "4900B", "4900A"), stops.search("zeta", near = start).map { it.id })
+        assertEquals(listOf("4900C"), stops.search("zeta", limit = 1, near = start).map { it.id })
+        assertEquals(listOf("4900A", "4900B", "4900C"), stops.search("zeta").map { it.id })
+    }
+
+    @Test
     fun `the limit caps the stops, and a short query finds none`() {
         val stops = index(*Array(5) { stop("4900$it", "Zeta Road") })
         assertEquals(3, stops.search("zeta", limit = 3).size)

@@ -60,14 +60,15 @@ object PlaceHits {
      * the resolved location's name needn't contain the digits, so name-matching would wrongly drop it.
      */
     @androidx.annotation.WorkerThread
-    fun rank(query: String, candidates: List<PlaceCandidate>, kind: PlaceKind, limit: Int = DEFAULT_LIMIT): List<PlaceHit> {
+    fun rank(query: String, candidates: List<PlaceCandidate>, kind: PlaceKind, limit: Int = DEFAULT_LIMIT, near: Coordinates? = null): List<PlaceHit> {
         val q = query.trim()
         if (q.isEmpty() || candidates.isEmpty()) return emptyList()
         val ordered = when (kind) {
             PlaceKind.POSTCODE -> candidates
             PlaceKind.PLACE, PlaceKind.STREET -> candidates
                 .mapNotNull { candidate -> StationMatcher.tier(q, candidate.name)?.let { it to candidate } }
-                .sortedWith(compareBy({ it.first.ordinal }, { it.second.name.length }, { it.second.name }))
+                // Equal matches nearer where the trip starts ([near]) first, as the bundled places rank.
+                .sortedWith(compareBy({ it.first.ordinal }, { it.second.name.length }, { distanceFrom(near, it.second.coordinate) }, { it.second.name }))
                 .map { it.second }
         }
         return ordered
@@ -75,6 +76,9 @@ object PlaceHits {
             .distinctBy { it.name to it.coordinate }
             .take(limit)
     }
+
+    private fun distanceFrom(near: Coordinates?, at: Coordinates): Double =
+        if (near == null) 0.0 else NearestStops.distanceMeters(near.latitude, near.longitude, at.latitude, at.longitude)
 
     /**
      * The bundled index's matches for [query] ([PlaceIndex.search], already ranked) as the To… list
@@ -88,8 +92,10 @@ object PlaceHits {
         limit: Int = DEFAULT_LIMIT,
         checkpoint: () -> Unit = {},
         postcodesOnly: Boolean = false,
+        // Where the trip starts: the nearer of equal matches first.
+        near: Coordinates? = null,
     ): List<PlaceHit> =
-        index.search(query, limit, checkpoint, if (postcodesOnly) PlaceIndex.Kind.POSTCODE else null).map { entry ->
+        index.search(query, limit, checkpoint, if (postcodesOnly) PlaceIndex.Kind.POSTCODE else null, near).map { entry ->
             val kind = when (entry.kind) {
                 PlaceIndex.Kind.PLACE -> PlaceKind.PLACE
                 PlaceIndex.Kind.STREET -> PlaceKind.STREET

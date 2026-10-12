@@ -263,6 +263,23 @@ class SearchResultsOffMainTest {
     }
 
     @Test
+    fun theLastStartIsFoundOnCompute() {
+        // From… with no rider position: the last start picked is found in Recent before anything ranks.
+        val lastStart = StationMatch("940GZZZETA9", "Zeta Junction", listOf("tube"), 51.55, -0.2)
+        val vm = StationSearchViewModel(
+            loadYours = { YourStops(recentPicks = listOf(SearchEntry.Stop(lastStart))) },
+            loadBusStops = { busStops("Zeta Road") }, nearFromRecent = true, io = main, compute = compute,
+        )
+        mainIdle()
+        vm.onQueryChange("zeta road")
+        mainIdle()
+        assertNull("ranked with compute held", vm.matches())
+        releaseCompute()
+        releaseCompute()
+        assertEquals(listOf("49000"), vm.matches()!!.matches.map { it.id })
+    }
+
+    @Test
     fun theStopsDistrictsAreWorkedOutOnCompute() {
         // A bus stop beside a synthetic postcode: its district is worked out with its ranking.
         val places = PlaceIndex.read(

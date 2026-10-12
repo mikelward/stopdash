@@ -37,6 +37,15 @@ class PlaceHitsTest {
     }
 
     @Test
+    fun `equal place-name matches go to the one nearer where the trip starts`() {
+        val farther = PlaceCandidate("Zeta Town", Coordinates(52.5, -1.0))
+        val nearer = PlaceCandidate("Zeta Town", Coordinates(52.0, -0.5))
+        val start = Coordinates(51.9, -0.4)
+        assertEquals(listOf(nearer, farther).map { it.coordinate }, PlaceHits.rank("zeta", listOf(farther, nearer), PlaceKind.PLACE, near = start).map { it.coordinate })
+        assertEquals(listOf(farther, nearer).map { it.coordinate }, PlaceHits.rank("zeta", listOf(farther, nearer), PlaceKind.PLACE).map { it.coordinate })
+    }
+
+    @Test
     fun `drops a place-name candidate whose name doesn't match the query at all`() {
         val candidates = listOf(candidate("Zeta Hall"), candidate("Gamma House"))
         assertEquals(listOf("Zeta Hall"), PlaceHits.rank("zeta", candidates, PlaceKind.PLACE).map { it.name })

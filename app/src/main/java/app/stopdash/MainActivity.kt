@@ -3907,6 +3907,11 @@ class MainActivity : ComponentActivity() {
     private fun fromSearchModel(): StationSearchViewModel {
         val search: StationSearchViewModel = viewModel(key = "station-search", factory = fromSearchFactory())
         SideEffect { shownModels().fromSearch = search }
+        // Same-named stops nearer the rider list first (maintainer, 2026-10-12); none known, the
+        // search ranks from the last start picked.
+        val fix by nearbyViewModel.riderFix.collectAsStateWithLifecycle()
+        val at = fix?.at
+        LaunchedEffect(search, at) { search.setNear(at) }
         return search
     }
 
@@ -3958,6 +3963,8 @@ class MainActivity : ComponentActivity() {
                     // London", or for a complete postcode the bundle doesn't hold (maintainer, 2026-10-11).
                     findOutside = stationFinder::searchPlaces,
                     warn = ::logDepartureWarning,
+                    // Without the rider's position, same-named stops rank from the last start picked.
+                    nearFromRecent = true,
                     recordOpen = { recents.add(it) },
                     // A place started from joins From…'s own Recent, as a station opened there does.
                     recordPlace = { recents.addPlace(it) },
@@ -4348,6 +4355,7 @@ class MainActivity : ComponentActivity() {
                 keyPrefix = "from",
                 fromName = stationName,
                 fromStopIds = stationStopIds,
+                fromCenter = center,
                 onLocate = onBackToNearMe,
                 onEditPlaces = onEditPlaces,
                 onChangeFrom = onChangeFrom,
@@ -4547,6 +4555,8 @@ class MainActivity : ComponentActivity() {
         fromName: String? = null,
         // A From… station's own stops: its trip starts at one of them, never a neighbor.
         fromStopIds: Set<String> = emptySet(),
+        // A From… station's center, where its trip is reckoned from for ranking the To… search.
+        fromCenter: Coordinates? = null,
         // The rider's position, for a trip from here: the Planner plans from it, walking to whichever
         // stop serves the trip best — a station a walk away, not only the stop nearest (maintainer,
         // 2026-09-28). Null plans from the stop (a From… station).
@@ -4610,6 +4620,10 @@ class MainActivity : ComponentActivity() {
                 }
             },
         )
+        // Same-named stops and places nearer where this trip starts list first (maintainer, 2026-10-12):
+        // the rider, or the From… station's center.
+        val rankFrom = here ?: fromCenter
+        LaunchedEffect(search, rankFrom) { search.setNear(rankFrom) }
         val stores: NearbyDeparturesStores = viewModel(key = "$keyPrefix-trip-stores")
         val toStores: NearbyDeparturesStores = viewModel(key = "$keyPrefix-to-stores")
         val writeFailures = viewModel<WriteFailuresHolder>().failures

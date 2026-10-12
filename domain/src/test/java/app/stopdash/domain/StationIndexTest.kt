@@ -252,6 +252,32 @@ class StationIndexTest {
     }
 
     @Test
+    fun `same-named stops nearer where the trip starts come first`() {
+        // Synthetic bus stops of one name, more than a fold apart, the farther listed first.
+        val far = StationMatch("490000000007G", "Zeta Church", listOf("bus"), 51.55, -0.12)
+        val nearer = StationMatch("490000000008H", "Zeta Church", listOf("bus"), 51.51, -0.12)
+        val stations = StationIndex(emptyList())
+        val start = Coordinates(51.5, -0.12)
+        assertEquals(listOf(nearer.id, far.id), stations.rank("zeta", emptyList(), listOf(far, nearer), near = start).map { it.id })
+        // No start: as before, the order they came in.
+        assertEquals(listOf(far.id, nearer.id), stations.rank("zeta", emptyList(), listOf(far, nearer)).map { it.id })
+        // Nearness only splits the same name: a shorter name still leads.
+        val shorter = StationMatch("490000000009J", "Zeta Chur", listOf("bus"), 51.6, -0.12)
+        assertEquals(shorter.id, stations.rank("zeta", emptyList(), listOf(far, nearer, shorter), near = start).first().id)
+    }
+
+    @Test
+    fun `same-named stations nearer where the trip starts come first in the index's own search too`() {
+        val stations = StationIndex(
+            listOf(
+                IndexedStation("940GZZZETA1", "Zeta Park", listOf("tube"), latitude = 51.55, longitude = -0.12),
+                IndexedStation("910GZETA2", "Zeta Park", listOf("national-rail"), latitude = 51.51, longitude = -0.12),
+            ),
+        )
+        assertEquals(listOf("910GZETA2", "940GZZZETA1"), stations.search("zeta", near = Coordinates(51.5, -0.12)).map { it.id })
+    }
+
+    @Test
     fun `a TfL match inside a matched interchange stays folded into it`() {
         val local = index.search("kings")
         val member = StationMatch("940GZZLUKSX", "King's Cross St. Pancras", listOf("tube"))

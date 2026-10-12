@@ -1371,8 +1371,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   £0 either way (open data). The bundled bus stops stop near London's edge too, so a
                   wider reach would want them widened with it. Places outside the box are now found
                   from TfL (*Search outside London*), so widening only saves those a tap and a request.
-              - [ ] **Nearer first**: rank equal matches by distance from the trip's start ("Tesco" finds
-                  the nearest one), computed on the device.
+              - [x] **Nearer first**: equal matches rank by distance from the trip's start ("Tesco" finds
+                  the nearest one), computed on the device (maintainer, 2026-10-12): To… from the trip's
+                  start; From… from the rider, else the last start picked.
               - [x] **Ship Foursquare's NOTICE file**: Overture's Foursquare places are Apache 2.0, so
                   `assets/places/` carries Foursquare's `NOTICE.txt` (our changes appended) and the
                   license text, both fetched by the builder from Foursquare's release bucket.
@@ -2508,7 +2509,7 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       Same-name results are **disambiguated** across all three surfaces (done): each stop row
       shows the postcode district of its nearest bundled postcode, worked out on the device from the
       place index (no TfL lookup, no new recipient), and a station ranks ahead of a same-named bus
-      stop. Ranking same-named stops nearer the trip's start first is the follow-up (*Nearer first*).
+      stop. Same-named stops nearer the trip's start list first (*Nearer first*).
       Then the **To… Home/Work pins**.
       **routing to a favorite** — IN PROGRESS: plan `to = lat,lon` so tapping a favorite routes to it
       (the coordinate-routing privacy disclosure lands with it); TfL's Journey Planner accepts a
