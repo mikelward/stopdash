@@ -213,11 +213,11 @@ class StationIndexTest {
 
     @Test
     fun `TfL's matches rank alongside the index's, not after them`() {
-        // A TfL bus stop that starts with the query, with a shorter name than the indexed station,
-        // ranks ahead of it: one ranking over both sources.
-        val local = index.search("ken")
-        val busStop = StationMatch("490000000003C", "Kent Road", listOf("bus"))
-        assertEquals(listOf("490000000003C", "940GZZLUKNG"), index.rank("ken", local, listOf(busStop)).map { it.id })
+        // A bus stop named exactly what's typed ranks ahead of the station the query only starts:
+        // one ranking over both sources. Synthetic name.
+        val local = index.search("kenn")
+        val busStop = StationMatch("490000000003C", "Kenn", listOf("bus"))
+        assertEquals(listOf("490000000003C", "940GZZLUKNG"), index.rank("kenn", local, listOf(busStop)).map { it.id })
     }
 
     @Test
@@ -241,14 +241,17 @@ class StationIndexTest {
     }
 
     @Test
-    fun `a station leads only a bus stop of the same name, not one that sorts ahead of it`() {
-        // Synthetic names of equal length: the bus stop's name sorts first, so it stays first.
+    fun `a station leads an equally matched bus stop, whatever their names`() {
+        // Synthetic names: the bus stop's sorts first, but a station is the better known of equal
+        // matches (maintainer, 2026-10-12). An exact name still leads it.
         val station = IndexedStation("940GZZLUZZZ", "Zeta Zed", listOf("tube"))
         val bus = StationMatch("490000000006F", "Zeta Bee", listOf("bus"))
         val stations = StationIndex(listOf(station)).withYours(YourStops(known = listOf(bus)))
-        assertEquals(listOf("490000000006F", "940GZZLUZZZ"), stations.search("zeta").map { it.id })
+        assertEquals(listOf("940GZZLUZZZ", "490000000006F"), stations.search("zeta").map { it.id })
         val plain = StationIndex(listOf(station))
-        assertEquals(listOf("490000000006F", "940GZZLUZZZ"), plain.rank("zeta", plain.search("zeta"), listOf(bus)).map { it.id })
+        assertEquals(listOf("940GZZLUZZZ", "490000000006F"), plain.rank("zeta", plain.search("zeta"), listOf(bus)).map { it.id })
+        val exactBus = StationMatch("490000000006G", "Zeta", listOf("bus"))
+        assertEquals(listOf("490000000006G", "940GZZLUZZZ"), plain.rank("zeta", plain.search("zeta"), listOf(exactBus)).map { it.id })
     }
 
     @Test
@@ -261,9 +264,11 @@ class StationIndexTest {
         assertEquals(listOf(nearer.id, far.id), stations.rank("zeta", emptyList(), listOf(far, nearer), near = start).map { it.id })
         // No start: as before, the order they came in.
         assertEquals(listOf(far.id, nearer.id), stations.rank("zeta", emptyList(), listOf(far, nearer)).map { it.id })
-        // Nearness only splits the same name: a shorter name still leads.
+        // Nearness outranks the name: a farther, shorter name no longer leads (maintainer, 2026-10-12)...
         val shorter = StationMatch("490000000009J", "Zeta Chur", listOf("bus"), 51.6, -0.12)
-        assertEquals(shorter.id, stations.rank("zeta", emptyList(), listOf(far, nearer, shorter), near = start).first().id)
+        assertEquals(nearer.id, stations.rank("zeta", emptyList(), listOf(far, nearer, shorter), near = start).first().id)
+        // ...but the exact name still leads a nearer one.
+        assertEquals(shorter.id, stations.rank("zeta chur", emptyList(), listOf(far, nearer, shorter), near = start).first().id)
     }
 
     @Test
@@ -303,7 +308,7 @@ class StationIndexTest {
     fun `a starred station folded into its interchange makes the interchange lead`() {
         val hubs = StationIndex(
             listOf(
-                IndexedStation("HUBAAA", "Kings Place", listOf("tube")),
+                IndexedStation("HUBAAA", "Kings Arms", listOf("tube")),
                 IndexedStation("HUBKGX", "Kings Crossing", listOf("tube")),
                 IndexedStation("940GZZLUKSX", "King's Cross St. Pancras", listOf("tube"), hubId = "HUBKGX"),
             ),
@@ -311,6 +316,15 @@ class StationIndexTest {
         val starred = StationMatch("940GZZLUKSX", "King's Cross St. Pancras", listOf("tube"))
         assertEquals(listOf("HUBAAA", "HUBKGX"), hubs.search("kings").map { it.id })
         assertEquals(listOf("HUBKGX", "HUBAAA"), hubs.withYours(YourStops(favorites = listOf(starred))).search("kings").map { it.id })
+    }
+
+    @Test
+    fun `the user's own stops and interchanges lead, others don't`() {
+        val road = StationMatch("490000000001A", "Kennington Road", listOf("bus"))
+        val yours = index.withYours(YourStops(recent = listOf(road)))
+        assertEquals(true, yours.leads(road))
+        assertEquals(false, yours.leads(StationMatch("490000000002B", "Kennington Lane", listOf("bus"))))
+        assertEquals(true, yours.leads(StationMatch("HUBKGX", "King's Cross & St Pancras International")))
     }
 
     @Test

@@ -14,6 +14,22 @@ class StationMatcherTest {
         StationMatcher.tier(query, name, id, hub)
 
     @Test
+    fun `an exact name ignores punctuation and a leading word The, and nothing more`() {
+        assertEquals(true, StationMatcher.isExact("st pauls", "St. Paul's"))
+        assertEquals(true, StationMatcher.isExact("british museum", "The British Museum"))
+        assertEquals(false, StationMatcher.isExact("odore", "Theodore"))
+        assertEquals(false, StationMatcher.isExact("st paul", "St Paul's Cathedral"))
+    }
+
+    @Test
+    fun `the query starts a name only as a whole, not one of its parts`() {
+        assertEquals(true, StationMatcher.startsName("st pa", "St Pancras International"))
+        assertEquals(false, StationMatcher.startsName("st pa", "King's Cross & St Pancras International"))
+        assertEquals(true, StationMatcher.startsName("brit", "The British Museum"))
+        assertEquals(false, StationMatcher.startsName("odo", "Theodore"))
+    }
+
+    @Test
     fun `a name prefix matches, ignoring case, apostrophes and spaces`() {
         assertEquals(Prefix, tier("king", "King's Cross St. Pancras"))
         assertEquals(Prefix, tier("kings", "King's Cross St. Pancras"))

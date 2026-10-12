@@ -58,8 +58,10 @@ class PlaceIndex private constructor(
         val q = fold(query)
         if (q.size < MIN_QUERY_LENGTH || limit <= 0) return emptyList()
         val prefixOnly = q.size < LOOSE_QUERY_LENGTH || only == Kind.POSTCODE
-        // The best [limit] so far, worst at the head, by a packed score: tier, then rank, then length,
-        // then distance from [near].
+        // The best [limit] so far, worst at the head, by a packed score: tier, then whether the name is
+        // exactly what's typed, then how well known the place is (its rank), then distance from [near]
+        // (maintainer, 2026-10-12). A name's length isn't a measure of a match: "St Paul's Cathedral"
+        // shouldn't lose to a shorter, lesser "St Paul's Church".
         val best = java.util.PriorityQueue<Long>(limit + 1, compareByDescending { it })
         val onlyKind = only?.ordinal?.toByte()
         val nearLat = near?.let { Math.round(it.latitude * COORDINATE_SCALE).toInt() }
@@ -69,9 +71,11 @@ class PlaceIndex private constructor(
             if (onlyKind != null && kinds[i] != onlyKind) continue
             val start = keyStarts[i]
             val end = keyStarts[i + 1]
-            val tier = tierOf(q, start, end, prefixOnly) ?: continue
-            val score = (tier.toLong() shl 56) or ((MAX_RANK - ranks[i]).toLong() shl 48) or
-                (minOf(end - start, MAX_SCORED_LENGTH).toLong() shl 36) or (distanceStep(i, nearLat, nearLon) shl 20) or i.toLong()
+            val the = startsWithThe(i)
+            val tier = tierOf(q, start, end, prefixOnly, the) ?: continue
+            val inexact = if (isExact(q, start, end, the)) 0L else 1L
+            val score = (tier.toLong() shl 56) or (inexact shl 52) or ((MAX_RANK - ranks[i]).toLong() shl 48) or
+                (distanceStep(i, nearLat, nearLon) shl 20) or i.toLong()
             if (best.size < limit) {
                 best.add(score)
             } else if (score < best.peek()) {
@@ -147,24 +151,42 @@ class PlaceIndex private constructor(
         coordinate = Coordinates(latitudes[i] / COORDINATE_SCALE, longitudes[i] / COORDINATE_SCALE),
     )
 
+    // Whether entry [i]'s name starts with the word "The", so its key's leading "the" can be passed
+    // over; a key's spaces are folded away, so "Theodore" would otherwise look the same.
+    private fun startsWithThe(i: Int): Boolean {
+        val start = nameStarts[i]
+        if (nameStarts[i + 1] - start <= THE.size) return false
+        for (j in THE.indices) if (names[start + j].toInt() or 0x20 != THE[j].toInt()) return false
+        return names[start + THE.size] == ' '.code.toByte()
+    }
+
     // The tier [q] matches the key in keys[start, end) at, as a [StationMatchTier] ordinal, or null.
-    private fun tierOf(q: ByteArray, start: Int, end: Int, prefixOnly: Boolean): Int? {
+    // [the]: the name starts with the word "The" ([startsWithThe]), which may be passed over.
+    private fun tierOf(q: ByteArray, start: Int, end: Int, prefixOnly: Boolean, the: Boolean): Int? {
         val length = end - start
         if (length < q.size) return null
         if (startsWith(q, start, end)) return StationMatchTier.Prefix.ordinal
-        if (length >= THE.size + q.size && startsWith(THE, start, end) && startsWith(q, start + THE.size, end)) {
+        if (the && length >= THE.size + q.size && startsWith(q, start + THE.size, end)) {
             return StationMatchTier.Prefix.ordinal
         }
         if (prefixOnly) return null
         if (contains(q, start, end)) return StationMatchTier.Substring.ordinal
         if (keys[start] == q[0] && inOrder(q, start, end)) return StationMatchTier.Fuzzy.ordinal
         // Letters in order from the first letter after a leading "the" too ("brtmus", The British Museum).
-        if (length > THE.size && startsWith(THE, start, end) && keys[start + THE.size] == q[0] &&
+        if (the && length > THE.size && keys[start + THE.size] == q[0] &&
             inOrder(q, start + THE.size, end)
         ) {
             return StationMatchTier.Fuzzy.ordinal
         }
         return null
+    }
+
+    // Whether the key in keys[start, end) is [q] itself, or the word "The" and [q] ("The British
+    // Museum"), given [the] ([startsWithThe]).
+    private fun isExact(q: ByteArray, start: Int, end: Int, the: Boolean): Boolean {
+        val length = end - start
+        return (length == q.size && startsWith(q, start, end)) ||
+            (the && length == THE.size + q.size && startsWith(q, start + THE.size, end))
     }
 
     private fun startsWith(q: ByteArray, start: Int, end: Int): Boolean {
@@ -219,8 +241,6 @@ class PlaceIndex private constructor(
         private const val EAST_SCALE = 0.62
         private const val DISTANCE_STEP = 16L
         private const val MAX_DISTANCE_STEP = (1L shl 16) - 1
-        // A key length past this scores as this, so it can't spill into the rank's bits.
-        private const val MAX_SCORED_LENGTH = (1 shl 12) - 1
         private val THE = "the".toByteArray()
 
         val EMPTY = PlaceIndex(ByteArray(0), IntArray(1), ByteArray(0), IntArray(1), ByteArray(0), ByteArray(0), IntArray(0), IntArray(0), 0)

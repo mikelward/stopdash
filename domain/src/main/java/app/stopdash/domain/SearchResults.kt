@@ -20,20 +20,29 @@ object SearchResults {
      * matches, so a place the query starts ("Tate Britain" for "tate") sits above a stop that only
      * contains it ("… Estate") rather than after every stop (maintainer, 2026-09-28). Each list keeps
      * its own order, both already ranked; a place goes before the first stop that matches worse than
-     * it does, and a stop wins a tie. A postcode's places, whose names needn't contain the query,
+     * it does (a worse tier, or the same tier with a name less exactly the query's), and a stop wins
+     * a tie. A stop that [leads] its tier (the user's own, an interchange) goes ahead of any place in it,
+     * however exactly the place is named, as the stops' own ranking puts it first. A postcode's places, whose names needn't contain the query,
      * follow the stops, as a match the matcher can't place does.
      */
-    fun merge(query: String, stops: List<StationMatch>, places: List<PlaceHit>): List<SearchEntry> {
+    fun merge(query: String, stops: List<StationMatch>, places: List<PlaceHit>, leads: (StationMatch) -> Boolean = { false }): List<SearchEntry> {
         val unplaced = StationMatchTier.entries.size
+        // How well a name matches, as both lists rank it: its tier, then whether it's exactly the query,
+        // then whether the query starts it (maintainer, 2026-10-12), packed so a smaller number is better.
+        fun scoreOf(tier: Int, name: String) =
+            tier * 4 + (if (StationMatcher.isExact(query, name)) 0 else 2) + (if (StationMatcher.startsName(query, name)) 0 else 1)
         // An interchange's station name by its name alone, as the index ranks it ([StationIndex.search]).
-        fun tierOf(stop: StationMatch) = StationMatcher.tier(query, stop.name, stop.id.takeIf { stop.lead.isEmpty() }.orEmpty())?.ordinal ?: unplaced
-        fun tierOf(place: PlaceHit) =
-            if (place.kind == PlaceKind.POSTCODE) unplaced else StationMatcher.tier(query, place.name)?.ordinal ?: unplaced
+        fun scoreOf(stop: StationMatch): Int {
+            val tier = StationMatcher.tier(query, stop.name, stop.id.takeIf { stop.lead.isEmpty() }.orEmpty())?.ordinal ?: unplaced
+            return if (leads(stop)) tier * 4 else scoreOf(tier, stop.name)
+        }
+        fun scoreOf(place: PlaceHit) =
+            if (place.kind == PlaceKind.POSTCODE) unplaced * 4 + 3 else scoreOf(StationMatcher.tier(query, place.name)?.ordinal ?: unplaced, place.name)
         val merged = ArrayList<SearchEntry>(stops.size + places.size)
         var p = 0
         for (stop in stops) {
-            val stopTier = tierOf(stop)
-            while (p < places.size && tierOf(places[p]) < stopTier) merged += SearchEntry.Place(places[p++])
+            val stopScore = scoreOf(stop)
+            while (p < places.size && scoreOf(places[p]) < stopScore) merged += SearchEntry.Place(places[p++])
             merged += SearchEntry.Stop(stop)
         }
         while (p < places.size) merged += SearchEntry.Place(places[p++])
@@ -58,8 +67,10 @@ object SearchResults {
         stops: List<StationMatch>,
         places: List<PlaceHit>,
         everyStop: List<StationMatch>? = null,
+        // Which stops lead their tier ([merge]).
+        leads: (StationMatch) -> Boolean = { false },
     ): List<SearchEntry> {
-        val incoming = merge(query, stops, places)
+        val incoming = merge(query, stops, places, leads)
         val fresher = (everyStop.orEmpty().map(SearchEntry::Stop) + incoming).associateBy { it.key }
         val kept = if (everyStop != null) shown.filter { it !is SearchEntry.Stop || it.key in fresher } else shown
         val listed = kept.mapTo(HashSet()) { it.key }

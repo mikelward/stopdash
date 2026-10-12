@@ -222,8 +222,15 @@ precompresses the file. The rows marked "as built" are the real asset, whose lin
 letter and a rank, so they take more bytes per entry than the measured rows above them. The
 builder also cleans the places before writing them: it merges copies of one name within 250 m and
 drops a landmark's stray copies far from it (the British Museum's, say). That is why the as-built A
-and B rows hold fewer entries than their parts add up to: 748 fewer for A, 3,456 for B. The C row
+and B rows hold fewer entries than their parts add up to: 748 fewer for A, 3,481 for B. The C row
 is a plain sum of the measured rows, with no such cleaning.
+
+Each entry's rank is its category's, raised for a public place Wikidata covers (CC0, no credit
+needed): an item of the same name within 300 m with 20 or more Wikipedia editions makes it 9, five or
+more 8. Wikidata never drops or moves a listing (maintainer, 2026-10-12): matched by name alone it
+moved real places kilometers to the wrong item ("Royal Opera House" from 25 km, a music venue named
+for an area onto the area). The search orders equal matches by exact name, then this rank,
+then distance; a name's length no longer counts.
 
 | Tier | Entries | Raw | Deflate | xz |
 |---|---:|---:|---:|---:|
@@ -234,7 +241,7 @@ is a plain sum of the measured rows, with no such cleaning.
 | Streets, with neighborhoods (as built) | 75,553 | 3.8 MB | 1.1 MB | 0.7 MB |
 | Postcodes (as built) | 213,011 | 6.6 MB | 1.7 MB | 0.9 MB |
 | **A + streets + postcodes** (as built) | 338,190 | 13.4 MB | **3.6 MB** | 2.2 MB |
-| **B + streets + postcodes** (as built) | 463,798 | 20.8 MB | **5.6 MB** | 3.6 MB |
+| **B + streets + postcodes** (as built) | 463,773 | 20.8 MB | **5.6 MB** | 3.6 MB |
 | **C + streets + postcodes** (sum of the rows) | 668,937 | 24.9 MB | **8.2 MB** | 5.6 MB |
 
 ### Bus stops: replacing TfL's stop search too

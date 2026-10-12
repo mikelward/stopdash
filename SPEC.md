@@ -330,8 +330,10 @@ The app finds stops two ways:
   **contains** it, then one holding its letters **in order**. A station code counts as a
   prefix. Apostrophes, punctuation and accents are ignored ("kings" finds King's Cross).
   Abbreviations are **generated, never listed**: a word "Cross" also reads "X", so "KX" and
-  "CX" (Charing Cross) need no alias table. Within a tier an interchange leads, then the
-  shorter name. A station whose interchange also matches is folded into it, since the
+  "CX" (Charing Cross) need no alias table. Within a tier an interchange leads, then a name that is
+  **exactly** what's typed, then one the query starts as a whole rather than at a later part ("st pa"
+  finds "St Pancras International" before "King's Cross & St Pancras International"). A name's
+  **length counts for nothing** (maintainer, 2026-10-12): a short name is no better a match. A station whose interchange also matches is folded into it, since the
   interchange's page holds it. An interchange whose stations go by different names also lists
   **each name as a row of its own**, beside the interchange's row (maintainer, 2026-10-09):
   King's Cross & St Pancras is found as "King's Cross" (Tube · National Rail) and "St Pancras
@@ -352,9 +354,9 @@ The app finds stops two ways:
   bundled postcode, worked out on the device, so same-named stops in different places read apart
   (maintainer, 2026-10-11). A place or street row shows its district the same way ("EC4M · Place"),
   so a place and the stops beside it read as one spot; a postcode row is its own district and shows
-  none. On an equal match a **station leads a bus stop**, and names are compared
-  without punctuation, so "St Paul's" lists St. Paul's station first. After that, the **nearer of
-  same-named stops, and of equally good place matches, lists first** (maintainer, 2026-10-12), so
+  none. On an equal match the **better known leads**: a **station before a bus stop**, whatever their
+  names, with names compared without punctuation, so "St Paul's" lists St. Paul's station first.
+  After that, the **nearer of equally good stops and places lists first** (maintainer, 2026-10-12), so
   "Tesco" finds a nearer Tesco before an equally good farther one. It's measured from where the trip starts: in
   *To…*, the trip's start (the rider, or the From… station); in *From…*, the rider's position, else
   the last start picked. Worked out on the device, nothing sent; rows already listed don't move.
@@ -411,9 +413,13 @@ The app finds stops two ways:
     download. It's read once, off the main thread, as the search opens, and searched as the rider
     types, so its places are **listed with the bundled stations at once**, offline, with nothing sent.
     It ranks by the stop search's tiers (a prefix, then a substring, then letters in order from the
-    name's first letter), a leading "The" passed over, and a more prominent place ahead of an equal
-    match. Overture's listings are cleaned when the index is built: near-duplicates of one place merge,
-    and a famous place's mis-placed copies elsewhere in London (check-ins) are dropped.
+    name's first letter), a leading "The" passed over; then an exact name; then the **better known**
+    (maintainer, 2026-10-12), by how many Wikipedia editions cover the place (Wikidata), so "st paul"
+    finds St Paul's Cathedral before the lesser places it also starts; then the nearer. Overture's listings are cleaned when the index is built: near-duplicates of one place merge,
+    and a museum's or monument's far-off copies (check-ins) are dropped. Wikidata only ranks: it never
+    drops or moves a listing (maintainer, 2026-10-12), since a name alone can't say a far listing is
+    the famous place rather than another of its name, so a famous place's stray copies can still be
+    listed, below it and with their own postcode district.
   - **On the device first** (maintainer, 2026-10-11): the index covers London, so an address is found
     by its street, and a place it doesn't hold, such as an exact house number, isn't listed from it.
   - **Outside London, from TfL** (maintainer, 2026-10-11): below everything bundled, a **Search

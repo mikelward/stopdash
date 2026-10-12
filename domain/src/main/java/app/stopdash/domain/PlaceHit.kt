@@ -67,8 +67,17 @@ object PlaceHits {
             PlaceKind.POSTCODE -> candidates
             PlaceKind.PLACE, PlaceKind.STREET -> candidates
                 .mapNotNull { candidate -> StationMatcher.tier(q, candidate.name)?.let { it to candidate } }
-                // Equal matches nearer where the trip starts ([near]) first, as the bundled places rank.
-                .sortedWith(compareBy({ it.first.ordinal }, { it.second.name.length }, { distanceFrom(near, it.second.coordinate) }, { it.second.name }))
+                // An exact name, then one the query starts (not just a part of), then the nearer of equal matches to where the trip starts ([near]), as the
+                // bundled places rank; TfL says nothing of how well known a place is, so that's skipped.
+                .sortedWith(
+                    compareBy(
+                        { it.first.ordinal },
+                        { !StationMatcher.isExact(q, it.second.name) },
+                        { !StationMatcher.startsName(q, it.second.name) },
+                        { distanceFrom(near, it.second.coordinate) },
+                        { it.second.name },
+                    ),
+                )
                 .map { it.second }
         }
         return ordered
