@@ -2,7 +2,8 @@
 """Build stopdash's bundled station index from TfL (SPEC *Finding stops → Find a station*).
 
 Writes the JSON the app reads as `assets/stations/station_index.json`: every tube, DLR,
-Overground, Elizabeth line, tram, National Rail and pier station in and around London, plus
+Overground, Elizabeth line, tram, National Rail and pier station in and around London, and the rail
+stations of the commuter belt its lines reach (within COMMUTER_RADIUS_KM of Charing Cross), plus
 the interchanges ("hubs") that group them, each with its TfL id, name as TfL spells it (the
 app cleans it), modes, and hub; a station also carries its position and its lines by mode (tube
 lines, National Rail services, Overground lines, …), so the near-me list can name the nearest
@@ -39,6 +40,13 @@ MODES = {"tube", "dlr", "overground", "elizabeth-line", "national-rail", "tram",
 # stays, while TfL's National Rail stations across the country don't bloat the index.
 LAT_RANGE = (51.25, 51.75)
 LON_RANGE = (-0.65, 0.40)
+# Past that box, a rail station on a line that also calls in London stays when it's within this far of
+# Charing Cross (maintainer, 2026-10-12): the commuter belt the London lines reach (every Thameslink
+# station, Reading, Brighton, Cambridge), as far as journey alerts reach (JourneyAlerts.LONDON_RADIUS_KM).
+COMMUTER_RADIUS_KM = 120.0
+CHARING_CROSS = (51.5073, -0.1276)
+# The modes whose lines run out of London into the commuter belt.
+COMMUTER_MODES = {"national-rail", "elizabeth-line", "overground"}
 HUB_BATCH = 10
 # Spacing between route requests when keyless: TfL allows ~50 a minute without a key.
 ROUTE_REQUEST_GAP = 1.5
@@ -141,12 +149,79 @@ def in_london(stop):
     return LAT_RANGE[0] <= lat <= LAT_RANGE[1] and LON_RANGE[0] <= lon <= LON_RANGE[1]
 
 
+def km_from_charing_cross(lat, lon):
+    """The great-circle distance from Charing Cross, as JourneyAlerts measures it."""
+    import math
+    lat1, lat2 = math.radians(CHARING_CROSS[0]), math.radians(lat)
+    dlat, dlon = lat2 - lat1, math.radians(lon - CHARING_CROSS[1])
+    a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    return 6371.0 * 2 * math.asin(math.sqrt(a))
+
+
+def commuter_lines(stops):
+    """The commuter-mode lines that call at a station in London ([in_london]), by id."""
+    return {line for stop in stops if in_london(stop)
+            for mode, ids in lines_by_mode(stop).items() if mode in COMMUTER_MODES for line in ids}
+
+
+def london_reach(sequences_by_line, london_ids):
+    """National Rail line id -> the stations on its routes that call in London: every stop of an
+    ordered route (TfL route sequences) with a stop in [london_ids]. An operator runs lines that
+    never reach London too (Bedford to Bletchley), so a station counts by its route, not its line.
+    Pure, for tests."""
+    reach = {}
+    for line, sequences in sequences_by_line.items():
+        on = reach.setdefault(line, set())
+        for sequence in sequences:
+            for route in (sequence or {}).get("orderedLineRoutes") or []:
+                ids = route.get("naptanIds") or []
+                if any(sid in london_ids for sid in ids):
+                    on.update(ids)
+    return reach
+
+
+def checked_reach(reach):
+    """[reach], refusing a line that calls in London yet came back with no route through it: an
+    empty or malformed answer (TfL's 200 with no routes) would drop every commuter-belt station on
+    that line, and the build would ship the gap."""
+    empty = sorted(line for line, on in reach.items() if not on)
+    if empty:
+        sys.exit(f"TfL gave no London route for {', '.join(empty)}; refusing to write a partial index")
+    return reach
+
+
+def in_catchment(stop, london_lines, reach=None):
+    """Whether [stop] belongs in the index: in London ([in_london]), or a station within
+    COMMUTER_RADIUS_KM of Charing Cross on one of [london_lines] (commuter_lines). On a National
+    Rail line [reach] (london_reach) knows the routes of, the station must be on one that calls in
+    London; a line without route data counts whole."""
+    if in_london(stop):
+        return True
+    lat, lon = stop.get("lat"), stop.get("lon")
+    if lat is None or lon is None or km_from_charing_cross(lat, lon) > COMMUTER_RADIUS_KM:
+        return False
+    reach = reach or {}
+    sid = stop_id(stop)
+    for mode, ids in lines_by_mode(stop).items():
+        if mode not in COMMUTER_MODES:
+            continue
+        for line in ids:
+            if line not in london_lines:
+                continue
+            if mode == "national-rail" and line in reach and sid not in reach[line]:
+                continue
+            return True
+    return False
+
+
 def stop_id(stop):
     return stop.get("id") or stop.get("naptanId") or ""
 
 
-def build_index(stops, hubs):
-    """The index document from TfL's station list and its hubs' own records (pure, for tests)."""
+def build_index(stops, hubs, reach=None):
+    """The index document from TfL's station list and its hubs' own records, with [reach]
+    (london_reach) deciding which commuter-belt rail stations call at London (pure, for tests)."""
+    london_lines = commuter_lines(stops)
     stations = {}
     hub_modes = {}
     # Each indexed line's name as TfL spells it ("Hammersmith & City", "Elizabeth line"), for the
@@ -156,7 +231,7 @@ def build_index(stops, hubs):
         sid = stop_id(stop)
         name = (stop.get("commonName") or "").strip()
         modes = sorted(set(stop.get("modes") or []) & MODES)
-        if not sid or not name or not modes or stop.get("stopType") not in STOP_TYPES or not in_london(stop):
+        if not sid or not name or not modes or stop.get("stopType") not in STOP_TYPES or not in_catchment(stop, london_lines, reach):
             continue
         hub = stop.get("hubNaptanCode") or ""
         lines = lines_by_mode(stop)
@@ -306,11 +381,17 @@ def add_terminus_ends(index, ends_by_line):
     return index
 
 
-def fetch_route_ends(lines, ends=route_ends):
-    """Each line's route ends by station ([ends] of its sequences), both directions. A line TfL
-    has no route data for (404) is skipped: its stations fall back to counting the line whole."""
-    ends_by_line = {}
-    for line in sorted(lines):
+def fetch_route_ends(lines, ends=route_ends, cache=None):
+    """Each line's route ends by station ([ends] of its sequences, fetch_sequences)."""
+    return {line: ends(sequences) for line, sequences in fetch_sequences(lines, cache).items()}
+
+
+def fetch_sequences(lines, cache=None):
+    """Each line's route sequences, both directions, kept in [cache] so a line asked twice is
+    fetched once. A line TfL has no route data for (404) has none: its stations fall back to
+    counting the line whole."""
+    cache = {} if cache is None else cache
+    for line in sorted(set(lines) - set(cache)):
         sequences = []
         for direction in ("inbound", "outbound"):
             if not os.environ.get("TFL_APP_KEY"):
@@ -321,8 +402,8 @@ def fetch_route_ends(lines, ends=route_ends):
                 if e.code != 404:
                     raise
                 print(f"no {direction} route for {line}; counting it by line", file=sys.stderr)
-        ends_by_line[line] = ends(sequences)
-    return ends_by_line
+        cache[line] = sequences
+    return {line: cache[line] for line in lines}
 
 
 def fetch_hubs(hub_ids):
@@ -384,15 +465,22 @@ def main(argv):
     points.extend(required_points("National Rail", fetch("/StopPoint/Type/NaptanRailStation"), line_mode="national-rail"))
     stops = station_points(points)
     # Only the hubs of stations the index can keep: a far-off rail station's hub isn't needed.
-    hub_ids = {s.get("hubNaptanCode") for s in stops if s.get("hubNaptanCode") and in_london(s)}
-    index = build_index(stops, fetch_hubs(hub_ids))
+    london_lines = commuter_lines(stops)
+    sequences = {}
+    london_rail = {line for s in stops if in_london(s) for line in lines_by_mode(s).get("national-rail", [])}
+    fetched = fetch_sequences(london_rail, sequences)
+    # A line whose routes TfL wouldn't give (404) is left out of reach, so it counts whole.
+    reach = checked_reach(london_reach({line: seqs for line, seqs in fetched.items() if seqs},
+                                       {stop_id(s) for s in stops if in_london(s)}))
+    hub_ids = {s.get("hubNaptanCode") for s in stops if s.get("hubNaptanCode") and in_catchment(s, london_lines, reach)}
+    index = build_index(stops, fetch_hubs(hub_ids), reach)
     missing = modes_without_lines(index)
     if missing:
         # TfL answered without a mode's line groups: the index would name no nearest station of
         # that mode's lines, silently, so keep the committed index instead.
         sys.exit(f"no {', '.join(missing)} station carries its lines; refusing to write the index")
     rail_lines = {line for s in index["stations"] for line in s.get("modeLines", {}).get("national-rail", [])}
-    add_route_ends(index, fetch_route_ends(rail_lines))
+    add_route_ends(index, fetch_route_ends(rail_lines, cache=sequences))
     if rail_lines and not any(s.get("routeEnds") for s in index["stations"]):
         # Every route lookup came back empty: TfL answered oddly, so keep the committed index.
         sys.exit("no National Rail station carries route ends; refusing to write the index")

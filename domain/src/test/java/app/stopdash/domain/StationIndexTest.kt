@@ -69,6 +69,75 @@ class StationIndexTest {
     }
 
     @Test
+    fun `a station TfL lists twice at one spot is one row, under the record with more modes`() {
+        // Reading's National Rail platforms 4a and 4b beside the record with the Elizabeth line (#789).
+        val reading = StationIndex(
+            listOf(
+                IndexedStation("910GRDNG4AB", "Reading Rail Station", listOf("national-rail"), latitude = 51.45879, longitude = -0.97186),
+                IndexedStation("910GRDNGSTN", "Reading Rail Station", listOf("elizabeth-line", "national-rail"), latitude = 51.45879, longitude = -0.97186),
+                IndexedStation("910GREDGWST", "Reading West Rail Station", listOf("national-rail"), latitude = 51.4555, longitude = -0.99013),
+            ),
+        )
+        val found = reading.search("reading")
+        assertEquals(listOf("910GRDNGSTN", "910GREDGWST"), found.map { it.id })
+        assertEquals(listOf("elizabeth-line", "national-rail"), found.first().modes.sorted())
+        // Found by the leaner record alone, it is still the one row with the Elizabeth line.
+        val byCode = reading.search("rdng4ab")
+        assertEquals(listOf("910GRDNGSTN"), byCode.map { it.id })
+        assertEquals(listOf("elizabeth-line", "national-rail"), byCode.first().modes.sorted())
+        // Opened, its page asks the other record too.
+        assertEquals(listOf("910GRDNG4AB"), reading.sameStationIds("910GRDNGSTN"))
+    }
+
+    @Test
+    fun `a twin found by the other record's code keeps that match through the ranking and the merge`() {
+        val reading = StationIndex(
+            listOf(
+                IndexedStation("910GRDNG4AB", "Reading Rail Station", listOf("national-rail"), latitude = 51.45879, longitude = -0.97186),
+                IndexedStation("910GRDNGSTN", "Reading Rail Station", listOf("elizabeth-line", "national-rail"), latitude = 51.45879, longitude = -0.97186),
+            ),
+        )
+        val folded = reading.search("rdng4ab")
+        assertEquals(listOf("910GRDNGSTN"), folded.map { it.id })
+        assertTrue(reading.tier("rdng4ab", folded.single()) != null)
+        // A stop TfL found by a rule the matcher doesn't share goes after it, as a code match placed.
+        val elsewhere = StationMatch("490ZZABBEY", "Abbey Road", listOf("bus"))
+        val ranked = reading.rank("rdng4ab", folded, listOf(elsewhere))
+        assertEquals(listOf("910GRDNGSTN", "490ZZABBEY"), ranked.map { it.id })
+        // A place only containing the code sorts after the station the code names.
+        val place = PlaceHit("Old Rdng4ab Yard", Coordinates(51.5, -0.12), PlaceKind.PLACE)
+        val merged = SearchResults.merge("rdng4ab", ranked, listOf(place), reading::leads) { reading.tier("rdng4ab", it) }
+        assertEquals("910GRDNGSTN", (merged.first() as SearchEntry.Stop).match.id)
+    }
+
+    @Test
+    fun `twins of the same modes are one row too`() {
+        // Weybridge's two National Rail records at one spot.
+        val weybridge = StationIndex(
+            listOf(
+                IndexedStation("910GWEYBDGB", "Weybridge Rail Station", listOf("national-rail"), latitude = 51.36177, longitude = -0.45774),
+                IndexedStation("910GWEYBDGE", "Weybridge Rail Station", listOf("national-rail"), latitude = 51.36177, longitude = -0.45774),
+            ),
+        )
+        assertEquals(listOf("910GWEYBDGB"), weybridge.search("weybridge").map { it.id })
+        assertEquals(listOf("910GWEYBDGB"), weybridge.search("weybdge").map { it.id })
+        // A twin the user already has keeps its key, so a recent stop isn't listed again under the other.
+        val yours = StationIndex(weybridge.stations, own = listOf("910GWEYBDGE"))
+        assertEquals(listOf("910GWEYBDGE"), yours.search("weybridge").map { it.id })
+    }
+
+    @Test
+    fun `stations of one name but neither's modes the other's stay two`() {
+        val bethnalGreen = StationIndex(
+            listOf(
+                IndexedStation("940GZZLUBLG", "Bethnal Green", listOf("tube"), latitude = 51.5270, longitude = -0.0549),
+                IndexedStation("910GBTHNLGR", "Bethnal Green", listOf("overground"), latitude = 51.5239, longitude = -0.0595),
+            ),
+        )
+        assertEquals(2, bethnalGreen.search("bethnal green").size)
+    }
+
+    @Test
     fun `st pa finds the King's Cross & St Pancras hub ahead of St Paul's bus stops`() {
         val kingsCross = StationIndex(
             listOf(

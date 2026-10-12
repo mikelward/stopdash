@@ -317,7 +317,12 @@ The app finds stops two ways:
   of backups (*Privacy*).
 
   **Matching** (maintainer, 2026-09-24) runs on the device against a **bundled list of London's
-  stations and interchanges** (tube, DLR, Overground, Elizabeth line, tram, rail and piers) and a
+  stations and interchanges** (tube, DLR, Overground, Elizabeth line, tram, rail and piers), with
+  the **commuter belt's rail stations** on the lines that run out of London (maintainer, 2026-10-12:
+  every Thameslink station, Reading, Brighton, as far as journey alerts reach, 120 km from Charing
+  Cross; stations only, no bus stops or places out there; a station counts by a route that calls
+  in London, not by its operator, so a branch an operator also runs, Bedford to Bletchley, stays
+  out), and a
   **bundled list of its bus stops** (maintainer, 2026-10-11), so results appear as the user types
   and an abbreviation or a station code finds its station: "KX", "KC" and "KGX" all find King's
   Cross. Both lists are built from TfL by workflows and ship with the app (the bus stops are the
@@ -345,8 +350,9 @@ The app finds stops two ways:
   "St Pancras International" leads with St Pancras's trains and "King's Cross" with the Underground. A place's bus stops are listed one by one, so results **of
   the same name within 250 m of a better-ranked one fold into it** (maintainer, 2026-09-25):
   "Archway" is listed once, not once per stand, and its page takes in the stops around it. A
-  station TfL lists under **two ids with no interchange** to stand for both (Weybridge) opens both:
-  its page asks for each id's stops, and fails with a retry if either lookup does rather than
+  station TfL lists under **two ids with no interchange** to stand for both (Weybridge; Reading,
+  whose second record has only some of its modes) is one search row, with both's modes, found and
+  ranked by either id's code, and opens both: its page asks for each id's stops, and fails with a retry if either lookup does rather than
   showing half the station as if it were whole.
   Same-named places farther apart ("Church Street" in two boroughs) both stay, and a
   result with no position is never folded.

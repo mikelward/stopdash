@@ -56,12 +56,14 @@ data class NearStation(
 
 /**
  * Whether [a] and [b] are one station TfL lists under two ids (St Pancras's Southeastern platforms apart from
- * its Thameslink and Midland ones; Weybridge's two records): the same name and modes, and either the same
- * interchange or, in none, within [SAME_STATION_METERS] of each other (Codex on #664). Bethnal Green's tube
- * and Overground share a name but not a mode, so stay two.
+ * its Thameslink and Midland ones; Weybridge's two records; Reading's National Rail platforms 4a and 4b
+ * beside the record with the Elizabeth line): the same name, one's modes all among the other's, and either
+ * the same interchange or, in none, within [SAME_STATION_METERS] of each other (Codex on #664, #789).
+ * Bethnal Green's tube and Overground share a name but neither's mode is the other's, so stay two.
  */
-private fun sameStation(a: IndexedStation, b: IndexedStation): Boolean {
-    if (a.modes != b.modes || cleanStopName(a.name) != cleanStopName(b.name)) return false
+internal fun sameStation(a: IndexedStation, b: IndexedStation): Boolean {
+    if (cleanStopName(a.name) != cleanStopName(b.name)) return false
+    if (!a.modes.containsAll(b.modes) && !b.modes.containsAll(a.modes)) return false
     if (a.hubId.isNotBlank() || b.hubId.isNotBlank()) return a.hubId == b.hubId
     val aLat = a.latitude ?: return false
     val aLon = a.longitude ?: return false
