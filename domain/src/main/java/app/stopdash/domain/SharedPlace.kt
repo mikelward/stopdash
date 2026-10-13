@@ -9,10 +9,11 @@ import androidx.annotation.WorkerThread
  * Google Maps shares a place as its name, sometimes its address on the next line, and a short link
  * (`https://maps.app.goo.gl/…`); other apps share a name, a line of text, or a link alone. The search
  * is for the first line that names something — not a link, and not blank — with any link run on to
- * the end of it dropped. Following the link to the exact spot would ask Google, which nothing here
- * does (`TODO.md`). A share with no such line ([subject] aside, a title some apps send apart from the
- * text) has nothing to search for, and gives null. Shared text can be any length, so both readings
- * run off the main thread.
+ * the end of it dropped. A Google Maps link ([mapsLinkOf]) is read for the exact spot instead
+ * ([fromMapsUrl]); a short one has to be followed first, which asks Google, and that is the app's job,
+ * not this object's. A share with no such line ([subject] aside, a title some apps send apart from the
+ * text) has nothing to search for, and gives null. Shared text can be any length, so every reading
+ * runs off the main thread.
  */
 object SharedPlace {
     /** What a shared or opened place asks for: a search ([Search]), or a point to route to ([Point]). */
@@ -77,6 +78,95 @@ object SharedPlace {
         return pointOf(numbers[0], numbers[1])?.let { Ask.Point(it, null) }
     }
 
+    /**
+     * The first Google Maps link in what was shared ([text], then [subject]), or null: a short link
+     * (`maps.app.goo.gl/…`, `goo.gl/maps/…`), to follow with [isShortMapsLink], or a full one
+     * (`www.google.com/maps/…`, `maps.google.com/?q=…`), to read as it is. Only `https`, so a link
+     * is never followed in the clear.
+     */
+    @WorkerThread
+    fun mapsLinkOf(text: String?, subject: String? = null): String? =
+        sequenceOf(text, subject)
+            .filterNotNull()
+            .flatMap { URL.findAll(it) }
+            .map { it.value.trimEnd('.', ',', ')', '"', '”') }
+            .firstOrNull { isShortMapsLink(it) || isFullMapsLink(it) }
+
+    /** Whether [url] is a Google Maps short link, which names its place only once followed. */
+    fun isShortMapsLink(url: String): Boolean {
+        val (host, path) = hostAndPath(url) ?: return false
+        return host == "maps.app.goo.gl" || (host == "goo.gl" && path.startsWith("/maps/"))
+    }
+
+    /**
+     * Whether [url] may be followed or read as a Google Maps link: a short link, or a page on Google's
+     * own Maps (or its consent page, which carries the Maps link it stands in front of). Anything else
+     * a short link redirects to is not followed.
+     */
+    fun isGoogleMapsHop(url: String): Boolean {
+        if (isShortMapsLink(url) || isFullMapsLink(url)) return true
+        val (host, _) = hostAndPath(url) ?: return false
+        return host == "consent.google.com"
+    }
+
+    /**
+     * What a Google Maps link ([url], a full one, or where a short one led) asks for: the place's own
+     * pin (`!3d…!4d…`), a point it names (`?q=51.5,-0.12`, `/search/51.5,+-0.12`), or the spot the map
+     * is centered on (`/@51.5,-0.12,17z`), as a [Ask.Point] labeled [label]; otherwise a search for
+     * the place it names by text (`?q=Tate+Modern,+Bankside,+London`); null when it names neither. A
+     * consent page is read for the Maps link it carries.
+     */
+    @WorkerThread
+    fun fromMapsUrl(url: String, label: String? = null): Ask? {
+        val (host, path) = hostAndPath(url) ?: return null
+        val params = paramsOf(url)
+        if (host == "consent.google.com") {
+            return params["continue"]?.takeIf(::isFullMapsLink)?.let { fromMapsUrl(it, label) }
+        }
+        if (!isFullMapsLink(url)) return null
+        val point = PIN.find(url)?.let { pointOf(it.groupValues[1], it.groupValues[2]) }
+            ?: sequenceOf("q", "query", "ll", "daddr", "destination").mapNotNull { params[it] }
+                .firstNotNullOfOrNull { value -> LABELED_POINT.matchEntire(value)?.let { pointOf(it.groupValues[1], it.groupValues[2]) } }
+            ?: SEARCH_POINT.find(decoded(url.substringBefore('?')))?.let { pointOf(it.groupValues[1], it.groupValues[2]) }
+            // A map's center is the place only on a place's page or a bare map; on directions it is
+            // somewhere between the ends.
+            ?: CENTER.find(path)?.takeIf { path.startsWith("/maps/place/") || path.startsWith("/maps/@") }
+                ?.let { pointOf(it.groupValues[1], it.groupValues[2]) }
+        if (point != null) return Ask.Point(point, label?.let(::capped))
+        // A point that isn't a real one (0,0) is no place, not text to search.
+        return sequenceOf("q", "query", "destination", "daddr").mapNotNull { params[it] }
+            .filterNot { LABELED_POINT.matches(it) }
+            .firstNotNullOfOrNull { queryOf(it) }
+            ?.let(Ask::Search)
+    }
+
+    private fun isFullMapsLink(url: String): Boolean {
+        val (host, path) = hostAndPath(url) ?: return false
+        val google = GOOGLE_HOST.matchEntire(host) ?: return false
+        return if (google.groupValues[1] == "maps.") true else path == "/maps" || path.startsWith("/maps/")
+    }
+
+    // The lowercase host and the path of an https [url], or null for anything else.
+    private fun hostAndPath(url: String): Pair<String, String>? {
+        if (!url.startsWith(HTTPS, ignoreCase = true)) return null
+        val rest = url.substring(HTTPS.length)
+        val end = rest.indexOfFirst { it == '/' || it == '?' || it == '#' }.let { if (it < 0) rest.length else it }
+        val authority = rest.substring(0, end)
+        if ('@' in authority) return null
+        val host = authority.substringBefore(':').lowercase()
+        val path = rest.substring(end).substringBefore('?').substringBefore('#')
+        return host to path
+    }
+
+    // A link's query parameters, each read as typed ([decoded]); the first of a repeated name wins.
+    private fun paramsOf(url: String): Map<String, String> =
+        url.substringBefore('#').substringAfter('?', missingDelimiterValue = "")
+            .split('&')
+            .filter { '=' in it }
+            .map { it.substringBefore('=').lowercase() to decoded(it.substringAfter('=')) }
+            .reversed()
+            .toMap()
+
     // A real point from a latitude and a longitude, or null for 0,0, a number that isn't one, or off the globe.
     private fun pointOf(latitude: String, longitude: String): Coordinates? {
         val lat = latitude.trim().toDoubleOrNull() ?: return null
@@ -125,6 +215,11 @@ object SharedPlace {
     }
 
     private const val GEO = "geo:"
+    private const val HTTPS = "https://"
+    private val GOOGLE_HOST = Regex("""(?:www\.)?(maps\.)?google\.(?:com|co\.uk|[a-z]{2}|com?\.[a-z]{2})""")
+    private val PIN = Regex("""!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)""")
+    private val SEARCH_POINT = Regex("""/maps/(?:search|place|dir/[^/]*)/\s*(-?\d+(?:\.\d+)?)\s*,\s*\+?\s*(-?\d+(?:\.\d+)?)""")
+    private val CENTER = Regex("""/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)""")
     private val LABELED_POINT = Regex("""\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*(?:\((.*)\))?\s*""")
     private val URL = Regex("""(?i)\b(?:https?://|www\.)\S+""")
     private val SPACES = Regex("""\s+""")

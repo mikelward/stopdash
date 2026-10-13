@@ -68,8 +68,8 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
             <!-- A place shared from another app (Google Maps' Share): its name is searched as To…
-                 (SPEC *Sharing a place in*). Text only: the shared text goes only where typed text would,
-                 and the link that comes with it is never opened or sent. -->
+                 (SPEC *Sharing a place in*). Its text goes only where typed text would; a Google Maps short
+                 link in it is asked of Google once for the place's exact spot. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
