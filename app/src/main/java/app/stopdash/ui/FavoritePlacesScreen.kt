@@ -423,9 +423,11 @@ private fun PlaceEditor(
             modifier = Modifier.fillMaxWidth().testTag("placeLabelField"),
         )
         Spacer(modifier = Modifier.height(8.dp))
-        IconRow(selected = editor.icon, enabled = !editor.saving, onSelect = onIconChange)
-        Spacer(modifier = Modifier.height(16.dp))
+        // The days before the icons (maintainer, 2026-10-13): the icon grid is several rows tall, and
+        // below it the days were off screen, so a rider never saw they could choose them.
         ShowOnDaysRow(selected = editor.showOnDays, enabled = !editor.saving, onToggle = onToggleDay)
+        Spacer(modifier = Modifier.height(16.dp))
+        IconRow(selected = editor.icon, enabled = !editor.saving, onSelect = onIconChange)
         // What the chip shows is only a choice once there is an icon to show.
         if (hasPlaceIcon(editor.icon)) {
             Spacer(modifier = Modifier.height(16.dp))
