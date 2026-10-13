@@ -99,6 +99,12 @@ Keep user-facing text short — a label carries only the words the user needs. "
 not "3 minutes until departure"; "Victoria line: severe delays", not a paragraph. Prefer
 the shortest phrasing that stays unambiguous; justify a longer form in the PR.
 
+## Icons
+
+- **Use a standard Material icon by default** (Material Icons or Material Symbols), not a
+  hand-drawn one: users already know what they mean. If no Material icon clearly fits, or
+  two do, ask before picking or drawing one.
+
 ## Line pill colors
 
 Line pills take the official TfL line color (tube by id, other single-color modes by mode)
