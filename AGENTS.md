@@ -241,8 +241,9 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   Prefer a relative delay. **Read `mergeable_state` at every scheduled check, PR-event
   wake and drive step**: `dirty` or `behind` (where the ruleset requires up-to-date
   branches) → fetch main by refspec (*Sync before you start*), rebase onto the fresh
-  `origin/main`, and lease-guarded force-push at once, unasked. A base move sends no event,
-  so this read is the only signal.
+  `origin/main`, and lease-guarded force-push at once, unasked, unless Codex has already
+  +1'd the head (*Working with PRs*). A base move sends no event, so this read is the only
+  signal.
   Merged/closed → one last reply-and-resolve pass, then cancel the check and unsubscribe.
 - **"Drive"** runs the loop automatically: pick the next actionable `TODO.md` item,
   implement it, open the PR, wait for the automatic Codex review, address every comment,
@@ -286,6 +287,10 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
 - **Read the Codex verdict, don't infer it**: it reacts to the PR body (`eyes` = reading,
   `+1` = clean, revoked on push). `+1` with green CI is a merge. Read `get_review_comments`,
   `get_comments`, and `get_reviews` to the last page.
+- **Once Codex has +1'd a PR's head, leave the PR alone** (maintainer, 2026-10-13): no push,
+  no rebase for a moved base, no to-do or tidy-up. Every push re-runs CI and Codex for
+  nothing. Anything more goes in a follow-up PR; if the merge truly needs a push (a conflict),
+  ask first.
 - **Report each review in chat** — the commit it read, the finding count, one bullet per
   finding (what it claims, where, what you did). Refresh the PR title/body with each push
   (body first, then push) to describe the branch's latest state.
