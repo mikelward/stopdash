@@ -15,7 +15,7 @@ import java.time.Duration
 import java.time.Instant
 
 /**
- * "Route disruption" for a trip on the way (SPEC *On the way*; maintainer, 2026-09-29): something
+ * "Disruption ahead" for a trip on the way (SPEC *On the way*; maintainer, 2026-09-29): something
  * known that may stop a leg the rider hasn't finished ([RouteDisruption]), so they don't wait for a
  * train that won't come. Named for what's known ("Red: Part Suspended", "Example Road closed"), never
  * a verdict on the route; tapping it opens the trip.
@@ -34,6 +34,11 @@ internal object RouteDisruptionAlert {
     private const val EXTRA_HEARD = "app.stopdash.extra.DISRUPTIONS_HEARD"
 
     private val VIBRATION = longArrayOf(0, 400, 200, 400)
+
+    /** Registers the channel again if it exists ([refreshNotificationChannels]); one the rider never had isn't made. */
+    fun refreshChannel(context: Context) {
+        if (NotificationManagerCompat.from(context).getNotificationChannel(CHANNEL_ID) != null) ensureChannel(context)
+    }
 
     /** Creates the channel (idempotent), so the user can tune it in Settings before the first alert. */
     fun ensureChannel(context: Context) {

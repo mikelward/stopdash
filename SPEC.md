@@ -1173,6 +1173,10 @@ shade — a cosmetic gap, not a correctness failure.
 
 ### Journeys
 
+*Riders see a favorite journey as a **favorite ride** (maintainer, 2026-10-13, on trial); the
+app's copy doesn't use "journey", and a planned From→To is a *trip*. This spec and the code still
+say journey.*
+
 A rider can **favorite a journey** — a segment between two stops, rail or bus (maintainer, 2026-09-23;
 called *starred* until 2026-10-06, when the maintainer renamed them *favorite journeys*, en-GB
 *favourite*): on a route page, a long press on a stop on the stop list (after the boarding stop) saves
@@ -1370,7 +1374,7 @@ down, so an alert that never came can be explained from a bug report. Never the 
 
 **Pause** (maintainer, 2026-10-11). Each alert has a **Pause** button, which pauses every journey's
 alerts at once: those showing come down, and no check runs until the rider unpauses. While paused, a
-card atop the near-me list, "Alert notifications paused", says "Favorite journey alerts are paused.
+card atop the near-me list, "Alert notifications paused", says "Favorite ride alerts are paused.
 You will not be notified about service disruptions." with **Unpause**, the one way back, so it has no Dismiss and stays until tapped. It shows on the home
 without location, while finding the rider or loading departures, and over an error loading them, so unpausing never waits on location or TfL; an Unpause that couldn't be saved says
 "Couldn't unpause alerts", the card staying for another try. The favorite journeys page's overflow menu offers the same: **Pause alerts** while some
@@ -1730,7 +1734,7 @@ every card under it for the first few seconds. A new check says so at once; any 
 until it has held for a moment (1.5 s), so a gap between two loads never reads as "None" or as
 "couldn't check". While the row's lines are still being worked out for newer cards it shows the last
 ones a moment longer, as a card shows its last times, then "Checking…": never a "None" the current
-cards may not bear out. The "Checking routes…" banner over the list is held the same way.
+cards may not bear out. The "Checking trips…" banner over the list is held the same way.
 
 **A tap on the disruptions row opens every line the trip rides with its status** (maintainer,
 2026-10-04), its chevron always there so the row reads as a way in. A full-screen dialog over the trip
@@ -1939,7 +1943,7 @@ route riding just that line is opened. That route is never a card of its own and
 while open, each re-plan asks for it again from where and under what that plan is (a rider who has
 moved, or changed a choice, never keeps a walk timed from before), as does the trip restored after the
 app was closed in the background. An answer to choices the rider has since changed is asked again. A
-re-ask that can't reach the Planner says **Couldn't update the Direct route** with a Retry, keeping the
+re-ask that can't reach the Planner says **Couldn't update the Direct trip** with a Retry, keeping the
 route on show only while it was planned from the same place under the same choices.
 While it's found the row says **Planning…** where its times go; when none rides that line alone, or the
 Planner can't be reached, **Couldn't plan**, never another route in its place.
@@ -2397,7 +2401,7 @@ as it was.
   and it is never brought back, so one the rider swiped away stays away.
   It comes down once the rider is on board (the train has left the stop, or they said so), another
   train is followed, or the trip ends, and never outlasts two minutes after the train was due.
-- **Route disruption** (maintainer, 2026-09-29): a heads-up when the trip learns something that may
+- **Disruption ahead** (maintainer, 2026-09-29): a heads-up when the trip learns something that may
   stop a **coming leg** (the one the rider is on, and every one after): its line until they get off
   it, so the one being ridden counts too; its boarding stop until they board; where it gets off until
   they do; and where a walk ends that no ride meets (two stations a change walks between, or the stop
@@ -2545,7 +2549,7 @@ as it was.
   at the change. Only from a fresh board with every train checked, before a train is followed; at worst
   the change's board lists the train the rider is already on. The warning stays under the trip's card
   until the rider is past that ride, kept with the trip through a restart, so the reroute doesn't hide why, and
-  sounds once as a *Route disruption*. Meanwhile that board's trains are **named by where the ride ends,
+  sounds once as a *Disruption ahead*. Meanwhile that board's trains are **named by where the ride ends,
   in brackets** ("(Camden Town)"; maintainer, 2026-10-09), not by TfL's terminus: every one of them takes
   the rider there, and TfL's label is just what can't be trusted here (an Edgware train has shown as
   "High Barnet/Bank" beside "None direct to High Barnet"). The change is never given back for a direct
@@ -2628,7 +2632,7 @@ declined, the trip still follows them on its screen and the main view's card, an
 get-off alerts are off (checked again on every return, so a change in Settings shows). "Get off
 soon" has **its own channel, high importance with sound and vibration**, so it can be silenced
 apart from the trip's ongoing notification; it goes **five minutes after the stop** (or 15 minutes
-with no time to it), so a stale alert doesn't linger. "Time to board" and "Route disruption" each have
+with no time to it), so a stale alert doesn't linger. "Time to board" and "Disruption ahead" each have
 **a channel of its own** too, alike, so any can be muted without the others. Until the foreground
 service below, all three are said only while the app is open, as the trip is only followed then.
 The first two ask TfL for nothing: each is worked out from the answers the trip already has.
@@ -2655,7 +2659,7 @@ Platform 2 · Due in 4 min"). With no current answer the bar and chip are left o
 checking, and so is the bar with the train lost, as where the rider is along the ride isn't known; a
 route of more than ten legs folds its shortest into a neighbor, as Android draws ten at most.
 **One notification for the trip** (maintainer, 2026-10-09): while it's up, "Get off soon", "Time to
-board" and "Route disruption" are said in it rather than as notifications of their own, since a second
+board" and "Disruption ahead" are said in it rather than as notifications of their own, since a second
 notification takes the status bar's room and can leave the chip as a bare dot. The alert takes the
 title (its text too, where it has more to say than the step), and that one showing goes on the alert's
 own channel, so it sounds and vibrates as it always did and is muted the same way; it's then kept up to
@@ -2844,7 +2848,7 @@ run beside the chip spans them. Every stretch the alert gives is marked, even
 one a sentence says still runs ("Trains are running between Morden and Kennington only"): telling
 the two apart from TfL's prose is open-ended, and one marked too many costs a glance (maintainer,
 2026-10-01). Not where an end isn't on the page, since what lies between off it isn't known. Every
-stop a trip reads as not served (*Route disruption*: a bus alert's stretch, the stops it misses one by
+stop a trip reads as not served (*Disruption ahead*: a bus alert's stretch, the stops it misses one by
 one, the stops a curtailment leaves out) carries a ⚠ too, so the page and the trip read an alert the
 same way (maintainer, 2026-10-01). Where the train's list marks no stop, the run beside the chip is
 named from the whole route the list is part of (maintainer, 2026-10-02): the list starts at the
@@ -2852,7 +2856,7 @@ boarding stop, so a stretch before it would otherwise go unnamed. The
 compact chip is a follow-up (`TODO.md` Phase 3).
 **A bus alert wholly behind the stop flags nothing** (maintainer, 2026-10-02): a diversion a bus
 from here has already passed says nothing of the buses here. It's read as a trip reads an alert off
-a ride (*Route disruption*), with each route through the stop, from there to its end, standing in
+a ride (*Disruption ahead*), with each route through the stop, from there to its end, standing in
 for the ride, since where the rider gets off isn't known. So unknown keeps it on: no route loaded
 yet, a route through the stop the alert gives no stretch on, or one of several alerts. Its row
 carries no ⚠, and the route's page tells it muted, where it is and its prose ("Diversion before this
@@ -4141,7 +4145,7 @@ In priority order; where a rule below conflicts with a principle, the principle 
 4. **Hold still.** Never move what the user is reading or about to tap (maintainer,
    2026-10-04). A list that settles in front of them, or a row that pushes it down, makes
    them lose their place or tap the wrong thing. This outranks showing content early:
-   while what a list shows is still landing, its place says so ("Checking routes…"), and
+   while what a list shows is still landing, its place says so ("Checking trips…"), and
    the list appears once, settled, rather than filling in under the user's thumb. Where
    something must move, such as a trip's cards or the departures re-sorting, it slides
    rather than jumps, and taps wait until it stops.

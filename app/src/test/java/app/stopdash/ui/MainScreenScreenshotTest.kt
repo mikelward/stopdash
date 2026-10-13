@@ -503,7 +503,7 @@ class MainScreenScreenshotTest {
         }
         composeRule.onNodeWithText("Alert notifications paused").assertExists()
         // The tests render in en-GB, as the app's riders see it.
-        composeRule.onNodeWithText("Favourite journey alerts are paused. You will not be notified about service disruptions.").assertExists()
+        composeRule.onNodeWithText("Favourite ride alerts are paused. You will not be notified about service disruptions.").assertExists()
         composeRule.onNodeWithTag("widgetUpdate").assertExists()
         composeRule.onNodeWithText("Unpause").performClick()
         assertEquals(1, unpaused)

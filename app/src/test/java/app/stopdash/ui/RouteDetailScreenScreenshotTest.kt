@@ -966,7 +966,7 @@ class RouteDetailScreenScreenshotTest {
 
         composeRule.onNodeWithText("Terminates here").assertIsDisplayed()
         composeRule.onNodeWithText("Southbound").assertDoesNotExist()
-        composeRule.onNodeWithText("Long-press a stop to favourite the journey there").assertDoesNotExist()
+        composeRule.onNodeWithText("Long-press a stop to favourite the ride there").assertDoesNotExist()
         composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your stop")).assertExists()
         // Only its own station open: the line beyond folded (a run of one is drawn, so the fixture runs on to Euston).
         composeRule.onNodeWithText("Green Park", useUnmergedTree = true).assertDoesNotExist()
@@ -1402,7 +1402,7 @@ class RouteDetailScreenScreenshotTest {
         composeRule.waitForIdle()
 
         // The favorite journey's end carries a star, and a screen reader hears it.
-        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Favourite journey"))
+        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Favourite ride"))
             .assertIsDisplayed()
         composeRule.onNodeWithText("Oxford Circus", substring = true).assertIsDisplayed()
 
@@ -1618,7 +1618,7 @@ class RouteDetailScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Long-press a stop to favourite the journey there").assertIsDisplayed()
+        composeRule.onNodeWithText("Long-press a stop to favourite the ride there").assertIsDisplayed()
         captureSnapshot("route-detail-journey-tip.png")
         composeRule.onNodeWithText("Got it").performClick()
         assertEquals(1, dismissed)
@@ -1643,7 +1643,7 @@ class RouteDetailScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Long-press a stop to favourite the journey there").assertDoesNotExist()
+        composeRule.onNodeWithText("Long-press a stop to favourite the ride there").assertDoesNotExist()
     }
 
     @Test
@@ -1708,11 +1708,11 @@ class RouteDetailScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        // The one station after the boarding stop, found by its "Favourite journey" long-press action (its
+        // The one station after the boarding stop, found by its "Favourite ride" long-press action (its
         // name is also the header's destination).
         composeRule.onNode(
             SemanticsMatcher("star journey action") {
-                it.config.getOrNull(SemanticsActions.OnLongClick)?.label == "Favourite journey"
+                it.config.getOrNull(SemanticsActions.OnLongClick)?.label == "Favourite ride"
             },
         ).performTouchInput { longClick() }
         composeRule.waitForIdle()
@@ -1762,7 +1762,7 @@ class RouteDetailScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        val star = SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Favourite journey")
+        val star = SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Favourite ride")
         composeRule.onNode(star).assertIsDisplayed()
         composeRule.onNode(star).performTouchInput { longClick() }
         composeRule.waitForIdle()
@@ -1812,7 +1812,7 @@ class RouteDetailScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        val star = SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Favourite journey")
+        val star = SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Favourite ride")
         composeRule.onNode(star).assertIsDisplayed()
         composeRule.onNode(star).performTouchInput { longClick() }
         composeRule.waitForIdle()
@@ -1851,7 +1851,7 @@ class RouteDetailScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Favourite journey"))
+        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Favourite ride"))
             .assertIsDisplayed()
     }
 

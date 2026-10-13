@@ -215,7 +215,7 @@ class FavoriteJourneysScreenshotTest {
                 FavoriteJourneysScreen(state = FavoriteJourneysUi(journeys = null), onBack = {}, onRemove = {}, onRetry = { retries++ })
             }
         }
-        composeRule.onNodeWithText("Can't read your favourite journeys.").assertIsDisplayed()
+        composeRule.onNodeWithText("Can't read your favourite rides.").assertIsDisplayed()
         composeRule.onNodeWithTag("retryJourneys").performClick()
         assertEquals(1, retries)
     }
@@ -241,7 +241,7 @@ class FavoriteJourneysScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("King's Cross St. Pancras ⇄ Canada Water").assertIsDisplayed()
         composeRule.onNodeWithText("Home ⇄ Waterloo").assertIsDisplayed()
-        assertEquals(2, composeRule.onAllNodesWithText("Support for multi-leg journeys coming soon").fetchSemanticsNodes().size)
+        assertEquals(2, composeRule.onAllNodesWithText("Support for multi-leg trips coming soon").fetchSemanticsNodes().size)
         // After the journeys StopDash follows, so a grayed one never pushes a working one down.
         val working = composeRule.onNodeWithTag("remove-${victoriaLine.key}").getUnclippedBoundsInRoot().top
         val grayed = composeRule.onNodeWithTag("removePending-${indirect.key}").getUnclippedBoundsInRoot().top
@@ -460,7 +460,7 @@ class FavoriteJourneysScreenshotTest {
                 )
             }
         }
-        composeRule.onNodeWithText("Couldn't remove that journey").assertIsDisplayed()
+        composeRule.onNodeWithText("Couldn't remove that ride").assertIsDisplayed()
         composeRule.onNodeWithTag("dismissJourneyWriteError").performClick()
         assertEquals(1, dismissed)
     }

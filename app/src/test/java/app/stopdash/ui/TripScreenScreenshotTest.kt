@@ -358,7 +358,7 @@ class TripScreenScreenshotTest {
                 }
             }
             composeRule.mainClock.advanceTimeBy(1_000)
-            composeRule.onNodeWithText("Checking routes…").assertIsDisplayed()
+            composeRule.onNodeWithText("Checking trips…").assertIsDisplayed()
             composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
 
             gate.countDown()
@@ -367,7 +367,7 @@ class TripScreenScreenshotTest {
             composeRule.waitUntil(timeoutMillis = 5_000) {
                 composeRule.onAllNodesWithText("27 min · ~08:29").fetchSemanticsNodes().isNotEmpty()
             }
-            composeRule.onAllNodesWithText("Checking routes…").assertCountEquals(0)
+            composeRule.onAllNodesWithText("Checking trips…").assertCountEquals(0)
         } finally {
             // Opened whatever happened, so a failed check can't leave the worker's thread waiting.
             gate.countDown()
@@ -3818,7 +3818,7 @@ class TripScreenScreenshotTest {
 
     @Test
     fun a_cards_pill_column_is_in_before_its_rows_show() {
-        // Each card's pill column is measured behind "Checking routes…", so the list first shows with
+        // Each card's pill column is measured behind "Checking trips…", so the list first shows with
         // every card's stops in one column, never at a lone pill's width and then shifting sideways as
         // the cut pill is measured (Codex, #543). The worker steps one run at a time, and the list is
         // looked at after each.
@@ -4029,7 +4029,7 @@ class TripScreenScreenshotTest {
         composeRule.mainClock.advanceTimeBy(1_000)
         // A route still loading: the list waits, and says why, rather than settle under the rider
         // (maintainer, 2026-10-04: never move what they're reading or about to tap).
-        composeRule.onNodeWithText("Checking routes…").assertExists()
+        composeRule.onNodeWithText("Checking trips…").assertExists()
         composeRule.onAllNodes(hasTestTag("tripRoutes")).assertCountEquals(0)
 
         // The route lands: the list appears, settled.
@@ -4037,7 +4037,7 @@ class TripScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(100)
         composeRule.onNodeWithTag("tripRoutes").assertExists()
-        composeRule.onNodeWithText("Checking routes…").assertDoesNotExist()
+        composeRule.onNodeWithText("Checking trips…").assertDoesNotExist()
 
         // A refresh after that keeps the list where it is: it never hides again.
         held.value = planned.copy(refreshing = true)
@@ -4189,7 +4189,7 @@ class TripScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(100)
         composeRule.onAllNodes(hasTestTag("tripRoutes")).assertCountEquals(0)
-        composeRule.onNodeWithText("Checking routes…").assertExists()
+        composeRule.onNodeWithText("Checking trips…").assertExists()
     }
 
     @Test

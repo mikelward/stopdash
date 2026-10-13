@@ -2,6 +2,7 @@ package app.stopdash
 
 import android.Manifest
 import android.app.Application
+import android.app.NotificationChannel
 import android.app.NotificationManager
 import androidx.test.core.app.ApplicationProvider
 import app.stopdash.domain.FavoriteJourney
@@ -9,6 +10,8 @@ import app.stopdash.domain.JourneyAlertAction
 import app.stopdash.domain.JourneyAlertResult
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.JourneyLineAlert
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -69,6 +72,42 @@ class JourneyAlertNotificationTest {
         manager.createNotificationChannel(channel)
         assertFalse(JourneyAlertNotification.canAlert(context))
         assertFalse(JourneyAlertNotification.post(context, journey, result))
+    }
+
+    @Test
+    fun an_existing_channel_takes_a_new_name_and_keeps_the_riders_settings() {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        // Made by an earlier version under an older name, then turned off by the rider.
+        manager.createNotificationChannel(
+            NotificationChannel(JourneyAlertNotification.CHANNEL_ID, "Old name", NotificationManager.IMPORTANCE_LOW),
+        )
+        val turnedOff = manager.getNotificationChannel(JourneyAlertNotification.CHANNEL_ID)
+        turnedOff.importance = NotificationManager.IMPORTANCE_NONE
+        manager.createNotificationChannel(turnedOff)
+
+        runTest {
+            assertEquals(
+                JourneyAlertNotification.Gate.CHANNEL_OFF,
+                JourneyAlertNotification.gate(context, StandardTestDispatcher(testScheduler)),
+            )
+        }
+        val channel = manager.getNotificationChannel(JourneyAlertNotification.CHANNEL_ID)
+        assertEquals(context.getString(R.string.journey_alerts_channel), channel.name.toString())
+        assertEquals(context.getString(R.string.journey_alerts_channel_description), channel.description)
+        assertEquals(NotificationManager.IMPORTANCE_NONE, channel.importance)
+    }
+
+    @Test
+    fun posting_renames_a_channel_made_under_an_older_name() {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(
+            NotificationChannel(JourneyAlertNotification.CHANNEL_ID, "Old name", NotificationManager.IMPORTANCE_LOW),
+        )
+        assertTrue(JourneyAlertNotification.post(context, journey, result))
+        assertEquals(
+            context.getString(R.string.journey_alerts_channel),
+            manager.getNotificationChannel(JourneyAlertNotification.CHANNEL_ID).name.toString(),
+        )
     }
 
     @Test
