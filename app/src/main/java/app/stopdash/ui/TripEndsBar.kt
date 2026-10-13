@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -48,9 +49,10 @@ import app.stopdash.domain.abbreviateStationName
 /**
  * Where a trip starts over where it goes (maintainer, 2026-09-28), each row labeled, beside the back
  * arrow: the To… search's bar, and the trip page's once it has routes. "From" names the start —
- * "Here" behind the crosshair, or the From… station — and a tap opens the From… search to change it;
- * "To" holds the search field, or on the trip page the destination ([toField], given the row's
- * remaining width). [actions] (the trip page's overflow) sit at the From row's end.
+ * "Here" behind the crosshair, a place behind its own icon or a place pin ([fromPlace], [fromIcon]), or
+ * the From… station — and a tap opens the From… search to change it; "To" holds the search field, or on the trip page the
+ * destination ([toField], given the row's remaining width). [actions] (the trip page's overflow) sit
+ * at the From row's end.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,6 +61,10 @@ internal fun TripEndsBar(
     onChangeFrom: () -> Unit,
     onBack: () -> Unit,
     labelWidth: Dp,
+    // Whether [fromStation] names a place (a saved one, or one searched for) rather than a station.
+    fromPlace: Boolean = false,
+    // A saved place's own icon ([PlaceIconIndex]) to lead it with in place of the place pin.
+    fromIcon: String? = null,
     actions: (@Composable () -> Unit)? = null,
     // Whether TalkBack reads the "To" label: yes beside the search field, no beside [ToField], which
     // says "To ‹place›" itself.
@@ -91,7 +97,7 @@ internal fun TripEndsBar(
             Spacer(modifier = Modifier.width(ENDS_BACK_GAP))
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 // The From field says "From ‹start›" itself, so its label isn't read twice.
-                EndRow(fromLabel, labelWidth, labelStyle, readLabel = false) { FromField(fromStation, onChangeFrom, Modifier.weight(1f)) }
+                EndRow(fromLabel, labelWidth, labelStyle, readLabel = false) { FromField(fromStation, fromPlace, fromIcon, onChangeFrom, Modifier.weight(1f)) }
                 EndRow(toLabel, labelWidth, labelStyle, readLabel = readToLabel) { toField(Modifier.weight(1f)) }
             }
             if (actions != null) {
@@ -173,9 +179,12 @@ internal fun EndField(modifier: Modifier = Modifier, content: @Composable RowSco
     )
 }
 
-/** The From row's field: "Here" behind the crosshair, or the station's name; a tap changes it. */
+/**
+ * The From row's field: "Here" behind the crosshair, a [place]'s name behind its own [icon] or a place
+ * pin, or the station's name; a tap changes it.
+ */
 @Composable
-private fun FromField(station: String?, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun FromField(station: String?, place: Boolean, icon: String?, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val here = stringResource(R.string.from_here)
     // TalkBack hears the full name ("From King's Cross & St Pancras International"), not the
     // display abbreviation, and what a tap does.
@@ -188,8 +197,9 @@ private fun FromField(station: String?, onClick: () -> Unit, modifier: Modifier 
             .semantics { contentDescription = description }
             .testTag("fromField"),
     ) {
-        if (station == null) {
-            Icon(CrosshairIcon, contentDescription = null, modifier = Modifier.size(18.dp))
+        when {
+            station == null -> Icon(CrosshairIcon, contentDescription = null, modifier = Modifier.size(END_ICON_SIZE))
+            place -> PlaceLead(icon)
         }
         Text(
             station?.let(::abbreviateStationName) ?: here,
@@ -201,11 +211,12 @@ private fun FromField(station: String?, onClick: () -> Unit, modifier: Modifier 
 }
 
 /**
- * The trip page's To row: the destination by [name], as the From row names the start; a tap reopens
- * the To… search to go somewhere else, from the same start.
+ * The trip page's To row: the destination by [name], as the From row names the start, behind its own
+ * [icon] or a place pin when it's a [place]; a tap reopens the To… search to go somewhere else, from
+ * the same start.
  */
 @Composable
-internal fun ToField(name: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+internal fun ToField(name: String, onClick: () -> Unit, modifier: Modifier = Modifier, place: Boolean = false, icon: String? = null) {
     val description = stringResource(R.string.trip_to, name)
     val changeLabel = stringResource(R.string.trip_change_to)
     EndField(
@@ -215,6 +226,7 @@ internal fun ToField(name: String, onClick: () -> Unit, modifier: Modifier = Mod
             .semantics { contentDescription = description }
             .testTag("toField"),
     ) {
+        if (place) PlaceLead(icon)
         Text(
             abbreviateStationName(name),
             style = MaterialTheme.typography.bodyLarge,
@@ -224,4 +236,25 @@ internal fun ToField(name: String, onClick: () -> Unit, modifier: Modifier = Mod
     }
 }
 
+/**
+ * What leads a place's name in a field, as the crosshair leads "Here" (maintainer, 2026-10-13): a saved
+ * place's own [icon], as its chip shows it, or a place pin for any other place (one searched for, or a
+ * saved place with no icon this build draws). Until the saved places are first read (a screen restored
+ * after process death) it can't tell which, so it holds the icon's slot empty rather than draw a pin it
+ * may then swap: the name stays put either way. Decorative: the field's description names the place.
+ */
+@Composable
+private fun PlaceLead(icon: String?) {
+    if (!LocalPlaceIcons.current.ready) {
+        Spacer(Modifier.size(END_ICON_SIZE).testTag("endPlaceIconPending"))
+    } else if (icon != null && hasPlaceIcon(icon)) {
+        PlaceIcon(icon, Modifier.size(END_ICON_SIZE).testTag("endPlaceIcon-$icon"))
+    } else {
+        Icon(Icons.Filled.Place, contentDescription = null, modifier = Modifier.size(END_ICON_SIZE).testTag("endPlaceIcon"))
+    }
+}
+
 private val END_FIELD_SHAPE = RoundedCornerShape(8.dp)
+
+// The size of the icon leading a field's name: the crosshair's, and a place's pin.
+private val END_ICON_SIZE = 18.dp

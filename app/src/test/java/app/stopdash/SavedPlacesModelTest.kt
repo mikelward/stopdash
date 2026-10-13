@@ -3,10 +3,13 @@ package app.stopdash
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
+import app.stopdash.domain.FavoritePlaceIcon
 import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FavoritePlacesStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -47,9 +50,10 @@ class SavedPlacesModelTest {
     fun the_places_read_are_held_as_the_same_list_until_they_change() = runTest(dispatcher) {
         val list = listOf(place)
         val store = Store(FavoritePlacesSet.Loaded(list))
-        val model = SavedPlacesModel(store)
-        // Not read yet: none, and said to be unread, not unreadable.
+        val model = SavedPlacesModel(store, worker = dispatcher)
+        // Not read yet: none, and said to be unread, not unreadable, so no place's icon is known yet.
         assertEquals(SavedPlaces.UNREAD, model.state.value)
+        assertEquals(false, model.state.value.icons.ready)
         advanceUntilIdle()
         // Read: the store's own list, held for any screen that collects it afresh.
         assertTrue(model.state.value.read)
@@ -59,6 +63,63 @@ class SavedPlacesModelTest {
         advanceUntilIdle()
         assertTrue(model.state.value.read)
         assertNull(model.state.value.places)
+    }
+
+    @Test
+    fun an_unreadable_answer_keeps_the_icons_from_the_last_readable_one() = runTest(dispatcher) {
+        // A read outage the store retries says nothing about which places are saved: an open trip's
+        // saved place keeps its icon, never a pin it then swaps back (Codex on #824).
+        val home = place.copy(icon = FavoritePlaceIcon.HOME)
+        val store = Store(FavoritePlacesSet.Loaded(listOf(home)))
+        val model = SavedPlacesModel(store, worker = dispatcher)
+        advanceUntilIdle()
+        val icons = model.state.value.icons
+        assertEquals(FavoritePlaceIcon.HOME, icons.forPlace("p"))
+        store.sets.value = FavoritePlacesSet.Unavailable
+        advanceUntilIdle()
+        assertNull(model.state.value.places)
+        assertSame(icons, model.state.value.icons)
+        // A discarded file is a real loss, though: its places are gone, and so are their icons.
+        store.sets.value = FavoritePlacesSet.Discarded
+        advanceUntilIdle()
+        assertTrue(model.state.value.icons.ready)
+        assertNull(model.state.value.icons.forPlace("p"))
+    }
+
+    @Test
+    fun an_unreadable_first_answer_leaves_the_icons_unresolved() = runTest(dispatcher) {
+        // Nothing readable yet: a place end can't be told apart from a saved place, so it still waits.
+        val store = Store(FavoritePlacesSet.Unavailable)
+        val model = SavedPlacesModel(store, worker = dispatcher)
+        advanceUntilIdle()
+        assertTrue(model.state.value.read)
+        assertEquals(false, model.state.value.icons.ready)
+        store.sets.value = FavoritePlacesSet.Loaded(listOf(place.copy(icon = FavoritePlaceIcon.HOME)))
+        advanceUntilIdle()
+        assertEquals(FavoritePlaceIcon.HOME, model.state.value.icons.forPlace("p"))
+    }
+
+    @Test
+    fun the_places_icons_are_indexed_on_the_worker_never_the_main_thread() = runTest(dispatcher) {
+        // Each read of a place notes its thread: the index is built from them on the worker alone
+        // (AGENTS.md *Main thread*), and the screen only reads the index.
+        val reads = ThreadRecorder()
+        val home = place.copy(icon = FavoritePlaceIcon.HOME)
+        val places = object : AbstractList<FavoritePlace>() {
+            override val size: Int get() = 1
+            override fun get(index: Int): FavoritePlace {
+                reads.note()
+                return home
+            }
+        }
+        val worker = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "places-worker") }.asCoroutineDispatcher()
+        worker.use {
+            val model = SavedPlacesModel(Store(FavoritePlacesSet.Loaded(places)), worker = it)
+            val read = model.state.first { state -> state.read }
+            assertEquals(FavoritePlaceIcon.HOME, read.icons.forPlace("p"))
+            assertTrue(reads.threads().isNotEmpty())
+            assertEquals(listOf("places-worker"), reads.threads().distinct())
+        }
     }
 
     @Test

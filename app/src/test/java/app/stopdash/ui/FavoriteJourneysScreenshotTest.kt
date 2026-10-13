@@ -19,6 +19,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import app.stopdash.domain.JourneyAlertSchedule
@@ -29,6 +31,7 @@ import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
+import app.stopdash.domain.FavoritePlaceIcon
 import app.stopdash.domain.PendingEnd
 import app.stopdash.domain.PendingJourney
 import app.stopdash.ui.theme.StopDashTheme
@@ -321,6 +324,36 @@ class FavoriteJourneysScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("favoriteChip-h").performClick()
         assertEquals(PendingEnd.Station("940GZZLUWLO", "Waterloo") to PendingEnd.Place("h", "Home"), picked)
+    }
+
+    @Test
+    fun a_saved_place_picked_as_the_start_leads_with_its_own_icon() {
+        // The From row finds the saved place's icon by its id in the index built with the places
+        // (maintainer, 2026-10-13), as its chip shows it; a stock "Home" at a synthetic spot.
+        val home = FavoritePlace("h", FavoriteKind.HOME, "Home", Coordinates(0.0, 0.0), icon = FavoritePlaceIcon.HOME)
+        val icons = PlaceIconIndex.of(listOf(home))
+        composeRule.setContent {
+            CompositionLocalProvider(LocalPlaceIcons provides icons) {
+                StopDashTheme(dynamicColor = false) {
+                    FavoriteJourneyPicker(
+                        state = StationSearchViewModel.State(yoursRead = true, favoritePlaces = listOf(home)),
+                        from = PendingEnd.Place("h", "Home"),
+                        onQueryChange = {},
+                        onRetryPlaces = {},
+                        onPickFrom = {},
+                        onPickTo = { _, _ -> },
+                        onChangeFrom = {},
+                        onBack = {},
+                        autoFocus = false,
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNode(hasTestTag("endPlaceIcon-${FavoritePlaceIcon.HOME}") and hasAnyAncestor(hasTestTag("fromField")), useUnmergedTree = true)
+            .assertIsDisplayed()
+        // Its own icon in place of the generic pin.
+        composeRule.onNodeWithTag("endPlaceIcon", useUnmergedTree = true).assertDoesNotExist()
     }
 
     @Test

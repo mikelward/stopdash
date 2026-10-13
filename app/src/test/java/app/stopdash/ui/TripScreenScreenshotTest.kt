@@ -71,6 +71,7 @@ import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.Departure
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Countdown
+import app.stopdash.domain.FavoritePlaceIcon
 import app.stopdash.domain.PlaceDirect
 import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.DepartureRows
@@ -1525,7 +1526,37 @@ class TripScreenScreenshotTest {
             ends = TripEnds(fromStation = "Highbury & Islington", toName = "Canary Wharf", onChangeFrom = {}, onChangeTo = {}),
         )
         composeRule.onNodeWithTag("fromField").assertContentDescriptionEquals("From Highbury & Islington")
+        // A station and a stop name themselves alone: no place pin at either end.
+        composeRule.onAllNodesWithTag("endPlaceIcon", useUnmergedTree = true).assertCountEquals(0)
         captureSnapshot("trip-from-to-station.png")
+    }
+
+    @Test
+    fun trip_from_to_bar_between_places() {
+        // A place at either end leads its name with an icon, as "Here" leads with the crosshair
+        // (maintainer, 2026-10-13): a saved place its own, as its chip shows it, and a place searched
+        // for a place pin. A stock "Home" and a public interchange, no one's own place.
+        show(
+            planned,
+            ends = TripEnds(
+                fromStation = "Home", toName = "Canary Wharf", onChangeFrom = {}, onChangeTo = {},
+                fromPlace = true, toPlace = true, fromIcon = FavoritePlaceIcon.HOME,
+            ),
+        )
+        composeRule.onNodeWithTag("fromField").assertContentDescriptionEquals("From Home")
+        composeRule.onNodeWithTag("toField").assertContentDescriptionEquals("To Canary Wharf")
+        // Each icon sits in its own field, before the name.
+        for ((field, name, icon) in listOf(
+            Triple("fromField", "Home", "endPlaceIcon-${FavoritePlaceIcon.HOME}"),
+            Triple("toField", "Canary Wharf", "endPlaceIcon"),
+        )) {
+            val lead = composeRule.onNode(hasTestTag(icon) and hasAnyAncestor(hasTestTag(field)), useUnmergedTree = true)
+            val text = composeRule.onNode(hasText(name) and hasAnyAncestor(hasTestTag(field)), useUnmergedTree = true)
+            assertTrue(lead.getBoundsInRoot().right <= text.getBoundsInRoot().left)
+        }
+        // The saved place's own icon in place of the pin, never beside it.
+        composeRule.onAllNodesWithTag("endPlaceIcon", useUnmergedTree = true).assertCountEquals(1)
+        captureSnapshot("trip-from-to-places.png")
     }
 
     @Test

@@ -444,6 +444,8 @@ class StationSearchScreenshotTest {
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithContentDescription("From Here").assertIsDisplayed()
+        // "Here" leads with the crosshair, not a place pin.
+        composeRule.onNodeWithTag("endPlaceIcon", useUnmergedTree = true).assertDoesNotExist()
         composeRule.onNodeWithText("To").assertIsDisplayed()
         composeRule.onNodeWithText(toHint).assertIsDisplayed()
         // From above To, and both above the places' chips.
@@ -485,6 +487,73 @@ class StationSearchScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithContentDescription("From King's Cross & St Pancras International").assertIsDisplayed()
         composeRule.onNodeWithText("King's Cross & St Pancras Intl", useUnmergedTree = true).assertIsDisplayed()
+        // A station is named alone, with no place pin.
+        composeRule.onNodeWithTag("endPlaceIcon", useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun a_place_end_holds_its_icon_slot_until_the_saved_places_are_read() {
+        // Restored before the saved places are read, a place end can't tell a saved place from any
+        // other yet, so it draws neither a pin nor an icon it may have to take back; the name sits
+        // where it will stay once the icon is in (Codex on #824).
+        var icons by mutableStateOf(PlaceIconIndex.UNREAD)
+        val home = FavoritePlace("h", FavoriteKind.HOME, "Home", Coordinates(0.0, 0.0), icon = "home")
+        val read = PlaceIconIndex.of(listOf(home))
+        composeRule.setContent {
+            CompositionLocalProvider(LocalPlaceIcons provides icons) {
+                StopDashTheme {
+                    StationSearchScreen(
+                        state = StationSearchViewModel.State(yoursRead = true),
+                        onQueryChange = {},
+                        onOpenStation = {},
+                        onBack = {},
+                        autoFocus = false,
+                        hint = toHint,
+                        fromStation = "Home",
+                        onChangeFrom = {},
+                        fromPlace = true,
+                        fromIcon = icons.at(Coordinates(0.0, 0.0), "Home"),
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("endPlaceIconPending", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithTag("endPlaceIcon", useUnmergedTree = true).assertDoesNotExist()
+        val nameBefore = composeRule.onNodeWithText("Home", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.left
+        icons = read
+        composeRule.waitForIdle()
+        // Read: its own icon, in the same slot, the name unmoved.
+        composeRule.onNodeWithTag("endPlaceIcon-home", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithTag("endPlaceIconPending", useUnmergedTree = true).assertDoesNotExist()
+        assertEquals(nameBefore, composeRule.onNodeWithText("Home", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.left)
+    }
+
+    @Test
+    fun station_search_to_from_place() {
+        // Started from a place, the From row leads its name with a place pin, as "Here" leads with the
+        // crosshair (maintainer, 2026-10-13): a place searched for, or one with no icon of its own.
+        composeRule.setContent {
+            StopDashTheme {
+                StationSearchScreen(
+                    state = StationSearchViewModel.State(yoursRead = true),
+                    onQueryChange = {},
+                    onOpenStation = {},
+                    onBack = {},
+                    autoFocus = false,
+                    hint = toHint,
+                    fromStation = "Home",
+                    onChangeFrom = {},
+                    fromPlace = true,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("From Home").assertIsDisplayed()
+        val pin = composeRule.onNodeWithTag("endPlaceIcon", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val name = composeRule.onNodeWithText("Home", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertTrue(pin.right <= name.left)
+        captureSnapshot("station-search-to-from-place.png")
     }
 
     @Test
