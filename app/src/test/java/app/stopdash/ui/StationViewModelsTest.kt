@@ -697,7 +697,10 @@ class StationViewModelsTest {
         val restored = searchVm(SavedStateHandle(mapOf("query" to first.get<String>("query"))), index)
         assertEquals("oxford", restored.state.value.query)
         advanceUntilIdle()
-        assertEquals(StationSearchViewModel.Result.Matches(listOf(oxford), query = "oxford"), restored.state.value.result)
+        assertEquals(
+            StationSearchViewModel.Result.Matches(listOf(oxford), query = "oxford", searchKey = SearchEntry.Stop(oxford)),
+            restored.state.value.result,
+        )
     }
 
     @Test
@@ -706,6 +709,22 @@ class StationViewModelsTest {
         vm.onQueryChange("oxford ")
         advanceUntilIdle()
         assertEquals("oxford", (vm.state.value.result as StationSearchViewModel.Result.Matches).query)
+    }
+
+    @Test
+    fun `a whole answer names the row the Search key opens`() = runTest {
+        val oxbow = IndexedStation("940GZZOXB", "Oxbow Park", listOf("tube"))
+        val vm = searchVm(index = StationIndex(listOf(oxbow, oxfordStation)))
+        // Named exactly, the top row.
+        vm.onQueryChange("oxford circus")
+        advanceUntilIdle()
+        assertEquals(SearchEntry.Stop(oxford), (vm.state.value.result as StationSearchViewModel.Result.Matches).searchKey)
+        // Two loose rows: a choice for the rider, so the key opens none.
+        vm.onQueryChange("ox")
+        advanceUntilIdle()
+        val loose = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals(2, loose.entries.size)
+        assertNull(loose.searchKey)
     }
 
     @Test

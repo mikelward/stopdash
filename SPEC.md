@@ -465,6 +465,11 @@ The app finds stops two ways:
   read late) is **appended below** it, ranked among itself, even when it matches better (maintainer,
   2026-09-28: append, don't reorder). A new query's answer opens at its **top, best match first**, once
   it lands; until then the last answer stays as it was, rather than moving at each letter typed.
+  The keyboard's **Search key opens the top row when the answer is sure** (maintainer, 2026-10-13: to
+  start with): once everything for what's typed has arrived, if the top row is the only one, or the
+  only one named exactly what was typed (a complete postcode only its own), it opens as a tap would.
+  Otherwise, or while places outside London are being looked up or listed, the key only closes the
+  keyboard and leaves the list to choose from: a wrong row picked unseen would start the wrong trip.
   Places found before the stations wait for them, so the two are
   ranked together and a tube station isn't left below places found a moment sooner (maintainer,
   2026-10-13: no timeout; a slow station list is fixed, not ranked around). A listed row that the full ranking shows to be a duplicate of
