@@ -1633,6 +1633,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               Elizabeth line left as TfL gives them (Metropolitan and District too, until measured). Next: measure how late trains come after
               their last shown time, to size a grace before a train leaves the board, and test the
               duplicate signals listed there.
+        - [x] **Gray the earlier of two trains a minute or less apart** (maintainer, 2026-10-13): one of
+              the pair may not come and nothing says which, so both are grayed and read as maybe not
+              running (`DoubtfulTrains.PAIR`), where the first is due within five minutes (as far as the
+              recordings looked); a trip still follows the earlier.
         - [ ] **Tell a doubtful train from a real one** (maintainer, 2026-10-11): keep collecting
               reports (each mark is logged with the feed's train ids) against what the station display
               showed, and hide a doubtful train outright only once a rule separates the two.

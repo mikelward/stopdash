@@ -94,4 +94,15 @@ class PlatformDirectionTest {
         assertNull(PlatformDirection.platformNumber(null))
         assertNull(PlatformDirection.platformNumber(""))
     }
+
+    @Test
+    fun `TfL's unknown platform is no known one`() {
+        // A placeholder for trains in either direction, not a physical platform two trains can share.
+        assertEquals("Unknown", PlatformDirection.platformNumber("Platform Unknown"))
+        assertNull(PlatformDirection.knownPlatformNumber("Platform Unknown"))
+        assertNull(PlatformDirection.knownPlatformNumber("platform unknown"))
+        assertEquals("2", PlatformDirection.knownPlatformNumber("Southbound - Platform 2"))
+        assertNull(PlatformDirection.knownPlatformNumber("Northbound"))
+        assertNull(PlatformDirection.knownPlatformNumber(null))
+    }
 }

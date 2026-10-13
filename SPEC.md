@@ -631,12 +631,19 @@ from the signalling, shows it once. No two trains of a line can use one platform
 tightest scheduled headway on the Underground is about 100 seconds — so of a line's tube trains due at
 one numbered platform less than **90 seconds** apart, the later one's time is **grayed** in the app
 and read aloud as maybe not running: it may be real, so it isn't hidden, but it isn't one stopdash
-stands behind either (principle 1). Further out TfL rounds its times to whole minutes and bunches
-them, so some real trains are grayed too; the trial is to see how that looks before the rule settles,
-and the widget and watch show these times as usual meanwhile. A train TfL still lists after it was due
-counts for nothing. A trip follows, and times its arrival by, a doubtful train only when no other is
-listed. Each one marked is noted in the debug log, so what the feed looked like can be compared with
-what the rider saw. Buses, and platforms TfL names by direction alone, are left as they are.
+stands behind either (principle 1). Of two trains TfL times **a minute or less** apart, the first due
+within **five minutes**, either may be the one that doesn't come, and nothing says which (maintainer,
+2026-10-13): recordings of such pairs found one dropped from the board before it was due about half
+the time (`dev-docs/arrivals-measurements.md`), so the **earlier is grayed** and read the same way too.
+Further out the recordings say nothing, and TfL's whole-minute times would pair most real trains, so
+the earlier is left alone there. A trip still follows the earlier of such a pair, since one of the two
+is coming. Further out TfL rounds its
+times to whole minutes and bunches them, so some real trains are grayed too; the trial is to see how
+that looks before the rule settles, and the widget and watch show these times as usual meanwhile. A
+train TfL still lists after it was due counts for nothing. A trip follows, and times its arrival by, a
+doubtful train only when no other is listed. Each one marked is noted in the debug log, so what the
+feed looked like can be compared with what the rider saw. Buses, and platforms TfL names by direction
+alone, are left as they are.
 
 **The unit of display is one card per platform or pole** (maintainer, 2026-09-22) — a
 group of same-cluster stops split by platform / stop letter (see below). Each card is

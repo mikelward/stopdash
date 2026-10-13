@@ -61,15 +61,17 @@ object Countdown {
         return departures.joinToString(" · ") { minutes(it.expectedArrival, now).toString() } + " min"
     }
 
-    /** One train's minutes in a merged countdown ([minutes]), and whether it's [Departure.doubtful]. */
-    data class Part(val minutes: Long, val doubtful: Boolean)
+    /** One train's minutes in a merged countdown ([minutes]), and whether it may not run ([Departure.mayNotRun]). */
+    data class Part(val minutes: Long, val doubtful: Boolean) {
+        val grayed: Boolean get() = doubtful
+    }
 
     /**
-     * [departures]' minutes, each with whether it's [Departure.doubtful], for a surface that grays a
-     * doubtful one; read as [mergedLabel] reads them.
+     * [departures]' minutes, each with whether it may not run, for a surface that grays one that may
+     * not; read as [mergedLabel] reads them.
      */
     fun parts(departures: List<Departure>, now: Instant): List<Part> =
-        departures.map { Part(minutes(it.expectedArrival, now), it.doubtful) }
+        departures.map { Part(minutes(it.expectedArrival, now), it.mayNotRun) }
 
     /**
      * One time in a merged countdown: a train's [Timed] minutes, or a train its board lists with no
