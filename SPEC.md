@@ -2100,7 +2100,8 @@ as it was.
   is on board, as when waiting for its train (below), not still told to walk there. The **walk to the destination**
   (the trip's last leg, with the destination placed) ends when the rider is **seen there**, within
   100 m with the fix's uncertainty counted, not on its time (maintainer, 2026-10-03): ending on its
-  time said "arrived" to a rider still a few hundred meters away. Once its time is up, within 200 m
+  time said "arrived" to a rider still a few hundred meters away. Two minutes after its time is up
+  (maintainer, 2026-10-13: widening the moment it was up ended a slower walker's walk ~100 m short), within 200 m
   counts, from a fix still sure to 100 m: a place is one point for a whole building, and a rider at
   its door read just over 100 m out kept walking until the grace ran out (bug report, 2026-10-11). Never seen there (indoors, a
   destination placed well off its door), it ends 10 minutes past its time, so neither the trip nor GPS

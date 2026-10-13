@@ -1897,19 +1897,29 @@ object OnTheWay {
 
     /**
      * How near the walk to the destination's end a fix must place the rider to see them there
-     * ([seen]), the fix's uncertainty included: [AT_STOP_WITHIN_METERS] while the walk's time runs,
-     * [END_WALK_LATE_WITHIN_METERS] once it's up.
+     * ([seen]), the fix's uncertainty included: [AT_STOP_WITHIN_METERS] while the walk's time runs
+     * and for [END_WALK_WIDEN_AFTER] past it, [END_WALK_LATE_WITHIN_METERS] after that.
      */
     fun walkEndWithin(trip: ActiveTrip, now: Instant): Double {
         val leg = trip.leg ?: return AT_STOP_WITHIN_METERS
-        return if (now.isBefore(trip.legStartedAt.plus(leg.run))) AT_STOP_WITHIN_METERS else END_WALK_LATE_WITHIN_METERS
+        val widensAt = trip.legStartedAt.plus(leg.run).plus(END_WALK_WIDEN_AFTER)
+        return if (now.isBefore(widensAt)) AT_STOP_WITHIN_METERS else END_WALK_LATE_WITHIN_METERS
     }
+
+    /**
+     * How long past the walk's time its end still takes [AT_STOP_WITHIN_METERS] before widening to
+     * [END_WALK_LATE_WITHIN_METERS] (maintainer, 2026-10-13): a rider slower than the plan's pace is still
+     * on their way, and widening the moment the time was up ended a walk ~100 m short (bug report,
+     * 2026-10-13). One at the door has waited two minutes more.
+     */
+    val END_WALK_WIDEN_AFTER: Duration = Duration.ofMinutes(2)
 
     /**
      * Past the walk's time, a rider this near the destination's point is there: a chosen place is
      * one point for a whole building, and a rider at its door, with a fix's uncertainty on top, read
      * 110 m out and kept the trip walking until [END_WALK_GRACE] ran out (bug report, 2026-10-11).
-     * Two arrival radii; before the walk's time, a rider still on their way that close isn't there yet.
+     * Two arrival radii, from [END_WALK_WIDEN_AFTER] past the walk's time; before that, a rider still on
+     * their way that close isn't there yet.
      * Only the distance widens: a fix still has to be sure to [AT_STOP_WITHIN_METERS] to count
      * ([sureEnoughFor]), so a vaguer one never stands in for, or cuts short the wait for, a sharp one
      * (Codex, PR #770).
