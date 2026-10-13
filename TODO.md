@@ -1423,14 +1423,26 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   Cross & St Pancras interchange fold (one row, each station name findable beside it).
               - [ ] **A famous place's stray copies** (maintainer, 2026-10-12): Overture lists check-in
                   copies of famous places all over London ("Hyde Park" ten times, St Paul's Cathedral at
-                  homes). Wikidata no longer drops or moves them: matched by name alone it moved real
-                  places kilometers away. To clean them up again, match a listing to a Wikidata item only
-                  when they're the same kind of place (Wikidata's types mapped to Overture's categories),
-                  and drop rather than move.
-              - [ ] **Prominence reach for big sites** (maintainer, 2026-10-12): a listing takes a
+                  homes). Wikidata never moves them: matched by name alone it moved real places
+                  kilometers away. Done for famous venues (maintainer, 2026-10-13): a Meta-only venue or
+                  landmark copy named exactly as a 20+-language item and over 1 km from it is dropped
+                  (the "O2 Arena"s), and only the listing nearest an item takes its rank. Left: the
+                  copies outside venue categories (a park, a church), which need a listing matched to an
+                  item only when they're the same kind of place, or public places taken from
+                  OpenStreetMap instead (below).
+              - [x] **Prominence reach for big sites** (maintainer, 2026-10-12): a listing took a
                   Wikidata item's prominence only within 300 m, so a big park or campus whose listing
-                  sits away from Wikidata's one point misses out (Bushy, Brockwell and Richmond Parks,
-                  Wimbledon Common, Kingston University). Consider ~1 km for parks, commons and campuses.
+                  sits away from Wikidata's one point missed out. Done: parks, gardens, venues, museums
+                  and universities reach 1 km; the rest stay at 300 m, since a gym named for its area
+                  is often that near the area's item.
+              - [ ] **Famous places Overture doesn't list by name** (maintainer, 2026-10-13): nothing is
+                  named "Stamford Bridge" at the ground, and the O2's listing is 1.1 km from Wikidata's
+                  point, so neither takes its rank. Consider adding a 20+-language Wikidata item as its
+                  own entry when no listing of its name is within reach (areas included or not: open).
+              - [ ] **OpenStreetMap for public places** (maintainer, 2026-10-13): `dev-docs/PLACES.md`
+                  recommends OpenStreetMap for public places and Overture for businesses only, which
+                  would end the check-in copies at their source. Unmeasured: the sandbox can't reach
+                  Geofabrik's London extract.
               - [ ] **Station prominence** (maintainer, 2026-10-12): equal matches put a station before a
                   bus stop, but every station counts the same. Options: rank by the number of lines or
                   modes (in the index already), or by Wikidata coverage as places are.

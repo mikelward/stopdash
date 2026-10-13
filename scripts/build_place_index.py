@@ -31,8 +31,10 @@ Sources, all open data:
   the same rectangle as the rest, Greater London and the towns around it.
 - Wikidata (CC0), from its public query service: the items in the same rectangle with an English
   name, a position and a Wikipedia article in at least one language, and how many languages have
-  one. A public place of the same name within 300 m takes its prominence from them; Wikidata only
-  ranks, never dropping or moving a listing. Only names and positions of public things are read.
+  one. The nearest public place (or one in BOOSTABLE_CATEGORIES) of the same name within 300 m
+  (1 km for a big site such as a park) takes its prominence from them, and a famous venue's Meta-only copies far from every item of its name are
+  dropped (people check in to "O2 Arena" from all over London); Wikidata never moves a listing.
+  Only names and positions of public things are read.
 
 Beside the index it writes Foursquare's `NOTICE.txt` (with our changes appended) and the Apache
 License 2.0 text, as `FOURSQUARE_NOTICE.txt` and `FOURSQUARE_LICENSE.txt`: Overture's Foursquare
@@ -107,6 +109,15 @@ PUBLIC_CATEGORIES = {
     "courthouse", "cemetery", "sport_court", "fitness_studio", "airport", "campus_building",
     "research_institute", "primary_care_or_general_clinic", "lodging",
 }
+# Not public places, so ranked as businesses, but where Overture files many a landmark: Big Ben is a
+# fountain, Kew Gardens a garden, the Barbican and Somerset House cultural centers, the Palladium a
+# festival venue. A listing here takes Wikidata's prominence like a public place; the rest of the
+# business categories don't, as the famous names in them are areas and companies ("ESHER" a takeaway,
+# "House of Lords" a cash machine).
+BOOSTABLE_CATEGORIES = {
+    "garden", "botanical_garden", "cultural_center", "public_fountain", "public_plaza", "castle",
+    "festival_venue",
+}
 # Never a destination worth listing: stations come from the station index (with the ids their
 # departures need), and these are rarely where a trip ends.
 DROPPED_CATEGORIES = {
@@ -131,6 +142,23 @@ LANDMARK_MIN_CONFIDENCE = 0.99
 LANDMARK_RADIUS_METERS = 1000
 # A Wikidata item lends its prominence to a same-named place within this many meters.
 NOTABLE_METERS = 300
+# ... or this many for a place in BIG_SITE_CATEGORIES, whose listing (a park's gate, a venue's box
+# office) is often this far from Wikidata's single point: Kew Gardens 700 m, the O2 700 m, the
+# Southbank Centre 370 m. Not for the rest: a gym or a hotel named for the area it is in ("Greenwich")
+# is often this near the area's item.
+BIG_SITE_METERS = 1000
+BIG_SITE_CATEGORIES = {
+    "park", "garden", "botanical_garden", "cultural_center", "event_venue", "stadium_arena",
+    "college_university", "museum", "zoo", "festival_venue",
+}
+# A famous venue's Meta-only copies this far from every item of its name are stray check-ins.
+STRAY_METERS = 1000
+# Where those copies get filed: a landmark's categories, and any venue's ("O2 Arena" as a cinema).
+STRAY_CATEGORIES = UNIQUE_CATEGORIES | {"arts_and_entertainment", "movie_theater", "event_venue", "festival_venue"}
+# A famous venue (a Wikidata item this many Wikipedia languages cover) has its far copies dropped. A
+# lesser item can share its name with a real place elsewhere: the Elizabethan Hope Theatre (5) with
+# the fringe theatre in Islington.
+STRAY_MIN_LINKS = 20
 # How many Wikipedia languages cover a place, for its rank: (at least, rank), best first.
 NOTABLE_RANKS = ((20, 9), (5, 8))
 # The datasets Overture lists for itself alongside a listing's real source.
@@ -271,6 +299,25 @@ def drop_misplaced_landmarks(places):
     return [p for p in places if id(p) not in dropped]
 
 
+def drop_strays_of_famous(places, notable):
+    """[places] (name, category, confidence, lat, lon, meta_only) less the stray copies of a famous
+    venue: a listing in STRAY_CATEGORIES, with only Meta as its source,
+    named exactly as a Wikidata item STRAY_MIN_LINKS or more Wikipedia languages cover, and more than
+    STRAY_METERS from every item of that name. People check in to "O2 Arena" from all over London,
+    and the stray copies outnumber the real venue (maintainer, 2026-10-13: Wikidata may drop these).
+    A second item of the same name keeps the listings near it, so two real places that share a name
+    both stay; any listing another source vouches for stays too."""
+    def stray(p):
+        name, category, _, lat, lon, meta_only = p
+        if not meta_only or category not in STRAY_CATEGORIES:
+            return False
+        items = notable.by_key.get(match_key(name), ())
+        if not any(links >= STRAY_MIN_LINKS for _, _, links in items):
+            return False
+        return all(meters_apart((lat, lon), (ilat, ilon)) > STRAY_METERS for ilat, ilon, _ in items)
+    return [p for p in places if not stray(p)]
+
+
 class Notable:
     """Wikidata's items (name, lat, lon, languages), by match key, for [select_places]."""
 
@@ -281,18 +328,34 @@ class Notable:
             if key:
                 self.by_key.setdefault(key, []).append((lat, lon, links))
 
-    def rank_near(self, name, lat, lon):
-        """The rank Wikidata's coverage gives a place named [name] at [lat], [lon], or None: the most
-        languages among items of its very name within NOTABLE_METERS. Only its very name: a school or
-        a cafe named for a cathedral isn't the cathedral."""
-        links = 0
-        for item_lat, item_lon, item_links in self.by_key.get(match_key(name), ()):
-            if item_links > links and meters_apart((lat, lon), (item_lat, item_lon)) <= NOTABLE_METERS:
-                links = item_links
-        for at_least, rank in NOTABLE_RANKS:
-            if links >= at_least:
-                return rank
-        return None
+    def boosts(self, places, candidates):
+        """The rank Wikidata's coverage lends [places] (name, category, lat, lon, rank), by index: each
+        item of a name lends it to the nearest of that name's [candidates] (indexes, by match key) within
+        its reach ([reach_meters]), and to any within DUPLICATE_METERS of it, the place's own listings. Only the
+        nearest of the rest: a far stray copy of the name inside the radius isn't the place, and ranked
+        with it would win the rider who starts nearer it. Only its very name: a school or a cafe named for
+        a cathedral isn't the cathedral."""
+        lent = {}
+        for key, indexes in candidates.items():
+            for item_lat, item_lon, links in self.by_key.get(key, ()):
+                rank = next((rank for at_least, rank in NOTABLE_RANKS if links >= at_least), None)
+                if rank is None:
+                    continue
+                apart = sorted(
+                    (meters_apart((places[i][2], places[i][3]), (item_lat, item_lon)), i) for i in indexes
+                )
+                apart = [(meters, i) for meters, i in apart if meters <= reach_meters(places[i][1])]
+                if not apart:
+                    continue
+                for meters, i in apart:
+                    if i == apart[0][1] or meters <= DUPLICATE_METERS:
+                        lent[i] = max(lent.get(i, 0), rank)
+        return lent
+
+
+def reach_meters(category):
+    """How far from a Wikidata item a listing in [category] can be and still be the item."""
+    return BIG_SITE_METERS if category in BIG_SITE_CATEGORIES else NOTABLE_METERS
 
 
 def select_places(rows, notable=None):
@@ -303,9 +366,8 @@ def select_places(rows, notable=None):
     Two listings are one place when they share a category, sit within DUPLICATE_METERS, and one's
     match key equals the other's or starts it ("Tate Modern" and "Tate Modern Museum"), or when they
     have the same name within SAME_SPOT_METERS whatever their categories; the more confident listing,
-    then the shorter name, is kept. [notable] (Wikidata's items) ranks the famous above the rest; it
-    never drops or moves a listing, since a name alone can't say a Wikidata item and a listing far from
-    it are one place (maintainer, 2026-10-12)."""
+    then the shorter name, is kept. [notable] (Wikidata's items) ranks the famous above the rest and
+    drops a famous venue's stray copies ([drop_strays_of_famous]); it never moves a listing."""
     notable = notable or Notable()
     kept = []
     for name, category, confidence, status, lat, lon, *rest in rows:
@@ -319,11 +381,14 @@ def select_places(rows, notable=None):
         if (confidence or 0.0) < need:
             continue
         kept.append((display_name(name.strip()), category, confidence, lat, lon, meta_only))
-    kept = drop_misplaced_landmarks(kept)
+    # Wikidata's strays first: the landmark rule keeps the most confident listing of a name, which
+    # could be a far stray copy, and drop the real one beside the item.
+    kept = drop_misplaced_landmarks(drop_strays_of_famous(kept, notable))
     # Best listing first, so a duplicate always meets the one it merges into already placed.
     kept.sort(key=lambda r: (-r[2], len(r[0]), r[0]))
     cells = {}
     out = []
+    candidates = {}
     for name, category, confidence, lat, lon, _ in kept:
         key = match_key(name)
         if not key:
@@ -347,10 +412,14 @@ def select_places(rows, notable=None):
         if duplicate:
             continue
         cells.setdefault(cell, []).append((key, category, (lat, lon)))
-        # Only a public place takes Wikidata's prominence: a shop or a cafe named like an area or a
-        # company ("Chiswick", a takeaway) isn't the famous thing.
-        boost = notable.rank_near(name, lat, lon) if is_public(category) else None
-        out.append((name, category, lat, lon, max(rank_of(category), boost or 0)))
+        # Only a public place, or one filed where a landmark often is, takes Wikidata's prominence: a shop
+        # or a cafe named like an area or a company ("Chiswick", a takeaway) isn't the famous thing.
+        if is_public(category) or category in BOOSTABLE_CATEGORIES:
+            candidates.setdefault(key, []).append(len(out))
+        out.append((name, category, lat, lon, rank_of(category)))
+    for i, rank in notable.boosts(out, candidates).items():
+        name, category, lat, lon, own = out[i]
+        out[i] = (name, category, lat, lon, max(own, rank))
     return out
 
 
