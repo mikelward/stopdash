@@ -4018,7 +4018,7 @@ and these carry the rest as their own PRs:
       finds nothing. Resolving `maps.app.goo.gl` to its coordinate would place any share, but asks
       Google: a first off-device request for search, so a Data Safety change, an undocumented URL
       shape that can move, and the rider's shared place sent to Google, which it came from anyway.
-      Decide before building.
+      Decided: build it (maintainer, 2026-10-13).
       - **What it sends:** one HTTPS request to `maps.app.goo.gl`, which redirects to a URL holding the
         place's coordinate. Google gets the short link (it names the shared place), the device's IP
         address and the app's user agent. No account, no device ID, nothing else.
@@ -4026,17 +4026,11 @@ and these carry the rest as their own PRs:
         is *App activity → In-app search history*, already declared collected, Optional, App
         functionality, and *Location → Approximate location* is already declared collected too.
         *Encrypted in transit* stays Yes; its note gains Google.
-      - **Open question: "Shared" on two rows, both No today.** No rests on Play's exclusions: a
-        transfer the user starts and would expect, or one to a service provider. Google isn't our
-        service provider, and a rider sharing a Maps link into StopDash needn't expect StopDash to
-        ask Google. The rows it touches:
-        - *In-app search history*: the short link names the shared place.
-        - *Approximate location*: Google receives the device's IP and says it may infer a general
-          area from it, and Play counts IP-derived location as Approximate location (Codex on #802).
-        The safe answer is **Shared = Yes** on both, which makes the listing say the app shares search
-        data and approximate location with third parties; arguing the user-initiated exclusion keeps
-        both No. Decide the two together, alongside whether to build it at all. Maintainer's call.
-      - **Either way:** `docs/PRIVACY.md` names Google as a recipient of a shared Maps link, and SPEC
+      - **Shared: decided Yes** (maintainer, 2026-10-13). *In-app search history* and both location
+        rows are now Shared = Yes for TfL (`docs/play-store/listing.md`), so a Maps link changes no
+        answer: their notes gain Google (the short link names the shared place; Google may infer an
+        area from the IP).
+      - **Also:** `docs/PRIVACY.md` names Google as a recipient of a shared Maps link, and SPEC
         *Sharing a place in* stops saying the link is never sent. A narrower build, asking Google only
         when the name search finds nothing, sends less but changes no answer above: the form
         declares what the app can do, not how often.
