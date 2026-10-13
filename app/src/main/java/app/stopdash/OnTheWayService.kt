@@ -417,8 +417,8 @@ internal object OnTheWayNotification {
         // was; its text where it has more to say than the step, which otherwise stays below it.
         val system = OnTheWayLiveUpdate.distanceSystem(context)
         val builder = NotificationCompat.Builder(context, alert?.kind?.channelId ?: CHANNEL_ID)
-            // The chip's icon: a compass where it names a walk's compass point, only while there's a chip.
-            .setSmallIcon(if (shown) OnTheWayLiveUpdate.smallIcon(context.resources, progress, boarding, system) else R.drawable.ic_stat_route_arrow)
+            // The app's route arrow, the chip's icon too, whatever the chip says (maintainer, 2026-10-13).
+            .setSmallIcon(R.drawable.ic_stat_route_arrow)
             .setContentTitle(alert?.title ?: title)
             .setContentText(alert?.text ?: stepText)
             .setSubText(trip?.let { context.getString(R.string.on_the_way_title, it.destinationName) })
