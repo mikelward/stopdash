@@ -1,6 +1,7 @@
 package app.stopdash.ui
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -32,11 +33,17 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36], qualifiers = "en-rGB")
 class LicensesOffMainTest {
+    // Effects on a queued dispatcher, as the app's main thread is: the rule's default resumes an effect
+    // unconfined, on whichever thread handed it back, so the worker's answer was written, and the
+    // dialog sometimes built, on the worker ("Can't create handler inside thread licenses-worker").
     @get:Rule
-    val composeRule = createComposeRule()
+    val composeRule = createComposeRule(effectContext = StandardTestDispatcher())
 
     /** Each pass over the libraries notes its thread; the list's rows read by index, not by a pass. */
     private val scans = ThreadRecorder()
+
+    /** The thread of each state write during the restore. */
+    private val stateWrites = ThreadRecorder()
 
     private val libraries: Libs = run {
         val loaded = Libs.Builder().withJson(ApplicationProvider.getApplicationContext(), R.raw.aboutlibraries).build()
@@ -59,17 +66,26 @@ class LicensesOffMainTest {
     fun a_restored_dialog_finds_its_library_on_the_worker_thread() {
         val worker = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "licenses-worker") }.asCoroutineDispatcher()
         worker.use {
-            val restoration = StateRestorationTester(composeRule)
-            restoration.setContent {
-                CompositionLocalProvider(LocalWorker provides worker) { LicensesContent(libraries) }
+            // Every state write the screen makes notes its thread: the worker's answer is published on the
+            // main thread, never written from the worker, where it would recompose (and build the dialog) there.
+            // Disposed however the test ends: the observer is process-wide.
+            val writes = Snapshot.registerGlobalWriteObserver { stateWrites.note() }
+            try {
+                val restoration = StateRestorationTester(composeRule)
+                restoration.setContent {
+                    CompositionLocalProvider(LocalWorker provides worker) { LicensesContent(libraries) }
+                }
+                composeRule.onNodeWithText("Activity").performClick()
+                restoration.emulateSavedInstanceStateRestore()
+                composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTextExists("Version 1.13.0") }
+            } finally {
+                writes.dispose()
             }
-            composeRule.onNodeWithText("Activity").performClick()
-            restoration.emulateSavedInstanceStateRestore()
-            composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTextExists("Version 1.13.0") }
         }
         composeRule.onNodeWithText("Version 1.13.0").assertIsDisplayed()
         assertTrue(scans.threads().isNotEmpty())
         assertEquals(setOf("licenses-worker"), scans.threads().toSet())
+        assertEquals(setOf(Thread.currentThread().name.substringBefore(" @")), stateWrites.threads().toSet())
     }
 
     private fun androidx.compose.ui.test.junit4.ComposeContentTestRule.onAllNodesWithTextExists(text: String): Boolean =
