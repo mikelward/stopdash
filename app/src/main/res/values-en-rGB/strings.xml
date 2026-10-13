@@ -43,4 +43,9 @@
     <string name="compass_nw">north-west</string>
     <string name="station_search_add_favorite">Add favourite</string>
     <string name="station_search_remove_favorite">Remove favourite</string>
+    <!-- Place types (values/strings.xml). -->
+    <string name="place_type_takeaway">Takeaway</string>
+    <string name="place_type_mall">Shopping centre</string>
+    <string name="place_type_theater">Theatre</string>
+    <string name="place_type_community">Community centre</string>
 </resources>

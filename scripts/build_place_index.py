@@ -8,8 +8,9 @@ anywhere. Each line is one destination:
     kind  name  category  latitude  longitude  rank  district
 
 - kind: `P` a place (a venue, a business, a park…), `S` a street, `C` a postcode.
-- category: the OpenStreetMap tag that makes a place one (`tourism=museum`, `leisure=park`, …); empty
-  for a street or postcode. The app doesn't read it: it's there so a refresh's diff says what a line is.
+- category: a place's type (`pub`, `museum`, `church`…, one of TYPES), from the OpenStreetMap tag
+  that makes it a place, shown on its row as an icon; empty for a street or postcode (format 3; before
+  it the column held the raw tag, which the app didn't read).
 - latitude, longitude: degrees to five places (about a meter).
 - rank: 0–9, how prominent the entry is, to order equal matches: a place Wikipedia covers in many
   languages 9 (20 or more) or 8 (5 or more), any other public place 7, a street or postcode 4, any
@@ -58,7 +59,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 
-FORMAT_VERSION = 2
+FORMAT_VERSION = 3
 # Greater London: the area the index covers.
 WEST, EAST, SOUTH, NORTH = -0.51, 0.34, 51.28, 51.70
 # Geofabrik's extracts covering that rectangle: Greater London, and the counties its fringe reaches
@@ -156,6 +157,60 @@ def wikidata_id(value):
     """The Wikidata item an OpenStreetMap `wikidata` tag names ("Q42"), or None."""
     m = WIKIDATA_ITEM.fullmatch(value or "")
     return m.group(1) if m else None
+
+
+# The types the app shows as an icon (PlaceType's codes), from a place's category ([place_of]): a
+# "key=value" here, else a whole key ("shop": any shop), else "place".
+TYPE_OF = {
+    "amenity=restaurant": "restaurant", "amenity=food_court": "restaurant", "amenity=cafe": "cafe",
+    "amenity=fast_food": "takeaway", "amenity=pub": "pub", "amenity=bar": "bar", "amenity=biergarten": "bar",
+    "amenity=nightclub": "bar", "shop=supermarket": "supermarket", "shop=convenience": "supermarket",
+    "shop=mall": "mall", "shop=department_store": "mall", "shop=hairdresser": "hairdresser", "shop=beauty": "hairdresser",
+    "amenity=pharmacy": "pharmacy", "amenity=doctors": "doctor", "amenity=clinic": "doctor", "amenity=dentist": "dentist",
+    "amenity=hospital": "hospital", "amenity=bank": "bank", "amenity=bureau_de_change": "bank",
+    "tourism=hotel": "hotel", "tourism=hostel": "hotel", "tourism=guest_house": "hotel", "tourism=apartment": "hotel",
+    "tourism=motel": "hotel", "amenity=school": "school", "amenity=kindergarten": "school",
+    "amenity=university": "college", "amenity=college": "college", "amenity=library": "library",
+    "leisure=park": "park", "leisure=garden": "park", "leisure=common": "park", "leisure=nature_reserve": "park",
+    "landuse=village_green": "park", "landuse=recreation_ground": "park", "leisure=playground": "playground",
+    "leisure=fitness_centre": "gym", "leisure=sports_centre": "gym", "leisure=sports_hall": "gym", "leisure=ice_rink": "gym",
+    "leisure=swimming_pool": "pool", "leisure=water_park": "pool", "leisure=stadium": "stadium",
+    "leisure=golf_course": "golf", "tourism=museum": "museum", "tourism=gallery": "gallery", "amenity=arts_centre": "gallery",
+    "amenity=theatre": "theater", "amenity=music_venue": "theater", "amenity=concert_hall": "theater",
+    "amenity=cinema": "cinema", "tourism=attraction": "attraction", "tourism=theme_park": "attraction",
+    "tourism=zoo": "attraction", "tourism=aquarium": "attraction", "amenity=events_venue": "venue",
+    "amenity=exhibition_centre": "venue", "amenity=conference_centre": "venue", "amenity=marketplace": "market",
+    "amenity=community_centre": "community", "amenity=social_centre": "community", "amenity=police": "police",
+    "amenity=post_office": "post_office", "landuse=cemetery": "cemetery", "amenity=grave_yard": "cemetery",
+    "amenity=crematorium": "cemetery", "place=square": "square", "amenity=embassy": "office",
+    "amenity=townhall": "office", "amenity=courthouse": "office",
+    # Healthcare by what it is: a physiotherapist, a counselor or a lab isn't a doctor, so any other
+    # healthcare value is "health" (TYPE_OF_KEY).
+    "healthcare=doctor": "doctor", "healthcare=clinic": "doctor", "healthcare=centre": "doctor",
+    "healthcare=dentist": "dentist", "healthcare=hospital": "hospital", "healthcare=pharmacy": "pharmacy",
+    # A building admitted for its Wikidata item: its type when the building says it, else a landmark.
+    "building=school": "school", "building=university": "college", "building=college": "college",
+    "building=church": "church", "building=chapel": "church", "building=cathedral": "church",
+    "building=mosque": "mosque", "building=synagogue": "synagogue", "building=temple": "temple",
+    "building=hospital": "hospital", "building=hotel": "hotel", "building=stadium": "stadium",
+    "building=museum": "museum", "building=library": "library", "building=supermarket": "supermarket",
+    "building=retail": "shop", "building=office": "office", "building=commercial": "office",
+}
+TYPE_OF_KEY = {"shop": "shop", "craft": "shop", "office": "office", "healthcare": "health", "historic": "landmark",
+               "man_made": "landmark", "building": "landmark", "aeroway": "airport"}
+# A place of worship's type, by its religion. Most of London's with none tagged are churches; one
+# tagged with a religion not here (multifaith, Bahá'í…) is a plain place, never mislabeled a church.
+WORSHIP = {"christian": "church", "muslim": "mosque", "jewish": "synagogue", "hindu": "temple", "sikh": "temple",
+           "buddhist": "temple", "jain": "temple"}
+TYPES = sorted(set(TYPE_OF.values()) | set(TYPE_OF_KEY.values()) | set(WORSHIP.values()) | {"place"})
+
+
+def place_type(category, tags):
+    """The type a place with [category] ("amenity=pub") and [tags] shows as: one of TYPES."""
+    if category == "amenity=place_of_worship":
+        religion = (tags.get("religion") or "").strip()
+        return WORSHIP.get(religion, "place") if religion else "church"
+    return TYPE_OF.get(category) or TYPE_OF_KEY.get(category.split("=")[0], "place")
 
 
 def place_item(tags):
@@ -591,7 +646,7 @@ def read_osm(paths):
         name = tags.get("name")
         kind = place_of(tags)
         if kind and (key not in places or places[key][6] < size):
-            places[key] = (name, kind[0], kind[1], lat, lon, place_item(tags), size)
+            places[key] = (name, place_type(kind[0], tags), kind[1], lat, lon, place_item(tags), size)
         if tags.get("place") in NEIGHBORHOODS:
             areas[key] = (name, tags["place"], lat, lon)
 

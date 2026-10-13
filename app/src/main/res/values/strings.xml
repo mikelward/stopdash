@@ -603,6 +603,54 @@
     <!-- Placeholder in the From… search: it starts a trip from a station, a stop, or a place. -->
     <string name="station_search_from_hint">Station, stop, place or postcode</string>
     <string name="station_search_kind_postcode">Postcode</string>
+    <!-- What kind of place a To… place result is: its row shows the type's icon after the postcode
+         district, and a screen reader says this word (maintainer, 2026-10-13). A plain place says
+         station_search_kind_place. -->
+    <string name="place_type_restaurant">Restaurant</string>
+    <string name="place_type_cafe">Café</string>
+    <string name="place_type_takeaway">Takeout</string>
+    <string name="place_type_pub">Pub</string>
+    <string name="place_type_bar">Bar</string>
+    <string name="place_type_supermarket">Supermarket</string>
+    <string name="place_type_shop">Shop</string>
+    <string name="place_type_mall">Shopping center</string>
+    <string name="place_type_hairdresser">Hairdresser</string>
+    <string name="place_type_pharmacy">Pharmacy</string>
+    <string name="place_type_doctor">Doctor</string>
+    <!-- Any other healthcare: a physiotherapist, a counselor, a lab. -->
+    <string name="place_type_health">Health</string>
+    <string name="place_type_dentist">Dentist</string>
+    <string name="place_type_hospital">Hospital</string>
+    <string name="place_type_bank">Bank</string>
+    <string name="place_type_office">Office</string>
+    <string name="place_type_hotel">Hotel</string>
+    <string name="place_type_school">School</string>
+    <string name="place_type_college">College</string>
+    <string name="place_type_library">Library</string>
+    <string name="place_type_church">Church</string>
+    <string name="place_type_mosque">Mosque</string>
+    <string name="place_type_synagogue">Synagogue</string>
+    <string name="place_type_temple">Temple</string>
+    <string name="place_type_park">Park</string>
+    <string name="place_type_playground">Playground</string>
+    <string name="place_type_gym">Gym</string>
+    <string name="place_type_pool">Pool</string>
+    <string name="place_type_stadium">Stadium</string>
+    <string name="place_type_golf">Golf course</string>
+    <string name="place_type_museum">Museum</string>
+    <string name="place_type_gallery">Gallery</string>
+    <string name="place_type_theater">Theater</string>
+    <string name="place_type_cinema">Cinema</string>
+    <string name="place_type_attraction">Attraction</string>
+    <string name="place_type_landmark">Landmark</string>
+    <string name="place_type_venue">Venue</string>
+    <string name="place_type_market">Market</string>
+    <string name="place_type_community">Community center</string>
+    <string name="place_type_police">Police</string>
+    <string name="place_type_post_office">Post office</string>
+    <string name="place_type_cemetery">Cemetery</string>
+    <string name="place_type_airport">Airport</string>
+    <string name="place_type_square">Square</string>
     <!-- A searched station that has no stops stopdash shows departures for. -->
     <string name="station_no_departures">No departures here</string>
     <!-- Settings row that opens the favorite-places editor (SPEC D9). -->

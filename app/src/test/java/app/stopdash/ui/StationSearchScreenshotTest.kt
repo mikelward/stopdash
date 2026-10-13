@@ -4,34 +4,37 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import app.stopdash.domain.ChipLabel
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
+import app.stopdash.domain.FavoritePlaceIcon
 import app.stopdash.domain.PlaceHit
 import app.stopdash.domain.PlaceKind
+import app.stopdash.domain.PlaceType
 import app.stopdash.domain.SearchEntry
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.TripDestination
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
-import org.junit.Assert.assertEquals
-import app.stopdash.domain.ChipLabel
-import app.stopdash.domain.FavoritePlaceIcon
-import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.longClick
 import kotlinx.coroutines.Dispatchers
-import androidx.compose.runtime.CompositionLocalProvider
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -83,7 +86,8 @@ class StationSearchScreenshotTest {
             StationSearchViewModel.State(query = "kings", result = StationSearchViewModel.Result.Matches(matches)),
             onOpen = { opened = it },
         )
-        composeRule.onNodeWithText("Tube · National Rail · Bus").assertIsDisplayed()
+        // Its modes are icons now; the row still says them.
+        composeRule.onNodeWithContentDescription("Tube · National Rail · Bus", substring = true).assertIsDisplayed()
         captureSnapshot("station-search-matches.png")
         composeRule.onNodeWithText("King's Cross Station").performClick()
         assertEquals("490G00000001", opened?.id)
@@ -241,7 +245,7 @@ class StationSearchScreenshotTest {
         composeRule.waitForIdle()
         val placeTop = composeRule.onNodeWithText("Example Gallery").fetchSemanticsNode().boundsInRoot.top
         assertTrue(placeTop < composeRule.onNodeWithText("Oxford Circus").fetchSemanticsNode().boundsInRoot.top)
-        composeRule.onNodeWithText("Place").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Example Gallery, Place").assertIsDisplayed()
         captureSnapshot("station-search-to-recent-place.png")
         composeRule.onNodeWithText("Example Gallery").performClick()
         assertEquals(gallery, picked)
@@ -609,7 +613,7 @@ class StationSearchScreenshotTest {
                         result = StationSearchViewModel.Result.Matches(
                             matches = listOf(StationMatch("HUBVIC", "Victoria", listOf("tube", "national-rail"))),
                             places = listOf(
-                                PlaceHit("Sample Gallery", Coordinates(51.50, -0.10), PlaceKind.PLACE),
+                                PlaceHit("Sample Gallery", Coordinates(51.50, -0.10), PlaceKind.PLACE, type = PlaceType.GALLERY),
                                 PlaceHit("X1 9XX", Coordinates(51.49, -0.13), PlaceKind.POSTCODE),
                             ),
                         ),
@@ -625,9 +629,9 @@ class StationSearchScreenshotTest {
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Victoria").assertIsDisplayed()
-        composeRule.onNodeWithText("Sample Gallery").assertIsDisplayed()
-        composeRule.onNodeWithText("Place").assertIsDisplayed()
-        composeRule.onNodeWithText("Postcode").assertIsDisplayed()
+        // Each shows its type's icon, and says the type.
+        composeRule.onNodeWithContentDescription("Sample Gallery, Gallery").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("X1 9XX, Postcode").assertIsDisplayed()
         captureSnapshot("station-search-to-place-results.png")
         composeRule.onNodeWithText("Sample Gallery").performClick()
         assertEquals(TripDestination.Place(Coordinates(51.50, -0.10), "Sample Gallery"), routed)
@@ -637,7 +641,7 @@ class StationSearchScreenshotTest {
     fun station_search_rows_show_their_postcode_district() {
         // Same-named bus stops told apart by their postcode district, and a place with its own.
         // Synthetic names and districts (AGENTS *Privacy*).
-        val zetaGallery = PlaceHit("Zeta Gallery", Coordinates(51.55, -0.2), PlaceKind.PLACE)
+        val zetaGallery = PlaceHit("Zeta Gallery", Coordinates(51.55, -0.2), PlaceKind.PLACE, type = PlaceType.GALLERY)
         composeRule.setContent {
             StopDashTheme {
                 StationSearchScreen(
@@ -665,8 +669,10 @@ class StationSearchScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("X2 · Bus").assertIsDisplayed()
-        composeRule.onNodeWithText("X2 · Place").assertIsDisplayed()
+        // The district stays as text, where it always was; the type or modes after it are icons.
+        composeRule.onAllNodesWithText("X2").assertCountEquals(2)
+        composeRule.onNodeWithContentDescription("Zeta Church, X2 · Bus").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Zeta Gallery, X2, Gallery").assertIsDisplayed()
         captureSnapshot("station-search-areas.png")
     }
 

@@ -160,7 +160,29 @@ class PlaceIndexTest {
 
     @Test(expected = IllegalArgumentException::class)
     fun `another format version is refused`() {
-        index(line("P", "Zeta Hall"), header = "# stopdash place index v3\ttest")
+        index(line("P", "Zeta Hall"), header = "# stopdash place index v4\ttest")
+    }
+
+    @Test
+    fun `format 3 gives each place its type, and one this build doesn't know reads as a place`() {
+        val places = index(
+            "P\tZeta Arms\tpub\t51.50000\t-0.12000\t2\tXX1",
+            "P\tZeta Thing\tsomething_new\t51.50000\t-0.12000\t2\tXX1",
+            "S\tZeta Road\t\t51.50000\t-0.12000\t4\tXX1",
+            header = "# stopdash place index v3\ttest",
+        )
+        assertEquals(0, places.skippedLines)
+        assertEquals(
+            mapOf("Zeta Arms" to PlaceType.PUB, "Zeta Thing" to PlaceType.PLACE, "Zeta Road" to PlaceType.PLACE),
+            places.search("zeta").associate { it.name to it.type },
+        )
+    }
+
+    @Test
+    fun `an earlier format's category column isn't a type`() {
+        // Format 2 wrote the raw OpenStreetMap tag there.
+        val places = v2(district("Zeta Arms", "XX1"))
+        assertEquals(PlaceType.PLACE, places.search("zeta arms").single().type)
     }
 
     private fun v2(vararg lines: String) = index(*lines, header = "# stopdash place index v2\ttest")
@@ -266,6 +288,10 @@ class PlaceIndexTest {
         }
         assertTrue("checked only $checked entries", checked > 150_000)
         assertEquals("entries whose stored district isn't the shown one", emptyList<List<String>>(), mismatches.take(5))
+        // Every place's type is one this build knows: one it didn't would show the plain place icon.
+        val unknownTypes = file.readLines().drop(1).map { it.split('\t') }.filter { it[0] == "P" && PlaceType.ofCode(it[2]) == null }
+        assertEquals("places with a type the app doesn't know", emptyList<List<String>>(), unknownTypes.take(5))
+        assertEquals(PlaceType.GALLERY, places.search("tate modern").first().type)
         // A well-known place leads the lesser ones its query also starts (Wikidata's coverage).
         assertEquals("St Paul's Cathedral", places.search("st paul").first().name)
         // King's Cross (an interchange, public TfL data) is in an N1 district.

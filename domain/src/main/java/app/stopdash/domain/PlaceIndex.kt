@@ -34,6 +34,8 @@ class PlaceIndex private constructor(
     private val keyStarts: IntArray,
     private val kinds: ByteArray,
     private val ranks: ByteArray,
+    // Each entry's [PlaceType] ordinal ([PlaceType.PLACE] for a street, a postcode, or an older file).
+    private val types: ByteArray,
     // Each entry's folded postcode district ("n10"), empty where the file gives none.
     private val districts: ByteArray,
     private val districtStarts: IntArray,
@@ -47,8 +49,15 @@ class PlaceIndex private constructor(
     /**
      * One destination found: its [name], what [kind] it is, and where it is. [notable]: a landmark
      * Wikipedia covers widely (rank [NOTABLE_RANK] or more), which outranks a bus stop matched as well.
+     * [type]: what kind of place a [Kind.PLACE] is, for its row's icon.
      */
-    data class Entry(val name: String, val kind: Kind, val coordinate: Coordinates, val notable: Boolean = false)
+    data class Entry(
+        val name: String,
+        val kind: Kind,
+        val coordinate: Coordinates,
+        val notable: Boolean = false,
+        val type: PlaceType = PlaceType.PLACE,
+    )
 
     val size: Int get() = kinds.size
 
@@ -182,6 +191,7 @@ class PlaceIndex private constructor(
         kind = Kind.entries[kinds[i].toInt()],
         coordinate = Coordinates(latitudes[i] / COORDINATE_SCALE, longitudes[i] / COORDINATE_SCALE),
         notable = ranks[i] >= NOTABLE_RANK,
+        type = PlaceType.entries[types[i].toInt()],
     )
 
     // Whether entry [i]'s name starts with the word "The", so its key's leading "the" can be passed
@@ -274,7 +284,7 @@ class PlaceIndex private constructor(
     }
 
     companion object {
-        const val FORMAT_VERSION = 2
+        const val FORMAT_VERSION = 3
         const val DEFAULT_LIMIT = 8
         /** The shortest query searched at all, and the shortest searched beyond prefixes. */
         const val MIN_QUERY_LENGTH = 2
@@ -305,13 +315,13 @@ class PlaceIndex private constructor(
         private const val WHOLE_DISTRICT = 2
 
         val EMPTY = PlaceIndex(
-            ByteArray(0), IntArray(1), ByteArray(0), IntArray(1), ByteArray(0), ByteArray(0), ByteArray(0), IntArray(1),
+            ByteArray(0), IntArray(1), ByteArray(0), IntArray(1), ByteArray(0), ByteArray(0), ByteArray(0), ByteArray(0), IntArray(1),
             IntArray(0), IntArray(0), 0,
         )
 
         /**
-         * Reads the index file (see `scripts/build_place_index.py`), format 2 or the format 1 before
-         * it, which had no district column. Throws [IllegalArgumentException] on a header for another
+         * Reads the index file (see `scripts/build_place_index.py`), format 3, or a format before it:
+         * format 2 had no place types (its category column was the raw tag), format 1 no districts. Throws [IllegalArgumentException] on a header for another
          * format version, since its lines can't be trusted to mean the same; a single unreadable line
          * is left out and counted in [skippedLines].
          */
@@ -329,6 +339,7 @@ class PlaceIndex private constructor(
             val keyStarts = IntList()
             val kinds = java.io.ByteArrayOutputStream()
             val ranks = java.io.ByteArrayOutputStream()
+            val types = java.io.ByteArrayOutputStream()
             val districts = java.io.ByteArrayOutputStream(1 shl 20)
             val districtStarts = IntList()
             val latitudes = IntList()
@@ -361,6 +372,9 @@ class PlaceIndex private constructor(
                 keys.write(key)
                 kinds.write(kind.ordinal)
                 ranks.write(rank)
+                // A type this build doesn't know reads as a plain place, not an unreadable line.
+                val type = if (version >= 3) PlaceType.ofCode(fields[2]) else null
+                types.write((type ?: PlaceType.PLACE).ordinal)
                 districtStarts.add(districts.size())
                 if (columns > 6) districts.write(fold(fields[6]))
                 latitudes.add(Math.round(lat * COORDINATE_SCALE).toInt())
@@ -371,7 +385,7 @@ class PlaceIndex private constructor(
             districtStarts.add(districts.size())
             return PlaceIndex(
                 names.toByteArray(), nameStarts.toArray(), keys.toByteArray(), keyStarts.toArray(),
-                kinds.toByteArray(), ranks.toByteArray(), districts.toByteArray(), districtStarts.toArray(),
+                kinds.toByteArray(), ranks.toByteArray(), types.toByteArray(), districts.toByteArray(), districtStarts.toArray(),
                 latitudes.toArray(), longitudes.toArray(), skipped,
             )
         }

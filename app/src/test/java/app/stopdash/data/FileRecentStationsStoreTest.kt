@@ -3,6 +3,7 @@ package app.stopdash.data
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.PlaceHit
 import app.stopdash.domain.PlaceKind
+import app.stopdash.domain.PlaceType
 import app.stopdash.domain.SearchEntry
 import app.stopdash.domain.StationMatch
 import java.io.File
@@ -56,7 +57,8 @@ class FileRecentStationsStoreTest {
     @Test
     fun `a picked place is kept among the stops, in the order picked, across a reload`() {
         val file = File(tmp.root, "recent-destinations.json")
-        val gallery = PlaceHit("Example Gallery", Coordinates(51.5, -0.12), PlaceKind.PLACE)
+        // Its type too, for its row's icon.
+        val gallery = PlaceHit("Example Gallery", Coordinates(51.5, -0.12), PlaceKind.PLACE, type = PlaceType.GALLERY)
         val postcode = PlaceHit("SW1A 1AA", Coordinates(51.501, -0.141), PlaceKind.POSTCODE)
         FileRecentStationsStore(file).add(oxford)
         FileRecentStationsStore(file).addPlace(gallery)
