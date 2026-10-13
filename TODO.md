@@ -25,16 +25,21 @@ exercises the whole spine the widget later renders from.
 
 ### Phase 0 — remaining (follow-up PRs)
 
-- [ ] Fix the flaky `LicensesOffMainTest.a_restored_dialog_finds_its_library_on_the_worker_thread`. It
-      passes alone but failed twice in full `:app:testDebugUnitTest` runs on 2026-10-09: the restored
-      dialog was constructed on the `licenses-worker` thread ("Can't create handler inside thread …
-      that has not called Looper.prepare()"), so something resumes onto the worker that should hop
-      back to the main thread. Found while rebasing #711, which doesn't touch the licenses screen.
+- [x] Fix the flaky `LicensesOffMainTest.a_restored_dialog_finds_its_library_on_the_worker_thread`:
+      the compose rule's default effect dispatcher is unconfined, so the worker's answer was written, and
+      the dialog sometimes built, on the worker. The test now queues effects as the app does.
+  - [ ] Other Compose tests that put a real thread behind `LocalWorker` (the `*OffMainTest`s,
+        `LinesOverlayTest`, `LineLoadsTest`, the trip and on-the-way screenshot tests) use the same
+        default rule and can recompose on their worker too; give them `effectContext =
+        StandardTestDispatcher()` and the state-write thread check `LicensesOffMainTest` has.
 - [ ] Fix the flaky `MainViewModelTest.a relocation's farther cards are re-measured on the worker thread`.
       It passes alone but failed once in a full `:app:testDebugUnitTest` run on 2026-10-11 with "work
       reached the worker after it stopped": something still hands work to the test's worker after
       `TestWorker.close` saw it go quiet. Found on the branch moving a line's page and the journey alerts
-      onto the shared line answers, which doesn't touch the farther cards.
+      onto the shared line answers, which doesn't touch the farther cards. Not reproduced on 2026-10-13
+      in 30 runs alone (half under full CPU load) or 8 full-suite runs; run alone, every dispatch to the
+      worker comes from the test thread or the worker itself, which `close` drains, so the late one came
+      from some third thread not yet found.
 - [x] Trip page: work out its per-tick values off the main thread too. Each tick's estimates, cards,
       open route, what frames them, and each card's alerts, notices and times are one frame worked out on
       the page's worker (`tripFrame`), drawn against its own state and time.
