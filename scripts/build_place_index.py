@@ -5,7 +5,7 @@ Writes the tab-separated file the app reads as `assets/places/place_index.tsv`: 
 and postcodes a *To…* search can route to, found on the device as the rider types, with nothing sent
 anywhere. Each line is one destination:
 
-    kind  name  category  latitude  longitude  rank
+    kind  name  category  latitude  longitude  rank  district
 
 - kind: `P` a place (a venue, a business, a park…), `S` a street, `C` a postcode.
 - category: the OpenStreetMap tag that makes a place one (`tourism=museum`, `leisure=park`, …); empty
@@ -14,6 +14,9 @@ anywhere. Each line is one destination:
 - rank: 0–9, how prominent the entry is, to order equal matches: a place Wikipedia covers in many
   languages 9 (20 or more) or 8 (5 or more), any other public place 7, a street or postcode 4, any
   other place 2.
+- district: a place's or street's postcode district ("N10"), exactly as the app works out the one its
+  row shows (PlaceIndex.districtNear), so a name and the district on its row find it; empty for a
+  postcode, or with no postcode within about 1.1 km (format 2; format 1 had no such column).
 
 The first line is a `#` header naming the format version and the sources. Lines are sorted, so a
 refresh's diff shows what moved.
@@ -55,7 +58,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 # Greater London: the area the index covers.
 WEST, EAST, SOUTH, NORTH = -0.51, 0.34, 51.28, 51.70
 # Geofabrik's extracts covering that rectangle: Greater London, and the counties its fringe reaches
@@ -468,6 +471,52 @@ def without_saint_dot(name):
     return SAINT_DOT.sub(replace, name).strip()
 
 
+# A place's district is the one its row shows, so search finds what the rider reads: worked out exactly
+# as PlaceIndex.districtNear does, on the same rounded coordinates, cells, order and tie-break, and
+# PlaceIndexTest checks every bundled entry against it.
+COORDINATE_SCALE = 100_000
+LAT_CELL, LON_CELL = 1000, 1700
+MAX_DISTRICT_DISTANCE = 1000
+
+
+def scaled(degrees):
+    """[degrees] as the app holds it: written to five places, read back, then Math.round(x * 1e5)."""
+    return math.floor(float(f"{degrees:.5f}") * COORDINATE_SCALE + 0.5)
+
+
+def district_grid(postcodes):
+    """[postcodes] (postcode, lat, lon), in the order the app reads them (the file's sorted order), by
+    the app's grid cell, for [district_near]."""
+    grid = {}
+    for postcode, lat, lon in sorted(postcodes, key=lambda p: f"C\t{p[0]}\t\t{p[1]:.5f}\t{p[2]:.5f}"):
+        y, x = scaled(lat), scaled(lon)
+        grid.setdefault((y // LAT_CELL, x // LON_CELL), []).append((postcode.split(" ")[0], y, x))
+    return grid
+
+
+def truncating_division(a, b):
+    """[a] / [b] for a positive [b], rounded toward zero as Kotlin's Long division does (Python's // floors)."""
+    return a // b if a >= 0 else -(-a // b)
+
+
+def district_near(grid, lat, lon):
+    """The district PlaceIndex.districtNear gives (lat, lon): the nearest postcode's, the first in its
+    order on a tie, within about 1.1 km; "" with none that near."""
+    y, x = scaled(lat), scaled(lon)
+    best, best_distance = "", None
+    for d_lat in (-1, 0, 1):
+        for d_lon in (-1, 0, 1):
+            for district, p_y, p_x in grid.get((y // LAT_CELL + d_lat, x // LON_CELL + d_lon), ()):
+                north = p_y - y
+                east = truncating_division((p_x - x) * 62, 100)
+                distance = north * north + east * east
+                if best_distance is None or distance < best_distance:
+                    best, best_distance = district, distance
+    if best_distance is None or best_distance > MAX_DISTRICT_DISTANCE * MAX_DISTRICT_DISTANCE:
+        return ""
+    return best
+
+
 def render(places, streets, postcodes, sources):
     """The index file's text: the header, then every entry, sorted."""
     def clean(text):
@@ -476,9 +525,10 @@ def render(places, streets, postcodes, sources):
     # A name with no letter or digit the app can match ("ピカデリー・サーカス") can't be found by typing.
     places = [p for p in places if match_key(p[0])]
     streets = [s for s in streets if match_key(s[0])]
-    lines = [f"P\t{clean(n)}\t{c}\t{lat:.5f}\t{lon:.5f}\t{r}" for n, c, lat, lon, r in places]
-    lines += [f"S\t{clean(n)}\t\t{lat:.5f}\t{lon:.5f}\t{STREET_RANK}" for n, lat, lon in streets]
-    lines += [f"C\t{p}\t\t{lat:.5f}\t{lon:.5f}\t{POSTCODE_RANK}" for p, lat, lon in postcodes]
+    grid = district_grid(postcodes)
+    lines = [f"P\t{clean(n)}\t{c}\t{lat:.5f}\t{lon:.5f}\t{r}\t{district_near(grid, lat, lon)}" for n, c, lat, lon, r in places]
+    lines += [f"S\t{clean(n)}\t\t{lat:.5f}\t{lon:.5f}\t{STREET_RANK}\t{district_near(grid, lat, lon)}" for n, lat, lon in streets]
+    lines += [f"C\t{p}\t\t{lat:.5f}\t{lon:.5f}\t{POSTCODE_RANK}\t" for p, lat, lon in postcodes]
     lines.sort()
     header = f"# stopdash place index v{FORMAT_VERSION}\t{sources}"
     return header + "\n" + "\n".join(lines) + "\n"

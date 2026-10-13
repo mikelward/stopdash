@@ -303,6 +303,12 @@ Wikidata about each item a place names takes the rest of its under three minutes
 | Postcodes (Code-Point Open, unchanged) | 213,011 | 6.6 MB | 1.7 MB |
 | **All** | 408,784 | 17.0 MB | **4.5 MB** |
 
+Format 2 (2026-10-13) adds each place's and street's postcode district as a seventh column, the
+district of the nearest postcode within 1.1 km (as the app's row label works it out), so "Tate
+Modern, SE1" finds that one place: 18.0 MB raw, **4.9 MB** compressed. Working the districts out on
+the phone instead would mean a nearest-postcode search for each of some 196,000 entries as the index
+loads, on a path already about a second long, so the builder does it. The app still reads format 1.
+
 Against Overture's tier B (178,690 places), that's about a third fewer places, nearly all of them
 businesses: 90,172 places rank 2 (shops, cafes, offices), 26,608 rank 7 (public places), and 1,026
 rank 8 or 9 through the Wikipedia coverage of the item they name. Every landmark the Overture spot

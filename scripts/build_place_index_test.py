@@ -9,7 +9,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from build_place_index import (  # noqa: E402
     AREA_RADIUS_METERS, DUPLICATE_METERS, ODBL_NOTICE, area_grid, cell_of, display_name, geofabrik_md5, is_street,
-    match_key, meters_apart, near_cells, parse_wikipedia_counts, place_item, place_of, polygon_centroid, postcode_text,
+    district_grid, district_near, match_key, meters_apart, near_cells, truncating_division, parse_wikipedia_counts, place_item, place_of, polygon_centroid, postcode_text,
     query_service, render, select_places, select_postcodes, select_streets, wikidata_id, wikipedia_editions,
 )
 
@@ -391,9 +391,29 @@ class RenderTest(unittest.TestCase):
                       [("XX1 1XX", 51.5, -0.12)], "test sources")
         lines = text.splitlines()
         self.assertEqual(4, len(lines))
-        self.assertEqual("# stopdash place index v1\ttest sources", lines[0])
-        self.assertEqual(["C\tXX1 1XX\t\t51.50000\t-0.12000\t4", "P\tBeta Hall\ttourism=museum\t51.50000\t-0.12000\t9",
-                          "S\tAlpha Road\t\t51.50000\t-0.12000\t4"], lines[1:])
+        self.assertEqual("# stopdash place index v2\ttest sources", lines[0])
+        self.assertEqual(["C\tXX1 1XX\t\t51.50000\t-0.12000\t4\t", "P\tBeta Hall\ttourism=museum\t51.50000\t-0.12000\t9\tXX1",
+                          "S\tAlpha Road\t\t51.50000\t-0.12000\t4\tXX1"], lines[1:])
+
+    def test_district_selection_follows_the_apps(self):
+        self.assertEqual(-3, truncating_division(-310, 100))
+        self.assertEqual(3, truncating_division(310, 100))
+        # Two postcodes the same distance away: the first in the file's sorted order wins, as in the app.
+        grid = district_grid([("YY2 2YY", 51.5, -0.12008), ("XX1 1XX", 51.5, -0.11992)])
+        self.assertEqual("XX1", district_near(grid, 51.5, -0.12))
+        # Just inside the app's limit (1000 scaled units north), and just past it.
+        grid = district_grid([("XX1 1XX", 51.51, -0.12)])
+        self.assertEqual("XX1", district_near(grid, 51.5, -0.12))
+        self.assertEqual("", district_near(grid, 51.49999, -0.12))
+
+    def test_a_place_takes_the_district_of_the_nearest_postcode_close_by(self):
+        postcodes = [("XX1 1XX", 51.5, -0.12), ("YY2 2YY", 51.503, -0.12), ("ZZ3 3ZZ", 51.53, -0.12)]
+        text = render([("Alpha Hall", "c", 51.5025, -0.12, 7), ("Beta Hall", "c", 51.515, -0.12, 7)],
+                      [("Gamma Road", 51.6, -0.12)], postcodes, "test sources")
+        districts = {line.split("\t")[1]: line.split("\t")[6] for line in text.splitlines()[1:]}
+        # Beta Hall is 1.7 km from either postcode, and Gamma Road far from any: no district.
+        self.assertEqual({"Alpha Hall": "YY2", "Beta Hall": "", "Gamma Road": ""},
+                         {k: districts[k] for k in ("Alpha Hall", "Beta Hall", "Gamma Road")})
 
     def test_a_run_of_whitespace_reads_as_one_space(self):
         text = render([("Omega Church,\t   Zeta Green", "c", 51.5, -0.12, 9)], [("Alpha  Road", 51.5, -0.12)], [], "test sources")

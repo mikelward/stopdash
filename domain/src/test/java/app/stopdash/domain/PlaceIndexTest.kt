@@ -160,7 +160,48 @@ class PlaceIndexTest {
 
     @Test(expected = IllegalArgumentException::class)
     fun `another format version is refused`() {
-        index(line("P", "Zeta Hall"), header = "# stopdash place index v2\ttest")
+        index(line("P", "Zeta Hall"), header = "# stopdash place index v3\ttest")
+    }
+
+    private fun v2(vararg lines: String) = index(*lines, header = "# stopdash place index v2\ttest")
+
+    private fun district(name: String, district: String, rank: Int = 2, lat: String = "51.50000") =
+        "P\t$name\tamenity=pub\t$lat\t-0.12000\t$rank\t$district"
+
+    @Test
+    fun `a name and its postcode district find that one place first`() {
+        // The same pub name in two districts, as typed with a comma or without (maintainer, 2026-10-13).
+        val places = v2(district("Zeta Arms", "XX10"), district("Zeta Arms", "XX1", lat = "51.51000"))
+        assertEquals(listOf(51.5), places.search("Zeta Arms, XX10").map { it.coordinate.latitude })
+        assertEquals(listOf(51.5), places.search("zeta arms xx10").map { it.coordinate.latitude })
+        // A district's start finds every district it starts, the whole one first.
+        assertEquals(listOf(51.51, 51.5), places.search("zeta arms xx1").map { it.coordinate.latitude })
+        // The name alone still finds both.
+        assertEquals(2, places.search("zeta arms").size)
+    }
+
+    @Test
+    fun `a district matches only after the whole name`() {
+        val places = v2(district("Zeta Arms", "XX10"), district("The Zeta Inn", "XX10", lat = "51.51000"))
+        // Not on its own, inside a name, or after part of one.
+        assertEquals(emptyList<String>(), places.names("xx10"))
+        assertEquals(emptyList<String>(), places.names("zeta xx10"))
+        // After a name with "The" passed over, as the name itself matches.
+        assertEquals(listOf("The Zeta Inn"), places.names("zeta inn xx10"))
+    }
+
+    @Test
+    fun `the earlier format without districts still reads`() {
+        val places = index(line("P", "Zeta Hall"))
+        assertEquals(listOf("Zeta Hall"), places.names("zeta hall"))
+        assertEquals(emptyList<String>(), places.names("zeta hall xx1"))
+    }
+
+    @Test
+    fun `a format 2 line without its district column is unreadable`() {
+        val places = v2(line("P", "Zeta Hall"), district("Zeta Arms", "XX10"))
+        assertEquals(1, places.size)
+        assertEquals(1, places.skippedLines)
     }
 
     @Test
@@ -214,6 +255,17 @@ class PlaceIndexTest {
         assertEquals("British Museum", places.search("british museum").first().name)
         assertEquals(PlaceIndex.Kind.POSTCODE, places.search("sw1a 1aa").first().kind)
         assertTrue(places.search("brtmus").any { it.name == "British Museum" })
+        // A landmark found by its name and postcode district, as a rider might write an address.
+        assertEquals("Tate Modern", places.search("Tate Modern, SE1").first().name)
+        // Every place's and street's stored district is the one its row shows (districtNear), or the
+        // district the rider reads wouldn't find it: the builder has to work it out the same way.
+        var checked = 0
+        val mismatches = file.readLines().drop(1).map { it.split('\t') }.filter { it[0] != "C" }.filter { f ->
+            checked++
+            (places.districtNear(f[3].toDouble(), f[4].toDouble()) ?: "") != f[6]
+        }
+        assertTrue("checked only $checked entries", checked > 150_000)
+        assertEquals("entries whose stored district isn't the shown one", emptyList<List<String>>(), mismatches.take(5))
         // A well-known place leads the lesser ones its query also starts (Wikidata's coverage).
         assertEquals("St Paul's Cathedral", places.search("st paul").first().name)
         // King's Cross (an interchange, public TfL data) is in an N1 district.

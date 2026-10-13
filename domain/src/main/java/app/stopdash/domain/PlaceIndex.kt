@@ -22,6 +22,8 @@ import java.text.Normalizer
  * - [StationMatchTier.Fuzzy]: the query's letters appear in order from the name's first letter
  *   ("bm" and "brtmus" find British Museum).
  * There is no Anchored tier: without word starts in the key, word-initial queries rank as Fuzzy.
+ * A place or street also matches its name followed by its postcode district, as a prefix ("Royal
+ * Oak, N10", "royal oak n1"), exactly when the district is whole (maintainer, 2026-10-13).
  * Ties go to a well-known place (Wikipedia covers it widely, [NOTABLE_RANK]), then an exact name,
  * then the more prominent entry (its build-time rank), then the nearer.
  */
@@ -32,6 +34,9 @@ class PlaceIndex private constructor(
     private val keyStarts: IntArray,
     private val kinds: ByteArray,
     private val ranks: ByteArray,
+    // Each entry's folded postcode district ("n10"), empty where the file gives none.
+    private val districts: ByteArray,
+    private val districtStarts: IntArray,
     private val latitudes: IntArray,
     private val longitudes: IntArray,
     /** Lines the reader couldn't read and left out, so the caller can say so. */
@@ -88,8 +93,18 @@ class PlaceIndex private constructor(
             val start = keyStarts[i]
             val end = keyStarts[i + 1]
             val the = startsWithThe(i)
-            val tier = tierOf(q, start, end, prefixOnly, the) ?: continue
-            val inexact = if (isExact(q, start, end, the)) 0L else 1L
+            val tier: Int
+            val inexact: Long
+            val named = tierOf(q, start, end, prefixOnly, the)
+            if (named != null) {
+                tier = named
+                inexact = if (isExact(q, start, end, the)) 0L else 1L
+            } else {
+                val withDistrict = districtMatch(q, i, start, end, the)
+                if (withDistrict == NO_MATCH) continue
+                tier = StationMatchTier.Prefix.ordinal
+                inexact = if (withDistrict == WHOLE_DISTRICT) 0L else 1L
+            }
             val obscure = if (ranks[i] >= NOTABLE_RANK) 0L else 1L
             val score = (tier.toLong() shl 56) or (obscure shl 53) or (inexact shl 52) or ((MAX_RANK - ranks[i]).toLong() shl 48) or
                 (distanceStep(i, nearLat, nearLon) shl 20) or i.toLong()
@@ -199,6 +214,27 @@ class PlaceIndex private constructor(
         return null
     }
 
+    // Whether [q] is entry [i]'s name key (keys[start, end), or that less a leading "the" when [the])
+    // followed by the start of its district: [WHOLE_DISTRICT] when the district is all there,
+    // [PART_DISTRICT] when only its start is, else [NO_MATCH].
+    private fun districtMatch(q: ByteArray, i: Int, start: Int, end: Int, the: Boolean): Int {
+        val dStart = districtStarts[i]
+        val dLength = districtStarts[i + 1] - dStart
+        if (dLength == 0) return NO_MATCH
+        val whole = districtAfter(q, start, end, dStart, dLength)
+        if (whole != NO_MATCH || !the) return whole
+        return districtAfter(q, start + THE.size, end, dStart, dLength)
+    }
+
+    // [districtMatch] for the name key keys[from, end) and the district districts[dStart, + dLength).
+    private fun districtAfter(q: ByteArray, from: Int, end: Int, dStart: Int, dLength: Int): Int {
+        val nameLength = end - from
+        val rest = q.size - nameLength
+        if (rest <= 0 || rest > dLength || !startsWith(q, from, end, nameLength)) return NO_MATCH
+        for (j in 0 until rest) if (districts[dStart + j] != q[nameLength + j]) return NO_MATCH
+        return if (rest == dLength) WHOLE_DISTRICT else PART_DISTRICT
+    }
+
     // Whether the key in keys[start, end) is [q] itself, or the word "The" and [q] ("The British
     // Museum"), given [the] ([startsWithThe]).
     private fun isExact(q: ByteArray, start: Int, end: Int, the: Boolean): Boolean {
@@ -207,9 +243,9 @@ class PlaceIndex private constructor(
             (the && length == THE.size + q.size && startsWith(q, start + THE.size, end))
     }
 
-    private fun startsWith(q: ByteArray, start: Int, end: Int): Boolean {
-        if (end - start < q.size) return false
-        for (j in q.indices) if (keys[start + j] != q[j]) return false
+    private fun startsWith(q: ByteArray, start: Int, end: Int, count: Int = q.size): Boolean {
+        if (end - start < count) return false
+        for (j in 0 until count) if (keys[start + j] != q[j]) return false
         return true
     }
 
@@ -238,7 +274,7 @@ class PlaceIndex private constructor(
     }
 
     companion object {
-        const val FORMAT_VERSION = 1
+        const val FORMAT_VERSION = 2
         const val DEFAULT_LIMIT = 8
         /** The shortest query searched at all, and the shortest searched beyond prefixes. */
         const val MIN_QUERY_LENGTH = 2
@@ -264,25 +300,37 @@ class PlaceIndex private constructor(
         private const val MAX_DISTANCE_STEP = (1L shl 16) - 1
         private val THE = "the".toByteArray()
 
-        val EMPTY = PlaceIndex(ByteArray(0), IntArray(1), ByteArray(0), IntArray(1), ByteArray(0), ByteArray(0), IntArray(0), IntArray(0), 0)
+        private const val NO_MATCH = 0
+        private const val PART_DISTRICT = 1
+        private const val WHOLE_DISTRICT = 2
+
+        val EMPTY = PlaceIndex(
+            ByteArray(0), IntArray(1), ByteArray(0), IntArray(1), ByteArray(0), ByteArray(0), ByteArray(0), IntArray(1),
+            IntArray(0), IntArray(0), 0,
+        )
 
         /**
-         * Reads the index file (see `scripts/build_place_index.py`). Throws [IllegalArgumentException]
-         * on a header for another format version, since its lines can't be trusted to mean the same;
-         * a single unreadable line is left out and counted in [skippedLines].
+         * Reads the index file (see `scripts/build_place_index.py`), format 2 or the format 1 before
+         * it, which had no district column. Throws [IllegalArgumentException] on a header for another
+         * format version, since its lines can't be trusted to mean the same; a single unreadable line
+         * is left out and counted in [skippedLines].
          */
         @WorkerThread
         fun read(reader: BufferedReader): PlaceIndex {
             val header = reader.readLine() ?: return EMPTY
-            require(header.startsWith("# stopdash place index v$FORMAT_VERSION\t") || header == "# stopdash place index v$FORMAT_VERSION") {
-                "place index: unexpected header for format $FORMAT_VERSION"
+            val version = (1..FORMAT_VERSION).firstOrNull { v ->
+                header.startsWith("# stopdash place index v$v\t") || header == "# stopdash place index v$v"
             }
+            requireNotNull(version) { "place index: unexpected header for format $FORMAT_VERSION" }
+            val columns = if (version >= 2) 7 else 6
             val names = java.io.ByteArrayOutputStream(16 shl 20)
             val keys = java.io.ByteArrayOutputStream(16 shl 20)
             val nameStarts = IntList()
             val keyStarts = IntList()
             val kinds = java.io.ByteArrayOutputStream()
             val ranks = java.io.ByteArrayOutputStream()
+            val districts = java.io.ByteArrayOutputStream(1 shl 20)
+            val districtStarts = IntList()
             val latitudes = IntList()
             val longitudes = IntList()
             var skipped = 0
@@ -301,7 +349,7 @@ class PlaceIndex private constructor(
                 val rank = fields.getOrNull(5)?.toIntOrNull()
                 val name = fields.getOrNull(1).orEmpty()
                 val key = fold(name)
-                if (fields.size != 6 || kind == null || lat == null || lon == null || rank == null || rank !in 0..MAX_RANK ||
+                if (fields.size != columns || kind == null || lat == null || lon == null || rank == null || rank !in 0..MAX_RANK ||
                     name.isBlank() || key.isEmpty() || nameStarts.size >= INDEX_MASK
                 ) {
                     skipped++
@@ -313,14 +361,18 @@ class PlaceIndex private constructor(
                 keys.write(key)
                 kinds.write(kind.ordinal)
                 ranks.write(rank)
+                districtStarts.add(districts.size())
+                if (columns > 6) districts.write(fold(fields[6]))
                 latitudes.add(Math.round(lat * COORDINATE_SCALE).toInt())
                 longitudes.add(Math.round(lon * COORDINATE_SCALE).toInt())
             }
             nameStarts.add(names.size())
             keyStarts.add(keys.size())
+            districtStarts.add(districts.size())
             return PlaceIndex(
                 names.toByteArray(), nameStarts.toArray(), keys.toByteArray(), keyStarts.toArray(),
-                kinds.toByteArray(), ranks.toByteArray(), latitudes.toArray(), longitudes.toArray(), skipped,
+                kinds.toByteArray(), ranks.toByteArray(), districts.toByteArray(), districtStarts.toArray(),
+                latitudes.toArray(), longitudes.toArray(), skipped,
             )
         }
 
