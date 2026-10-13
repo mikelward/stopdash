@@ -11,8 +11,9 @@ import java.text.Normalizer
  *
  * About 440,000 entries, so they're held as a few flat arrays rather than an object each: the
  * display names as one UTF-8 byte array, each name's **folded key** (lower-case ASCII letters and
- * digits, nothing else: "The Café, N1" → "thecafen1") as another, and offsets, positions, kinds and
- * ranks alongside. That's roughly 25 MB, read once off the main thread.
+ * digits, nothing else: "The Café" → "thecafe") followed by its folded postcode district ("n1") as
+ * another, and offsets, positions, kinds and ranks alongside. That's roughly 25 MB, read once off the
+ * main thread.
  *
  * A search is one pass over the keys, comparing bytes, ranked like the stop search's tiers
  * ([StationMatchTier]) so the two lists merge on equal terms:
@@ -22,8 +23,12 @@ import java.text.Normalizer
  * - [StationMatchTier.Fuzzy]: the query's letters appear in order from the name's first letter
  *   ("bm" and "brtmus" find British Museum).
  * There is no Anchored tier: without word starts in the key, word-initial queries rank as Fuzzy.
- * A place or street also matches its name followed by its postcode district, as a prefix ("Royal
- * Oak, N10", "royal oak n1"), exactly when the district is whole (maintainer, 2026-10-13).
+ * A place's or street's postcode district may follow whatever part of its name the query matches,
+ * typed as written (maintainer, 2026-10-13): "Tate Modern, SE1", "tate se1" and "ztarms x1" find the
+ * place in that district, ranked as the name part alone would be, and "n1" never finds NW1. A district
+ * typed without its digit ("tate modern se") follows only the whole name, or a short word would read
+ * as a name's start and a district's first letter. A match is exact when it's the whole name, with or
+ * without the whole district.
  * Ties go to a well-known place (Wikipedia covers it widely, [NOTABLE_RANK]), then an exact name,
  * then the more prominent entry (its build-time rank), then the nearer.
  */
@@ -36,9 +41,8 @@ class PlaceIndex private constructor(
     private val ranks: ByteArray,
     // Each entry's [PlaceType] ordinal ([PlaceType.PLACE] for a street, a postcode, or an older file).
     private val types: ByteArray,
-    // Each entry's folded postcode district ("n10"), empty where the file gives none.
-    private val districts: ByteArray,
-    private val districtStarts: IntArray,
+    // Where each key's name ends and its district ("n10") begins: the key's end where the file gives none.
+    private val nameKeyEnds: IntArray,
     private val latitudes: IntArray,
     private val longitudes: IntArray,
     /** Lines the reader couldn't read and left out, so the caller can say so. */
@@ -100,20 +104,16 @@ class PlaceIndex private constructor(
             if (onlyKind != null && kinds[i] != onlyKind) continue
             if (exceptKind != null && kinds[i] == exceptKind) continue
             val start = keyStarts[i]
-            val end = keyStarts[i + 1]
+            val nameEnd = nameKeyEnds[i]
             val the = startsWithThe(i)
-            val tier: Int
-            val inexact: Long
-            val named = tierOf(q, start, end, prefixOnly, the)
-            if (named != null) {
-                tier = named
-                inexact = if (isExact(q, start, end, the)) 0L else 1L
-            } else {
-                val withDistrict = districtMatch(q, i, start, end, the)
-                if (withDistrict == NO_MATCH) continue
-                tier = StationMatchTier.Prefix.ordinal
-                inexact = if (withDistrict == WHOLE_DISTRICT) 0L else 1L
-            }
+            // The better of the name alone and the name followed by its district, as tier * 2 plus 1 unless exact.
+            val named = tierOf(q, q.size, start, nameEnd, prefixOnly, the)
+                ?.let { it * 2 + if (isExact(q, q.size, start, nameEnd, the)) 0 else 1 } ?: -1
+            val withDistrict = if (named == 0) -1 else districtMatch(q, start, nameEnd, keyStarts[i + 1], prefixOnly, the)
+            val match = if (named < 0 || (withDistrict in 0 until named)) withDistrict else named
+            if (match < 0) continue
+            val tier = match / 2
+            val inexact = (match % 2).toLong()
             val obscure = if (ranks[i] >= NOTABLE_RANK) 0L else 1L
             val score = (tier.toLong() shl 56) or (obscure shl 53) or (inexact shl 52) or ((MAX_RANK - ranks[i]).toLong() shl 48) or
                 (distanceStep(i, nearLat, nearLon) shl 20) or i.toLong()
@@ -203,84 +203,97 @@ class PlaceIndex private constructor(
         return names[start + THE.size] == ' '.code.toByte()
     }
 
-    // The tier [q] matches the key in keys[start, end) at, as a [StationMatchTier] ordinal, or null.
-    // [the]: the name starts with the word "The" ([startsWithThe]), which may be passed over.
-    private fun tierOf(q: ByteArray, start: Int, end: Int, prefixOnly: Boolean, the: Boolean): Int? {
+    // The tier the first [n] bytes of [q] match the name key keys[start, end) at, as a [StationMatchTier]
+    // ordinal, or null. [the]: the name starts with the word "The" ([startsWithThe]), which may be passed over.
+    private fun tierOf(q: ByteArray, n: Int, start: Int, end: Int, prefixOnly: Boolean, the: Boolean): Int? {
         val length = end - start
-        if (length < q.size) return null
-        if (startsWith(q, start, end)) return StationMatchTier.Prefix.ordinal
-        if (the && length >= THE.size + q.size && startsWith(q, start + THE.size, end)) {
+        if (length < n) return null
+        if (startsWith(q, n, start, end)) return StationMatchTier.Prefix.ordinal
+        if (the && length >= THE.size + n && startsWith(q, n, start + THE.size, end)) {
             return StationMatchTier.Prefix.ordinal
         }
         if (prefixOnly) return null
-        if (contains(q, start, end)) return StationMatchTier.Substring.ordinal
-        if (keys[start] == q[0] && inOrder(q, start, end)) return StationMatchTier.Fuzzy.ordinal
+        if (contains(q, n, start, end)) return StationMatchTier.Substring.ordinal
+        if (keys[start] == q[0] && inOrder(q, n, start, end)) return StationMatchTier.Fuzzy.ordinal
         // Letters in order from the first letter after a leading "the" too ("brtmus", The British Museum).
-        if (the && length > THE.size && keys[start + THE.size] == q[0] &&
-            inOrder(q, start + THE.size, end)
-        ) {
+        if (the && length > THE.size && keys[start + THE.size] == q[0] && inOrder(q, n, start + THE.size, end)) {
             return StationMatchTier.Fuzzy.ordinal
         }
         return null
     }
 
-    // Whether [q] is entry [i]'s name key (keys[start, end), or that less a leading "the" when [the])
-    // followed by the start of its district: [WHOLE_DISTRICT] when the district is all there,
-    // [PART_DISTRICT] when only its start is, else [NO_MATCH].
-    private fun districtMatch(q: ByteArray, i: Int, start: Int, end: Int, the: Boolean): Int {
-        val dStart = districtStarts[i]
-        val dLength = districtStarts[i + 1] - dStart
-        if (dLength == 0) return NO_MATCH
-        val whole = districtAfter(q, start, end, dStart, dLength)
-        if (whole != NO_MATCH || !the) return whole
-        return districtAfter(q, start + THE.size, end, dStart, dLength)
+    // [q] as a name followed by the start of its district, typed as written ("Royal Oak, N10"): the name
+    // keys[start, nameEnd) matched by its first bytes as [tierOf] would on their own, then the rest literally
+    // as the start of the district keys[nameEnd, end). The best of the ways to split it, as tier * 2 plus 1
+    // unless it's the whole name and the whole district; -1 for none. A district typed without its digit
+    // follows only the whole name, or "bank" would find any name starting "ban" in a K… district.
+    private fun districtMatch(q: ByteArray, start: Int, nameEnd: Int, end: Int, prefixOnly: Boolean, the: Boolean): Int {
+        val districtLength = end - nameEnd
+        var best = -1
+        for (rest in 1..minOf(districtLength, q.size - MIN_QUERY_LENGTH)) {
+            val n = q.size - rest
+            if (!districtStartsWith(q, n, nameEnd)) continue
+            val whole = isExact(q, n, start, nameEnd, the)
+            val tier = if (whole) {
+                StationMatchTier.Prefix.ordinal
+            } else {
+                if (!hasDigit(q, n)) continue
+                tierOf(q, n, start, nameEnd, prefixOnly || n < LOOSE_QUERY_LENGTH, the) ?: continue
+            }
+            val match = tier * 2 + if (whole && rest == districtLength) 0 else 1
+            if (best < 0 || match < best) best = match
+        }
+        return best
     }
 
-    // [districtMatch] for the name key keys[from, end) and the district districts[dStart, + dLength).
-    private fun districtAfter(q: ByteArray, from: Int, end: Int, dStart: Int, dLength: Int): Int {
-        val nameLength = end - from
-        val rest = q.size - nameLength
-        if (rest <= 0 || rest > dLength || !startsWith(q, from, end, nameLength)) return NO_MATCH
-        for (j in 0 until rest) if (districts[dStart + j] != q[nameLength + j]) return NO_MATCH
-        return if (rest == dLength) WHOLE_DISTRICT else PART_DISTRICT
-    }
-
-    // Whether the key in keys[start, end) is [q] itself, or the word "The" and [q] ("The British
-    // Museum"), given [the] ([startsWithThe]).
-    private fun isExact(q: ByteArray, start: Int, end: Int, the: Boolean): Boolean {
+    // Whether the name key keys[start, end) is the first [n] bytes of [q], or the word "The" and them ("The
+    // British Museum"), given [the] ([startsWithThe]).
+    private fun isExact(q: ByteArray, n: Int, start: Int, end: Int, the: Boolean): Boolean {
         val length = end - start
-        return (length == q.size && startsWith(q, start, end)) ||
-            (the && length == THE.size + q.size && startsWith(q, start + THE.size, end))
+        return (length == n && startsWith(q, n, start, end)) ||
+            (the && length == THE.size + n && startsWith(q, n, start + THE.size, end))
     }
 
-    private fun startsWith(q: ByteArray, start: Int, end: Int, count: Int = q.size): Boolean {
-        if (end - start < count) return false
-        for (j in 0 until count) if (keys[start + j] != q[j]) return false
+    private fun startsWith(q: ByteArray, n: Int, start: Int, end: Int): Boolean {
+        if (end - start < n) return false
+        for (j in 0 until n) if (keys[start + j] != q[j]) return false
         return true
     }
 
-    private fun contains(q: ByteArray, start: Int, end: Int): Boolean {
-        val last = end - q.size
+    private fun contains(q: ByteArray, n: Int, start: Int, end: Int): Boolean {
+        val last = end - n
         var from = start
         while (from <= last) {
             if (keys[from] == q[0]) {
                 var j = 1
-                while (j < q.size && keys[from + j] == q[j]) j++
-                if (j == q.size) return true
+                while (j < n && keys[from + j] == q[j]) j++
+                if (j == n) return true
             }
             from++
         }
         return false
     }
 
-    private fun inOrder(q: ByteArray, start: Int, end: Int): Boolean {
+    private fun inOrder(q: ByteArray, n: Int, start: Int, end: Int): Boolean {
         var j = 0
         var k = start
-        while (j < q.size && k < end) {
+        while (j < n && k < end) {
             if (keys[k] == q[j]) j++
             k++
         }
-        return j == q.size
+        return j == n
+    }
+
+    // Whether q[from, q.size) is the start of the district that begins at keys[districtStart].
+    private fun districtStartsWith(q: ByteArray, from: Int, districtStart: Int): Boolean {
+        for (j in from until q.size) if (keys[districtStart + j - from] != q[j]) return false
+        return true
+    }
+
+    // Whether q[from, q.size) holds a digit.
+    private fun hasDigit(q: ByteArray, from: Int): Boolean {
+        for (j in from until q.size) if (q[j] in DIGIT_FIRST..DIGIT_LAST) return true
+        return false
     }
 
     companion object {
@@ -309,13 +322,11 @@ class PlaceIndex private constructor(
         private const val DISTANCE_STEP = 16L
         private const val MAX_DISTANCE_STEP = (1L shl 16) - 1
         private val THE = "the".toByteArray()
-
-        private const val NO_MATCH = 0
-        private const val PART_DISTRICT = 1
-        private const val WHOLE_DISTRICT = 2
+        private const val DIGIT_FIRST = '0'.code.toByte()
+        private const val DIGIT_LAST = '9'.code.toByte()
 
         val EMPTY = PlaceIndex(
-            ByteArray(0), IntArray(1), ByteArray(0), IntArray(1), ByteArray(0), ByteArray(0), ByteArray(0), ByteArray(0), IntArray(1),
+            ByteArray(0), IntArray(1), ByteArray(0), IntArray(1), ByteArray(0), ByteArray(0), ByteArray(0), IntArray(0),
             IntArray(0), IntArray(0), 0,
         )
 
@@ -340,8 +351,7 @@ class PlaceIndex private constructor(
             val kinds = java.io.ByteArrayOutputStream()
             val ranks = java.io.ByteArrayOutputStream()
             val types = java.io.ByteArrayOutputStream()
-            val districts = java.io.ByteArrayOutputStream(1 shl 20)
-            val districtStarts = IntList()
+            val nameKeyEnds = IntList()
             val latitudes = IntList()
             val longitudes = IntList()
             var skipped = 0
@@ -375,17 +385,16 @@ class PlaceIndex private constructor(
                 // A type this build doesn't know reads as a plain place, not an unreadable line.
                 val type = if (version >= 3) PlaceType.ofCode(fields[2]) else null
                 types.write((type ?: PlaceType.PLACE).ordinal)
-                districtStarts.add(districts.size())
-                if (columns > 6) districts.write(fold(fields[6]))
+                nameKeyEnds.add(keys.size())
+                if (columns > 6) keys.write(fold(fields[6]))
                 latitudes.add(Math.round(lat * COORDINATE_SCALE).toInt())
                 longitudes.add(Math.round(lon * COORDINATE_SCALE).toInt())
             }
             nameStarts.add(names.size())
             keyStarts.add(keys.size())
-            districtStarts.add(districts.size())
             return PlaceIndex(
                 names.toByteArray(), nameStarts.toArray(), keys.toByteArray(), keyStarts.toArray(),
-                kinds.toByteArray(), ranks.toByteArray(), types.toByteArray(), districts.toByteArray(), districtStarts.toArray(),
+                kinds.toByteArray(), ranks.toByteArray(), types.toByteArray(), nameKeyEnds.toArray(),
                 latitudes.toArray(), longitudes.toArray(), skipped,
             )
         }

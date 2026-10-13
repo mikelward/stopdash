@@ -203,13 +203,52 @@ class PlaceIndexTest {
     }
 
     @Test
-    fun `a district matches only after the whole name`() {
-        val places = v2(district("Zeta Arms", "XX10"), district("The Zeta Inn", "XX10", lat = "51.51000"))
-        // Not on its own, inside a name, or after part of one.
-        assertEquals(emptyList<String>(), places.names("xx10"))
-        assertEquals(emptyList<String>(), places.names("zeta xx10"))
+    fun `a district reads as if written after the name, so it follows any part of the name the query matches`() {
+        // The words before a district needn't start the name (maintainer, 2026-10-13: the district is a label
+        // added to the end of the name), so a pub named "The Famous …" is found by the words after "Famous".
+        val places = v2(
+            district("Zeta Arms", "XX10"),
+            district("The Famous Zeta Arms", "XX10", lat = "51.51000"),
+            district("The Famous Zeta Arms", "XX2", lat = "51.52000"),
+        )
+        assertEquals(listOf(51.5, 51.51), places.search("zeta arms xx10").map { it.coordinate.latitude })
+        assertEquals(listOf(51.5, 51.51), places.search("Zeta Arms, XX10").map { it.coordinate.latitude })
         // After a name with "The" passed over, as the name itself matches.
-        assertEquals(listOf("The Zeta Inn"), places.names("zeta inn xx10"))
+        assertEquals(listOf(51.52), places.search("famous zeta arms xx2").map { it.coordinate.latitude })
+        // Another district doesn't find it.
+        assertEquals(emptyList<String>(), places.names("famous zeta arms xx3"))
+    }
+
+    @Test
+    fun `a name and district rank as the name part alone would`() {
+        // "zeta arms" starts the Tavern's name and is only inside the other's, so the Tavern leads, whatever
+        // the file's order (Codex, #829).
+        val places = v2(
+            district("The Famous Zeta Arms", "XX10", lat = "51.51000"),
+            district("Zeta Arms Tavern", "XX10", lat = "51.52000"),
+        )
+        assertEquals(listOf(51.52, 51.51), places.search("zeta arms xx10").map { it.coordinate.latitude })
+    }
+
+    @Test
+    fun `a district typed without its digit follows only the whole name`() {
+        // Or a short word would read as a name's start and a district's first letter ("bank": "Ban…" in K1).
+        val places = v2(district("Zetaland Road", "K1"))
+        assertEquals(emptyList<String>(), places.names("zetak"))
+        assertEquals(listOf("Zetaland Road"), places.names("zeta k1"))
+        assertEquals(listOf("Zetaland Road"), places.names("zetaland road k"))
+    }
+
+    @Test
+    fun `a district is matched as typed, never by letters in order`() {
+        // "x1" mustn't find XW1 by skipping the W, or the district wouldn't tell the two apart (Codex, #829).
+        val places = v2(district("Zeta Arms", "X1"), district("Zeta Arms", "XW1", lat = "51.51000"))
+        assertEquals(listOf(51.5), places.search("zeta arms x1").map { it.coordinate.latitude })
+        assertEquals(listOf(51.51), places.search("zeta arms xw1").map { it.coordinate.latitude })
+        // The name's own letters in order still find both, and with a district typed after them, the one there.
+        assertEquals(2, places.search("ztarms").size)
+        assertEquals(listOf(51.5), places.search("ztarms x1").map { it.coordinate.latitude })
+        assertEquals(listOf(51.51), places.search("ztarms xw1").map { it.coordinate.latitude })
     }
 
     @Test

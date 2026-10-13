@@ -439,8 +439,14 @@ The app finds stops two ways:
     is a brand's and lends them nothing. When a place is mapped twice (a point inside its outline, a
     school's site and its building), it is listed once. A place or street is also found by its name
     followed by its **postcode district**, the way an address is written ("Tate Modern, SE1", or
-    without the comma), which picks one out of the many places of a name (maintainer, 2026-10-13); the
-    district is matched only after the whole name, and the row still shows it where it always has.
+    without the comma), which picks one out of the many places of a name (maintainer, 2026-10-13). The
+    district may follow whatever part of the name the query matches, typed as written, and the match
+    ranks as that part of the name would alone: a pub called "The Famous …" is found by the words after
+    "Famous" and its district, and "tate se1" finds Tate Modern as "tate" would (maintainer, 2026-10-13,
+    reversing "only after the whole name", which found nothing for a name typed the way it's usually
+    said). A district typed without its digit ("tate modern se") follows only the whole name, so a short
+    word isn't read as a name's start and a district's first letter. The row still shows the district
+    where it always has.
   - **On the device first** (maintainer, 2026-10-11): the index covers London, so an address is found
     by its street, and a place it doesn't hold, such as an exact house number, isn't listed from it.
   - **Outside London, from TfL** (maintainer, 2026-10-11): below everything bundled, a **Search
