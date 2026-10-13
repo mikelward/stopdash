@@ -1,7 +1,7 @@
 ---
 trigger: always_on
 alwaysApply: true
-last_modified: 2026-10-06
+last_modified: 2026-10-13
 ---
 
 # AGENTS.md
@@ -129,7 +129,9 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
 - **The on-device debug log is one exception, and narrow**: coarse diagnostics only —
   a stop ID, a line id, an HTTP status, a vehicle's TfL destination (its terminus, never where the
   rider gets off) — never a raw coordinate or the API key. `docs/
-  PRIVACY.md` must describe what the log carries before it ships.
+  PRIVACY.md` must describe what the log carries about the **user** (their stops, trips, places,
+  position, devices) before it ships; app internals — a count, a duration, an error kind, a read
+  of data the app ships — need no line there (maintainer, 2026-10-13).
 - **A user-initiated, consent-gated bug report is the other exception** (maintainer,
   2026-09-20): it may carry the **exact location**, per-stop distances, and a **screenshot
   of the reporting screen** off the device — a routing/location bug is diagnosed from where
