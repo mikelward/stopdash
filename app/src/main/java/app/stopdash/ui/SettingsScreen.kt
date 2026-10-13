@@ -98,6 +98,13 @@ fun SettingsScreen(
     // of a tap on its row, which the caller turns into a request for precise or Android's settings.
     locationAccess: LocationAccess? = null,
     onLocationClick: () -> Unit = {},
+    // Whether a saved place is recognized by its Wi-Fi (SPEC *Finding stops → Wi-Fi at saved places*),
+    // null until the stored choice is read, when the switch is disabled. Off also deletes what was
+    // learned, which the caller does; a write that failed is said under the switch.
+    rememberWifi: Boolean? = true,
+    onRememberWifiChange: (Boolean) -> Unit = {},
+    rememberWifiWriteFailed: Boolean = false,
+    onDismissRememberWifiError: () -> Unit = {},
     // The user's saved TfL app_key (empty when keyless — the default), and a report of a new value
     // to save. UI-only like the rest of the screen: persistence and the request clients are the
     // caller's job, so this stays Robolectric-renderable with no store and no network (SPEC D7).
@@ -386,6 +393,20 @@ fun SettingsScreen(
                     testTag = "locationRow",
                     enabled = locationAccess != null,
                 )
+                SettingSwitchRow(
+                    title = stringResource(R.string.settings_wifi_places_title),
+                    summary = stringResource(R.string.settings_wifi_places_summary),
+                    checked = rememberWifi == true,
+                    onCheckedChange = onRememberWifiChange,
+                    enabled = rememberWifi != null,
+                    switchTestTag = "wifiPlacesSwitch",
+                )
+                if (rememberWifiWriteFailed) {
+                    SettingErrorRow(
+                        text = stringResource(R.string.settings_wifi_places_write_failed),
+                        onDismiss = onDismissRememberWifiError,
+                    )
+                }
                 Box(
                     modifier = Modifier.onGloballyPositioned {
                         if (!scrolledToWidgets) {

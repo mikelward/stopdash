@@ -143,6 +143,15 @@ interface AppSettings {
     suspend fun setShowDisruptionsRow(shown: Boolean) {}
 
     /**
+     * Whether a saved place is recognized by its Wi-Fi (SPEC *Finding stops → Wi-Fi at saved places*);
+     * on by default.
+     */
+    fun rememberWifiAtPlaces(): Flow<Boolean> = flowOf(true)
+
+    /** Set [rememberWifiAtPlaces]. Suspending, off the main thread; best-effort. */
+    suspend fun setRememberWifiAtPlaces(remember: Boolean) {}
+
+    /**
      * The networks the disruptions row always covers, by key (maintainer, 2026-10-05), on top of the
      * lines near the rider; null until chosen, read as the default (the tube).
      */

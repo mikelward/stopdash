@@ -9,11 +9,17 @@ import android.os.Looper
 import android.os.SystemClock
 import androidx.test.core.app.ApplicationProvider
 import app.stopdash.domain.Coordinates
+import app.stopdash.domain.FavoriteKind
+import app.stopdash.domain.FavoritePlace
+import app.stopdash.domain.FixSelection
 import app.stopdash.domain.LocationFix
+import app.stopdash.domain.WifiPlaceSource
+import app.stopdash.domain.WifiPlaces
 import java.time.Duration
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -140,6 +146,129 @@ class AndroidLocationProviderTest {
         // Its fix is approximate whatever is asked, so it isn't asked to run GPS for nothing.
         assertEquals(LocationRequest.QUALITY_BALANCED_POWER_ACCURACY, askedQuality(LocationManager.FUSED_PROVIDER))
         locating.cancel()
+    }
+
+    // A saved place's Wi-Fi as the provider sees it: what it recognizes, and every fix it's shown.
+    private class FakeWifiPlaces(private val place: FavoritePlace?) : WifiPlaceSource {
+        var asked = 0
+        val observed = mutableListOf<LocationFix>()
+        override suspend fun recognize(): FavoritePlace? = place.also { asked++ }
+        override fun observe(fix: LocationFix) {
+            observed += fix
+        }
+    }
+
+    private val home = FavoritePlace("home", FavoriteKind.HOME, "Home", Coordinates(51.5, -0.12))
+
+    private fun network(latitude: Double) = Location(LocationManager.NETWORK_PROVIDER).apply {
+        this.latitude = latitude
+        longitude = -0.12
+        accuracy = 400f
+        time = System.currentTimeMillis()
+        elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+    }
+
+    // Only the network provider answers, as indoors where GPS can't see the sky.
+    private fun indoors(latitude: Double) {
+        shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+        listOf(LocationManager.FUSED_PROVIDER, LocationManager.GPS_PROVIDER, LocationManager.PASSIVE_PROVIDER)
+            .forEach { shadowOf(manager).setProviderEnabled(it, false) }
+        shadowOf(manager).setProviderEnabled(LocationManager.NETWORK_PROVIDER, true)
+        shadowOf(manager).simulateLocation(network(latitude))
+    }
+
+    private fun kotlinx.coroutines.test.TestScope.locate(provider: AndroidLocationProvider): LocationFix? {
+        val got = async { provider.current(forceFresh = true) }
+        repeat(3) {
+            runCurrent()
+            shadowOf(Looper.getMainLooper()).idle()
+        }
+        runCurrent()
+        return got.getCompleted()
+    }
+
+    @Test
+    fun `indoors on a saved place's Wi-Fi, a rough fix gives way to the place, with no banner`() = runTest {
+        // A network fix a kilometer out, claiming 400 m, while on home's Wi-Fi.
+        indoors(51.51)
+        val wifi = FakeWifiPlaces(home)
+        val fix = checkNotNull(locate(AndroidLocationProvider(app, remembers = false, wifiPlaces = wifi)))
+        assertEquals(home.coordinate, fix.coordinates)
+        assertEquals(false, fix.isCoarse)
+        assertEquals(false, fix.isFallback)
+        assertEquals(WifiPlaces.RECOGNIZED_ACCURACY_METERS, checkNotNull(fix.accuracyMeters), 0f)
+        // A rough fix teaches nothing.
+        assertTrue(wifi.observed.isEmpty())
+    }
+
+    @Test
+    fun `off a saved place's Wi-Fi, a rough fix stays rough`() = runTest {
+        indoors(51.51)
+        val wifi = FakeWifiPlaces(null)
+        val fix = checkNotNull(locate(AndroidLocationProvider(app, remembers = false, wifiPlaces = wifi)))
+        assertEquals(51.51, fix.coordinates.latitude, 0.0)
+        assertEquals(true, fix.isCoarse)
+        assertEquals(1, wifi.asked)
+    }
+
+    @Test
+    fun `a precise fix is never second-guessed by the Wi-Fi, and teaches it`() = runTest {
+        shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+        shadowOf(manager).setProviderEnabled(LocationManager.GPS_PROVIDER, true)
+        shadowOf(manager).simulateLocation(gps(51.7))
+        val wifi = FakeWifiPlaces(home)
+        val fix = checkNotNull(AndroidLocationProvider(app, remembers = false, wifiPlaces = wifi).current(forceFresh = false))
+        assertEquals(51.7, fix.coordinates.latitude, 0.0)
+        assertEquals(0, wifi.asked)
+        assertEquals(listOf(51.7), wifi.observed.map { it.coordinates.latitude })
+        assertEquals(5f, checkNotNull(wifi.observed.single().accuracyMeters), 0f)
+    }
+
+    @Test
+    fun `the precise follow-up teaches the Wi-Fi too`() = runTest {
+        shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+        shadowOf(manager).setProviderEnabled(LocationManager.GPS_PROVIDER, true)
+        shadowOf(manager).simulateLocation(gps(51.8))
+        val wifi = FakeWifiPlaces(null)
+        val got = async { AndroidLocationProvider(app, remembers = false, wifiPlaces = wifi).preciseFix() }
+        runCurrent()
+        shadowOf(Looper.getMainLooper()).idle()
+        runCurrent()
+        assertEquals(51.8, checkNotNull(got.getCompleted()).coordinates.latitude, 0.0)
+        assertEquals(listOf(51.8), wifi.observed.map { it.coordinates.latitude })
+    }
+
+    @Test
+    fun `a last-known fix fallen back on teaches the Wi-Fi nothing`() = runTest {
+        shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+        listOf(LocationManager.FUSED_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
+            .forEach { shadowOf(manager).setProviderEnabled(it, false) }
+        shadowOf(manager).setProviderEnabled(LocationManager.GPS_PROVIDER, true)
+        // A GPS fix from 20 s ago: sure enough to teach, were it current, but too old for GPS to hand
+        // back as its current fix, so the fresh fix times out and this one is fallen back on.
+        shadowOf(manager).simulateLocation(gps(51.7))
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(20))
+        val wifi = FakeWifiPlaces(null)
+        val got = async { AndroidLocationProvider(app, remembers = false, wifiPlaces = wifi).current(forceFresh = true) }
+        runCurrent()
+        advanceTimeBy(FixSelection.FRESH_FIX_TIMEOUT_MILLIS + 1)
+        runCurrent()
+        val fix = checkNotNull(got.getCompleted())
+        assertEquals(51.7, fix.coordinates.latitude, 0.0)
+        assertEquals(true, fix.isFallback)
+        assertTrue(wifi.observed.isEmpty())
+    }
+
+    @Test
+    fun `with only approximate location the Wi-Fi is never asked`() = runTest {
+        shadowOf(app).grantPermissions(Manifest.permission.ACCESS_COARSE_LOCATION)
+        shadowOf(app).denyPermissions(Manifest.permission.ACCESS_FINE_LOCATION)
+        shadowOf(manager).setProviderEnabled(LocationManager.NETWORK_PROVIDER, true)
+        shadowOf(manager).simulateLocation(network(51.51))
+        val wifi = FakeWifiPlaces(home)
+        val fix = checkNotNull(locate(AndroidLocationProvider(app, remembers = false, wifiPlaces = wifi)))
+        assertEquals(51.51, fix.coordinates.latitude, 0.0)
+        assertEquals(0, wifi.asked)
     }
 
     @Test

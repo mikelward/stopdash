@@ -17,6 +17,8 @@ import app.stopdash.domain.FixSelection
 import app.stopdash.domain.LocationFix
 import app.stopdash.domain.LocationProvider
 import app.stopdash.domain.PreciseFixMemory
+import app.stopdash.domain.WifiPlaceSource
+import app.stopdash.domain.WifiPlaces
 import app.stopdash.domain.raceFix
 import java.time.Duration
 import kotlin.coroutines.resume
@@ -51,6 +53,9 @@ class AndroidLocationProvider(
     // Whether a precise fix taken here is remembered for a later coarse lookup to defer to (near me).
     // Off for a fix that must never be kept, such as a trip's left-behind check (SPEC *On the way*).
     private val remembers: Boolean = true,
+    // The saved places' Wi-Fi (SPEC *Finding stops → Wi-Fi at saved places*): what stands in for a
+    // rough fix at a saved place, and what each sure fix taken here teaches. None by default.
+    private val wifiPlaces: WifiPlaceSource = WifiPlaceSource.NONE,
 ) : LocationProvider {
     // Whether [preciseUpdates] last found no accurate provider, so a caller asking again doesn't log
     // it each time (main thread only).
@@ -129,6 +134,12 @@ class AndroidLocationProvider(
             // An old fallback re-remembered at its own (expired) timestamp is dropped again.
             expirePreciseMemory()
         }
+        // A precise fix teaches the saved places' Wi-Fi; one too old or vague to be sure teaches nothing,
+        // and nor does the last-known fix fallen back on when a fresh one failed: it is where the rider
+        // was, not where the Wi-Fi they're on now is (Codex).
+        if (coordinates != null && used != null && !fromFallback && isAccurateProvider(used.provider)) observe(used.toFix())
+        // A remembered precise fix that is still only a guess: the saved place's Wi-Fi beats it.
+        var recalledGuess: LocationFix? = null
         if (remembers && coordinates != null && isCoarse && usedFresh != null) {
             // The rider hasn't left the coarse fix's circle since the last precise fix: use that.
             val considered = preciseMemory.consider(
@@ -152,11 +163,40 @@ class AndroidLocationProvider(
                 // An older one stays flagged coarse: the rider may have moved within the circle, so
                 // the list shows from the precise point but GPS is still asked to confirm it or move
                 // it (a forced refresh included), rather than the recall standing unchecked.
-                return LocationFix(recalled.coordinates, isFallback = false, isCoarse = !recalled.standsAsCurrent, accuracyMeters = recalled.accuracyMeters)
+                val fix = LocationFix(recalled.coordinates, isFallback = false, isCoarse = !recalled.standsAsCurrent, accuracyMeters = recalled.accuracyMeters)
+                if (recalled.standsAsCurrent) return fix
+                recalledGuess = fix
             }
         }
+        // No precise fix to stand on (a rough one, a last-known one, or none): at a saved place whose
+        // Wi-Fi the phone is on, that place is where the rider is, with no banner and no wait for GPS.
+        if (coordinates == null || isCoarse || fromFallback) recognizedPlace()?.let { return it }
+        recalledGuess?.let { return it }
         return coordinates?.let { LocationFix(it, isFallback = fromFallback, isCoarse = isCoarse, accuracyMeters = used?.accuracyMeters) }
     }
+
+    /**
+     * The saved place the connected Wi-Fi says the rider is at, as a fix, or null. Within
+     * [WifiPlaces.RECOGNIZED_ACCURACY_METERS] of it: that's how close a sure fix had to be to teach it.
+     */
+    private suspend fun recognizedPlace(): LocationFix? {
+        val place = try {
+            wifiPlaces.recognize()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // The fix it would have stood in for is used as it is.
+            warn("Wi-Fi place check failed: ${e::class.simpleName}")
+            null
+        } ?: return null
+        // Which place, or which network, is never logged (SPEC Privacy).
+        warn("location fix: a saved place, from its Wi-Fi")
+        position("saved place, from its Wi-Fi", place.coordinate)
+        return LocationFix(place.coordinate, isFallback = false, accuracyMeters = WifiPlaces.RECOGNIZED_ACCURACY_METERS, ageMillis = 0)
+    }
+
+    // A fix taken here, for the saved places' Wi-Fi to learn from in the background.
+    private fun observe(fix: LocationFix) = wifiPlaces.observe(fix)
 
     private fun remember(fix: Located) =
         preciseMemory.remember(
@@ -239,6 +279,7 @@ class AndroidLocationProvider(
         warn(FixDiagnostics.describe(FixDiagnostics.Source.PRECISE, fix.provider, fix.accuracyMeters, ageMillis))
         position("${FixDiagnostics.Source.PRECISE.label} ${fix.provider} fix", fix.coordinates)
         if (remembers) remember(fix)
+        observe(fix.toFix())
         return fix.toFix()
     }
 
@@ -264,7 +305,11 @@ class AndroidLocationProvider(
             return@callbackFlow
         }
         updatesSkipped = false
-        val listener = LocationListener { location -> trySend(location.toLocated(provider).toFix()) }
+        val listener = LocationListener { location ->
+            val fix = location.toLocated(provider).toFix()
+            trySend(fix)
+            observe(fix)
+        }
         val request = LocationRequest.Builder(every.toMillis())
             .setQuality(LocationRequest.QUALITY_HIGH_ACCURACY)
             .setMinUpdateDistanceMeters(minDistanceMeters)

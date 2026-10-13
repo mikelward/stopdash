@@ -737,6 +737,42 @@ object DisruptionsRowSetting {
 }
 
 /**
+ * Whether a saved place is recognized by its Wi-Fi (SPEC *Finding stops → Wi-Fi at saved places*),
+ * held in memory and persisted in order as [DisruptionsRowSetting] is. On by default; turning it off
+ * also deletes what was learned, which the caller does ([AndroidWifiPlaces.forget]).
+ */
+object WifiPlacesSetting {
+    private val holder = StoredSettingHolder(
+        CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        initial = true,
+        read = AppSettings::rememberWifiAtPlaces,
+        write = { settings, remember -> settings.setRememberWifiAtPlaces(remember) },
+        label = "Wi-Fi at saved places",
+    )
+
+    /** Whether it's on, as a flow, for the Settings switch. */
+    val changes: StateFlow<Boolean> get() = holder.changes
+
+    /** Begins reading the stored choice. Idempotent. */
+    fun warm(appSettings: AppSettings) = holder.warm(appSettings)
+
+    /** Whether the stored choice has been read. */
+    val isLoaded: StateFlow<Boolean> get() = holder.isLoaded
+
+    /** The choice once the stored one has been read (see [StoredSettingHolder.loaded]). */
+    suspend fun loaded(): Boolean = holder.loaded()
+
+    /** The user turned it on or off: applied at once, persisted in order. */
+    fun set(remember: Boolean) = holder.set(remember)
+
+    /** True while the latest choice failed to save; Settings says so. */
+    val writeFailed: StateFlow<Boolean> get() = holder.writeFailed
+
+    /** Settings has told the user a choice didn't save. */
+    fun writeFailureShown() = holder.writeFailureShown()
+}
+
+/**
  * The networks the home screen's disruptions row always covers (maintainer, 2026-10-05), by
  * [HomeLines.Network] key, held and persisted as [DisruptionsRowSetting] is. None until chosen.
  */

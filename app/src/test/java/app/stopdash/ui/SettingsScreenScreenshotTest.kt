@@ -68,6 +68,40 @@ class SettingsScreenScreenshotTest {
     }
 
     @Test
+    fun remembering_wifi_at_saved_places_is_on_by_default_and_a_tap_turns_it_off() {
+        val chosen = mutableListOf<Boolean>()
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = {}, onRememberWifiChange = { chosen += it })
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Remember Wi-Fi at saved places").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Shows stops at once on your home or work Wi-Fi").assertIsDisplayed()
+        composeRule.onNodeWithTag("wifiPlacesSwitch").assertIsOn().performClick()
+        assertEquals(listOf(false), chosen)
+        // Under the location row it's about.
+        val location = composeRule.onNodeWithTag("locationRow").getUnclippedBoundsInRoot().top
+        val wifi = composeRule.onNodeWithTag("wifiPlacesSwitch").getUnclippedBoundsInRoot().top
+        org.junit.Assert.assertTrue("location above Wi-Fi", location < wifi)
+    }
+
+    @Test
+    fun remembering_wifi_is_not_offered_until_the_stored_choice_is_read_and_says_when_it_did_not_save() {
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(
+                    liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = {},
+                    rememberWifi = null, rememberWifiWriteFailed = true,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("wifiPlacesSwitch").performScrollTo().assertIsOff().assertIsNotEnabled()
+        composeRule.onNodeWithText("Couldn't save that; it resets when StopDash restarts").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
     fun the_disruptions_summary_comes_third_and_its_page_turns_the_row_off() {
         val chosen = mutableListOf<Boolean>()
         composeRule.setContent {

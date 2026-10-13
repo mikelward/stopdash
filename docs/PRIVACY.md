@@ -256,6 +256,23 @@ described below). Past 10 minutes it is no longer used,
 and it is deleted the next time the app takes a location or when the app's process ends, whichever
 comes first.
 
+**Wi-Fi at saved places, kept on the phone and never backed up:** when your phone gets a precise (GPS)
+location within 100 m of one of your saved places (Home, Work, School or one of your own) while it's
+on Wi-Fi, stopdash remembers, for that place, the **address of the Wi-Fi access point** it's connected
+to (its BSSID, an identifier of the router, not the network's name or anything sent over it). Next
+time, if the phone can't get a precise location but is on one of those access points, the near-me list
+starts from that saved place rather than from a rough network position. Only the access point's
+address is kept, beside the place and where it was; nothing about other networks around you is read,
+and a metered network (a phone's hotspot, a train's Wi-Fi) is never kept. It is stored in app storage
+that Android never backs up or transfers, and is never logged, sent anywhere, or put in a bug report
+(a report you choose to send says when a position came from a saved place's Wi-Fi, as it says where
+any other position came from). Turning off Settings → Remember Wi-Fi at saved places deletes it, and
+removing or moving a saved place deletes that place's; if you take away precise location, it is
+deleted the next time you open the app (Android closes the app when you take a permission away, and
+never gives it the access point's address without precise location). Reading which network your phone is on needs Android's network
+state permission, granted at install without a prompt; Android counts the read as a use of your
+location.
+
 **Kept on the device, never backed up:** to skip a repeat stop lookup when you reopen the app
 near where you last used it, stopdash keeps the **positions of its last few nearby-stop lookups**
 (up to four places) and the stops found around each, for up to a day, in the app's cache
@@ -354,7 +371,9 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
   location provider** supplied it (e.g. `network`, `gps`), the **accuracy radius** that provider
   reported (or "unknown"), and **how old** it was; when a remembered precise fix is weighed
   against a rough network one, **how far apart** the two are; when the list moves because you
-  walked off, **how far** from where it was found — **never a coordinate**,
+  walked off, **how far** from where it was found; when a saved place was recognized by its Wi-Fi,
+  that it was, and how many access points are learned across your places — never which place or
+  network, and **never a coordinate**,
 - for each nearby-stops lookup, **how many stops it found** (a count only: several stops'
   distances would pin down where you were),
 - on a trip on the way, **what a location fix saw you at** when it moved the trip on — the stop's
@@ -494,7 +513,7 @@ report carries:
   instant you send,
 - **where the app placed you in the last 15 minutes** (at most the last 20 positions, the oldest
   left out where they don't fit, and a long one cut short): each
-  location fix it got (including a rough one it set aside for a more precise remembered one) and
+  location fix it got (including a rough one it set aside for a more precise remembered one, and a saved place it recognized by its Wi-Fi) and
   each nearby lookup (with the stops it found and how far each was), with
   the time — so a fix that put you at the wrong station can be seen. These are kept **in memory only**, never in the diagnostic log or its
   file, are deleted when they turn 15 minutes old (if the phone is asleep then, within a minute of
