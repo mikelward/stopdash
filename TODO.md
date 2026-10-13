@@ -1461,6 +1461,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               - [ ] **Check the mode icons read apart on a device**: at 20 dp, Material's `subway`,
                   `train` and `directions_bus` are all front-on vehicles; if they blur, consider a
                   roundel-style Tube icon or a different size.
+              - [ ] **A searched place that's also saved: which icon leads the trip's field?**
+                  (maintainer, 2026-10-13: maybe the saved place's, but not worth the complication
+                  yet; raised by Codex on #827). Today a searched place with a known type leads with
+                  that type even where a saved place shares its name and spot, while one with no known
+                  type (an outside-London result) leads with the saved place's icon. One rule for both:
+                  by what it is (the saved place's icon, the slot waiting on the saved places' read), or
+                  by how it was picked (the art kept nullable so a plain search pick stays one).
               - [x] **Places from OpenStreetMap only** (maintainer, 2026-10-13): Overture's places (Meta,
                   Microsoft, Foursquare and others) are gone, and with them Foursquare's NOTICE and Apache
                   license files; places and streets both come from Geofabrik's extracts, under the ODbL.
