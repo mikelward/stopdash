@@ -186,6 +186,48 @@ class PlaceIndex private constructor(
         return minOf(Math.sqrt(north * north + east * east).toLong() / DISTANCE_STEP, MAX_DISTANCE_STEP)
     }
 
+    /**
+     * Which of [postcodes] (each as [UkPostcode.format] writes it, "XX1 1XX") the index holds, and where:
+     * one pass over it however many are asked, so a shared address's every candidate is looked up for
+     * the price of one. [checkpoint] runs as [search]'s does.
+     */
+    @WorkerThread
+    fun postcodesAmong(postcodes: Collection<String>, checkpoint: () -> Unit = {}): Map<String, Coordinates> {
+        if (postcodes.isEmpty()) return emptyMap()
+        // Sorted once, so each of the ~200,000 postcode rows is a binary search compared in place,
+        // allocating nothing per row: only a match builds its entry.
+        val wanted = postcodes.map { it.toByteArray(Charsets.UTF_8) }
+            .sortedWith { a, b -> compareBytes(a, 0, a.size, b) }
+            .toTypedArray()
+        val postcode = Kind.POSTCODE.ordinal.toByte()
+        val found = HashMap<String, Coordinates>()
+        for (i in 0 until size) {
+            if (i % CHECKPOINT_EVERY == 0) checkpoint()
+            if (kinds[i] != postcode) continue
+            val start = nameStarts[i]
+            if (!holds(wanted, start, nameStarts[i + 1] - start)) continue
+            val entry = entryAt(i)
+            found.putIfAbsent(entry.name, entry.coordinate)
+        }
+        return found
+    }
+
+    // Whether [sorted] holds the name bytes names[start, start + length).
+    private fun holds(sorted: Array<ByteArray>, start: Int, length: Int): Boolean {
+        var low = 0
+        var high = sorted.size - 1
+        while (low <= high) {
+            val mid = (low + high) ushr 1
+            val order = compareBytes(names, start, length, sorted[mid])
+            when {
+                order < 0 -> high = mid - 1
+                order > 0 -> low = mid + 1
+                else -> return true
+            }
+        }
+        return false
+    }
+
     private fun entryAt(i: Int): Entry = Entry(
         name = String(names, nameStarts[i], nameStarts[i + 1] - nameStarts[i], Charsets.UTF_8),
         kind = Kind.entries[kinds[i].toInt()],
@@ -415,6 +457,15 @@ class PlaceIndex private constructor(
                 }
             }
             return out.toByteArray()
+        }
+
+        // bytes[start, start + length) against [other], byte by byte as unsigned, then the shorter first.
+        private fun compareBytes(bytes: ByteArray, start: Int, length: Int, other: ByteArray): Int {
+            for (j in 0 until minOf(length, other.size)) {
+                val order = (bytes[start + j].toInt() and 0xff) - (other[j].toInt() and 0xff)
+                if (order != 0) return order
+            }
+            return length - other.size
         }
     }
 }

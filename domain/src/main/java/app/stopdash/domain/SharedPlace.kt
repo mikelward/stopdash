@@ -37,14 +37,50 @@ object SharedPlace {
     fun bounded(text: CharSequence?): String? =
         text?.let { it.subSequence(0, minOf(it.length, MAX_SHARED)).toString() }
 
+    /**
+     * The search a share names: its [lineOf], cut to [MAX_LENGTH]. An address ("10 Example Street,
+     * London") searches its first part, the house and street: the town after it only keeps the search
+     * from matching a street's name.
+     */
     @WorkerThread
-    fun queryOf(text: String?, subject: String? = null): String? =
+    fun queryOf(text: String?, subject: String? = null): String? = lineOf(text, subject)?.let(::streetOf)?.let(::capped)
+
+    /** The first line of what was shared ([text], then [subject]) that names something, whole and tidied. */
+    @WorkerThread
+    fun lineOf(text: String?, subject: String? = null): String? =
         sequenceOf(text, subject)
             .filterNotNull()
             .flatMap { it.lineSequence() }
             .map { URL.replace(it, " ").replace(SPACES, " ").trim().trim('"', '“', '”').trim() }
             .firstOrNull { line -> line.any(Char::isLetterOrDigit) }
-            ?.let(::capped)
+
+    /**
+     * A shared address's complete UK [postcode] ("XX1 1XX"), and the [label] it's shown by ("10 Example
+     * Street"). [capitals]: written as a postcode is; one in lowercase ("xx1 1xx") may be other words
+     * that only look like one ("b12 3rd"), so it counts only where a list of real postcodes holds it.
+     */
+    data class Address(val postcode: String, val label: String, val capitals: Boolean = true)
+
+    /**
+     * Every complete UK postcode in [line], in order, each as an [Address], as Calendar and Contacts share
+     * an event's or a contact's address ("10 Example Street, London XX1 1XX, UK"). All of them, since
+     * words before the real one can look like one ("Room b12 3rd floor, …"): which counts is for a list
+     * of real postcodes to say. Each one's label is the text before it up to its first comma, or the
+     * postcode where nothing comes before it.
+     */
+    @WorkerThread
+    fun addressesOf(line: String?): List<Address> =
+        // Every whitespace character as a space, as [UkPostcode] reads them all, the line's length kept.
+        POSTCODE.findAll(line?.map { if (it.isWhitespace()) ' ' else it }?.joinToString("") ?: return emptyList()).mapNotNull { match ->
+            val postcode = UkPostcode.format(match.value) ?: return@mapNotNull null
+            val before = line.substring(0, match.range.first).trim().trimEnd(',').trim()
+            val capitals = match.value.none { it in 'a'..'z' }
+            Address(postcode, capped(before.substringBefore(',').trim().ifEmpty { postcode }), capitals)
+        }.toList()
+
+    /** The text a `geo:` link names a place by (`geo:0,0?q=…`, decoded), or null where it names a point or nothing. */
+    @WorkerThread
+    fun geoText(uri: String?): String? = geoQuery(uri)?.takeUnless { LABELED_POINT.matches(it) }
 
     /**
      * What a `geo:` link opened with StopDash asks for (RFC 5870, and Android's `?q=` form): the point
@@ -57,15 +93,8 @@ object SharedPlace {
     @WorkerThread
     fun fromGeo(uri: String?): Ask? {
         if (uri == null || !uri.startsWith(GEO, ignoreCase = true)) return null
-        val rest = uri.substring(GEO.length)
-        val path = rest.substringBefore('?')
-        val query = rest.substringAfter('?', missingDelimiterValue = "")
-            .split('&')
-            .firstOrNull { it.startsWith("q=", ignoreCase = true) }
-            ?.substring(2)
-            ?.let(::decoded)
-            ?.trim()
-            .orEmpty()
+        val path = uri.substring(GEO.length).substringBefore('?')
+        val query = geoQuery(uri).orEmpty()
         if (query.isNotEmpty()) {
             LABELED_POINT.matchEntire(query)?.let { match ->
                 val point = pointOf(match.groupValues[1], match.groupValues[2]) ?: return null
@@ -138,6 +167,25 @@ object SharedPlace {
             .filterNot { LABELED_POINT.matches(it) }
             .firstNotNullOfOrNull { queryOf(it) }
             ?.let(Ask::Search)
+    }
+
+    // A `geo:` link's `q=` text, decoded and trimmed; null for no link or no text.
+    private fun geoQuery(uri: String?): String? {
+        if (uri == null || !uri.startsWith(GEO, ignoreCase = true)) return null
+        return uri.substring(GEO.length).substringAfter('?', missingDelimiterValue = "")
+            .split('&')
+            .firstOrNull { it.startsWith("q=", ignoreCase = true) }
+            ?.substring(2)
+            ?.let(::decoded)
+            ?.trim()
+            ?.ifEmpty { null }
+    }
+
+    // An address's first part, where [line] reads as one: a house number, then more after a comma.
+    // A name with a comma in it ("Smith, Jones & Co") is left whole.
+    private fun streetOf(line: String): String {
+        val first = line.substringBefore(',').trim()
+        return if (',' in line && first.firstOrNull()?.isDigit() == true) first else line
     }
 
     private fun isFullMapsLink(url: String): Boolean {
@@ -215,6 +263,10 @@ object SharedPlace {
     }
 
     private const val GEO = "geo:"
+
+    // A complete UK postcode standing alone in a line, in either case ([Address.capitals]), its halves
+    // apart by any spaces or none ([addressesOf] makes every whitespace character one).
+    private val POSTCODE = Regex("""(?<![A-Za-z0-9])[A-Za-z]{1,2}[0-9][0-9A-Za-z]? *[0-9][A-Za-z]{2}(?![A-Za-z0-9])""")
     private const val HTTPS = "https://"
     private val GOOGLE_HOST = Regex("""(?:www\.)?(maps\.)?google\.(?:com|co\.uk|[a-z]{2}|com?\.[a-z]{2})""")
     private val PIN = Regex("""!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)""")

@@ -174,4 +174,46 @@ class SharedPlaceTest {
         assertNull(SharedPlace.fromMapsUrl("https://evil.example/maps?q=51.5,-0.12"))
         assertNull(SharedPlace.fromMapsUrl("https://maps.google.com/?q=0,0"))
     }
+
+    @Test
+    fun `an address with a postcode is read for the postcode and what comes first`() {
+        // As Calendar and Contacts share an event's or a contact's address: one line, postcode near its end.
+        assertEquals(
+            listOf(SharedPlace.Address("XX1 1XX", "10 Example Street")),
+            SharedPlace.addressesOf("10 Example Street, London XX1 1XX, UK"),
+        )
+        assertEquals(listOf(SharedPlace.Address("XX1 1XX", "10 Example Street")), SharedPlace.addressesOf("10 Example Street, London XX11XX"))
+        assertEquals(listOf(SharedPlace.Address("XX1 1XX", "XX1 1XX")), SharedPlace.addressesOf("XX1 1XX"))
+        assertEquals(listOf(SharedPlace.Address("XX1 1XX", "10 Example Street", capitals = false)), SharedPlace.addressesOf("10 Example Street, xx1 1xx"))
+        assertEquals(emptyList<SharedPlace.Address>(), SharedPlace.addressesOf("10 Example Street, London, UK"))
+        // Only a postcode standing alone, so a code inside a longer run of letters and digits isn't one.
+        assertEquals(emptyList<SharedPlace.Address>(), SharedPlace.addressesOf("Order ABXX1 1XXZ"))
+        assertEquals(emptyList<SharedPlace.Address>(), SharedPlace.addressesOf(null))
+        // Its halves apart by any spaces: a non-breaking one, a tab, a run of them.
+        for (gap in listOf("\u00A0", "\t", "   ", "\u2003", "\u2009")) {
+            assertEquals(listOf("XX1 1XX"), SharedPlace.addressesOf("10 Example Street, XX1${gap}1XX").map { it.postcode })
+        }
+        // Every one, in order: which is real is for the bundle to say.
+        assertEquals(
+            listOf("B12 3RD", "XX1 1XX"),
+            SharedPlace.addressesOf("Room b12 3rd floor, 10 Example Street, London XX1 1XX").map { it.postcode },
+        )
+    }
+
+    @Test
+    fun `the line a share names is read whole, a geo link's text too`() {
+        val long = "10 Example Street, " + "Somewhere ".repeat(10) + "XX1 1XX"
+        assertEquals(long, SharedPlace.lineOf("$long\nhttps://maps.app.goo.gl/AbCdEf123"))
+        assertEquals("10 Example Street, London XX1 1XX", SharedPlace.geoText("geo:0,0?q=10+Example+Street%2C+London+XX1+1XX"))
+        assertNull(SharedPlace.geoText("geo:0,0?q=51.5,-0.12(Example)"))
+        assertNull(SharedPlace.geoText("geo:51.5,-0.12"))
+    }
+
+    @Test
+    fun `an address without a postcode searches its street`() {
+        assertEquals("10 Example Street", SharedPlace.queryOf("10 Example Street, London, UK"))
+        assertEquals(SharedPlace.Ask.Search("10 Example Street"), SharedPlace.fromGeo("geo:0,0?q=10+Example+Street,+London"))
+        // A name with a comma in it isn't an address.
+        assertEquals("Smith, Jones & Co", SharedPlace.queryOf("Smith, Jones & Co"))
+    }
 }

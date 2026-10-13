@@ -344,6 +344,10 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
 - an **HTTP status or failure reason** for a TfL request (e.g. `429`, `offline`), and for a
   shared Google Maps link that couldn't be followed, Google's HTTP status or the kind of failure
   (e.g. `404`, `UnknownHostException`) — never the link,
+- for each place you **share** to StopDash or open with it, whether it came as **text or a
+  `geo:` link** and **how it was read** (a Google Maps link's spot, a postcode in the app's own
+  list, a search, or nothing to go on) — **never what was shared**: no name, address, postcode or
+  link,
 - **location fix outcomes**: that a fix could not be obtained, whether a recent cached
   fix was used instead of a fresh one, and coarse timing; for each fix the app uses, **which
   location provider** supplied it (e.g. `network`, `gps`), the **accuracy radius** that provider
