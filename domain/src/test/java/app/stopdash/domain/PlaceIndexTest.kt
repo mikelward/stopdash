@@ -23,9 +23,16 @@ class PlaceIndexTest {
         val places = index(line("P", "Alpha Gallery", 9, "museum"), line("S", "Alpha Road"), line("C", "XX1 1XX"))
         assertEquals(3, places.size)
         val found = places.search("alpha gallery").single()
-        assertEquals(PlaceIndex.Entry("Alpha Gallery", PlaceIndex.Kind.PLACE, Coordinates(51.5, -0.12)), found)
+        assertEquals(PlaceIndex.Entry("Alpha Gallery", PlaceIndex.Kind.PLACE, Coordinates(51.5, -0.12), notable = true), found)
         assertEquals(PlaceIndex.Kind.STREET, places.search("alpha road").single().kind)
         assertEquals(PlaceIndex.Kind.POSTCODE, places.search("xx11xx").single().kind)
+    }
+
+    @Test
+    fun `a place ranked 8 or more is a landmark, one ranked below isn't`() {
+        val places = index(line("P", "Beta Abbey", 8), line("P", "Beta Hall", 7))
+        assertEquals(true, places.search("beta abbey").single().notable)
+        assertEquals(false, places.search("beta hall").single().notable)
     }
 
     @Test

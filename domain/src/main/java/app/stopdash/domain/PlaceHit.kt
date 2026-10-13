@@ -9,7 +9,14 @@ enum class PlaceKind { PLACE, STREET, POSTCODE }
  * the row's right-column tag. Distinct from a [StationMatch] (a stop id): a place carries a coordinate
  * and routes as a [TripDestination.Place].
  */
-data class PlaceHit(val name: String, val coordinate: Coordinates, val kind: PlaceKind)
+data class PlaceHit(
+    val name: String,
+    val coordinate: Coordinates,
+    val kind: PlaceKind,
+    // A landmark Wikipedia covers widely ([PlaceIndex.Entry.notable]): ranked above a bus stop matched
+    // as well ([SearchResults.merge]).
+    val notable: Boolean = false,
+)
 
 object PlaceHits {
     /** How many geocoded places are kept after re-ranking, so they don't crowd out the stops. */
@@ -110,6 +117,6 @@ object PlaceHits {
                 PlaceIndex.Kind.STREET -> PlaceKind.STREET
                 PlaceIndex.Kind.POSTCODE -> PlaceKind.POSTCODE
             }
-            PlaceHit(entry.name, entry.coordinate, kind)
+            PlaceHit(entry.name, entry.coordinate, kind, notable = entry.notable)
         }
 }
