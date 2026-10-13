@@ -73,14 +73,14 @@ this directory. **Category:** Maps & Navigation.
 
 | Data type | Collected | Shared | Ephemeral | Required? | Purpose |
 |---|---|---|---|---|---|
-| Location → Precise location | Yes | No | No | Optional | App functionality |
-| Location → Approximate location | Yes | No | No | Optional | App functionality, Analytics |
-| App activity → In-app search history | Yes | No | No | Optional | App functionality |
+| Location → Precise location | Yes | Yes | No | Optional | App functionality |
+| Location → Approximate location | Yes | Yes | No | Optional | App functionality, Analytics |
+| App activity → In-app search history | Yes | Yes | No | Optional | App functionality |
 | App activity → App interactions | Yes | No | No | Optional | Analytics |
 | App info and performance → Crash logs | Yes | No | No | Optional | Analytics |
 | App info and performance → Diagnostics | Yes | No | No | Optional | Analytics |
 | Device or other IDs | Yes | No | No | Optional | Analytics |
-| Personal info → User IDs | Yes | No | No | Optional | App functionality |
+| Personal info → User IDs | Yes | Yes | No | Optional | App functionality |
 
 Why:
 
@@ -100,8 +100,15 @@ Why:
 - **Ephemeral = No** on every row: StopDash can't vouch for how long TfL keeps a request,
   and the app keeps its last few lookup positions in its cache for up to a day. Answering No
   never understates.
-- **Shared = No:** a TfL request is user-initiated and expected, and Firebase acts as a
-  service provider. Play excludes both from "sharing".
+- **Shared = Yes** on location, search history and User IDs (maintainer, 2026-10-13): they
+  go to TfL (and an optional Rail Data Marketplace key to National Rail), neither of which is
+  StopDash's service provider. Play excludes a transfer the user starts and
+  expects, but some of these aren't started by a tap: the near-me list follows you as you
+  walk, an open trip re-asks TfL's Journey Planner every few minutes, and your API key rides
+  every TfL request, the widget's and journey alerts' included. Declaring them shared never
+  understates.
+- **Shared = No** on the rest: Firebase acts as a service provider, which Play excludes
+  from "sharing".
 - **Not declared:**
   - The bug report: the user hands it to an app they choose through the share sheet, so
     StopDash never collects it.

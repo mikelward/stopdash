@@ -25,8 +25,8 @@ import kotlinx.coroutines.tasks.await
 /**
  * A watch's refresh request (dev-docs/wear-os.md *Refresh*): one bounded refresh of the widget's
  * stops, the same work as a live-widget refresh cycle (following the rider first where
- * *Automatic watch and widget location* is on, which may send the phone's position to TfL to find
- * stops), then the outcome sent back to the watch that asked. A refresh that stores something new is published to the watch by
+ * *Automatic watch and widget location* is on, which finds the stops near the phone's position on the
+ * phone, never sending it), then the outcome sent back to the watch that asked. A refresh that stores something new is published to the watch by
  * [WatchSync] as any snapshot change is; a debounced one (every stop fetched moments ago) resends
  * the current snapshot instead. Every request is answered, and refreshes run one at a time across
  * watches: one right after another finds the stops just fetched and reuses them.
