@@ -1647,8 +1647,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 lies in ("450 m NE"), with an arrow before it on the trip's screen that turns with
                 the phone (`Compass`, `PhoneHeading`). Decided (maintainer, 2026-10-11): the chip
                 reads "NE 450m" (the space dropped to fit Android's suggested seven characters; then
-                "NE~450m", "NE1.2km" where that runs over) beside a compass icon, a fixed symbol since
-                the chip can't follow the phone turning; the screen's arrow turns with it.
+                "NE~450m", "NE1.2km" where that runs over); the screen's arrow turns with the phone.
+                The chip's compass icon was reversed (maintainer, 2026-10-13): the route arrow stays.
             - [ ] Device check: the chip's forms on a real phone, including the one still at 8
                   ("NE~540yd", estimated yards); the arrow against
                   a real compass, held flat and upright, in portrait and landscape; how steady it

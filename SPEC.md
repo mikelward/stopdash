@@ -2124,8 +2124,9 @@ as it was.
   where it's missing or unreliable, the arrow is left off and the compass point stays. A screen reader
   hears the direction spelled out ("450 m north-east"). The status-bar chip names the way the same way,
   closed up to the seven characters Android suggests for it ("NE 450m", else "NE~450m"; maintainer,
-  2026-10-11), beside a compass icon, a fixed symbol rather than a pointer, since the chip can't follow
-  the phone turning; it changes with each fix the walk already takes. A train ride ends the same way
+  2026-10-11), beside the app's route arrow as on every other step (maintainer, 2026-10-13: the
+  notification keeps the brand's mark; a compass icon there read as another app's), since the chip can't
+  follow the phone turning anyway; it changes with each fix the walk already takes. A train ride ends the same way
   at the station the rider gets off at (maintainer, 2026-09-28): from about two stops out (the
   train followed due there within 4 minutes) until the ride ends, or 5 minutes past that train's
   time (so a time gone stale, with TfL quiet, doesn't keep GPS on), each refresh takes one precise

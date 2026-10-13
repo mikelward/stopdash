@@ -71,7 +71,7 @@ internal object OnTheWayLiveUpdate {
      * compass point its end lies in where there's one: "NE 450m", the distance closed up to fit the
      * chip ([CHIP_CHARS]), and the space after the point dropped too where even that doesn't ("NE~450m",
      * "NE1.2km"; maintainer, 2026-10-11). Null unknown. The chip can't follow the phone turning, so it
-     * names the way rather than point it ([smallIcon]).
+     * names the way rather than point it, beside the app's route arrow as ever (maintainer, 2026-10-13).
      */
     private fun walkLeft(resources: Resources, progress: TripProgress?, system: DistanceSystem?): String? {
         val walking = progress as? TripProgress.Walking ?: return null
@@ -88,17 +88,6 @@ internal object OnTheWayLiveUpdate {
 
     /** The most characters Android suggests for a Live Update's chip; more may be cut off. */
     const val CHIP_CHARS = 7
-
-    /**
-     * The notification's small icon, which the status-bar chip shows: a compass where the chip names a
-     * walk's compass point ([chipText]), else the app's route arrow. A symbol, not a pointer.
-     */
-    fun smallIcon(resources: Resources, progress: TripProgress?, boarding: Boarding?, system: DistanceSystem?): Int =
-        if (boarding == null && (progress as? TripProgress.Walking)?.point != null && walkLeft(resources, progress, system) != null) {
-            R.drawable.ic_stat_compass
-        } else {
-            R.drawable.ic_stat_route_arrow
-        }
 
     /**
      * The rider's distance units ([DistanceUnitsSetting], warmed in memory at process start) in
