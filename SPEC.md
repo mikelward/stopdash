@@ -421,7 +421,7 @@ The app finds stops two ways:
     worship, museums, hospitals, venues…), shops and businesses, and named streets, all from
     **OpenStreetMap** (maintainer, 2026-10-13: OpenStreetMap only, so no check-in copies from Foursquare or
     the other aggregators), and every London postcode from OS Code-Point Open — about 410,000 entries,
-    4.5 MB in the download. It's read once, off the main thread, as the search opens, and searched as the rider
+    4.9 MB in the download. It's read once, off the main thread, as the search opens, and searched as the rider
     types, so its places are **listed with the bundled stations at once**, offline, with nothing sent.
     It ranks by the stop search's tiers (a prefix, then a substring, then letters in order from the
     name's first letter), a leading "The" passed over; then a place Wikipedia covers widely (five or more
@@ -432,7 +432,10 @@ The app finds stops two ways:
     as well known through the Wikidata item it names in its own OpenStreetMap tags, never by matching
     names, so a shop named like a cathedral isn't the cathedral; a chain's item tagged on its branches
     is a brand's and lends them nothing. When a place is mapped twice (a point inside its outline, a
-    school's site and its building), it is listed once.
+    school's site and its building), it is listed once. A place or street is also found by its name
+    followed by its **postcode district**, the way an address is written ("Tate Modern, SE1", or
+    without the comma), which picks one out of the many places of a name (maintainer, 2026-10-13); the
+    district is matched only after the whole name, and the row still shows it where it always has.
   - **On the device first** (maintainer, 2026-10-11): the index covers London, so an address is found
     by its street, and a place it doesn't hold, such as an exact house number, isn't listed from it.
   - **Outside London, from TfL** (maintainer, 2026-10-11): below everything bundled, a **Search
