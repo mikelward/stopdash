@@ -892,7 +892,14 @@ fun MainScreen(
         // closed station's timetable trains aren't due, so "?" waits until it's known.
         if (ld == null || stopDistanceMeters.isEmpty() || ld.pendingStops.isNotEmpty() || ld.closurePending.isNotEmpty()) null else QuietInputs(ld.stops, ld.lineStatuses, ld.determinedLineIds, quietTick, stopDistanceMeters, hiddenModes, dismissed, ld.stopsDisruptionUnknown, stationLead)
     }
-    val nearbyRows = withQuietRows(nearbyMarked, quietInputs)
+    val nearbyQuiet = withQuietRows(nearbyMarked, quietInputs)
+    // Until that answer is in, the list's own pass works the "?" rows out as well, so a refresh never
+    // draws its list without them first: the rows below a "?" would jump up into its place and back.
+    val quietMarks = LocalEmptyTimes.current.marks
+    val quietPending = remember(nearbyMarked, quietInputs, quietMarks) {
+        quietInputs?.let { QuietPending(nearbyMarked, it, quietMarks) }
+    }.takeIf { nearbyQuiet == null }
+    val nearbyRows = nearbyQuiet ?: nearbyMarked.rows
     // The journey cards ([judgeCards]), then the rows drawn and the dismissed closures that keep a
     // heading ([shownRowsOf]), in one go off the main thread, so the cards and the list beside them
     // are always from one snapshot (Codex, #524); null while the snapshot's rows are.
@@ -904,7 +911,7 @@ fun MainScreen(
         Inputs(
             listRows, nearbyRows, starred, stopDistanceMeters, cardJourneys, journeySegments, journeySequences,
             journeyPoleKeys, journeyPoles, journeyFarEnds, journeySiblings, journeyDestinationIds, segmentsPending, siblingsPending, topology,
-            journeyViewKey,
+            journeyViewKey, quietPending,
         ),
     )
     val shownHeld = listWork.shown.value?.key
@@ -918,7 +925,7 @@ fun MainScreen(
             val cards = judgeCards(from)
             // What the journey cards above already show: a near-me row they cover in full isn't repeated.
             val cardRows = cards.flatMap { (it.state as? JourneyCardState.Trains)?.shownRows.orEmpty() }
-            shownRowsOf(from, nearbyRows, cardRows, starred, stopDistanceMeters, cards, cardJourneys, topology)
+            shownRowsOf(from, quietPending?.rows() ?: nearbyRows, cardRows, starred, stopDistanceMeters, cards, cardJourneys, topology)
         }
     }?.takeIf { listRows != null }
     val journeyCards = shown?.cards.orEmpty()

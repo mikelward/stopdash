@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import androidx.annotation.WorkerThread
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
@@ -188,12 +189,14 @@ private class QuietResolved(val revision: RowsRevision, val found: QuietCandidat
  * [EmptyTimesState.worker] once per [inputs] (the minute tick, or new data), and the repository
  * watches each ([EmptyTimesState.watchEach]), so its mark follows the clock. Each list the screen
  * builds then has the confirmed ones added on the worker too. Until that's done for this [revision]
- * and these [inputs]' candidates, [revision]'s own rows, with no "?" rows yet: never an earlier list, whose
- * departures a refresh may have dropped. A line its timetable rules out is never added, so it never
- * flashes up.
+ * and these [inputs]' candidates, null: never an earlier list, whose departures a refresh may have
+ * dropped, nor [revision]'s rows without their "?" rows, which would pull a "?" row out from under the
+ * rider on every refresh and every minute tick, the rows below it jumping up into its place and back
+ * (principle 4, *hold still*). The caller works them out in its own pass over the list meanwhile
+ * ([QuietPending]). A line its timetable rules out is never added, so it never flashes up.
  */
 @Composable
-internal fun withQuietRows(revision: RowsRevision, inputs: QuietInputs?): List<DepartureRow> {
+internal fun withQuietRows(revision: RowsRevision, inputs: QuietInputs?): List<DepartureRow>? {
     if (inputs == null) return revision.rows
     val state = LocalEmptyTimes.current
     val current by rememberUpdatedState(state)
@@ -202,7 +205,7 @@ internal fun withQuietRows(revision: RowsRevision, inputs: QuietInputs?): List<D
     }.collectAsStateWithLifecycle(initialValue = null)
     // A state kept across a new key holds the old key's answer until the new one's is in: only these
     // inputs' candidates count.
-    val found = candidates?.takeIf { it.inputs === inputs } ?: return revision.rows
+    val found = candidates?.takeIf { it.inputs === inputs } ?: return null
     LaunchedEffect(found, state.now) { current.watchEach { quietBoards(found.rows) } }
     if (found.rows.isEmpty()) return revision.rows
     val now = state.now
@@ -212,7 +215,23 @@ internal fun withQuietRows(revision: RowsRevision, inputs: QuietInputs?): List<D
     }.collectAsStateWithLifecycle(initialValue = null)
     // Both keys, since either can change without the other: a new list from the same data, or a
     // location update moving a line's nearest candidate under an unchanged list.
-    return resolved?.takeIf { it.revision === revision && it.found === found }?.rows ?: revision.rows
+    return resolved?.takeIf { it.revision === revision && it.found === found }?.rows
+}
+
+/**
+ * [revision]'s rows with their "?" rows, for a list's own pass on the worker to work out while
+ * [withQuietRows]' answer for this [revision] and these [inputs] is still out: the same answer
+ * ([resolveQuietRows]), from the marks in [marks] when it runs, so the list lands once, whole.
+ */
+internal class QuietPending(
+    val revision: RowsRevision,
+    val inputs: QuietInputs,
+    private val marks: StateFlow<Map<String, EmptyTimes.Marked>>,
+) {
+    @WorkerThread
+    fun rows(): List<DepartureRow> = resolveQuietRows(
+        revision.rows, inputs.candidates(), marks.value, inputs.now, inputs.stopDistanceMeters, revision.now, inputs.stationLead,
+    )
 }
 
 /**

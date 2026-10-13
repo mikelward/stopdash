@@ -82,6 +82,7 @@ import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopAreaSource
 import app.stopdash.domain.StopArrivals
+import app.stopdash.domain.Workers
 import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.TflException
@@ -2427,8 +2428,11 @@ class MainScreenScreenshotTest {
             lines = listOf(LineRef("victoria", "Victoria", "tube")),
         )
         val state = EmptyTimesState(MutableStateFlow(marks), now, worker) { id, board -> asked?.add(id to board()) }
+        // A dispatcher given runs the list's own pass too ([LocalWorker]), which works the "?" rows out
+        // while their own answer is still out ([QuietPending]).
+        val listWorker = worker as? kotlinx.coroutines.CoroutineDispatcher ?: Workers.compute
         val content: @Composable () -> Unit = {
-            CompositionLocalProvider(LocalEmptyTimes provides state) {
+            CompositionLocalProvider(LocalEmptyTimes provides state, LocalWorker provides listWorker) {
                 MainScreen(
                     // TfL confirmed the Victoria's good service.
                     DeparturesUiState.Loaded(listOf(station), now.minusSeconds(60), determinedLineIds = setOf("victoria")),
@@ -2576,7 +2580,7 @@ class MainScreenScreenshotTest {
     }
 
     @Test
-    fun `a refreshed list never shows the rows its quiet lines were last added to`() {
+    fun `a refreshed list never shows the rows its quiet lines were last added to, nor drops its quiet rows`() {
         val queued = java.util.concurrent.LinkedBlockingQueue<Runnable>()
         val worker = java.util.concurrent.Executor { queued.add(it) }.asCoroutineDispatcher()
         fun runQueued() {
@@ -2618,21 +2622,24 @@ class MainScreenScreenshotTest {
         runQueued()
         composeRule.onNodeWithContentDescription("Times unknown").assertExists()
         composeRule.onNodeWithText("Morden", substring = true).assertExists()
-        // A refresh: until the worker has added the quiet rows to the new list, the new list shows
-        // without them, never the old one with its dropped train.
+        // A refresh: the new list at once, never the old one with its dropped train, and with its "?"
+        // row already in, though the quiet rows' own worker hasn't run: the list's pass works it out
+        // too, so the row never blinks out and the rows below never jump up into its place.
         composeRule.runOnIdle { loaded = loaded.copy(stops = stops("Edgware")) }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Morden", substring = true).assertDoesNotExist()
         composeRule.onNodeWithText("Edgware", substring = true).assertExists()
+        composeRule.onNodeWithContentDescription("Times unknown").assertExists()
         runQueued()
         composeRule.onNodeWithContentDescription("Times unknown").assertExists()
         composeRule.onNodeWithText("Edgware", substring = true).assertExists()
         composeRule.onNodeWithText("High Barnet", substring = true).assertExists()
         // The screen's clock moves on, the data and the minute tick don't: the train that has left goes
-        // at once, though the quiet rows wait for the worker again.
+        // at once, and the "?" row stays.
         composeRule.runOnIdle { screenNow = now.plusSeconds(60) }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("High Barnet", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Times unknown").assertExists()
         runQueued()
         composeRule.onNodeWithContentDescription("Times unknown").assertExists()
     }
