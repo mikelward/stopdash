@@ -1630,9 +1630,18 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               A full day's recordings (peak, midday, evening, 15 hubs) are in
               `dev-docs/arrivals-measurements.md`: 100 s for Victoria, Northern and Central, a
               90 s floor for Piccadilly, Bakerloo, Circle and Hammersmith & City, Jubilee and the
-              Elizabeth line left as TfL gives them (Metropolitan and District too, until measured). Next: measure how late trains come after
-              their last shown time, to size a grace before a train leaves the board, and test the
-              duplicate signals listed there.
+              Elizabeth line left as TfL gives them (Metropolitan and District too, until measured).
+              *Done (2026-10-13)*: those gaps are applied per line at each numbered platform
+              (`SpacedTrains`), each moved time grayed in the app and read as uncertain.
+              Still open: measure how late trains come after their last shown time, to size a grace
+              before a train leaves the board; test the duplicate signals listed there; and measure
+              platforms two lines share, which are spaced per line for now.
+        - [ ] **Space the train a trip follows, as the board does** (Codex on #835): once a trip picks
+              a train, its wait and ETA come from that train's own calls (`vehicleCalls`), which TfL
+              doesn't space, so a train the board shows spaced to 4 min reads 2 min on the trip after
+              the next refresh. Before boarding, take the boarding-stop board's spaced time for the
+              followed train (the board is read every step) and decide whether its later calls move by
+              the same amount; the candidate picks (`pick`, `boardedAlong`) read raw calls too.
         - [x] **Gray the earlier of two trains a minute or less apart** (maintainer, 2026-10-13): one of
               the pair may not come and nothing says which, so both are grayed and read as maybe not
               running (`DoubtfulTrains.PAIR`), where the first is due within five minutes (as far as the

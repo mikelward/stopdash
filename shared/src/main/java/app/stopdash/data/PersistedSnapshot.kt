@@ -486,9 +486,11 @@ data class PersistedDeparture(
     // A train predicted too close behind another to both be there ([DoubtfulTrains]), so a restored
     // board still grays it. Defaulted false for an older snapshot.
     val doubtful: Boolean = false,
-    // Either of two trains timed a minute or less apart ([DoubtfulTrains.PAIR]), so a restored board
-    // still grays it. Defaulted false for an older snapshot.
+    // Either of two trains timed a minute or less apart ([DoubtfulTrains.PAIR]), or a time moved to
+    // space bunched trains ([SpacedTrains]), so a restored board still grays it. Defaulted false for an
+    // older snapshot.
     val paired: Boolean = false,
+    val spaced: Boolean = false,
 )
 
 @Serializable
@@ -605,6 +607,7 @@ private fun Departure.toPersisted(): PersistedDeparture =
         via = via,
         doubtful = doubtful,
         paired = paired,
+        spaced = spaced,
     )
 
 internal fun PersistedDeparture.toDomain(): Departure =
@@ -624,4 +627,5 @@ internal fun PersistedDeparture.toDomain(): Departure =
         via = via,
         doubtful = doubtful,
         paired = paired,
+        spaced = spaced,
     )

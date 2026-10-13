@@ -183,10 +183,11 @@ class DoubtfulTrainsTest {
         assertEquals("2 min", Countdown.mergedLabel(listOf(Countdown.Entry.Timed(behind)), now, "Canceled", "Delayed"))
         assertEquals(listOf(Countdown.Part(1, false), Countdown.Part(2, true)), Countdown.parts(listOf(first, behind), now))
         assertFalse(first.doubtful)
-        // Paired, it may not run as a doubtful one may.
-        val paired = Countdown.parts(listOf(first.copy(paired = true)), now).single()
-        assertEquals(Countdown.Part(1, true), paired)
-        assertTrue(paired.grayed)
+        // Paired, it may not run as a doubtful one may; spaced, its time is grayed but it runs.
+        assertEquals(Countdown.Part(1, true), Countdown.parts(listOf(first.copy(paired = true)), now).single())
+        val spaced = Countdown.parts(listOf(first.copy(spaced = true)), now).single()
+        assertEquals(Countdown.Part(1, false, spaced = true), spaced)
+        assertTrue(spaced.grayed)
         assertFalse(Countdown.parts(listOf(first), now).single().grayed)
     }
 }

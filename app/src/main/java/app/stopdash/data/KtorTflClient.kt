@@ -18,6 +18,7 @@ import app.stopdash.domain.PlaceSearch
 import app.stopdash.domain.PostcodeResolution
 import app.stopdash.domain.PostcodeResolver
 import app.stopdash.domain.RouteSequenceSource
+import app.stopdash.domain.SpacedTrains
 import app.stopdash.domain.StationFacts
 import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationIndex
@@ -439,7 +440,7 @@ class KtorTflClient(
                 // Already on the decode dispatcher; the hop names it here, where lint can see it.
                 .let {
                     withContext(decodeDispatcher) {
-                        withDoubtfulMarked(stopId, Turnback.relabel(it, stopId, stationIndex()?.terminusEnds(stopId).orEmpty()))
+                        withSpacing(stopId, withDoubtfulMarked(stopId, Turnback.relabel(it, stopId, stationIndex()?.terminusEnds(stopId).orEmpty())))
                     }
                 }
                 .let(DepartureRows::inferDirections)
@@ -457,6 +458,21 @@ class KtorTflClient(
                     val why = listOfNotNull("later".takeIf { d.doubtful }, "pair".takeIf { d.paired }).joinToString("+")
                     "${d.lineId} P${PlatformDirection.platformNumber(d.platform)} ${d.vehicleId.ifBlank { "no id" }} " +
                         "${d.destination}${d.branch?.let { " via $it" }.orEmpty()} ($why)"
+                },
+            )
+        }
+        return result.departures
+    }
+
+    // Bunched trains spaced at their platform ([SpacedTrains]), on TfL's times as marked above, and each
+    // moved train said so with how far: what the station display showed then is what tests the gap.
+    @WorkerThread
+    private fun withSpacing(stopId: String, departures: List<Departure>): List<Departure> {
+        val result = SpacedTrains.space(departures, clock())
+        if (result.moved.isNotEmpty()) {
+            logDoubtful(
+                "spaced at $stopId: " + result.moved.joinToString { (d, by) ->
+                    "${d.lineId} P${PlatformDirection.platformNumber(d.platform)} ${d.vehicleId.ifBlank { "no id" }} +${by.seconds}s"
                 },
             )
         }

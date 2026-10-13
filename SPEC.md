@@ -645,6 +645,22 @@ doubtful train only when no other is listed. Each one marked is noted in the deb
 feed looked like can be compared with what the rider saw. Buses, and platforms TfL names by direction
 alone, are left as they are.
 
+**Bunched tube trains are spaced out, and their moved times grayed** (maintainer, 2026-10-13). TfL
+times each train as if the line ahead were clear, so a queue reads as due within a minute of each
+other (0 · 0 · 1 · 2 · 2 min) when the trains come about two minutes apart. Each train of a line at one
+numbered platform is shown no sooner than its line's gap after the one ahead of it, as that one is
+shown: **100 seconds** on the Victoria, Northern and Central lines, **90 seconds** on the Piccadilly,
+Bakerloo, Circle and Hammersmith & City. Those are what a day of recordings at hubs supported; the
+Jubilee's times already run late and spacing made them later, and the other lines weren't measured,
+so theirs stay as TfL gives them. Spacing judges TfL's own order, never moves a time earlier, and
+takes the doubtful rule above on TfL's times before it moves any. The moved times are what every
+surface shows, the widget and watch included; in the app a moved time is **grayed** and read aloud as
+uncertain, since it's a real train re-timed rather than one stopdash stands behind as TfL gave it.
+Each line is spaced on its own; two lines sharing a platform's track aren't yet held back by each
+other's trains. A trip waiting for the train it follows still times it by that train's own calls,
+which TfL doesn't space, so its countdown can read sooner than the board's (to do). Each move is noted
+in the debug log with how far.
+
 **The unit of display is one card per platform or pole** (maintainer, 2026-09-22) — a
 group of same-cluster stops split by platform / stop letter (see below). Each card is
 headed by a **single title-case line** naming the place and that platform/pole, and holds

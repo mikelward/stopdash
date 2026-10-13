@@ -161,11 +161,12 @@ class PersistedSnapshotTest {
     fun `a grayed train stays grayed through the round trip`() {
         val trains = listOf(
             Departure("victoria", "Victoria", "outbound", "Brixton", "Platform 5", now, "tube", vehicleId = "1", paired = true),
-            Departure("victoria", "Victoria", "outbound", "Brixton", "Platform 5", now.plusSeconds(30), "tube", vehicleId = "2", doubtful = true, paired = true),
+            Departure("victoria", "Victoria", "outbound", "Brixton", "Platform 5", now.plusSeconds(100), "tube", vehicleId = "2", doubtful = true, paired = true, spaced = true),
         )
         val snapshot = DeparturesSnapshot(stops = listOf(StopArrivals("940GZZLUVIC", "Victoria", trains, now)), fetchedAt = now)
         val restored = snapshot.toPersisted().toDomain()!!
         assertEquals(listOf(true, true), restored.stops.single().departures.map { it.paired })
+        assertEquals(listOf(false, true), restored.stops.single().departures.map { it.spaced })
         assertEquals(snapshot, restored)
     }
 
