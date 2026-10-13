@@ -20,14 +20,26 @@ import java.util.IdentityHashMap
  * 2026-10-11). Further out TfL rounds its times to whole minutes and bunches them, so real trains
  * there get marked too; the app grays them on trial to see how that looks before the rule settles.
  *
+ * Of two trains [PAIR] or less apart, the first due within [PAIR_WITHIN], either may be the copy:
+ * recordings of such pairs found one dropped from the board before it was due about half the time,
+ * and nothing in the feed said which (`dev-docs/arrivals-measurements.md`). So both are marked
+ * [Departure.paired] and grayed too (maintainer, 2026-10-13). Further out the recordings say nothing,
+ * and TfL's whole-minute times would pair most real trains, so a pair there is left alone.
+ *
  * Only the tube's tracking does this, and only a numbered platform says two trains share one: a bus
- * stop, or a platform TfL names by direction alone, is left as it is.
+ * stop, a platform TfL names by direction alone, or its "Platform Unknown", is left as it is.
  */
 object DoubtfulTrains {
     /** How soon after a line's train at one platform another can be predicted and still be believed. */
     val GAP: Duration = Duration.ofSeconds(90)
 
-    /** What [mark] returned, and which of them it marked (for the debug log). */
+    /** How close two of a line's trains at one platform are timed for either to be the one that doesn't come. */
+    val PAIR: Duration = Duration.ofSeconds(60)
+
+    /** How soon the first of a [PAIR] must be due for the pair to be marked: as far as the recordings looked. */
+    val PAIR_WITHIN: Duration = Duration.ofMinutes(5)
+
+    /** What [mark] returned, and which of them it marked (for the debug log), doubtful or paired. */
     data class Result(val departures: List<Departure>, val marked: List<Departure>)
 
     /** [departures] as of [now], with each doubtful one marked, in their given order. Walks the whole board, so off the main thread. */
@@ -35,20 +47,22 @@ object DoubtfulTrains {
     fun mark(departures: List<Departure>, now: Instant): Result {
         // By identity: two equal entries are still two listings, and only the later one is doubtful.
         val doubtful = Collections.newSetFromMap(IdentityHashMap<Departure, Boolean>())
+        val paired = Collections.newSetFromMap(IdentityHashMap<Departure, Boolean>())
         // A train TfL still lists after it was due has gone (it's dropped as the board is drawn), so it
         // can't be the one a train behind it is too close to.
         // TfL leaves a train's mode blank at times: it takes its line's, from the line's other trains.
         val lineMode = departures.filter { it.mode.isNotBlank() }.associate { it.lineId to it.mode }
         departures.filter {
             it.mode.ifBlank { lineMode[it.lineId].orEmpty() }.equals("tube", ignoreCase = true) &&
-                PlatformDirection.platformNumber(it.platform) != null && !Countdown.hasDeparted(it, now)
+                PlatformDirection.knownPlatformNumber(it.platform) != null && !Countdown.hasDeparted(it, now)
         }
             // By the platform's number, not TfL's label: it names one platform both with and without
-            // its direction ("Platform 2", "Southbound - Platform 2").
-            .groupBy { it.lineId to PlatformDirection.platformNumber(it.platform) }
+            // its direction ("Platform 2", "Southbound - Platform 2"). "Platform Unknown" is no platform.
+            .groupBy { it.lineId to PlatformDirection.knownPlatformNumber(it.platform) }
             .values.forEach { atPlatform ->
+                val queue = atPlatform.sortedBy { it.expectedArrival }
                 var ahead: Departure? = null
-                for (train in atPlatform.sortedBy { it.expectedArrival }) {
+                for (train in queue) {
                     val previous = ahead
                     if (previous != null && Duration.between(previous.expectedArrival, train.expectedArrival) < GAP) {
                         doubtful += train
@@ -56,11 +70,19 @@ object DoubtfulTrains {
                         ahead = train
                     }
                 }
+                queue.zipWithNext { earlier, later ->
+                    if (Duration.between(now, earlier.expectedArrival) < PAIR_WITHIN &&
+                        Duration.between(earlier.expectedArrival, later.expectedArrival) <= PAIR
+                    ) {
+                        paired += earlier
+                        paired += later
+                    }
+                }
             }
-        if (doubtful.isEmpty()) return Result(departures, emptyList())
+        if (doubtful.isEmpty() && paired.isEmpty()) return Result(departures, emptyList())
         val marked = ArrayList<Departure>()
         val all = departures.map { d ->
-            if (d in doubtful) d.copy(doubtful = true).also { marked += it } else d
+            if (d in doubtful || d in paired) d.copy(doubtful = d in doubtful, paired = d in paired).also { marked += it } else d
         }
         return Result(all, marked)
     }

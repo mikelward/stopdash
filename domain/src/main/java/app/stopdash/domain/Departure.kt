@@ -57,6 +57,11 @@ import java.time.Instant
  * [doubtful] marks a tube train predicted too soon behind another of its line at one platform to both be
  * there, which TfL's tracking does when it follows one train twice ([DoubtfulTrains]): the app shows it
  * grayed rather than as a train stopdash stands behind.
+ *
+ * [paired] marks either of two tube trains of a line TfL times a minute or less apart at one platform
+ * ([DoubtfulTrains.PAIR]): one of the two may not come, and nothing says which, so both are grayed and
+ * read as maybe not running ([mayNotRun]). Unlike [doubtful], a trip still follows one: one of the two
+ * is coming.
  */
 data class Departure(
     val lineId: String,
@@ -73,4 +78,11 @@ data class Departure(
     val callingAt: List<CallingPortion>? = null,
     val railServiceId: String = "",
     val doubtful: Boolean = false,
-)
+    val paired: Boolean = false,
+) {
+    /** One TfL may be tracking twice ([doubtful]), or either of a pair one of which may not come ([paired]). */
+    val mayNotRun: Boolean get() = doubtful || paired
+
+    /** Whether the app grays its time: it [mayNotRun]. */
+    val grayed: Boolean get() = mayNotRun
+}

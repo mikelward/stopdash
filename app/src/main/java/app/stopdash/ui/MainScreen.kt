@@ -5346,8 +5346,8 @@ internal fun RouteDetailScreen(
                     maxLines = 1,
                     modifier = Modifier.fillMaxWidth().padding(top = if (showFrom || service != null) 8.dp else 0.dp),
                 )
-            } else if ((departures.isNotEmpty() || untimed.isNotEmpty()) && !stale && workForRow?.doubtful == true) {
-                // A doubtful train among them: the card's own label, so it's grayed and said as there.
+            } else if ((departures.isNotEmpty() || untimed.isNotEmpty()) && !stale && workForRow?.grayed == true) {
+                // A train that may not run among them: the card's own label, so it's grayed and said as there.
                 CountdownLabel(
                     departures,
                     stale = false,
@@ -5865,9 +5865,9 @@ internal data class RouteDetailWork(
     val departures: List<Departure>,
     val untimed: List<UntimedTrain>,
     val destinations: List<String>,
-    // Whether any of [departures] is doubtful ([DoubtfulTrains]), found here so the page walks them
-    // for graying only when one is.
-    val doubtful: Boolean = false,
+    // Whether any of [departures] is grayed ([Departure.grayed]: it may not run, [DoubtfulTrains]),
+    // found here so the page walks them for graying only when one is.
+    val grayed: Boolean = false,
 ) {
     companion object {
         val NONE = RouteDetailWork(emptyList(), emptyList(), emptyList())
@@ -5898,7 +5898,7 @@ internal suspend fun routeDetailWork(
             .distinct()
     }
     val departures = routeDepartures(row, focus, topology)
-    RouteDetailWork(departures, routeUntimed(row, focus, topology), destinations, departures.any { it.doubtful })
+    RouteDetailWork(departures, routeUntimed(row, focus, topology), destinations, departures.any { it.grayed })
 }
 
 /**
@@ -5908,7 +5908,7 @@ internal suspend fun routeDetailWork(
  * stands in, marked as a guess ("21:14?", [Countdown.staleLabel]). A National Rail train
  * its board lists with no time ([untimed]) takes its place among them as a word: "Canceled",
  * or "Delayed" for one with no estimate: a word, since "?" is a stale countdown
- * ([Countdown.entries]). A doubtful train's time is grayed ([DoubtfulTrains]).
+ * ([Countdown.entries]). A train that may not run has its time grayed ([DoubtfulTrains]).
  */
 @Composable
 internal fun CountdownLabel(
@@ -5928,8 +5928,8 @@ internal fun CountdownLabel(
     val early = grayBefore?.let { ready ->
         entries.map { (it as? Countdown.Entry.Timed)?.departure?.expectedArrival?.isBefore(ready) == true }
     }
-    // A train TfL may be tracking twice is grayed too ([DoubtfulTrains]).
-    val doubtful = entries.map { (it as? Countdown.Entry.Timed)?.departure?.doubtful == true }
+    // A train that may not run is grayed too ([DoubtfulTrains]).
+    val grayed = entries.map { (it as? Countdown.Entry.Timed)?.departure?.grayed == true }
     // Each entry's own text, the "min" unit written once after the last number, as
     // [Countdown.mergedLabel] writes them.
     val last = entries.indexOfLast { it is Countdown.Entry.Timed }
@@ -5939,9 +5939,9 @@ internal fun CountdownLabel(
             is Countdown.Entry.Untimed -> if (entry.train.canceled) canceled else delayed
         }
     }
-    // Gray alone doesn't reach a screen reader: each time too soon to catch, or doubtful, says so, as a
-    // trip's list card says it of its trains.
-    val spoken = if (stale || ((early == null || early.none { it }) && doubtful.none { it } && untimed.isEmpty())) null
+    // Gray alone doesn't reach a screen reader: each time too soon to catch, or that may not run, says
+    // so, as a trip's list card says it of its trains.
+    val spoken = if (stale || ((early == null || early.none { it }) && grayed.none { it } && untimed.isEmpty())) null
     else spokenCountdown(entries, now, early)
     Text(
         text = when {
@@ -5949,7 +5949,7 @@ internal fun CountdownLabel(
             else -> buildAnnotatedString {
                 parts.forEachIndexed { i, part ->
                     if (i > 0) append(" · ")
-                    if (early?.getOrNull(i) == true || doubtful[i]) withStyle(SpanStyle(color = gray)) { append(part) } else append(part)
+                    if (early?.getOrNull(i) == true || grayed[i]) withStyle(SpanStyle(color = gray)) { append(part) } else append(part)
                     if (i == last) append(" min")
                 }
             }
@@ -5974,8 +5974,8 @@ internal fun CountdownLabel(
 }
 
 /**
- * A countdown's [parts] as "3 · 5 min", a doubtful train's time grayed ([DoubtfulTrains]), with what a
- * screen reader says of it when one is doubtful (null otherwise, so the text is read as it is).
+ * A countdown's [parts] as "3 · 5 min", the time of a train that may not run grayed ([DoubtfulTrains]),
+ * with what a screen reader says of it when one is grayed (null otherwise, so the text is read as it is).
  */
 @Composable
 internal fun doubtfulTimes(parts: List<Countdown.Part>): Pair<AnnotatedString, String?> {
@@ -5987,11 +5987,11 @@ internal fun doubtfulTimes(parts: List<Countdown.Part>): Pair<AnnotatedString, S
         val text = buildAnnotatedString {
             parts.forEachIndexed { i, part ->
                 if (i > 0) append(" · ")
-                if (part.doubtful) withStyle(SpanStyle(color = gray)) { append(part.minutes.toString()) } else append(part.minutes.toString())
+                if (part.grayed) withStyle(SpanStyle(color = gray)) { append(part.minutes.toString()) } else append(part.minutes.toString())
             }
             if (parts.isNotEmpty()) append(" min")
         }
-        val spoken = if (parts.none { it.doubtful }) null
+        val spoken = if (parts.none { it.grayed }) null
         else parts.joinToString(", ") { (if (it.doubtful) doubtful else plain).format(it.minutes.toString()) }
         text to spoken
     }
@@ -6009,7 +6009,7 @@ internal fun spokenCountdown(entries: List<Countdown.Entry>, now: Instant, early
             is Countdown.Entry.Timed -> stringResource(
                 when {
                     early?.getOrNull(i) == true -> R.string.countdown_time_unusable_description
-                    entry.departure.doubtful -> R.string.countdown_time_doubtful_description
+                    entry.departure.mayNotRun -> R.string.countdown_time_doubtful_description
                     else -> R.string.countdown_time_description
                 },
                 Countdown.minutes(entry.departure.expectedArrival, now).toString(),

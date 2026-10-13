@@ -34,10 +34,62 @@ class DoubtfulTrainsTest {
         val next = train(222, "Battersea Power Station", "Charing X", "063")
         val result = DoubtfulTrains.mark(listOf(first, behind, next), now)
         assertEquals(listOf(false, true, false), result.departures.map { it.doubtful })
+        // Each is a minute behind the one ahead, so of each two either may be the one that doesn't come.
+        assertEquals(listOf(true, true, true), result.departures.map { it.paired })
         // Nothing else about any of them changes.
-        assertEquals(listOf(first, behind, next), result.departures.map { it.copy(doubtful = false) })
-        assertEquals(listOf("031"), result.marked.map { it.vehicleId })
-        assertTrue(result.marked.single().doubtful)
+        assertEquals(listOf(first, behind, next), result.departures.map { it.copy(doubtful = false, paired = false) })
+        assertEquals(listOf("123", "031", "063"), result.marked.map { it.vehicleId })
+    }
+
+    @Test
+    fun `either of two trains a minute or less apart may not run, the earlier too`() {
+        val earlier = train(60, "Morden", "Bank", "1")
+        val later = train(120, "Edgware", null, "2")
+        val result = DoubtfulTrains.mark(listOf(earlier, later), now).departures
+        assertEquals(listOf(true, true), result.map { it.paired })
+        assertEquals(listOf(false, true), result.map { it.doubtful })
+        assertEquals(listOf(true, true), result.map { it.mayNotRun })
+        assertEquals(listOf(true, true), result.map { it.grayed })
+    }
+
+    @Test
+    fun `trains more than a minute apart aren't paired, though the later may still be doubtful`() {
+        val result = DoubtfulTrains.mark(listOf(train(60, "Morden", "Bank", "1"), train(121, "Edgware", null, "2")), now).departures
+        assertEquals(listOf(false, false), result.map { it.paired })
+        assertEquals(listOf(false, true), result.map { it.doubtful })
+        // The earlier is a train stopdash stands behind: not grayed.
+        assertFalse(result[0].grayed)
+    }
+
+    @Test
+    fun `a pair is marked only when the first of it is due within five minutes`() {
+        // As far as the recordings looked: the first due inside 5 minutes, the second may be just past it.
+        val near = DoubtfulTrains.mark(listOf(train(280, "Morden", "Bank", "1"), train(330, "Edgware", null, "2")), now).departures
+        assertEquals(listOf(true, true), near.map { it.paired })
+        val far = DoubtfulTrains.mark(listOf(train(300, "Morden", "Bank", "1"), train(340, "Edgware", null, "2")), now).departures
+        assertEquals(listOf(false, false), far.map { it.paired })
+        // The later of a far pair is still doubtful: that rule looks at the whole board.
+        assertEquals(listOf(false, true), far.map { it.doubtful })
+        assertEquals(listOf(false, true), far.map { it.grayed })
+    }
+
+    @Test
+    fun `a pair is judged at one platform of one line, like a doubtful train`() {
+        val board = listOf(
+            train(60, "Morden", "Bank", "1"),
+            train(70, "High Barnet", "Bank", "2", platform = "Northbound - Platform 1"),
+            train(80, "Brixton", null, "3", line = "victoria"),
+            train(60, "Archway", null, "LX1", platform = "B", mode = "bus"),
+            train(65, "Archway", null, "LX2", platform = "B", mode = "bus"),
+        )
+        assertEquals(listOf(false, false, false, false, false), DoubtfulTrains.mark(board, now).departures.map { it.paired })
+    }
+
+    @Test
+    fun `a train TfL still lists after it was due pairs with nothing`() {
+        val gone = train(-20, "Battersea Power Station", "Charing X", "123")
+        val next = train(30, "Morden", "Bank", "031")
+        assertEquals(listOf(false, false), DoubtfulTrains.mark(listOf(gone, next), now).departures.map { it.paired })
     }
 
     @Test
@@ -96,8 +148,12 @@ class DoubtfulTrainsTest {
             train(65, "Archway", null, "LX2", platform = "B", mode = "bus"),
             train(60, "Brixton", null, "1", platform = "Southbound"),
             train(65, "Brixton", null, "2", platform = "Southbound"),
+            // TfL's placeholder for a train in either direction: no one platform, so no pair.
+            train(60, "Morden", "Bank", "3", platform = "Platform Unknown"),
+            train(65, "Edgware", null, "4", platform = "Platform Unknown"),
         )
-        assertEquals(listOf(false, false, false, false), doubtfulOf(board))
+        assertEquals(listOf(false, false, false, false, false, false), doubtfulOf(board))
+        assertEquals(List(6) { false }, DoubtfulTrains.mark(board, now).departures.map { it.paired })
     }
 
     @Test
@@ -106,8 +162,9 @@ class DoubtfulTrainsTest {
         val first = train(80, "Morden", "Bank", "031")
         val result = DoubtfulTrains.mark(listOf(other, first, first.copy()), now)
         assertEquals(listOf(false, false, true), result.departures.map { it.doubtful })
+        // Due together, either listing may be the one that isn't there: both are paired.
+        assertEquals(listOf(false, true, true), result.departures.map { it.paired })
         assertSame(other, result.departures[0])
-        assertSame(first, result.departures[1])
     }
 
     @Test
@@ -126,5 +183,10 @@ class DoubtfulTrainsTest {
         assertEquals("2 min", Countdown.mergedLabel(listOf(Countdown.Entry.Timed(behind)), now, "Canceled", "Delayed"))
         assertEquals(listOf(Countdown.Part(1, false), Countdown.Part(2, true)), Countdown.parts(listOf(first, behind), now))
         assertFalse(first.doubtful)
+        // Paired, it may not run as a doubtful one may.
+        val paired = Countdown.parts(listOf(first.copy(paired = true)), now).single()
+        assertEquals(Countdown.Part(1, true), paired)
+        assertTrue(paired.grayed)
+        assertFalse(Countdown.parts(listOf(first), now).single().grayed)
     }
 }

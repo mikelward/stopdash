@@ -44,6 +44,13 @@ object PlatformDirection {
         return PLATFORM_NUMBER.find(platform)?.groupValues?.get(1)
     }
 
+    /**
+     * [platformNumber] where it names one physical platform: not TfL's "Platform Unknown", a placeholder
+     * for trains in either direction, so two trains listed there can't be said to share a platform.
+     */
+    fun knownPlatformNumber(platform: String?): String? =
+        platformNumber(platform)?.takeUnless { it.equals("Unknown", ignoreCase = true) }
+
     /** The direction label in [platform] ("Eastbound - Platform 2" → "Eastbound"), else null. */
     fun of(platform: String?): String? {
         // The label is everything before the " - Platform N" suffix (or the whole string when TfL

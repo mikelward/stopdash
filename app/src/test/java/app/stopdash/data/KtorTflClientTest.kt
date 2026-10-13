@@ -726,7 +726,11 @@ class KtorTflClientTest {
         assertTrue(departures.size > 40)
         val doubtful = departures.filter { it.doubtful }
         assertEquals(9, doubtful.size)
-        assertTrue(doubtful.any { it.vehicleId == "231" && it.expectedArrival == Instant.parse("2026-10-09T12:28:04Z") })
+        // 231 was 60 s behind 216, so either may be the one that doesn't come: both are paired.
+        val behind = doubtful.single { it.vehicleId == "231" }
+        assertEquals(Instant.parse("2026-10-09T12:28:04Z"), behind.expectedArrival)
+        assertTrue(behind.paired)
+        assertTrue(departures.single { it.vehicleId == "216" && it.lineId == behind.lineId }.paired)
         // Every train is still there.
         val raw = Json { ignoreUnknownKeys = true }.decodeFromString<List<TflArrivalDto>>(body)
         assertEquals(raw.size, departures.size)
