@@ -103,4 +103,75 @@ class SharedPlaceTest {
         assertEquals(SharedPlace.MAX_SHARED, SharedPlace.bounded("x".repeat(SharedPlace.MAX_SHARED * 3))?.length)
         assertEquals(null, SharedPlace.bounded(null))
     }
+    @Test
+    fun `a share's Google Maps link is found, short or full, and nothing else is`() {
+        assertEquals(
+            "https://maps.app.goo.gl/AbCdEf123",
+            SharedPlace.mapsLinkOf("Tate Modern\nBankside, London SE1 9TG\nhttps://maps.app.goo.gl/AbCdEf123"),
+        )
+        assertEquals("https://goo.gl/maps/XyZ", SharedPlace.mapsLinkOf("See https://goo.gl/maps/XyZ."))
+        assertEquals(
+            "https://www.google.com/maps/place/Tate+Modern/@51.5076,-0.0994,17z",
+            SharedPlace.mapsLinkOf("https://www.google.com/maps/place/Tate+Modern/@51.5076,-0.0994,17z"),
+        )
+        assertNull(SharedPlace.mapsLinkOf("Tate Modern https://www.example.com/maps/x"))
+        assertNull(SharedPlace.mapsLinkOf("http://maps.app.goo.gl/AbCdEf123"))
+        assertNull(SharedPlace.mapsLinkOf("https://goo.gl/AbC"))
+        assertNull(SharedPlace.mapsLinkOf("https://www.google.com/search?q=tate"))
+        assertNull(SharedPlace.mapsLinkOf("Tate Modern"))
+        assertEquals("https://maps.app.goo.gl/X", SharedPlace.mapsLinkOf("Tate Modern", subject = "https://maps.app.goo.gl/X"))
+    }
+
+    @Test
+    fun `only a short link needs following, and only Google's Maps pages are hops`() {
+        assertTrue(SharedPlace.isShortMapsLink("https://maps.app.goo.gl/AbC"))
+        assertTrue(SharedPlace.isShortMapsLink("https://goo.gl/maps/AbC"))
+        assertEquals(false, SharedPlace.isShortMapsLink("https://www.google.com/maps/@51.5,-0.12,15z"))
+        assertTrue(SharedPlace.isGoogleMapsHop("https://www.google.co.uk/maps/place/X"))
+        assertTrue(SharedPlace.isGoogleMapsHop("https://consent.google.com/m?continue=x"))
+        assertEquals(false, SharedPlace.isGoogleMapsHop("https://evil.example/maps/place/X"))
+        assertEquals(false, SharedPlace.isGoogleMapsHop("https://www.google.com.evil.example/maps/"))
+        assertEquals(false, SharedPlace.isGoogleMapsHop("https://user@evil.example/maps"))
+        assertEquals(false, SharedPlace.isGoogleMapsHop("http://www.google.com/maps/place/X"))
+    }
+
+    @Test
+    fun `a place's page routes to its pin, not the map's center`() {
+        val url = "https://www.google.com/maps/place/Tate+Modern/@51.5080,-0.1010,17z/" +
+            "data=!3m1!4b1!4m6!3m5!1s0x0:0x0!8m2!3d51.5076!4d-0.0994!16s%2Fm%2F0abc"
+        assertEquals(SharedPlace.Ask.Point(Coordinates(51.5076, -0.0994), "Tate Modern"), SharedPlace.fromMapsUrl(url, "Tate Modern"))
+    }
+
+    @Test
+    fun `a point in the link routes to it`() {
+        val point = SharedPlace.Ask.Point(Coordinates(51.5, -0.12), null)
+        assertEquals(point, SharedPlace.fromMapsUrl("https://maps.google.com/?q=51.5,-0.12"))
+        assertEquals(point, SharedPlace.fromMapsUrl("https://www.google.com/maps/search/?api=1&query=51.5%2C-0.12"))
+        assertEquals(point, SharedPlace.fromMapsUrl("https://www.google.com/maps/search/51.5,+-0.12?entry=tts"))
+        assertEquals(point, SharedPlace.fromMapsUrl("https://www.google.com/maps/@51.5,-0.12,15z"))
+        assertEquals(point, SharedPlace.fromMapsUrl("https://www.google.com/maps/dir//51.5,-0.12/@51.4,-0.2,12z"))
+    }
+
+    @Test
+    fun `a link naming its place by text searches it, and directions' center is never the place`() {
+        assertEquals(
+            SharedPlace.Ask.Search("Tate Modern, Bankside, London SE1 9TG"),
+            SharedPlace.fromMapsUrl("https://maps.google.com?q=Tate+Modern,+Bankside,+London+SE1+9TG&ftid=0x0:0x1&entry=gps"),
+        )
+        assertNull(SharedPlace.fromMapsUrl("https://www.google.com/maps/dir/A/B/@51.4,-0.2,12z"))
+    }
+
+    @Test
+    fun `a consent page is read for the Maps link it carries, and nothing else is read`() {
+        assertEquals(
+            SharedPlace.Ask.Point(Coordinates(51.5, -0.12), "Somewhere"),
+            SharedPlace.fromMapsUrl(
+                "https://consent.google.com/m?continue=https://maps.google.com/maps?q%3D51.5,-0.12&gl=GB",
+                "Somewhere",
+            ),
+        )
+        assertNull(SharedPlace.fromMapsUrl("https://consent.google.com/m?continue=https://evil.example/?q%3D51.5,-0.12"))
+        assertNull(SharedPlace.fromMapsUrl("https://evil.example/maps?q=51.5,-0.12"))
+        assertNull(SharedPlace.fromMapsUrl("https://maps.google.com/?q=0,0"))
+    }
 }

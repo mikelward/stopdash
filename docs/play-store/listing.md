@@ -67,7 +67,7 @@ this directory. **Category:** Maps & Navigation.
 ## Data Safety
 
 - **Collects or shares any required user data types:** Yes
-- **Encrypted in transit:** Yes (TfL, National Rail and Firebase are all HTTPS)
+- **Encrypted in transit:** Yes (TfL, National Rail, Firebase and Google Maps' short links are all HTTPS)
 - **Account creation:** the app doesn't let users create an account
 - **Deletion request:** No (everything else is stored on the device, and clearing the app's data removes it)
 
@@ -90,7 +90,8 @@ Why:
   opt-in Firebase records the region it infers from your IP address.
 - **In-app search history** is **Optional**: Find a station sends what you type to TfL,
   but only when you choose to search. You can use the app without searching, through the
-  nearby stops instead.
+  nearby stops instead. A Google Maps link shared into StopDash is followed with Google to
+  find the place's exact spot, which tells Google the shared place and your IP address.
 - **User IDs** covers the optional API keys you paste in Settings: your TfL `app_key`, sent
   with your TfL requests, and your Rail Data Marketplace key, sent with National Rail
   requests. Each goes only to the service that issued it, and ties those requests to your
@@ -102,7 +103,8 @@ Why:
   never understates.
 - **Shared = Yes** on location, search history and User IDs (maintainer, 2026-10-13): they
   go to TfL (and an optional Rail Data Marketplace key to National Rail), neither of which is
-  StopDash's service provider. Play excludes a transfer the user starts and
+  StopDash's service provider, and a shared Google Maps link goes to Google (the place it
+  names, and the rough area Google may infer from your IP address). Play excludes a transfer the user starts and
   expects, but some of these aren't started by a tap: the near-me list follows you as you
   walk, an open trip re-asks TfL's Journey Planner every few minutes, and your API key rides
   every TfL request, the widget's and journey alerts' included. Declaring them shared never

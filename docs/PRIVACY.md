@@ -12,7 +12,9 @@ StopDash is a **client-only** app. By default it makes network calls to just two
 third only if you add a National Rail key: **Transport for London's Unified API**, the calls that
 *are* the product; — on a release build only — **Google Play**, to ask whether an app update is
 available (detailed below; it carries nothing about you); and, with a National Rail key, **National
-Rail's live departure boards** (the Rail Data Marketplace, detailed below). **Firebase** is added
+Rail's live departure boards** (the Rail Data Marketplace, detailed below). **Google** is asked only
+when you share a Google Maps short link into the app, to learn the place it points to (see *Find a
+station*). **Firebase** is added
 only if you turn on *Help make StopDash better* (off by default; see *Crash reports and usage stats*
 below). Your **location, the stops and lines you look up, and your API keys** go only to TfL, or
 with a National Rail key also to National Rail (if you opt in, Firebase sees only the rough region
@@ -100,7 +102,7 @@ between your phone and your watch, and between them over Bluetooth the link is e
 stations and bus stops that ship inside the app, on your device; in *From…* and *To…* also in a list of London places,
 streets and postcodes that ships inside the app. What you type isn't sent anywhere, with two exceptions for places
 outside London, which those lists don't cover: if you tap *Search outside London*, or type a complete postcode the
-list doesn't hold, the text you typed (and nothing else) is sent to TfL's Journey Planner to find it. A place you **share** to StopDash from another app (Google Maps' *Share*, say), or open with it, is treated the same way: its name or address goes into *To…* as if you'd typed it, on your device, and the link that came with it is never opened or sent; a shared point (a `geo:` link with a position) is the destination of the trip, sent to TfL's Journey Planner as any destination is. An address that
+list doesn't hold, the text you typed (and nothing else) is sent to TfL's Journey Planner to find it. A place you **share** to StopDash from another app (Google Maps' *Share*, say), or open with it, is treated the same way: its name or address goes into *To…* as if you'd typed it, on your device; a shared point (a `geo:` link with a position) is the destination of the trip, sent to TfL's Journey Planner as any destination is. A **Google Maps link** in what's shared is read for the place's exact spot, which is then the trip's destination like a shared point. A full link names it already, and isn't opened. A short one (`maps.app.goo.gl/…`) names it only once followed, so StopDash asks **Google** once where it leads (once per share while the app runs: a share Android restores after ending the app mid-request, or the same link shared again later, may ask again, the same request): Google receives that link (which names the place you shared, a place it gave you in the first place), your IP address and the app's user agent, never your location, stops or keys, and handles it under its own privacy policy (<https://policies.google.com/privacy>). Only Google's own Maps addresses are followed, and the page the link leads to is never fetched. If the link can't be followed (offline, or Google changes it), the share's name is searched instead. The debug log notes only a link that couldn't be followed, with Google's HTTP status or the kind of failure, never the link. An address that
 starts with a house number is looked up in the lists by its street. After a pick, the app sends the chosen station's id to look up its stops and
 departures; a place picked in *From…* sends that place's position (a public place, street or postcode
 center from the bundled list, not yours) to find the stops around it, and as the start of any trip
@@ -339,7 +341,9 @@ why a line showed "couldn't check for disruptions". Diagnosing those needs a rec
 what the app saw, so the log carries **coarse state and reasons**, and nothing more:
 
 - a **stop ID** or a **line id** (TfL identifiers, e.g. `victoria`, `940GZZLUOXC`),
-- an **HTTP status or failure reason** for a TfL request (e.g. `429`, `offline`),
+- an **HTTP status or failure reason** for a TfL request (e.g. `429`, `offline`), and for a
+  shared Google Maps link that couldn't be followed, Google's HTTP status or the kind of failure
+  (e.g. `404`, `UnknownHostException`) — never the link,
 - **location fix outcomes**: that a fix could not be obtained, whether a recent cached
   fix was used instead of a fresh one, and coarse timing; for each fix the app uses, **which
   location provider** supplied it (e.g. `network`, `gps`), the **accuracy radius** that provider

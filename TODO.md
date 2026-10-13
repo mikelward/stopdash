@@ -4013,29 +4013,12 @@ and these carry the rest as their own PRs:
 
 ### Sharing a place in — follow-ups
 
-- [ ] **Follow a Google Maps share's link to its exact spot** (maintainer, 2026-10-12). A share is
-      searched by its name today (SPEC *Sharing a place in*); a place missing from the bundled index
-      finds nothing. Resolving `maps.app.goo.gl` to its coordinate would place any share, but asks
-      Google: a first off-device request for search, so a Data Safety change, an undocumented URL
-      shape that can move, and the rider's shared place sent to Google, which it came from anyway.
-      Decided: build it (maintainer, 2026-10-13).
-      - **What it sends:** one HTTPS request to `maps.app.goo.gl`, which redirects to a URL holding the
-        place's coordinate. Google gets the short link (it names the shared place), the device's IP
-        address and the app's user agent. No account, no device ID, nothing else.
-      - **Data Safety, against `docs/play-store/listing.md`:** no new data-type row. The shared place
-        is *App activity → In-app search history*, already declared collected, Optional, App
-        functionality, and *Location → Approximate location* is already declared collected too.
-        *Encrypted in transit* stays Yes; its note gains Google.
-      - **Shared: decided Yes** (maintainer, 2026-10-13). *In-app search history* and both location
-        rows are now Shared = Yes for TfL (`docs/play-store/listing.md`), so a Maps link changes no
-        answer: their notes gain Google (the short link names the shared place; Google may infer an
-        area from the IP).
-      - **Also:** `docs/PRIVACY.md` names Google as a recipient of a shared Maps link, and SPEC
-        *Sharing a place in* stops saying the link is never sent. A narrower build, asking Google only
-        when the name search finds nothing, sends less but changes no answer above: the form
-        declares what the app can do, not how often.
-      - **Cost and reliability:** $0, no key or quota. The redirect is undocumented and can change;
-        when it fails, the share falls back to the name search it gets today.
+- [x] **Follow a Google Maps share's link to its exact spot** (maintainer, 2026-10-13). A full link is
+      read as it is; a short one is asked of Google once (`MapsLinkFollower`), and the spot plans the trip
+      as a `geo:` point does. Data Safety: Shared = Yes on location and search history, naming TfL and
+      Google (`docs/play-store/listing.md`). Falls back to the name search when the link can't be followed.
+  - [ ] **Device check:** share a place, a dropped pin and a search result from Google Maps; each
+        should open a trip to its spot, and with the network off, a search for its name.
 
 ## Beyond MVP (not planned)
 

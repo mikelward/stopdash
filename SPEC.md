@@ -1569,8 +1569,15 @@ match. A `geo:` link with a **point** plans the trip straight to it, titled by t
 "Shared place"; one naming an address or a place by text (`geo:0,0?q=…`, as Contacts and Calendar send)
 searches that text. **The shared text goes only where typed text would**: a complete postcode the
 bundle doesn't hold, or *Search outside London* tapped, asks TfL's Journey Planner, as typing it does.
-**The link is never opened or sent**: following Google's short link to its exact spot would ask
-Google, so it isn't (`TODO.md`). A shared point is the trip's destination, sent to TfL's Journey
+A **Google Maps link** in the share is read for the place's **exact spot**, which plans the trip
+there as a `geo:` point does, titled by the shared name (maintainer, 2026-10-13): a full link names
+it already; a short one (`maps.app.goo.gl/…`) is asked of Google once to learn where it leads, the
+one request a share makes beyond typing's, so `docs/PRIVACY.md` and the Data Safety answers name
+Google. "Once" is per share, while the app runs (maintainer, 2026-10-13): a recreated screen or the
+same share delivered again reuses the answer, but a share restored after Android ends the app
+mid-request, or the same link shared again later, may ask again, the same request to the same
+recipient, so nothing more is disclosed. Only Google's Maps addresses are followed, and the page itself is never fetched. A link
+that can't be followed, or names its place only by text, searches the shared name instead. A shared point is the trip's destination, sent to TfL's Journey
 Planner as any destination is (`docs/PRIVACY.md`). Without a location grant it says so, as a favorite's
 chip does; a share with nothing to search for says "No place to search for in what was shared".
 A share into the app already open lands where a fresh start would: whatever screen was open over the
