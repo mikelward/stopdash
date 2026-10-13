@@ -471,7 +471,7 @@ class StationIndex(
                 if (into < 0) {
                     kept += match
                 } else {
-                    kept[into] = kept[into].let { it.copy(modes = (it.modes + match.modes).distinct()) }
+                    kept[into] = kept[into].let { it.withModes((it.modes + match.modes).distinct()) }
                 }
             }
             return kept

@@ -1448,13 +1448,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   measure pass. Done: the page's worker is a test dispatcher the test runs by hand.
               - [x] **A place by its name and postcode district** (maintainer, 2026-10-13): "Tate Modern,
                   SE1" finds that one place; the builder writes each place's and street's district.
-              - [ ] **Show a place's type as an icon** (maintainer, 2026-10-13): in the right column,
-                  after the postcode district, the word "Place" becomes an icon for the type (Pub,
-                  Supermarket, Stadium, Museum…, ~44 types), and stops get mode icons (Bus, Tube, Rail,
-                  DLR, Tram, River, Cable car), streets and postcodes theirs. Icons only; the type's
-                  word is the screen-reader label, so it needs approved copy and en-GB overrides
-                  (Theatre, Centre, Takeaway). Agreed list: Material Symbols; College `school`, School
-                  `backpack`, Playground `playground`.
+              - [x] **Show a place's type as an icon** (maintainer, 2026-10-13): in the right column,
+                  after the postcode district, the word "Place" became an icon for the type (Pub,
+                  Supermarket, Stadium, Museum…, 45 types), and stops' modes became icons (every mode
+                  at a hub, trains first; one Rail icon for National Rail, Overground and Elizabeth),
+                  streets and postcodes theirs. Icons only; the words are the screen-reader label.
+              - [ ] **Check the mode icons read apart on a device**: at 20 dp, Material's `subway`,
+                  `train` and `directions_bus` are all front-on vehicles; if they blur, consider a
+                  roundel-style Tube icon or a different size.
               - [x] **Places from OpenStreetMap only** (maintainer, 2026-10-13): Overture's places (Meta,
                   Microsoft, Foursquare and others) are gone, and with them Foursquare's NOTICE and Apache
                   license files; places and streets both come from Geofabrik's extracts, under the ODbL.

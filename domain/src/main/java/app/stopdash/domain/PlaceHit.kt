@@ -16,6 +16,9 @@ data class PlaceHit(
     // A landmark Wikipedia covers widely ([PlaceIndex.Entry.notable]): ranked above a bus stop matched
     // as well ([SearchResults.merge]).
     val notable: Boolean = false,
+    // What kind of place a [PlaceKind.PLACE] is, shown as its row's icon; [PlaceType.PLACE] when unknown
+    // (TfL's places outside London, a recent pick from an older build).
+    val type: PlaceType = PlaceType.PLACE,
 )
 
 object PlaceHits {
@@ -123,6 +126,6 @@ object PlaceHits {
                 PlaceIndex.Kind.STREET -> PlaceKind.STREET
                 PlaceIndex.Kind.POSTCODE -> PlaceKind.POSTCODE
             }
-            PlaceHit(entry.name, entry.coordinate, kind, notable = entry.notable)
+            PlaceHit(entry.name, entry.coordinate, kind, notable = entry.notable, type = entry.type)
         }
 }

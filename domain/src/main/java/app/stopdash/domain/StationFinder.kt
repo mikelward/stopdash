@@ -17,12 +17,22 @@ data class StationMatch(
     // the modes that name stands for, Underground first. [id] is still the interchange's, so the row
     // opens the interchange; the list tells it which modes lead.
     val lead: List<String> = emptyList(),
+    // What the row shows and says for [modes], worked out once, where the match is first made (off the
+    // main thread). Constructor parameters, not body properties, so a copy carries them rather than
+    // working them out again: a click handler that copies a match ("Add favorite" on a positionless
+    // stop) does no list work. A copy that changes [modes] goes through [withModes] instead.
+    val modeIcons: List<ModeIcon> = ModeIcon.of(modes),
+    val otherModesLabel: String? = ModeIcon.others(modes).takeIf { it.isNotEmpty() }?.let { modesLabel(it) },
+    val modesSpoken: String = modesLabel(modes),
 ) {
     /**
      * This row's identity in a list: the [id], or for an interchange's station name, the id and
      * name, so "King's Cross" and "St Pancras International" are two rows beside the interchange's own.
      */
     val key: String get() = if (lead.isEmpty()) id else "$id|$name"
+
+    /** This match with [modes] instead, its icons and labels worked out for them: never `copy(modes = …)`. */
+    fun withModes(modes: List<String>): StationMatch = StationMatch(id, name, modes, latitude, longitude, lead)
 }
 
 /**

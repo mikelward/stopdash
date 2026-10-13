@@ -8,6 +8,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from build_place_index import (  # noqa: E402
+    TYPES, place_type,
     AREA_RADIUS_METERS, DUPLICATE_METERS, ODBL_NOTICE, area_grid, cell_of, display_name, geofabrik_md5, is_street,
     district_grid, district_near, match_key, meters_apart, near_cells, truncating_division, parse_wikipedia_counts, place_item, place_of, polygon_centroid, postcode_text,
     query_service, render, select_places, select_postcodes, select_streets, wikidata_id, wikipedia_editions,
@@ -73,6 +74,57 @@ class PlaceOfTest(unittest.TestCase):
     def test_a_station_building_is_a_station(self):
         self.assertIsNone(place_of({"name": "Alpha Station", "building": "train_station", "wikidata": "Q1"}))
         self.assertIsNone(place_of({"name": "Alpha Station", "building": "transportation", "wikidata": "Q1"}))
+
+
+class PlaceTypeTest(unittest.TestCase):
+    def test_a_places_tag_names_its_type(self):
+        self.assertEqual("pub", place_type("amenity=pub", {}))
+        self.assertEqual("supermarket", place_type("shop=convenience", {}))
+        self.assertEqual("mall", place_type("shop=department_store", {}))
+        self.assertEqual("college", place_type("amenity=university", {}))
+        self.assertEqual("school", place_type("amenity=kindergarten", {}))
+        self.assertEqual("park", place_type("leisure=common", {}))
+        self.assertEqual("theater", place_type("amenity=music_venue", {}))
+
+    def test_any_other_shop_or_craft_is_a_shop_and_the_rest_a_place(self):
+        self.assertEqual("shop", place_type("shop=bakery", {}))
+        self.assertEqual("shop", place_type("craft=tailor", {}))
+        self.assertEqual("office", place_type("office=estate_agent", {}))
+        # Healthcare by what it is, else a plain place: not every kind is a doctor.
+        self.assertEqual("doctor", place_type("healthcare=clinic", {}))
+        self.assertEqual("dentist", place_type("healthcare=dentist", {}))
+        self.assertEqual("hospital", place_type("healthcare=hospital", {}))
+        self.assertEqual("pharmacy", place_type("healthcare=pharmacy", {}))
+        for kind in ("physiotherapist", "counselling", "laboratory", "alternative", "yes"):
+            self.assertEqual("health", place_type(f"healthcare={kind}", {}), kind)
+        self.assertEqual("landmark", place_type("historic=monument", {}))
+        self.assertEqual("landmark", place_type("building=yes", {}))
+        # A building's own value names its type where it can.
+        self.assertEqual("school", place_type("building=school", {}))
+        self.assertEqual("college", place_type("building=university", {}))
+        self.assertEqual("church", place_type("building=church", {}))
+        self.assertEqual("hospital", place_type("building=hospital", {}))
+        self.assertEqual("hotel", place_type("building=hotel", {}))
+        self.assertEqual("landmark", place_type("building=house", {}))
+        self.assertEqual("place", place_type("amenity=studio", {}))
+
+    def test_a_place_of_worship_is_named_for_its_religion(self):
+        worship = "amenity=place_of_worship"
+        self.assertEqual("church", place_type(worship, {"religion": "christian"}))
+        self.assertEqual("mosque", place_type(worship, {"religion": "muslim"}))
+        self.assertEqual("synagogue", place_type(worship, {"religion": "jewish"}))
+        for religion in ("hindu", "sikh", "buddhist", "jain"):
+            self.assertEqual("temple", place_type(worship, {"religion": religion}), religion)
+        # Most of London's untagged ones are churches; a religion with no type of its own is a plain place.
+        self.assertEqual("church", place_type(worship, {}))
+        self.assertEqual("church", place_type(worship, {"religion": " "}))
+        for religion in ("multifaith", "bahai", "spiritualist"):
+            self.assertEqual("place", place_type(worship, {"religion": religion}), religion)
+
+    def test_every_type_written_is_one_the_app_knows(self):
+        # The app's PlaceType has these codes; one it doesn't know would read as a plain place.
+        self.assertEqual(45, len(TYPES))
+        self.assertIn("place", TYPES)
 
 
 class PlaceItemTest(unittest.TestCase):
@@ -391,7 +443,7 @@ class RenderTest(unittest.TestCase):
                       [("XX1 1XX", 51.5, -0.12)], "test sources")
         lines = text.splitlines()
         self.assertEqual(4, len(lines))
-        self.assertEqual("# stopdash place index v2\ttest sources", lines[0])
+        self.assertEqual("# stopdash place index v3\ttest sources", lines[0])
         self.assertEqual(["C\tXX1 1XX\t\t51.50000\t-0.12000\t4\t", "P\tBeta Hall\ttourism=museum\t51.50000\t-0.12000\t9\tXX1",
                           "S\tAlpha Road\t\t51.50000\t-0.12000\t4\tXX1"], lines[1:])
 

@@ -309,6 +309,9 @@ Modern, SE1" finds that one place: 18.0 MB raw, **4.9 MB** compressed. Working t
 the phone instead would mean a nearest-postcode search for each of some 196,000 entries as the index
 loads, on a path already about a second long, so the builder does it. The app still reads format 1.
 
+Format 3 (2026-10-13) puts each place's type (`pub`, `museum`, `church`…, one of 44) in the category
+column, which held the raw OpenStreetMap tag, for its row's icon: shorter codes, so **4.8 MB** compressed.
+
 Against Overture's tier B (178,690 places), that's about a third fewer places, nearly all of them
 businesses: 90,172 places rank 2 (shops, cafes, offices), 26,608 rank 7 (public places), and 1,026
 rank 8 or 9 through the Wikipedia coverage of the item they name. Every landmark the Overture spot

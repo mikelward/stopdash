@@ -50,6 +50,7 @@ class EnGbStringsTest {
             "percent" to "per cent", "stroller" to "buggy",
             "restroom" to "toilet", "restrooms" to "toilets", "ATM" to "cash machine",
             "parking" to "car park", "baggage storage" to "left luggage", "taxi stand" to "taxi rank",
+            "theater" to "theatre", "takeout" to "takeaway",
         )
     }
 }

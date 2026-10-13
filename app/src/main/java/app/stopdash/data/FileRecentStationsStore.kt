@@ -3,6 +3,7 @@ package app.stopdash.data
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.PlaceHit
 import app.stopdash.domain.PlaceKind
+import app.stopdash.domain.PlaceType
 import app.stopdash.domain.RecentStations
 import app.stopdash.domain.SearchEntry
 import app.stopdash.domain.StationMatch
@@ -102,6 +103,8 @@ private data class PersistedRecentStation(
     val longitude: Double? = null,
     // A place's [PlaceKind] by name; one this build doesn't know reads as a place.
     val placeKind: String? = null,
+    // A place's [PlaceType] by code; none (an older list) or one this build doesn't know reads as a place.
+    val placeType: String? = null,
     // An interchange's station name's modes ([StationMatch.lead]); empty for any other stop, and in a
     // list written before names were listed.
     val lead: List<String> = emptyList(),
@@ -110,7 +113,8 @@ private data class PersistedRecentStation(
 private fun PersistedRecentStation.toDomain(): SearchEntry =
     if (latitude != null && longitude != null) {
         val kind = PlaceKind.entries.firstOrNull { it.name == placeKind } ?: PlaceKind.PLACE
-        SearchEntry.Place(PlaceHit(name, Coordinates(latitude, longitude), kind))
+        val type = placeType?.let { PlaceType.ofCode(it) } ?: PlaceType.PLACE
+        SearchEntry.Place(PlaceHit(name, Coordinates(latitude, longitude), kind, type = type))
     } else {
         SearchEntry.Stop(StationMatch(id, name, modes, lead = lead))
     }
@@ -119,5 +123,6 @@ private fun SearchEntry.toPersisted(): PersistedRecentStation = when (this) {
     is SearchEntry.Stop -> PersistedRecentStation(match.id, match.name, match.modes, lead = match.lead)
     is SearchEntry.Place -> PersistedRecentStation(
         id = "", name = hit.name, latitude = hit.coordinate.latitude, longitude = hit.coordinate.longitude, placeKind = hit.kind.name,
+        placeType = hit.type.code,
     )
 }

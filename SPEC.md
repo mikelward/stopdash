@@ -413,8 +413,12 @@ The app finds stops two ways:
   place or postcode" — and found in the **bundled London place index** (*To… a place or postcode*),
   starts the trip from its coordinate, as a station does.
 - **To… a place or postcode** (maintainer, 2026-09-27) — the *To…* search offers **places** (a
-  landmark, a venue, a business, a street, an address, a postcode) among the stop matches, each tagged
-  *Place*, *Street* or *Postcode* in the right column where a stop shows its modes; tapping one plans
+  landmark, a venue, a business, a street, an address, a postcode) among the stop matches, each marked
+  in the right column, where a stop shows its modes, by an icon for what it is: a place's type (a pub, a
+  museum, a church…, about 44 types from its OpenStreetMap tags), a street or a postcode (maintainer,
+  2026-10-13). A stop's modes are icons too, one each, trains first: Tube, Rail (National Rail, the
+  Overground and the Elizabeth line share it), DLR, Tram, River, Cable car, Bus. The postcode district
+  stays as text ahead of them, and a screen reader says the words; tapping one plans
   to its **coordinate** (a final walk leg, D9), like a favorite. Its field reads "Station, stop, place
   or postcode".
   - **Found on the device first** (maintainer, 2026-10-11; `dev-docs/PLACES.md`): a **bundled London
@@ -422,7 +426,7 @@ The app finds stops two ways:
     worship, museums, hospitals, venues…), shops and businesses, and named streets, all from
     **OpenStreetMap** (maintainer, 2026-10-13: OpenStreetMap only, so no check-in copies from Foursquare or
     the other aggregators), and every London postcode from OS Code-Point Open — about 410,000 entries,
-    4.9 MB in the download. It's read once, off the main thread, as the search opens, and searched as the rider
+    4.8 MB in the download. It's read once, off the main thread, as the search opens, and searched as the rider
     types, so its places are **listed with the bundled stations at once**, offline, with nothing sent.
     It ranks by the stop search's tiers (a prefix, then a substring, then letters in order from the
     name's first letter), a leading "The" passed over; then a place Wikipedia covers widely (five or more

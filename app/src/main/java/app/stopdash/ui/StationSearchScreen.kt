@@ -670,27 +670,23 @@ private fun OutsideStatusRow(outside: OutsideLondon, onSearch: () -> Unit) {
     }
 }
 
-/** A place in the search results: its name, and a Place/Street/Postcode tag in the right column (where
- *  a stop shows its modes) so a place reads apart from a stop, on one line at [MatchRow]'s density. */
+/** A place in the search results: its name, and in the right column (where a stop shows its modes) its
+ *  postcode district and an icon for its type, a street or a postcode ([RowTag]), so a place reads apart
+ *  from a stop, on one line at [MatchRow]'s density. */
 @Composable
 internal fun PlaceHitRow(place: PlaceHit, onClick: () -> Unit, onLongClick: (() -> Unit)? = null, area: String? = null) {
-    val kind = stringResource(
-        when (place.kind) {
-            PlaceKind.POSTCODE -> R.string.station_search_kind_postcode
-            PlaceKind.PLACE -> R.string.station_search_kind_place
-            PlaceKind.STREET -> R.string.station_search_kind_street
-        },
-    )
-    // The place's postcode district leads its kind ("EC4M · Place"), as a stop's leads its modes, so a
-    // place and the stops beside it read as the same spot.
-    val tag = listOfNotNull(area, kind).joinToString(" · ")
+    val kind = stringResource(placeTypeLabel(place))
+    // The place's postcode district leads its icon ("EC4M · [museum]"), as a stop's leads its modes, so
+    // a place and the stops beside it read as the same spot. A screen reader hears the words.
+    val spoken = listOfNotNull(place.name, area, kind).joinToString(", ")
     val menuLabel = stringResource(R.string.station_search_row_menu_action)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .rowClicks(onClick, onLongClick, menuLabel)
             .heightIn(min = 48.dp)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .semantics { contentDescription = spoken },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -701,13 +697,7 @@ internal fun PlaceHitRow(place: PlaceHit, onClick: () -> Unit, onLongClick: (() 
             modifier = Modifier.weight(1f),
         )
         Spacer(modifier = Modifier.width(12.dp))
-        Text(
-            tag,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            textAlign = TextAlign.End,
-        )
+        RowTag(area, icon = placeIcon(place))
     }
 }
 
@@ -719,7 +709,12 @@ internal fun MatchRow(match: StationMatch, onClick: () -> Unit, onLongClick: (()
     // and ellipsizes only what's left. The modes are bounded and single-line, so a many-mode station
     // (Stratford's five modes) can't grow to squeeze the name to nothing or wrap at large text scales.
     // The stop's postcode district leads its modes ("EC4M · Bus"), so same-named stops read apart.
-    val modes = listOfNotNull(area, modesLabel(match.modes).takeIf { it.isNotEmpty() }).joinToString(" · ")
+    // Read from the match, which worked the label out off the main thread (AGENTS *Main thread*).
+    val modes = when {
+        area == null -> match.modesSpoken
+        match.modesSpoken.isEmpty() -> area
+        else -> "$area · ${match.modesSpoken}"
+    }
     // The clickable merges its children, so TalkBack reads one label for the whole row: give it the
     // FULL station name (not the visual "Intl" abbreviation) plus the modes. A per-child description
     // would be read alone and drop the modes; the visual modes text can ellipsize, but this doesn't.
@@ -756,14 +751,13 @@ internal fun MatchRow(match: StationMatch, onClick: () -> Unit, onLongClick: (()
             )
             if (modes.isNotEmpty()) {
                 Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    modes,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.End,
-                    modifier = Modifier.widthIn(max = modesMax),
+                // The district, then a mode's icon each (maintainer, 2026-10-13), precomputed on the match;
+                // [spoken] says the words. A mode with no icon is named, which only a mode new to TfL is.
+                RowTag(
+                    area,
+                    Modifier.widthIn(max = modesMax),
+                    modes = match.modeIcons,
+                    extra = match.otherModesLabel,
                 )
             }
         }
@@ -780,15 +774,6 @@ internal fun Message(text: String) {
     )
 }
 
-/**
- * A match's modes as a rider reads them, in TfL's order: "Tube · Bus". TfL's mode ids are
- * lower-case and hyphenated; the known ones get their proper names, any other is spaced and
- * capitalized rather than hidden.
- */
-internal fun modesLabel(modes: List<String>): String =
-    modes.filter { it.isNotBlank() }.distinct().joinToString(" · ") { mode ->
-        modeName(mode)
-    }
 
 /** A hiding group's display name ("tube" → "Underground"), else its mode's name. */
 internal fun groupName(group: ModeGroups.Group): String = GROUP_NAMES[group.key] ?: modeName(group.key)
@@ -850,20 +835,7 @@ private val GROUP_NAMES = mapOf(
 )
 
 /** A mode's display name ("national-rail" → "National Rail"), or its id tidied for one we don't know. */
-internal fun modeName(mode: String): String =
-    KNOWN_MODE_NAMES[mode.lowercase(Locale.ROOT)] ?: mode.replace('-', ' ').replaceFirstChar { it.titlecase(Locale.ROOT) }
-
-private val KNOWN_MODE_NAMES = mapOf(
-    "tube" to "Tube",
-    "bus" to "Bus",
-    "dlr" to "DLR",
-    "overground" to "Overground",
-    "elizabeth-line" to "Elizabeth",
-    "national-rail" to "National Rail",
-    "tram" to "Tram",
-    "river-bus" to "River Bus",
-    "cable-car" to "Cable car",
-)
+internal fun modeName(mode: String): String = app.stopdash.domain.modeName(mode)
 
 /**
  * The station page while its stops are still being looked up, or when that failed or found none:

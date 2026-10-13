@@ -658,12 +658,14 @@ private fun MatchResultRow(
                     // The modes disambiguate two same-named places TfL kept distinct (>250 m apart), so
                     // the user doesn't pick the wrong coordinate — as the station search's rows do (Codex).
                     // The postcode district leads them ("EC4M · Bus"), as on the station search's rows.
-                    val modes = listOfNotNull(area, modesLabel(match.modes).takeIf { it.isNotEmpty() }).joinToString(" · ")
-                    if (modes.isNotEmpty()) {
-                        Text(
-                            text = modes,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    // Its modes as icons after the district ([RowTag]); the row says them for a screen reader.
+                    if (area != null || match.modes.isNotEmpty()) {
+                        val spoken = if (area == null) match.modesSpoken else if (match.modesSpoken.isEmpty()) area else "$area, ${match.modesSpoken}"
+                        RowTag(
+                            area,
+                            Modifier.semantics { contentDescription = spoken },
+                            modes = match.modeIcons,
+                            extra = match.otherModesLabel,
                         )
                     }
                 }
