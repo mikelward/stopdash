@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Application
 import android.location.Location
 import android.location.LocationManager
+import android.location.LocationRequest
 import android.os.Looper
 import android.os.SystemClock
 import androidx.test.core.app.ApplicationProvider
@@ -101,6 +102,44 @@ class AndroidLocationProviderTest {
         // And how long ago it was taken: just now.
         assertTrue(checkNotNull(fix.ageMillis) < 1_000L)
         assertNull(recalledNear(51.8))
+    }
+
+    // The quality each provider's pending single-fix request asked for.
+    private fun askedQuality(provider: String) = shadowOf(manager).getLocationRequests(provider).single().quality
+
+    @Test
+    fun `under precise location, fused and GPS are asked for their most accurate fix, first fix and follow-up alike`() = runTest {
+        shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+        listOf(LocationManager.FUSED_PROVIDER, LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+            .forEach { shadowOf(manager).setProviderEnabled(it, true) }
+        val provider = AndroidLocationProvider(app, remembers = false)
+        // The first fix: every provider asked at once, none answering yet.
+        val locating = async { provider.current(forceFresh = true) }
+        runCurrent()
+        assertEquals(LocationRequest.QUALITY_HIGH_ACCURACY, askedQuality(LocationManager.FUSED_PROVIDER))
+        assertEquals(LocationRequest.QUALITY_HIGH_ACCURACY, askedQuality(LocationManager.GPS_PROVIDER))
+        // A network fix is what it is; it's asked as before.
+        assertEquals(LocationRequest.QUALITY_BALANCED_POWER_ACCURACY, askedQuality(LocationManager.NETWORK_PROVIDER))
+        locating.cancel()
+        runCurrent()
+        // The follow-up after a coarse fix: GPS and fused only, and both for their best.
+        val following = async { provider.preciseFix() }
+        runCurrent()
+        assertEquals(LocationRequest.QUALITY_HIGH_ACCURACY, askedQuality(LocationManager.FUSED_PROVIDER))
+        assertEquals(LocationRequest.QUALITY_HIGH_ACCURACY, askedQuality(LocationManager.GPS_PROVIDER))
+        assertTrue(shadowOf(manager).getLocationRequests(LocationManager.NETWORK_PROVIDER).isEmpty())
+        following.cancel()
+    }
+
+    @Test
+    fun `under approximate location, fused is asked as before`() = runTest {
+        shadowOf(app).grantPermissions(Manifest.permission.ACCESS_COARSE_LOCATION)
+        shadowOf(manager).setProviderEnabled(LocationManager.FUSED_PROVIDER, true)
+        val locating = async { AndroidLocationProvider(app, remembers = false).current(forceFresh = true) }
+        runCurrent()
+        // Its fix is approximate whatever is asked, so it isn't asked to run GPS for nothing.
+        assertEquals(LocationRequest.QUALITY_BALANCED_POWER_ACCURACY, askedQuality(LocationManager.FUSED_PROVIDER))
+        locating.cancel()
     }
 
     @Test

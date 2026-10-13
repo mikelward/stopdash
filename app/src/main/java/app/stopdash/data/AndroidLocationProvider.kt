@@ -334,7 +334,7 @@ class AndroidLocationProvider(
             suspendCancellableCoroutine { cont ->
                 val signal = CancellationSignal()
                 cont.invokeOnCancellation { signal.cancel() }
-                manager.getCurrentLocation(provider, signal, context.mainExecutor) { location ->
+                manager.getCurrentLocation(provider, currentLocationRequest(provider), signal, context.mainExecutor) { location ->
                     cont.resume(location?.toLocated(provider))
                 }
             }
@@ -350,6 +350,24 @@ class AndroidLocationProvider(
             warn("location fix failed: ${e::class.simpleName}")
             null
         }
+
+    /**
+     * What a single fix from [provider] asks for. The request-less `getCurrentLocation` asks at
+     * Android's default, balanced power, where fused answers from Wi-Fi and cell without GPS — yet
+     * its fix is read here as precise, and the precise follow-up was never one: in a bug report fused
+     * gave nothing in 8 s while the list's high-accuracy updates gave ±12 m (2026-10-13). So under a
+     * precise grant fused and GPS are asked for their most accurate fix; GPS runs for the same bounded
+     * wait regardless, so it costs next to no battery. Network, passive, and an approximate-only
+     * grant keep the default.
+     */
+    private fun currentLocationRequest(provider: String): LocationRequest =
+        LocationRequest.Builder(0)
+            .apply {
+                if (isAccurateProvider(provider) && hasFineLocationPermission()) {
+                    setQuality(LocationRequest.QUALITY_HIGH_ACCURACY)
+                }
+            }
+            .build()
 
     /** A cached last-known fix: its coordinates, age in ms, and whether it came from an
      *  accurate (GPS/fused) provider — the last gates the precise fast path in [FixSelection]. */
