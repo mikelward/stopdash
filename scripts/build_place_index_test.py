@@ -18,6 +18,7 @@ AT = (51.5, -0.12)
 NEAR = (51.5010, -0.12)     # ~110 m north
 MID = (51.5050, -0.12)      # ~560 m north
 FAR = (51.5300, -0.12)      # ~3.3 km north
+BEYOND = (51.5110, -0.12)   # ~1.2 km north, past a Wikidata item's reach
 
 
 def place(name, category="museum", confidence=1.0, at=AT, status=None, meta_only=True):
@@ -124,7 +125,7 @@ class NotableTest(unittest.TestCase):
     def test_a_place_wikipedia_covers_widely_ranks_above_other_public_places(self):
         ranks = self.ranks([
             place("Omega Cathedral", "christian_place_of_worship", 0.95),
-            place("Beta Chapel", "christian_place_of_worship", 0.95, at=MID),
+            place("Beta Chapel", "christian_place_of_worship", 0.95, at=BEYOND),
             place("Gamma Hall", "music_venue", 0.95, at=NEAR),
             place("Delta Club", "bar", 0.95, at=(51.45, -0.12)),
         ])
@@ -137,6 +138,37 @@ class NotableTest(unittest.TestCase):
         near = self.ranks([place("Beta Chapel", "christian_place_of_worship", 0.95, at=NEAR)])
         self.assertEqual({"Beta Chapel": 8}, near)
 
+    def test_a_big_sites_listing_takes_its_items_prominence_from_across_the_site(self):
+        # Kew Gardens' listing is 700 m from Wikidata's point for it.
+        self.assertEqual({"Beta Chapel": 8}, self.ranks([place("Beta Chapel", "park", 0.95, at=MID)]))
+
+    def test_a_place_named_for_an_area_isnt_the_area_from_across_it(self):
+        # A gym named "Greenwich" a few hundred meters from Greenwich's item took the area's prominence.
+        self.assertEqual({"Beta Chapel": 7}, self.ranks([place("Beta Chapel", "gym", 0.95, at=MID)]))
+        self.assertEqual({"Beta Chapel": 7}, self.ranks([place("Beta Chapel", "christian_place_of_worship", 0.95, at=MID)]))
+
+    def test_only_the_nearest_of_a_names_listings_takes_its_prominence(self):
+        # Three "Buckingham Palace"s lay within 1 km of its item; the stray one, ranked with the
+        # palace, won for a rider starting nearer it.
+        ranks = sorted((p[2], p[4]) for p in select_places([
+            place("Omega Cathedral", "christian_place_of_worship", 0.95, at=NEAR),
+            place("Omega Cathedral", "park", 0.95, at=MID),
+        ], self.notable))
+        self.assertEqual([(NEAR[0], 9), (MID[0], 7)], ranks)
+
+    def test_a_listing_on_the_items_spot_takes_its_prominence_beside_the_nearest(self):
+        # A big site Overture files twice, both at it.
+        ranks = sorted((p[1], p[4]) for p in select_places([
+            place("Omega Cathedral", "christian_place_of_worship", 0.95),
+            place("Omega Cathedral", "landmark_and_historical_building", 0.95, at=NEAR),
+        ], self.notable))
+        self.assertEqual([("christian_place_of_worship", 9), ("landmark_and_historical_building", 9)], ranks)
+
+    def test_a_landmark_overture_files_as_a_business_takes_its_prominence(self):
+        # Big Ben is a fountain, Somerset House a cultural center.
+        self.assertEqual({"Omega Cathedral": 9}, self.ranks([place("Omega Cathedral", "public_fountain", 0.95)]))
+        self.assertEqual({"Omega Cathedral": 9}, self.ranks([place("Omega Cathedral", "cultural_center", 0.95)]))
+
     def test_a_place_named_for_a_famous_one_doesnt_share_its_prominence(self):
         self.assertEqual({"Omega Cathedral School": 7}, self.ranks([place("Omega Cathedral School", "place_of_learning", 0.95, at=NEAR)]))
 
@@ -146,9 +178,9 @@ class NotableTest(unittest.TestCase):
         rows = [place("Delta Store", "grocery_store", 0.95), place("Delta Store", "grocery_store", 0.95, at=FAR)]
         self.assertEqual(2, len(select_places(rows, notable)))
 
-    def test_wikidata_never_drops_or_moves_a_listing(self):
-        # A name alone can't say a far listing is the famous item's stray rather than another place, so
-        # every copy stays where Overture puts it; only the one beside the item takes its prominence.
+    def test_wikidata_never_moves_a_listing_and_keeps_far_ones_outside_venue_categories(self):
+        # A church or a park far from a same-named item is another place, so it stays where Overture
+        # puts it; only the one beside the item takes its prominence.
         notable = Notable([("Omega Cathedral", AT[0], AT[1], 70), ("Omega Park", AT[0], AT[1], 21)])
         rows = [place("Omega Cathedral", "christian_place_of_worship", 0.95),
                 place("Omega Cathedral", "christian_place_of_worship", 0.95, at=FAR),
@@ -157,6 +189,31 @@ class NotableTest(unittest.TestCase):
             sorted([("Omega Cathedral", AT[0], 9), ("Omega Cathedral", FAR[0], 7), ("Omega Park", FAR[0], 7)]),
             sorted((p[0], p[2], p[4]) for p in select_places(rows, notable)),
         )
+
+    def test_a_famous_venues_far_meta_only_copies_are_dropped(self):
+        # People check in to "O2 Arena" from all over London (maintainer, 2026-10-13).
+        notable = Notable([("Omega Arena", AT[0], AT[1], 37)])
+        rows = [place("Omega Arena", "stadium_arena", 0.95, at=NEAR),
+                place("Omega Arena", "music_venue", 0.95, at=FAR),
+                place("Omega Arena", "arts_and_entertainment", 0.95, at=(51.45, -0.12)),
+                place("Omega Arena", "movie_theater", 0.95, at=(51.55, -0.12))]
+        self.assertEqual([("Omega Arena", NEAR[0])], [(p[0], p[2]) for p in select_places(rows, notable)])
+
+    def test_a_far_copy_more_confident_than_the_real_venue_doesnt_displace_it(self):
+        notable = Notable([("Omega Arena", AT[0], AT[1], 37)])
+        rows = [place("Omega Arena", "stadium_arena", 0.95), place("Omega Arena", "stadium_arena", 1.0, at=FAR)]
+        self.assertEqual([("Omega Arena", AT[0])], [(p[0], p[2]) for p in select_places(rows, notable)])
+
+    def test_a_far_copy_stays_when_another_source_vouches_for_it_or_its_own_item_is_near(self):
+        notable = Notable([("Omega Arena", AT[0], AT[1], 37), ("Omega Arena", FAR[0], FAR[1], 3)])
+        rows = [place("Omega Arena", "music_venue", 0.95, at=FAR),
+                place("Omega Arena", "music_venue", 0.95, at=(51.45, -0.12), meta_only=False)]
+        self.assertEqual(2, len(select_places(rows, notable)))
+
+    def test_a_far_copy_of_a_less_famous_venue_stays(self):
+        # The Elizabethan Hope Theatre shares its name with a real fringe theatre across London.
+        notable = Notable([("Omega Arena", AT[0], AT[1], 19)])
+        self.assertEqual(1, len(select_places([place("Omega Arena", "music_venue", 0.95, at=FAR)], notable)))
 
     def test_reads_the_query_services_csv(self):
         text = ('item,name,loc,links\nhttp://www.wikidata.org/entity/Q1,Omega Cathedral,Point(-0.12 51.5),70\n'

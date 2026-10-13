@@ -426,10 +426,12 @@ The app finds stops two ways:
     name's first letter), a leading "The" passed over; then an exact name; then the **better known**
     (maintainer, 2026-10-12), by how many Wikipedia editions cover the place (Wikidata), so "st paul"
     finds St Paul's Cathedral before the lesser places it also starts; then the nearer. Overture's listings are cleaned when the index is built: near-duplicates of one place merge,
-    and a museum's or monument's far-off copies (check-ins) are dropped. Wikidata only ranks: it never
-    drops or moves a listing (maintainer, 2026-10-12), since a name alone can't say a far listing is
-    the famous place rather than another of its name, so a famous place's stray copies can still be
-    listed, below it and with their own postcode district.
+    and a museum's or monument's far-off copies (check-ins) are dropped. Wikidata ranks only the
+    listing nearest its item, and never moves one (maintainer, 2026-10-12): a name alone can't say a
+    far listing is the famous place rather than another of its name, so most stray copies stay listed,
+    below it and with their own postcode district. A world-famous venue's (20+ Wikipedia editions) far
+    copies that only Meta vouches for are the exception, and are dropped (maintainer, 2026-10-13):
+    people check in to "O2 Arena" from all over London.
   - **On the device first** (maintainer, 2026-10-11): the index covers London, so an address is found
     by its street, and a place it doesn't hold, such as an exact house number, isn't listed from it.
   - **Outside London, from TfL** (maintainer, 2026-10-11): below everything bundled, a **Search
