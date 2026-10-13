@@ -38,8 +38,11 @@ class PlaceIndex private constructor(
 ) {
     enum class Kind { PLACE, STREET, POSTCODE }
 
-    /** One destination found: its [name], what [kind] it is, and where it is. */
-    data class Entry(val name: String, val kind: Kind, val coordinate: Coordinates)
+    /**
+     * One destination found: its [name], what [kind] it is, and where it is. [notable]: a landmark
+     * Wikipedia covers widely (rank [NOTABLE_RANK] or more), which outranks a bus stop matched as well.
+     */
+    data class Entry(val name: String, val kind: Kind, val coordinate: Coordinates, val notable: Boolean = false)
 
     val size: Int get() = kinds.size
 
@@ -149,6 +152,7 @@ class PlaceIndex private constructor(
         name = String(names, nameStarts[i], nameStarts[i + 1] - nameStarts[i], Charsets.UTF_8),
         kind = Kind.entries[kinds[i].toInt()],
         coordinate = Coordinates(latitudes[i] / COORDINATE_SCALE, longitudes[i] / COORDINATE_SCALE),
+        notable = ranks[i] >= NOTABLE_RANK,
     )
 
     // Whether entry [i]'s name starts with the word "The", so its key's leading "the" can be passed
@@ -228,6 +232,9 @@ class PlaceIndex private constructor(
         // About a millisecond of scanning on a phone: often enough to drop a superseded search fast.
         const val CHECKPOINT_EVERY = 8192
         private const val MAX_RANK = 9
+
+        // A place Wikipedia covers in five or more languages (`scripts/build_place_index.py`).
+        const val NOTABLE_RANK = 8
         private const val COORDINATE_SCALE = 1e5
         // Grid cells for [districtNear], in scaled degrees: 0.01° north (1.1 km) by 0.017° east (1.2 km),
         // each at least [MAX_DISTRICT_DISTANCE] across, so the 3x3 cells around a position hold every

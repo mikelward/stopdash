@@ -15,6 +15,8 @@ sealed interface SearchEntry {
 }
 
 object SearchResults {
+    private const val BUS_MODE = "bus"
+
     /**
      * The [stops] and geocoded [places] for [query] as one list, ranked by how well each name
      * matches, so a place the query starts ("Tate Britain" for "tate") sits above a stop that only
@@ -22,8 +24,11 @@ object SearchResults {
      * its own order, both already ranked; a place goes before the first stop that matches worse than
      * it does (a worse tier, or the same tier with a name less exactly the query's), and a stop wins
      * a tie. A stop that [leads] its tier (the user's own, an interchange) goes ahead of any place in it,
-     * however exactly the place is named, as the stops' own ranking puts it first. A postcode's places, whose names needn't contain the query,
-     * follow the stops, as a match the matcher can't place does.
+     * however exactly the place is named, as the stops' own ranking puts it first. A [PlaceHit.notable]
+     * landmark wins the tie against a bus stop, though not a station: "st pau" lists St Paul's tube,
+     * then St Paul's Cathedral, then the St Paul's bus stops (maintainer, 2026-10-13). A postcode's
+     * places, whose names needn't contain the query, follow the stops, as a match the matcher can't
+     * place does.
      */
     fun merge(
         query: String,
@@ -46,11 +51,21 @@ object SearchResults {
         }
         fun scoreOf(place: PlaceHit) =
             if (place.kind == PlaceKind.POSTCODE) unplaced * 4 + 3 else scoreOf(StationMatcher.tier(query, place.name)?.ordinal ?: unplaced, place.name)
+        // A stop only buses call at: a landmark matched as well goes above it.
+        fun busOnly(stop: StationMatch) = stop.modes.isNotEmpty() && stop.modes.all { it.equals(BUS_MODE, ignoreCase = true) }
         val merged = ArrayList<SearchEntry>(stops.size + places.size)
         var p = 0
         for (stop in stops) {
             val stopScore = scoreOf(stop)
-            while (p < places.size && scoreOf(places[p]) < stopScore) merged += SearchEntry.Place(places[p++])
+            val yieldsToLandmark = busOnly(stop) && !leads(stop)
+            while (p < places.size) {
+                val placeScore = scoreOf(places[p])
+                if (placeScore < stopScore || (placeScore == stopScore && places[p].notable && yieldsToLandmark)) {
+                    merged += SearchEntry.Place(places[p++])
+                } else {
+                    break
+                }
+            }
             merged += SearchEntry.Stop(stop)
         }
         while (p < places.size) merged += SearchEntry.Place(places[p++])

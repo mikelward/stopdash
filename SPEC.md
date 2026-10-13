@@ -439,7 +439,9 @@ The app finds stops two ways:
     with a Retry, and the bundled rows stand. *To…*, *From…* and the favorite place editor offer it;
     the favorite-journey picker, which takes saved places only, doesn't. Stops and places are **one list ranked by match**, so a place the query
   starts ("Tate Britain" for "tate") sits above a stop that only contains it ("… Estate"); a stop wins a
-  tie, and a postcode's places follow the stops (maintainer, 2026-09-28). The list **never reorders
+  tie, and a postcode's places follow the stops (maintainer, 2026-09-28), except that a landmark (a place
+  Wikipedia covers widely) wins one against a bus stop, though not a station: "st pau" lists St Paul's
+  tube, then the Cathedral, then the bus stops (maintainer, 2026-10-13). The list **never reorders
   under a finger**: what's listed first stays, and what arrives later (the bus stops, still being read
   as the first letters are typed, below the stations' best four with a spinner beneath them; places
   read late) is **appended below** it, ranked among itself, even when it matches better (maintainer,

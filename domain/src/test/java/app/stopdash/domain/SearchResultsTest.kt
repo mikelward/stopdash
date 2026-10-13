@@ -36,6 +36,25 @@ class SearchResultsTest {
     }
 
     @Test
+    fun `a landmark wins a tie against a bus stop but not a station`() {
+        // "st pau": St Paul's tube, then St Paul's Cathedral, then the St Paul's bus stops (maintainer,
+        // 2026-10-13). A place that isn't a landmark still yields to the bus stops.
+        val stops = listOf(
+            StationMatch("940GZZZETA", "Zeta Cross", listOf("tube")),
+            StationMatch("490ZETA1", "Zeta Rise", listOf("bus")),
+            StationMatch("490ZETA2", "Zeta Road", listOf("bus")),
+        )
+        val places = listOf(
+            PlaceHit("Zeta Cathedral", Coordinates(51.5, -0.1), PlaceKind.PLACE, notable = true),
+            place("Zeta Hall"),
+        )
+        assertEquals(
+            listOf("Zeta Cross", "Zeta Cathedral", "Zeta Rise", "Zeta Road", "Zeta Hall"),
+            names(SearchResults.merge("zeta", stops, places)),
+        )
+    }
+
+    @Test
     fun `a place named exactly what's typed ranks above stops the query only starts`() {
         // Exact, then whole name, as each list ranks itself (maintainer, 2026-10-12).
         val stops = listOf(stop("Zeta Road"), stop("Alpha / Zeta Lane"))
