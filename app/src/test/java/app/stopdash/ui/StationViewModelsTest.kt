@@ -697,7 +697,15 @@ class StationViewModelsTest {
         val restored = searchVm(SavedStateHandle(mapOf("query" to first.get<String>("query"))), index)
         assertEquals("oxford", restored.state.value.query)
         advanceUntilIdle()
-        assertEquals(StationSearchViewModel.Result.Matches(listOf(oxford)), restored.state.value.result)
+        assertEquals(StationSearchViewModel.Result.Matches(listOf(oxford), query = "oxford"), restored.state.value.result)
+    }
+
+    @Test
+    fun `the rows say which query they answer, trimmed, so the list starts afresh when the next one's land`() = runTest {
+        val vm = searchVm(SavedStateHandle(), StationIndex(listOf(oxfordStation)))
+        vm.onQueryChange("oxford ")
+        advanceUntilIdle()
+        assertEquals("oxford", (vm.state.value.result as StationSearchViewModel.Result.Matches).query)
     }
 
     @Test
