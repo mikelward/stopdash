@@ -72,7 +72,10 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Countdown
 import app.stopdash.domain.FavoritePlaceIcon
+import app.stopdash.domain.PlaceArt
 import app.stopdash.domain.PlaceDirect
+import app.stopdash.domain.PlaceKind
+import app.stopdash.domain.PlaceType
 import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.MaxWalk
@@ -1526,37 +1529,55 @@ class TripScreenScreenshotTest {
             ends = TripEnds(fromStation = "Highbury & Islington", toName = "Canary Wharf", onChangeFrom = {}, onChangeTo = {}),
         )
         composeRule.onNodeWithTag("fromField").assertContentDescriptionEquals("From Highbury & Islington")
-        // A station and a stop name themselves alone: no place pin at either end.
-        composeRule.onAllNodesWithTag("endPlaceIcon", useUnmergedTree = true).assertCountEquals(0)
+        // A station and a stop name themselves alone: no place's icon at either end.
+        composeRule.onAllNodes(placeLead, useUnmergedTree = true).assertCountEquals(0)
         captureSnapshot("trip-from-to-station.png")
     }
 
     @Test
     fun trip_from_to_bar_between_places() {
         // A place at either end leads its name with an icon, as "Here" leads with the crosshair
-        // (maintainer, 2026-10-13): a saved place its own, as its chip shows it, and a place searched
-        // for a place pin. A stock "Home" and a public interchange, no one's own place.
+        // (maintainer, 2026-10-13): a saved place its own, as its chip shows it, and a place nobody
+        // typed (a shared link, say) a place pin. A stock "Home" and a public interchange, no one's own place.
         show(
             planned,
             ends = TripEnds(
                 fromStation = "Home", toName = "Canary Wharf", onChangeFrom = {}, onChangeTo = {},
-                fromPlace = true, toPlace = true, fromIcon = FavoritePlaceIcon.HOME,
+                fromPlace = PlaceArt.PLAIN, toPlace = PlaceArt.PLAIN, fromIcon = FavoritePlaceIcon.HOME,
             ),
         )
         composeRule.onNodeWithTag("fromField").assertContentDescriptionEquals("From Home")
         composeRule.onNodeWithTag("toField").assertContentDescriptionEquals("To Canary Wharf")
         // Each icon sits in its own field, before the name.
-        for ((field, name, icon) in listOf(
-            Triple("fromField", "Home", "endPlaceIcon-${FavoritePlaceIcon.HOME}"),
-            Triple("toField", "Canary Wharf", "endPlaceIcon"),
-        )) {
-            val lead = composeRule.onNode(hasTestTag(icon) and hasAnyAncestor(hasTestTag(field)), useUnmergedTree = true)
-            val text = composeRule.onNode(hasText(name) and hasAnyAncestor(hasTestTag(field)), useUnmergedTree = true)
-            assertTrue(lead.getBoundsInRoot().right <= text.getBoundsInRoot().left)
-        }
-        // The saved place's own icon in place of the pin, never beside it.
-        composeRule.onAllNodesWithTag("endPlaceIcon", useUnmergedTree = true).assertCountEquals(1)
+        assertLeads("fromField", "Home", "endPlaceIcon-${FavoritePlaceIcon.HOME}")
+        assertLeads("toField", "Canary Wharf", "endPlaceType-place")
+        // One icon in each field: the saved place's own in place of the pin, never beside it.
+        composeRule.onAllNodes(placeLead, useUnmergedTree = true).assertCountEquals(2)
         captureSnapshot("trip-from-to-places.png")
+    }
+
+    @Test
+    fun trip_from_to_bar_between_searched_places() {
+        // A place searched for leads with what it is, as its search row showed it (maintainer,
+        // 2026-10-13): a street its sign, a gallery its type's icon. Synthetic stand-ins, no real place.
+        show(
+            planned,
+            ends = TripEnds(
+                fromStation = "Example Street", toName = "Sample Gallery", onChangeFrom = {}, onChangeTo = {},
+                fromPlace = PlaceArt(PlaceKind.STREET), toPlace = PlaceArt(type = PlaceType.GALLERY),
+            ),
+        )
+        assertLeads("fromField", "Example Street", "endPlaceType-street")
+        assertLeads("toField", "Sample Gallery", "endPlaceType-gallery")
+        composeRule.onAllNodes(placeLead, useUnmergedTree = true).assertCountEquals(2)
+        captureSnapshot("trip-from-to-searched-places.png")
+    }
+
+    // [icon] leads [name] in [field]: inside it, before the name.
+    private fun assertLeads(field: String, name: String, icon: String) {
+        val lead = composeRule.onNode(hasTestTag(icon) and hasAnyAncestor(hasTestTag(field)), useUnmergedTree = true)
+        val text = composeRule.onNode(hasText(name) and hasAnyAncestor(hasTestTag(field)), useUnmergedTree = true)
+        assertTrue(lead.getBoundsInRoot().right <= text.getBoundsInRoot().left)
     }
 
     @Test

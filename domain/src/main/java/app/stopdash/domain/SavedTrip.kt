@@ -7,17 +7,27 @@ package app.stopdash.domain
  * update can be to restore what the old one wrote.
  */
 object SavedTrip {
-    /** A [ToChoice]: whether its search is up, then a picked stop's id and name, or a place's coordinate and name. */
-    fun toChoiceFields(to: ToChoice): List<Any?> =
-        listOf(to.picking, to.stopId, to.name, to.place?.coordinate?.latitude, to.place?.coordinate?.longitude, to.place?.name)
+    /**
+     * A [ToChoice]: whether its search is up, then a picked stop's id and name, or a place's coordinate,
+     * name and [PlaceArt.code].
+     */
+    fun toChoiceFields(to: ToChoice): List<Any?> = listOf(
+        to.picking,
+        to.stopId,
+        to.name,
+        to.place?.coordinate?.latitude,
+        to.place?.coordinate?.longitude,
+        to.place?.name,
+        to.place?.art?.code,
+    )
 
-    /** What [toChoiceFields] saved. */
+    /** What [toChoiceFields] saved, or the build before it, which kept no place's art (a plain place). */
     fun toChoiceOf(saved: List<Any?>): ToChoice {
         val lat = saved[3] as Double?
         val lon = saved[4] as Double?
         val placeName = saved[5] as String?
         val place = if (lat != null && lon != null && placeName != null) {
-            TripDestination.Place(Coordinates(lat, lon), placeName)
+            TripDestination.Place(Coordinates(lat, lon), placeName, PlaceArt.ofCode(saved.getOrNull(TO_FIELDS_WITHOUT_ART) as String?))
         } else {
             null
         }
@@ -35,26 +45,36 @@ object SavedTrip {
     }
 
     /**
-     * What [originChangeFields] saved, or what the build before it did: a station's id and name alone,
-     * or "" for near me. Those changes could only begin at a *To…* search, so they keep one open.
-     * Anything else is no change under way.
+     * What [originChangeFields] saved, or what the builds before it did: a To… without its place's art,
+     * with or without the station's lead; or a station's id and name alone, or "" for near me. Those
+     * changes could only begin at a *To…* search, so they keep one open. Anything else is no change
+     * under way.
      */
     fun originChangeOf(saved: List<Any?>): OriginChange? = when (saved.size) {
-        ORIGIN_FIELDS, ORIGIN_FIELDS_WITHOUT_LEAD -> {
-            val to = toChoiceOf(saved.subList(2, ORIGIN_FIELDS_WITHOUT_LEAD))
-            val id = saved[0] as String?
-            @Suppress("UNCHECKED_CAST")
-            val lead = (saved.getOrNull(ORIGIN_FIELDS_WITHOUT_LEAD) as? List<String>).orEmpty()
-            if (id == null) OriginChange.NearMe(to) else OriginChange.Station(id, saved[1] as String, to, lead)
-        }
+        ORIGIN_FIELDS -> originChange(saved, TO_FIELDS)
+        ORIGIN_FIELDS_WITHOUT_ART, ORIGIN_FIELDS_WITHOUT_LEAD -> originChange(saved, TO_FIELDS_WITHOUT_ART)
         LEGACY_STATION_FIELDS -> OriginChange.Station(saved[0] as String, saved[1] as String, ToChoice.NONE.startPicking())
         LEGACY_NEAR_ME_FIELDS -> OriginChange.NearMe(ToChoice.NONE.startPicking())
         else -> null
     }
 
-    private const val ORIGIN_FIELDS = 9
+    // A change saved as its station's id and name, [toFields] of To…, then (unless an older build's) its lead.
+    private fun originChange(saved: List<Any?>, toFields: Int): OriginChange {
+        val to = toChoiceOf(saved.subList(2, 2 + toFields))
+        val id = saved[0] as String?
+        @Suppress("UNCHECKED_CAST")
+        val lead = (saved.getOrNull(2 + toFields) as? List<String>).orEmpty()
+        return if (id == null) OriginChange.NearMe(to) else OriginChange.Station(id, saved[1] as String, to, lead)
+    }
+
+    private const val TO_FIELDS = 7
+    // A To… before a place's art was kept.
+    private const val TO_FIELDS_WITHOUT_ART = 6
+    private const val ORIGIN_FIELDS = 2 + TO_FIELDS + 1
+    // The shape before a place's art was kept.
+    private const val ORIGIN_FIELDS_WITHOUT_ART = 2 + TO_FIELDS_WITHOUT_ART + 1
     // The shape before a station's lead was kept.
-    private const val ORIGIN_FIELDS_WITHOUT_LEAD = 8
+    private const val ORIGIN_FIELDS_WITHOUT_LEAD = 2 + TO_FIELDS_WITHOUT_ART
     private const val LEGACY_STATION_FIELDS = 2
     private const val LEGACY_NEAR_ME_FIELDS = 1
 }

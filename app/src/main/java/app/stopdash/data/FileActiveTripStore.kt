@@ -2,6 +2,7 @@ package app.stopdash.data
 
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Coordinates
+import app.stopdash.domain.PlaceArt
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
@@ -394,7 +395,10 @@ private data class PersistedActiveTrip(
     }
 }
 
-/** A [TripDestination]: a stop by [id], or a place at [latitude], [longitude] named [name]. */
+/**
+ * A [TripDestination]: a stop by [id], or a place at [latitude], [longitude] named [name], which is
+ * [art] ([PlaceArt.code]; none from an older build, a plain place).
+ */
 @Serializable
 internal data class PersistedTripDestination(
     val kind: String,
@@ -402,10 +406,11 @@ internal data class PersistedTripDestination(
     val latitude: Double? = null,
     val longitude: Double? = null,
     val name: String = "",
+    val art: String? = null,
 ) {
     fun toDestination(): TripDestination? = when (kind) {
         STOP -> id.takeIf { it.isNotBlank() }?.let { TripDestination.Stop(it) }
-        PLACE -> if (latitude != null && longitude != null) TripDestination.Place(Coordinates(latitude, longitude), name) else null
+        PLACE -> if (latitude != null && longitude != null) TripDestination.Place(Coordinates(latitude, longitude), name, PlaceArt.ofCode(art)) else null
         else -> null
     }
 
@@ -420,6 +425,7 @@ internal data class PersistedTripDestination(
                 latitude = destination.coordinate.latitude,
                 longitude = destination.coordinate.longitude,
                 name = destination.name,
+                art = destination.art.code,
             )
         }
     }

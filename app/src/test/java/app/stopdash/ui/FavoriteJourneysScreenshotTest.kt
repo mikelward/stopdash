@@ -352,8 +352,8 @@ class FavoriteJourneysScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNode(hasTestTag("endPlaceIcon-${FavoritePlaceIcon.HOME}") and hasAnyAncestor(hasTestTag("fromField")), useUnmergedTree = true)
             .assertIsDisplayed()
-        // Its own icon in place of the generic pin.
-        composeRule.onNodeWithTag("endPlaceIcon", useUnmergedTree = true).assertDoesNotExist()
+        // Its own icon in place of the plain place's.
+        composeRule.onNodeWithTag("endPlaceType-place", useUnmergedTree = true).assertDoesNotExist()
     }
 
     @Test

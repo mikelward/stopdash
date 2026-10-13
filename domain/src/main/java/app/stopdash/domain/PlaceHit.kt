@@ -19,7 +19,10 @@ data class PlaceHit(
     // What kind of place a [PlaceKind.PLACE] is, shown as its row's icon; [PlaceType.PLACE] when unknown
     // (TfL's places outside London, a recent pick from an older build).
     val type: PlaceType = PlaceType.PLACE,
-)
+) {
+    /** What it is, as its icon shows it: carried into the trip's From and To fields when picked. */
+    val art: PlaceArt get() = PlaceArt(kind, type)
+}
 
 object PlaceHits {
     /** How many geocoded places are kept after re-ranking, so they don't crowd out the stops. */

@@ -16,6 +16,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.ModeIcon
+import app.stopdash.domain.PlaceArt
 import app.stopdash.domain.PlaceHit
 import app.stopdash.domain.PlaceKind
 import app.stopdash.domain.PlaceType
@@ -59,10 +60,14 @@ internal fun RowTag(
 
 /** A place result's icon: its type's for a place, else the street's or the postcode's. */
 @DrawableRes
-internal fun placeIcon(place: PlaceHit): Int = when (place.kind) {
+internal fun placeIcon(place: PlaceHit): Int = placeIcon(place.art)
+
+/** What a place is ([PlaceArt]) as its icon: the search row's, and the trip's From and To fields'. */
+@DrawableRes
+internal fun placeIcon(art: PlaceArt): Int = when (art.kind) {
     PlaceKind.STREET -> R.drawable.ic_kind_street
     PlaceKind.POSTCODE -> R.drawable.ic_kind_postcode
-    PlaceKind.PLACE -> TYPE_ART.getValue(place.type).first
+    PlaceKind.PLACE -> TYPE_ART.getValue(art.type).first
 }
 
 /** What a screen reader says for a place result's icon: its type, "Street" or "Postcode". */
