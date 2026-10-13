@@ -254,6 +254,9 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   Keep driving this PR while waiting; rebase only where the ruleset requires it or it is
   `dirty`, and merge on the current head's verdict, rechecking first. Say which PR you
   waited on or passed over.
+- **A paragraph opening "next", "after", "then" or "follow-up" is sequenced after the item
+  before it.** It may start in parallel, but its PR merges only after this session's earlier
+  PRs, so they don't have to rebase and rerun CI under it.
 - **A red baseline is the next task** — get `./gradlew test`/`lint` green before pulling
   new work from `TODO.md`.
 
