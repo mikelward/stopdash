@@ -216521,8 +216521,8 @@ P	Acquisition Aesthetics	personal_or_beauty_service	51.51475	-0.14071	2
 P	Acquisition Aesthetics - Botox And Dermal Filler Courses Provider	place_of_learning	51.52671	-0.13397	7
 P	Acquisitions Fireplaces Ltd.		51.54986	-0.14343	2
 P	Acqvalue Accountancy	financial_service	51.36782	-0.10390	2
-P	Acre Lane  Dental Care	dental_clinic	51.46005	-0.12041	2
 P	Acre Lane Brixton	historic_site	51.45953	-0.12543	7
+P	Acre Lane Dental Care	dental_clinic	51.46005	-0.12041	2
 P	Acre Medical Services	dental_clinic	51.52477	-0.34127	2
 P	Acre Properties	real_estate_service	51.49999	-0.26155	2
 P	Acre Surgery	diagnostics_imaging_or_lab_service	51.60450	-0.41154	2
@@ -216788,7 +216788,7 @@ P	Adagio London Sutton	hotel	51.36076	-0.19131	7
 P	Adagiolondon	professional_service	51.51484	-0.12350	2
 P	Adair Associates	real_estate_service	51.33420	-0.26420	2
 P	Adali Cake & Patisserie	casual_eatery	51.58174	-0.09945	2
-P	Adam & Bross Hair dresser and  Barber	personal_or_beauty_service	51.46763	-0.22065	2
+P	Adam & Bross Hair dresser and Barber	personal_or_beauty_service	51.46763	-0.22065	2
 P	Adam & Eve	bar	51.49950	-0.13563	2
 P	Adam & Eve Group Ltd.	corporate_or_business_office	51.51512	-0.12442	2
 P	Adam & Eve's Kindergarten	home_service	51.38475	-0.02192	2
@@ -217042,7 +217042,6 @@ P	Adlink UK Ltd.	real_estate_service	51.53450	-0.29869	2
 P	Admac Fitness	personal_or_beauty_service	51.52044	-0.02788	2
 P	Admin On The Move		51.38732	0.16358	2
 P	Admirable Richmond Nails	personal_or_beauty_service	51.46275	-0.32256	2
-P	Admiral  Recruitment	professional_service	51.50962	-0.09175	2
 P	Admiral Arthur Phillip Memorial	monument	51.51332	-0.09605	7
 P	Admiral Casino	amusement_park	51.56160	-0.07373	2
 P	Admiral Casino	casino	51.43467	-0.50934	2
@@ -217079,6 +217078,7 @@ P	Admiral Hotel	hotel	51.51506	-0.17233	7
 P	Admiral Jet	air_transport_facility_or_service	51.51492	-0.12364	2
 P	Admiral Plumbing And Heating	supplier_or_distributor	51.54765	-0.45320	2
 P	Admiral Property Partnership	real_estate_service	51.54848	-0.17277	2
+P	Admiral Recruitment	professional_service	51.50962	-0.09175	2
 P	Admiral Tax	financial_service	51.52927	-0.08806	2
 P	Admiral Vernon	bar	51.53553	0.15139	2
 P	Admiral Vernon Antique Market	second_hand_store	51.51435	-0.20416	2
@@ -217911,7 +217911,7 @@ P	Al-Khair Secondary School	elementary_school	51.37913	-0.08889	7
 P	Al-Khoei Foundation	civic_organization	51.53971	-0.20977	2
 P	Al-Madina Mitcham Islamic Centre	muslim_place_of_worship	51.41678	-0.15192	7
 P	Al-Muzzammil Masjid & Community Centre	muslim_place_of_worship	51.43025	-0.16768	7
-P	Al-Nabi Mosque   مسجد النّبی	muslim_place_of_worship	51.57674	-0.00507	7
+P	Al-Nabi Mosque مسجد النّبی	muslim_place_of_worship	51.57674	-0.00507	7
 P	Al-Nehar Mosque & Education Centre	muslim_place_of_worship	51.53272	-0.11962	7
 P	Al-Noor Voluntary Aided Primary School	elementary_school	51.56319	0.11632	7
 P	Al-Rathai Thai Cuisine	restaurant	51.45103	0.10355	2
@@ -218572,7 +218572,7 @@ P	Ali's Kitchen	restaurant	51.54580	0.16524	2
 P	Ali's Pass Driving School	specialty_school	51.49648	-0.09094	7
 P	Alianca Portuguese Community Centre	community_center	51.46010	-0.13530	7
 P	Alianti	cafe	51.46004	-0.30686	2
-P	Alianz Park Copthall  Stadium Barnet	stadium_arena	51.60349	-0.22366	7
+P	Alianz Park Copthall Stadium Barnet	stadium_arena	51.60349	-0.22366	7
 P	Alibon Children's Centre Annexe	education	51.55017	0.14953	7
 P	Alice Amati	art_gallery	51.52373	-0.14097	7
 P	Alice Black	art_gallery	51.51864	-0.13415	7
@@ -219751,7 +219751,7 @@ P	Ambleside Veterinary Centre	animal_or_pet_service	51.38768	-0.41347	2
 P	Ambra Aesthetic Clinic	specialized_health_care	51.61990	-0.17655	2
 P	Ambresbury Banks	historic_site	51.68199	0.07790	7
 P	Ambrose King Centre	primary_care_or_general_clinic	51.50996	-0.05007	7
-P	Ambrosia Quality Food  LTD  -  Good Mood Greek Food	restaurant	51.59184	-0.05599	2
+P	Ambrosia Quality Food LTD - Good Mood Greek Food	restaurant	51.59184	-0.05599	2
 P	Ambrosia restaurant	restaurant	51.63219	-0.09572	2
 P	Ambulatory Care Unit	hospital	51.57505	-0.32078	7
 P	Ambulatory Emergency Care	hospital	51.41521	-0.28292	7
@@ -222265,7 +222265,7 @@ P	Art Dyno and Suspension	automotive_service	51.52755	-0.27681	2
 P	Art East Creations	fashion_and_apparel_store	51.59225	-0.33721	2
 P	Art First	art_gallery	51.49362	-0.10836	7
 P	Art For Art's Sake	arts_crafts_and_hobby_store	51.59142	-0.14248	2
-P	Art Gallery  Picture Framing	art_gallery	51.36871	-0.44635	7
+P	Art Gallery Picture Framing	art_gallery	51.36871	-0.44635	7
 P	Art Hair & Beauty London	personal_or_beauty_service	51.57046	-0.14626	2
 P	Art House Hair Studio	personal_or_beauty_service	51.46526	-0.29958	2
 P	Art House Hair Studio	wellness_service	51.47271	-0.28683	2
@@ -224705,14 +224705,14 @@ P	BH Driving School	specialty_school	51.54268	-0.20020	7
 P	BH London - Boat Harbour London Ltd	vehicle_dealer	51.37207	-0.20798	2
 P	BHC Furniture	hardware_home_and_garden_store	51.51323	-0.07145	2
 P	BHI North London Branch	place_of_learning	51.52479	-0.11610	7
-P	BHP Remapping -  at Brands Hatch, Kent.	automotive_service	51.34357	0.26022	2
+P	BHP Remapping - at Brands Hatch, Kent.	automotive_service	51.34357	0.26022	2
 P	BHS	department_store	51.37597	-0.09946	7
 P	BHS	department_store	51.51551	-0.14329	7
 P	BHS	department_store	51.57805	0.18334	7
 P	BHS	department_store	51.65553	-0.39518	7
 P	BI Wines And Spirits		51.51840	-0.10781	2
 P	BIE Executive	b2b_service	51.51280	-0.08579	2
-P	BIG -  Bianca Ioana Gliga	wellness_service	51.61829	-0.34606	2
+P	BIG - Bianca Ioana Gliga	wellness_service	51.61829	-0.34606	2
 P	BIG LPG	automotive_service	51.52795	0.09405	2
 P	BIG sister	youth_organization	51.51662	-0.16458	2
 P	BIM'S North Finchley - High Road	fast_food_restaurant	51.61600	-0.17648	2
@@ -224865,7 +224865,7 @@ P	BP Car Wash	automotive_service	51.50917	-0.06107	2
 P	BP Car Wash	automotive_service	51.61973	-0.31514	2
 P	BP Carpets And Flooring Ltd.	hardware_home_and_garden_store	51.47797	-0.11247	2
 P	BP Connections Ltd.	real_estate_service	51.66390	-0.08580	2
-P	BP International   Headquarters	travel_service	51.50771	-0.13461	2
+P	BP International Headquarters	travel_service	51.50771	-0.13461	2
 P	BP Sutton Court	shopping	51.35765	-0.19142	2
 P	BPAS London East	specialized_medical_facility	51.54208	0.00565	2
 P	BPAS Richmond	specialized_medical_facility	51.45532	-0.31253	2
@@ -226866,7 +226866,7 @@ P	Barris Roofing	home_service	51.38668	-0.07347	2
 P	Barrister KnowHow	attorney_or_law_firm	51.52814	-0.26778	2
 P	Barrister Tahir Ashraf		51.51436	-0.11122	2
 P	Barron Locksmiths		51.34049	-0.25553	2
-P	Barrons Hairdressing and  Photovision	personal_or_beauty_service	51.58979	-0.14422	2
+P	Barrons Hairdressing and Photovision	personal_or_beauty_service	51.58979	-0.14422	2
 P	Barrow Hedges Primary School	elementary_school	51.35288	-0.17519	7
 P	Barrow Hill Junior School	elementary_school	51.53279	-0.16890	7
 P	Barrow Hill Pre School	preschool	51.55362	-0.15078	7
@@ -227952,7 +227952,7 @@ P	Becontree: St Alban	christian_place_of_worship	51.53650	0.13307	7
 P	Becontree: St Cedd's	christian_place_of_worship	51.54486	0.11276	7
 P	Becontree: St John the Divine	christian_place_of_worship	51.53473	0.11905	7
 P	Becontree: St Thomas	christian_place_of_worship	51.55904	0.12271	7
-P	Becton  Park	park	51.52086	0.01787	7
+P	Becton Park	park	51.52086	0.01787	7
 P	Bed & Biscuits	animal_or_pet_service	51.38032	0.18084	2
 P	Bed Bug Heat Treatment	home_service	51.52520	-0.16750	2
 P	Bed and Breakfast in Barnes	bed_and_breakfast	51.46576	-0.25008	2
@@ -228869,7 +228869,7 @@ P	Bentham House UCL	campus_building	51.52654	-0.13092	7
 P	Bentinck House Hotel	hotel	51.51708	-0.15004	7
 P	Bentley & Skinner	manufacturer	51.50826	-0.13973	2
 P	Bentley Advanced Materials	manufacturer	51.43778	-0.40868	2
-P	Bentley Associates  LTD	professional_service	51.51719	-0.15158	2
+P	Bentley Associates LTD	professional_service	51.51719	-0.15158	2
 P	Bentley Crematorium & Cemetery	community_and_government	51.64235	0.27422	2
 P	Bentley Cricket Club	sport_league	51.63799	0.27324	2
 P	Bentley District Village Club	social_or_community_service	51.63976	0.27670	2
@@ -230459,13 +230459,13 @@ P	Bisceter Village	shopping_mall	51.52955	0.15203	7
 P	Bischell Construction Ltd.	home_service	51.52852	-0.23612	2
 P	Biscuit Box	professional_service	51.34311	-0.07213	2
 P	Biscuiteers	cafe	51.48588	-0.10974	2
-P	Biserica  Betania  Londra	christian_place_of_worship	51.53791	0.07767	7
 P	Biserica Adventistă Londra Est	christian_place_of_worship	51.55646	-0.00268	7
 P	Biserica Adventistă Sudbury	christian_place_of_worship	51.55577	-0.31828	7
 P	Biserica Alfa și Omega Leyton	christian_place_of_worship	51.56610	-0.02321	7
 P	Biserica Apostolică Râul Sfânt Londra	christian_place_of_worship	51.59579	-0.38504	7
 P	Biserica Baptista Biruinta Londra	christian_place_of_worship	51.57855	-0.26574	7
 P	Biserica Baptista Genesis	christian_place_of_worship	51.53891	0.07868	7
+P	Biserica Betania Londra	christian_place_of_worship	51.53791	0.07767	7
 P	Biserica Creștină după Evanghelie Betel Londra	christian_place_of_worship	51.58616	-0.30753	7
 P	Biserica Din Borehamwood	christian_place_of_worship	51.66842	-0.28930	7
 P	Biserica Lui Hristos Londra	christian_place_of_worship	51.57122	0.13411	7
@@ -230476,7 +230476,7 @@ P	Biserica Ortodoxa Sf. Irh. Nicolae din Londra	christian_place_of_worship	51.51
 P	Biserica Ortodoxa Sfântul Mare Mucenic Mina	christian_place_of_worship	51.54296	0.14790	7
 P	Biserica Ortodoxă Ealing	christian_place_of_worship	51.52664	-0.31220	7
 P	Biserica Ortodoxă Intrarea în Templu a Maicii Domnului	christian_place_of_worship	51.57423	0.17541	7
-P	Biserica Penticostala Filadelfia  2 Londra	christian_place_of_worship	51.52853	0.06177	7
+P	Biserica Penticostala Filadelfia 2 Londra	christian_place_of_worship	51.52853	0.06177	7
 P	Biserica Penticostala Filadelfia Londra	christian_place_of_worship	51.60918	-0.27589	7
 P	Biserica Penticostala Muntele Moria Stratford	christian_place_of_worship	51.54239	0.00613	7
 P	Biserica Penticostala Peniel Londra	christian_place_of_worship	51.56224	-0.29294	7
@@ -233554,7 +233554,7 @@ P	Brent Park	shopping_mall	51.55394	-0.26041	7
 P	Brent Park Tesco (Stop T)	park	51.55343	-0.25753	7
 P	Brent Pharmacy	wholesaler	51.48335	-0.30716	2
 P	Brent Playgroup	elementary_school	51.44310	0.23237	7
-P	Brent Registration of Births,  Marriages & Deaths	government_office	51.59273	-0.26422	7
+P	Brent Registration of Births, Marriages & Deaths	government_office	51.59273	-0.26422	7
 P	Brent Removals		51.54457	-0.26460	2
 P	Brent River Park Playground	park	51.54902	-0.26987	7
 P	Brent School of Motoring	specialty_school	51.57211	-0.26495	7
@@ -234407,7 +234407,7 @@ P	Britcrown Pharmacy	wholesaler	51.56028	0.22878	2
 P	Britcrown Pharmacy	wholesaler	51.58611	0.19998	2
 P	Britelite Hydroponics uk Ltd.	hardware_home_and_garden_store	51.38513	-0.08890	2
 P	British Academy For Training & Development	education	51.52982	-0.12008	7
-P	British Academy For Training and Development	campus_building	51.53742	-0.28441	7
+P	British Academy For Training and Development	campus_building	51.53742	-0.28441	7
 P	British Academy of Interior Design	education	51.51337	-0.14066	7
 P	British Academy of Jewellery	college_university	51.52046	-0.10897	7
 P	British Academy of Jewellery	specialty_school	51.54396	-0.15160	7
@@ -234436,7 +234436,7 @@ P	British American Drama Academy	performing_arts_venue	51.54442	-0.13489	7
 P	British American Tax	financial_service	51.59197	0.02850	2
 P	British American Tobacco Global Headquarters	corporate_or_business_office	51.51155	-0.11288	2
 P	British Arab Commercial Bank	bank_or_credit_union	51.51266	-0.08899	2
-P	British Arabic Centre                      المركز العربي البريطاني	religious_organization	51.51469	-0.16273	2
+P	British Arabic Centre المركز العربي البريطاني	religious_organization	51.51469	-0.16273	2
 P	British Arrows Awards Ltd.		51.51540	-0.13548	2
 P	British Association of Aesthetic Plastic Surgeons	surgery	51.51517	-0.11580	2
 P	British Association of Removers	labor_union	51.65578	-0.39933	2
@@ -243949,7 +243949,7 @@ P	Christ Apostolic Church	christian_place_of_worship	51.55243	-0.14233	7
 P	Christ Apostolic Church	christian_place_of_worship	51.56342	0.01091	7
 P	Christ Apostolic Church Canaan Land District Headquarters	christian_place_of_worship	51.49310	0.03822	7
 P	Christ Apostolic Church Dynamic Christian Centre	christian_place_of_worship	51.54695	0.00613	7
-P	Christ Apostolic Church International  Hackney	christian_place_of_worship	51.55539	-0.05822	7
+P	Christ Apostolic Church International Hackney	christian_place_of_worship	51.55539	-0.05822	7
 P	Christ Apostolic Church Kingdom Builders	christian_place_of_worship	51.54044	0.16121	7
 P	Christ Apostolic Church Kingswell	christian_place_of_worship	51.58262	-0.07180	7
 P	Christ Apostolic Church Mount Joy Zone	christian_place_of_worship	51.52958	-0.25986	7
@@ -255055,7 +255055,7 @@ P	Deninsure Ltd	financial_service	51.43576	-0.00607	2
 P	Deniros barbers	personal_or_beauty_service	51.41762	-0.05845	2
 P	Denis O'Regan Gallery W6	art_gallery	51.49328	-0.23907	7
 P	Denis Windows Ltd.	hardware_home_and_garden_store	51.64918	-0.02840	2
-P	Denisa King   Permanent Makeup & Aesthetics	personal_or_beauty_service	51.44410	0.21801	2
+P	Denisa King Permanent Makeup & Aesthetics	personal_or_beauty_service	51.44410	0.21801	2
 P	Denise Callaghan	specialized_health_care	51.41478	0.01335	2
 P	Denise Payne	specialized_health_care	51.53290	0.03399	2
 P	Denise Thompson Designer Florist	flowers_and_gifts_store	51.31294	0.18944	2
@@ -255795,7 +255795,6 @@ P	Dialogue Hub	art_gallery	51.50713	0.06581	7
 P	Diamante Salon	personal_or_beauty_service	51.37630	-0.01453	2
 P	Diamco Ltd.	fashion_and_apparel_store	51.51866	-0.10789	2
 P	Diamed London Clinic	medical_service	51.68493	-0.03323	2
-P	Diamond  Jacks Tattoo London	personal_or_beauty_service	51.51699	-0.13766	2
 P	Diamond Alloys Ltd.	manufacturer	51.54535	-0.36148	2
 P	Diamond Bank (UK) Plc	bank_or_credit_union	51.51328	-0.08057	2
 P	Diamond Banqueting Ealing	hotel	51.41931	-0.19985	7
@@ -255831,6 +255830,7 @@ P	Diamond Heart Tattoo	personal_or_beauty_service	51.45729	0.13955	2
 P	Diamond Heaven	manufacturer	51.52134	-0.10894	2
 P	Diamond Hotel	hotel	51.50981	-0.32760	7
 P	Diamond Jacks Tattoo Co.	personal_or_beauty_service	51.51266	-0.13411	2
+P	Diamond Jacks Tattoo London	personal_or_beauty_service	51.51699	-0.13766	2
 P	Diamond Jewelry United	fashion_and_apparel_store	51.56617	-0.20299	2
 P	Diamond Jewels	fashion_and_apparel_store	51.51968	-0.10821	2
 P	Diamond Kingdom	fashion_and_apparel_store	51.51862	-0.10796	2
@@ -256630,7 +256630,7 @@ P	Dog Kennel Hill Adventure Playground	playground	51.46369	-0.08301	7
 P	Dog Kennel Hill School	elementary_school	51.46499	-0.08355	7
 P	Dog Squad London	animal_or_pet_service	51.46093	-0.19675	2
 P	Dog Styles		51.35383	-0.04212	2
-P	Dog Walker In N8  N6.	arts_and_entertainment	51.57425	-0.12963	7
+P	Dog Walker In N8 N6.	arts_and_entertainment	51.57425	-0.12963	7
 P	Dog Walking London	b2b_office_and_professional_service	51.47116	-0.01690	2
 P	Dog Walking Love	animal_or_pet_service	51.47739	-0.06010	2
 P	Dog World Grooming Salon & Academy	animal_or_pet_service	51.63127	-0.09699	2
@@ -257592,7 +257592,7 @@ P	Dr. Martens Airwair Group	shopping	51.54048	-0.14563	2
 P	Dr. Mosaraf Ali	complementary_and_alternative_medicine	51.51985	-0.15834	2
 P	Dr. Rana Skin Clinic	wellness_service	51.55605	-0.05914	2
 P	Dr. Rhona Eskander	dental_clinic	51.48330	-0.18550	2
-P	Dr. Ronke Adegbulugbe -  WOSEM MOUNT Victory London	christian_place_of_worship	51.53558	0.08240	7
+P	Dr. Ronke Adegbulugbe - WOSEM MOUNT Victory London	christian_place_of_worship	51.53558	0.08240	7
 P	Dr. Tunc Tiryaki	surgery	51.49448	-0.15827	2
 P	Dr.Dropin	outpatient_care_facility	51.51662	-0.15476	2
 P	Dr.charles	movie_theater	51.51346	-0.12646	7
@@ -262961,9 +262961,9 @@ P	Esso	b2b_energy_and_utility_service	51.45139	0.05015	2
 P	Esso	b2b_energy_and_utility_service	51.50839	-0.28133	2
 P	Esso	b2b_energy_and_utility_service	51.59608	-0.29402	2
 P	Esso	convenience_store	51.46096	-0.03484	2
-P	Esso  Southgate and Pret A Manger	shopping	51.63295	-0.13005	2
 P	Esso Kingston Shannon Corner Budgens	manufacturer	51.39970	-0.24374	2
 P	Esso Park Lane	shopping	51.50887	-0.15421	2
+P	Esso Southgate and Pret A Manger	shopping	51.63295	-0.13005	2
 P	Esso Terminal Purfleet	airport	51.47564	0.25043	7
 P	Esso West London Terminal	b2b_transportation_and_storage_service	51.45293	-0.45882	2
 P	Est. India	restaurant	51.50393	-0.09508	2
@@ -270938,9 +270938,9 @@ P	Gable Court Care Home	senior_living_facility	51.57330	0.12459	2
 P	Gable Lodge London	hotel	51.64450	-0.05458	7
 P	Gables Pet Parlour	animal_or_pet_service	51.37135	0.15587	2
 P	Gables Surgery	primary_care_or_general_clinic	51.54504	0.11743	7
-P	Gabriel  Barber's	personal_or_beauty_service	51.57295	0.08365	2
 P	Gabriel & Associates	financial_service	51.55406	0.00502	2
 P	Gabriel Alvarez Sports Therapy & Personal Training	specialized_health_care	51.59421	-0.11334	2
+P	Gabriel Barber's	personal_or_beauty_service	51.57295	0.08365	2
 P	Gabriel Scott	hardware_home_and_garden_store	51.51091	-0.14114	2
 P	Gabriel Tattoos London and Body Piercing	personal_or_beauty_service	51.46159	-0.22016	2
 P	Gabriel's Bar & Lounge	lounge	51.65253	-0.39949	2
@@ -271483,7 +271483,6 @@ P	Gastronomica Ltd.	wholesaler	51.49002	-0.05573	2
 P	Gastronomica Market	casual_eatery	51.50571	-0.09131	2
 P	Gasworks	art_gallery	51.48512	-0.11560	7
 P	Gasworld Parts Uk Ltd.	supplier_or_distributor	51.50634	-0.24636	2
-P	Gate  Hotel	hotel	51.51115	-0.19803	7
 P	Gate 10	airport	51.50420	0.04527	7
 P	Gate 13	airport	51.46830	-0.46210	7
 P	Gate 14	airport	51.46221	-0.44470	7
@@ -271524,6 +271523,7 @@ P	Gate C57	airport	51.47215	-0.47624	7
 P	Gate C64	airport	51.47096	-0.47580	7
 P	Gate Chorley Wood	casual_eatery	51.65854	-0.50265	2
 P	Gate Grill Cafe	restaurant	51.52084	-0.09763	2
+P	Gate Hotel	hotel	51.51115	-0.19803	7
 P	Gate Payroll	supplier_or_distributor	51.38447	-0.09057	2
 P	Gate Seven Ltd.	b2b_office_and_professional_service	51.52776	-0.06071	2
 P	Gate Theatre	media_service	51.55919	-0.11594	2
@@ -273230,7 +273230,7 @@ P	Gold Star Cars	auto_dealer	51.56543	0.17314	2
 P	Gold Star Drycleaning	laundry_service	51.51232	-0.02791	2
 P	Gold Star Mobility	social_or_community_service	51.45081	0.22836	2
 P	Gold Star Thai Massage	wellness_service	51.63141	-0.09575	2
-P	Gold Star Thia  Massage	wellness_service	51.65148	-0.08034	2
+P	Gold Star Thia Massage	wellness_service	51.65148	-0.08034	2
 P	Gold Stores Ltd	second_hand_store	51.43526	-0.10394	2
 P	Gold Tattoo	personal_or_beauty_service	51.51717	-0.17263	2
 P	Gold Trowel Uk Ltd.	specialty_school	51.63132	0.19716	7
@@ -273583,10 +273583,10 @@ P	Good Relationships (Marriage & Couples Therapy)	health_care	51.63979	-0.11082	
 P	Good Samaritan	bar	51.51733	-0.06109	2
 P	Good Samaritan Church Of God	christian_place_of_worship	51.43441	-0.01944	7
 P	Good Shepherd	christian_place_of_worship	51.35323	-0.16796	7
-P	Good Shepherd Catholic  Primary and Nursery School	place_of_learning	51.35458	-0.01630	7
 P	Good Shepherd Catholic Church	christian_place_of_worship	51.35265	-0.02167	7
 P	Good Shepherd Catholic Primary School	elementary_school	51.50285	-0.24595	7
 P	Good Shepherd Catholic Primary School	place_of_learning	51.42691	0.01050	7
+P	Good Shepherd Catholic Primary and Nursery School	place_of_learning	51.35458	-0.01630	7
 P	Good Shepherd Jesus Christ Church	christian_place_of_worship	51.35862	-0.14129	7
 P	Good Shepherd R C Aided School	christian_place_of_worship	51.35238	-0.02096	7
 P	Good Shepherd R C School	elementary_school	51.42007	0.00932	7
@@ -274008,7 +274008,7 @@ P	Grade Line	fashion_and_apparel_store	51.60873	-0.13391	2
 P	Grade Number 1 Barbers	personal_or_beauty_service	51.65777	-0.39246	2
 P	Grade Scholars	education	51.50264	0.04598	7
 P	Gradegold Catering Ltd	event_or_party_service	51.54394	-0.36046	2
-P	Gradinita  Prichindel Ofsted Inregistrata	family_service	51.58832	-0.05839	2
+P	Gradinita Prichindel Ofsted Inregistrata	family_service	51.58832	-0.05839	2
 P	Gradmed	education	51.50145	-0.17602	7
 P	Graduate Centre	campus_building	51.52328	-0.04141	7
 P	Graduate College of London	college_university	51.51491	-0.12359	7
@@ -280049,7 +280049,6 @@ P	Heathpark Golf club	sports_and_recreation	51.50080	-0.45518	7
 P	Heathpark Launderette	laundry_service	51.55681	0.15148	2
 P	Heathro Airport	airport	51.51833	-0.18322	7
 P	Heathrow	airport	51.47967	-0.47666	7
-P	Heathrow  Bowling	sport_or_fitness_facility	51.52845	-0.39456	7
 P	Heathrow Academy	travel_service	51.48042	-0.44314	2
 P	Heathrow Airport	airport	51.44957	-0.40635	7
 P	Heathrow Airport	airport	51.45952	-0.44767	7
@@ -280084,6 +280083,7 @@ P	Heathrow Animal Reception Centre	animal_or_pet_service	51.45589	-0.45588	2
 P	Heathrow Apartments	historic_site	51.51935	-0.46443	7
 P	Heathrow Autos	auto_dealer	51.52724	-0.39910	2
 P	Heathrow BA Executive Lounge	lounge	51.46962	-0.46076	2
+P	Heathrow Bowling	sport_or_fitness_facility	51.52845	-0.39456	7
 P	Heathrow Boxing Club	airport	51.48161	-0.48293	7
 P	Heathrow Boxing Club	sport_or_fitness_facility	51.49857	-0.46185	7
 P	Heathrow Car & Van Rental	travel_service	51.48227	-0.48382	2
@@ -284265,7 +284265,6 @@ P	Hyde Park	park	51.52521	0.05673	7
 P	Hyde Park	park	51.55461	-0.27754	7
 P	Hyde Park	park	51.61825	-0.00183	7
 P	Hyde Park	park	51.65189	-0.07919	7
-P	Hyde Park  Kensington Palace	park	51.48932	-0.14051	7
 P	Hyde Park (Central London)	park	51.51262	-0.08355	7
 P	Hyde Park - London England	park	51.49459	-0.18466	7
 P	Hyde Park - The Round Swan Pond	park	51.48474	-0.18359	7
@@ -284293,6 +284292,7 @@ P	Hyde Park Holocaust Memorial	monument	51.50422	-0.15870	7
 P	Hyde Park Hostel	lodging	51.51087	-0.18591	7
 P	Hyde Park International	hotel	51.51242	-0.18625	7
 P	Hyde Park Kensington	park	51.50654	-0.17396	7
+P	Hyde Park Kensington Palace	park	51.48932	-0.14051	7
 P	Hyde Park Knightsbridge	park	51.50286	-0.15856	7
 P	Hyde Park Learning Centre	elementary_school	51.50794	-0.16601	7
 P	Hyde Park Learning Centre	elementary_school	51.50805	-0.16163	7
@@ -291486,7 +291486,7 @@ P	Kare Plus Romford	medical_service	51.56487	0.20036	2
 P	Karen Austin	complementary_and_alternative_medicine	51.67317	-0.04481	2
 P	Karen Autos Ltd (Direct Garage Services)	automotive_service	51.47620	0.02710	2
 P	Karen Cole	fashion_and_apparel_store	51.50455	-0.19356	2
-P	Karen Forbes  School Of Dance	sport_or_fitness_facility	51.41008	-0.20411	7
+P	Karen Forbes School Of Dance	sport_or_fitness_facility	51.41008	-0.20411	7
 P	Karen Hicks Brow Academy	specialty_school	51.28672	-0.08858	7
 P	Karen Humpage	arts_and_entertainment	51.57816	0.13294	7
 P	Karen Lockyer Optometrists	vision_or_eye_care_clinic	51.45768	-0.16590	2
@@ -292369,7 +292369,7 @@ P	Kenyngton Manor Primary School	elementary_school	51.42665	-0.41808	7
 P	Kenyngton Manor Recreation Wildflower Garden	park	51.43034	-0.41565	7
 P	Kenzo	fashion_and_apparel_store	51.51077	-0.14434	2
 P	Kepler Cheuvreux	financial_service	51.51500	-0.09085	2
-P	Keplin - Discover a Wide Range Of Household Products in UK	shopping_mall	51.50848	-0.12531	7
+P	Keplin - Discover a Wide Range Of Household Products in UK	shopping_mall	51.50848	-0.12531	7
 P	Kepnoch Care Service Ltd.	personal_or_beauty_service	51.42738	-0.05628	2
 P	Kepos Systems Ltd.	electronics_store	51.41967	-0.15520	2
 P	Keppel Advanced Dentistry	dental_clinic	51.35820	-0.18991	2
@@ -299432,7 +299432,7 @@ P	Little Bears Day Care	preschool	51.38602	-0.32415	7
 P	Little Beauty Box	wellness_service	51.39062	0.01530	2
 P	Little Bees Pre-school	preschool	51.37719	0.10647	7
 P	Little Beirut	restaurant	51.52837	-0.26733	2
-P	Little Belhus Country Park  Rocks	park	51.52179	0.28018	7
+P	Little Belhus Country Park Rocks	park	51.52179	0.28018	7
 P	Little Ben Clock	historic_site	51.49645	-0.14270	7
 P	Little Bengal Indian Restaurant	restaurant	51.47035	-0.21054	2
 P	Little Bevan	fashion_and_apparel_store	51.48885	-0.13692	2
@@ -299811,7 +299811,7 @@ P	Little Winners Day Nursery	home_service	51.46592	-0.06581	2
 P	Little Wombles Nursery	family_service	51.45489	-0.19739	2
 P	Little Wonder Cafe	cafe	51.55400	-0.11060	2
 P	Little Woollie London	arts_crafts_and_hobby_store	51.40684	0.00462	2
-P	Little Xplorers  Nursery	family_service	51.58360	-0.26457	2
+P	Little Xplorers Nursery	family_service	51.58360	-0.26457	2
 P	Little Yellow Duck	b2b_office_and_professional_service	51.41310	-0.29857	2
 P	Little Yoda (a Trading Name Of Kuri Osity Ltd.)	professional_service	51.51950	-0.10816	2
 P	Little wave Beauty Salon	supplier_or_distributor	51.51429	-0.30478	2
@@ -300736,7 +300736,6 @@ P	London	historic_site	51.52073	-0.10518	7
 P	London	historic_site	51.54280	-0.00728	7
 P	London	historic_site	51.54602	0.03160	7
 P	London	historic_site	51.58626	-0.08363	7
-P	London  Uxbridge Park	park	51.54056	-0.47724	7
 P	London & Belcher	flowers_and_gifts_store	51.34386	-0.20096	2
 P	London & Country	real_estate_service	51.49211	-0.04318	2
 P	London & District Housing Ltd.		51.54786	-0.19187	2
@@ -302484,6 +302483,7 @@ P	London Up Ltd.	travel_service	51.49925	-0.08123	2
 P	London Upholsterers	automotive_service	51.47956	-0.12645	2
 P	London Urologica	specialized_health_care	51.52277	-0.14893	2
 P	London Urology Associates	specialized_health_care	51.52103	-0.14791	2
+P	London Uxbridge Park	park	51.54056	-0.47724	7
 P	London VA Ltd.		51.46281	-0.20919	2
 P	London VIP Meet and Assist	airport	51.47264	-0.48756	7
 P	London Vac Company	hardware_home_and_garden_store	51.47189	-0.16647	2
@@ -302633,7 +302633,7 @@ P	LondonLive Church	christian_place_of_worship	51.51510	-0.20536	7
 P	LondonLocs	personal_or_beauty_service	51.54279	-0.07582	2
 P	LondonMet Badminton Club	sport_court	51.55348	-0.11119	7
 P	LondonSkate	sport_or_fitness_facility	51.50449	-0.15632	7
-P	LondonStansed  airport	airport	51.49608	0.12386	7
+P	LondonStansed airport	airport	51.49608	0.12386	7
 P	LondonWide Estates	real_estate_service	51.52425	-0.18856	2
 P	Londonart Co. Uk	museum	51.46248	-0.09257	7
 P	Londonas TDK Salinieki	social_or_community_service	51.51107	-0.18494	2
@@ -310565,7 +310565,6 @@ P	Millenium Gloucester Conference Center	hotel	51.49351	-0.18382	7
 P	Millenium Hotel at Chelsea Fc	hotel	51.48106	-0.18929	7
 P	Millenium Performing Arts	specialty_school	51.49086	0.06585	7
 P	Millenium Tandoori	restaurant	51.52737	-0.39948	2
-P	Millennium  at Dulwich Branch	restaurant	51.46222	-0.08064	2
 P	Millennium & Copthorne Hotels at Chelsea Football Club	hotel	51.48109	-0.18918	7
 P	Millennium & Copthorne Share Trustees Limited	hotel	51.49872	-0.19102	7
 P	Millennium Arena	gym	51.47686	-0.14736	7
@@ -310602,6 +310601,7 @@ P	Millennium Sundial	monument	51.48137	-0.00161	7
 P	Millennium Tandoori	restaurant	51.42764	-0.03980	2
 P	Millennium Tandoori Dulwich	restaurant	51.46141	-0.07841	2
 P	Millennium Yoga	fitness_studio	51.49242	0.01211	7
+P	Millennium at Dulwich Branch	restaurant	51.46222	-0.08064	2
 P	Millennium cash And carry Ltd.	fashion_and_apparel_store	51.52956	0.08598	2
 P	Millenum Computer Services	legal_service	51.53221	-0.23321	2
 P	Miller & Carter	restaurant	51.28306	0.17052	2
@@ -315417,7 +315417,7 @@ P	Natuzzi Italia	hardware_home_and_garden_store	51.65032	-0.38470	2
 P	Natwest	bank_or_credit_union	51.58122	-0.33393	2
 P	Natyam Fashion - Kids Indian Ethnic Clothes	fashion_and_apparel_store	51.64943	-0.38231	2
 P	Naughty Piglets	bar	51.45515	-0.11313	2
-P	Nauka jazdy Twickenham, Feltham, Hounslow, Isleworth  w Urban Drive School	education	51.44701	-0.42069	7
+P	Nauka jazdy Twickenham, Feltham, Hounslow, Isleworth w Urban Drive School	education	51.44701	-0.42069	7
 P	Nauticalia	flowers_and_gifts_store	51.38296	-0.45705	2
 P	Nautilus	restaurant	51.55405	-0.19648	2
 P	Nautilus Swimming	swimming_pool	51.49095	-0.23612	7
@@ -318912,14 +318912,14 @@ P	OXBO Bankside	restaurant	51.50571	-0.10100	2
 P	OXO Property	real_estate_service	51.61510	-0.06468	2
 P	OXO2	event_or_party_service	51.50835	-0.10881	2
 P	OYO	hotel	51.52319	-0.15998	7
-P	OYO  Baraka Edgware	hotel	51.61941	-0.27709	7
 P	OYO 24 Sussex, London Paddington	hotel	51.51778	-0.16850	7
 P	OYO Aaraya Hotel		51.51691	-0.16994	2
 P	OYO Abbey Hotel	hotel	51.50630	-0.22472	7
 P	OYO Arinza Hotel	hotel	51.56395	0.06570	7
 P	OYO Bakers Hotel	hotel	51.49080	-0.14460	7
+P	OYO Baraka Edgware	hotel	51.61941	-0.27709	7
 P	OYO Boston Court Hotel	hotel	51.63278	0.22761	7
-P	OYO Bostons Manor Hotel, Hanwell London	hotel	51.50383	-0.33328	7
+P	OYO Bostons Manor Hotel, Hanwell London	hotel	51.50383	-0.33328	7
 P	OYO Broadway Inn	hotel	51.51115	-0.37591	7
 P	OYO Dorset House At Upton Park	hotel	51.53906	0.03728	7
 P	OYO East London House	hotel	51.58170	0.05098	7
@@ -320771,7 +320771,7 @@ P	Orchid	restaurant	51.41172	-0.31103	2
 P	Orchid Beauty and Thai Massage	wellness_service	51.49821	-0.20174	2
 P	Orchid Care	dental_clinic	51.54610	-0.07613	2
 P	Orchid Care	medical_service	51.67437	-0.02198	2
-P	Orchid Dental (Formerly  M H Bhatt & Associates of Willesden Medical Center)	dental_clinic	51.54760	-0.23507	2
+P	Orchid Dental (Formerly M H Bhatt & Associates of Willesden Medical Center)	dental_clinic	51.54760	-0.23507	2
 P	Orchid Epsom Hotel	hotel	51.36415	-0.25780	7
 P	Orchid Furniture	hardware_home_and_garden_store	51.47840	-0.18894	2
 P	Orchid Gorgeous Nails	personal_or_beauty_service	51.51770	-0.07356	2
@@ -323259,7 +323259,7 @@ P	Parents Paradise	event_or_party_service	51.65576	-0.38549	2
 P	Parents Power		51.46656	0.18465	2
 P	Pares Footwear	fashion_and_apparel_store	51.45052	0.10462	2
 P	Pares Footwear	fashion_and_apparel_store	51.46635	0.00841	2
-P	Paresh Nrshinga /Art Nrshinga  gallery	art_gallery	51.68537	-0.31909	7
+P	Paresh Nrshinga /Art Nrshinga gallery	art_gallery	51.68537	-0.31909	7
 P	Parexel	manufacturer	51.57460	-0.32151	2
 P	Parfaire Laser and Skin Clinic	wellness_service	51.41877	0.06760	2
 P	Parfum Le Dance	personal_care_and_beauty_store	51.46024	-0.30663	2
@@ -325787,7 +325787,6 @@ P	Pho36	restaurant	51.50257	-0.24257	2
 P	Phocuslife	b2b_office_and_professional_service	51.51735	-0.14621	2
 P	Phoeby's	cafe	51.60777	0.03673	2
 P	Phoenicia Mediterranean Food Hall	restaurant	51.54769	-0.14130	2
-P	Phoenix   Chinese  takeaway	restaurant	51.43875	-0.41875	2
 P	Phoenix Academy	place_of_learning	51.42100	-0.12884	7
 P	Phoenix Academy	place_of_learning	51.51255	-0.23732	7
 P	Phoenix Academy	place_of_learning	51.62835	-0.05145	7
@@ -325801,6 +325800,7 @@ P	Phoenix Building Maintenance & Solutions	home_service	51.43779	-0.38626	2
 P	Phoenix Business Solutions Ltd.	b2b_office_and_professional_service	51.51181	-0.07535	2
 P	Phoenix Childrens Resource Centre	hospital	51.39577	0.02413	7
 P	Phoenix Chinese Restaurant	restaurant	51.68674	0.00054	2
+P	Phoenix Chinese takeaway	restaurant	51.43875	-0.41875	2
 P	Phoenix Cinema London	movie_theater	51.58850	-0.16367	7
 P	Phoenix Clinic London	personal_or_beauty_service	51.41301	-0.31111	2
 P	Phoenix Collectables	second_hand_store	51.60374	-0.48213	2
@@ -327926,7 +327926,7 @@ P	Polish Roman Catholic Church of St John the Evangelist	christian_place_of_wors
 P	Polish Shop Anna	food_and_beverage_store	51.45274	0.05188	2
 P	Polish Specialities	food_and_beverage_store	51.38256	-0.12281	2
 P	Polish Tax House	financial_service	51.41857	-0.13507	2
-P	Polish Underground Movement Study Trust  -  Studium Polski Podziemnej	college_university	51.50987	-0.28966	7
+P	Polish Underground Movement Study Trust - Studium Polski Podziemnej	college_university	51.50987	-0.28966	7
 P	Polish YMCA	youth_organization	51.50654	-0.29051	2
 P	Polished	personal_or_beauty_service	51.30845	-0.30143	2
 P	Polished Concrete Designs Ltd.	home_service	51.35223	0.25176	2
@@ -329126,7 +329126,7 @@ P	Praise Christian Centre London	christian_place_of_worship	51.51381	-0.29886	7
 P	Praise Community Chapel International	christian_place_of_worship	51.53881	0.04454	7
 P	Praise Gate Temple	christian_place_of_worship	51.37742	-0.10696	7
 P	Praise House	christian_place_of_worship	51.38114	-0.10570	7
-P	Praise Temple Church,  Fredericktown MO	christian_place_of_worship	51.45452	-0.07074	7
+P	Praise Temple Church, Fredericktown MO	christian_place_of_worship	51.45452	-0.07074	7
 P	Pramukh Kids Montessori	preschool	51.55099	-0.29969	7
 P	Pran Sweets - Whitechapel	cafe	51.51903	-0.06323	2
 P	Prana Medicare	fitness_studio	51.49331	-0.18250	7
@@ -332522,13 +332522,13 @@ P	RBSS Consulting Ltd.	b2b_office_and_professional_service	51.57585	0.18506	2
 P	RC	personal_or_beauty_service	51.51277	-0.08721	2
 P	RCA Dyson Building	art_gallery	51.47944	-0.17044	7
 P	RCA White City	college_university	51.51306	-0.22848	7
-P	RCCG  - The House of Resurrection Parish	christian_place_of_worship	51.40993	-0.16144	7
+P	RCCG - The House of Resurrection Parish	christian_place_of_worship	51.40993	-0.16144	7
 P	RCCG - the Anchor for All Souls	christian_place_of_worship	51.48772	0.05963	7
 P	RCCG Adonai Ambassadors Assembly	christian_place_of_worship	51.60560	0.22253	7
 P	RCCG Bethel Parish	christian_place_of_worship	51.49941	-0.01269	7
 P	RCCG Bethel Tabernacle	christian_place_of_worship	51.49442	-0.07535	7
 P	RCCG Breakthrough Parish Church	christian_place_of_worship	51.44409	0.31032	7
-P	RCCG City of His Grace  - CoHG	christian_place_of_worship	51.44560	0.32592	7
+P	RCCG City of His Grace - CoHG	christian_place_of_worship	51.44560	0.32592	7
 P	RCCG City of Praise	christian_place_of_worship	51.29175	-0.10549	7
 P	RCCG Dominion Parish	christian_place_of_worship	51.47712	-0.36197	7
 P	RCCG Europe Mainland Region 2	christian_place_of_worship	51.49145	-0.08378	7
@@ -333676,7 +333676,7 @@ P	RayBux Ltd.	b2b_office_and_professional_service	51.28789	-0.09716	2
 P	Raya Grocery	food_and_beverage_store	51.50489	-0.09061	2
 P	Rayaan Furniture Ltd	hardware_home_and_garden_store	51.37800	-0.10320	2
 P	Rayaan Restaurant & Cafe	restaurant	51.59666	-0.06832	2
-P	Rayan's Lodge Stratford London by OYO	hotel	51.54254	0.00760	7
+P	Rayan's Lodge Stratford London by OYO	hotel	51.54254	0.00760	7
 P	Rayat London College	college_university	51.48534	-0.37539	7
 P	Raycall Services	supplier_or_distributor	51.68036	-0.41492	2
 P	Raycon	technical_service	51.54955	-0.11980	2
@@ -336789,8 +336789,8 @@ P	Roehampton Playing Fields	sport_or_fitness_facility	51.45378	-0.23833	7
 P	Roehampton Sport & Fitness Centre	gym	51.44939	-0.24318	7
 P	Roehampton Student Church	christian_place_of_worship	51.44979	-0.24530	7
 P	Roehampton Table Tennis Club	sport_league	51.46058	-0.24275	2
-P	Roehampton University  London UK	college_university	51.44965	-0.24488	7
 P	Roehampton University - Southlands Campus	college_university	51.45941	-0.24464	7
+P	Roehampton University London UK	college_university	51.44965	-0.24488	7
 P	Roffo Court	hotel	51.48337	-0.09335	7
 P	Roger Ascham Primary School	elementary_school	51.59819	-0.02656	7
 P	Roger Baker Office Interiors	hardware_home_and_garden_store	51.45708	-0.11952	2
@@ -338870,7 +338870,7 @@ P	S L Entertainment	music_venue	51.48232	-0.05379	7
 P	S L M Driving School	specialty_school	51.53474	0.04673	7
 P	S L R Repairs	automotive_service	51.39294	-0.16442	2
 P	S L R Supplies Ltd.	food_and_beverage_store	51.59163	0.04150	2
-P	S Lawrence Little Stanmore  (Whitchurch Lane Canons Park HA8)	christian_place_of_worship	51.60830	-0.28940	7
+P	S Lawrence Little Stanmore (Whitchurch Lane Canons Park HA8)	christian_place_of_worship	51.60830	-0.28940	7
 P	S M B S Foods	food_and_beverage_store	51.45840	-0.07494	2
 P	S M C	home_service	51.35409	-0.01742	2
 P	S M S Incoming Tourism	travel_service	51.49363	-0.19243	2
@@ -338980,9 +338980,9 @@ P	S333yda Hair&Beard	personal_or_beauty_service	51.52250	-0.10181	2
 P	S5 Agency World Ltd.	b2b_office_and_professional_service	51.50167	-0.08220	2
 P	S6 Soap	shopping	51.54635	0.14213	2
 P	S7ins	fashion_and_apparel_store	51.60082	-0.40953	2
-P	SA Beauty  Oxford Street	personal_or_beauty_service	51.51620	-0.13159	2
 P	SA Beauty Clinic	personal_or_beauty_service	51.58040	-0.12306	2
 P	SA Beauty Edgware	personal_or_beauty_service	51.60311	-0.27070	2
+P	SA Beauty Oxford Street	personal_or_beauty_service	51.51620	-0.13159	2
 P	SA Beauty Wood Green	wellness_service	51.58960	-0.10579	2
 P	SA Congregation London	christian_place_of_worship	51.48495	-0.08882	7
 P	SA Dance	sport_or_fitness_facility	51.50702	-0.30349	7
@@ -339559,7 +339559,7 @@ P	SSÄM - Korean Dining	restaurant	51.55163	-0.11115	2
 P	ST ART Gallery	art_gallery	51.51659	-0.13910	7
 P	ST Express Cargo	b2b_transportation_and_storage_service	51.54507	0.03679	2
 P	ST HUGH, Bermondsey	christian_place_of_worship	51.50106	-0.08890	7
-P	ST JOHNS Church Playgroup  PRE School	family_service	51.45941	0.11253	2
+P	ST JOHNS Church Playgroup PRE School	family_service	51.45941	0.11253	2
 P	ST John Coptic Church		51.39857	-0.04123	2
 P	ST Motor Group	auto_dealer	51.39900	-0.06978	2
 P	ST Nails Surbiton	personal_or_beauty_service	51.39400	-0.30421	2
@@ -341840,7 +341840,7 @@ P	Savoy Cafe & Kitchen	cafe	51.52299	-0.07824	2
 P	Savoy Court Hotel	hotel	51.51442	-0.15551	7
 P	Savoy Fish Shop and Restaurant	restaurant	51.51514	-0.24886	2
 P	Savoy Grill	restaurant	51.51049	-0.12069	2
-P	Savoy Hotel London  Gordon Ramsey's Restaurant	hotel	51.51287	-0.09921	7
+P	Savoy Hotel London Gordon Ramsey's Restaurant	hotel	51.51287	-0.09921	7
 P	Savoy Sports Massage Movement Rehabilitation	physical_medicine_and_rehabilitation	51.40900	-0.16585	2
 P	Savoy Tap	bar	51.51096	-0.11955	2
 P	Savoy Theatre	festival_venue	51.51009	-0.12104	2
@@ -342483,7 +342483,7 @@ P	Searock Indian bar & restaurant	restaurant	51.61258	-0.17555	2
 P	Sears Funeral Services	family_service	51.29215	0.30568	2
 P	Seascape Fish Bar	restaurant	51.44492	-0.15097	2
 P	Seascope Insurance Services	financial_service	51.51282	-0.07302	2
-P	Seashells  Fish And Chip	restaurant	51.68268	-0.31640	2
+P	Seashells Fish And Chip	restaurant	51.68268	-0.31640	2
 P	Seashore Fish Kitchen	restaurant	51.39344	-0.30336	2
 P	Season	fashion_and_apparel_store	51.49889	-0.18369	2
 P	Season Car Rental	rental_service	51.47486	-0.14557	2
@@ -343262,7 +343262,7 @@ P	Sexy Fish	restaurant	51.50926	-0.14439	2
 P	SexyHer Dresses	fashion_and_apparel_store	51.37976	-0.07493	2
 P	Seychelles Holidays Direct	travel_service	51.60122	-0.26761	2
 P	Seyf Dental	dental_clinic	51.47215	-0.24687	2
-P	Seymour Artistic  Swimming Club	sports_and_recreation	51.49398	-0.14106	7
+P	Seymour Artistic Swimming Club	sports_and_recreation	51.49398	-0.14106	7
 P	Seymour Direct Ltd.	b2b_office_and_professional_service	51.63916	-0.47232	2
 P	Seymour Gardens	lodging	51.56510	0.05761	7
 P	Seymour Green Estate Agents	real_estate_service	51.44084	-0.19672	2
@@ -349212,7 +349212,7 @@ P	St Augustine's Sports Centre	sport_or_fitness_facility	51.53375	-0.19333	7
 P	St Augustine's Tower	historic_site	51.54784	-0.05447	7
 P	St Augustine's Wembley Park	christian_place_of_worship	51.56205	-0.29157	7
 P	St Augustine's of Canterbury - Rush Green, Romford	christian_place_of_worship	51.56538	0.17159	7
-P	St Augustine's with St Luke's,  Bromley Common	christian_place_of_worship	51.39032	0.05181	7
+P	St Augustine's with St Luke's, Bromley Common	christian_place_of_worship	51.39032	0.05181	7
 P	St Augustines School	place_of_learning	51.53480	-0.19260	7
 P	St Augustine’s Kilburn Church	christian_place_of_worship	51.53313	-0.19153	7
 P	St Barnabas	christian_place_of_worship	51.49905	-0.20644	7
@@ -349814,7 +349814,7 @@ P	St James the Great Roman Catholic Church	christian_place_of_worship	51.38805	0
 P	St James the Less Church	christian_place_of_worship	51.49070	-0.13506	7
 P	St James the Less Church	christian_place_of_worship	51.53181	-0.04792	7
 P	St James the Less Pimlico	christian_place_of_worship	51.49081	-0.13519	7
-P	St James ·  Enfield Highway + Brimsdown	christian_place_of_worship	51.65613	-0.04718	7
+P	St James · Enfield Highway + Brimsdown	christian_place_of_worship	51.65613	-0.04718	7
 P	St James' CE Primary School	elementary_school	51.49303	-0.06717	7
 P	St James' Catholic High School	high_school	51.60088	-0.24119	7
 P	St James' Church	christian_place_of_worship	51.40362	-0.21300	7
@@ -350104,8 +350104,8 @@ P	St Johns Church	christian_place_of_worship	51.42034	-0.21646	7
 P	St Johns Church	christian_place_of_worship	51.46809	-0.02422	7
 P	St Johns Church	christian_place_of_worship	51.55270	-0.30225	7
 P	St Johns Church	historic_site	51.55627	-0.16920	7
-P	St Johns Church  Erith	community_center	51.48697	0.16992	7
 P	St Johns Church At Hackney	christian_place_of_worship	51.54163	-0.05569	7
+P	St Johns Church Erith	community_center	51.48697	0.16992	7
 P	St Johns Community Centre	community_center	51.55391	-0.30322	7
 P	St Johns Community Centre	social_or_community_service	51.50070	0.05801	2
 P	St Johns Dental Practice Ltd	dental_clinic	51.57859	0.18752	2
@@ -350225,7 +350225,7 @@ P	St Laurence Pountney	christian_place_of_worship	51.51060	-0.08850	7
 P	St Laurence's Church	christian_place_of_worship	51.55529	0.24858	7
 P	St Law Solicitors Ltd.		51.55494	0.07208	2
 P	St Lawrence Catholic Primary School	elementary_school	51.43872	-0.41936	7
-P	St Lawrence Church Ninefields @ Hillhouse  School	christian_place_of_worship	51.68714	0.02244	7
+P	St Lawrence Church Ninefields @ Hillhouse School	christian_place_of_worship	51.68714	0.02244	7
 P	St Lawrence Church Pre School	place_of_learning	51.68631	0.03040	7
 P	St Lawrence Church, Eastcote	christian_place_of_worship	51.58355	-0.39904	7
 P	St Lawrence Church, Morden	christian_place_of_worship	51.39226	-0.20399	7
@@ -351139,7 +351139,7 @@ P	St Paul's, EC4M	christian_place_of_worship	51.51324	-0.09676	7
 P	St Paul's, Northumberland Heath	christian_place_of_worship	51.47334	0.15960	7
 P	St Paul's, Roundshaw	christian_place_of_worship	51.35318	-0.13407	7
 P	St Paul's, Swanley Village	christian_place_of_worship	51.40630	0.19829	7
-P	St Paul,            New Southgate	christian_place_of_worship	51.61522	-0.14149	7
+P	St Paul, New Southgate	christian_place_of_worship	51.61522	-0.14149	7
 P	St Paulinus C E Primary School	place_of_learning	51.45473	0.17702	7
 P	St Paulinus Church	christian_place_of_worship	51.45514	0.17341	7
 P	St Paulinus Pre School Crayford	preschool	51.44450	0.15176	7
@@ -352424,7 +352424,7 @@ P	Stay Current Ltd.	home_service	51.48820	0.07155	2
 P	Stay Dry Roofing Specialists	home_service	51.39088	-0.30477	2
 P	Stay Lasered	wellness_service	51.50456	-0.01861	2
 P	Stay on Track Training	education	51.49833	0.16866	7
-P	Stay-In Apartments  Marble Arch/Kensington/Earls Court	hotel	51.51818	-0.16677	7
+P	Stay-In Apartments Marble Arch/Kensington/Earls Court	hotel	51.51818	-0.16677	7
 P	Staybridge Suites	lodging	51.48138	-0.46163	7
 P	Staybridge Suites London - Vauxhall	hotel	51.48909	-0.12090	7
 P	Staycity Aparthotels Deptford Bridge	hotel	51.47434	-0.02298	7
@@ -353320,9 +353320,9 @@ P	Stratford Broadway Argos	department_store	51.54162	0.00185	7
 P	Stratford Campus	college_university	51.54419	0.00860	7
 P	Stratford Cinema	movie_theater	51.55389	0.09424	7
 P	Stratford Circus	theatre_venue	51.54300	0.00140	7
-P	Stratford City  WESTFIELD SHOPPING CENTRE Stratford E15	shopping_mall	51.53576	0.03521	7
 P	Stratford City London	hotel	51.53608	-0.00477	7
 P	Stratford City Shopping Centre	historic_site	51.54593	-0.00925	7
+P	Stratford City WESTFIELD SHOPPING CENTRE Stratford E15	shopping_mall	51.53576	0.03521	7
 P	Stratford College London	specialty_school	51.53727	-0.00042	7
 P	Stratford Computer Fair	electronics_store	51.54014	-0.00405	2
 P	Stratford Cross	real_estate_service	51.54169	-0.00888	2
@@ -354414,7 +354414,7 @@ P	Suman Zaman Photography		51.33458	-0.47894	2
 P	SumeetsStep2Step Bollywood Dance Academy	performing_arts_venue	51.46860	-0.36331	7
 P	SumeetsStep2Step Bollywood Dance Academy	performing_arts_venue	51.56181	0.09112	7
 P	Sumer Restaurant and Shisha Lounge	bar	51.39964	-0.25544	2
-P	Sumera's Hair &  Beauty London	wellness_service	51.56899	0.13645	2
+P	Sumera's Hair & Beauty London	wellness_service	51.56899	0.13645	2
 P	Sumi London	fashion_and_apparel_store	51.57802	-0.42868	2
 P	Sumitomo Electric Europe Ltd.	b2b_office_and_professional_service	51.64022	-0.30957	2
 P	Sumitomo Mitsui Banking Corporation	bank_or_credit_union	51.51173	-0.09752	2
@@ -361740,7 +361740,7 @@ P	The Connoisseur	restaurant	51.57069	-0.33946	2
 P	The Connolly's Bar and Diner	bar	51.49289	-0.26752	2
 P	The Conquering Hero	bar	51.41970	-0.10641	2
 P	The Conran Shop	hardware_home_and_garden_store	51.49273	-0.15827	2
-P	The Conran Shop Maryleborne  High Street	bed_and_breakfast	51.52230	-0.15134	2
+P	The Conran Shop Maryleborne High Street	bed_and_breakfast	51.52230	-0.15134	2
 P	The Conscious Baker	casual_eatery	51.44452	-0.12639	2
 P	The Conservation Foundation	personal_or_beauty_service	51.50116	-0.17567	2
 P	The Conservation Studio	media_service	51.52781	-0.14425	2
@@ -368516,7 +368516,7 @@ P	The Stag	casual_eatery	51.55340	-0.16151	2
 P	The Stag & Lantern	bar	51.60727	-0.00110	2
 P	The Stag And Hounds	bar	51.63539	-0.07821	2
 P	The Stag Brewing Co	brewery	51.46989	-0.26562	2
-P	The Stag Enfield  Cafe  Bar   &    Guest House	bar	51.65282	-0.08663	2
+P	The Stag Enfield Cafe Bar & Guest House	bar	51.65282	-0.08663	2
 P	The Stag Gentleman's Grooming Salon	personal_or_beauty_service	51.61498	-0.24596	2
 P	The Stag Public House	bar	51.49937	-0.26445	2
 P	The Stage	music_venue	51.50216	-0.08219	7
@@ -370944,7 +370944,7 @@ P	Tikadi	smoothie_juice_bar	51.67165	0.10053	2
 P	Tiki Bar - Barking		51.53791	0.08101	2
 P	Tiki Bar London	restaurant	51.50660	-0.24752	2
 P	Tiki Details	event_or_party_service	51.43780	-0.45344	2
-P	TikiTail Restaurant  and Cocktail Bar	bar	51.44181	-0.14936	2
+P	TikiTail Restaurant and Cocktail Bar	bar	51.44181	-0.14936	2
 P	Tikis Hair Bethnal Green	personal_or_beauty_service	51.52935	-0.06113	2
 P	Tikislondon brassiere	restaurant	51.47650	-0.20395	2
 P	Tikitail	bar	51.42870	-0.16668	2
@@ -372548,7 +372548,7 @@ P	Tottenham	historic_site	51.60500	-0.05800	7
 P	Tottenham Abode	lodging	51.59125	-0.08406	7
 P	Tottenham Ambulance Station	automotive_service	51.58130	-0.09283	2
 P	Tottenham Baptist Church	christian_place_of_worship	51.60139	-0.06816	7
-P	Tottenham Baptist Church, 699 High Road, Tottenham  N17 8AD	christian_place_of_worship	51.61201	-0.17598	7
+P	Tottenham Baptist Church, 699 High Road, Tottenham N17 8AD	christian_place_of_worship	51.61201	-0.17598	7
 P	Tottenham Best Kebab	restaurant	51.60519	-0.08576	2
 P	Tottenham City Stays, Opposite Seven Sisters Train Station	hotel	51.58360	-0.07041	7
 P	Tottenham Community Sports Centre	sport_or_fitness_facility	51.60171	-0.06833	7
@@ -376296,7 +376296,7 @@ P	VBCI UK - River Life Sanctuary	religious_organization	51.43492	0.23662	2
 P	VBO London	lounge	51.64647	-0.03037	2
 P	VBR Epos	electronics_store	51.41035	-0.29211	2
 P	VCCP	professional_service	51.49591	-0.13690	2
-P	VCD Athletic  social club	social_or_community_service	51.45500	0.17076	2
+P	VCD Athletic social club	social_or_community_service	51.45500	0.17076	2
 P	VCR fitness	gym	51.48462	-0.33239	7
 P	VD Cake	food_and_beverage_store	51.49468	0.09596	2
 P	VD Hoven Therapy	behavioral_or_mental_health_clinic	51.51787	-0.12728	2
@@ -377602,7 +377602,7 @@ P	Villeroy & Boch Wembley Designer Outlet	hardware_home_and_garden_store	51.5565
 P	Villiers Coffee House	coffee_shop	51.64532	-0.38104	2
 P	Villiers High School	high_school	51.50998	-0.37332	7
 P	Villiers Lodge	bed_and_breakfast	51.39628	-0.29698	2
-P	Villy J  Hair & Beauty	personal_or_beauty_service	51.48669	-0.11165	2
+P	Villy J Hair & Beauty	personal_or_beauty_service	51.48669	-0.11165	2
 P	Villy Js Hair and Beauty	personal_or_beauty_service	51.46323	-0.13424	2
 P	Vilma Gold	art_gallery	51.53153	-0.05964	7
 P	Vimi's	restaurant	51.68375	-0.31706	2
@@ -380183,7 +380183,7 @@ P	Wave Technology Ltd.	hardware_home_and_garden_store	51.51960	-0.15542	2
 P	WaveLength Guitar Tuition	musical_instrument_and_pro_audio_store	51.47423	-0.15700	2
 P	Waveform Aerial & Satellite Services	telecommunications_service	51.45856	0.22483	2
 P	Wavehill Consulting	technical_service	51.48102	-0.00797	2
-P	Wavelenghts  Leisure Centre/ Swimming Pool	swimming_pool	51.48382	-0.04767	7
+P	Wavelenghts Leisure Centre/ Swimming Pool	swimming_pool	51.48382	-0.04767	7
 P	Wavelengths	personal_or_beauty_service	51.28681	-0.38165	2
 P	Wavelengths Leisure Centre	sport_or_fitness_facility	51.47795	-0.02334	7
 P	Wavelengths Library	library	51.47771	-0.02442	7
@@ -380921,7 +380921,7 @@ P	Wembley Stadium London	stadium_arena	51.52755	-0.05601	7
 P	Wembley Stadium Vip Lounge	stadium_arena	51.55238	-0.25683	7
 P	Wembley Stadium Yellow Car Park	park	51.55896	-0.27760	7
 P	Wembley Stadium!!	stadium_arena	51.54428	-0.27182	7
-P	Wembley Stadium.  London	stadium_arena	51.53164	-0.12383	7
+P	Wembley Stadium. London	stadium_arena	51.53164	-0.12383	7
 P	Wembley Tandoori	restaurant	51.56205	-0.28153	2
 P	Wembley Traincare Centre	travel_service	51.54595	-0.28181	2
 P	Wembley Triangle Massage	wellness_service	51.55354	-0.28716	2
@@ -382449,7 +382449,6 @@ P	Wex Photo Video London Whitechapel	electronics_store	51.51510	-0.06694	2
 P	Wey2creative		51.37616	-0.45450	2
 P	Weybourne Care Home	senior_living_facility	51.49449	0.11191	2
 P	Weybourne Gymnastics Club	sport_or_fitness_facility	51.35888	-0.48551	7
-P	Weybridge  granite and marble	home_service	51.37033	-0.47573	2
 P	Weybridge & Walton Physiotherapy	physical_medicine_and_rehabilitation	51.37251	-0.45948	2
 P	Weybridge - Brooklands Community Park	sports_and_recreation	51.34360	-0.47188	7
 P	Weybridge Adult Education Centre	place_of_learning	51.37199	-0.45824	7
@@ -382496,6 +382495,7 @@ P	Weybridge UK	lodging	51.34418	-0.46232	7
 P	Weybridge United Reformed Church	christian_place_of_worship	51.36809	-0.44638	7
 P	Weybridge Vehicle Consultants	auto_dealer	51.34383	-0.49733	2
 P	Weybridge Veterinary Centre	animal_or_pet_service	51.36873	-0.44636	2
+P	Weybridge granite and marble	home_service	51.37033	-0.47573	2
 P	Weybridge lights	hardware_home_and_garden_store	51.37106	-0.45075	2
 P	Weybridge, Surrey	historic_site	51.37616	-0.45240	7
 P	Weycroft Financial Services Ltd.	financial_service	51.37300	-0.46426	2
@@ -388201,13 +388201,13 @@ P	السفارة الليبية في لندن - Libyan Embassy in London	embassy
 P	بريتش ستدي سنترز - British Study Centres	specialty_school	51.51961	-0.12332	7
 P	ساوث مولتون ستريت South Molton Street	shopping_mall	51.51420	-0.14873	7
 P	صرافی برتر لندن Sarafi Bartar London	financial_service	51.49283	-0.22502	2
-P	مطعم المسكوف  العراقي Al-Maskoof Iraqi Resturant	restaurant	51.51496	-0.16565	2
+P	مطعم المسكوف العراقي Al-Maskoof Iraqi Resturant	restaurant	51.51496	-0.16565	2
 P	กิจกรรม RoV	fitness_studio	51.55278	-0.08769	7
 P	• Pole Academy LDN •	gym	51.63383	-0.13237	7
 P	☎️ Commercial Gas Engineer		51.51994	-0.06402	2
 P	倫敦希斯洛機場5號航廈	airport	51.47278	-0.48756	7
 P	倫敦民宿 P&G house	lodging	51.49679	-0.13914	7
-P	台灣人，倫敦民宿          Taiwanese In London	hotel	51.49680	-0.13357	7
+P	台灣人，倫敦民宿 Taiwanese In London	hotel	51.49680	-0.13357	7
 P	快易行 Shop And Go	food_and_beverage_store	51.48447	-0.12451	2
 P	恩菲基督喜樂家庭教會 Enfield Christ Joyful Family Church (ECJFC)	christian_place_of_worship	51.64485	-0.06766	7
 P	聚寶閣 JP House	restaurant	51.58840	-0.22825	2

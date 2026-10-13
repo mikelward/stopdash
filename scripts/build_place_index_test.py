@@ -220,6 +220,8 @@ class MatchKeyTest(unittest.TestCase):
 
     def test_a_place_name_drops_where_it_says_it_is(self):
         self.assertEqual("Omega Park", display_name("Omega Park, London"))
+        self.assertEqual("Omega Church, Zeta Green", display_name("Omega Church,\t   Zeta Green"))
+        self.assertEqual("Omega Dental Care", display_name("Omega  Dental Care"))
         self.assertEqual("Omega Wall", display_name("Omega Wall, City of London"))
         # Only as a clause of its own (maintainer, 2026-10-12): run on, it may be part of the name.
         self.assertEqual("Omega Wall City of London", display_name("Omega Wall City of London"))
@@ -356,6 +358,11 @@ class RenderTest(unittest.TestCase):
         self.assertEqual("# stopdash place index v1\ttest sources", lines[0])
         self.assertEqual(["C\tXX1 1XX\t\t51.50000\t-0.12000\t4", "P\tBeta Hall\tmuseum\t51.50000\t-0.12000\t9",
                           "S\tAlpha Road\t\t51.50000\t-0.12000\t4"], lines[1:])
+
+    def test_a_run_of_whitespace_reads_as_one_space(self):
+        text = render([("Omega Church,\t   Zeta Green", "church", 51.5, -0.12, 9)], [("Alpha  Road", 51.5, -0.12)], [], "test sources")
+        names = [line.split("\t")[1] for line in text.splitlines()[1:]]
+        self.assertEqual(["Omega Church, Zeta Green", "Alpha Road"], names)
 
     def test_saint_reads_st_without_its_full_stop(self):
         text = render([("Alpha St. Omega's Church", "church", 51.5, -0.12, 9), ("Beta St.Omega Hall", "museum", 51.5, -0.12, 9)],

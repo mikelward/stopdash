@@ -157,7 +157,12 @@ AREA_PREFIX = re.compile(r"^\s*(?:city of london|city of westminster)\s*,\s*", r
 
 
 def display_name(name):
-    """[name] less an [AREA_PREFIX] and [AREA_SUFFIX], unless that would leave nothing that names the place."""
+    """[name] less an [AREA_PREFIX] and [AREA_SUFFIX], unless that would leave nothing that names the place.
+
+    Runs of spaces and tabs are one space first: a listing padded inside its name ("St Paul,  New
+    Southgate") would otherwise show the gap on the row.
+    """
+    name = " ".join(name.split())
     trimmed = AREA_SUFFIX.sub("", AREA_PREFIX.sub("", name)).strip()
     unglued = GLUED_AREA_SUFFIX.sub("", trimmed).strip()
     if len(unglued.split()) > 1:
@@ -446,7 +451,8 @@ def without_saint_dot(name):
 def render(places, streets, postcodes, sources):
     """The index file's text: the header, then every entry, sorted."""
     def clean(text):
-        return without_saint_dot(text.replace("\t", " ").replace("\n", " "))
+        # Tabs and newlines would break the line; any run of whitespace reads as one space on a row.
+        return without_saint_dot(" ".join(text.split()))
     # A name with no letter or digit the app can match ("ピカデリー・サーカス") can't be found by typing.
     places = [p for p in places if match_key(p[0])]
     streets = [s for s in streets if match_key(s[0])]
