@@ -1448,6 +1448,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   measure pass. Done: the page's worker is a test dispatcher the test runs by hand.
               - [x] **A place by its name and postcode district** (maintainer, 2026-10-13): "Tate Modern,
                   SE1" finds that one place; the builder writes each place's and street's district.
+              - [x] **Every place type's icon in the favorite picker** (maintainer, 2026-10-13): the
+                  picker offers all of them, sorted by likely use, and a place saved from search starts
+                  on its type's; the search and the picker share one set of drawables.
               - [x] **Show a place's type as an icon** (maintainer, 2026-10-13): in the right column,
                   after the postcode district, the word "Place" became an icon for the type (Pub,
                   Supermarket, Stadium, Museum…, 45 types), and stops' modes became icons (every mode

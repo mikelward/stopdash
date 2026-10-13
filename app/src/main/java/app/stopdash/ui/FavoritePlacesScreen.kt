@@ -506,14 +506,29 @@ internal fun DayToggleRow(selected: Set<DayOfWeek>, enabled: Boolean, rowTag: St
 
 /**
  * The place's icon: the fixed set, one per 48dp cell, wrapping as the width allows. Tapping the chosen
- * one clears it. Each cell is named for a screen reader.
+ * one clears it. Each cell is named for a screen reader. The heading names the current choice with its
+ * icon ("Icon · [house] House", maintainer 2026-10-13): the grid is several rows tall, so an icon a
+ * pick chose further down would otherwise be out of sight.
  */
 @Composable
 private fun IconRow(selected: String?, enabled: Boolean, onSelect: (String) -> Unit) {
-    Text(
-        text = stringResource(R.string.favorite_place_icon_title),
-        style = MaterialTheme.typography.bodyLarge,
-    )
+    val chosen = selected?.let(placeIconArt::get)
+    Row(
+        modifier = Modifier.testTag("placeIconChosen").semantics(mergeDescendants = true) {},
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(R.string.favorite_place_icon_title),
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        if (chosen != null) {
+            val muted = MaterialTheme.colorScheme.onSurfaceVariant
+            Text("·", style = MaterialTheme.typography.bodyLarge, color = muted)
+            CompositionLocalProvider(LocalContentColor provides muted) { PlaceIcon(selected, Modifier.size(20.dp)) }
+            Text(stringResource(chosen.name), style = MaterialTheme.typography.bodyLarge, color = muted)
+        }
+    }
     Spacer(modifier = Modifier.height(8.dp))
     FlowRow(
         modifier = Modifier.fillMaxWidth().testTag("placeIcons"),

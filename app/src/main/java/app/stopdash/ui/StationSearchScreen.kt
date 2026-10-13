@@ -157,7 +157,7 @@ fun StationSearchScreen(
     // favorite places (maintainer, 2026-10-12). Null leaves that item out.
     // The activity's by default ([LocalSearchRowHost]); a removed place reads the places again ([onRetryPlaces]).
     onShowOnMap: ((String, Coordinates) -> Unit)? = LocalSearchRowHost.current?.showOnMap,
-    onAddPlace: ((StationMatch) -> Unit)? = LocalSearchRowHost.current?.addPlace,
+    onAddPlace: ((StationMatch, String?) -> Unit)? = LocalSearchRowHost.current?.addPlace,
     onRemovePlace: ((FavoritePlace) -> Unit)? = LocalSearchRowHost.current?.let { host ->
         { place -> host.removePlace(place, { onRetryPlaces?.invoke() }) }
     },

@@ -970,6 +970,8 @@ class MainActivity : ComponentActivity() {
                 // position, if the index has one), and that the editor came from there, so closing it after
                 // Save or Cancel returns to the stop rather than to the list of places.
                 var placeToAdd by rememberSaveable(stateSaver = StationMatchSaver) { mutableStateOf<StationMatch?>(null) }
+                // A searched place's type's icon, for the editor to start on (maintainer, 2026-10-13).
+                var placeIconToAdd by rememberSaveable { mutableStateOf<String?>(null) }
                 var placesFromStop by rememberSaveable { mutableStateOf(false) }
                 val openLicenses = { licensesOpen = true }
                 // "Find a station" (SPEC *Finding stops*): the search, and the station opened from it
@@ -1730,8 +1732,9 @@ class MainActivity : ComponentActivity() {
                     // Save or Cancel returning to the search, as from a stop's details.
                     LocalSearchRowHost provides SearchRowHost(
                         showOnMap = { name, at -> openStopMap(at.latitude, at.longitude, name) },
-                        addPlace = { pick ->
+                        addPlace = { pick, icon ->
                             placeToAdd = pick
+                            placeIconToAdd = icon
                             placesFromStop = true
                             favoritePlacesOpen = true
                         },
@@ -2006,8 +2009,9 @@ class MainActivity : ComponentActivity() {
                                 // Opened from a stop's details: its editor starts filled in with the stop, once; the
                                 // editor's own draft keeps the stop until its position is in (Codex on #670).
                                 LaunchedEffect(placeToAdd) {
-                                    placeToAdd?.let(favoritePlacesModel::startAddAt)
+                                    placeToAdd?.let { favoritePlacesModel.startAddAt(it, placeIconToAdd) }
                                     placeToAdd = null
+                                    placeIconToAdd = null
                                 }
                                 // And its Save or Cancel goes back to the stop: once its editor has been up, so the
                                 // frame before it opens doesn't count as closing it.

@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -230,6 +231,8 @@ class FavoritePlacesScreenshotTest {
             onChipShowsChange = { chosen += it },
         )
         composeRule.onNodeWithTag("placeIcon-home").assertIsOn()
+        // The heading names the choice, so one far down the grid is never out of sight.
+        composeRule.onNodeWithTag("placeIconChosen").assertTextContains("House")
         composeRule.onNodeWithTag("placeIcon-office").assertIsOff().performClick()
         composeRule.onNodeWithTag("placeChipShows-BOTH").assertIsSelected()
         composeRule.onNodeWithTag("placeChipShows-ICON").performClick()

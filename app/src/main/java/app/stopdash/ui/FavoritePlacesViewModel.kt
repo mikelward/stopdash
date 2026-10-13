@@ -152,6 +152,12 @@ class FavoritePlacesViewModel(
         val showOnDays: Set<DayOfWeek> = FavoritePlace.EVERY_DAY,
         // The place's icon, or null for none, and what its chip shows (null: the default).
         val icon: String? = null,
+        // Whether [icon] came from a picked place's type rather than the rider (maintainer, 2026-10-13):
+        // a later pick may replace it, as [labelFromPick] lets a later pick rename the place.
+        val iconFromPick: Boolean = false,
+        // Whether the rider has chosen the icon, clearing it included, or is editing a saved place: a
+        // pick then never sets one, so a cleared icon stays cleared (SPEC D9).
+        val iconChosen: Boolean = false,
         val chipShows: ChipLabel? = null,
         // The stop a stop's details' Favorite opened this editor for ([startAddAt]), until its position is
         // in: saved with the draft, so a restore resumes its lookup rather than losing the stop (Codex on #670).
@@ -258,10 +264,14 @@ class FavoritePlacesViewModel(
      * can still change its name, icon and days before saving. The stop stands as the search's one
      * result, so a lookup that fails shows on its row with a retry, as on a searched one (Codex on #670).
      */
-    fun startAddAt(match: StationMatch) {
+    fun startAddAt(match: StationMatch, icon: String? = null) {
         startAdd(FavoriteKind.CUSTOM, "")
         updateEditor { it.copy(query = match.name, results = listOf(match), pendingStop = match) }
         onPick(match)
+        // [icon]: a searched place's type's ([FavoritePlaceIcon.forType]), as a pick in the editor sets it.
+        // After the pick, which suggests none for what it only knows as a position. A place has one, so
+        // its pick adopts at once; a positionless stop, resolved later, is never handed an icon.
+        if (icon != null) updateEditor { it.copy(icon = icon, iconFromPick = true) }
     }
 
     /** Begin editing [place]; its saved location stands until the user picks a new one. */
@@ -282,6 +292,8 @@ class FavoritePlacesViewModel(
                 placeName = place.placeName,
                 showOnDays = place.showOnDays,
                 icon = place.icon,
+                // A saved place's icon, or its lack of one, is the rider's: a repick doesn't change it.
+                iconChosen = true,
                 chipShows = place.chipShows,
             ),
         )
@@ -304,7 +316,7 @@ class FavoritePlacesViewModel(
     /** Choose [icon] for the place; choosing the one already chosen clears it. */
     fun onIconChange(icon: String) {
         if (savingNow()) return // a save is in flight; ignore edits so completion can't discard them
-        updateEditor { it.copy(icon = if (it.icon == icon) null else icon) }
+        updateEditor { it.copy(icon = if (it.icon == icon) null else icon, iconFromPick = false, iconChosen = true) }
     }
 
     /** Choose what the place's chip on the near-me list shows. */
@@ -452,14 +464,22 @@ class FavoritePlacesViewModel(
         }
     }
 
-    /** Adopt a bundled place, street or postcode [hit] as the place's location, like picking a stop. */
+    /**
+     * Adopt a bundled place, street or postcode [hit] as the place's location, like picking a stop, and
+     * its type's icon ([FavoritePlaceIcon.forType]) unless the rider chose one.
+     */
     fun onPickPlace(hit: PlaceHit) {
         if (savingNow()) return
-        adoptLocation(hit.name, hit.coordinate)
+        // Only a place has a type: a street or a postcode suggests no icon, as a stop doesn't.
+        adoptLocation(hit.name, hit.coordinate, FavoritePlaceIcon.forType(hit.type).takeIf { hit.kind == PlaceKind.PLACE })
     }
 
-    /** Adopt a chosen place [name] at [coordinate] — a picked station, place or postcode. */
-    private fun adoptLocation(name: String, coordinate: Coordinates) {
+    /**
+     * Adopt a chosen place [name] at [coordinate] — a picked station, place or postcode — and [typeIcon],
+     * a picked place's type's icon, where the rider hasn't chosen one: a pick with none (a stop, a
+     * street, a postcode) clears an icon an earlier pick suggested, and leaves a chosen one alone.
+     */
+    private fun adoptLocation(name: String, coordinate: Coordinates, typeIcon: String? = null) {
         search?.cancel()
         resolve?.cancel()
         postcode?.cancel()
@@ -469,7 +489,10 @@ class FavoritePlacesViewModel(
             // pick — so repicking after changing the query updates the name too, but a user-typed label
             // (or a reserved default like "Home") stands (Codex).
             val deriveLabel = it.label.isBlank() || it.labelFromPick
+            val deriveIcon = !it.iconChosen && (it.icon == null || it.iconFromPick)
             it.copy(
+                icon = if (deriveIcon) typeIcon else it.icon,
+                iconFromPick = if (deriveIcon) typeIcon != null else it.iconFromPick,
                 coordinate = coordinate,
                 pendingStop = null,
                 placeName = name,
@@ -705,6 +728,8 @@ class FavoritePlacesViewModel(
         savedState[KEY_LON] = editor?.coordinate?.longitude
         savedState[KEY_PLACE] = editor?.placeName
         savedState[KEY_ICON] = editor?.icon
+        savedState[KEY_ICON_FROM_PICK] = editor?.iconFromPick
+        savedState[KEY_ICON_CHOSEN] = editor?.iconChosen
         savedState[KEY_CHIP_SHOWS] = editor?.chipShows?.name
         savedState[KEY_SHOW_ON_DAYS] = editor?.showOnDays?.map(DayOfWeek::getValue)?.toIntArray()
         // The stop's public id and name, never what the rider typed.
@@ -730,6 +755,8 @@ class FavoritePlacesViewModel(
                 ?.toSet()
                 ?: FavoritePlace.EVERY_DAY,
             icon = savedState.get<String>(KEY_ICON),
+            iconFromPick = savedState.get<Boolean>(KEY_ICON_FROM_PICK) ?: false,
+            iconChosen = savedState.get<Boolean>(KEY_ICON_CHOSEN) ?: false,
             chipShows = savedState.get<String>(KEY_CHIP_SHOWS)
                 ?.let { name -> ChipLabel.values().firstOrNull { it.name == name } },
             pendingStop = savedState.get<ArrayList<String>>(KEY_PENDING)
@@ -769,6 +796,8 @@ class FavoritePlacesViewModel(
         private const val KEY_SHOW_ON_DAYS = "editor.showOnDays"
         private const val KEY_PENDING = "editor.pendingStop"
         private const val KEY_ICON = "editor.icon"
+        private const val KEY_ICON_FROM_PICK = "editor.iconFromPick"
+        private const val KEY_ICON_CHOSEN = "editor.iconChosen"
         private const val KEY_CHIP_SHOWS = "editor.chipShows"
     }
 }

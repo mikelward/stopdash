@@ -109,6 +109,23 @@ class FavoritePlacesTest {
     }
 
     @Test
+    fun `the picker offers every place type, the personal icons first`() {
+        assertEquals(
+            listOf(FavoritePlaceIcon.HOME, FavoritePlaceIcon.WORK, FavoritePlaceIcon.HEART),
+            FavoritePlaceIcon.CHOICES.take(3),
+        )
+        // A place saved from search starts on its type's icon, a plain place on the pin search shows.
+        for (type in PlaceType.entries) {
+            assertTrue("$type has no icon", FavoritePlaceIcon.forType(type) in FavoritePlaceIcon.CHOICES)
+        }
+        assertEquals(FavoritePlaceIcon.PIN, FavoritePlaceIcon.forType(PlaceType.PLACE))
+        // A school's backpack and a college's graduation cap, as search shows them.
+        assertEquals(FavoritePlaceIcon.BACKPACK, FavoritePlaceIcon.forType(PlaceType.SCHOOL))
+        assertEquals(FavoritePlaceIcon.SCHOOL, FavoritePlaceIcon.forType(PlaceType.COLLEGE))
+        assertEquals(FavoritePlaceIcon.PUB, FavoritePlaceIcon.forType(PlaceType.PUB))
+    }
+
+    @Test
     fun `a chip shows the icon and name by default, the name without an icon, and the choice otherwise`() {
         val plain = FavoritePlace("g", FavoriteKind.CUSTOM, "Gym", Coordinates(51.5, -0.12))
         assertEquals(ChipLabel.NAME, plain.chipLabel)

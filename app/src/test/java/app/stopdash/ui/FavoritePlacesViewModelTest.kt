@@ -1,11 +1,9 @@
 package app.stopdash.ui
 
 import androidx.lifecycle.SavedStateHandle
-import app.stopdash.domain.ChipLabel
 import app.stopdash.domain.BusStopIndex
+import app.stopdash.domain.ChipLabel
 import app.stopdash.domain.Coordinates
-import app.stopdash.domain.SearchEntry
-import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlaceIcon
@@ -14,7 +12,9 @@ import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FavoritePlacesStore
 import app.stopdash.domain.IndexedStation
 import app.stopdash.domain.LineRef
+import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.PlaceIndex
+import app.stopdash.domain.SearchEntry
 import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StationMatch
@@ -31,8 +31,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -358,6 +358,132 @@ class FavoritePlacesViewModelTest {
         assertEquals("Zeta Gallery", editor.label)
         assertTrue(editor.places.isEmpty())
         assertTrue(editor.canSave)
+    }
+
+    @Test
+    fun `a picked place starts on its type's icon, unless the rider chose one`() = runTest {
+        val model = FavoritePlacesViewModel(
+            FakeStore(), FakeFinder(),
+            loadPlaceIndex = {
+                PlaceIndex.read(
+                    java.io.BufferedReader(java.io.StringReader(listOf(
+                        "# stopdash place index v3\ttest",
+                        "P\tZeta Arms\tpub\t51.51000\t-0.13000\t2\tX1",
+                        "P\tZeta Gallery\tgallery\t51.52000\t-0.13000\t7\tX1",
+                    ).joinToString("\n"))),
+                )
+            },
+            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        model.onQueryChange("zeta arms")
+        advanceUntilIdle()
+        model.onPickPlace(model.state.value.editor!!.places.single())
+        assertEquals(FavoritePlaceIcon.PUB, model.state.value.editor!!.icon)
+        // Another pick replaces an icon a pick chose.
+        model.onQueryChange("zeta gallery")
+        advanceUntilIdle()
+        model.onPickPlace(model.state.value.editor!!.places.single())
+        assertEquals(FavoritePlaceIcon.GALLERY, model.state.value.editor!!.icon)
+        // One the rider chose stands.
+        model.onIconChange(FavoritePlaceIcon.HEART)
+        model.onQueryChange("zeta arms")
+        advanceUntilIdle()
+        model.onPickPlace(model.state.value.editor!!.places.single())
+        assertEquals(FavoritePlaceIcon.HEART, model.state.value.editor!!.icon)
+    }
+
+    @Test
+    fun `a street suggests no icon, and a pick with none clears one a pick suggested`() = runTest {
+        val model = FavoritePlacesViewModel(
+            FakeStore(), FakeFinder(),
+            loadPlaceIndex = {
+                PlaceIndex.read(
+                    java.io.BufferedReader(java.io.StringReader(listOf(
+                        "# stopdash place index v3\ttest",
+                        "P\tZeta Arms\tpub\t51.51000\t-0.13000\t2\tX1",
+                        "S\tZeta Road\t\t51.52000\t-0.13000\t4\tX1",
+                    ).joinToString("\n"))),
+                )
+            },
+            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        // A street has no type: no pin, as its search row shows a street.
+        model.onQueryChange("zeta road")
+        advanceUntilIdle()
+        model.onPickPlace(model.state.value.editor!!.places.single())
+        assertNull(model.state.value.editor!!.icon)
+        // A pub suggests its icon; a stop picked after it takes the suggestion away.
+        model.onQueryChange("zeta arms")
+        advanceUntilIdle()
+        model.onPickPlace(model.state.value.editor!!.places.single())
+        assertEquals(FavoritePlaceIcon.PUB, model.state.value.editor!!.icon)
+        model.onPick(StationMatch("940GZZZETA", "Zeta", listOf("tube"), latitude = 51.5, longitude = -0.12))
+        advanceUntilIdle()
+        assertNull(model.state.value.editor!!.icon)
+    }
+
+    @Test
+    fun `an icon the rider cleared stays cleared across a repick`() = runTest {
+        val model = FavoritePlacesViewModel(
+            FakeStore(), FakeFinder(),
+            loadPlaceIndex = {
+                PlaceIndex.read(
+                    java.io.BufferedReader(java.io.StringReader(listOf(
+                        "# stopdash place index v3\ttest",
+                        "P\tZeta Arms\tpub\t51.51000\t-0.13000\t2\tX1",
+                        "P\tZeta Gallery\tgallery\t51.52000\t-0.13000\t7\tX1",
+                    ).joinToString("\n"))),
+                )
+            },
+            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        model.onQueryChange("zeta arms")
+        advanceUntilIdle()
+        model.onPickPlace(model.state.value.editor!!.places.single())
+        // Tapping the picked icon clears it (SPEC D9).
+        model.onIconChange(FavoritePlaceIcon.PUB)
+        assertNull(model.state.value.editor!!.icon)
+        model.onQueryChange("zeta gallery")
+        advanceUntilIdle()
+        model.onPickPlace(model.state.value.editor!!.places.single())
+        assertNull(model.state.value.editor!!.icon)
+    }
+
+    @Test
+    fun `editing a saved place keeps its icon, or its lack of one, across a repick`() = runTest {
+        val model = FavoritePlacesViewModel(
+            FakeStore(), FakeFinder(),
+            loadPlaceIndex = {
+                PlaceIndex.read(
+                    java.io.BufferedReader(java.io.StringReader(listOf(
+                        "# stopdash place index v3\ttest",
+                        "P\tZeta Arms\tpub\t51.51000\t-0.13000\t2\tX1",
+                    ).joinToString("\n"))),
+                )
+            },
+            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
+        )
+        advanceUntilIdle()
+        model.startEdit(FavoritePlace("p1", FavoriteKind.CUSTOM, "Zeta", Coordinates(51.5, -0.12)))
+        model.onQueryChange("zeta arms")
+        advanceUntilIdle()
+        model.onPickPlace(model.state.value.editor!!.places.single())
+        assertNull(model.state.value.editor!!.icon)
+    }
+
+    @Test
+    fun `a place added from search starts on the icon it was handed`() = runTest {
+        val model = FavoritePlacesViewModel(FakeStore(), FakeFinder(), io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" })
+        advanceUntilIdle()
+        model.startAddAt(StationMatch("place:51.51,-0.13", "Zeta Arms", latitude = 51.51, longitude = -0.13), FavoritePlaceIcon.PUB)
+        advanceUntilIdle()
+        assertEquals(FavoritePlaceIcon.PUB, model.state.value.editor!!.icon)
     }
 
     @Test

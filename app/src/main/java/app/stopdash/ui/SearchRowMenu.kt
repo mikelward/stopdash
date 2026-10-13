@@ -20,7 +20,9 @@ import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoritePlace
+import app.stopdash.domain.FavoritePlaceIcon
 import app.stopdash.domain.FavoritePlaces
+import app.stopdash.domain.PlaceKind
 import app.stopdash.domain.PlaceStart
 import app.stopdash.domain.SearchEntry
 import app.stopdash.domain.StationMatch
@@ -35,7 +37,8 @@ import kotlinx.coroutines.withContext
 internal class SearchRowActions(
     val onShowOnMap: ((String, Coordinates) -> Unit)? = null,
     val onAskRemoveRecent: ((SearchEntry) -> Unit)? = null,
-    val onAddPlace: ((StationMatch) -> Unit)? = null,
+    // The pick, and a searched place's type's icon for the editor to start on ([placeIconOf]).
+    val onAddPlace: ((StationMatch, String?) -> Unit)? = null,
     val onRemovePlace: ((FavoritePlace) -> Unit)? = null,
 ) {
     val any: Boolean get() = onShowOnMap != null || onAskRemoveRecent != null || onAddPlace != null || onRemovePlace != null
@@ -48,7 +51,7 @@ internal class SearchRowActions(
  */
 internal class SearchRowHost(
     val showOnMap: (String, Coordinates) -> Unit,
-    val addPlace: (StationMatch) -> Unit,
+    val addPlace: (StationMatch, String?) -> Unit,
     val removePlace: (FavoritePlace, onRemoved: () -> Unit) -> Unit,
 )
 
@@ -73,6 +76,10 @@ internal fun SearchEntry.asPlacePick(at: Coordinates? = null): StationMatch = wh
     is SearchEntry.Stop -> if (match.latitude == null && at != null) match.copy(latitude = at.latitude, longitude = at.longitude) else match
     is SearchEntry.Place -> StationMatch(PlaceStart.id(hit.coordinate), hit.name, latitude = hit.coordinate.latitude, longitude = hit.coordinate.longitude)
 }
+
+/** The icon a saved [this] starts with: a searched place's type's, none for a stop, a street or a postcode. */
+internal fun SearchEntry.placeIconOf(): String? =
+    (this as? SearchEntry.Place)?.hit?.takeIf { it.kind == PlaceKind.PLACE }?.let { FavoritePlaceIcon.forType(it.type) }
 
 /**
  * The menu a long press on a search row opens, titled with its [entry]'s name. Whether the row is on
@@ -141,7 +148,7 @@ internal fun SearchRowMenu(
                 if (placesKnown && unsave != null && place != null) {
                     MenuItem(stringResource(R.string.station_search_remove_favorite), "rowMenuRemovePlace") { onDismiss(); unsave(place) }
                 } else if (placesKnown && add != null) {
-                    MenuItem(stringResource(R.string.station_search_add_favorite), "rowMenuAddPlace") { onDismiss(); add(entry.asPlacePick(coordinate)) }
+                    MenuItem(stringResource(R.string.station_search_add_favorite), "rowMenuAddPlace") { onDismiss(); add(entry.asPlacePick(coordinate), entry.placeIconOf()) }
                 }
             }
         },

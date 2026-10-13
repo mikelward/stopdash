@@ -5,13 +5,15 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
+import app.stopdash.domain.FavoritePlaceIcon
 import app.stopdash.domain.PlaceHit
 import app.stopdash.domain.PlaceKind
+import app.stopdash.domain.PlaceType
 import app.stopdash.domain.SearchEntry
 import app.stopdash.domain.StationMatch
 import java.util.concurrent.Executor
@@ -20,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -37,7 +40,7 @@ class SearchRowMenuTest {
     val composeRule = createComposeRule()
 
     private val bank = SearchEntry.Stop(StationMatch("940GZZLUBNK", "Bank", listOf("tube"), latitude = 51.5, longitude = -0.12))
-    private val gallery = SearchEntry.Place(PlaceHit("Example Gallery", Coordinates(51.51, -0.13), PlaceKind.PLACE))
+    private val gallery = SearchEntry.Place(PlaceHit("Example Gallery", Coordinates(51.51, -0.13), PlaceKind.PLACE, type = PlaceType.GALLERY))
     private val saved = FavoritePlace("p1", FavoriteKind.CUSTOM, "Gallery", Coordinates(51.51, -0.13))
 
     @Test
@@ -64,7 +67,7 @@ class SearchRowMenuTest {
                     entry = bank,
                     recent = listOf(bank),
                     savedPlaces = emptyList(),
-                    actions = SearchRowActions(onShowOnMap = { _, _ -> }, onAskRemoveRecent = {}, onAddPlace = {}),
+                    actions = SearchRowActions(onShowOnMap = { _, _ -> }, onAskRemoveRecent = {}, onAddPlace = { _, _ -> }),
                     onDismiss = {},
                 )
             }
@@ -97,7 +100,7 @@ class SearchRowMenuTest {
                     actions = SearchRowActions(
                         onShowOnMap = { name, at -> mapped = name to at },
                         onAskRemoveRecent = {},
-                        onAddPlace = {},
+                        onAddPlace = { _, _ -> },
                         onRemovePlace = { removed = it },
                     ),
                     onDismiss = { closed = true },
@@ -118,13 +121,14 @@ class SearchRowMenuTest {
     @Test
     fun adding_a_place_hands_the_editor_the_row_at_its_position() {
         var added: StationMatch? = null
+        var addedIcon: String? = null
         composeRule.setContent {
             CompositionLocalProvider(LocalWorker provides Dispatchers.Unconfined) {
                 SearchRowMenu(
                     entry = gallery,
                     recent = emptyList(),
                     savedPlaces = emptyList(),
-                    actions = SearchRowActions(onAddPlace = { added = it }, onRemovePlace = {}),
+                    actions = SearchRowActions(onAddPlace = { pick, icon -> added = pick; addedIcon = icon }, onRemovePlace = {}),
                     onDismiss = {},
                 )
             }
@@ -136,6 +140,8 @@ class SearchRowMenuTest {
         assertEquals("Example Gallery", added?.name)
         assertEquals(51.51, added?.latitude)
         assertEquals(-0.13, added?.longitude)
+        // And its type's icon for the editor to start on (maintainer, 2026-10-13).
+        assertEquals(FavoritePlaceIcon.GALLERY, addedIcon)
     }
 
     @Test
@@ -147,7 +153,7 @@ class SearchRowMenuTest {
                     entry = unplaced,
                     recent = emptyList(),
                     savedPlaces = listOf(saved),
-                    actions = SearchRowActions(onShowOnMap = { _, _ -> }, onAddPlace = {}, onRemovePlace = {}),
+                    actions = SearchRowActions(onShowOnMap = { _, _ -> }, onAddPlace = { _, _ -> }, onRemovePlace = {}),
                     onDismiss = {},
                 )
             }
@@ -165,7 +171,7 @@ class SearchRowMenuTest {
                     entry = gallery,
                     recent = emptyList(),
                     savedPlaces = emptyList(),
-                    actions = SearchRowActions(onShowOnMap = { _, _ -> }, onAddPlace = {}, onRemovePlace = {}),
+                    actions = SearchRowActions(onShowOnMap = { _, _ -> }, onAddPlace = { _, _ -> }, onRemovePlace = {}),
                     onDismiss = {},
                     placesKnown = false,
                 )
@@ -219,7 +225,7 @@ class SearchRowMenuTest {
                     entry = station,
                     recent = emptyList(),
                     savedPlaces = listOf(savedHere),
-                    actions = SearchRowActions(onShowOnMap = { _, c -> mapped = c }, onAddPlace = {}, onRemovePlace = {}),
+                    actions = SearchRowActions(onShowOnMap = { _, c -> mapped = c }, onAddPlace = { _, _ -> }, onRemovePlace = {}),
                     onDismiss = {},
                     positionOf = { at },
                 )
@@ -230,5 +236,14 @@ class SearchRowMenuTest {
         composeRule.onNodeWithTag("rowMenuRemovePlace").assertExists()
         composeRule.onNodeWithTag("rowMenuMap").performClick()
         assertEquals(at, mapped)
+    }
+
+    @Test
+    fun only_a_place_starts_on_its_types_icon() {
+        val at = Coordinates(51.51, -0.13)
+        assertEquals(FavoritePlaceIcon.GALLERY, gallery.placeIconOf())
+        assertNull(SearchEntry.Place(PlaceHit("Zeta Road", at, PlaceKind.STREET)).placeIconOf())
+        assertNull(SearchEntry.Place(PlaceHit("XX1 1XX", at, PlaceKind.POSTCODE)).placeIconOf())
+        assertNull(SearchEntry.Stop(StationMatch("940GZZZETA", "Zeta", listOf("tube"))).placeIconOf())
     }
 }
