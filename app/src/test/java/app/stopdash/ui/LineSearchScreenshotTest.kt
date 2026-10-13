@@ -238,7 +238,7 @@ class LineSearchScreenshotTest {
         composeRule.onNodeWithText("Couldn't save that change").assertIsDisplayed()
         state = StationJourneyState(toWarrenStreet, saved = null, failed = false, unavailable = true, onRetry = { retries++ }) {}
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Can't read your favourite journeys.").assertIsDisplayed()
+        composeRule.onNodeWithText("Can't read your favourite rides.").assertIsDisplayed()
         composeRule.onNodeWithTag("routeStopJourney").assertIsNotEnabled()
         composeRule.onNodeWithTag("routeStopJourneyRetry").performClick()
         assertEquals(1, retries)

@@ -210,7 +210,7 @@ from TfL, like any other stop, and at the stops beside it; to find those, and th
 from the other end, it asks TfL for the stops around each end's public position (TfL's own, never
 yours), as opening a station does, and keeps the answer on the device for up to a day.
 
-**Journey alerts**, if you turn them on for a favorite journey, keep each direction's days and times
+**Ride alerts**, if you turn them on for a favorite ride, keep each direction's days and times
 with the journey on the device. During those times stopdash checks in the background, about every
 15 minutes, by asking TfL for the status of the journey's lines (the same request the app makes for
 the lines near you), and shows a silent notification on your phone naming the journey's two stops and
@@ -223,12 +223,12 @@ check, when it was due and ran, how many journeys were being watched, the ids of
 about with TfL's word for each ("Severe Delays"), and how many alerts it showed or took down; and when
 the next check is due. It never names the journey's stops.
 
-Journey alerts are held back while your phone is on a mobile network outside the UK. Each check reads
+Ride alerts are held back while your phone is on a mobile network outside the UK. Each check reads
 the country of the network your phone is connected to, which Android reports without any permission,
 and compares it with the UK on the phone. It is never kept, logged or sent anywhere; the on-device debug
 log notes only that a check was held back.
 
-Journey alerts show only while you're in London. If you allow location **all the time**, which the app
+Ride alerts show only while you're in London. If you allow location **all the time**, which the app
 asks for once you turn alerts on, each background check reads where your phone is and works out, on the phone, whether it's within
 120 km of central London. That check's position is never kept, logged or sent anywhere; the
 on-device debug log notes only that a check was held back because you were further away. If you

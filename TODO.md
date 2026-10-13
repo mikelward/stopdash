@@ -234,6 +234,14 @@ exercises the whole spine the widget later renders from.
       refresh, reconcile, relocation, report, check, lookup, verdict). Then use them as defined:
       a term whose meaning isn't written down drifts, and a reader (or a reviewer) can't tell
       which of two meanings a sentence uses.
+      - So far (maintainer, 2026-10-13): a **route** is all of a line's runs between its two
+        termini, as decided earlier, and "bus route" is the established term. A **trip** is a
+        planned From→To, legs and changes included, and each of the Planner's alternatives is one.
+        On trial in the copy: **favorite ride** for a saved pair of stops (it was "favorite
+        journey"; "direct trip" the other candidate), and no "journey" at all.
+      - [ ] **Device check:** try the trial names. If they stick, carry them into SPEC's prose,
+            `docs/PRIVACY.md`'s, the store listing and the code's names (the code still says
+            favorite journey), then the translations follow (AGENTS *Translations*).
 
 ## Phase 1 — In-app departures view (first deliverable)
 

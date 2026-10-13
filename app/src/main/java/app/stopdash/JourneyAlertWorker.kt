@@ -1011,7 +1011,7 @@ internal object JourneyAlertNotification {
      * thread*); the caller returns to the main thread only to open the permission prompt or a settings page.
      */
     suspend fun gate(context: Context, io: CoroutineDispatcher = Dispatchers.IO): Gate = withContext(io) {
-        if (NotificationManagerCompat.from(context).getNotificationChannel(CHANNEL_ID) == null) ensureChannel(context)
+        ensureChannel(context)
         when {
             // Denied for good earlier: Android won't show the prompt, so only the app's settings can turn
             // them on. Remembered across restarts (Codex on #700).
@@ -1023,12 +1023,22 @@ internal object JourneyAlertNotification {
         }
     }
 
+    /**
+     * Registers the channel: made if missing, and on one that exists Android takes only the name and
+     * description, keeping what the rider set (it never raises a turned-down importance), so a channel
+     * renamed in an update reads right in Android's settings.
+     */
     fun ensureChannel(context: Context) {
         val channel = NotificationChannel(CHANNEL_ID, context.getString(R.string.journey_alerts_channel), NotificationManager.IMPORTANCE_LOW).apply {
             description = context.getString(R.string.journey_alerts_channel_description)
             setShowBadge(false)
         }
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+    }
+
+    /** Registers the channel again if it exists ([refreshNotificationChannels]); one the rider never had isn't made. */
+    fun refreshChannel(context: Context) {
+        if (NotificationManagerCompat.from(context).getNotificationChannel(CHANNEL_ID) != null) ensureChannel(context)
     }
 
     /**
@@ -1040,8 +1050,7 @@ internal object JourneyAlertNotification {
         if (result.alerts.isEmpty()) return false
         val lasts = listOfNotNull(LASTS, until?.let { Duration.between(now, it) }).min()
         if (lasts <= Duration.ZERO) return false
-        // Made if missing; never remade over a channel the rider has changed in Android's settings.
-        if (NotificationManagerCompat.from(context).getNotificationChannel(CHANNEL_ID) == null) ensureChannel(context)
+        ensureChannel(context)
         if (!mayAlert(context)) return false
         val open = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         val pending = PendingIntent.getActivity(context, 3, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)

@@ -136,6 +136,7 @@ open class StopdashApp : Application() {
         installWidgetDismissalRedraw()
         installWidgetPreview()
         installJourneyAlerts()
+        installChannelRefresh()
     }
 
     /**
@@ -144,6 +145,23 @@ open class StopdashApp : Application() {
      */
     protected open fun installWidgetPreview() {
         WidgetPreview.publishOnce(this, applicationScope)
+    }
+
+    /**
+     * Brings the notification channels' names up to date in Android's settings
+     * ([refreshNotificationChannels]), off the main thread. `open` so the test [Application] can skip it;
+     * guarded, since a stale name is never a reason to take the app down.
+     */
+    protected open fun installChannelRefresh() {
+        applicationScope.launch {
+            try {
+                refreshNotificationChannels(this@StopdashApp)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                StopdashDebugLog.warning("notification channels: refresh failed: %s", e::class.simpleName)
+            }
+        }
     }
 
     /**

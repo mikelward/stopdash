@@ -65,6 +65,11 @@ class TestStopdashApp : StopdashApp() {
         // follow; JourneyAlertsTest covers the decisions.
     }
 
+    override fun installChannelRefresh() {
+        // Intentionally empty — a test sets up the channels it needs; NotificationChannelRefreshTest
+        // covers the refresh.
+    }
+
     override fun installMainThreadWatch() {
         // Intentionally empty — Robolectric runs everything on its main thread, so the watch would
         // report the tests' own setup; MainThreadViolationsTest covers what it says.

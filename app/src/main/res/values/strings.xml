@@ -75,7 +75,7 @@
     <string name="route_stops_stale">Stops shown once departures refresh</string>
     <string name="route_stops_retry">Retry</string>
     <!-- The route page's one-time tip on favoriting a journey (SPEC *Journeys*), and its dismiss action. -->
-    <string name="journey_tip">Long-press a stop to favorite the journey there</string>
+    <string name="journey_tip">Long-press a stop to favorite the ride there</string>
     <string name="journey_tip_dismiss">Got it</string>
     <!-- Shown when some watched stops refreshed but at least one failed. -->
     <string name="partial_refresh">Some stops couldn\'t be refreshed</string>
@@ -449,7 +449,7 @@
     <!-- What a tap on the trip page's To row does, read out by TalkBack. -->
     <string name="trip_change_to">Change destination</string>
     <!-- In place of a To… list until its routes have planned, refreshed and been checked: the list appears once, settled. -->
-    <string name="trip_checking">Checking routes…</string>
+    <string name="trip_checking">Checking trips…</string>
     <!-- A To… list with nothing that goes there directly. %1$s is the destination. -->
     <!-- Title of a To… from the near-me list: the direct trips from the stops near you. -->
     <string name="trip_title_here">To %1$s</string>
@@ -470,7 +470,7 @@
     <!-- Between two labels over one card: "Fastest · Simplest". -->
     <string name="trip_label_separator">" · "</string>
     <string name="trip_label_other">Other</string>
-    <string name="trip_no_routes">No routes found</string>
+    <string name="trip_no_routes">No trips found</string>
     <!-- A trip to a place: the lines from the rider's stops that go straight there, over the routes. -->
     <string name="trip_direct_title">Direct</string>
     <string name="trip_direct_checking">Checking…</string>
@@ -479,8 +479,8 @@
     <string name="trip_direct_more">+%1$d more</string>
     <!-- Under a favorite journey's card when more stops board it than the card fetched: opens the journey's own view. -->
     <string name="journey_more">More</string>
-    <string name="trip_direct_open">Open route</string>
-    <string name="trip_direct_replan_failed">Couldn\'t update the Direct route</string>
+    <string name="trip_direct_open">Open trip</string>
+    <string name="trip_direct_replan_failed">Couldn\'t update the Direct trip</string>
     <string name="trip_direct_not_planned">Couldn\'t plan</string>
     <string name="trip_direct_partial">Couldn\'t check every line</string>
     <!-- Atop a trip's routes, before a chip per line the rider avoids (maintainer, 2026-10-01). -->
@@ -658,18 +658,18 @@
     <string name="station_no_departures">No departures here</string>
     <!-- Settings row that opens the favorite-places editor (SPEC D9). -->
     <string name="settings_favorite_places_title">Favorite places</string>
-    <string name="settings_favorite_places_summary">Save places to route to, like Home and Work</string>
+    <string name="settings_favorite_places_summary">Save places to go to, like Home and Work</string>
     <!-- Settings row that opens the favorite-journeys list, to see, add and remove them. -->
-    <string name="settings_favorite_journeys_title">Favorite journeys</string>
-    <string name="settings_favorite_journeys_summary">Save routes between two places</string>
-    <string name="favorite_journeys_title">Favorite journeys</string>
+    <string name="settings_favorite_journeys_title">Favorite rides</string>
+    <string name="settings_favorite_journeys_summary">Save rides between two places</string>
+    <string name="favorite_journeys_title">Favorite rides</string>
     <string name="favorite_journeys_loading">Loading…</string>
     <string name="favorite_journeys_empty">None yet. Tap Add and pick two stations or places.</string>
     <string name="favorite_journeys_add">Add</string>
     <!-- A failed read or a file from a newer StopDash; Retry reads it again. -->
-    <string name="favorite_journeys_unavailable">Can\'t read your favorite journeys.</string>
+    <string name="favorite_journeys_unavailable">Can\'t read your favorite rides.</string>
     <string name="favorite_journeys_retry">Retry</string>
-    <string name="favorite_journeys_write_failed">Couldn\'t remove that journey</string>
+    <string name="favorite_journeys_write_failed">Couldn\'t remove that ride</string>
     <!-- Adding a favorite journey from Settings: the station search's placeholder while picking where it starts. -->
     <string name="journey_pick_from_hint">From station or stop</string>
     <!-- Under Favorite journeys' title while a picked pair is looked up and saved. %1$s and %2$s are its two stations. -->
@@ -678,7 +678,7 @@
     <string name="favorite_journeys_add_already">%1$s ⇄ %2$s is already a favorite</string>
     <!-- Under a grayed journey in Settings' list: no one line serves it, or an end is a favorite place, so
          StopDash can't follow it yet (maintainer, 2026-10-10). -->
-    <string name="favorite_journeys_multi_leg_soon">Support for multi-leg journeys coming soon</string>
+    <string name="favorite_journeys_multi_leg_soon">Support for multi-leg trips coming soon</string>
     <!-- TalkBack, a favorite-place chip in the favorite-journey picker: %1$s is the place's name. -->
     <string name="favorite_place_pick_description">Choose %1$s</string>
     <!-- The same station or favorite place picked for both ends. -->
@@ -717,14 +717,14 @@
     <!-- A change on a journey's alerts screen couldn't be saved (a disk error). -->
     <string name="journey_alerts_write_failed">Couldn\'t save that change</string>
     <!-- Toast when a change to a journey's alerts couldn't be saved after the rider had left its screens. -->
-    <string name="journey_alerts_write_failed_away">Couldn\'t save journey alerts</string>
+    <string name="journey_alerts_write_failed_away">Couldn\'t save ride alerts</string>
     <!-- On a journey's alerts screen when Android won't show StopDash's notifications. -->
     <string name="journey_alerts_notifications_off">Notifications are off, so alerts won\'t show</string>
     <string name="journey_alerts_notifications_allow">Allow</string>
     <!-- Card atop the favorite journeys list (and at the foot of a journey's Alerts screen) when some
          journey's alerts are on but location isn't allowed all the time: an offer, as Snoozemo's is. -->
     <string name="journey_alerts_london_title">Alerts only in London?</string>
-    <string name="journey_alerts_london_body">Journey alerts can stay quiet when you\'re far from London.</string>
+    <string name="journey_alerts_london_body">Ride alerts can stay quiet when you\'re far from London.</string>
     <string name="journey_alerts_london_allow">Yes please</string>
     <string name="journey_alerts_london_decline">No thanks</string>
     <!-- The disclosure before the background-location prompt, which Google Play's declaration requires precede it.
@@ -733,7 +733,7 @@
          or not in use, that it stays on the phone (the widget's follow never asks TfL, SPEC Privacy), and the
          choice Android offers next. -->
     <string name="journey_alerts_location_rationale_title">Background location permission</string>
-    <string name="journey_alerts_location_rationale_body">StopDash collects location data, even when the app is closed or not in use, to:\n• show nearby stops on your widget and watch\n• silence journey alerts when you\'re away from London\n\nThis location data stays on your phone. It isn\'t sent to TfL or anyone else.</string>
+    <string name="journey_alerts_location_rationale_body">StopDash collects location data, even when the app is closed or not in use, to:\n• show nearby stops on your widget and watch\n• silence ride alerts when you\'re away from London\n\nThis location data stays on your phone. It isn\'t sent to TfL or anyone else.</string>
     <!-- The disclosure's last paragraph: the steps Android shows next. With location already allowed while
          in use, Android offers "Allow all the time" at once; without it, it asks for "While using the app" first. -->
     <string name="journey_alerts_location_rationale_steps">To allow this functionality, tap Continue then choose Allow all the time.</string>
@@ -746,12 +746,12 @@
     <string name="journey_alerts_days_weekends">Sat–Sun</string>
     <string name="journey_alerts_days_none">No days</string>
     <!-- The notification channel for journey alerts, as Android's settings list it. -->
-    <string name="journey_alerts_channel">Journey alerts</string>
+    <string name="journey_alerts_channel">Ride alerts</string>
     <!-- The button on a journey alert that pauses every journey's alerts. -->
     <string name="journey_alerts_pause">Pause</string>
     <!-- The near-me list's card while journey alerts are paused, and its button. -->
     <string name="journey_alerts_paused">Alert notifications paused</string>
-    <string name="journey_alerts_paused_body">Favorite journey alerts are paused. You will not be notified about service disruptions.</string>
+    <string name="journey_alerts_paused_body">Favorite ride alerts are paused. You will not be notified about service disruptions.</string>
     <string name="journey_alerts_unpause">Unpause</string>
     <!-- Said when Unpause couldn't be saved; alerts stay paused. -->
     <string name="journey_alerts_unpause_failed">Couldn\'t unpause alerts</string>
@@ -760,7 +760,7 @@
     <!-- The favorite journeys page's overflow menu: pausing every journey's alerts, or unpausing them. -->
     <string name="journey_alerts_menu_pause">Pause alerts</string>
     <string name="journey_alerts_menu_unpause">Unpause alerts</string>
-    <string name="journey_alerts_channel_description">A favorite journey\'s line is disrupted during its alert times</string>
+    <string name="journey_alerts_channel_description">A favorite ride\'s line is disrupted during its alert times</string>
     <!-- Content description for a favorite journey's Remove button; %1$s and %2$s are its two stops. -->
     <string name="favorite_journey_remove_description">Remove %1$s to %2$s</string>
     <!-- Settings switch for the home screen's one-line disruptions row. -->
@@ -888,11 +888,11 @@
     <string name="settings_text_size_reset">Reset</string>
     <string name="settings_text_size_content_description">Text size, %1$d percent</string>
     <string name="settings_telemetry_title">Help make StopDash better</string>
-    <string name="settings_telemetry_summary">Share crash reports and usage stats. Never your stops, journeys or precise location.</string>
+    <string name="settings_telemetry_summary">Share crash reports and usage stats. Never your stops, trips or precise location.</string>
     <!-- The same question put once atop the near-me list to an install that never answered it
          (SPEC *Privacy*): either button stores the answer, so it isn't asked again. -->
     <string name="telemetry_invite_title">Help make StopDash better?</string>
-    <string name="telemetry_invite_body">Share crash reports and usage stats so bugs get fixed? Never your stops, journeys or precise location.</string>
+    <string name="telemetry_invite_body">Share crash reports and usage stats so bugs get fixed? Never your stops, trips or precise location.</string>
     <string name="telemetry_invite_accept">Yes please</string>
     <string name="telemetry_invite_decline">No thanks</string>
     <string name="watch_install_title">StopDash for your watch</string>
@@ -979,10 +979,10 @@
     <!-- Screen-reader action on a route page's station: opens that station's page. -->
     <string name="action_show_stop">Show stop</string>
     <string name="action_show_on_map">Show on map</string>
-    <string name="action_star_journey">Favorite journey</string>
+    <string name="action_star_journey">Favorite ride</string>
     <string name="action_flip_journey">Swap direction</string>
     <!-- Screen-reader action on a journey heading: opens the journey's own view. -->
-    <string name="action_open_journey">Show journey</string>
+    <string name="action_open_journey">Show ride</string>
     <!-- Above the favorite journeys more than a mile away, collapsed to their headings. -->
     <string name="journeys_faraway">Faraway favorites</string>
     <string name="journey_title">%1$s ➔ %2$s</string>
@@ -1011,12 +1011,12 @@
     <string name="journey_destination_unchecked">Couldn\'t check %1$s for closures</string>
     <string name="journey_incomplete">Some routes couldn\'t be checked</string>
     <string name="action_unstar_journey">Remove favorite</string>
-    <string name="route_stop_journey_starred">Favorite journey</string>
+    <string name="route_stop_journey_starred">Favorite ride</string>
     <!-- A stop's details opened from a route page's stop: its star, saving the journey there as a favorite. -->
     <string name="station_journey_add">Favorite</string>
     <string name="station_journey_write_failed">Couldn\'t save that change</string>
     <!-- Said app-wide when that change failed after its stop's page was left. -->
-    <string name="station_journey_write_failed_away">Couldn\'t save your favorite journey</string>
+    <string name="station_journey_write_failed_away">Couldn\'t save your favorite ride</string>
     <!-- Screen-reader state of a station on a route page that the line's alert names, or that lies
          in a stretch it names ("between X and Y"). -->
     <string name="route_stop_in_alert">In the service alert</string>
@@ -1217,8 +1217,8 @@
     <string name="time_to_board_channel">Time to board</string>
     <string name="time_to_board_channel_description">A trip on the way: when it\'s time to board</string>
     <!-- The channel for the alert that something known may stop the rest of a trip on the way. -->
-    <string name="route_disruption_channel">Route disruption</string>
-    <string name="route_disruption_channel_description">A trip on the way: a disruption on the route ahead</string>
+    <string name="route_disruption_channel">Disruption ahead</string>
+    <string name="route_disruption_channel_description">A trip on the way: a disruption ahead</string>
     <!-- A line the rest of a trip rides, with its alert as the trip's chip has it: "Victoria: Part Suspended". -->
     <string name="route_disruption_line">%1$s: %2$s</string>
     <!-- A stop the rest of a trip still has to reach, %1$s its name, that a notice says is closed. -->
