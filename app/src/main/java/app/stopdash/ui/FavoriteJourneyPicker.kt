@@ -5,6 +5,7 @@ import androidx.compose.ui.res.stringResource
 import app.stopdash.R
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.PendingEnd
+import app.stopdash.domain.PlaceArt
 import app.stopdash.domain.SearchEntry
 
 /**
@@ -64,7 +65,7 @@ fun FavoriteJourneyPicker(
             onRetryPlaces = onRetryPlaces,
             fromStation = from.name,
             onChangeFrom = onChangeFrom,
-            fromPlace = from is PendingEnd.Place,
+            fromPlace = if (from is PendingEnd.Place) PlaceArt.PLAIN else null,
             // A saved place's own icon, by its id, read from the index built with the places.
             fromIcon = (from as? PendingEnd.Place)?.let { LocalPlaceIcons.current.forPlace(it.placeId) },
             onAskRemoveRecent = onAskRemoveRecent,

@@ -386,8 +386,9 @@ The app finds stops two ways:
   labeled rows, **From** over **To**, with the saved places' chips just below, lined up under the To
   field as its quick picks. From names the start:
   **"Here"** behind the crosshair when it's the rider's position, else the *From…* station's name, or
-  a place's: a saved place behind its own icon, as its chip shows it, any other place behind a place
-  pin (maintainer, 2026-10-13); To is the search field. **The routes keep the same bar** (maintainer, 2026-09-28, option B of the
+  a place's: a saved place behind its own icon, as its chip shows it, a place searched for behind what
+  it is, as its search row showed it (a street, a gallery), and any other place behind a place pin
+  (maintainer, 2026-10-13); To is the search field. **The routes keep the same bar** (maintainer, 2026-09-28, option B of the
   mocks), so a planned trip always says where it starts and each end is one tap to change: From as
   above, and To, naming the destination (a place behind its icon the same way), reopens the *To…* search with the start kept — a pick plans
   again from the same start, and Back returns to the routes. The app's overflow sits at the From row's

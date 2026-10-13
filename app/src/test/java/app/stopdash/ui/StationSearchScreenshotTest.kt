@@ -27,6 +27,7 @@ import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlaceIcon
 import app.stopdash.domain.PlaceHit
 import app.stopdash.domain.PlaceKind
+import app.stopdash.domain.PlaceArt
 import app.stopdash.domain.PlaceType
 import app.stopdash.domain.SearchEntry
 import app.stopdash.domain.StationMatch
@@ -448,8 +449,8 @@ class StationSearchScreenshotTest {
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithContentDescription("From Here").assertIsDisplayed()
-        // "Here" leads with the crosshair, not a place pin.
-        composeRule.onNodeWithTag("endPlaceIcon", useUnmergedTree = true).assertDoesNotExist()
+        // "Here" leads with the crosshair, not a place's icon.
+        composeRule.onAllNodes(placeLead, useUnmergedTree = true).assertCountEquals(0)
         composeRule.onNodeWithText("To").assertIsDisplayed()
         composeRule.onNodeWithText(toHint).assertIsDisplayed()
         // From above To, and both above the places' chips.
@@ -491,8 +492,8 @@ class StationSearchScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithContentDescription("From King's Cross & St Pancras International").assertIsDisplayed()
         composeRule.onNodeWithText("King's Cross & St Pancras Intl", useUnmergedTree = true).assertIsDisplayed()
-        // A station is named alone, with no place pin.
-        composeRule.onNodeWithTag("endPlaceIcon", useUnmergedTree = true).assertDoesNotExist()
+        // A station is named alone, with no place's icon.
+        composeRule.onAllNodes(placeLead, useUnmergedTree = true).assertCountEquals(0)
     }
 
     @Test
@@ -515,7 +516,7 @@ class StationSearchScreenshotTest {
                         hint = toHint,
                         fromStation = "Home",
                         onChangeFrom = {},
-                        fromPlace = true,
+                        fromPlace = PlaceArt.PLAIN,
                         fromIcon = icons.at(Coordinates(0.0, 0.0), "Home"),
                     )
                 }
@@ -523,7 +524,7 @@ class StationSearchScreenshotTest {
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("endPlaceIconPending", useUnmergedTree = true).assertExists()
-        composeRule.onNodeWithTag("endPlaceIcon", useUnmergedTree = true).assertDoesNotExist()
+        composeRule.onNodeWithTag("endPlaceType-place", useUnmergedTree = true).assertDoesNotExist()
         val nameBefore = composeRule.onNodeWithText("Home", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.left
         icons = read
         composeRule.waitForIdle()
@@ -534,9 +535,46 @@ class StationSearchScreenshotTest {
     }
 
     @Test
+    fun a_searched_place_end_leads_with_its_type_at_once_whatever_the_saved_places_say() {
+        // Its search row showed its type, and that's the row the rider tapped: drawn before the saved
+        // places are read, and kept when a saved place shares its name and spot (Codex on #827).
+        var icons by mutableStateOf(PlaceIconIndex.UNREAD)
+        var savedIcon by mutableStateOf<String?>(null)
+        composeRule.setContent {
+            CompositionLocalProvider(LocalPlaceIcons provides icons) {
+                StopDashTheme {
+                    StationSearchScreen(
+                        state = StationSearchViewModel.State(yoursRead = true),
+                        onQueryChange = {},
+                        onOpenStation = {},
+                        onBack = {},
+                        autoFocus = false,
+                        hint = toHint,
+                        fromStation = "Sample Gallery",
+                        onChangeFrom = {},
+                        fromPlace = PlaceArt(type = PlaceType.GALLERY),
+                        fromIcon = savedIcon,
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("endPlaceType-gallery", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithTag("endPlaceIconPending", useUnmergedTree = true).assertDoesNotExist()
+        val nameBefore = composeRule.onNodeWithText("Sample Gallery", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.left
+        icons = PlaceIconIndex.NONE
+        savedIcon = FavoritePlaceIcon.HOME
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("endPlaceType-gallery", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithTag("endPlaceIcon-${FavoritePlaceIcon.HOME}", useUnmergedTree = true).assertDoesNotExist()
+        assertEquals(nameBefore, composeRule.onNodeWithText("Sample Gallery", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.left)
+    }
+
+    @Test
     fun station_search_to_from_place() {
-        // Started from a place, the From row leads its name with a place pin, as "Here" leads with the
-        // crosshair (maintainer, 2026-10-13): a place searched for, or one with no icon of its own.
+        // Started from a place searched for, the From row leads its name with what it is, as its search
+        // row showed it, as "Here" leads with the crosshair (maintainer, 2026-10-13). A synthetic
+        // stand-in, no real landmark.
         composeRule.setContent {
             StopDashTheme {
                 StationSearchScreen(
@@ -546,17 +584,19 @@ class StationSearchScreenshotTest {
                     onBack = {},
                     autoFocus = false,
                     hint = toHint,
-                    fromStation = "Home",
+                    fromStation = "Sample Gallery",
                     onChangeFrom = {},
-                    fromPlace = true,
+                    fromPlace = PlaceArt(type = PlaceType.GALLERY),
                 )
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("From Home").assertIsDisplayed()
-        val pin = composeRule.onNodeWithTag("endPlaceIcon", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        val name = composeRule.onNodeWithText("Home", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        assertTrue(pin.right <= name.left)
+        composeRule.onNodeWithContentDescription("From Sample Gallery").assertIsDisplayed()
+        val lead = composeRule.onNodeWithTag("endPlaceType-gallery", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val name = composeRule.onNodeWithText("Sample Gallery", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertTrue(lead.right <= name.left)
+        // Its type's icon alone, never a plain pin beside it.
+        composeRule.onAllNodes(placeLead, useUnmergedTree = true).assertCountEquals(1)
         captureSnapshot("station-search-to-from-place.png")
     }
 
@@ -634,7 +674,8 @@ class StationSearchScreenshotTest {
         composeRule.onNodeWithContentDescription("X1 9XX, Postcode").assertIsDisplayed()
         captureSnapshot("station-search-to-place-results.png")
         composeRule.onNodeWithText("Sample Gallery").performClick()
-        assertEquals(TripDestination.Place(Coordinates(51.50, -0.10), "Sample Gallery"), routed)
+        // With what it is, for the trip's To field to lead with the same icon.
+        assertEquals(TripDestination.Place(Coordinates(51.50, -0.10), "Sample Gallery", PlaceArt(type = PlaceType.GALLERY)), routed)
     }
 
     @Test

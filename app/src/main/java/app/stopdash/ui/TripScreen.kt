@@ -122,6 +122,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
+import app.stopdash.domain.PlaceArt
 import app.stopdash.domain.plannedAlertFingerprint
 import app.stopdash.domain.Countdown
 import app.stopdash.domain.Departure
@@ -1171,17 +1172,17 @@ private val FRAME_HOLD: Duration = Duration.ofSeconds(15)
 
 /**
  * A trip page's two ends, for its From/To bar: the start ([fromStation], or "Here" when null) and the
- * destination ([toName]), each said to be a place ([fromPlace], [toPlace]) where it is one, with a saved
- * place's own icon ([fromIcon], [toIcon]). A tap on From opens the From… search, and one on To the To…
- * search; the other end is kept either way.
+ * destination ([toName]), each with what it is ([fromPlace], [toPlace]) where it's a place rather than a
+ * station, and a saved place's own icon ([fromIcon], [toIcon]). A tap on From opens the From… search,
+ * and one on To the To… search; the other end is kept either way.
  */
 internal class TripEnds(
     val fromStation: String?,
     val toName: String,
     val onChangeFrom: () -> Unit,
     val onChangeTo: () -> Unit,
-    val fromPlace: Boolean = false,
-    val toPlace: Boolean = false,
+    val fromPlace: PlaceArt? = null,
+    val toPlace: PlaceArt? = null,
     val fromIcon: String? = null,
     val toIcon: String? = null,
 )

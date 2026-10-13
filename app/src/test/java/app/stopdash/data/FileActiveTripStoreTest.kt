@@ -2,6 +2,8 @@ package app.stopdash.data
 
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Coordinates
+import app.stopdash.domain.PlaceArt
+import app.stopdash.domain.PlaceType
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
@@ -425,6 +427,25 @@ class FileActiveTripStoreTest {
         val toPlace = trip.copy(destinations = listOf(TripDestination.Place(Coordinates(51.5, -0.12), "Work")), destinationIds = emptyMap())
         FileActiveTripStore(file).save(toPlace)
         assertEquals(toPlace, FileActiveTripStore(file).load())
+    }
+
+    @Test
+    fun `a searched place keeps what it is across a reload`() {
+        val file = File(tmp.root, "active-trip.json")
+        val place = TripDestination.Place(Coordinates(51.5, -0.12), "Sample Gallery", PlaceArt(type = PlaceType.GALLERY))
+        val toPlace = trip.copy(destinations = listOf(place), destinationIds = emptyMap())
+        FileActiveTripStore(file).save(toPlace)
+        assertEquals(toPlace, FileActiveTripStore(file).load())
+    }
+
+    @Test
+    fun `a place saved before what it is was kept loads as a plain place`() {
+        val file = File(tmp.root, "active-trip.json")
+        val place = TripDestination.Place(Coordinates(51.5, -0.12), "Sample Gallery", PlaceArt(type = PlaceType.GALLERY))
+        FileActiveTripStore(file).save(trip.copy(destinations = listOf(place), destinationIds = emptyMap()))
+        file.writeText(file.readText().replace(",\"art\":\"gallery\"", ""))
+        assertFalse(file.readText().contains("\"art\""))
+        assertEquals(listOf(place.copy(art = PlaceArt.PLAIN)), FileActiveTripStore(file).load()!!.destinations)
     }
 
     @Test

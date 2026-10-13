@@ -42,6 +42,7 @@ import app.stopdash.domain.OffPlan
 import app.stopdash.domain.OnDeviceStopFinder
 import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.OriginChange
+import app.stopdash.domain.PlaceArt
 import app.stopdash.domain.PlaceStart
 import app.stopdash.domain.PlaceStops
 import app.stopdash.domain.PlaceStopsFinder
@@ -4234,10 +4235,11 @@ class MainActivity : ComponentActivity() {
                 // To… search when a From row opened this one.
                 // None without a grant: the near-me list it returns to can't be shown.
                 onPickHere = closeSearch.takeIf { LocalLocationAllowed.current },
-                // A saved place's chip starts there, as a picked station does, standing at its
-                // coordinate ([PlaceStart]); not a recent pick, as a place's chip isn't on To… either.
+                // A place (a saved place's chip, or one searched for) starts there, as a picked station
+                // does, standing at its coordinate ([PlaceStart]), with what it is for its From field;
+                // not a recent pick here (a typed one is, below), as a place's chip isn't on To… either.
                 onStartFromPlace = { place ->
-                    onOpenStation(StationMatch(PlaceStart.id(place.coordinate), place.name))
+                    onOpenStation(StationMatch(PlaceStart.id(place.coordinate, place.art), place.name))
                 },
                 hint = stringResource(R.string.station_search_from_hint),
                 // A typed place started from is remembered under From…'s Recent (a chip isn't).
@@ -4260,16 +4262,19 @@ class MainActivity : ComponentActivity() {
         }
         val storeOwner = remember(stationId) { stores.ownerFor(stationId, this@MainActivity) }
         CompositionLocalProvider(LocalViewModelStoreOwner provides storeOwner) {
-            // A saved place to start from: no stops of its own to look up, so its page stands at its
-            // coordinate at once, the stops around it found as a station's are.
-            // Decoded once per id (a fixed two-number id, not a collection), never on each recomposition.
+            // A place to start from: no stops of its own to look up, so its page stands at its
+            // coordinate at once, the stops around it found as a station's are; what the place is
+            // leads its From field. Decoded once per id (a fixed id of two numbers and a word, not a
+            // collection), never on each recomposition.
             val placeCenter = remember(stationId) { PlaceStart.coordinate(stationId) }
+            val placeArt = remember(stationId) { PlaceStart.art(stationId) }
             if (placeCenter != null) {
                 FromStationArea(
                     stationName = stationName,
                     center = placeCenter,
                     stationStopIds = emptySet(),
                     planFrom = placeCenter,
+                    planFromArt = placeArt,
                     onClose = closeStation,
                     onBackToNearMe = closeSearch,
                     to = to,
@@ -4422,9 +4427,11 @@ class MainActivity : ComponentActivity() {
         center: Coordinates,
         stationStopIds: Set<String>,
         stationLead: StationLead? = null,
-        // A saved place's coordinate (From… a place): its trip plans from there, as one from Here plans
+        // A place's coordinate (From… a place): its trip plans from there, as one from Here plans
         // from the rider, walking to whichever stop serves it best. Null plans from a station's stop.
         planFrom: Coordinates? = null,
+        // What [planFrom]'s place is, for its From field.
+        planFromArt: PlaceArt = PlaceArt.PLAIN,
         onClose: () -> Unit,
         // The crosshairs: "use my location" leaves the station for the near-me list.
         // Null for a look at somewhere else (a stop's Departures): none of the page's states, its placeholder
@@ -4525,8 +4532,9 @@ class MainActivity : ComponentActivity() {
                 locationBanner = fromNearby.locationBanner,
                 keyPrefix = "from",
                 fromName = stationName,
-                // A place started from: its name leads with its own icon, or a place pin.
+                // A place started from: its name leads with its own icon, or what it is.
                 fromPlace = planFrom,
+                fromArt = planFromArt,
                 fromStopIds = stationStopIds,
                 fromCenter = center,
                 onLocate = onBackToNearMe,
@@ -4728,6 +4736,8 @@ class MainActivity : ComponentActivity() {
         fromName: String? = null,
         // Where [fromName]'s place is, when the trip starts from a place rather than a station.
         fromPlace: Coordinates? = null,
+        // What that place is ([PlaceArt]), for its From field.
+        fromArt: PlaceArt = PlaceArt.PLAIN,
         // A From… station's own stops: its trip starts at one of them, never a neighbor.
         fromStopIds: Set<String> = emptySet(),
         // A From… station's center, where its trip is reckoned from for ranking the To… search.
@@ -4899,7 +4909,7 @@ class MainActivity : ComponentActivity() {
                     onSearchOutside = search::searchOutside,
                     onEditPlaces = onEditPlaces,
                     fromStation = fromName,
-                    fromPlace = fromPlace != null,
+                    fromPlace = fromPlace?.let { fromArt },
                     fromIcon = fromIcon,
                     // The destination search is kept (above): it's the start that changes.
                     onChangeFrom = onChangeFrom,
@@ -5182,7 +5192,7 @@ class MainActivity : ComponentActivity() {
             // Where it starts and where it goes, each a tap to change (maintainer, 2026-09-28): From
             // opens the From… search, To the destination search, the other end kept.
             ends = onChangeFrom?.let { changeFrom ->
-                TripEnds(fromName, toName, changeFrom, onPlanTo, fromPlace = fromPlace != null, toPlace = favorite != null, fromIcon = fromIcon, toIcon = toIcon)
+                TripEnds(fromName, toName, changeFrom, onPlanTo, fromPlace = fromPlace?.let { fromArt }, toPlace = favorite?.art, fromIcon = fromIcon, toIcon = toIcon)
             },
             // A pull plans again now and fetches every stop afresh, its stations' National Rail
             // boards included, here and on the other screens, as every pull does (SPEC *Freshness →
@@ -5763,11 +5773,12 @@ class MainActivity : ComponentActivity() {
         // place's coordinate and name (kept on the device, as [FAVORITE_TRIP_SAVER] says).
         private val TO_CHOICE_SAVER = listSaver<ToChoice, Any?>(save = { SavedTrip.toChoiceFields(it) }, restore = { SavedTrip.toChoiceOf(it) })
 
+        // With what the place is ([PlaceArt.code]) after them; an older build saved none, a plain place.
         private val FAVORITE_TRIP_SAVER = listSaver<TripDestination.Place?, Any>(
-            save = { place -> place?.let { listOf(it.coordinate.latitude, it.coordinate.longitude, it.name) }.orEmpty() },
+            save = { place -> place?.let { listOf(it.coordinate.latitude, it.coordinate.longitude, it.name, it.art.code) }.orEmpty() },
             restore = { saved ->
                 if (saved.size < 3) null
-                else TripDestination.Place(Coordinates(saved[0] as Double, saved[1] as Double), saved[2] as String)
+                else TripDestination.Place(Coordinates(saved[0] as Double, saved[1] as Double), saved[2] as String, PlaceArt.ofCode(saved.getOrNull(3) as String?))
             },
         )
 

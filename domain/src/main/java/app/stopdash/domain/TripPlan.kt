@@ -171,7 +171,12 @@ data class TripRoute(val legs: List<TripLeg>, val fare: TripFare? = null) {
  */
 sealed interface TripDestination {
     data class Stop(val id: String) : TripDestination
-    data class Place(val coordinate: Coordinates, val name: String) : TripDestination
+    data class Place(
+        val coordinate: Coordinates,
+        val name: String,
+        // What it is, for its icon in the trip's To field: a searched place's, else a plain place.
+        val art: PlaceArt = PlaceArt.PLAIN,
+    ) : TripDestination
 }
 
 /**

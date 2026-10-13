@@ -87,6 +87,7 @@ import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.ModeGroups
+import app.stopdash.domain.PlaceArt
 import app.stopdash.domain.PlaceHit
 import app.stopdash.domain.PlaceKind
 import app.stopdash.domain.SearchEntry
@@ -139,9 +140,9 @@ fun StationSearchScreen(
     // Null keeps the plain search bar.
     fromStation: String? = null,
     onChangeFrom: (() -> Unit)? = null,
-    // Whether [fromStation] names a place rather than a station: its name leads with its own icon
-    // ([fromIcon], a saved place's) or a place pin.
-    fromPlace: Boolean = false,
+    // What [fromStation]'s place is, when it names a place rather than a station: its name leads with
+    // its own icon ([fromIcon], a saved place's) or this one's.
+    fromPlace: PlaceArt? = null,
     fromIcon: String? = null,
     // A Recent row's menu asks to take it off the list ([onAskRemoveRecent], null offering no such
     // item); the question is [StationSearchViewModel.State.pendingRemoval], so it outlives a
@@ -413,7 +414,7 @@ internal fun queryFieldValue(query: String): TextFieldValue = TextFieldValue(que
 private fun openPlaceHit(hit: PlaceHit, onPicked: (PlaceHit) -> Unit, onOpenPlace: ((TripDestination.Place) -> Unit)?) {
     val route = onOpenPlace ?: return
     onPicked(hit)
-    route(TripDestination.Place(hit.coordinate, hit.name))
+    route(TripDestination.Place(hit.coordinate, hit.name, hit.art))
 }
 
 /**
