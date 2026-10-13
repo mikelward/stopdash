@@ -456,7 +456,9 @@ The app finds stops two ways:
   under a finger**: what's listed first stays, and what arrives later (the bus stops, still being read
   as the first letters are typed, below the stations' best four with a spinner beneath them; places
   read late) is **appended below** it, ranked among itself, even when it matches better (maintainer,
-  2026-09-28: append, don't reorder). Places found before the stations wait for them, so the two are
+  2026-09-28: append, don't reorder). A new query's answer opens at its **top, best match first**, once
+  it lands; until then the last answer stays as it was, rather than moving at each letter typed.
+  Places found before the stations wait for them, so the two are
   ranked together and a tube station isn't left below places found a moment sooner (maintainer,
   2026-10-13: no timeout; a slow station list is fixed, not ranked around). A listed row that the full ranking shows to be a duplicate of
   another (the same station twice) leaves. Only coming back from a station re-ranks the whole list. A name in parts — a stop with

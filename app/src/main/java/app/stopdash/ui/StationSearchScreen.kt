@@ -51,6 +51,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -341,8 +342,13 @@ fun StationSearchScreen(
                 }
                 is StationSearchViewModel.Result.Matches -> {
                     // A new query's matches start at the top, best match first, not where the last
-                    // query's list was scrolled to.
-                    val listState = rememberSaveable(state.query, saver = LazyListState.Saver) { LazyListState() }
+                    // query's list was scrolled to. Keyed on the query the rows answer, not the one typed:
+                    // a state made at the letter kept the last query's top row in view when the answer
+                    // landed, and where that row still matched lower down, the list scrolled to it, past
+                    // the new best match. A key group rather than rememberSaveable's inputs, which a restore
+                    // doesn't check: the saved scroll belongs to its query, so after process death one
+                    // query's can't land on another's rows (Codex, #825).
+                    val listState = key(result.query) { rememberSaveable(saver = LazyListState.Saver) { LazyListState() } }
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().scrollEdgeCue(listState, scrollCueColors(MaterialTheme.colorScheme.background))
                             .testTag("stationSearchMatches"),

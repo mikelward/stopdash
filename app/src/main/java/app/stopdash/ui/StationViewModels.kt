@@ -174,6 +174,9 @@ class StationSearchViewModel(
             // apart (maintainer, 2026-10-11) and a place reads as near the stops beside it. A row
             // without one (not yet worked out, no postcode near it, or a postcode) shows none.
             val areas: Map<String, String> = emptyMap(),
+            // The query these rows answer, trimmed: while the next letter's search runs they're the last
+            // query's, so the list starts its scroll afresh when the new query's rows land, not the letter.
+            val query: String = "",
         ) : Result
         /** Nothing bundled matches. */
         data object NoMatches : Result
@@ -462,7 +465,7 @@ class StationSearchViewModel(
                     trimmed, stations.search(trimmed, near = from), buses.search(trimmed, checkpoint = { ensureActive() }, near = from), near = from,
                 )
                 val entries = SearchResults.merge(trimmed, ranked, places, stations::leads) { stations.tier(trimmed, it) }
-                Result.Matches(ranked, places = places, entries = entries, areas = areasOf(entries, stations))
+                Result.Matches(ranked, places = places, entries = entries, areas = areasOf(entries, stations), query = trimmed)
             }
             if (result.matches.isNotEmpty() || result.places.isNotEmpty()) _state.update { it.copy(result = result) }
         }
@@ -591,7 +594,7 @@ class StationSearchViewModel(
                     entriesFor = trimmed
                     _state.update {
                         val areas = (it.result as? Result.Matches)?.areas.orEmpty() + placeAreas
-                        it.copy(result = Result.Matches(stopsShown, places = places, entries = shown, areas = areas))
+                        it.copy(result = Result.Matches(stopsShown, places = places, entries = shown, areas = areas, query = trimmed))
                     }
                 }
             }
@@ -616,7 +619,7 @@ class StationSearchViewModel(
                     shown = entries
                     stopsShown = first
                     entriesFor = trimmed
-                    _state.update { it.copy(result = Result.Matches(first, places = listed, entries = entries, areas = areas)) }
+                    _state.update { it.copy(result = Result.Matches(first, places = listed, entries = entries, areas = areas, query = trimmed)) }
                 }
             }
             // With the bus stops still unread, the places go up now rather than wait for them.
@@ -642,7 +645,7 @@ class StationSearchViewModel(
                 stopsShown = ranked
                 entriesFor = trimmed
                 if (shown.isNotEmpty()) {
-                    _state.update { it.copy(result = Result.Matches(ranked, places = listed.first, entries = entries, areas = listed.second)) }
+                    _state.update { it.copy(result = Result.Matches(ranked, places = listed.first, entries = entries, areas = listed.second, query = trimmed)) }
                 }
             }
             stationsTried.complete(Unit)
@@ -659,7 +662,7 @@ class StationSearchViewModel(
                 }
                 shown = entries
                 entriesFor = trimmed
-                if (entries.isEmpty()) Result.NoMatches else Result.Matches(stopsShown, places = listed, entries = entries, areas = areas)
+                if (entries.isEmpty()) Result.NoMatches else Result.Matches(stopsShown, places = listed, entries = entries, areas = areas, query = trimmed)
             }
             _state.update { it.copy(result = result, searching = false) }
             offerOutside(trimmed, places)
