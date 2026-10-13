@@ -22,7 +22,9 @@ import app.stopdash.domain.YourStops
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -490,8 +492,8 @@ class StationViewModelsTest {
     }
 
     @Test
-    fun `bundled places are listed while the saved stops are still being read`() = runTest {
-        // The place index is ready; the rider's saved stops aren't. The places don't wait for them.
+    fun `bundled places wait for the saved stops, so the stations rank with them`() = runTest {
+        // The place index is ready; the rider's saved stops aren't. The places wait for them.
         val yoursRead = CompletableDeferred<Unit>()
         val vm = StationSearchViewModel(
             io = dispatcher, compute = dispatcher,
@@ -500,13 +502,84 @@ class StationViewModelsTest {
         )
         runCurrent()
         vm.onQueryChange("zeta")
+        advanceTimeBy(60_000)
         runCurrent()
-        val early = vm.state.value.result as StationSearchViewModel.Result.Matches
-        assertEquals(listOf("Zeta Gallery"), early.places.map { it.name })
+        assertTrue(vm.state.value.searching)
+        assertFalse(vm.state.value.result is StationSearchViewModel.Result.Matches)
         yoursRead.complete(Unit)
         advanceUntilIdle()
         val result = vm.state.value.result as StationSearchViewModel.Result.Matches
         assertEquals(listOf("Zeta Gallery"), result.places.map { it.name })
+    }
+
+    @Test
+    fun `places found before the stations are ranked with them, not above them`() = runTest {
+        // The place index is ready first; the saved stops (and so the stations) a moment later. The
+        // interchange still leads, rather than joining below places the rider has never heard of.
+        val yoursRead = CompletableDeferred<Unit>()
+        val vm = StationSearchViewModel(
+            io = dispatcher, compute = dispatcher,
+            loadIndex = { StationIndex(listOf(IndexedStation("HUBZET", "Zeta Cross & Omega Park", listOf("tube")))) },
+            loadYours = { yoursRead.await(); YourStops.EMPTY },
+            loadPlaceIndex = { placeIndex("P\tZeta Boxing Club\tsports_club\t51.50000\t-0.12000\t2") },
+        )
+        runCurrent()
+        vm.onQueryChange("zeta")
+        runCurrent()
+        yoursRead.complete(Unit)
+        advanceUntilIdle()
+        val rows = (vm.state.value.result as StationSearchViewModel.Result.Matches).entries.map {
+            when (it) {
+                is SearchEntry.Stop -> it.match.name
+                is SearchEntry.Place -> it.hit.name
+            }
+        }
+        assertEquals(listOf("Zeta Cross & Omega Park", "Zeta Boxing Club"), rows)
+    }
+
+    @Test
+    fun `an interchange a query only partly names leads places in the stations' first few`() = runTest {
+        // "omega" starts only the second half of the interchange's name, and the whole of the place's,
+        // yet the interchange still leads: in the first few shown while the bus stops are read, too.
+        val yoursRead = CompletableDeferred<Unit>()
+        val busesRead = CompletableDeferred<BusStopIndex>()
+        val vm = StationSearchViewModel(
+            io = dispatcher, compute = dispatcher,
+            loadIndex = { StationIndex(listOf(IndexedStation("HUBZET", "Zeta Cross & Omega Park", listOf("tube")))) },
+            loadYours = { yoursRead.await(); YourStops.EMPTY },
+            loadBusStops = { busesRead.await() },
+            loadPlaceIndex = { placeIndex("P\tOmega Boxing Club\tsports_club\t51.50000\t-0.12000\t2") },
+        )
+        runCurrent()
+        vm.onQueryChange("omega")
+        runCurrent()
+        yoursRead.complete(Unit)
+        runCurrent()
+        fun rows() = (vm.state.value.result as StationSearchViewModel.Result.Matches).entries.map {
+            when (it) {
+                is SearchEntry.Stop -> it.match.name
+                is SearchEntry.Place -> it.hit.name
+            }
+        }
+        assertEquals(listOf("Zeta Cross & Omega Park", "Omega Boxing Club"), rows())
+        assertTrue(vm.state.value.searching)
+        busesRead.complete(BusStopIndex.EMPTY)
+        advanceUntilIdle()
+        assertEquals(listOf("Zeta Cross & Omega Park", "Omega Boxing Club"), rows())
+    }
+
+    @Test
+    fun `a source read slower than the bar is logged by name, a quick one isn't`() = runTest {
+        val warnings = mutableListOf<String>()
+        StationSearchViewModel(
+            io = dispatcher, compute = dispatcher,
+            loadIndex = { delay(StationSearchViewModel.SLOW_SOURCE_MILLIS + 50); StationIndex.EMPTY },
+            loadBusStops = { delay(StationSearchViewModel.SLOW_SOURCE_MILLIS - 50); BusStopIndex.EMPTY },
+            warn = { warnings += it },
+            nowMillis = { testScheduler.currentTime },
+        )
+        advanceUntilIdle()
+        assertEquals(listOf("station search: station index read took 300 ms"), warnings)
     }
 
     @Test
