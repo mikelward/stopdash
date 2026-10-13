@@ -1,6 +1,8 @@
-The street (kind S) entries in place_index.tsv, and the neighborhood names they carry, are a
-derivative database of OpenStreetMap, © OpenStreetMap contributors, taken through the Overture Maps
-Foundation's transportation and divisions releases.
+The place (kind P) and street (kind S) entries in place_index.tsv, and the neighborhood names
+the streets carry, are a derivative database of OpenStreetMap, © OpenStreetMap contributors, read
+from Geofabrik's extracts. A place's rank also counts the Wikipedia editions covering the Wikidata
+item it names (Wikidata, CC0). The postcode (kind C) entries are OS Code-Point Open, under the Open
+Government Licence v3.0, and aren't part of it.
 
 That derivative database is made available under the Open Database License (ODbL) v1.0:
 https://opendatacommons.org/licenses/odbl/1-0/

@@ -8,52 +8,46 @@ anywhere. Each line is one destination:
     kind  name  category  latitude  longitude  rank
 
 - kind: `P` a place (a venue, a business, a park…), `S` a street, `C` a postcode.
-- category: a place's Overture basic category (`museum`, `park`, …); empty for a street or postcode.
+- category: the OpenStreetMap tag that makes a place one (`tourism=museum`, `leisure=park`, …); empty
+  for a street or postcode. The app doesn't read it: it's there so a refresh's diff says what a line is.
 - latitude, longitude: degrees to five places (about a meter).
 - rank: 0–9, how prominent the entry is, to order equal matches: a place Wikipedia covers in many
   languages 9 (20 or more) or 8 (5 or more), any other public place 7, a street or postcode 4, any
-  other place 2. Overture's confidence isn't used: it says how sure Overture is that a place exists,
-  isn't comparable across its sources, and so only filters.
+  other place 2.
 
 The first line is a `#` header naming the format version and the sources. Lines are sorted, so a
 refresh's diff shows what moved.
 
 Sources, all open data:
-- Overture Maps places (Meta, Microsoft, Foursquare, AllThePlaces; CDLA Permissive 2.0 and
-  Apache 2.0), from its public Amazon S3 bucket. Kept: public places (embassies, theatres, schools,
-  parks, leisure centers, places of worship, museums, hospitals, venues…) at confidence 0.7 or
-  more, and any other place at 0.9 or more. Near-duplicates are merged.
-- Overture Maps transportation segments, the OpenStreetMap ones only (ODbL; Overture also carries
-  TomTom roads, which would need their own credit): one entry per named road per neighborhood,
-  named with it ("High Street, Exampleton") from Overture's divisions (neighborhoods and
-  macrohoods, also OpenStreetMap's only), so same-named streets read apart.
-- OS Code-Point Open (Open Government Licence v3.0; contains Royal Mail data): the postcodes in
-  the same rectangle as the rest, Greater London and the towns around it.
-- Wikidata (CC0), from its public query service: the items in the same rectangle with an English
-  name, a position and a Wikipedia article in at least one language, and how many languages have
-  one. The nearest public place (or one in BOOSTABLE_CATEGORIES) of the same name within 300 m
-  (1 km for a big site such as a park) takes its prominence from them, and a famous venue's Meta-only copies far from every item of its name are
-  dropped (people check in to "O2 Arena" from all over London); Wikidata never moves a listing.
-  Only names and positions of public things are read.
+- OpenStreetMap (ODbL), from Geofabrik's extracts of Greater London and the counties around it: the
+  named public places (embassies, theatres, schools, parks, leisure centers, places of worship,
+  museums, hospitals, venues…) and businesses; and one entry per named street per neighborhood,
+  named with it ("High Street, Exampleton") from the neighborhoods, quarters and suburbs mapped, so
+  same-named streets read apart. People map a place once, where it is, so there are no check-in
+  copies to clean up (maintainer, 2026-10-13: OpenStreetMap only, no Overture or Foursquare).
+- OS Code-Point Open (Open Government Licence v3.0; contains Royal Mail data): the postcodes in the
+  same rectangle as the rest, Greater London and the towns around it.
+- Wikidata (CC0), from its public query service: how many Wikipedia editions cover the item a place
+  names in its own `wikidata` tag. Wikidata only ranks, never dropping or moving a place.
 
-Beside the index it writes Foursquare's `NOTICE.txt` (with our changes appended) and the Apache
-License 2.0 text, as `FOURSQUARE_NOTICE.txt` and `FOURSQUARE_LICENSE.txt`: Overture's Foursquare
-places are Apache 2.0, which requires both to ship with the data. It also writes
-`OPENSTREETMAP_ODBL_NOTICE.txt`, which licenses the street entries, derived from OpenStreetMap, under
-ODbL 1.0, as that license requires of a derivative database.
+Beside the index it writes `OPENSTREETMAP_ODBL_NOTICE.txt`, which licenses the place and street
+entries, derived from OpenStreetMap, under ODbL 1.0, as that license requires of a derivative database.
 
 Every source is required: a failed or short one stops the build, so the committed index stays
-rather than a partial one replacing it. Needs `pyarrow` and `pyproj`. Public data only — nothing
-about any user.
+rather than a partial one replacing it. Needs `osmium` (pyosmium) and `pyproj`. Public data only —
+nothing about any user.
 """
 import argparse
 import csv
+import hashlib
 import http.client
 import io
 import math
 import os
 import re
+import shutil
 import sys
+import tempfile
 import time
 import unicodedata
 import urllib.error
@@ -64,20 +58,20 @@ import zipfile
 FORMAT_VERSION = 1
 # Greater London: the area the index covers.
 WEST, EAST, SOUTH, NORTH = -0.51, 0.34, 51.28, 51.70
-BUCKET = "overturemaps-us-west-2"
+# Geofabrik's extracts covering that rectangle: Greater London, and the counties its fringe reaches
+# (Watford, Dartford, Epsom, Thurrock, Iver, Colnbrook). They overlap at their edges; an object in two
+# is read once.
+GEOFABRIK = "https://download.geofabrik.de/europe/united-kingdom/england"
+OSM_EXTRACTS = ("greater-london", "surrey", "kent", "essex", "hertfordshire", "buckinghamshire", "berkshire")
 CODEPOINT_URL = "https://api.os.uk/downloads/v1/products/CodePointOpen/downloads?area=GB&format=CSV&redirect"
-# Overture's Foursquare places are Apache 2.0, which requires shipping the license and Foursquare's
-# NOTICE beside the data. Both sit at the top of Foursquare's own public release bucket.
-FOURSQUARE_NOTICE_URL = "https://fsq-os-places-us-east-1.s3.amazonaws.com/NOTICE.txt"
-FOURSQUARE_LICENSE_URL = "https://fsq-os-places-us-east-1.s3.amazonaws.com/LICENSE.txt"
-NOTICE_FILE = "FOURSQUARE_NOTICE.txt"
-LICENSE_FILE = "FOURSQUARE_LICENSE.txt"
-# The streets and neighborhoods are a derivative of OpenStreetMap's database, so they ship under
-# ODbL 1.0 (section 4.2: the license URI with the database; 4.4: the same license for the derivative).
+# The places and streets are a derivative of OpenStreetMap's database, so they ship under ODbL 1.0
+# (section 4.2: the license URI with the database; 4.4: the same license for the derivative).
 ODBL_FILE = "OPENSTREETMAP_ODBL_NOTICE.txt"
-ODBL_NOTICE = """The street (kind S) entries in place_index.tsv, and the neighborhood names they carry, are a
-derivative database of OpenStreetMap, © OpenStreetMap contributors, taken through the Overture Maps
-Foundation's transportation and divisions releases.
+ODBL_NOTICE = """The place (kind P) and street (kind S) entries in place_index.tsv, and the neighborhood names
+the streets carry, are a derivative database of OpenStreetMap, © OpenStreetMap contributors, read
+from Geofabrik's extracts. A place's rank also counts the Wikipedia editions covering the Wikidata
+item it names (Wikidata, CC0). The postcode (kind C) entries are OS Code-Point Open, under the Open
+Government Licence v3.0, and aren't part of it.
 
 That derivative database is made available under the Open Database License (ODbL) v1.0:
 https://opendatacommons.org/licenses/odbl/1-0/
@@ -88,81 +82,122 @@ https://opendatacommons.org/licenses/dbcl/1-0/
 The file is the database itself, and the method that builds it from the published sources is
 scripts/build_place_index.py in https://github.com/mikelward/stopdash.
 """
-FOURSQUARE_CHANGES = (
-    "\n\nChanges by StopDash: this app ships a subset of the Data, taken through the Overture Maps "
-    "Foundation's places release: places in and around London, with near-duplicates merged and names, "
-    "categories and positions reduced to a search list. The index file beside this notice holds it.\n"
-)
 # A source with fewer rows than this is taken to have failed, not to have shrunk.
 MIN_PLACES, MIN_STREETS, MIN_POSTCODES, MIN_AREAS = 100_000, 30_000, 150_000, 500
-# London has some 23,000 Wikidata items with an article (2026-10); far fewer means a broken answer.
-MIN_NOTABLE = 10_000
+# Items places name that Wikipedia covers at all; far fewer means a broken answer.
+MIN_NOTABLE = 5_000
 
-PUBLIC_CATEGORIES = {
-    "embassy", "theatre_venue", "performing_arts_venue", "music_venue", "movie_theater", "museum",
-    "art_gallery", "park", "playground", "stadium_arena", "library", "college_university",
-    "elementary_school", "high_school", "preschool", "place_of_learning", "education", "specialty_school",
-    "hospital", "community_center", "government_office", "police_station", "gym",
-    "sport_or_fitness_facility", "swimming_pool", "golf_course", "historic_site", "monument", "hotel",
-    "shopping_mall", "department_store", "event_venue", "arts_and_entertainment", "sports_and_recreation",
-    "zoo", "aquarium", "landmark_and_historical_building", "fire_station", "post_office", "town_hall",
-    "courthouse", "cemetery", "sport_court", "fitness_studio", "airport", "campus_building",
-    "research_institute", "primary_care_or_general_clinic", "lodging",
+# What makes a named OpenStreetMap object a destination, by key and value: a public place (rank 7,
+# and Wikidata's prominence counts most for these), or any other (a shop, a cafe, an office: rank 2).
+# A key mapped to True takes any value but those in NOT_A_PLACE. Public tags are tried first, so a
+# museum with a gift shop is the museum and a hotel with a restaurant the hotel.
+PUBLIC_PLACES = {
+    "tourism": {"museum", "gallery", "attraction", "zoo", "aquarium", "theme_park", "hotel", "hostel", "guest_house",
+                "apartment"},
+    "amenity": {"theatre", "cinema", "arts_centre", "music_venue", "concert_hall", "events_venue", "exhibition_centre",
+                "conference_centre", "library", "university", "college", "school", "kindergarten", "hospital", "clinic",
+                "doctors", "community_centre", "social_centre", "townhall", "courthouse", "police", "fire_station",
+                "post_office", "place_of_worship", "embassy", "marketplace", "planetarium", "public_bath",
+                "research_institute", "grave_yard", "crematorium"},
+    "leisure": {"park", "garden", "common", "nature_reserve", "playground", "stadium", "sports_centre", "sports_hall",
+                "fitness_centre", "swimming_pool", "ice_rink", "golf_course", "water_park"},
+    "landuse": {"cemetery", "recreation_ground", "village_green"},
+    "office": {"diplomatic", "government"},
+    "shop": {"mall", "department_store"},
+    "aeroway": {"aerodrome", "terminal"},
+    "place": {"square"},
+    "man_made": {"bridge", "tower", "lighthouse", "observatory"},
+    "historic": {"monument", "memorial", "castle", "fort", "manor", "palace", "ruins", "archaeological_site", "ship",
+                 "building", "church", "city_gate", "tower"},
 }
-# Not public places, so ranked as businesses, but where Overture files many a landmark: Big Ben is a
-# fountain, Kew Gardens a garden, the Barbican and Somerset House cultural centers, the Palladium a
-# festival venue. A listing here takes Wikidata's prominence like a public place; the rest of the
-# business categories don't, as the famous names in them are areas and companies ("ESHER" a takeaway,
-# "House of Lords" a cash machine).
-BOOSTABLE_CATEGORIES = {
-    "garden", "botanical_garden", "cultural_center", "public_fountain", "public_plaza", "castle",
-    "festival_venue",
+OTHER_PLACES = {
+    "amenity": {"restaurant", "cafe", "pub", "bar", "fast_food", "food_court", "ice_cream", "biergarten", "nightclub",
+                "casino", "gambling", "bank", "bureau_de_change", "pharmacy", "dentist", "veterinary", "childcare",
+                "studio", "coworking_space", "language_school", "music_school", "dancing_school", "driving_school",
+                "training", "internet_cafe", "car_rental", "nursing_home", "social_facility", "funeral_hall"},
+    "tourism": {"artwork", "viewpoint", "motel", "camp_site", "caravan_site"},
+    "leisure": {"bowling_alley", "escape_game", "amusement_arcade", "adult_gaming_centre", "miniature_golf", "sauna",
+                "trampoline_park", "horse_riding", "dance", "hackerspace", "marina"},
+    "shop": True,
+    "craft": True,
+    "office": True,
+    "healthcare": True,
+    "club": True,
 }
-# Never a destination worth listing: stations come from the station index (with the ids their
-# departures need), and these are rarely where a trip ends.
-DROPPED_CATEGORIES = {
-    "train_station", "public_transit_facility_or_service", "bus_station", "travel_and_transportation",
-    "parking", "ev_charging_station", "atm", "gas_station",
+NOT_A_PLACE = {"no", "vacant", "disused", "abandoned", "closed"}
+# Buildings that are a structure rather than somewhere to go, whatever item they name: a station's bus
+# stand (a roof), a garage or depot, a disused station. A search for the station must find the station.
+NOT_A_DESTINATION_BUILDING = {"roof", "bus_garage", "depot", "disused_station", "garage", "garages", "carport",
+                              "parking", "shed", "service", "construction", "train_station", "transportation"}
+# A plaque on a wall or a stone in the pavement is a memorial, but nobody goes there.
+SMALL_MEMORIALS = {"plaque", "blue_plaque", "stolperstein", "bench", "stone"}
+# Stations, stops and piers come from the station index, with the ids their departures need.
+TRANSIT = {
+    "railway": {"station", "halt", "tram_stop", "subway_entrance"},
+    "public_transport": {"station", "stop_position", "platform", "stop_area"},
+    "amenity": {"bus_station", "ferry_terminal"},
+    "highway": {"bus_stop"},
+    "aerialway": {"station"},
+    "building": {"train_station", "transportation"},
 }
-PUBLIC_MIN_CONFIDENCE = 0.7
-OTHER_MIN_CONFIDENCE = 0.9
-# Two listings of one place are within this many meters of each other.
+# Every named road and path a rider might be told to walk to is a street, but not a platform, a
+# corridor inside a station, or a road not built yet. A highway area is a square, a place if anything.
+NOT_A_STREET = {"platform", "corridor", "elevator", "proposed", "construction", "abandoned", "disused", "razed",
+                "bus_stop", "raceway", "rest_area", "services"}
+# The OpenStreetMap places a street is named with: neighborhoods, quarters and suburbs.
+NEIGHBORHOODS = {"neighbourhood", "quarter", "suburb"}
+WIKIDATA_ITEM = re.compile(r"\s*(Q[1-9][0-9]*)\s*(?:;.*)?")
+
+
+def wikidata_id(value):
+    """The Wikidata item an OpenStreetMap `wikidata` tag names ("Q42"), or None."""
+    m = WIKIDATA_ITEM.fullmatch(value or "")
+    return m.group(1) if m else None
+
+
+def place_item(tags):
+    """The Wikidata item a place's tags say it is, or None. A branch tagged with its brand's item
+    (`wikidata` the same as `brand:wikidata`) is not that item: the brand's fame isn't the branch's."""
+    item = wikidata_id(tags.get("wikidata"))
+    return None if item and item == wikidata_id(tags.get("brand:wikidata")) else item
+
+
+def place_of(tags):
+    """(category, public) for an OpenStreetMap object's tags (a dict) when it's a destination, else None."""
+    if not tags.get("name") or tags.get("disused") == "yes" or tags.get("abandoned") == "yes":
+        return None
+    if any(tags.get(key) in values for key, values in TRANSIT.items()):
+        return None
+    for table, public in ((PUBLIC_PLACES, True), (OTHER_PLACES, False)):
+        for key, values in table.items():
+            value = tags.get(key)
+            if value is None or value in NOT_A_PLACE or (values is not True and value not in values):
+                continue
+            if key == "historic" and value == "memorial" and tags.get("memorial") in SMALL_MEMORIALS:
+                continue
+            return f"{key}={value}", public
+    # A named building is a place only when it names its Wikidata item (a famous tower, a landmark
+    # hall): the rest are mostly blocks of flats.
+    building = tags.get("building")
+    if (building and building not in NOT_A_PLACE and building not in NOT_A_DESTINATION_BUILDING
+            and wikidata_id(tags.get("wikidata"))):
+        return f"building={building}", True
+    return None
+
+
+def is_street(tags):
+    highway = tags.get("highway")
+    return bool(tags.get("name")) and highway is not None and highway not in NOT_A_STREET and tags.get("area") != "yes"
+
+
+# A place's same-named copies are one place within this many meters, when it's a public place: a
+# school's site and its building, a museum's point and its outline.
 DUPLICATE_METERS = 250
-# Listings this close with the same name are one place whatever their categories (Overture files
-# some under two).
+# The same name this close is one place whatever its categories. Businesses merge only this close:
+# two branches of a chain a street apart are two places.
 SAME_SPOT_METERS = 25
-# Places of which London has one: a far-off copy of the name is a mis-placed listing (people check
-# in to "British Museum" from home), not a second branch.
-UNIQUE_CATEGORIES = {
-    "museum", "art_gallery", "theatre_venue", "performing_arts_venue", "music_venue", "stadium_arena",
-    "embassy", "zoo", "aquarium", "landmark_and_historical_building", "historic_site", "monument",
-}
-# A landmark's own listing is at least this confident before its stray copies are dropped.
-LANDMARK_MIN_CONFIDENCE = 0.99
-LANDMARK_RADIUS_METERS = 1000
-# A Wikidata item lends its prominence to a same-named place within this many meters.
-NOTABLE_METERS = 300
-# ... or this many for a place in BIG_SITE_CATEGORIES, whose listing (a park's gate, a venue's box
-# office) is often this far from Wikidata's single point: Kew Gardens 700 m, the O2 700 m, the
-# Southbank Centre 370 m. Not for the rest: a gym or a hotel named for the area it is in ("Greenwich")
-# is often this near the area's item.
-BIG_SITE_METERS = 1000
-BIG_SITE_CATEGORIES = {
-    "park", "garden", "botanical_garden", "cultural_center", "event_venue", "stadium_arena",
-    "college_university", "museum", "zoo", "festival_venue",
-}
-# A famous venue's Meta-only copies this far from every item of its name are stray check-ins.
-STRAY_METERS = 1000
-# Where those copies get filed: a landmark's categories, and any venue's ("O2 Arena" as a cinema).
-STRAY_CATEGORIES = UNIQUE_CATEGORIES | {"arts_and_entertainment", "movie_theater", "event_venue", "festival_venue"}
-# A famous venue (a Wikidata item this many Wikipedia languages cover) has its far copies dropped. A
-# lesser item can share its name with a real place elsewhere: the Elizabethan Hope Theatre (5) with
-# the fringe theatre in Islington.
-STRAY_MIN_LINKS = 20
 # How many Wikipedia languages cover a place, for its rank: (at least, rank), best first.
 NOTABLE_RANKS = ((20, 9), (5, 8))
-# The datasets Overture lists for itself alongside a listing's real source.
-OVERTURE_OWN = {"Overture", "Overture-signals"}
 # Where a listing says it is, as a clause of its own after its name ("Holland Park, London", "Omega
 # Hall - City of Westminster"): the postcode district the app shows says that, so the name drops it.
 # Run on without a comma or dash it stays, being part of many a name ("Cancer Research UK", "Guild of
@@ -176,10 +211,10 @@ def area_suffix(separator):
     )
 
 
-AREA_SUFFIX = area_suffix(r"(?:\s*,|\s+[\-\u2013\u2014])\s*")
+AREA_SUFFIX = area_suffix(r"(?:\s*,|\s+[\-–—])\s*")
 # A dash with no space before it ("Omega Church-London") is a clause too, but only after a name of
 # several words: after one it is as likely the name itself ("Hi-London", "VA-UK").
-GLUED_AREA_SUFFIX = area_suffix(r"[\-\u2013\u2014]\s*")
+GLUED_AREA_SUFFIX = area_suffix(r"[\-–—]\s*")
 # The same said first, as a clause of its own ("City of Westminster, Omega Gallery").
 AREA_PREFIX = re.compile(r"^\s*(?:city of london|city of westminster)\s*,\s*", re.IGNORECASE)
 
@@ -205,27 +240,17 @@ def display_name(name):
 
 # Words a listing tacks on that don't name the place ("British Museum London UK").
 TRAILING_NOISE = re.compile(r"(?:\s+(?:in\s+)?(?:city of london|city of westminster|london|uk|united kingdom|england))+$")
+APOSTROPHES = re.compile("[‘’ʼʹ`´]")
 
 
-def is_public(category):
-    return category in PUBLIC_CATEGORIES or category.endswith("_place_of_worship") or category.endswith("_school")
-
-
-APOSTROPHES = re.compile("[\u2018\u2019\u02bc\u02b9\u0060\u00b4]")
-
-
-def match_key(name, join_apostrophes=True):
-    """A name as compared for duplicates: accents folded, case and punctuation dropped, a leading
-    "the" and trailing "London", "UK" and the like removed. [join_apostrophes]: an apostrophe joins
-    its word, so "St Paul's" and "St Pauls" are one name; without it, it splits one, as for the
-    [drop_misplaced_landmarks], where joining would make "St Pauls" start "St Paul's …" and a store
-    "For Art's Sake" the same place as a gallery "For Arts Sake"."""
+def match_key(name):
+    """A name as compared for duplicates: accents folded, case and punctuation dropped, an apostrophe
+    joining its word (so "St Paul's" and "St Pauls" are one name), a leading "the" and trailing
+    "London", "UK" and the like removed."""
     # Every apostrophe form is an apostrophe (curly, reversed, the modifier letter, a backtick or acute
     # accent typed for one): made straight before the ASCII fold, which would drop it.
     name = APOSTROPHES.sub("'", name)
-    folded = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower()
-    if join_apostrophes:
-        folded = folded.replace("'", "")
+    folded = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower().replace("'", "")
     words = re.sub(r"[^a-z0-9 ]+", " ", folded).split()
     key = " ".join(words)
     if key.startswith("the "):
@@ -252,180 +277,103 @@ def near_cells(cell):
     return [(cell[0] + dy, cell[1] + dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1)]
 
 
+def polygon_centroid(outers, inners=()):
+    """(lat, lon, square meters) of the area whose outer rings are [outers] and holes [inners], each a
+    list of (lat, lon), measured as [meters_apart] measures; the mean of the outer rings' points when
+    they enclose no area, and None when there are none."""
+    points = [p for ring in outers for p in ring]
+    if not points:
+        return None
+    lat0, lon0 = points[0]
+    total = sy = sx = 0.0
+    for rings, sign in ((outers, 1), (inners, -1)):
+        for ring in rings:
+            # Shoelace, in meters from the first point: small numbers keep a small building's area exact.
+            xy = [((lon - lon0) * 69_400, (lat - lat0) * 111_320) for lat, lon in ring]
+            a = cx = cy = 0.0
+            for (x0, y0), (x1, y1) in zip(xy, xy[1:] + xy[:1]):
+                cross = x0 * y1 - x1 * y0
+                a += cross
+                cx += (x0 + x1) * cross
+                cy += (y0 + y1) * cross
+            if a == 0:
+                continue
+            area = abs(a) / 2
+            total += sign * area
+            sx += sign * area * cx / (3 * a)
+            sy += sign * area * cy / (3 * a)
+    if total <= 0:
+        return (sum(p[0] for p in points) / len(points), sum(p[1] for p in points) / len(points), 0.0)
+    return (lat0 + sy / total / 111_320, lon0 + sx / total / 69_400, total)
+
+
 PUBLIC_RANK, STREET_RANK, POSTCODE_RANK, OTHER_RANK = 7, 4, 4, 2
 
 
-def rank_of(category):
-    return PUBLIC_RANK if is_public(category) else OTHER_RANK
+def select_places(rows, editions=None):
+    """The places to bundle from OpenStreetMap rows (name, category, public, lat, lon, wikidata item,
+    square meters), as (name, category, lat, lon, rank), one object of a place kept.
 
-
-def drop_misplaced_landmarks(places):
-    """[places] (name, category, confidence, lat, lon, meta_only) less a landmark's stray copies.
-
-    A landmark is the most confident listing of its name, when it's in UNIQUE_CATEGORIES at
-    LANDMARK_MIN_CONFIDENCE. Its strays are the pages people make for a famous place, in whatever
-    category, wherever they happen to be: "Royal Albert Hall" has some forty listings across London,
-    as a music venue, a bar, a cinema, all from Meta pages alone. So another listing named the same,
-    in any category, goes when Meta is its only source and it's less confident than the landmark;
-    one named starting with it ("Tate Modern Museum") goes only past LANDMARK_RADIUS_METERS, since a
-    big site's own listings (a gallery, a room, an entrance) sit within that. A copy any other source
-    vouches for is kept, as a chain's real branches are."""
-    # Each landmark by its name with apostrophes splitting words, for both tests: "St Pauls" doesn't
-    # start "St Paul's Church", and "For Arts Sake" isn't "For Art's Sake" -- a store isn't the gallery
-    # across London that happens to spell it without one.
-    landmarks = {}
-    for p in places:
-        if p[1] in UNIQUE_CATEGORIES and p[2] >= LANDMARK_MIN_CONFIDENCE:
-            key = match_key(p[0], join_apostrophes=False)
-            if key not in landmarks or p[2] > landmarks[key][2]:
-                landmarks[key] = p
-    dropped = set()
-    for p in places:
-        if not p[5]:
+    People map a place once, but a building and its grounds, or a point inside an outline, sometimes
+    both carry it: the same name within SAME_SPOT_METERS is one place whatever its categories, and a
+    public place's same name and category within DUPLICATE_METERS one place too. So is the same name
+    within DUPLICATE_METERS of a place naming its Wikidata item, whatever it's tagged: a famous
+    gallery's shop named for the gallery, a theater's second outline tagged as an attraction. The one
+    kept names a Wikidata item, then is the larger. [editions] ({item: Wikipedia editions}) ranks the famous above
+    the rest. A business with branches is a chain: mappers sometimes tag a branch with the company's
+    item, so an item on a business whose name or item recurs more than DUPLICATE_METERS away is a
+    brand's, not one famous place's, and ranks none."""
+    editions = editions or {}
+    kept = [(display_name(name.strip()), category, public, lat, lon, item, size)
+            for name, category, public, lat, lon, item, size in rows if name]
+    first, chains = {}, set()
+    for name, category, public, lat, lon, item, size in kept:
+        if public:
             continue
-        key = match_key(p[0], join_apostrophes=False)
-        same = landmarks.get(key)
-        if same is not None and same is not p and p[2] < same[2]:
-            dropped.add(id(p))
-            continue
-        words = key.split()
-        for n in range(1, len(words)):
-            landmark = landmarks.get(" ".join(words[:n]))
-            if landmark is None or landmark is p or p[2] >= landmark[2]:
-                continue
-            if meters_apart((p[3], p[4]), (landmark[3], landmark[4])) > LANDMARK_RADIUS_METERS:
-                dropped.add(id(p))
-                break
-    return [p for p in places if id(p) not in dropped]
-
-
-def drop_strays_of_famous(places, notable):
-    """[places] (name, category, confidence, lat, lon, meta_only) less the stray copies of a famous
-    venue: a listing in STRAY_CATEGORIES, with only Meta as its source,
-    named exactly as a Wikidata item STRAY_MIN_LINKS or more Wikipedia languages cover, and more than
-    STRAY_METERS from every item of that name. People check in to "O2 Arena" from all over London,
-    and the stray copies outnumber the real venue (maintainer, 2026-10-13: Wikidata may drop these).
-    A second item of the same name keeps the listings near it, so two real places that share a name
-    both stay; any listing another source vouches for stays too."""
-    def stray(p):
-        name, category, _, lat, lon, meta_only = p
-        if not meta_only or category not in STRAY_CATEGORIES:
-            return False
-        items = notable.by_key.get(match_key(name), ())
-        if not any(links >= STRAY_MIN_LINKS for _, _, links in items):
-            return False
-        return all(meters_apart((lat, lon), (ilat, ilon)) > STRAY_METERS for ilat, ilon, _ in items)
-    return [p for p in places if not stray(p)]
-
-
-class Notable:
-    """Wikidata's items (name, lat, lon, languages), by match key, for [select_places]."""
-
-    def __init__(self, items=()):
-        self.by_key = {}
-        for name, lat, lon, links in items:
-            key = match_key(name)
-            if key:
-                self.by_key.setdefault(key, []).append((lat, lon, links))
-
-    def boosts(self, places, candidates):
-        """The rank Wikidata's coverage lends [places] (name, category, lat, lon, rank), by index: each
-        item of a name lends it to the nearest of that name's [candidates] (indexes, by match key) within
-        its reach ([reach_meters]), and to any within DUPLICATE_METERS of it, the place's own listings. Only the
-        nearest of the rest: a far stray copy of the name inside the radius isn't the place, and ranked
-        with it would win the rider who starts nearer it. Only its very name: a school or a cafe named for
-        a cathedral isn't the cathedral."""
-        lent = {}
-        for key, indexes in candidates.items():
-            for item_lat, item_lon, links in self.by_key.get(key, ()):
-                rank = next((rank for at_least, rank in NOTABLE_RANKS if links >= at_least), None)
-                if rank is None:
-                    continue
-                apart = sorted(
-                    (meters_apart((places[i][2], places[i][3]), (item_lat, item_lon)), i) for i in indexes
-                )
-                apart = [(meters, i) for meters, i in apart if meters <= reach_meters(places[i][1])]
-                if not apart:
-                    continue
-                for meters, i in apart:
-                    if i == apart[0][1] or meters <= DUPLICATE_METERS:
-                        lent[i] = max(lent.get(i, 0), rank)
-        return lent
-
-
-def reach_meters(category):
-    """How far from a Wikidata item a listing in [category] can be and still be the item."""
-    return BIG_SITE_METERS if category in BIG_SITE_CATEGORIES else NOTABLE_METERS
-
-
-def select_places(rows, notable=None):
-    """The places to bundle from Overture rows (name, category, confidence, status, lat, lon[,
-    meta_only]: whether Meta is the listing's only source, taken as true when absent), as
-    (name, category, lat, lon, rank), near-duplicates merged.
-
-    Two listings are one place when they share a category, sit within DUPLICATE_METERS, and one's
-    match key equals the other's or starts it ("Tate Modern" and "Tate Modern Museum"), or when they
-    have the same name within SAME_SPOT_METERS whatever their categories; the more confident listing,
-    then the shorter name, is kept. [notable] (Wikidata's items) ranks the famous above the rest and
-    drops a famous venue's stray copies ([drop_strays_of_famous]); it never moves a listing."""
-    notable = notable or Notable()
-    kept = []
-    for name, category, confidence, status, lat, lon, *rest in rows:
-        meta_only = rest[0] if rest else True
-        if not name or status == "permanently_closed":
-            continue
-        category = category or ""
-        if category in DROPPED_CATEGORIES:
-            continue
-        need = PUBLIC_MIN_CONFIDENCE if is_public(category) else OTHER_MIN_CONFIDENCE
-        if (confidence or 0.0) < need:
-            continue
-        kept.append((display_name(name.strip()), category, confidence, lat, lon, meta_only))
-    # Wikidata's strays first: the landmark rule keeps the most confident listing of a name, which
-    # could be a far stray copy, and drop the real one beside the item.
-    kept = drop_misplaced_landmarks(drop_strays_of_famous(kept, notable))
-    # Best listing first, so a duplicate always meets the one it merges into already placed.
-    kept.sort(key=lambda r: (-r[2], len(r[0]), r[0]))
+        for mark in (match_key(name), item):
+            if mark:
+                at = first.setdefault(mark, (lat, lon))
+                if meters_apart(at, (lat, lon)) > DUPLICATE_METERS:
+                    chains.add(mark)
+    kept = [(n, c, p, lat, lon, None if not p and (i in chains or match_key(n) in chains) else i, s)
+            for n, c, p, lat, lon, i, s in kept]
+    # The best object first, so a duplicate always meets the one it merges into already placed.
+    kept.sort(key=lambda r: (r[5] is None, -r[6], len(r[0]), r[0]))
     cells = {}
     out = []
-    candidates = {}
-    for name, category, confidence, lat, lon, _ in kept:
+    for name, category, public, lat, lon, item, _ in kept:
         key = match_key(name)
         if not key:
             continue
         cell = cell_of(lat, lon, DUPLICATE_METERS)
         duplicate = False
         for near in near_cells(cell):
-            for other_key, other_category, other_at in cells.get(near, ()):
-                apart = meters_apart(other_at, (lat, lon))
-                # One listing filed under two categories: the same name at the same spot.
-                if key == other_key and apart <= SAME_SPOT_METERS:
-                    duplicate = True
-                    break
-                if other_category != category or apart > DUPLICATE_METERS:
+            for other_key, other_category, other_at, other_famous in cells.get(near, ()):
+                if key != other_key:
                     continue
-                if key == other_key or key.startswith(other_key + " ") or other_key.startswith(key + " "):
+                apart = meters_apart(other_at, (lat, lon))
+                same_place = other_famous or (public and category == other_category)
+                if apart <= SAME_SPOT_METERS or (same_place and apart <= DUPLICATE_METERS):
                     duplicate = True
                     break
             if duplicate:
                 break
         if duplicate:
             continue
-        cells.setdefault(cell, []).append((key, category, (lat, lon)))
-        # Only a public place, or one filed where a landmark often is, takes Wikidata's prominence: a shop
-        # or a cafe named like an area or a company ("Chiswick", a takeaway) isn't the famous thing.
-        if is_public(category) or category in BOOSTABLE_CATEGORIES:
-            candidates.setdefault(key, []).append(len(out))
-        out.append((name, category, lat, lon, rank_of(category)))
-    for i, rank in notable.boosts(out, candidates).items():
-        name, category, lat, lon, own = out[i]
-        out[i] = (name, category, lat, lon, max(own, rank))
+        cells.setdefault(cell, []).append((key, category, (lat, lon), item is not None))
+        rank = PUBLIC_RANK if public else OTHER_RANK
+        links = editions.get(item, 0) if item else 0
+        for at_least, notable in NOTABLE_RANKS:
+            if links >= at_least:
+                rank = max(rank, notable)
+                break
+        out.append((name, category, lat, lon, rank))
     return out
 
 
 # A street is named with the nearest neighborhood within this distance; past it, it stands alone.
 AREA_RADIUS_METERS = 2500
-# Divisions too broad to tell two streets apart.
+# Places too broad to tell two streets apart.
 BROAD_AREA = re.compile(r"\b(?:borough|city of|london)\b", re.IGNORECASE)
 
 
@@ -442,25 +390,28 @@ def nearest_area(areas, lat, lon):
 
 
 def area_grid(rows):
-    """Neighborhood rows (name, subtype, lat, lon) as a grid for [nearest_area]: neighborhoods and
-    macrohoods only, less any as broad as a borough."""
+    """Neighborhood rows (name, OpenStreetMap `place` value, lat, lon) as a grid for [nearest_area]:
+    neighborhoods, quarters and suburbs only, less any as broad as a borough."""
     grid = {}
-    for name, subtype, lat, lon in rows:
-        if not name or subtype not in ("neighborhood", "macrohood") or BROAD_AREA.search(name):
+    for name, kind, lat, lon in rows:
+        if not name or kind not in NEIGHBORHOODS or BROAD_AREA.search(name):
             continue
         grid.setdefault(cell_of(lat, lon, AREA_RADIUS_METERS), []).append((name.strip(), lat, lon))
     return grid
 
 
+def street_cell(name, lat, lon):
+    """The cell a street's point is kept in: one point per street name per cell of about a kilometer."""
+    return (name.strip(), round(lat * 90), round(lon * 55))
+
+
 def select_streets(rows, areas):
-    """One (name, lat, lon) per named road per neighborhood, from segment rows (name, subtype, lat,
-    lon), named with its nearest neighborhood ("High Street, Exampleton") so two streets of one
-    name read apart; a road's segments in one neighborhood collapse to one entry, at their middle."""
+    """One (name, lat, lon) per named street per neighborhood, from points along the streets (name,
+    lat, lon), named with its nearest neighborhood ("High Street, Exampleton") so two streets of one
+    name read apart; a street's points in one neighborhood collapse to one entry, at their middle."""
     cells = {}
-    for name, subtype, lat, lon in rows:
-        if not name or subtype != "road":
-            continue
-        cells.setdefault((name.strip(), round(lat * 90), round(lon * 55)), (lat, lon))
+    for name, lat, lon in rows:
+        cells.setdefault(street_cell(name, lat, lon), (lat, lon))
     grouped = {}
     for (name, _, _), (lat, lon) in cells.items():
         area = nearest_area(areas, lat, lon)
@@ -539,82 +490,105 @@ def require(label, rows, minimum):
     return rows
 
 
-# --- Network: run in the refresh workflow, not in tests. ---
+# --- Network and files: run by hand or in the refresh workflow, not in tests. ---
 
-def s3():
-    import pyarrow.fs as fs
-    proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
-    options = {}
-    if proxy:
-        p = urllib.parse.urlparse(proxy)
-        options["proxy_options"] = {"scheme": "http", "host": p.hostname, "port": p.port}
-    return fs.S3FileSystem(anonymous=True, region="us-west-2", **options)
+def geofabrik_md5(text):
+    """The checksum in Geofabrik's `.md5` file ("<hex>  <name>")."""
+    m = re.match(r"([0-9a-f]{32})\s", text)
+    if not m:
+        raise SystemExit("Geofabrik's checksum file doesn't look like one; not trusting the download")
+    return m.group(1)
 
 
-def latest_release(filesystem):
-    import pyarrow.fs as fs
-    releases = [i.base_name for i in filesystem.get_file_info(fs.FileSelector(f"{BUCKET}/release")) if i.type == fs.FileType.Directory]
-    if not releases:
-        sys.exit("Overture: no releases listed")
-    return sorted(releases)[-1]
+def fetch_osm(directory):
+    """Geofabrik's extracts, downloaded into [directory] and checked against Geofabrik's MD5 sums."""
+    paths = []
+    for name in OSM_EXTRACTS:
+        url = f"{GEOFABRIK}/{name}-latest.osm.pbf"
+        expected = geofabrik_md5(urllib.request.urlopen(url + ".md5", timeout=60).read().decode("ascii", "replace"))
+        path = os.path.join(directory, f"{name}.osm.pbf")
+        digest = hashlib.md5()
+        with urllib.request.urlopen(url, timeout=300) as response, open(path, "wb") as f:
+            while chunk := response.read(1 << 20):
+                digest.update(chunk)
+                f.write(chunk)
+        if digest.hexdigest() != expected:
+            raise SystemExit(f"{name}: the download doesn't match Geofabrik's checksum; not reading it")
+        paths.append(path)
+    return paths
 
 
-def overture_rows(filesystem, release, theme, kind, columns):
-    """Overture rows inside London, reading only the row groups whose bounding boxes reach it."""
-    import pyarrow.compute as pc
-    import pyarrow.fs as fs
-    import pyarrow.parquet as pq
-    for info in filesystem.get_file_info(fs.FileSelector(f"{BUCKET}/release/{release}/theme={theme}/type={kind}")):
-        f = pq.ParquetFile(info.path, filesystem=filesystem)
-        md = f.metadata
-        paths = [md.schema.column(i).path for i in range(md.num_columns)]
-        ix = {k: paths.index(f"bbox.{k}") for k in ("xmin", "xmax", "ymin", "ymax")}
-        groups = []
-        for g in range(md.num_row_groups):
-            st = {k: md.row_group(g).column(i).statistics for k, i in ix.items()}
-            if st["xmax"].min <= EAST and st["xmin"].max >= WEST and st["ymax"].min <= NORTH and st["ymin"].max >= SOUTH:
-                groups.append(g)
-        if not groups:
-            continue
-        t = f.read_row_groups(groups, columns=columns + ["bbox"])
-        b = t.column("bbox")
-        lat = pc.divide(pc.add(pc.struct_field(b, "ymin"), pc.struct_field(b, "ymax")), 2)
-        lon = pc.divide(pc.add(pc.struct_field(b, "xmin"), pc.struct_field(b, "xmax")), 2)
-        inside = pc.and_(pc.and_(pc.greater_equal(lon, WEST), pc.less_equal(lon, EAST)),
-                         pc.and_(pc.greater_equal(lat, SOUTH), pc.less_equal(lat, NORTH)))
-        t = t.append_column("lat", lat).append_column("lon", lon).filter(inside)
-        yield t
+def inside(lat, lon):
+    return WEST <= lon <= EAST and SOUTH <= lat <= NORTH
 
 
-def fetch_places(filesystem, release):
-    import pyarrow.compute as pc
-    rows = []
-    for t in overture_rows(filesystem, release, "places", "place", ["names", "basic_category", "confidence", "operating_status", "sources"]):
-        # Every listing also names Overture itself as a source, so it's the others that count.
-        meta_only = [{s.get("dataset") for s in sources or ()} - OVERTURE_OWN == {"meta"} for sources in t.column("sources").to_pylist()]
-        rows += zip(pc.struct_field(t.column("names"), "primary").to_pylist(), t.column("basic_category").to_pylist(),
-                    t.column("confidence").to_pylist(), t.column("operating_status").to_pylist(),
-                    t.column("lat").to_pylist(), t.column("lon").to_pylist(), meta_only)
-    return rows
+def ring_points(ring):
+    return [(n.location.lat, n.location.lon) for n in ring if n.location.valid()]
+
+
+def read_osm(paths):
+    """(places, street points, neighborhoods) from the OpenStreetMap files at [paths], each object
+    once however many of the overlapping extracts hold it: places as [select_places] takes them,
+    street points as (name, lat, lon), one per street per [street_cell], and neighborhoods as (name,
+    `place` value, lat, lon). Only what lies inside the rectangle."""
+    import osmium
+    places, areas, streets = {}, {}, {}
+
+    def add(key, tags, point):
+        lat, lon, size = point
+        if not inside(lat, lon):
+            return
+        name = tags.get("name")
+        kind = place_of(tags)
+        if kind and (key not in places or places[key][6] < size):
+            places[key] = (name, kind[0], kind[1], lat, lon, place_item(tags), size)
+        if tags.get("place") in NEIGHBORHOODS:
+            areas[key] = (name, tags["place"], lat, lon)
+
+    for path in paths:
+        processor = (osmium.FileProcessor(path).with_areas(osmium.filter.KeyFilter("name"))
+                     .with_filter(osmium.filter.KeyFilter("name")))
+        for obj in processor:
+            tags = dict(obj.tags)
+            if obj.is_node():
+                if obj.location.valid():
+                    add(("n", obj.id), tags, (obj.location.lat, obj.location.lon, 0.0))
+            elif obj.is_area():
+                outers = list(obj.outer_rings())
+                point = polygon_centroid([ring_points(o) for o in outers],
+                                         [ring_points(i) for o in outers for i in obj.inner_rings(o)])
+                if point:
+                    add(("w" if obj.from_way() else "r", obj.orig_id()), tags, point)
+            elif obj.is_way():
+                points = ring_points(obj.nodes)
+                if is_street(tags):
+                    for lat, lon in points:
+                        if inside(lat, lon):
+                            streets.setdefault(street_cell(tags["name"], lat, lon), (tags["name"].strip(), lat, lon))
+                # A closed way's place, should its outline not make an area; the area replaces it.
+                elif obj.is_closed() and points and ("w", obj.id) not in places:
+                    add(("w", obj.id), tags, polygon_centroid([points]))
+    return list(places.values()), list(streets.values()), list(areas.values())
+
+
+def osm_date(paths):
+    """The oldest of the extracts' dates (their replication timestamps), for the header."""
+    import osmium
+    dates = []
+    for path in paths:
+        stamp = osmium.io.Reader(path, osmium.osm.NOTHING).header().get("osmosis_replication_timestamp")
+        if stamp:
+            dates.append(stamp[:10])
+    if len(dates) != len(paths):
+        raise SystemExit("an OpenStreetMap extract has no date in its header; not dating the index")
+    return min(dates)
 
 
 WIKIDATA_URL = "https://query.wikidata.org/sparql"
-# Every named, placed item in the box, with its sitelinks across all Wikimedia projects.
-WIKIDATA_QUERY = """SELECT ?item ?name ?loc ?links WHERE {
-  SERVICE wikibase:box {
-    ?item wdt:P625 ?loc .
-    bd:serviceParam wikibase:cornerSouthWest "Point(%(west)s %(south)s)"^^geo:wktLiteral ;
-                    wikibase:cornerNorthEast "Point(%(east)s %(north)s)"^^geo:wktLiteral .
-  }
-  ?item wikibase:sitelinks ?links .
-  FILTER(?links > 0)
-  ?item rdfs:label ?name . FILTER(LANG(?name) = "en")
-}"""
 # The Wikipedia editions alone of the given items: sitelinks also count Commons, Wikivoyage and the
-# other Wikimedia projects, which say nothing about how widely a place is written up. Asked only for
-# items whose sitelinks could reach a threshold, in batches: counting them for the whole box at once
-# times the query service out, and so does its optimizer's own plan for a batch: the hint keeps the
-# VALUES first, which answers a batch in under a second.
+# other Wikimedia projects, which say nothing about how widely a place is written up. Asked in batches:
+# the query service times out on many at once, and so does its optimizer's own plan for a batch: the
+# hint keeps the VALUES first, which answers a batch in under a second.
 WIKIPEDIA_QUERY = """SELECT ?item (COUNT(DISTINCT ?article) AS ?links) WHERE {
   hint:Query hint:optimizer "None" .
   VALUES ?item { %(items)s }
@@ -622,22 +596,7 @@ WIKIPEDIA_QUERY = """SELECT ?item (COUNT(DISTINCT ?article) AS ?links) WHERE {
   ?wiki wikibase:wikiGroup "wikipedia" .
 } GROUP BY ?item"""
 WIKIPEDIA_BATCH = 100
-POINT = re.compile(r"Point\(\s*(-?[0-9.]+)\s+(-?[0-9.]+)\s*\)")
 ENTITY = re.compile(r"^http://www\.wikidata\.org/entity/(Q[0-9]+)$")
-
-
-def parse_wikidata(text):
-    """The query service's CSV answer as (name, lat, lon, links, item) rows; a row it can't read is left out."""
-    items = []
-    for row in csv.DictReader(io.StringIO(text)):
-        point = POINT.search(row.get("loc") or "")
-        try:
-            links = int(row.get("links") or "")
-        except ValueError:
-            continue
-        if point and row.get("name"):
-            items.append((row["name"], float(point.group(2)), float(point.group(1)), links, row.get("item") or ""))
-    return items
 
 
 def parse_wikipedia_counts(text):
@@ -654,26 +613,22 @@ def parse_wikipedia_counts(text):
     return counts
 
 
-def with_wikipedia_counts(rows, count):
-    """[rows] (parse_wikidata's) as (name, lat, lon, Wikipedia editions): an item whose sitelinks reach
-    no threshold keeps 0, since its Wikipedia editions can't either; the rest are asked of [count] (a
-    list of item ids to {id: editions}), and one it doesn't answer for has none."""
-    floor = min(at_least for at_least, _ in NOTABLE_RANKS)
-    asked = sorted({m.group(1) for *_, links, item in rows if links >= floor for m in [ENTITY.match(item)] if m})
+def wikipedia_editions(items, count):
+    """{item: Wikipedia editions} for [items], asked of [count] (a list of item ids to {id: editions})
+    WIKIPEDIA_BATCH at a time; an item it doesn't answer for has none and is left out."""
+    asked = sorted(set(items))
     editions = {}
     for start in range(0, len(asked), WIKIPEDIA_BATCH):
         editions.update(count(asked[start:start + WIKIPEDIA_BATCH]))
-    out = []
-    for name, lat, lon, _, item in rows:
-        entity = ENTITY.match(item)
-        out.append((name, lat, lon, editions.get(entity.group(1), 0) if entity else 0))
-    return out
+    return editions
 
 
-# The query service limits a client's rate, and now and then cuts a long answer short; told to slow
-# down (429) or cut off, the builder waits (Retry-After, else a growing pause) and tries again, up to
-# this many times before failing the build.
+# The query service limits a client's rate, now and then cuts a long answer short, and its gateway
+# sometimes fails a batch it answers on a second try; told to slow down (429), cut off, or failed by
+# the gateway (502, 503, 504), the builder waits (Retry-After, else a growing pause) and tries again,
+# up to this many times before failing the build.
 QUERY_ATTEMPTS = 5
+RETRIED_STATUSES = {429, 502, 503, 504}
 
 
 def query_service(query, urlopen=urllib.request.urlopen, sleep=time.sleep):
@@ -691,44 +646,17 @@ def query_service(query, urlopen=urllib.request.urlopen, sleep=time.sleep):
             print(f"Wikidata's answer was cut off after {len(e.partial)} bytes; waiting {pause} s", file=sys.stderr)
             sleep(pause)
         except urllib.error.HTTPError as e:
-            if e.code != 429 or attempt == QUERY_ATTEMPTS - 1:
+            if e.code not in RETRIED_STATUSES or attempt == QUERY_ATTEMPTS - 1:
                 raise
             wait = e.headers.get("Retry-After") if e.headers else None
             pause = int(wait) if wait and wait.isdigit() else 10 * 2 ** attempt
-            print(f"Wikidata asked us to slow down (429); waiting {pause} s", file=sys.stderr)
+            print(f"Wikidata answered {e.code}; waiting {pause} s", file=sys.stderr)
             sleep(pause)
 
 
-def fetch_wikidata():
-    rows = parse_wikidata(query_service(WIKIDATA_QUERY % {"west": WEST, "south": SOUTH, "east": EAST, "north": NORTH}))
+def fetch_editions(items):
     count = lambda ids: parse_wikipedia_counts(query_service(WIKIPEDIA_QUERY % {"items": " ".join("wd:" + i for i in ids)}))
-    return with_wikipedia_counts(rows, count)
-
-
-def from_osm_only(sources):
-    """Whether OpenStreetMap is a listing's only real source, so its one credit covers it."""
-    return {s.get("dataset") for s in sources or ()} - OVERTURE_OWN == {"OpenStreetMap"}
-
-
-def fetch_osm_rows(filesystem, release, theme, kind):
-    """(name, subtype, lat, lon) of a theme's OpenStreetMap features: no other source's credit is
-    in the app, so a TomTom road or a geoBoundaries county is left out."""
-    import pyarrow.compute as pc
-    rows = []
-    for t in overture_rows(filesystem, release, theme, kind, ["names", "subtype", "sources"]):
-        rows += [(name, subtype, lat, lon) for name, subtype, lat, lon, sources in zip(
-            pc.struct_field(t.column("names"), "primary").to_pylist(), t.column("subtype").to_pylist(),
-            t.column("lat").to_pylist(), t.column("lon").to_pylist(), t.column("sources").to_pylist())
-            if from_osm_only(sources)]
-    return rows
-
-
-def fetch_streets(filesystem, release):
-    return fetch_osm_rows(filesystem, release, "transportation", "segment")
-
-
-def fetch_areas(filesystem, release):
-    return fetch_osm_rows(filesystem, release, "divisions", "division")
+    return wikipedia_editions(items, count)
 
 
 def fetch_postcode_rows(zip_path=None):
@@ -739,27 +667,11 @@ def fetch_postcode_rows(zip_path=None):
             yield from csv.reader(io.TextIOWrapper(z.open(name), "utf-8"))
 
 
-def foursquare_notice(notice):
-    """Foursquare's NOTICE as shipped: kept whole (the license requires it) with our changes appended."""
-    if "Foursquare" not in notice or "Apache License" not in notice:
-        raise SystemExit("Foursquare's NOTICE.txt doesn't look like the notice; not shipping it")
-    return notice.rstrip() + FOURSQUARE_CHANGES
-
-
-def foursquare_license(text):
-    if "Apache License" not in text or "Version 2.0" not in text:
-        raise SystemExit("Foursquare's LICENSE.txt isn't the Apache License 2.0; not shipping it")
-    return text
-
-
-def fetch_text(url):
-    return urllib.request.urlopen(url, timeout=60).read().decode("utf-8")
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--out", required=True)
     parser.add_argument("--codepoint-zip", help="read Code-Point Open from this zip instead of downloading it")
+    parser.add_argument("--osm", nargs="+", help="read OpenStreetMap from these .osm.pbf files instead of downloading Geofabrik's")
     args = parser.parse_args()
     from pyproj import Transformer
     bng = Transformer.from_crs("EPSG:27700", "EPSG:4326", always_xy=True)
@@ -768,24 +680,28 @@ def main():
         lon, lat = bng.transform(easting, northing)
         return lat, lon
 
-    filesystem = s3()
-    release = latest_release(filesystem)
-    notable = Notable(require("Wikidata items", fetch_wikidata(), MIN_NOTABLE))
-    places = require("places", select_places(fetch_places(filesystem, release), notable), MIN_PLACES)
-    areas = area_grid(require("neighborhoods", fetch_areas(filesystem, release), MIN_AREAS))
-    streets = require("streets", select_streets(fetch_streets(filesystem, release), areas), MIN_STREETS)
+    download = None if args.osm else tempfile.mkdtemp(prefix="osm-")
+    try:
+        paths = args.osm or fetch_osm(download)
+        rows, street_points, neighborhoods = read_osm(paths)
+        dated = osm_date(paths)
+    finally:
+        if download:
+            shutil.rmtree(download)
+    editions = fetch_editions([r[5] for r in rows if r[5]])
+    require("Wikidata items with an article", [i for i, n in editions.items() if n > 0], MIN_NOTABLE)
+    places = require("places", select_places(rows, editions), MIN_PLACES)
+    areas = area_grid(require("neighborhoods", neighborhoods, MIN_AREAS))
+    streets = require("streets", select_streets(street_points, areas), MIN_STREETS)
     postcodes = require("postcodes", select_postcodes(fetch_postcode_rows(args.codepoint_zip), to_wgs84), MIN_POSTCODES)
-    sources = f"Overture Maps {release} (places: CDLA-Permissive-2.0, Apache-2.0; streets: ODbL); OS Code-Point Open (OGL v3.0); Wikidata (CC0)"
-    notice = foursquare_notice(fetch_text(FOURSQUARE_NOTICE_URL))
-    license_text = foursquare_license(fetch_text(FOURSQUARE_LICENSE_URL))
+    sources = f"OpenStreetMap {dated} (ODbL); OS Code-Point Open (OGL v3.0); Wikidata (CC0)"
     out_dir = os.path.dirname(os.path.abspath(args.out))
     os.makedirs(out_dir, exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as f:
         f.write(render(places, streets, postcodes, sources))
-    for name, text in ((NOTICE_FILE, notice), (LICENSE_FILE, license_text), (ODBL_FILE, ODBL_NOTICE)):
-        with open(os.path.join(out_dir, name), "w", encoding="utf-8") as f:
-            f.write(text)
-    print(f"{len(places)} places, {len(streets)} streets, {len(postcodes)} postcodes from Overture {release}")
+    with open(os.path.join(out_dir, ODBL_FILE), "w", encoding="utf-8") as f:
+        f.write(ODBL_NOTICE)
+    print(f"{len(places)} places, {len(streets)} streets, {len(postcodes)} postcodes from OpenStreetMap {dated}")
 
 
 if __name__ == "__main__":

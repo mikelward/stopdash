@@ -915,9 +915,9 @@
     <string name="about_title">About</string>
     <string name="settings_version">Version %1$s</string>
     <!-- Where the times, stops and places come from. NaPTAN's licence (OGL v3) asks for the first
-         statement; Overture Maps and OpenStreetMap (ODbL) for the credit on places; OS Code-Point Open,
+         statement; OpenStreetMap (ODbL) for the credit on places and streets; OS Code-Point Open,
          behind the postcodes, for its three statements word for word. -->
-    <string name="about_data_sources">Live times from TfL and National Rail. Places from the Overture Maps Foundation and © OpenStreetMap contributors (streets under the ODbL), including Foursquare data © 2025 Foursquare Labs, Inc. under Apache 2.0, changed to fit the app\'s place list. Contains public sector information licensed under the Open Government Licence v3.0. Contains Ordnance Survey data © Crown copyright and database right 2026. Contains Royal Mail data © Royal Mail copyright and database right 2026. Contains National Statistics data © Crown copyright and database right 2026.</string>
+    <string name="about_data_sources">Live times from TfL and National Rail. Places and streets © OpenStreetMap contributors, under the ODbL. Contains public sector information licensed under the Open Government Licence v3.0. Contains Ordnance Survey data © Crown copyright and database right 2026. Contains Royal Mail data © Royal Mail copyright and database right 2026. Contains National Statistics data © Crown copyright and database right 2026.</string>
     <string name="settings_licenses_title">Open source licenses</string>
     <string name="settings_licenses_authors">By %1$s</string>
     <string name="action_back">Back</string>
