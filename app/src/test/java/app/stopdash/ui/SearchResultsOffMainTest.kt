@@ -116,6 +116,21 @@ class SearchResultsOffMainTest {
     }
 
     @Test
+    fun theSearchKeysRowIsWorkedOutOnCompute() {
+        // The row the Search key opens is found with the whole answer, on compute: held there, the
+        // stops are up but the key has none, and the search hasn't finished.
+        val vm = searchVm(loadBusStops = { busStops("Zeta Road") })
+        vm.onQueryChange("zeta road")
+        mainIdle()
+        releaseCompute()
+        assertNull("Search key row worked out with compute held", vm.matches()!!.searchKey)
+        assertTrue(vm.state.value.searching)
+        releaseCompute()
+        assertEquals("49000", (vm.matches()!!.searchKey as SearchEntry.Stop).match.id)
+        assertFalse(vm.state.value.searching)
+    }
+
+    @Test
     fun theBundledPlacesAreSearchedOnCompute() {
         // There are no stops: searching the place index is the pass.
         val places = PlaceIndex.read(

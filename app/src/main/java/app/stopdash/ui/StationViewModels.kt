@@ -13,6 +13,7 @@ import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.PlaceIndex
 import app.stopdash.domain.PlaceKind
 import app.stopdash.domain.SearchEntry
+import app.stopdash.domain.SearchKey
 import app.stopdash.domain.SearchResults
 import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationIndex
@@ -177,6 +178,9 @@ class StationSearchViewModel(
             // The query these rows answer, trimmed: while the next letter's search runs they're the last
             // query's, so the list starts its scroll afresh when the new query's rows land, not the letter.
             val query: String = "",
+            // The row the keyboard's Search key opens ([SearchKey]): set only on a complete answer, worked
+            // out with it off the main thread, so the key reads it rather than ranking anything itself.
+            val searchKey: SearchEntry? = null,
         ) : Result
         /** Nothing bundled matches. */
         data object NoMatches : Result
@@ -465,7 +469,10 @@ class StationSearchViewModel(
                     trimmed, stations.search(trimmed, near = from), buses.search(trimmed, checkpoint = { ensureActive() }, near = from), near = from,
                 )
                 val entries = SearchResults.merge(trimmed, ranked, places, stations::leads) { stations.tier(trimmed, it) }
-                Result.Matches(ranked, places = places, entries = entries, areas = areasOf(entries, stations), query = trimmed)
+                Result.Matches(
+                    ranked, places = places, entries = entries, areas = areasOf(entries, stations), query = trimmed,
+                    searchKey = SearchKey.pick(trimmed, entries),
+                )
             }
             if (result.matches.isNotEmpty() || result.places.isNotEmpty()) _state.update { it.copy(result = result) }
         }
@@ -656,13 +663,22 @@ class StationSearchViewModel(
             placeIndex.await()
             val result: Result = rows.withLock {
                 val before = shown
-                val (entries, listed, areas) = withContext(compute) {
+                val listedStops = stopsShown
+                val (entries, answer) = withContext(compute) {
                     val entries = SearchResults.appended(before, trimmed, emptyList(), places)
-                    Triple(entries, shownPlaces(entries), areasOf(entries, stations))
+                    entries to if (entries.isEmpty()) {
+                        Result.NoMatches
+                    } else {
+                        Result.Matches(
+                            listedStops, places = shownPlaces(entries), entries = entries, areas = areasOf(entries, stations), query = trimmed,
+                            // The whole answer is in, so the Search key may open its top row ([SearchKey]).
+                            searchKey = SearchKey.pick(trimmed, entries),
+                        )
+                    }
                 }
                 shown = entries
                 entriesFor = trimmed
-                if (entries.isEmpty()) Result.NoMatches else Result.Matches(stopsShown, places = listed, entries = entries, areas = areas, query = trimmed)
+                answer
             }
             _state.update { it.copy(result = result, searching = false) }
             offerOutside(trimmed, places)

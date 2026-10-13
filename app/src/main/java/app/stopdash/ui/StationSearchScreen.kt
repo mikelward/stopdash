@@ -212,6 +212,26 @@ fun StationSearchScreen(
         // A tap or drag that only moves the cursor isn't a new query to search.
         if (edited) onQueryChange(value.text)
     }
+    // The keyboard's Search key (maintainer, 2026-10-13): once the typed query's answer is all in, the
+    // row it is sure of ([StationSearchViewModel.Result.Matches.searchKey]) opens as a tap on it would;
+    // otherwise, or while TfL's places outside London are being looked up or listed below, the key only
+    // closes the keyboard and leaves the list to choose from. Reads what the search worked out, never
+    // the rows themselves. A keyboard can send its last edit and the action together, before this
+    // screen recomposes with the edit's state: the state is the field's own only while its query is
+    // the field's text (the same string, handed straight through), so otherwise it opens nothing
+    // rather than the last query's row (Codex on #828).
+    val onSearchKey = {
+        keyboard?.hide()
+        val onPlace = onOpenPlace ?: onStartFromPlace
+        val pick = (state.result as? StationSearchViewModel.Result.Matches)?.searchKey
+            ?.takeIf { state.query == field.text }
+            ?.takeIf { !state.searching && state.outside !is OutsideLondon.Searching && state.outside !is OutsideLondon.Found }
+        when (pick) {
+            is SearchEntry.Stop -> onOpenStation(pick.match)
+            is SearchEntry.Place -> if (onPlace != null) openPlaceHit(pick.hit, onPlacePicked, onPlace)
+            null -> Unit
+        }
+    }
     val placeholder = hint ?: stringResource(R.string.station_search_hint)
     val endsLabelWidth = rememberTripEndsLabelWidth()
     // Under the From/To bar, the place chips start where the To field does, so they read as quick
@@ -238,7 +258,7 @@ fun StationSearchScreen(
                         textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
+                        keyboardActions = KeyboardActions(onSearch = { onSearchKey() }),
                         modifier = modifier.focusRequester(focus).testTag("stationSearchField"),
                         decorationBox = { inner ->
                             EndField {
@@ -273,7 +293,7 @@ fun StationSearchScreen(
                             placeholder = { Text(placeholder) },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                            keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
+                            keyboardActions = KeyboardActions(onSearch = { onSearchKey() }),
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = Color.Transparent,
                                 unfocusedContainerColor = Color.Transparent,
