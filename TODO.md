@@ -30,8 +30,11 @@ exercises the whole spine the widget later renders from.
       the dialog sometimes built, on the worker. The test now queues effects as the app does.
   - [ ] Other Compose tests that put a real thread behind `LocalWorker` (the `*OffMainTest`s,
         `LinesOverlayTest`, `LineLoadsTest`, the trip and on-the-way screenshot tests) use the same
-        default rule and can recompose on their worker too; give them `effectContext =
-        StandardTestDispatcher()` and the state-write thread check `LicensesOffMainTest` has.
+        default rule and can recompose on their worker too. Not a class-wide rule swap: tried on
+        2026-10-13, queuing every class's effects failed 76 tests (the held-dispatcher ones step their
+        worker by hand and rely on effects running at once) and hung two classes. Move only the
+        real-thread tests into sibling classes with `effectContext = StandardTestDispatcher()` and the
+        state-write thread check `LicensesOffMainTest` has; deferred until one of them flakes.
 - [ ] Fix the flaky `MainViewModelTest.a relocation's farther cards are re-measured on the worker thread`.
       It passes alone but failed once in a full `:app:testDebugUnitTest` run on 2026-10-11 with "work
       reached the worker after it stopped": something still hands work to the test's worker after
