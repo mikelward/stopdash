@@ -1451,6 +1451,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               - [x] **Every place type's icon in the favorite picker** (maintainer, 2026-10-13): the
                   picker offers all of them, sorted by likely use, and a place saved from search starts
                   on its type's; the search and the picker share one set of drawables.
+              - [x] **A district after part of a name** (maintainer, 2026-10-13): the district reads as a
+                  label after the name, so the words before it needn't start the name ("modern se1").
               - [x] **Show a place's type as an icon** (maintainer, 2026-10-13): in the right column,
                   after the postcode district, the word "Place" became an icon for the type (Pub,
                   Supermarket, Stadium, Museum…, 45 types), and stops' modes became icons (every mode
