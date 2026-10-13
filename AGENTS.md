@@ -260,9 +260,12 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   Keep driving this PR while waiting; rebase only where the ruleset requires it or it is
   `dirty`, and merge on the current head's verdict, rechecking first. Say which PR you
   waited on or passed over.
-- **A paragraph opening "next", "after", "then" or "follow-up" is sequenced after the item
-  before it.** It may start in parallel, but its PR merges only after this session's earlier
-  PRs, so they don't have to rebase and rerun CI under it.
+- **A paragraph that orders a new work item after the item before it — "next", "then",
+  "after that", "follow-up" — must be merged in order, after every earlier item this
+  session was given and any other PR the paragraph names.** Its PR may open in parallel
+  but merges only once each of those is finished, with its PRs merged, in any repo, with
+  no time cap; if one won't finish, hold it and ask, autopilot included. Read the list
+  from the session's record, not memory.
 - **A red baseline is the next task** — get `./gradlew test`/`lint` green before pulling
   new work from `TODO.md`.
 
