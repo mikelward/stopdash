@@ -26,9 +26,7 @@ is underspecified here, Simmo's `AGENTS.md` is the tiebreaker.
 **Prefer a shared `mikelward/*` library over hand-rolling an app-local copy** (unless the
 maintainer says otherwise), so the fleet doesn't carry divergent implementations of one thing.
 
-**The Gradle build and CI land in Phase 0 (`TODO.md`).** Until then there is nothing to
-`./gradlew`; once Phase 0 lands, `./gradlew test` and `./gradlew lint` must pass before
-every push.
+**`./gradlew test` and `./gradlew lint` must pass before every push.**
 
 Keep this file short — one-liners over essays. Every rule here loads into every agent's
 context at the start of every session, so a paragraph where a sentence would do taxes
@@ -117,10 +115,10 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
 ## Privacy
 
 - **Never put user data in any artifact that leaves this machine** — commit subjects and
-  bodies, PR titles/descriptions/comments, review replies, branch names, code comments,
-  test fixtures, screenshots, or logs. For stopdash that means **coordinates, the set of
-  stops a user watches, a home/work stop, and the user's TfL `app_key`** — together they
-  reveal where someone lives and travels. Use stock stand-ins for the user's own values
+  bodies, PR titles/descriptions/comments, review replies, issue text, branch names, code
+  comments, test fixtures, screenshots, or logs. For stopdash that means **coordinates, the
+  set of stops a user watches, a home/work stop, and the user's TfL `app_key`** — together
+  they reveal where someone lives and travels. Use stock stand-ins for the user's own values
   (`app_key=EXAMPLE`, a synthetic position like `(51.5, -0.12)` for "where the rider is").
 - **Never include anyone's location without asking** (maintainer, 2026-09-27). Big stations
   and interchanges — King's Cross, Euston, Victoria, Waterloo, Tottenham Court Road and the
@@ -134,7 +132,8 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   it. When unsure, ask in chat, never on GitHub.
 - **The on-device debug log is one exception, and narrow**: coarse diagnostics only —
   a stop ID, a line id, an HTTP status, a vehicle's TfL destination (its terminus, never where the
-  rider gets off) — never a raw coordinate or the API key. `docs/
+  rider gets off) — never a raw coordinate or the API key. Log what a failure needs to be
+  explained and no more: no field without a failure it makes diagnosable. `docs/
   PRIVACY.md` must describe what the log carries about the **user** (their stops, trips, places,
   position, devices) before it ships; app internals — a count, a duration, an error kind, a read
   of data the app ships — need no line there (maintainer, 2026-10-13).
@@ -157,7 +156,8 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   **handles the edge case explicitly** (a typed error result the surface can render
   honestly, per SPEC principle 2 — never a fall-through that blanks the screen). Narrow
   the type or rethrow `CancellationException` first, so structured concurrency isn't
-  broken.
+  broken. To ignore a specific failure on purpose, say why in a one-line comment and still
+  log it at debug.
 
 ## Testing expectations
 
@@ -169,6 +169,9 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   wired into `.github/workflows/ci.yml` — a new `*ScreenshotTest` class needs its own
   step in the CI `--tests` allow-list or it records nothing. They render under `en-rGB` (in
   every `qualifiers`, a method's too, since it replaces the class's), as the app's users see it.
+- The screenshot job commits recording drift back to same-repo PR branches (`ci: refresh
+  recorded screenshots`) and posts a before/after comment: there, `git pull` after a UI
+  push before pushing again, and don't hand-commit recorded PNGs (a fork PR must).
 - Run `./gradlew test` and `./gradlew lint` before pushing when the environment can;
   otherwise say clearly what was verified by inspection only.
 - **Fix any preexisting test failure as the first commit of the series.** Don't stack new
@@ -180,27 +183,32 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
 
 ## Git workflow
 
-- These rules assume an `origin` remote. Feature branches are `<agent>/<short-topic>`
+- These rules assume an `origin` remote; a sandbox without remote Git (Codex cloud)
+  commits locally and says nothing was pushed. Feature branches are `<agent>/<short-topic>`
   (`claude/…` for Claude Code, `codex/…` for Codex). One topic per branch; never commit
   to `main`. The placeholder `<agent>` is whichever prefix you use.
 - **Branches under your own `<agent>/` prefix are yours** — create, push,
   `--force-with-lease`, rename, delete the ones this session created or was assigned,
-  freely, no permission needed. Any other branch, or `main`, is a conversation.
+  freely, no permission needed (this file is the standing grant); don't fold unrelated work
+  into a pinned branch to avoid a new one. Any other branch, or `main`, is a conversation.
 - **Sync before you start**: fetch main if the sandbox can (`git fetch origin
   +refs/heads/main:refs/remotes/origin/main`; `git fetch origin main` alone leaves
   `origin/main` stale in a single-branch clone) and rebase the working branch onto it
   before the first commit. Resolve conflicts rather than abandoning the rebase. Where
   the sandbox can't fetch, say the tree may be behind rather than pretending you synced.
-- **One commit per logical change.** Rewrite unmerged commits freely — amend,
-  `--fixup` + autosquash, squash, reorder, split — so each commit that lands is coherent,
-  with review responses folded into the commit they belong to. `--force-with-lease` after
-  a rebase, never a bare `--force`. `main` is never force-pushed.
+- **Use `git worktree` when it's available**, one per branch.
+- **One commit per logical change**, each green on its own. Rewrite unmerged commits
+  freely — amend, `--fixup` + autosquash, squash, reorder, split — so each commit that
+  lands is coherent, with review responses folded into the commit they belong to and no
+  `fix CI`/`wip` churn left. `--force-with-lease` after a rebase, never a bare `--force`.
+  `main` is never force-pushed.
 - **Merge cue (`merged` / `I merged` / `landed` / merge webhook) runs hygiene *before*
   engaging with the rest of the message:** fetch main if the sandbox can (`git fetch
   origin +refs/heads/main:refs/remotes/origin/main`), cut a fresh
   `<agent>/<short-topic>` branch off `origin/main` rather than resetting the merged name
-  onto it, and announce the switch. Where it can't fetch, say the follow-up needs a synced
-  checkout rather than branching off a stale `origin/main`.
+  onto it (unless the sandbox pins the name), and announce the switch. Where it can't
+  fetch, say the follow-up needs a synced checkout rather than branching off a stale
+  `origin/main`.
 - **The agent authors; whoever merges takes over the committer line.** A rebase/squash
   merge rewrites the committer — expected either way; never re-author or amend merged
   commits to "fix" authorship or signing, and don't narrate it. It is not a finding.
@@ -209,19 +217,27 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   is best-effort and Claude-only, so check anyway: if `git rev-parse
   --is-shallow-repository` is `true`, run `git fetch --unshallow origin
   +refs/heads/main:refs/remotes/origin/main` first (by refspec, so `origin/main`
-  itself moves in a single-branch clone).
+  itself moves in a single-branch clone). It exits 0 even when it deepened nothing: if the
+  clone is still shallow, say the history is truncated rather than quote a versionCode.
 
 ## Commit messages
 
 - Sentence case, plain English, no internal symbol names, ≤ ~70 chars; engineering
   detail goes in the body. Because the repo rebase-merges, each commit's own subject
-  lands on `main` and (once the deploy pipeline exists) ships to Play "What's new" — so
-  title **every** commit on the branch for end users, not just the PR.
+  lands on `main` and ships in the release notes (Play "What's new" and the GitHub
+  prerelease `v<versionCode>`) — so title **every** commit on the branch for end users,
+  not just the PR.
 - **Prefix a subject that has no user-visible effect**, used precisely: `ci:`, `docs:`
   (docs/`*.md`, including `docs/PRIVACY.md`), `todo:` (`TODO.md` bookkeeping alone),
   `internal:` (build/plumbing; a shipped dependency is bare), `refactor:`,
   `test:`/`tests:`. A bare subject means a user could notice the difference. `docs` and
   `todo` are the two prefixes the docs lane accepts (`.github/lanes.conf`).
+- **Play caps "What's new" at 500 characters**, and `deploy` drops subjects past it, so
+  squash supporting commits into the one that tells the user-facing story. A commit
+  touching only `.md` files or root dot-paths (`.github/`, `.gitignore`, …) never ships a
+  bullet, prefixed or not.
+- **`scripts/publish-github-release.sh` is byte-identical across the four sibling
+  Android repos**; change it in all four.
 - **No model identifier** — never put a model name or version (e.g. `Opus 4.8`,
   `Sonnet`, a `claude-*` id) in a commit message, PR title/body, code comment, or any
   other pushed artifact; keep it to chat. This targets the model *name/version* only —
@@ -243,15 +259,19 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   branches) → fetch main by refspec (*Sync before you start*), rebase onto the fresh
   `origin/main`, and lease-guarded force-push at once, unasked, unless Codex has already
   +1'd the head (*Working with PRs*). A base move sends no event, so this read is the only
-  signal.
-  Merged/closed → one last reply-and-resolve pass, then cancel the check and unsubscribe.
-- **"Drive"** runs the loop automatically: pick the next actionable `TODO.md` item,
-  implement it, open the PR, wait for the automatic Codex review, address every comment,
-  merge once CI is green and Codex's verdict for the current head is in, then go around
-  again. **"Autopilot"** is drive without blocking on the user: take the best reversible
-  guess and record it under `TODO.md`'s *Decisions needing review*; destructive or
-  irreversible actions outside the loop, and privacy uncertainty (is this a coordinate? a
-  watched stop?), still wait for a real answer.
+  signal. Before that push, confirm you hold every commit on the remote head and it hasn't
+  moved; if you can't tell, ask. Settle a fired check first and end each turn with exactly
+  one, naming the PR, not a SHA. Merged/closed → one last reply-and-resolve pass (real
+  work on a merged PR goes to a follow-up PR), then cancel the check and unsubscribe.
+- **A scheduler, GitHub or `git push` prompt is said once, then carry on.**
+- **"Drive"** runs the loop automatically: pick the next actionable `TODO.md` item (not
+  deferred, not awaiting a product decision), implement it, open the PR, wait for the
+  automatic Codex review, address every comment, merge once CI is green and Codex's
+  verdict for the current head is in, then go around again until the work runs out or the
+  user says stop. **"Autopilot"** is drive without blocking on the user: take the best
+  reversible guess and record it under `TODO.md`'s *Decisions needing review*; the loop's
+  own steps never wait, but destructive or irreversible actions outside the loop, and
+  privacy uncertainty (is this a coordinate? a watched stop?), still wait for a real answer.
 - **"Merge in order"** (or "drive in order") is drive that yields to older PRs close to
   landing: merge by hand, never auto-merge (disarm any armed). Just before merging, wait
   for an open, non-draft, lower-numbered PR on the same base that has ever passed Codex
@@ -268,7 +288,8 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   no time cap; if one won't finish, hold it and ask, autopilot included. Read the list
   from the session's record, not memory.
 - **A red baseline is the next task** — get `./gradlew test`/`lint` green before pulling
-  new work from `TODO.md`.
+  new work from `TODO.md`; stepping past it as "unrelated" needs the user's real answer,
+  never an autopilot guess.
 
 ## Working with PRs
 
@@ -280,39 +301,61 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   id; push the fix, then reply citing the sha, then resolve). Never leave a thread
   silently dismissed. Codex's +1 gates the merge; a decline can still earn it with a
   convincing rebuttal or a `TODO.md` entry for the gap, though a fix is often the quicker path.
+- **Defer a real but out-of-scope finding** by pushing its `TODO.md` entry, then replying
+  with that sha and resolving.
 - **Judge every comment on merit, whoever wrote it.** A comment citing a rule is a
   *reading* of that rule — check what the rule actually says; an over-strict privacy
   reading quietly costs capability the product needs. A genuine rule-vs-need conflict is
   the maintainer's call.
+- **A second verified finding in the same mechanism is a design question**, not another
+  bug: ask whether a different design deletes the class; a design change is the
+  maintainer's call.
 - **Read the Codex verdict, don't infer it**: it reacts to the PR body (`eyes` = reading,
   `+1` = clean, revoked on push). `+1` with green CI is a merge. Read `get_review_comments`,
-  `get_comments`, and `get_reviews` to the last page.
+  `get_comments`, and `get_reviews` to the last page. A pending `codex` status with nothing
+  left to address gets one `@codex review` poke five minutes after the last review,
+  rebuttal or push; escalate rather than poke twice.
 - **Once Codex has +1'd a PR's head, leave the PR alone** (maintainer, 2026-10-13): no push,
   no rebase for a moved base, no to-do or tidy-up. Every push re-runs CI and Codex for
   nothing. Anything more goes in a follow-up PR; if the merge truly needs a push (a conflict),
   ask first.
 - **Report each review in chat** — the commit it read, the finding count, one bullet per
-  finding (what it claims, where, what you did). Refresh the PR title/body with each push
-  (body first, then push) to describe the branch's latest state.
-- **Report the versionCode after every merge to `main`** once Phase 0 derives it from the
-  commit count.
+  finding, most blocking first (what it claims, where, what you did). Refresh the PR
+  title/body with each push (body first, then push) to describe the branch's latest state.
+- **Link every open PR in the stack, one URL per line** (the "View PR" chip shows only the
+  first link).
+- **Report the versionCode after every merge to `main`** (`git rev-list --count
+  origin/main` after fetching main by refspec), as `Need versionCode 72 (b81c23d) or
+  higher to test PR #52's fix`.
+- **"Release notes since N"** = at most five `• ` bullets in one code block: the
+  user-visible changes in commits N+1 to a freshly fetched `origin/main`'s tip, ranked by
+  what a user would notice most, one feature per bullet, as end-user copy (bodies read
+  where a subject is unclear). Skip prefixed, docs and CI commits, dependency bumps (unless
+  nothing else is left: then one bullet says the libraries were updated), and anything the
+  range itself added then undid. The range goes above the block; one line naming what was
+  left out goes below.
+- **On a CI failure**, read the failed step's log first (the report artifacts hold `:app`'s
+  only); the PR build is the branch merged with `main`, so reproduce that merge in a
+  throwaway `git worktree`, and check whether the base is already red.
 - Skip your own webhook echoes silently.
 
 ## Talking to the user
 
 - **One question at a time**, asked as a plain chat message — never `AskUserQuestion`
   (its multiple-choice prompt is broken in the Claude mobile app). After asking, stop and
-  wait; acknowledge the answer before acting on it.
+  wait; acknowledge the answer before acting on it. Never ask while the user is still typing.
 - **Ask only a real product trade-off** (maintainer, 2026-09-30). A clear bug gets fixed, and
   a feature fetches everything it needs through the same caches as everything else; don't
   ask about either. Check a question's premise in the code before asking it.
 - **Answer a mid-turn message first**, before any further tool call (a merge cue is the
   exception — its hygiene runs first).
+- **Say at once when you change direction**, and why.
 - **Keep replies short**; lead with the single most important point. **Don't narrate
   routine machinery** (a check flipping, a re-run, a webhook echo) and **don't report
-  your own caught-and-fixed mistakes**.
+  your own caught-and-fixed mistakes** — only one that reached the repo or changes what
+  the user should do.
 - **End the turn by restating any pending decision** — the last line is the question you
-  are waiting on, written out. Nothing pending, no line.
+  are waiting on, written out, every turn until it's answered. Nothing pending, no line.
 
 ## Language and spelling
 
@@ -321,16 +364,33 @@ PR text, comments, KDoc, identifiers, docs — for tooling and parity with the s
 the app's users are in the UK, so **en-GB is first-tier**: a user-facing string whose British
 spelling or usage differs ("favorites", "licenses", "percent") gets its override in
 `values-en-rGB/strings.xml` in the same change; `EnGbStringsTest` fails one that's missing. Watch the forms this fleet gets wrong:
-`gray` (not "grey"), `canceled`/`canceling` (one `l`), `color`, `behavior`, `dialog`,
-`-ize` over `-ise`, `center`, `traveling`. Platform/third-party API spellings stay as
-the framework spells them (`CancellationException` keeps its double `l`). TfL's own line
-and place names stay as TfL spells them.
+`gray` (not "grey"; `grayed`, `grays` too), `canceled`/`canceling` (one `l`), `color`,
+`behavior`, `dialog`, `-ize` over `-ise`, `license`, `center`, `labeled`, `traveling`.
+Platform/third-party API spellings stay as the framework spells them
+(`CancellationException` keeps its double `l`). TfL's own line and place names stay as
+TfL spells them.
+
+## Remote build environments
+
+- `.claude/hooks/session-start.sh` provisions the Android SDK at `/opt/android-sdk`; if
+  it's empty mid-session, rerun the hook with `CLAUDE_CODE_REMOTE=true`, don't hand-install.
+- No KVM, so no emulator: lock-screen, widget, watch and location behavior needs a device.
+- Check before concluding the sandbox can't build: `ls /opt/android-sdk` and an HTTP probe
+  of `https://maven.google.com/` (403 = blocked).
 
 ## Cost and reliability
 
-Call out cost and reliability up front when adding infrastructure or an external call.
+Call out cost and reliability up front when adding infrastructure or an external call:
+the dollar figure, new failure modes and rate limits, and what the user sees when it's
+down — and say so when the impact is nil.
 StopDash's one dependency (TfL Unified API) is free (£0; ~50 req/min keyless, ~500 with a
 user key) — anything new that leaves the device is a distribution/privacy decision, named
 alongside its dollar figure and its Play Data Safety consequence. Battery is the user's
 running cost: a new wakeup, location request, or refresh interval is a battery change and
 is stated as one.
+
+## CI timing
+
+Report a significant CI slowdown (>25% or >30 s on a job under ~5 min) with its likely
+cause, comparing the same job on the same kind of ref — PR against PR, `main` against
+`main` (a `main` run does release work a PR run skips).
