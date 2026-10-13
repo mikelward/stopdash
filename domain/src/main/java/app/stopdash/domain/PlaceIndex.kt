@@ -57,7 +57,15 @@ class PlaceIndex private constructor(
      * one (maintainer, 2026-10-12).
      */
     @WorkerThread
-    fun search(query: String, limit: Int = DEFAULT_LIMIT, checkpoint: () -> Unit = {}, only: Kind? = null, near: Coordinates? = null): List<Entry> {
+    fun search(
+        query: String,
+        limit: Int = DEFAULT_LIMIT,
+        checkpoint: () -> Unit = {},
+        only: Kind? = null,
+        near: Coordinates? = null,
+        // A kind left out: a name search that mustn't answer with postcodes the query only loosely matches.
+        except: Kind? = null,
+    ): List<Entry> {
         val q = fold(query)
         if (q.size < MIN_QUERY_LENGTH || limit <= 0) return emptyList()
         val prefixOnly = q.size < LOOSE_QUERY_LENGTH || only == Kind.POSTCODE
@@ -67,11 +75,13 @@ class PlaceIndex private constructor(
         // shouldn't lose to a shorter, lesser "St Paul's Church".
         val best = java.util.PriorityQueue<Long>(limit + 1, compareByDescending { it })
         val onlyKind = only?.ordinal?.toByte()
+        val exceptKind = except?.ordinal?.toByte()
         val nearLat = near?.let { Math.round(it.latitude * COORDINATE_SCALE).toInt() }
         val nearLon = near?.let { Math.round(it.longitude * COORDINATE_SCALE).toInt() }
         for (i in 0 until size) {
             if (i % CHECKPOINT_EVERY == 0) checkpoint()
             if (onlyKind != null && kinds[i] != onlyKind) continue
+            if (exceptKind != null && kinds[i] == exceptKind) continue
             val start = keyStarts[i]
             val end = keyStarts[i + 1]
             val the = startsWithThe(i)
