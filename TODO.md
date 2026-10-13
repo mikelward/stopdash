@@ -1366,6 +1366,15 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               - [ ] **Time the near-me list's first frame on a device** with the bundled stops: the
                   read (~22,000 stops, once per process, now started in the background as the app's screen opens)
                   and search are measured only on a desktop JVM.
+              - [ ] **Stop asking TfL when the bundled stops can't be read** (maintainer, 2026-10-13):
+                  `BundledStopFinder` falls back to TfL's nearby search, with the rider's position,
+                  when the bundle fails to load, even in the middle of London. Fail on the phone
+                  instead, as the widget's `OnDeviceStopFinder` does (it throws, so its caller keeps
+                  what it had): the near-me list keeps its last stops or says they couldn't be
+                  loaded, with a Retry, and TfL is asked only near or past the bundle's edge. Then
+                  drop the "if that built-in list can't be read" clause from
+                  `docs/play-store/listing.md` and `docs/PRIVACY.md`, and "or a bundle that can't be
+                  read" from SPEC *Finding stops → Near me now*.
               - [ ] **Log which source answered a nearby lookup**: the bundled stops, or TfL and why
                   (outside the bundle's area, a stop type it doesn't hold, the bundle unreadable). Today
                   only the fallbacks are logged, so a bug report about a missing stop can't say whether
@@ -4075,8 +4084,9 @@ and these carry the rest as their own PRs:
 
 - [x] **Follow a Google Maps share's link to its exact spot** (maintainer, 2026-10-13). A full link is
       read as it is; a short one is asked of Google once (`MapsLinkFollower`), and the spot plans the trip
-      as a `geo:` point does. Data Safety: Shared = Yes on location and search history, naming TfL and
-      Google (`docs/play-store/listing.md`). Falls back to the name search when the link can't be followed.
+      as a `geo:` point does. Data Safety: Shared stays No, since the rider starts the transfer by sharing
+      the link; the notes name Google (`docs/play-store/listing.md`). Falls back to the name search when
+      the link can't be followed.
   - [ ] **Device check:** share a place, a dropped pin and a search result from Google Maps; each
         should open a trip to its spot, and with the network off, a search for its name.
 - [x] **Plan straight to an address shared from Calendar** (maintainer, 2026-10-13). An address with a

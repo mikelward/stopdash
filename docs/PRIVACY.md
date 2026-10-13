@@ -29,7 +29,8 @@ you open the near-me list, refresh it, or come back to the app, and while the li
 when you've walked 100 m or more since it was found (at most once a minute), so it follows you. In and
 around London, the stops near you are found on the phone instead, from a list of TfL's stops built into
 the app, so finding them sends your location nowhere; TfL is asked for them, with your location, only
-when you're near or past the edge of that area, and only by the app, never the widget (below). The one
+when you're near or past the edge of that area (or wherever you are, if that built-in list can't be
+read), and only by the app, never the widget (below). The one
 use beyond that is a trip you start: it's checked on the phone while you walk to a stop you're
 boarding at, while you wait there, just after you board, and as your train nears the station you get
 off at, app open or closed, and never sent (see *On the way*, below).

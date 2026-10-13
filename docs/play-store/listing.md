@@ -73,25 +73,32 @@ this directory. **Category:** Maps & Navigation.
 
 | Data type | Collected | Shared | Ephemeral | Required? | Purpose |
 |---|---|---|---|---|---|
-| Location → Precise location | Yes | Yes | No | Optional | App functionality |
-| Location → Approximate location | Yes | Yes | No | Optional | App functionality, Analytics |
-| App activity → In-app search history | Yes | Yes | No | Optional | App functionality |
+| Location → Precise location | Yes | No | No | Optional | App functionality |
+| Location → Approximate location | Yes | No | No | Optional | App functionality, Analytics |
+| App activity → In-app search history | Yes | No | No | Optional | App functionality |
 | App activity → App interactions | Yes | No | No | Optional | Analytics |
 | App info and performance → Crash logs | Yes | No | No | Optional | Analytics |
 | App info and performance → Diagnostics | Yes | No | No | Optional | Analytics |
 | Device or other IDs | Yes | No | No | Optional | Analytics |
-| Personal info → User IDs | Yes | Yes | No | Optional | App functionality |
+| Personal info → User IDs | Yes | No | No | Optional | App functionality |
 
 Why:
 
-- **Location:** "near me" sends your position to TfL, precise if you grant precise location,
-  otherwise approximate. It's Optional because you can deny the permission and still use
-  the watched list and Find a station. Approximate location is also Analytics, because the
+- **Location:** in and around London, the stops near you are found on the phone, from a list
+  of TfL's stops built into the app, so near me sends your position nowhere. Your position
+  goes to TfL only for the near-me list near or past the edge of that area (or anywhere, if
+  that built-in list can't be read), and with a trip you plan. Either end of a trip goes as
+  a position when it's a place rather than a stop: where you are, precise if you grant
+  precise location, otherwise approximate, or a place you chose (a saved place, a place you
+  searched for, or a point or Google Maps place you shared in). It's Optional
+  because you can deny the permission and still use the watched list and Find a station. Approximate location is also Analytics, because the
   opt-in Firebase records the region it infers from your IP address.
-- **In-app search history** is **Optional**: Find a station sends what you type to TfL,
-  but only when you choose to search. You can use the app without searching, through the
-  nearby stops instead. A Google Maps link shared into StopDash is followed with Google to
-  find the place's exact spot, which tells Google the shared place and your IP address.
+- **In-app search history** is **Optional**: Find a station searches what you type on the
+  phone, in lists built into the app, and sends it to TfL only when you tap *Search outside
+  London* or type a postcode those lists don't hold. You can use the app without searching,
+  through the nearby stops instead. A Google Maps link shared into StopDash is followed with Google to
+  find the place's exact spot, which tells Google the shared place, your IP address and the
+  app's user agent.
 - **User IDs** covers the optional API keys you paste in Settings: your TfL `app_key`, sent
   with your TfL requests, and your Rail Data Marketplace key, sent with National Rail
   requests. Each goes only to the service that issued it, and ties those requests to your
@@ -101,16 +108,24 @@ Why:
 - **Ephemeral = No** on every row: StopDash can't vouch for how long TfL keeps a request,
   and the app keeps its last few lookup positions in its cache for up to a day. Answering No
   never understates.
-- **Shared = Yes** on location, search history and User IDs (maintainer, 2026-10-13): they
-  go to TfL (and an optional Rail Data Marketplace key to National Rail), neither of which is
-  StopDash's service provider, and a shared Google Maps link goes to Google (the place it
-  names, and the rough area Google may infer from your IP address). Play excludes a transfer the user starts and
-  expects, but some of these aren't started by a tap: the near-me list follows you as you
-  walk, an open trip re-asks TfL's Journey Planner every few minutes, and your API key rides
-  every TfL request, the widget's and journey alerts' included. Declaring them shared never
-  understates.
-- **Shared = No** on the rest: Firebase acts as a service provider, which Play excludes
-  from "sharing".
+- **Shared = No** on every row (maintainer, 2026-10-13; it's what the approved listing
+  declares). Play doesn't count as sharing a transfer to a service provider, or one the user
+  starts with a specific action and would expect:
+  - **Location** goes to TfL only for something you asked for: a trip you plan, either end
+    of which goes as a position when it's a place rather than a stop (where you are, or a
+    place you chose: saved, searched for or shared in), re-planned while it's on screen and
+    never once you leave it;
+    or the near-me list while it's open, near or past London's edge or if the built-in stop
+    list can't be read. The widget, the watch and journey alerts never send it.
+  - **Search history** goes to TfL only when you tap *Search outside London* or type a
+    postcode the app doesn't hold. A Maps short link goes back to Google only when you
+    share it into StopDash, usually from Google Maps itself: you started that hand-off, and
+    StopDash asking Google where the link leads is Maps and StopDash finishing your request
+    together, as you'd expect. Google gets back only the link it gave you, your IP address
+    and the app's user agent.
+  - **User IDs** are the keys you paste in Settings so that your own requests carry them,
+    and each goes only to the service that issued it.
+  - **Firebase** acts as a service provider.
 - **Not declared:**
   - The bug report: the user hands it to an app they choose through the share sheet, so
     StopDash never collects it.
