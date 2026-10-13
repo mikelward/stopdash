@@ -2491,6 +2491,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         balanced power, where it answers from Wi-Fi/cell without GPS; under a precise grant both
         now ask fused and GPS for high accuracy, so "fused" means what the proxy assumes far more
         often. A cached fused fix can still be Wi-Fi-derived.
+  - [ ] **Ask a saved place's Wi-Fi alongside the fresh fix, not after it** (Codex, #838). With no
+        precise fix to stand on, the place is asked for only once the fresh-fix wait ends: the 2 s
+        coarse grace indoors, or up to 10 s with no fix at all, then the Wi-Fi read. Racing the two
+        would put the place on screen in milliseconds. Deferred: it lets the Wi-Fi beat a GPS fix
+        that would land within the grace, which changes the order the near-me fix keeps (a precise
+        fix first), and the wait it removes predates the feature (#838 fixed where the list starts,
+        not when). Settle on a device how often GPS wins the grace at a saved place first.
 - [x] **Star a journey** (maintainer, 2026-09-23). Two stations on one line, starred by tapping a
       station on a route page's stop list; cards atop the near-me list show that line's trains from
       the nearer end that call at the other. The heading's ⇄ swaps direction, and a tap on the
