@@ -1601,7 +1601,15 @@ rider's position, on the device, as if typed: Google Maps shares a place as its 
 address, and a short link, so the first line that isn't a link is the search, and the rider picks the
 match. A `geo:` link with a **point** plans the trip straight to it, titled by the link's label or
 "Shared place"; one naming an address or a place by text (`geo:0,0?q=…`, as Contacts and Calendar send)
-searches that text. **The shared text goes only where typed text would**: a complete postcode the
+searches that text. An **address with a postcode** (a Calendar event's place, shared as text or as a
+`geo:` link, maintainer 2026-10-13) plans the trip straight to the postcode where the bundle holds it,
+on the device, titled by the address's first part ("10 Example Street"); a postcode the bundle doesn't
+hold is searched, as typing it is. Every postcode-shaped run in the address is tried, the first the
+bundle holds winning, since words before the real one can look like one ("Room b12 3rd floor"); one
+in lowercase counts only where the bundle holds it, and otherwise the last in capitals is searched. An address without one searches its first part, the house and
+street, when that starts with a number. A Google Maps link's spot still wins over an address beside it.
+The bug report's log says what kind of share came and how it was read, never what it said.
+**The shared text goes only where typed text would**: a complete postcode the
 bundle doesn't hold, or *Search outside London* tapped, asks TfL's Journey Planner, as typing it does.
 A **Google Maps link** in the share is read for the place's **exact spot**, which plans the trip
 there as a `geo:` point does, titled by the shared name (maintainer, 2026-10-13): a full link names

@@ -4062,6 +4062,12 @@ and these carry the rest as their own PRs:
       Google (`docs/play-store/listing.md`). Falls back to the name search when the link can't be followed.
   - [ ] **Device check:** share a place, a dropped pin and a search result from Google Maps; each
         should open a trip to its spot, and with the network off, a search for its name.
+- [x] **Plan straight to an address shared from Calendar** (maintainer, 2026-10-13). An address with a
+      postcode the bundle holds plans to that postcode, titled by its street; others search the postcode,
+      or the street where there's none.
+  - [ ] **Device check:** share an event's place from Google Calendar, both as text (Share) and by
+        opening its location with StopDash (`geo:`); each should open a trip titled by the address's
+        street, and the bug report's log should say "read as a bundled postcode".
 
 ## Beyond MVP (not planned)
 

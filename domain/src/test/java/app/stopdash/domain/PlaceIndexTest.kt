@@ -338,4 +338,44 @@ class PlaceIndexTest {
         val search = (System.nanoTime() - searched) / 1_000_000 / 3
         println("place index: ${places.size} entries read in $read ms, $search ms a search")
     }
+
+    @Test
+    fun `the postcodes it holds are found among many in one pass`() {
+        val places = index(
+            "C\tXX1 1XX\t\t51.50000\t-0.10000\t0",
+            "C\tXX1 1XY\t\t51.60000\t-0.20000\t0",
+            "P\tYY1 1YY\t\t51.70000\t-0.30000\t5",
+        )
+        var checks = 0
+        // Decoys either side of the held ones, a prefix and an extension of one among them.
+        val decoys = (10..60).map { "XX$it 1XX" } + listOf("XX1 1X", "XX1 1XXA", "XX1")
+        assertEquals(
+            mapOf("XX1 1XX" to Coordinates(51.5, -0.1), "XX1 1XY" to Coordinates(51.6, -0.2)),
+            places.postcodesAmong(listOf("ZZ1 1ZZ", "XX1 1XY", "XX1 1XX", "YY1 1YY") + decoys, checkpoint = { checks++ }),
+        )
+        // One pass, however many are asked; and a place named like a postcode isn't one.
+        assertEquals(1, checks)
+        assertEquals(emptyMap<String, Coordinates>(), places.postcodesAmong(emptyList()))
+    }
+
+    @Test
+    fun `looking postcodes up allocates nothing per postcode it passes`() {
+        val threads = java.lang.management.ManagementFactory.getThreadMXBean() as? com.sun.management.ThreadMXBean
+        assumeTrue(
+            "this JVM doesn't count what a thread allocates",
+            threads?.isThreadAllocatedMemorySupported == true && threads.isThreadAllocatedMemoryEnabled,
+        )
+        checkNotNull(threads)
+        val rows = 20_000
+        val places = index(*Array(rows) { line("C", "YY1 1YY") }, line("C", "XX1 1XX"))
+        val wanted = listOf("ZZ1 1ZZ", "XX1 1XX")
+        places.postcodesAmong(wanted) // Loads what the first call loads, so only the scan is measured.
+        val thread = Thread.currentThread().id
+        val before = threads.getThreadAllocatedBytes(thread)
+        val found = places.postcodesAmong(wanted)
+        val allocated = threads.getThreadAllocatedBytes(thread) - before
+        assertEquals(setOf("XX1 1XX"), found.keys)
+        // A short-lived object a row would be over a megabyte here; the candidates and the one match are a few hundred bytes.
+        assertTrue("allocated $allocated bytes over $rows postcodes", allocated < rows)
+    }
 }

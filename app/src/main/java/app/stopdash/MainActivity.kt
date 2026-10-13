@@ -1471,7 +1471,11 @@ class MainActivity : ComponentActivity() {
                 val sharedPlace by sharedPlaceAsked.collectAsStateWithLifecycle()
                 LaunchedEffect(sharedPlace) {
                     val shared = sharedPlace ?: return@LaunchedEffect
-                    val ask = readSharedIn(shared)
+                    val ask = readSharedIn(
+                        shared,
+                        places = { PlaceIndexStore.load(applicationContext) },
+                        log = { StopdashDebugLog.warning("%s", it) },
+                    )
                     sharedPlaceAsked.value = null
                     // A share into the app already open lands on the near-me list, as a fresh start would: whatever
                     // was open over it (Settings, Licenses, Lines…, a station, the trip on the way's screen, a stop's
