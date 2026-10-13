@@ -136,6 +136,22 @@ The app finds stops two ways:
     over a 12 m fix from half a minute before (maintainer bug report, 2026-09-25). An older one is
     still only a guess (the rider may have moved within the circle), so it is treated as the coarse
     case below: banner, and a GPS check that confirms or moves it.
+  - **A saved place is recognized by its Wi-Fi** (maintainer, 2026-10-13; on by default, Settings →
+    *Remember Wi-Fi at saved places*). Indoors at home GPS can take ten seconds, and the network's own
+    fix can be a kilometer out, so the list started in the wrong area and moved when GPS caught up
+    (maintainer bug report, 2026-10-13); the remembered precise fix can't help after the app has
+    been closed, or once the network fix's circle no longer reaches it. When a sure GPS fix lands within
+    100 m of a saved place while the phone is on unmetered Wi-Fi, the access point it is on is learned
+    for that place; a home with several networks, bands or mesh points teaches each as the phone moves
+    between them. Later, with no precise fix to stand on (a rough fix, a last-known one, or none),
+    being on one of a place's learned access points puts the rider at that place: the list is built
+    from it with no banner, and the list's own location updates move it as for any walk if GPS finds
+    the rider elsewhere. A sure fix more than 250 m from a place while on one of its access points means
+    that access point isn't fixed there (a moved router, a hotspot not marked metered), so it is
+    forgotten; a metered network (a phone's hotspot, a train's Wi-Fi) moves with the rider, so it is
+    never learned. A remembered precise fix young enough to stand comes first; an older one gives way
+    to the place. Nothing to set up: before anything is learned it behaves as below. What is kept, and
+    when it goes, is in *Privacy*.
   - Otherwise the list is shown from the coarse fix at once, under an **"Approximate location"**
     banner, and GPS is **asked again** for a few more seconds. A precise fix within 100 m confirms
     the list and clears the banner; a farther one **moves the list** to it, re-picked as a refresh
@@ -3436,10 +3452,12 @@ the Open Government Licence v3.0. A test pins the credits so a rewording can't d
 An overflow-menu entry opens a Settings screen, hosted at the activity top level like the
 licenses screen (an overlay whose own Back closes it) rather than through a navigation graph
 — stopdash still has no nav library. Its first row opens the favorite-places editor (D9), and the second the favorite journeys (*Journeys*);
-three location and widget rows follow below them, in order. **Location** says how much location
+four location and widget rows follow below them, in order. **Location** says how much location
 StopDash may use while in use: Precise, Approximate or Not allowed. Tapping it asks Android for
 precise location, or opens Android's settings for the app when precise is already allowed or
-Android has stopped asking. Next comes "Automatic watch and widget location" (D1), which reads on
+Android has stopped asking. Next comes "Remember Wi-Fi at saved places" (*Finding stops*), on by
+default: turning it off stops a saved place being recognized by its Wi-Fi and deletes what was
+learned. Then "Automatic watch and widget location" (D1), which reads on
 while location is allowed all the time: turning it on opens the disclosure and Android's prompt,
 and turning it off opens Android's settings for the app, where the grant is taken away. Last is the
 opt-in "Automatically update widget" toggle (D5), the widget's update about once a minute. A rider
@@ -3982,7 +4000,15 @@ nothing typed, except what the rider asks TfL to look up outside London (a tap o
 London*, or a complete postcode the bundle doesn't hold), which sends only that text to TfL's Journey
 Planner; the query is never saved or logged. The
 places picked from it are remembered for its *Recent* lists (*From…*'s and *To…*'s apart), and each starred row's place (so
-a star is listed by name), in the app's no-backup storage: never logged, sent, or backed up. That is inherent to each feature and disclosed; precise location is the
+a star is listed by name), in the app's no-backup storage: never logged, sent, or backed up. So
+are the **Wi-Fi access points learned at saved places** (*Finding stops*): each access point's
+address, beside the place's id and where the place was when it was learned — no network name, no
+fix, and nothing about networks the phone isn't on. They are never logged (the log counts them),
+sent, or backed up. They are deleted when the setting is turned off, a place's own when it is
+removed or moved, and all of them the next time the app comes to the foreground after precise
+location was taken away (Android gives the address only with it, and closes the app when it's taken
+away) — checked on every foreground and every change to the places, not left to the next fix. Reading the network the phone is on is an install-time permission with no prompt, and
+Android notes it as a use of location, which it is. That is inherent to each feature and disclosed; precise location is the
 Play Data Safety type the nearby action may collect (and so declares), not a claim that
 every fix sent is precise.
 

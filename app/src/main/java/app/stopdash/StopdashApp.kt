@@ -10,6 +10,7 @@ import app.stopdash.data.DataStoreFavoritePlacesStore
 import app.stopdash.data.DataStoreStarredRowsStore
 import app.stopdash.data.DeviceSteadyClock
 import app.stopdash.data.DisruptionsRowSetting
+import app.stopdash.data.WifiPlacesSetting
 import app.stopdash.data.DistanceUnitsSetting
 import app.stopdash.data.MaxWalkSetting
 import app.stopdash.data.StepFreeSetting
@@ -341,6 +342,7 @@ open class StopdashApp : Application() {
         HiddenModesSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         DistanceUnitsSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         DisruptionsRowSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
+        WifiPlacesSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         SummaryNetworksSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         WalkingSpeedSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         MaxWalkSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))

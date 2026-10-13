@@ -150,6 +150,13 @@ class DataStoreAppSettings internal constructor(
         dataStore.updateData { (it ?: PersistedSettings()).copy(showDisruptionsRow = shown) }
     }
 
+    override fun rememberWifiAtPlaces(): Flow<Boolean> =
+        persisted().map { it?.rememberWifiAtPlaces ?: true }
+
+    override suspend fun setRememberWifiAtPlaces(remember: Boolean) {
+        dataStore.updateData { (it ?: PersistedSettings()).copy(rememberWifiAtPlaces = remember) }
+    }
+
     override fun summaryNetworks(): Flow<Set<String>?> =
         persisted().map { it?.summaryNetworks }
 
@@ -328,6 +335,8 @@ data class PersistedSettings(
     val tripModesOff: Set<String> = emptySet(),
     // The lines a trip avoids, each as [AvoidedLines.key]. Defaulted, so an older file avoids none.
     val avoidedLines: Set<String> = emptySet(),
+    // Whether saved places are recognized by their Wi-Fi; null (an older file) for the default, on.
+    val rememberWifiAtPlaces: Boolean? = null,
 )
 
 /**

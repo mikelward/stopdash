@@ -4,7 +4,8 @@
      to another install, the per-watch complication rows, relearned from the watches still
      paired, the stops the app last found near the rider (where they are now), and the journey
      alerts' state, which describes this install's notifications and permission prompt, and the app version that
-     last handed the widget picker its example, which belongs to this install's system. -->
+     last handed the widget picker its example, which belongs to this install's system, and the Wi-Fi
+     learned at saved places, a router's address that stays on the phone and is relearned. -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="telemetry.xml" />
@@ -16,6 +17,7 @@
         <exclude domain="sharedpref" path="journey-alerts-announced.xml" />
         <exclude domain="sharedpref" path="journey-alerts-dismissed.xml" />
         <exclude domain="sharedpref" path="widget_preview.xml" />
+        <exclude domain="sharedpref" path="wifi_places.xml" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="telemetry.xml" />
@@ -27,5 +29,6 @@
         <exclude domain="sharedpref" path="journey-alerts-announced.xml" />
         <exclude domain="sharedpref" path="journey-alerts-dismissed.xml" />
         <exclude domain="sharedpref" path="widget_preview.xml" />
+        <exclude domain="sharedpref" path="wifi_places.xml" />
     </device-transfer>
 </data-extraction-rules>

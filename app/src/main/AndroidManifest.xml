@@ -12,6 +12,10 @@
          way checks it on the device after boarding, never sending it (SPEC On the way). -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Which Wi-Fi network the phone is on, so a saved place is recognized by it (SPEC Finding
+         stops, Wi-Fi at saved places). Install-time, no prompt; the access point's address itself
+         is only given while precise location is allowed. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Location allowed all the time, for two background uses, both worked out on the phone and the
          position never sent: journey alerts fire only in London (SPEC *Journeys → Alerts*); and the
          widget follows the rider (SPEC D1), finding the stops near it from the bundled list. Asked for

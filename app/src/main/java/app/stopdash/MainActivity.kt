@@ -158,6 +158,8 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.work.WorkManager
 import app.stopdash.data.AndroidLocationProvider
+import app.stopdash.data.AndroidWifiPlaces
+import app.stopdash.data.WifiPlacesSetting
 import app.stopdash.data.AppDirs
 import app.stopdash.data.BundledStopsStore
 import app.stopdash.data.PrecisePrompted
@@ -523,8 +525,12 @@ class MainActivity : ComponentActivity() {
     // before the departures view, which then refreshes those stops location-free.
     // The trip on the way's own fixes ([onTheWayFix]), apart from near me's: none remembered.
     private val onTheWayLocation by lazy {
-        AndroidLocationProvider(applicationContext, warn = ::logLocationWarning, remembers = false)
+        // Its fixes still teach the saved places' Wi-Fi: that keeps no fix, only a network's address.
+        AndroidLocationProvider(applicationContext, warn = ::logLocationWarning, remembers = false, wifiPlaces = wifiPlaces)
     }
+
+    // The saved places' Wi-Fi (SPEC *Finding stops → Wi-Fi at saved places*), shared by both providers.
+    private val wifiPlaces by lazy { AndroidWifiPlaces.from(applicationContext, ::logLocationWarning) }
 
     private val nearbyViewModel: NearbyStopsViewModel by viewModels {
         viewModelFactory {
@@ -534,6 +540,7 @@ class MainActivity : ComponentActivity() {
                         applicationContext,
                         warn = ::logLocationWarning,
                         position = ::recordPosition,
+                        wifiPlaces = wifiPlaces,
                     ),
                     // Reuses a recent lookup made close by (in memory, process-wide), so reopening
                     // the app near where it was last used skips a request and a round trip.
@@ -684,6 +691,8 @@ class MainActivity : ComponentActivity() {
             DataStoreFavoritePlacesStore.from(applicationContext, warn = ::logStarWarning).places().collect { set ->
                 val places = savedPlacesOf(set) ?: return@collect
                 PlaceShortcuts.publish(applicationContext, places, removed, warn = ::logStarWarning)
+                // A place removed or moved takes the Wi-Fi it learned with it (SPEC Privacy).
+                wifiPlaces.reconcile()
             }
         }
         // Warm the chosen text size into memory (off the main thread) so the first frame is sized
@@ -1338,6 +1347,9 @@ class MainActivity : ComponentActivity() {
                 val distanceUnits by DistanceUnitsSetting.changes.collectAsStateWithLifecycle()
                 val distanceUnitsLoaded by DistanceUnitsSetting.isLoaded.collectAsStateWithLifecycle()
                 val distanceUnitsWriteFailed by DistanceUnitsSetting.writeFailed.collectAsStateWithLifecycle()
+                val rememberWifi by WifiPlacesSetting.changes.collectAsStateWithLifecycle()
+                val rememberWifiLoaded by WifiPlacesSetting.isLoaded.collectAsStateWithLifecycle()
+                val rememberWifiWriteFailed by WifiPlacesSetting.writeFailed.collectAsStateWithLifecycle()
                 val showDisruptionsRow by DisruptionsRowSetting.changes.collectAsStateWithLifecycle()
                 val showDisruptionsRowLoaded by DisruptionsRowSetting.isLoaded.collectAsStateWithLifecycle()
                 val showDisruptionsRowWriteFailed by DisruptionsRowSetting.writeFailed.collectAsStateWithLifecycle()
@@ -2659,6 +2671,14 @@ class MainActivity : ComponentActivity() {
                                             askForLocation(true)
                                         }
                                     },
+                                    rememberWifi = rememberWifi.takeIf { rememberWifiLoaded },
+                                    onRememberWifiChange = { on ->
+                                        WifiPlacesSetting.set(on)
+                                        // Off deletes what was learned, not just stops using it (SPEC Privacy).
+                                        if (!on) wifiPlaces.forget()
+                                    },
+                                    rememberWifiWriteFailed = rememberWifiWriteFailed,
+                                    onDismissRememberWifiError = WifiPlacesSetting::writeFailureShown,
                                     widgetFollows = widgetFollows,
                                     onWidgetFollowsChange = { on ->
                                         // Turned on through the disclosure and Android's prompt; off only in Android's
@@ -3208,6 +3228,9 @@ class MainActivity : ComponentActivity() {
         // The standing choices and setup sent again if opted in: a widget placed or a watch paired since.
         // Only a hand-off; the reading is the publisher's, off the main thread.
         UsageProperties.refresh()
+        // Precise location taken away while the app was gone deletes the Wi-Fi learned at saved places
+        // (SPEC Privacy). A hand-off too: the check runs in the background.
+        wifiPlaces.reconcile()
     }
 
     /**
