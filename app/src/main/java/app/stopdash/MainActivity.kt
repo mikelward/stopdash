@@ -2860,6 +2860,7 @@ class MainActivity : ComponentActivity() {
                                 loading = { it.loading },
                                 modifier = Modifier.fillMaxSize(),
                                 key = { it.screen },
+                                reveals = { from, to -> to.revealedAfter(from) },
                             ) { shown ->
                                 when (val state = shown.nearby) {
                                     // "To…" from the near-me list takes the list's place while it's open,
@@ -6072,7 +6073,8 @@ internal enum class NearMeScreen { GATE, LIST, TRIP, ORIGIN }
 /**
  * What near me shows: where [nearby] stands, whether the trip from here is open over it, and whether
  * that trip's origin is still being worked out ([originPending]). Finding stops and a pending origin
- * are both [loading], so what replaces either comes in row by row ([app.stopdash.ui.RevealsAfterLoading]).
+ * are both [loading], so what replaces either comes in row by row ([app.stopdash.ui.RevealsAfterLoading]),
+ * as does any screen the app swaps in on its own ([revealedAfter]).
  */
 internal data class NearMeShown(
     val nearby: NearbyStopsViewModel.State,
@@ -6088,6 +6090,14 @@ internal data class NearMeShown(
             nearby is NearbyStopsViewModel.State.Empty && tripOpen -> NearMeScreen.TRIP
             else -> NearMeScreen.GATE
         }
+
+    /**
+     * Whether this screen comes in row by row after [from]: after loading, or when the app swapped it
+     * in on its own, as a re-locate that finds no stops puts the gate where the list was, with no
+     * spinner between (Codex, #818). Opening the trip from here, or closing it, is the rider's own
+     * tap, so it changes at once.
+     */
+    fun revealedAfter(from: NearMeShown): Boolean = from.loading || from.tripOpen == tripOpen
 }
 
 /**

@@ -48,6 +48,23 @@ class NearMeShownTest {
     }
 
     @Test
+    fun `a screen the app swaps in on its own comes in row by row, and the rider's own trip doesn't`() {
+        val list = NearMeShown(ready, tripOpen = false)
+        val trip = NearMeShown(ready, tripOpen = true)
+        val noneNearby = NearMeShown(NearbyStopsViewModel.State.Empty(here), tripOpen = false)
+        // A re-locate puts the gate where the list or the trip was, or the list where the gate was, with
+        // no spinner between (Codex, #818).
+        assertTrue(noneNearby.revealedAfter(list))
+        assertTrue(list.revealedAfter(noneNearby))
+        assertTrue(NearMeShown(NearbyStopsViewModel.State.NoLocation, tripOpen = true).revealedAfter(trip))
+        // After finding stops, as before.
+        assertTrue(list.revealedAfter(NearMeShown(NearbyStopsViewModel.State.Locating, tripOpen = false)))
+        // Opening the trip from here, or closing it, is the rider's own tap.
+        assertFalse(trip.revealedAfter(list))
+        assertFalse(list.revealedAfter(trip))
+    }
+
+    @Test
     fun `finding stops is loading, and nothing else on its own is`() {
         assertTrue(NearMeShown(NearbyStopsViewModel.State.Locating, tripOpen = false).loading)
         assertFalse(NearMeShown(NearbyStopsViewModel.State.NoLocation, tripOpen = false).loading)

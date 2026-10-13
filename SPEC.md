@@ -3477,7 +3477,17 @@ in a beat after the one above, over 300 ms, and taps are ignored until that reve
 however long the system's animation speed makes it, and for 200 ms after the rows appear even with
 animations off. A tap
 aimed at the button, or at the spinner, can't open the departure that just took its place, and the
-reveal shows why that tap did nothing. If loading resumes partway, taps come back at once. Only that handover animates; the departures themselves still update in place. On the **location gate** ("finding stops") and the departures
+reveal shows why that tap did nothing. If loading resumes partway, taps come back at once. A list
+for another set of stops, after a move, comes in the same way, and so does any screen the app swaps in
+on its own with no spinner between: the list for "No departures" or back, an error for the list, or
+the location gate for the list after a re-locate finds no stops. Opening a trip from the list, or
+closing it, is the user's own tap and changes at once. On a refresh the departures update in
+place, and any that **change places** (a card re-sorted by distance, a row by its next train, a card
+or notice coming or going) **slide** there over 300 ms, as a trip's cards do, with taps ignored until
+everything has stopped (at least 200 ms, as above), so a tap aimed at one departure never opens
+another that slid under it. A banner coming or going above the list moves it at once, and taps
+pause for those 200 ms too. The user's own scrolling moves things by their own hand, so it never
+pauses a tap. On the **location gate** ("finding stops") and the departures
 **cold-load** spinner alike, the overflow (with its dot) is there too, so the button is a more **direct** prompt than a dot
 the user may not notice while waiting, not the only path to it. Either way a user sitting on a
 slow fix or a cold load can act on the update without hunting a menu, and it stays a secondary
@@ -4073,8 +4083,8 @@ In priority order; where a rule below conflicts with a principle, the principle 
    them lose their place or tap the wrong thing. This outranks showing content early:
    while what a list shows is still landing, its place says so ("Checking routes…"), and
    the list appears once, settled, rather than filling in under the user's thumb. Where
-   something must move, such as a trip's cards re-sorting, it slides rather than jumps,
-   and taps wait until it stops.
+   something must move, such as a trip's cards or the departures re-sorting, it slides
+   rather than jumps, and taps wait until it stops.
 5. **Jank-free.** The app list and the widget render from in-memory/snapshot state; no
    I/O in composition, and no blocking a first frame on a fetch *or a disk read* — a
    stamped placeholder shows at once and fills in when the persisted snapshot loads.

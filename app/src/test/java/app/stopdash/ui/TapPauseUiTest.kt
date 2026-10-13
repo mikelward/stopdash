@@ -50,11 +50,18 @@ class TapPauseUiTest {
     private var opened = 0
     private var now = 0L
 
-    private fun show(clickableRows: Boolean = false) {
+    // [show]'s screens: one for loading and one for the rest, or one per phase with [eachPhase].
+    private fun show(clickableRows: Boolean = false, eachPhase: Boolean = false, revealsAny: Boolean = false) {
         composeRule.setContent {
             StopDashAppRoot(tapPause = TapPause { now }) {
-                RevealsAfterLoading(state = phase, loading = { it == 0 }, modifier = Modifier.fillMaxSize()) { shown ->
-                    if (shown == 0) {
+                RevealsAfterLoading(
+                    state = phase,
+                    loading = { it == 0 },
+                    modifier = Modifier.fillMaxSize(),
+                    key = { if (eachPhase) it else it == 0 },
+                    reveals = { from, _ -> revealsAny || from == 0 },
+                ) { shown ->
+                    if (shown == 0 || shown == BUTTON_AGAIN) {
                         Box(Modifier.fillMaxSize()) {
                             UpdateAvailableButton(
                                 onClick = { opened++ },
@@ -190,7 +197,33 @@ class TapPauseUiTest {
         assertEquals(listOf(0), tapped)
     }
 
+    @Test
+    fun `another screen swapped in with no loading between comes in row by row where it says so`() {
+        // The list gives way to a screen with a button, as the departures list to "No departures":
+        // a tap aimed at a row opens nothing that took its place (Codex, #818).
+        phase = 1
+        show(eachPhase = true, revealsAny = true)
+        arrive(next = BUTTON_AGAIN)
+        tap(buttonSpot())
+        assertEquals(0, opened)
+        finishReveal()
+        tap(buttonSpot())
+        assertEquals(1, opened)
+    }
+
+    @Test
+    fun `by default only a loading screen's replacement comes in row by row`() {
+        phase = 1
+        show(eachPhase = true)
+        arrive(next = BUTTON_AGAIN)
+        tap(buttonSpot())
+        assertEquals(1, opened)
+    }
+
     private companion object {
         const val FRAME_MILLIS = 16L
+
+        // A screen with the button again, but not loading.
+        const val BUTTON_AGAIN = -1
     }
 }

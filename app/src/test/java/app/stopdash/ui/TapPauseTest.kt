@@ -89,6 +89,25 @@ class TapPauseTest {
     }
 
     @Test
+    fun `holds no tap ever reads don't pile up`() {
+        // A screen left untouched, its rows sliding on every refresh: each refresh's holds clear the
+        // last one's, read by a tap or not.
+        repeat(100) {
+            repeat(3) { pause.hold().finish() }
+            now += TAP_PAUSE_FLOOR_MILLIS
+        }
+        assertTrue(pause.held <= 3)
+        // Holds still in force are kept.
+        val sliding = pause.hold()
+        now += TAP_PAUSE_FLOOR_MILLIS
+        pause.hold().finish()
+        assertTrue(pause.ignoresTaps())
+        sliding.finish()
+        now += TAP_PAUSE_FLOOR_MILLIS
+        assertFalse(pause.ignoresTaps())
+    }
+
+    @Test
     fun `the floor is 200 ms`() {
         // The maintainer's call (2026-10-09): under the time anyone takes to see a change and aim at it.
         assertEquals(200L, TAP_PAUSE_FLOOR_MILLIS)

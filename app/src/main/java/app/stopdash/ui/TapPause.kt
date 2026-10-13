@@ -39,9 +39,10 @@ internal const val TAP_PAUSE_FAILSAFE_MILLIS = 5_000L
 
 /**
  * Ignores taps while a loading screen's handover animation runs ([RevealsAfterLoading]; SPEC
- * principle 4, hold still). A finger already on its way to the loading screen's Update available
- * button, or tapping it impatiently, would otherwise land on whichever departure row just took that
- * spot. No tap during the animation can have been aimed at the new content: it is still coming in.
+ * principle 4, hold still), or while a list's targets slide to new places ([ListSettle]). A finger
+ * already on its way to the loading screen's Update available button, or tapping it impatiently, would
+ * otherwise land on whichever departure row just took that spot; one aimed at a row would open the
+ * row that slid under it. No tap during the animation can have been aimed at what is coming in.
  *
  * Each handover takes its own [Hold] when it starts and lets go when its animation finishes, so the
  * pause lasts exactly as long as what the user sees, slowed or stalled, and a handover undone partway
@@ -50,17 +51,30 @@ internal const val TAP_PAUSE_FAILSAFE_MILLIS = 5_000L
  */
 @Stable
 class TapPause(private val clock: () -> Long = SystemClock::uptimeMillis) {
-    private val holds = ArrayList<Hold>(2)
+    // Oldest first: holds are taken in time order, so the ones over gather at the front.
+    private val holds = ArrayDeque<Hold>(2)
 
-    /** A handover is starting: taps are ignored until its animation [finishes][Hold.finish]. */
-    fun hold(): Hold = Hold(clock()).also { holds += it }
+    /**
+     * A handover is starting: taps are ignored until its animation [finishes][Hold.finish]. Clears the
+     * oldest holds while they're over first, so a screen left untouched through refresh after refresh,
+     * whose holds no tap ever reads, keeps only its last refresh's (Codex, #818). Constant time,
+     * amortized: it stops at the first hold still in force, and each hold is cleared once.
+     */
+    fun hold(): Hold {
+        val now = clock()
+        while (holds.isNotEmpty() && !holds.first().ignoresAt(now)) holds.removeFirst()
+        return Hold(now).also { holds += it }
+    }
 
-    /** Whether a tap landing now is ignored. Constant work: a handover or two at most is ever held. */
+    /** Whether a tap landing now is ignored. A handover, list or card holds once: a few at most. */
     fun ignoresTaps(): Boolean {
         val now = clock()
         holds.removeAll { !it.ignoresAt(now) }
         return holds.isNotEmpty()
     }
+
+    /** How many holds are kept, for a test. */
+    internal val held: Int get() = holds.size
 
     /** One handover's claim on the pause. */
     inner class Hold internal constructor(private val startedAt: Long) {
@@ -144,11 +158,13 @@ private class Handover(private val revealing: Boolean, private val pause: TapPau
  * way to something else: the loading screen goes at once, and what replaces it comes in from the top
  * down, each line fading in a beat after the one above, and taps are ignored until that reveal has
  * finished ([TapPause]). A tap aimed at the loading screen opens nothing that took its place, and the
- * user sees why it did nothing. Every other change is instant, as before, and a return to loading
- * frees taps at once.
+ * user sees why it did nothing. A return to loading is instant and frees taps at once.
  *
  * [key] says which states are the same screen, so a state that changes without changing screen
  * updates it in place; it defaults to [loading], one screen for loading and one for the rest.
+ * [reveals] says which other changes of screen come in the same way, from the screen before to the
+ * one after: by default only one from loading, every other change instant. A screen the app swaps on
+ * its own, an error giving way to a list, takes it too; one the user's own tap opened needn't.
  */
 @Composable
 fun <S> RevealsAfterLoading(
@@ -156,16 +172,17 @@ fun <S> RevealsAfterLoading(
     loading: (S) -> Boolean,
     modifier: Modifier = Modifier,
     key: (S) -> Any? = loading,
+    reveals: (from: S, to: S) -> Boolean = { from, _ -> loading(from) },
     content: @Composable (S) -> Unit,
 ) {
     val pause = LocalTapPause.current
     val composed = remember { Composed(state) }
     val screen = key(state)
-    // A screen that takes a loading screen's place starts hidden, in the very frame it first draws;
-    // any other starts fully shown.
+    // A screen that takes another's place where [reveals] says so starts hidden, in the very frame it
+    // first draws; any other starts fully shown, and loading always does.
     val handover = remember(screen) {
         val from = composed.state
-        Handover(loading(from) && !loading(state) && key(from) != screen, pause)
+        Handover(!loading(state) && key(from) != screen && reveals(from, state), pause)
     }
     SideEffect { composed.state = state }
     LaunchedEffect(handover) {

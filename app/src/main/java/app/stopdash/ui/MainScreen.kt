@@ -27,7 +27,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -71,6 +70,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -1464,6 +1464,10 @@ fun MainScreen(
                 ),
                 loading = { it.loading },
                 modifier = Modifier.fillMaxWidth().weight(1f),
+                // Every change of screen here is the app's own (Codex, #818): an error a cold load's
+                // later stops replace with a list is a whole new set of targets, as a spinner's is.
+                key = { it.screen },
+                reveals = { _, _ -> true },
             ) { departures ->
                 val shown = departures.state
                 val content = Modifier.fillMaxSize()
@@ -1878,146 +1882,160 @@ private fun LoadedContent(
             // Favorite journeys still show when nothing nearby has departures: their origins can be
             // farther away, and hiding them behind "No departures" would drop live trains.
             // A dismissed closure still draws its place's heading, so it keeps the list up.
-            if (rows.isEmpty() && journeyCards.isEmpty() && farJourneyCards.isEmpty() && onRevealFar == null && shownPending.isEmpty() && dismissedClosures.isEmpty()) {
-                // Scrollable even though it doesn't overflow: PullToRefreshBox reads the
-                // pull from a scrollable child's nested-scroll events, so a plain Column
-                // here would leave pull-to-refresh dead on the empty state (only the
-                // button would work). verticalScroll forwards the gesture; the content
-                // still centers. With farther cards below, it can overflow, so it fades like a list.
-                val scrollState = rememberScrollState()
-                Centered(
-                    Modifier.fillMaxSize()
-                        .scrollEdgeCue(scrollState, scrollCueColors(MaterialTheme.colorScheme.background))
-                        .verticalScroll(scrollState),
-                ) {
-                    // The telemetry question still leads where there's no list to lead (Codex, PR #447):
-                    // a first run with nothing near has it asked all the same.
-                    onUnpauseAlerts.takeIf { !journeyView }?.let { unpause ->
-                        AlertsPausedCard(onUnpause = unpause, modifier = Modifier.padding(bottom = 16.dp))
-                    }
-                    onTelemetryInviteAnswer.takeIf { !journeyView }?.let { answer ->
-                        TelemetryInviteCard(onAnswer = answer, modifier = Modifier.padding(bottom = 16.dp))
-                    }
-                    watchInstall.takeIf { !journeyView }?.let { actions ->
-                        WatchInstallCard(actions, modifier = Modifier.padding(bottom = 16.dp))
-                    }
-                    widgetUpdate.takeIf { !journeyView }?.let { actions ->
-                        WidgetUpdateCard(actions, modifier = Modifier.padding(bottom = 16.dp))
-                    }
-                    // No list to lead, so the place chips head the empty state, inside its scroller so
-                    // they move with it (Codex): nothing near has departures, just when a route
-                    // elsewhere is wanted. Centered like the rest, and inset already by [Centered].
-                    if (favoritePlaces.isNotEmpty()) {
-                        FavoriteChips(
-                            favoritePlaces,
-                            onRouteToPlace,
-                            Modifier.padding(bottom = 16.dp),
-                            onEditPlaces = onEditFavoritePlaces,
-                            contentPadding = PaddingValues(0.dp),
-                            centered = true,
-                        )
-                    }
-                    // Under the place chips, as atop the list.
-                    disruptionsRow?.let { HomeDisruptionsRow(it, Modifier.padding(bottom = 16.dp)) }
-                    // A stale snapshot with nothing left can't be read as "no departures"
-                    // — the data is too old to trust that conclusion, and newer ones may
-                    // exist (SPEC D4). Prompt a refresh instead of asserting an empty list.
-                    Text(
-                        // With modes hidden, an empty list says so rather than "no departures": the
-                        // hidden modes may well be running (SPEC *Finding stops → Hiding a mode*).
-                        text = when {
-                            hiddenModes.isNotEmpty() -> stringResource(
-                                R.string.modes_hidden_empty,
-                                hiddenGroupsLabel(hiddenModes),
-                            )
-                            emptyStateUncertain -> stringResource(R.string.departures_stale_empty)
-                            else -> stringResource(R.string.departures_empty)
-                        },
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    RefreshButton(onRefresh, Modifier.padding(top = 16.dp))
-                    // Keep the farther cards reachable even when the nearest clusters returned
-                    // nothing — that's exactly when they are most useful (SPEC principle 2).
-                    FartherCards(
-                        farther,
-                        state.stops.mapTo(HashSet()) { it.stopId } - state.openedLoadingStopIds,
-                        state.unavailableStopIds,
-                        onOpenFarther,
-                        Modifier.padding(top = 16.dp),
-                    )
-                }
-            } else {
-                DepartureList(
-                    rows, listCards, now, starred, onToggleStar, starringAvailable, stopDistanceMeters,
-                    farther = farther,
-                    onOpenFarther = onOpenFarther,
-                    pending = shownPending,
-                    trackedPending = pending,
-                    hiddenModes = hiddenModes,
-                    holdLanded = holdLanded,
-                    pendingTracker = pendingTracker,
-                    fetchedStopIds = state.stops.mapTo(HashSet()) { it.stopId } - state.openedLoadingStopIds,
-                    unavailableStopIds = state.unavailableStopIds,
-                    closurePending = state.closurePending,
-                    listState = listState,
-                    onOpenSettings = onOpenSettings,
-                    onHideMode = onHideMode,
-                    modesByPlace = modesByPlace,
-                    onOpenDetail = onOpenDetail,
-                    onOpenChangeDetail = onOpenChangeDetail,
-                    onDismissAlert = onDismissAlert,
-                    dismissedClosures = dismissedClosures,
-                    sharedNotices = sharedNotices,
-                    stopHubIds = remember(state.stops) {
-                        state.stops.filter { it.hubId.isNotBlank() }.associate { it.stopId to it.hubId }
-                    },
-                    // Each stop's real StopArea (not the display-name fallback), so a place's notice
-                    // can stand at its nearest member even where that member has nothing listed.
-                    stopClusterIds = remember(state.stops) {
-                        state.stops.filter { it.clusterId.isNotBlank() && it.clusterId != it.stopName }
-                            .associate { it.stopId to it.clusterId }
-                    },
-                    onOpenPlatform = onOpenPlatform,
-                    onOpenStation = onOpenStation,
-                    onOpenStopMap = onOpenStopMap,
-                    journeyCards = journeyCards,
-                    onFlipJourney = onFlipJourney,
-                    onRetryJourneyRoutes = onRetryJourneyRoutes,
-                    onOpenJourney = onOpenJourney,
-                    journeyView = journeyView,
-                    onUnstarJourney = onUnstarJourney,
-                    farJourneyCards = farJourneyCards,
-                    farJourneyMeters = farJourneyMeters,
-                    onRevealFar = onRevealFar,
-                    // Not in a journey's own view, nor when every nearby row is already on a journey
-                    // card above.
-                    favoritePlaces = favoritePlaces,
-                    onRouteToPlace = onRouteToPlace,
-                    onEditFavoritePlaces = onEditFavoritePlaces,
-                    // Not in a journey's own view, which is about that journey.
-                    onTelemetryInviteAnswer = onTelemetryInviteAnswer.takeIf { !journeyView },
-                    watchInstall = watchInstall.takeIf { !journeyView },
-                    widgetUpdate = widgetUpdate.takeIf { !journeyView },
-                    onUnpauseAlerts = onUnpauseAlerts.takeIf { !journeyView },
-                    disruptionsRow = disruptionsRow.takeIf { !journeyView },
-                    nearbyEmptyNote = if (rows.isEmpty() && !journeyView && !nearbyShownAbove && shownPending.isEmpty() && dismissedClosures.isEmpty()) {
-                        // With modes hidden, say so rather than "no departures": they may be running.
-                        if (hiddenModes.isNotEmpty()) {
-                            stringResource(
-                                R.string.modes_hidden_empty,
-                                hiddenGroupsLabel(hiddenModes),
-                            )
-                        } else {
-                            stringResource(
-                                if (emptyStateUncertain) R.string.departures_stale_empty else R.string.departures_empty_nearby,
+            val empty = rows.isEmpty() && journeyCards.isEmpty() && farJourneyCards.isEmpty() && onRevealFar == null &&
+                shownPending.isEmpty() && dismissedClosures.isEmpty()
+            // A refresh can trade the list for the "No departures" screen, or back, with no loading
+            // screen between: whichever comes in does so row by row, taps ignored meanwhile, so a tap
+            // aimed at Refresh opens no row that took its place, nor one aimed at a row a card under it
+            // (Codex, #818).
+            RevealsAfterLoading(
+                state = empty,
+                loading = { false },
+                modifier = Modifier.fillMaxSize(),
+                key = { it },
+                reveals = { _, _ -> true },
+            ) { showEmpty ->
+                if (showEmpty) {
+                    // Scrollable even though it doesn't overflow: PullToRefreshBox reads the
+                    // pull from a scrollable child's nested-scroll events, so a plain Column
+                    // here would leave pull-to-refresh dead on the empty state (only the
+                    // button would work). verticalScroll forwards the gesture; the content
+                    // still centers. With farther cards below, it can overflow, so it fades like a list.
+                    val scrollState = rememberScrollState()
+                    Centered(
+                        Modifier.fillMaxSize()
+                            .scrollEdgeCue(scrollState, scrollCueColors(MaterialTheme.colorScheme.background))
+                            .verticalScroll(scrollState),
+                    ) {
+                        // The telemetry question still leads where there's no list to lead (Codex, PR #447):
+                        // a first run with nothing near has it asked all the same.
+                        onUnpauseAlerts.takeIf { !journeyView }?.let { unpause ->
+                            AlertsPausedCard(onUnpause = unpause, modifier = Modifier.padding(bottom = 16.dp))
+                        }
+                        onTelemetryInviteAnswer.takeIf { !journeyView }?.let { answer ->
+                            TelemetryInviteCard(onAnswer = answer, modifier = Modifier.padding(bottom = 16.dp))
+                        }
+                        watchInstall.takeIf { !journeyView }?.let { actions ->
+                            WatchInstallCard(actions, modifier = Modifier.padding(bottom = 16.dp))
+                        }
+                        widgetUpdate.takeIf { !journeyView }?.let { actions ->
+                            WidgetUpdateCard(actions, modifier = Modifier.padding(bottom = 16.dp))
+                        }
+                        // No list to lead, so the place chips head the empty state, inside its scroller so
+                        // they move with it (Codex): nothing near has departures, just when a route
+                        // elsewhere is wanted. Centered like the rest, and inset already by [Centered].
+                        if (favoritePlaces.isNotEmpty()) {
+                            FavoriteChips(
+                                favoritePlaces,
+                                onRouteToPlace,
+                                Modifier.padding(bottom = 16.dp),
+                                onEditPlaces = onEditFavoritePlaces,
+                                contentPadding = PaddingValues(0.dp),
+                                centered = true,
                             )
                         }
-                    } else {
-                        null
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                )
+                        // Under the place chips, as atop the list.
+                        disruptionsRow?.let { HomeDisruptionsRow(it, Modifier.padding(bottom = 16.dp)) }
+                        // A stale snapshot with nothing left can't be read as "no departures"
+                        // — the data is too old to trust that conclusion, and newer ones may
+                        // exist (SPEC D4). Prompt a refresh instead of asserting an empty list.
+                        Text(
+                            // With modes hidden, an empty list says so rather than "no departures": the
+                            // hidden modes may well be running (SPEC *Finding stops → Hiding a mode*).
+                            text = when {
+                                hiddenModes.isNotEmpty() -> stringResource(
+                                    R.string.modes_hidden_empty,
+                                    hiddenGroupsLabel(hiddenModes),
+                                )
+                                emptyStateUncertain -> stringResource(R.string.departures_stale_empty)
+                                else -> stringResource(R.string.departures_empty)
+                            },
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        RefreshButton(onRefresh, Modifier.padding(top = 16.dp))
+                        // Keep the farther cards reachable even when the nearest clusters returned
+                        // nothing — that's exactly when they are most useful (SPEC principle 2).
+                        FartherCards(
+                            farther,
+                            state.stops.mapTo(HashSet()) { it.stopId } - state.openedLoadingStopIds,
+                            state.unavailableStopIds,
+                            onOpenFarther,
+                            Modifier.padding(top = 16.dp),
+                        )
+                    }
+                } else {
+                    DepartureList(
+                        rows, listCards, now, starred, onToggleStar, starringAvailable, stopDistanceMeters,
+                        farther = farther,
+                        onOpenFarther = onOpenFarther,
+                        pending = shownPending,
+                        trackedPending = pending,
+                        hiddenModes = hiddenModes,
+                        holdLanded = holdLanded,
+                        pendingTracker = pendingTracker,
+                        fetchedStopIds = state.stops.mapTo(HashSet()) { it.stopId } - state.openedLoadingStopIds,
+                        unavailableStopIds = state.unavailableStopIds,
+                        closurePending = state.closurePending,
+                        listState = listState,
+                        onOpenSettings = onOpenSettings,
+                        onHideMode = onHideMode,
+                        modesByPlace = modesByPlace,
+                        onOpenDetail = onOpenDetail,
+                        onOpenChangeDetail = onOpenChangeDetail,
+                        onDismissAlert = onDismissAlert,
+                        dismissedClosures = dismissedClosures,
+                        sharedNotices = sharedNotices,
+                        stopHubIds = remember(state.stops) {
+                            state.stops.filter { it.hubId.isNotBlank() }.associate { it.stopId to it.hubId }
+                        },
+                        // Each stop's real StopArea (not the display-name fallback), so a place's notice
+                        // can stand at its nearest member even where that member has nothing listed.
+                        stopClusterIds = remember(state.stops) {
+                            state.stops.filter { it.clusterId.isNotBlank() && it.clusterId != it.stopName }
+                                .associate { it.stopId to it.clusterId }
+                        },
+                        onOpenPlatform = onOpenPlatform,
+                        onOpenStation = onOpenStation,
+                        onOpenStopMap = onOpenStopMap,
+                        journeyCards = journeyCards,
+                        onFlipJourney = onFlipJourney,
+                        onRetryJourneyRoutes = onRetryJourneyRoutes,
+                        onOpenJourney = onOpenJourney,
+                        journeyView = journeyView,
+                        onUnstarJourney = onUnstarJourney,
+                        farJourneyCards = farJourneyCards,
+                        farJourneyMeters = farJourneyMeters,
+                        onRevealFar = onRevealFar,
+                        // Not in a journey's own view, nor when every nearby row is already on a journey
+                        // card above.
+                        favoritePlaces = favoritePlaces,
+                        onRouteToPlace = onRouteToPlace,
+                        onEditFavoritePlaces = onEditFavoritePlaces,
+                        // Not in a journey's own view, which is about that journey.
+                        onTelemetryInviteAnswer = onTelemetryInviteAnswer.takeIf { !journeyView },
+                        watchInstall = watchInstall.takeIf { !journeyView },
+                        widgetUpdate = widgetUpdate.takeIf { !journeyView },
+                        onUnpauseAlerts = onUnpauseAlerts.takeIf { !journeyView },
+                        disruptionsRow = disruptionsRow.takeIf { !journeyView },
+                        nearbyEmptyNote = if (rows.isEmpty() && !journeyView && !nearbyShownAbove && shownPending.isEmpty() && dismissedClosures.isEmpty()) {
+                            // With modes hidden, say so rather than "no departures": they may be running.
+                            if (hiddenModes.isNotEmpty()) {
+                                stringResource(
+                                    R.string.modes_hidden_empty,
+                                    hiddenGroupsLabel(hiddenModes),
+                                )
+                            } else {
+                                stringResource(
+                                    if (emptyStateUncertain) R.string.departures_stale_empty else R.string.departures_empty_nearby,
+                                )
+                            }
+                        } else {
+                            null
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
         }
     }
@@ -2040,11 +2058,21 @@ internal fun rememberEmptyStateUncertain(state: DeparturesUiState.Loaded, now: I
 /**
  * What the departures area shows: [state], with [placeholder] when it is loaded but nothing in it can
  * be drawn yet, so a spinner stands in. Either spinner is [loading], so the rows that replace it are
- * revealed, with taps ignored meanwhile ([RevealsAfterLoading]).
+ * revealed, with taps ignored meanwhile ([RevealsAfterLoading]). So is any other [screen] the app
+ * swaps in on its own: an error giving way to a list, as a cold load's later stops can make it.
  */
 internal data class DeparturesShown(val state: DeparturesUiState, val placeholder: Boolean) {
     val loading: Boolean get() = state == DeparturesUiState.Loading || placeholder
+
+    val screen: DeparturesScreen
+        get() = when {
+            loading -> DeparturesScreen.LOADING
+            state is DeparturesUiState.Error -> DeparturesScreen.ERROR
+            else -> DeparturesScreen.LOADED
+        }
 }
+
+internal enum class DeparturesScreen { LOADING, ERROR, LOADED }
 
 /** The oldest and newest of some stops' fetch stamps; both null for none. */
 internal class StopStamps(val oldest: Instant?, val newest: Instant?)
@@ -2773,7 +2801,9 @@ private fun DepartureList(
                 }
             }
     }
-    LazyColumn(
+    // Its items slide to their new places when a refresh re-sorts them, and taps wait while anything
+    // in it moves on its own (SPEC *Update indicator*).
+    SettlingLazyColumn(
         // Fades the edges while the list scrolls on past them, so more below reads as more.
         modifier = modifier.scrollEdgeCue(listState, scrollCueColors(MaterialTheme.colorScheme.background)),
         state = listState,
@@ -4277,143 +4307,160 @@ internal fun StopGroupCard(
     // (SPEC D8). Inner width ≈ screen minus the list's 16dp side padding and the row's 16dp padding.
     val cardInnerWidth = LocalConfiguration.current.screenWidthDp.dp - 64.dp
     val pillModifier = Modifier.widthIn(max = cardInnerWidth * 0.5f)
-    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-        // The card is a traversal group; each interior route row is its own sub-group (below) so its
-        // ⚠ precedes its own countdown, not the next row's (SPEC principle 2).
-        Column(modifier = Modifier.semantics { isTraversalGroup = true }) {
-            var firstRow = true
-            group.rows.forEachIndexed { rowIndex, row ->
-                val stale = Staleness.isStale(row.fetchedAt, now)
-                val isStarred = StarredRow.of(row) in starred
-                if (!row.hasTrains) {
-                    // A status row: the line is suspended (its reason shown) and returned no
-                    // predictions (SPEC *Departures*). Tappable to the detail view, but not starrable
-                    // — a no-departures row has nothing to rank.
-                    if (!firstRow) RouteDivider()
-                    firstRow = false
-                    RouteRow(
-                        row = row,
-                        isStarred = isStarred,
-                        starrable = false,
-                        onToggleStar = onToggleStar,
-                        // A "?" row opens nothing: its line's page has no times to show and no way yet to say why
-                        // they're missing, so it would read as a clean line (Codex, PR #505).
-                        onOpenDetail = onOpenDetail.takeUnless { row.quiet },
-                        onHideMode = onHideMode,
-                    ) {
-                        LinePill(lineName = row.lineName, lineId = row.lineId, mode = row.mode, modifier = pillModifier)
-                        // The reason chip lives in the weighted slack so it absorbs the shrink (and
-                        // ellipsizes) when space is tight; the status text is unweighted, so the Row
-                        // reserves its width — the status can't be squeezed to zero.
-                        Box(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
-                            // Its disruption dismissed, planned work it still carries is noted instead.
-                            row.status?.let { status -> DisruptionChip(status.description) }
-                                ?: row.plannedAlerts.firstOrNull()?.let { planned -> PlannedAlertGlyph(planned) }
-                        }
-                        // A dash when the line's source answered with no trains and none is due
-                        // ([EmptyTimes]): a National Rail board lists every train it runs, and a TfL
-                        // line's timetable says what TfL's live list leaves out. "?" when one might be
-                        // coming. "No data" when no source answered; "No key" (a tap away in
-                        // Settings) for a National Rail line a key would give times.
-                        val noTimes = NoTimes.of(row)
-                        val noKey = noTimes == NoTimes.NO_KEY
-                        // A quiet row is only in the list once its mark is "?" ([withQuietRows]).
-                        val mark = when {
-                            row.quiet -> EmptyTimes.Mark.UNKNOWN
-                            noTimes == NoTimes.NO_TRAINS && !row.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) && !row.notRunningHere ->
-                                emptyTimesMark("line:${row.stopId}|${row.lineId}") {
-                                    EmptyTimes.Board(listOf(EmptyTimes.Key(row.stopId, row.lineId)))
-                                }
-                            else -> null
-                        }
-                        val unknown = mark == EmptyTimes.Mark.UNKNOWN
-                        if (mark == EmptyTimes.Mark.LOADING) {
-                            // Its timetable is still being fetched: a spinner says "wait", where a "?" read
-                            // as an answer (maintainer, 2026-10-03).
-                            val loading = stringResource(R.string.status_times_loading_description)
-                            CircularProgressIndicator(
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier
-                                    .padding(start = 12.dp)
-                                    .size(16.dp)
-                                    .semantics { contentDescription = loading },
-                            )
-                            return@RouteRow
-                        }
-                        val spoken = stringResource(
-                            if (unknown) R.string.status_times_unknown_description else R.string.status_no_departures_description,
-                        )
-                        Text(
-                            text = stringResource(
-                                when {
-                                    unknown -> R.string.status_times_unknown
-                                    noTimes == NoTimes.NO_TRAINS -> R.string.status_no_departures
-                                    noKey -> R.string.status_no_rail_key
-                                    else -> R.string.status_no_data
-                                },
-                            ),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = if (noKey) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            modifier = Modifier
-                                .padding(start = 12.dp)
-                                .then(
-                                    // The dash alone could be heard as missing data, and "?" as nothing at
-                                    // all; say "No departures" or "Times unknown".
-                                    if (noTimes == NoTimes.NO_TRAINS) {
-                                        Modifier.semantics { contentDescription = spoken }
-                                    } else {
-                                        Modifier
-                                    },
-                                )
-                                .then(
-                                    if (noKey) {
-                                        Modifier.clickable(
-                                            onClickLabel = stringResource(R.string.status_no_rail_key_action),
-                                            role = Role.Button,
-                                            onClick = onOpenSettings,
+    // Its rows share one tap-pause hold while any of them slides, outside a list as in one.
+    SlideGroup {
+        OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+            // The card is a traversal group; each interior route row is its own sub-group (below) so its
+            // ⚠ precedes its own countdown, not the next row's (SPEC principle 2).
+            Column(modifier = Modifier.semantics { isTraversalGroup = true }) {
+                var firstRow = true
+                group.rows.forEachIndexed { rowIndex, row ->
+                    // Keyed on the row's identity (its stop, line, direction and platform), so a refresh that
+                    // re-sorts the card moves each row to its new place (SlidesInPlace) rather than drawing
+                    // another row where it was. No early return in here: one would give each pass of the loop
+                    // its own group, which a row can't leave.
+                    key(row.stopId, row.lineId, row.directionKey, row.platform) {
+                        val stale = Staleness.isStale(row.fetchedAt, now)
+                        val isStarred = StarredRow.of(row) in starred
+                        if (!row.hasTrains) {
+                            // A status row: the line is suspended (its reason shown) and returned no
+                            // predictions (SPEC *Departures*). Tappable to the detail view, but not starrable
+                            // — a no-departures row has nothing to rank.
+                            val divided = !firstRow
+                            firstRow = false
+                            SlidesInPlace {
+                                if (divided) RouteDivider()
+                                RouteRow(
+                                    row = row,
+                                    isStarred = isStarred,
+                                    starrable = false,
+                                    onToggleStar = onToggleStar,
+                                    // A "?" row opens nothing: its line's page has no times to show and no way yet to say why
+                                    // they're missing, so it would read as a clean line (Codex, PR #505).
+                                    onOpenDetail = onOpenDetail.takeUnless { row.quiet },
+                                    onHideMode = onHideMode,
+                                ) {
+                                    LinePill(lineName = row.lineName, lineId = row.lineId, mode = row.mode, modifier = pillModifier)
+                                    // The reason chip lives in the weighted slack so it absorbs the shrink (and
+                                    // ellipsizes) when space is tight; the status text is unweighted, so the Row
+                                    // reserves its width — the status can't be squeezed to zero.
+                                    Box(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
+                                        // Its disruption dismissed, planned work it still carries is noted instead.
+                                        row.status?.let { status -> DisruptionChip(status.description) }
+                                            ?: row.plannedAlerts.firstOrNull()?.let { planned -> PlannedAlertGlyph(planned) }
+                                    }
+                                    // A dash when the line's source answered with no trains and none is due
+                                    // ([EmptyTimes]): a National Rail board lists every train it runs, and a TfL
+                                    // line's timetable says what TfL's live list leaves out. "?" when one might be
+                                    // coming. "No data" when no source answered; "No key" (a tap away in
+                                    // Settings) for a National Rail line a key would give times.
+                                    val noTimes = NoTimes.of(row)
+                                    val noKey = noTimes == NoTimes.NO_KEY
+                                    // A quiet row is only in the list once its mark is "?" ([withQuietRows]).
+                                    val mark = when {
+                                        row.quiet -> EmptyTimes.Mark.UNKNOWN
+                                        noTimes == NoTimes.NO_TRAINS && !row.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) && !row.notRunningHere ->
+                                            emptyTimesMark("line:${row.stopId}|${row.lineId}") {
+                                                EmptyTimes.Board(listOf(EmptyTimes.Key(row.stopId, row.lineId)))
+                                            }
+                                        else -> null
+                                    }
+                                    val unknown = mark == EmptyTimes.Mark.UNKNOWN
+                                    if (mark == EmptyTimes.Mark.LOADING) {
+                                        // Its timetable is still being fetched: a spinner says "wait", where a "?" read
+                                        // as an answer (maintainer, 2026-10-03).
+                                        val loading = stringResource(R.string.status_times_loading_description)
+                                        CircularProgressIndicator(
+                                            strokeWidth = 2.dp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier
+                                                .padding(start = 12.dp)
+                                                .size(16.dp)
+                                                .semantics { contentDescription = loading },
                                         )
-                                    } else {
-                                        Modifier
-                                    },
-                                ),
-                        )
-                    }
-                    return@forEachIndexed
-                }
-                // Rows with trains: grouped by destination *and branch* (the shared `destinationLines`,
-                // so the widget can't drift), each destination its own route row with its own merged
-                // countdown — a countdown is never read under the wrong destination or branch (SPEC
-                // D8). A branching row (Northern to Morden and to Battersea) shows its pill on each.
-                // A row whose every train has no time ("Cancelled") isn't starrable: no train to rank.
-                val starrable = starringAvailable && row.stopDisruption == null && row.upcoming.isNotEmpty()
-                val destinationLines = card.lines[rowIndex]
-                destinationLines.forEach { group2 ->
-                    if (!firstRow) RouteDivider()
-                    firstRow = false
-                    // The destination, or the direction key as a cue when TfL gives no destination, so
-                    // cards TfL keeps distinct stay distinguishable (SPEC principle 1).
-                    val label = DepartureLabels.destinationLabel(group2.destination, row.directionKey)
-                        ?: stringResource(R.string.destination_unknown)
-                    LineRouteRow(
-                        row = row,
-                        isStarred = isStarred,
-                        starrable = starrable,
-                        onToggleStar = onToggleStar,
-                        onOpenDetail = onOpenDetail,
-                        // The route row's own soonest train names the route the detail follows.
-                        focus = RouteFocus.of(group2),
-                        onHideMode = onHideMode,
-                        destination = { modifier -> DestinationLabelContent(label = label, branch = group2.branch, modifier = modifier) },
-                        times = {
-                            if (timesInstead != null) {
-                                timesInstead(row)
-                            } else {
-                                CountdownLabel(group2.times, stale, now, grayBefore = grayBefore, untimed = group2.untimed)
+                                        return@RouteRow
+                                    }
+                                    val spoken = stringResource(
+                                        if (unknown) R.string.status_times_unknown_description else R.string.status_no_departures_description,
+                                    )
+                                    Text(
+                                        text = stringResource(
+                                            when {
+                                                unknown -> R.string.status_times_unknown
+                                                noTimes == NoTimes.NO_TRAINS -> R.string.status_no_departures
+                                                noKey -> R.string.status_no_rail_key
+                                                else -> R.string.status_no_data
+                                            },
+                                        ),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = if (noKey) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        modifier = Modifier
+                                            .padding(start = 12.dp)
+                                            .then(
+                                                // The dash alone could be heard as missing data, and "?" as nothing at
+                                                // all; say "No departures" or "Times unknown".
+                                                if (noTimes == NoTimes.NO_TRAINS) {
+                                                    Modifier.semantics { contentDescription = spoken }
+                                                } else {
+                                                    Modifier
+                                                },
+                                            )
+                                            .then(
+                                                if (noKey) {
+                                                    Modifier.clickable(
+                                                        onClickLabel = stringResource(R.string.status_no_rail_key_action),
+                                                        role = Role.Button,
+                                                        onClick = onOpenSettings,
+                                                    )
+                                                } else {
+                                                    Modifier
+                                                },
+                                            ),
+                                    )
+                                }
                             }
-                        },
-                    )
+                        } else {
+                            // Rows with trains: grouped by destination *and branch* (the shared `destinationLines`,
+                            // so the widget can't drift), each destination its own route row with its own merged
+                            // countdown — a countdown is never read under the wrong destination or branch (SPEC
+                            // D8). A branching row (Northern to Morden and to Battersea) shows its pill on each.
+                            // A row whose every train has no time ("Cancelled") isn't starrable: no train to rank.
+                            val starrable = starringAvailable && row.stopDisruption == null && row.upcoming.isNotEmpty()
+                            val destinationLines = card.lines[rowIndex]
+                            destinationLines.forEach { group2 ->
+                                val divided = !firstRow
+                                firstRow = false
+                                key(group2.destination, group2.branch) {
+                                    SlidesInPlace {
+                                        if (divided) RouteDivider()
+                                        // The destination, or the direction key as a cue when TfL gives no destination, so
+                                        // cards TfL keeps distinct stay distinguishable (SPEC principle 1).
+                                        val label = DepartureLabels.destinationLabel(group2.destination, row.directionKey)
+                                            ?: stringResource(R.string.destination_unknown)
+                                        LineRouteRow(
+                                            row = row,
+                                            isStarred = isStarred,
+                                            starrable = starrable,
+                                            onToggleStar = onToggleStar,
+                                            onOpenDetail = onOpenDetail,
+                                            // The route row's own soonest train names the route the detail follows.
+                                            focus = RouteFocus.of(group2),
+                                            onHideMode = onHideMode,
+                                            destination = { modifier -> DestinationLabelContent(label = label, branch = group2.branch, modifier = modifier) },
+                                            times = {
+                                                if (timesInstead != null) {
+                                                    timesInstead(row)
+                                                } else {
+                                                    CountdownLabel(group2.times, stale, now, grayBefore = grayBefore, untimed = group2.untimed)
+                                                }
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
