@@ -138,6 +138,10 @@ fun StationSearchScreen(
     // Null keeps the plain search bar.
     fromStation: String? = null,
     onChangeFrom: (() -> Unit)? = null,
+    // Whether [fromStation] names a place rather than a station: its name leads with its own icon
+    // ([fromIcon], a saved place's) or a place pin.
+    fromPlace: Boolean = false,
+    fromIcon: String? = null,
     // A Recent row's menu asks to take it off the list ([onAskRemoveRecent], null offering no such
     // item); the question is [StationSearchViewModel.State.pendingRemoval], so it outlives a
     // rotation, and Remove calls [onRemoveRecent], Cancel [onCancelRemoveRecent].
@@ -221,6 +225,8 @@ fun StationSearchScreen(
                     onChangeFrom = onChangeFrom,
                     onBack = onBack,
                     labelWidth = endsLabelWidth,
+                    fromPlace = fromPlace,
+                    fromIcon = fromIcon,
                     actions = appMenu,
                 ) { modifier ->
                     BasicTextField(

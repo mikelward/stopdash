@@ -1171,14 +1171,19 @@ private val FRAME_HOLD: Duration = Duration.ofSeconds(15)
 
 /**
  * A trip page's two ends, for its From/To bar: the start ([fromStation], or "Here" when null) and the
- * destination ([toName]). A tap on From opens the From… search, and one on To the To… search; the
- * other end is kept either way.
+ * destination ([toName]), each said to be a place ([fromPlace], [toPlace]) where it is one, with a saved
+ * place's own icon ([fromIcon], [toIcon]). A tap on From opens the From… search, and one on To the To…
+ * search; the other end is kept either way.
  */
 internal class TripEnds(
     val fromStation: String?,
     val toName: String,
     val onChangeFrom: () -> Unit,
     val onChangeTo: () -> Unit,
+    val fromPlace: Boolean = false,
+    val toPlace: Boolean = false,
+    val fromIcon: String? = null,
+    val toIcon: String? = null,
 )
 
 /** The lines a trip avoids, and what a long press or a chip does with them (see [TripScreen]). */
@@ -1702,9 +1707,11 @@ private fun TripContent(
                     onChangeFrom = ends.onChangeFrom,
                     onBack = back,
                     labelWidth = rememberTripEndsLabelWidth(),
+                    fromPlace = ends.fromPlace,
+                    fromIcon = ends.fromIcon,
                     actions = if (menu != null) overflow else null,
                     readToLabel = false,
-                ) { modifier -> ToField(ends.toName, ends.onChangeTo, modifier) }
+                ) { modifier -> ToField(ends.toName, ends.onChangeTo, modifier, place = ends.toPlace, icon = ends.toIcon) }
             } else {
                 TopAppBar(
                     navigationIcon = {

@@ -64,6 +64,9 @@ fun FavoriteJourneyPicker(
             onRetryPlaces = onRetryPlaces,
             fromStation = from.name,
             onChangeFrom = onChangeFrom,
+            fromPlace = from is PendingEnd.Place,
+            // A saved place's own icon, by its id, read from the index built with the places.
+            fromIcon = (from as? PendingEnd.Place)?.let { LocalPlaceIcons.current.forPlace(it.placeId) },
             onAskRemoveRecent = onAskRemoveRecent,
             onCancelRemoveRecent = onCancelRemoveRecent,
             onRemoveRecent = onRemoveRecent,

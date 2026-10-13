@@ -296,6 +296,7 @@ import app.stopdash.ui.addFavoriteJourneyPair
 import app.stopdash.ui.addPendingJourneyPair
 import app.stopdash.ui.removeFavoriteJourney
 import app.stopdash.ui.LocalOpenRouteStop
+import app.stopdash.ui.LocalPlaceIcons
 import app.stopdash.ui.RouteStopOpen
 import app.stopdash.ui.RouteGo
 import app.stopdash.ui.RouteStopOpenSaver
@@ -380,6 +381,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.runningFold
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -1737,6 +1739,8 @@ class MainActivity : ComponentActivity() {
                     ),
                     LocalOpenRouteStop provides openRouteStop,
                     LocalHideUndoCarrier provides hideUndoCarrier,
+                    // The saved places' own icons, for a From/To bar naming one of them.
+                    LocalPlaceIcons provides savedPlacesState.icons,
                     LocalAppMenu provides AppMenuActions(
                         updateAvailable = updateAvailable.value,
                         onOpenAppListing = ::openPlayListing,
@@ -4517,6 +4521,8 @@ class MainActivity : ComponentActivity() {
                 locationBanner = fromNearby.locationBanner,
                 keyPrefix = "from",
                 fromName = stationName,
+                // A place started from: its name leads with its own icon, or a place pin.
+                fromPlace = planFrom,
                 fromStopIds = stationStopIds,
                 fromCenter = center,
                 onLocate = onBackToNearMe,
@@ -4716,6 +4722,8 @@ class MainActivity : ComponentActivity() {
         // searched station's (From…), whose trip is titled "‹station› ➔ ‹to›" by [fromName].
         keyPrefix: String = "here",
         fromName: String? = null,
+        // Where [fromName]'s place is, when the trip starts from a place rather than a station.
+        fromPlace: Coordinates? = null,
         // A From… station's own stops: its trip starts at one of them, never a neighbor.
         fromStopIds: Set<String> = emptySet(),
         // A From… station's center, where its trip is reckoned from for ranking the To… search.
@@ -4788,6 +4796,11 @@ class MainActivity : ComponentActivity() {
         // Same-named stops and places nearer where this trip starts list first (maintainer, 2026-10-12):
         // the rider, or the From… station's center.
         val rankFrom = here ?: fromCenter
+        // A saved place at either end leads its name with its own icon in the From/To bar: read from the
+        // index built with the places, never worked out here (AGENTS.md *Main thread*).
+        val placeIcons = LocalPlaceIcons.current
+        val fromIcon = fromPlace?.let { placeIcons.at(it, fromName.orEmpty()) }
+        val toIcon = favorite?.let { placeIcons.at(it.coordinate, it.name) }
         LaunchedEffect(search, rankFrom) { search.setNear(rankFrom) }
         val stores: NearbyDeparturesStores = viewModel(key = "$keyPrefix-trip-stores")
         val toStores: NearbyDeparturesStores = viewModel(key = "$keyPrefix-to-stores")
@@ -4882,6 +4895,8 @@ class MainActivity : ComponentActivity() {
                     onSearchOutside = search::searchOutside,
                     onEditPlaces = onEditPlaces,
                     fromStation = fromName,
+                    fromPlace = fromPlace != null,
+                    fromIcon = fromIcon,
                     // The destination search is kept (above): it's the start that changes.
                     onChangeFrom = onChangeFrom,
                 )
@@ -5162,7 +5177,9 @@ class MainActivity : ComponentActivity() {
             planOptionsLoaded = planOptionsLoaded,
             // Where it starts and where it goes, each a tap to change (maintainer, 2026-09-28): From
             // opens the From… search, To the destination search, the other end kept.
-            ends = onChangeFrom?.let { changeFrom -> TripEnds(fromName, toName, changeFrom, onPlanTo) },
+            ends = onChangeFrom?.let { changeFrom ->
+                TripEnds(fromName, toName, changeFrom, onPlanTo, fromPlace = fromPlace != null, toPlace = favorite != null, fromIcon = fromIcon, toIcon = toIcon)
+            },
             // A pull plans again now and fetches every stop afresh, its stations' National Rail
             // boards included, here and on the other screens, as every pull does (SPEC *Freshness →
             // Shared arrivals*); from here it takes a fresh fix too,
@@ -6808,17 +6825,35 @@ private const val MIDNIGHT_SLACK_MILLIS = 1_000L
  * identity, not as a data class: the state flow holding it compares each new value with the last on the
  * main thread, which mustn't walk the places (AGENTS.md *Main thread: read and dispatch only*).
  */
-internal class SavedPlaces(val read: Boolean, val places: List<FavoritePlace>?) {
+internal class SavedPlaces(
+    val read: Boolean,
+    val places: List<FavoritePlace>?,
+    // Their own icons, for the From/To bar ([app.stopdash.ui.PlaceIconIndex]), built with them on the worker.
+    val icons: app.stopdash.ui.PlaceIconIndex = app.stopdash.ui.PlaceIconIndex.NONE,
+) {
     companion object {
         /** Before the store's first answer: not read, so not "can't be read" either. */
-        val UNREAD = SavedPlaces(read = false, places = null)
+        val UNREAD = SavedPlaces(read = false, places = null, icons = app.stopdash.ui.PlaceIconIndex.UNREAD)
     }
 }
 
-/** The saved places ([SavedPlaces]), held across a recreated screen. */
-internal class SavedPlacesModel(store: app.stopdash.domain.FavoritePlacesStore) : androidx.lifecycle.ViewModel() {
+/**
+ * The saved places ([SavedPlaces]), held across a recreated screen. Each read's icon index is built on
+ * [worker], off the main thread the state is collected on (AGENTS.md *Main thread*). The index follows
+ * the last answer that could be read: one that can't (a retried outage) keeps the icons as they were,
+ * or still unresolved before the first readable one, so a saved place's icon never turns into a pin and
+ * back while the store recovers (Codex on #824).
+ */
+internal class SavedPlacesModel(
+    store: app.stopdash.domain.FavoritePlacesStore,
+    worker: kotlinx.coroutines.CoroutineDispatcher = app.stopdash.domain.Workers.compute,
+) : androidx.lifecycle.ViewModel() {
     val state: kotlinx.coroutines.flow.StateFlow<SavedPlaces> = store.places()
-        .map { set -> SavedPlaces(read = true, places = savedPlacesOf(set)) }
+        .runningFold(SavedPlaces.UNREAD) { last, set ->
+            val places = savedPlacesOf(set)
+            SavedPlaces(read = true, places = places, icons = if (places == null) last.icons else app.stopdash.ui.PlaceIconIndex.of(places))
+        }
+        .flowOn(worker)
         .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, SavedPlaces.UNREAD)
 }
 
