@@ -12,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -1327,7 +1328,7 @@ fun MainScreen(
                 },
                 actions = {
                     // The drawn rows' own fetch, not a newer one they don't hold yet (Codex, #524).
-                    FreshnessStamp(drawnState ?: state, drawnNow, onRefresh)
+                    FreshnessStamp(drawnState ?: state, drawnNow, refreshing, onRefresh)
                     // Crosshairs: "use my location" (SPEC *Finding stops*). Near me it re-locates, as
                     // pull-to-refresh does; on a From… station page it goes back to the near-me list.
                     // None without a grant: it could only lead back to the location gate.
@@ -1649,7 +1650,7 @@ fun MainScreen(
                     is DeparturesUiState.Error ->
                         // Under the pull box with a scrollable child so a downward swipe refreshes
                         // the error screen too (SPEC D6), not only the button.
-                        PullToRefreshBox(isRefreshing = refreshing, onRefresh = onPullRefresh ?: onRefresh, modifier = content) {
+                        PullToRefresh(refreshing, onRefresh = onPullRefresh ?: onRefresh, modifier = content) {
                             val scrollState = rememberScrollState()
                             Centered(
                                 Modifier.fillMaxSize()
@@ -1828,7 +1829,7 @@ private fun LoadedContent(
     // is decided per stop inside the card from that row's own age.
     val emptyStateUncertain = rememberEmptyStateUncertain(state, now)
     // Pull-to-refresh over the whole loaded surface (SPEC D6).
-    PullToRefreshBox(isRefreshing = refreshing, onRefresh = onRefresh, modifier = modifier) {
+    PullToRefresh(refreshing, onRefresh = onRefresh, modifier = modifier) {
         Column(Modifier.fillMaxSize()) {
             // The location behind these stops isn't current (SPEC *Finding stops*, principle 2):
             // either a stale last-known fix (APPROXIMATE) or a re-locate that couldn't update
@@ -2364,8 +2365,22 @@ internal fun stepFreeLevels(
     return listed.mapNotNull { stop -> withOut.levelFor(stop.id, lineId, mode)?.let { stop.id to it } }.toMap()
 }
 
+/**
+ * Pull-to-refresh whose indicator shows while the user pulls and goes when they let go: a refresh
+ * under way is said by the stamp ("Checking…", [FreshnessStamp]), not a spinner held over the top of
+ * the list, which covered its banners and disruptions (maintainer, 2026-10-13). A pull while
+ * [refreshing] starts nothing: the refresh it would ask for is the one running, and asking again
+ * would cancel that one's fetch and location fix to start them over (Codex, #819).
+ */
 @Composable
-private fun FreshnessStamp(state: DeparturesUiState, now: Instant, onRefresh: () -> Unit) {
+private fun PullToRefresh(refreshing: Boolean, onRefresh: () -> Unit, modifier: Modifier, content: @Composable BoxScope.() -> Unit) {
+    val busy by rememberUpdatedState(refreshing)
+    val refresh by rememberUpdatedState(onRefresh)
+    PullToRefreshBox(isRefreshing = false, onRefresh = { if (!busy) refresh() }, modifier = modifier, content = content)
+}
+
+@Composable
+private fun FreshnessStamp(state: DeparturesUiState, now: Instant, refreshing: Boolean, onRefresh: () -> Unit) {
     val text = when (state) {
         // The placeholder frame (before any snapshot is read from disk) still carries a
         // stamp — a pending "Loading…" — so the top bar is present from the first frame and
@@ -2378,6 +2393,10 @@ private fun FreshnessStamp(state: DeparturesUiState, now: Instant, onRefresh: ()
                 // A cold load with nothing back yet — only failures so far, or cut short before any
                 // stop landed: no update to stamp, so still loading, not "Just now".
                 state.stops.isEmpty() && (state.statusPending || state.partialRefresh) -> stringResource(R.string.loading_stamp)
+                // A refresh under way says so here, where the age was, in place of a spinner over the top
+                // of the list, which covered its banners and disruptions (maintainer, 2026-10-13). It
+                // outranks stale: the refresh the stale rows need is the one running.
+                refreshing -> stringResource(R.string.checking_stamp)
                 // Stale outranks checking: rows past the cutoff withhold their times, and the stamp
                 // must still offer the refresh they need (SPEC D4).
                 Staleness.isStale(age) -> stringResource(R.string.stale_stamp)
@@ -2389,7 +2408,8 @@ private fun FreshnessStamp(state: DeparturesUiState, now: Instant, onRefresh: ()
                 else -> RelativeTime.formatAge(age).replaceFirstChar { it.uppercaseChar() }
             }
         }
-        // An error has its own full-screen message (no snapshot, so no age to stamp).
+        // An error has its own full-screen message (no snapshot, so no age to stamp). A retry from it
+        // goes back to the loading screen, which says "Loading…" ([MainViewModel.refresh]).
         is DeparturesUiState.Error -> return
     }
     // The stamp is tappable too, so the "Tap to refresh" it shows when stale does what

@@ -78,7 +78,7 @@ The app finds stops two ways:
   **forces a fresh fix** (it does not take the
   recent-cached fast path a first open may use): a rider who has walked since the last fix
   must not be re-resolved against the old position, so a cached fix is only a bounded fallback
-  here — a fresh fix is ~1–2 s in the common case, comfortably under the refresh spinner. For the
+  here — a fresh fix is ~1–2 s in the common case, a moment of the stamp's "Checking…". For the
   same reason, a re-locate still under way when the app was backgrounded (a pull, say) doesn't
   stand in for the return's: it was asked from where the rider was then, so the return re-locates
   over it and its own fix wins. If it ended while the app was away without stops to show (no fix,
@@ -3261,6 +3261,11 @@ been set, so none keeps showing what it judged before.
   differently are named without one, rather than given a reason untrue of some. A failure in an
   opened farther-station card isn't named: the warning falls back to "some stops". A snapshot
   restored from disk names the stops but not the reason, which isn't kept.
+  While any refresh of a shown list is under way (auto, pull, button or re-locate), the stamp reads
+  **"Checking…"** in place of the age, over a stale list's "Tap to refresh" too, since the refresh it
+  asks for is the one running; a retry from an error screen shows the loading screen's "Loading…". Nothing is drawn over the list for it: a
+  spinner held at the top covered the banners and disruptions row beneath it (maintainer,
+  2026-10-13), so a pull's indicator shows only while the finger is down.
 - **The list's rows are built off the main thread**, from the snapshot, so a long list never holds
   up a frame (maintainer, 2026-10-03). While a refresh's or the clock's new rows are built, the list
   keeps its last rows for that moment, including on a return from a page over it. A list with no
