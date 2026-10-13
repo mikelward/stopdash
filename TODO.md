@@ -1627,6 +1627,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               (maintainer's call: per line, empirical or by frequency). Spacing does little where trains aren't bunched (Piccadilly, sub-surface).
               Open: off-peak recordings to check the fraction, whether to cap the cascade to near
               trains, and that it keeps TfL's order (a junction can swap two trains).
+              A full day's recordings (peak, midday, evening, 15 hubs) are in
+              `dev-docs/arrivals-measurements.md`: 100 s for Victoria, Northern and Central, a
+              90 s floor for Piccadilly, Bakerloo, Circle and Hammersmith & City, Jubilee and the
+              Elizabeth line left as TfL gives them (Metropolitan and District too, until measured). Next: measure how late trains come after
+              their last shown time, to size a grace before a train leaves the board, and test the
+              duplicate signals listed there.
         - [ ] **Tell a doubtful train from a real one** (maintainer, 2026-10-11): keep collecting
               reports (each mark is logged with the feed's train ids) against what the station display
               showed, and hide a doubtful train outright only once a rule separates the two.
