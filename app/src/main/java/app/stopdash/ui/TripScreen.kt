@@ -2868,11 +2868,13 @@ internal const val SHOWN_SLACK_MINUTES = 1
  * How TalkBack reads a first-leg train: plain when [catchable]; "can't catch" when it leaves before the
  * rider can board at [reachable], whether or not its route is still [checking]; "checking route" for
  * one the rider could reach whose route isn't vouched for yet; "can't catch" otherwise. A catchable
- * train that may not be running ([Departure.mayNotRun]) says so.
+ * train that may not be running ([Departure.mayNotRun]) says so, and one whose time was moved to space
+ * bunched trains ([Departure.spaced]) says its time is uncertain.
  */
 @StringRes
 internal fun trainDescription(train: Departure, catchable: Boolean, checking: Boolean, reachable: Instant): Int = when {
     catchable && train.mayNotRun -> R.string.trip_train_doubtful_description
+    catchable && train.spaced -> R.string.trip_train_uncertain_description
     catchable -> R.string.trip_train_description
     checking && !train.expectedArrival.isBefore(reachable) -> R.string.trip_train_checking_description
     else -> R.string.trip_train_unusable_description
@@ -2890,7 +2892,7 @@ internal fun destinationsLadder(names: List<String>): List<String> = listOf(
 ).distinct()
 
 /**
- * "3 · 11 min" in time order, trains the rider can't use grayed, and one that may not run too
+ * "3 · 11 min" in time order, trains the rider can't use grayed, and a doubtful or re-timed one too
  * ([Departure.grayed]); "Loading" while the boarding stop's
  * arrivals haven't been fetched yet ([loading]); "–" with none StopDash can vouch for.
  */

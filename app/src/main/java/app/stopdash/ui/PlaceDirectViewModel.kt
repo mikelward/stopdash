@@ -116,8 +116,8 @@ class PlaceDirectViewModel(
         val notice: String? = null,
         val endIds: Set<String> = emptySet(),
         val endKey: String = "",
-        // [times] train by train, worked out with it, so the row grays one that may not run and says so
-        // without walking the departures in composition.
+        // [times] train by train, worked out with it, so the row grays a doubtful or re-timed one and
+        // says so without walking the departures in composition.
         val parts: List<Countdown.Part> = emptyList(),
         // Whether any of them is grayed, so the row checks a flag rather than the list.
         val grayed: Boolean = false,

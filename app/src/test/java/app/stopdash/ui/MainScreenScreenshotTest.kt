@@ -60,6 +60,7 @@ import app.stopdash.domain.ChipLabel
 import app.stopdash.domain.CollapsedPlaces
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Departure
+import app.stopdash.domain.DoubtfulTrains
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DismissedAlert
@@ -79,6 +80,7 @@ import app.stopdash.domain.RouteSequenceSource
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.SpacedTrains
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopAreaSource
 import app.stopdash.domain.StopArrivals
@@ -253,6 +255,26 @@ class MainScreenScreenshotTest {
         // D8): the Underground and Overground stops share the place name and split by platform.
         composeRule.onNodeWithText("– Platform 1", substring = true).assertExists()
         composeRule.onNodeWithText("– Platform 6", substring = true).assertExists()
+    }
+
+    @Test
+    fun `bunched trains are spaced out and grayed, and said so`() {
+        // A Victoria line queue as TfL times it, 70 · 100 · 230 s, worked as arrivals are: the first two
+        // 30 s apart (either may not come, the later too close to be believed), then spaced 100 s apart.
+        val raw = listOf(
+            dep("victoria", "Victoria", "outbound", "Brixton", 70, "Southbound - Platform 5"),
+            dep("victoria", "Victoria", "outbound", "Brixton", 100, "Southbound - Platform 5"),
+            dep("victoria", "Victoria", "outbound", "Brixton", 230, "Southbound - Platform 5"),
+        )
+        val worked = SpacedTrains.space(DoubtfulTrains.mark(raw, now).departures, now).departures
+        val euston = StopArrivals("940GZZLUEUS", "Euston", worked, fetchedAt = now, clusterId = "940GZZLUEUS")
+        capture("main-spaced-trains.png") {
+            MainScreen(DeparturesUiState.Loaded(listOf(euston), now), now, {})
+        }
+        // 1 · 2 · 4 min, every one grayed: the first two may not run, the third is re-timed.
+        composeRule.onNodeWithText("1 · 2 · 4 min").assertExists()
+        composeRule.onNodeWithContentDescription("1 min, may not be running, 2 min, may not be running, 4 min, time uncertain")
+            .assertExists()
     }
 
     @Test
