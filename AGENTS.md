@@ -257,8 +257,8 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   Prefer a relative delay. **Read `mergeable_state` at every scheduled check, PR-event
   wake and drive step**: `dirty` or `behind` (where the ruleset requires up-to-date
   branches) → fetch main by refspec (*Sync before you start*), rebase onto the fresh
-  `origin/main`, and lease-guarded force-push at once, unasked, unless Codex has already
-  +1'd the head (*Working with PRs*). A base move sends no event, so this read is the only
+  `origin/main`, and lease-guarded force-push at once, unasked, a +1'd head included: the
+  merge needs it (*Working with PRs*). A base move sends no event, so this read is the only
   signal. Before that push, confirm you hold every commit on the remote head and it hasn't
   moved; if you can't tell, ask. Settle a fired check first and end each turn with exactly
   one, naming the PR, not a SHA. Merged/closed → one last reply-and-resolve pass (real
@@ -315,10 +315,11 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   `get_comments`, and `get_reviews` to the last page. A pending `codex` status with nothing
   left to address gets one `@codex review` poke five minutes after the last review,
   rebuttal or push; escalate rather than poke twice.
-- **Once Codex has +1'd a PR's head, leave the PR alone** (maintainer, 2026-10-13): no push,
-  no rebase for a moved base, no to-do or tidy-up. Every push re-runs CI and Codex for
-  nothing. Anything more goes in a follow-up PR; if the merge truly needs a push (a conflict),
-  ask first.
+- **Once Codex has +1'd a PR's head, never make an unnecessary change to it without asking
+  first** (maintainer, 2026-10-13): a to-do, tidy-up or extra fix re-runs CI and Codex for
+  nothing, so it waits for a yes or goes in a follow-up PR. A necessary change goes ahead
+  unasked — a rebase for a `dirty` branch, or a `behind` one where the ruleset requires it up
+  to date, a fix for red CI — and so does drive or autopilot, where in effect.
 - **Report each review in chat** — the commit it read, the finding count, one bullet per
   finding, most blocking first (what it claims, where, what you did). Refresh the PR
   title/body with each push (body first, then push) to describe the branch's latest state.
