@@ -24,6 +24,7 @@ import app.stopdash.domain.HeadingFilter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 /**
  * Which way the phone faces, for the walk's arrow (SPEC *On the way*): degrees clockwise from north,
@@ -67,9 +68,11 @@ internal object PhoneHeading {
 
     /**
      * Passes [emit] each steadied heading from the rotation-vector sensor until cancelled, null when the
-     * compass turns unreliable; returns at once, having emitted nothing, on a phone without one.
+     * compass turns unreliable; returns at once, having emitted nothing, on a phone without one. Each
+     * change between drawing the arrow and withholding it is logged with its reason ([log]), once per
+     * change rather than per reading, so a report says why a walk showed no arrow.
      */
-    suspend fun readings(context: Context, rotation: Int, emit: (Float?) -> Unit) {
+    suspend fun readings(context: Context, rotation: Int, log: (String) -> Unit = { StopdashDebugLog.info("compass: %s", it) }, emit: (Float?) -> Unit) {
         val manager = context.getSystemService(SensorManager::class.java) ?: return
         val sensor = manager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
         if (sensor == null) {
@@ -80,13 +83,22 @@ internal object PhoneHeading {
         val filter = HeadingFilter()
         val matrix = FloatArray(9)
         val remapped = FloatArray(9)
+        // The last kind of state logged, so a sensor reporting many times a second logs only a change of
+        // kind: an error drifting from 60° to 61° is the same withholding, not a new line.
+        var state: String? = null
+        fun note(kind: String, message: String) {
+            if (kind != state) log(message).also { state = kind }
+        }
         val listener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
-                if (event.accuracy == SensorManager.SENSOR_STATUS_UNRELIABLE || !Compass.headingUsable(event.values.getOrNull(4))) {
+                val withheld = withheldReason(event.accuracy, event.values.getOrNull(4))
+                if (withheld != null) {
+                    note(withheld.first, withheld.second)
                     filter.reset()
                     emit(null)
                     return
                 }
+                note("shown", "arrow shown")
                 SensorManager.getRotationMatrixFromVector(matrix, event.values)
                 val (x, y) = axes(rotation)
                 SensorManager.remapCoordinateSystem(matrix, x, y, remapped)
@@ -107,6 +119,23 @@ internal object PhoneHeading {
             manager.unregisterListener(listener)
             thread.quitSafely()
         }
+    }
+
+    /**
+     * Why a reading draws no arrow, as a kind (what a log line is deduplicated on) and its message, or null
+     * where it draws one: the sensor calling itself unreliable, an error it can't state (NaN or +∞),
+     * or an error past [Compass.MAX_HEADING_ERROR_DEGREES], in whole degrees but never down to the limit
+     * itself. Each cause its own kind, so a change from one to another is logged (Codex, #817). Whether
+     * the arrow is drawn is [Compass.headingUsable]'s alone, unchanged here: any negative error, −∞
+     * included, is the sensor saying it has no estimate, and draws it.
+     */
+    internal fun withheldReason(accuracy: Int, errorRadians: Float?): Pair<String, String>? {
+        if (accuracy == SensorManager.SENSOR_STATUS_UNRELIABLE) return "unreliable" to "arrow withheld, sensor unreliable"
+        if (Compass.headingUsable(errorRadians)) return null
+        if (!errorRadians!!.isFinite()) return "invalid" to "arrow withheld, heading error not a number"
+        val limit = Compass.MAX_HEADING_ERROR_DEGREES.roundToInt()
+        val degrees = Math.toDegrees(errorRadians.toDouble()).roundToInt().coerceAtLeast(limit + 1)
+        return "error" to "arrow withheld, heading error $degrees° over $limit°"
     }
 
     // The device axes that stand for the screen's x and y at [rotation].
