@@ -22,7 +22,8 @@ import java.text.Normalizer
  * - [StationMatchTier.Fuzzy]: the query's letters appear in order from the name's first letter
  *   ("bm" and "brtmus" find British Museum).
  * There is no Anchored tier: without word starts in the key, word-initial queries rank as Fuzzy.
- * Ties go to the more prominent entry (its build-time rank), then the shorter name.
+ * Ties go to a well-known place (Wikipedia covers it widely, [NOTABLE_RANK]), then an exact name,
+ * then the more prominent entry (its build-time rank), then the nearer.
  */
 class PlaceIndex private constructor(
     private val names: ByteArray,
@@ -69,10 +70,12 @@ class PlaceIndex private constructor(
         val q = fold(query)
         if (q.size < MIN_QUERY_LENGTH || limit <= 0) return emptyList()
         val prefixOnly = q.size < LOOSE_QUERY_LENGTH || only == Kind.POSTCODE
-        // The best [limit] so far, worst at the head, by a packed score: tier, then whether the name is
-        // exactly what's typed, then how well known the place is (its rank), then distance from [near]
-        // (maintainer, 2026-10-12). A name's length isn't a measure of a match: "St Paul's Cathedral"
-        // shouldn't lose to a shorter, lesser "St Paul's Church".
+        // The best [limit] so far, worst at the head, by a packed score: tier, then whether Wikipedia
+        // covers the place widely (maintainer, 2026-10-13: a church named just "St Paul" mustn't lead
+        // "st paul" past the cathedral), then whether the name is exactly what's typed, then how well
+        // known the place is (its rank), then distance from [near] (maintainer, 2026-10-12). A name's
+        // length isn't a measure of a match: "St Paul's Cathedral" shouldn't lose to a shorter, lesser
+        // "St Paul's Church".
         val best = java.util.PriorityQueue<Long>(limit + 1, compareByDescending { it })
         val onlyKind = only?.ordinal?.toByte()
         val exceptKind = except?.ordinal?.toByte()
@@ -87,7 +90,8 @@ class PlaceIndex private constructor(
             val the = startsWithThe(i)
             val tier = tierOf(q, start, end, prefixOnly, the) ?: continue
             val inexact = if (isExact(q, start, end, the)) 0L else 1L
-            val score = (tier.toLong() shl 56) or (inexact shl 52) or ((MAX_RANK - ranks[i]).toLong() shl 48) or
+            val obscure = if (ranks[i] >= NOTABLE_RANK) 0L else 1L
+            val score = (tier.toLong() shl 56) or (obscure shl 53) or (inexact shl 52) or ((MAX_RANK - ranks[i]).toLong() shl 48) or
                 (distanceStep(i, nearLat, nearLon) shl 20) or i.toLong()
             if (best.size < limit) {
                 best.add(score)
