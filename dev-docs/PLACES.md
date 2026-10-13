@@ -182,6 +182,9 @@ machine for an hour or so each time, or a dependency on an outside dump.
 
 ## Measured sizes (bundled index, 2026-10-11)
 
+The Overture build the index shipped first, kept for comparison; what ships now is *Measured sizes
+(OpenStreetMap)* below, and the cleaning and ranking rules described here went with it.
+
 Measured from **Overture Maps** (release 2026-09-23) and **OS Code-Point Open**. Overture's
 features are taken from a rectangle around Greater London (longitude −0.51 to 0.34, latitude 51.28
 to 51.70), so they include a fringe outside the boundary (Watford, Dartford, Epsom). That is
@@ -286,10 +289,44 @@ Museum. The data still needs work at build time:
   the substring tier, and the first-letter scan for the fuzzy tier, are the parts to benchmark
   on a low-end phone.
 
+## Measured sizes (OpenStreetMap, 2026-10-13)
+
+What ships since the switch to OpenStreetMap only: Geofabrik's extracts of Greater London, Surrey,
+Kent, Essex, Hertfordshire, Buckinghamshire and Berkshire (dated 2026-10-12, 361 MB to download),
+clipped to the same rectangle. The build reads them in about a minute in 0.5 GB of memory; asking
+Wikidata about each item a place names takes the rest of its under three minutes.
+
+| Kind | Entries | Raw | gzip -9 |
+|---|---:|---:|---:|
+| Places | 117,806 | 6.5 MB | 1.8 MB |
+| Streets, with neighborhoods | 77,967 | 3.9 MB | 1.1 MB |
+| Postcodes (Code-Point Open, unchanged) | 213,011 | 6.6 MB | 1.7 MB |
+| **All** | 408,784 | 17.0 MB | **4.5 MB** |
+
+Against Overture's tier B (178,690 places), that's about a third fewer places, nearly all of them
+businesses: 90,172 places rank 2 (shops, cafes, offices), 26,608 rank 7 (public places), and 1,026
+rank 8 or 9 through the Wikipedia coverage of the item they name. Every landmark the Overture spot
+check found (Tate Modern, the National Theatre, the British Museum, Westminster Abbey, the London
+Aquatics Centre, St Paul's Cathedral) is there once, at rank 9, with no stray copies.
+
+The cleaning is different in kind: no confidence filter and no check-in copies to drop. What's left:
+
+- **A place mapped twice** (a point inside its outline, a school's site and its building, a gallery's
+  shop named for the gallery) is listed once: the same name within 25 m, a public place's same name
+  and tag within 250 m, or any same-named object within 250 m of a place naming its Wikidata item.
+- **A chain's item**: a mapper sometimes tags a branch with the company's Wikidata item. An item on a
+  business whose name or item recurs more than 250 m away, or one the same as its `brand:wikidata`,
+  is the brand's and ranks nothing. Public places are exempt, so a department store's or park's
+  several outlines keep theirs.
+- **A church named for its saint alone** ("St Paul") is an exact match for "st paul", which once
+  ranked above the cathedral: the search now puts a place Wikipedia covers widely ahead of a lesser
+  exact name (maintainer, 2026-10-13).
+
 ## OpenStreetMap or Overture for the bundled index?
 
 The sizes above were measured from Overture, because the OpenStreetMap extract (Geofabrik) wasn't
-reachable from the sandbox.
+reachable from the cloud sandbox at first. It still isn't (2026-10-13: Geofabrik resets every connection
+from it), so the build runs where Geofabrik is reachable: a contributor's machine, or CI.
 
 | | OpenStreetMap | Overture places |
 |---|---|---|
@@ -303,9 +340,15 @@ reachable from the sandbox.
 Overture's streets already come from OpenStreetMap, so the index carries an ODbL obligation either
 way.
 
-**Likely best: both.** OpenStreetMap for public places, streets and house numbers; Overture for
-businesses (confidence ≥ 0.9). That changes only the build script; the on-device index and its
-search stay as they are. It needs measuring once the extract is reachable.
+**Decided: OpenStreetMap only** (maintainer, 2026-10-13). The index first shipped from Overture, and
+its check-in copies (a famous museum listed at people's homes, a park ten times over) were the cost
+that decided it: they needed heuristics to clean up, and the cleanup itself moved real places
+kilometers when it matched by name. OpenStreetMap has none of that, and ranks through the `wikidata`
+tag each place carries rather than by matching names. Businesses are thinner, the price taken. The
+build reads Geofabrik's extracts of Greater London and the six counties the box reaches; only the
+build script changed, and the on-device index and its search stay as they are. The measurements of
+that build are in *Measured sizes (OpenStreetMap)* below; the Overture ones above are kept for
+comparison.
 
 ## How each option fits the fuzzy search
 

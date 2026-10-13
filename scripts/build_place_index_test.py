@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for build_place_index's selection, against hand-written rows (no network).
+"""Tests for build_place_index's selection, against hand-written rows (no network, no osmium).
 
 Synthetic names and positions near central London only (AGENTS.md *Privacy*): no real address."""
 import os
@@ -8,9 +8,9 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from build_place_index import (  # noqa: E402
-    AREA_RADIUS_METERS, DUPLICATE_METERS, area_grid, cell_of, match_key, meters_apart, near_cells, postcode_text, rank_of, render,
-    ODBL_NOTICE, Notable, display_name, foursquare_license, foursquare_notice, from_osm_only, parse_wikidata, parse_wikipedia_counts, query_service, select_places, with_wikipedia_counts, select_postcodes,
-    select_streets,
+    AREA_RADIUS_METERS, DUPLICATE_METERS, ODBL_NOTICE, area_grid, cell_of, display_name, geofabrik_md5, is_street,
+    match_key, meters_apart, near_cells, parse_wikipedia_counts, place_item, place_of, polygon_centroid, postcode_text,
+    query_service, render, select_places, select_postcodes, select_streets, wikidata_id, wikipedia_editions,
 )
 
 AT = (51.5, -0.12)
@@ -18,207 +18,213 @@ AT = (51.5, -0.12)
 NEAR = (51.5010, -0.12)     # ~110 m north
 MID = (51.5050, -0.12)      # ~560 m north
 FAR = (51.5300, -0.12)      # ~3.3 km north
-BEYOND = (51.5110, -0.12)   # ~1.2 km north, past a Wikidata item's reach
 
 
-def place(name, category="museum", confidence=1.0, at=AT, status=None, meta_only=True):
-    return (name, category, confidence, status, at[0], at[1], meta_only)
+def place(name, category="tourism=museum", public=True, at=AT, item=None, size=0.0):
+    return (name, category, public, at[0], at[1], item, size)
 
 
 def names(selected):
     return sorted(p[0] for p in selected)
 
 
+class PlaceOfTest(unittest.TestCase):
+    def test_public_places_and_businesses(self):
+        self.assertEqual(("tourism=museum", True), place_of({"name": "Alpha", "tourism": "museum"}))
+        self.assertEqual(("leisure=park", True), place_of({"name": "Alpha", "leisure": "park"}))
+        self.assertEqual(("office=diplomatic", True), place_of({"name": "Alpha", "office": "diplomatic"}))
+        self.assertEqual(("shop=department_store", True), place_of({"name": "Alpha", "shop": "department_store"}))
+        self.assertEqual(("amenity=cafe", False), place_of({"name": "Alpha", "amenity": "cafe"}))
+        self.assertEqual(("shop=bakery", False), place_of({"name": "Alpha", "shop": "bakery"}))
+        self.assertEqual(("office=company", False), place_of({"name": "Alpha", "office": "company"}))
+
+    def test_a_public_tag_wins_over_a_business_one(self):
+        # A museum with a gift shop is the museum; a hotel with a restaurant is the hotel.
+        self.assertEqual(("tourism=museum", True), place_of({"name": "A", "shop": "gift", "tourism": "museum"}))
+        self.assertEqual(("tourism=hotel", True), place_of({"name": "A", "amenity": "restaurant", "tourism": "hotel"}))
+
+    def test_unnamed_closed_and_non_destinations_are_not_places(self):
+        self.assertIsNone(place_of({"tourism": "museum"}))
+        self.assertIsNone(place_of({"name": "A", "shop": "vacant"}))
+        self.assertIsNone(place_of({"name": "A", "amenity": "cafe", "disused": "yes"}))
+        self.assertIsNone(place_of({"name": "A", "amenity": "parking"}))
+        self.assertIsNone(place_of({"name": "A", "amenity": "bicycle_rental"}))
+        self.assertIsNone(place_of({"name": "A", "highway": "residential"}))
+
+    def test_stations_and_stops_come_from_the_station_index(self):
+        self.assertIsNone(place_of({"name": "A", "railway": "station", "building": "train_station", "wikidata": "Q1"}))
+        self.assertIsNone(place_of({"name": "A", "public_transport": "station", "shop": "kiosk"}))
+        self.assertIsNone(place_of({"name": "A Pier", "amenity": "ferry_terminal", "man_made": "pier"}))
+
+    def test_a_plaque_is_no_destination_but_a_war_memorial_is(self):
+        self.assertIsNone(place_of({"name": "A", "historic": "memorial", "memorial": "plaque"}))
+        self.assertEqual(("historic=memorial", True), place_of({"name": "A", "historic": "memorial", "memorial": "war_memorial"}))
+
+    def test_a_named_building_is_a_place_only_when_it_names_its_wikidata_item(self):
+        self.assertIsNone(place_of({"name": "Alpha House", "building": "residential"}))
+        self.assertEqual(("building=yes", True), place_of({"name": "Alpha Tower", "building": "yes", "wikidata": "Q42"}))
+
+
+    def test_a_stations_structures_are_not_places(self):
+        # A station's bus stand under a roof would lead a search for the station itself.
+        for kind in ("roof", "bus_garage", "depot", "disused_station"):
+            self.assertIsNone(place_of({"name": "Alpha Station Bus Stand", "building": kind, "wikidata": "Q1"}), kind)
+
+    def test_a_station_building_is_a_station(self):
+        self.assertIsNone(place_of({"name": "Alpha Station", "building": "train_station", "wikidata": "Q1"}))
+        self.assertIsNone(place_of({"name": "Alpha Station", "building": "transportation", "wikidata": "Q1"}))
+
+
+class PlaceItemTest(unittest.TestCase):
+    def test_a_place_is_the_item_it_names(self):
+        self.assertEqual("Q1", place_item({"wikidata": "Q1"}))
+        self.assertEqual("Q1", place_item({"wikidata": "Q1", "brand:wikidata": "Q2"}))
+        self.assertIsNone(place_item({"brand:wikidata": "Q2"}))
+
+    def test_a_branch_tagged_with_its_brands_item_isnt_that_item(self):
+        self.assertIsNone(place_item({"wikidata": "Q2", "brand:wikidata": "Q2"}))
+
+
+class StreetTest(unittest.TestCase):
+    def test_named_highways_are_streets(self):
+        for kind in ("residential", "primary", "footway", "service", "pedestrian", "steps"):
+            self.assertTrue(is_street({"name": "Alpha Road", "highway": kind}), kind)
+
+    def test_not_streets(self):
+        self.assertFalse(is_street({"highway": "residential"}))
+        self.assertFalse(is_street({"name": "Alpha Road", "highway": "proposed"}))
+        self.assertFalse(is_street({"name": "Platform 1", "highway": "platform"}))
+        self.assertFalse(is_street({"name": "Alpha Corridor", "highway": "corridor"}))
+        self.assertFalse(is_street({"name": "Alpha Square", "highway": "pedestrian", "area": "yes"}))
+        self.assertFalse(is_street({"name": "Alpha Line", "railway": "rail"}))
+
+
+class WikidataIdTest(unittest.TestCase):
+    def test_reads_an_item(self):
+        self.assertEqual("Q42", wikidata_id("Q42"))
+        self.assertEqual("Q42", wikidata_id(" Q42;Q7 "))
+        self.assertIsNone(wikidata_id(None))
+        self.assertIsNone(wikidata_id("q42"))
+        self.assertIsNone(wikidata_id("Q0"))
+        self.assertIsNone(wikidata_id("https://www.wikidata.org/wiki/Q42"))
+
+
+class CentroidTest(unittest.TestCase):
+    def square(self, lat, lon, d):
+        return [(lat, lon), (lat, lon + d), (lat + d, lon + d), (lat + d, lon), (lat, lon)]
+
+    def test_a_squares_middle(self):
+        lat, lon, size = polygon_centroid([self.square(51.5, -0.12, 0.002)])
+        self.assertAlmostEqual(51.501, lat, places=6)
+        self.assertAlmostEqual(-0.119, lon, places=6)
+        self.assertAlmostEqual(0.002 * 111_320 * 0.002 * 69_400, size, delta=1)
+
+    def test_a_hole_moves_the_middle_away_from_it(self):
+        outer = self.square(51.5, -0.12, 0.004)
+        hole = self.square(51.5, -0.12, 0.002)  # the south-west quarter
+        lat, lon, size = polygon_centroid([outer], [hole])
+        self.assertGreater(lat, 51.502)
+        self.assertGreater(lon, -0.118)
+        self.assertAlmostEqual(0.75 * 0.004 * 111_320 * 0.004 * 69_400, size, delta=1)
+
+    def test_rings_with_no_area_give_their_points_mean(self):
+        lat, lon, size = polygon_centroid([[(51.5, -0.12), (51.502, -0.12), (51.5, -0.12)]])
+        self.assertAlmostEqual(51.500667, lat, places=5)
+        self.assertEqual(0.0, size)
+
+    def test_no_points_is_no_centroid(self):
+        self.assertIsNone(polygon_centroid([]))
+
+
 class SelectPlacesTest(unittest.TestCase):
-    def test_public_places_need_less_confidence_than_other_places(self):
-        rows = [place("Alpha Park", "park", 0.75), place("Beta Cafe", "cafe", 0.75), place("Gamma Cafe", "cafe", 0.95)]
-        self.assertEqual(["Alpha Park", "Gamma Cafe"], names(select_places(rows)))
+    def test_the_same_place_mapped_twice_at_one_spot_is_kept_once(self):
+        # A point inside a building outline, whatever each is tagged as.
+        rows = [place("Alpha Hall", "amenity=theatre"), place("Alpha Hall", "amenity=arts_centre", at=(51.50005, -0.12))]
+        self.assertEqual(["Alpha Hall"], names(select_places(rows)))
 
-    def test_closed_unnamed_and_non_destination_places_are_left_out(self):
-        rows = [place("Alpha Hall", status="permanently_closed"), place("", "museum"), place("Beta Car Park", "parking"),
-                place("Gamma Station", "train_station")]
-        self.assertEqual([], select_places(rows))
+    def test_a_public_places_site_and_building_are_one_place(self):
+        rows = [place("Gamma School", "amenity=school", size=9000.0), place("Gamma School", "amenity=school", at=NEAR)]
+        selected = select_places(rows)
+        self.assertEqual(["Gamma School"], names(selected))
+        self.assertEqual(AT[0], selected[0][2], "the larger object is kept")
 
-    def test_a_nearby_listing_of_the_same_place_merges_into_the_more_confident_one(self):
-        rows = [place("Alpha Gallery", confidence=0.95, at=NEAR), place("The Alpha Gallery", confidence=1.0),
-                place("Alpha Gallery London UK", confidence=0.9, at=NEAR)]
-        self.assertEqual(["The Alpha Gallery"], names(select_places(rows)))
-
-    def test_a_longer_name_nearby_merges_only_within_its_own_category(self):
-        rows = [place("Alpha Gallery"), place("Alpha Gallery Cafe", "cafe", 0.95, at=NEAR),
-                place("Alpha Gallery Museum", "museum", 0.95, at=NEAR)]
-        self.assertEqual(["Alpha Gallery", "Alpha Gallery Cafe"], names(select_places(rows)))
-
-    def test_one_listing_under_two_categories_is_kept_once(self):
-        rows = [place("Alpha Hall", "music_venue", 1.0), place("Alpha Hall", "theatre_venue", 0.95, at=(51.50005, -0.12)),
-                place("Alpha Hall", "cafe", 0.95, at=MID, meta_only=False)]
-        self.assertEqual(["Alpha Hall", "Alpha Hall"], names(select_places(rows)), "the one 560 m off is another place")
-
-    def test_duplicates_two_small_cells_apart_still_merge(self):
-        # About 240 m apart north-south: over a 159 m cell boundary twice, under DUPLICATE_METERS.
-        rows = [place("Gamma School", "specialty_school", 0.95), place("Gamma School", "specialty_school", 0.95, at=(51.50216, -0.12))]
-        self.assertEqual(["Gamma School"], names(select_places(rows)))
-
-    def test_far_apart_branches_of_a_business_are_all_kept(self):
-        rows = [place("Delta Store", "convenience_store", 0.95), place("Delta Store", "convenience_store", 0.95, at=MID),
-                place("Delta Store", "convenience_store", 0.95, at=FAR)]
+    def test_nearby_branches_of_a_business_are_all_kept(self):
+        rows = [place("Delta Store", "shop=convenience", False), place("Delta Store", "shop=convenience", False, at=NEAR),
+                place("Delta Store", "shop=convenience", False, at=FAR)]
         self.assertEqual(3, len(select_places(rows)))
 
-    def test_a_landmarks_same_named_copy_goes_wherever_it_is(self):
-        rows = [place("The Alpha Museum", confidence=1.0), place("Alpha Museum", confidence=0.95, at=MID),
-                place("Alpha Museum", confidence=0.95, at=FAR)]
-        self.assertEqual(["The Alpha Museum"], names(select_places(rows)))
-
-    def test_a_landmarks_longer_named_listing_stays_nearby_and_goes_far_away(self):
-        rows = [place("Alpha Museum", confidence=1.0), place("Alpha Museum Archives", confidence=0.9, at=MID),
-                place("Alpha Museum Of Art", confidence=0.9, at=FAR)]
-        self.assertEqual(["Alpha Museum", "Alpha Museum Archives"], names(select_places(rows)))
-
-    def test_a_landmark_without_its_apostrophe_is_neither_named_nor_started_by_one_with_it(self):
-        # Across London, "Omega Pauls" isn't "Omega Paul's" (a store spelled one way, a gallery the
-        # other), and doesn't start "Omega Paul's Church": each is another place.
-        rows = [place("Omega Pauls", confidence=1.0), place("Omega Paul's", "clothing_store", 0.9, at=FAR),
-                place("Omega Paul's Church", "christian_place_of_worship", 0.9, at=FAR)]
-        self.assertEqual(["Omega Paul's", "Omega Paul's Church", "Omega Pauls"], names(select_places(rows)))
-        # The same with a curly apostrophe, as many listings write it.
-        curly = [place("Omega Pauls", confidence=1.0), place("Omega Paul\u2019s Church", "christian_place_of_worship", 0.9, at=FAR)]
-        self.assertEqual(["Omega Pauls", "Omega Paul\u2019s Church"], names(select_places(curly)))
-        for mark in "\u2018\u02bc`":
-            other = [place("Omega Pauls", confidence=1.0), place(f"Omega Paul{mark}s Church", "christian_place_of_worship", 0.9, at=FAR)]
-            self.assertEqual(2, len(select_places(other)), mark)
-
-    def test_copies_another_source_vouches_for_are_branches_and_stay(self):
-        spots = [(51.5 + i * 0.02, -0.12) for i in range(8)]
-        rows = [place("Zeta Gallery", "art_gallery", 1.0 if i == 0 else 0.95, at=s, meta_only=False) for i, s in enumerate(spots)]
-        self.assertEqual(8, len(select_places(rows)))
-
-    def test_a_landmarks_many_stray_pages_go_whatever_their_category(self):
-        # A famous hall with a dozen Meta pages across London, filed under any category.
-        spots = [(51.40 + i * 0.02, -0.12) for i in range(12)]
-        rows = [place("Omega Hall", "music_venue", 0.996, at=(51.62, -0.12))]
-        rows += [place("Omega Hall", category, 0.9, at=s) for s, category in
-                 zip(spots, ["arts_and_entertainment", "bar", "movie_theater", "music_venue"] * 3)]
-        self.assertEqual([(51.62, -0.12)], [(p[2], p[3]) for p in select_places(rows)])
-
-    def test_a_more_confident_listing_than_the_landmark_isnt_dropped(self):
-        rows = [place("Omega Hall", "music_venue", 0.99), place("Omega Hall", "bar", 0.995, at=FAR)]
+    def test_same_named_public_places_far_apart_are_two_places(self):
+        rows = [place("St Omega's Church", "amenity=place_of_worship"), place("St Omega's Church", "amenity=place_of_worship", at=MID)]
         self.assertEqual(2, len(select_places(rows)))
 
-    def test_a_far_copy_stays_when_no_listing_is_confident_enough_to_be_the_landmark(self):
-        rows = [place("Alpha Museum", confidence=0.95), place("Alpha Museum", confidence=0.95, at=FAR)]
-        self.assertEqual(2, len(select_places(rows)))
+    def test_a_place_and_another_named_for_it_are_two_places(self):
+        rows = [place("Alpha Museum"), place("Alpha Museum Cafe", "amenity=cafe", False, at=NEAR)]
+        self.assertEqual(["Alpha Museum", "Alpha Museum Cafe"], names(select_places(rows)))
 
-    def test_rank_puts_public_places_above_others_whatever_the_confidence(self):
-        self.assertEqual(rank_of("museum"), rank_of("park"))
-        self.assertGreater(rank_of("christian_place_of_worship"), rank_of("cafe"))
-        ranks = {name: rank for name, _, _, _, rank in select_places([place("Alpha Park", "park", 0.7), place("Beta Cafe", "cafe", 1.0, at=FAR)])}
-        self.assertGreater(ranks["Alpha Park"], ranks["Beta Cafe"])
+    def test_rank_puts_public_places_above_others(self):
+        ranks = {n: r for n, _, _, _, r in select_places([place("Alpha Park", "leisure=park"), place("Beta Cafe", "amenity=cafe", False, at=FAR)])}
+        self.assertEqual({"Alpha Park": 7, "Beta Cafe": 2}, ranks)
+
+    def test_a_name_drops_where_it_says_it_is(self):
+        self.assertEqual(["Omega Park"], names(select_places([place("Omega Park, London", "leisure=park")])))
 
 
 class NotableTest(unittest.TestCase):
-    # Synthetic Wikidata items: (name, lat, lon, languages with an article).
-    notable = Notable([("Omega Cathedral", AT[0], AT[1], 70), ("Beta Chapel", AT[0], AT[1], 6), ("Gamma Hall", AT[0], AT[1], 2)])
+    editions = {"Q1": 70, "Q2": 6, "Q3": 2, "Q4": 40}
 
     def ranks(self, rows):
-        return {name: rank for name, _, _, _, rank in select_places(rows, self.notable)}
+        return {(n, lat): r for n, _, lat, _, r in select_places(rows, self.editions)}
 
     def test_a_place_wikipedia_covers_widely_ranks_above_other_public_places(self):
         ranks = self.ranks([
-            place("Omega Cathedral", "christian_place_of_worship", 0.95),
-            place("Beta Chapel", "christian_place_of_worship", 0.95, at=BEYOND),
-            place("Gamma Hall", "music_venue", 0.95, at=NEAR),
-            place("Delta Club", "bar", 0.95, at=(51.45, -0.12)),
+            place("Omega Cathedral", "amenity=place_of_worship", item="Q1"),
+            place("Beta Chapel", "amenity=place_of_worship", at=MID, item="Q2"),
+            place("Gamma Hall", "amenity=theatre", at=NEAR, item="Q3"),
+            place("Delta Club", "amenity=bar", False, at=FAR),
         ])
-        self.assertEqual({"Omega Cathedral": 9, "Beta Chapel": 7, "Gamma Hall": 7, "Delta Club": 2}, ranks)
+        self.assertEqual({("Omega Cathedral", AT[0]): 9, ("Beta Chapel", MID[0]): 8, ("Gamma Hall", NEAR[0]): 7,
+                          ("Delta Club", FAR[0]): 2}, ranks)
 
-    def test_a_shop_named_like_a_famous_thing_isnt_it(self):
-        self.assertEqual({"Omega Cathedral": 2}, self.ranks([place("Omega Cathedral", "fast_food_restaurant", 0.95)]))
+    def test_a_famous_shop_naming_its_own_item_is_famous(self):
+        self.assertEqual({("Omega Toys", AT[0]): 9}, self.ranks([place("Omega Toys", "shop=toys", False, item="Q4")]))
 
-    def test_prominence_needs_the_place_near_the_item(self):
-        near = self.ranks([place("Beta Chapel", "christian_place_of_worship", 0.95, at=NEAR)])
-        self.assertEqual({"Beta Chapel": 8}, near)
+    def test_a_chains_item_on_its_branches_ranks_none_of_them(self):
+        # Mappers sometimes tag every branch with the company's item: that's a brand, not a famous place.
+        rows = [place("Delta Burger", "amenity=fast_food", False, item="Q4"),
+                place("Delta Burger", "amenity=fast_food", False, at=MID, item="Q4")]
+        self.assertEqual({("Delta Burger", AT[0]): 2, ("Delta Burger", MID[0]): 2}, self.ranks(rows))
 
-    def test_a_big_sites_listing_takes_its_items_prominence_from_across_the_site(self):
-        # Kew Gardens' listing is 700 m from Wikidata's point for it.
-        self.assertEqual({"Beta Chapel": 8}, self.ranks([place("Beta Chapel", "park", 0.95, at=MID)]))
+    def test_a_chains_item_on_one_branch_ranks_it_no_higher_than_the_rest(self):
+        rows = [place("Delta Shoes", "shop=shoes", False, item="Q4"), place("Delta Shoes", "shop=shoes", False, at=FAR)]
+        self.assertEqual({("Delta Shoes", AT[0]): 2, ("Delta Shoes", FAR[0]): 2}, self.ranks(rows))
 
-    def test_a_place_named_for_an_area_isnt_the_area_from_across_it(self):
-        # A gym named "Greenwich" a few hundred meters from Greenwich's item took the area's prominence.
-        self.assertEqual({"Beta Chapel": 7}, self.ranks([place("Beta Chapel", "gym", 0.95, at=MID)]))
-        self.assertEqual({"Beta Chapel": 7}, self.ranks([place("Beta Chapel", "christian_place_of_worship", 0.95, at=MID)]))
+    def test_a_public_place_split_in_parts_keeps_its_items_prominence(self):
+        rows = [place("Omega Common", "leisure=common", item="Q1"), place("Omega Common", "leisure=common", at=FAR, item="Q1")]
+        self.assertEqual({("Omega Common", AT[0]): 9, ("Omega Common", FAR[0]): 9}, self.ranks(rows))
 
-    def test_only_the_nearest_of_a_names_listings_takes_its_prominence(self):
-        # Three "Buckingham Palace"s lay within 1 km of its item; the stray one, ranked with the
-        # palace, won for a rider starting nearer it.
-        ranks = sorted((p[2], p[4]) for p in select_places([
-            place("Omega Cathedral", "christian_place_of_worship", 0.95, at=NEAR),
-            place("Omega Cathedral", "park", 0.95, at=MID),
-        ], self.notable))
-        self.assertEqual([(NEAR[0], 9), (MID[0], 7)], ranks)
+    def test_a_place_naming_its_item_is_kept_over_a_copy_that_doesnt(self):
+        rows = [place("Alpha Hall", "amenity=theatre", size=500.0), place("Alpha Hall", "amenity=theatre", at=NEAR, item="Q1")]
+        self.assertEqual({("Alpha Hall", NEAR[0]): 9}, self.ranks(rows))
 
-    def test_a_listing_on_the_items_spot_takes_its_prominence_beside_the_nearest(self):
-        # A big site Overture files twice, both at it.
-        ranks = sorted((p[1], p[4]) for p in select_places([
-            place("Omega Cathedral", "christian_place_of_worship", 0.95),
-            place("Omega Cathedral", "landmark_and_historical_building", 0.95, at=NEAR),
-        ], self.notable))
-        self.assertEqual([("christian_place_of_worship", 9), ("landmark_and_historical_building", 9)], ranks)
+    def test_a_famous_places_other_objects_nearby_are_that_place(self):
+        # Its shop named for it, and a second outline tagged as an attraction.
+        rows = [place("Alpha Gallery", "tourism=gallery", item="Q1"), place("Alpha Gallery", "shop=books", False, at=NEAR),
+                place("Alpha Gallery", "tourism=attraction", at=NEAR), place("Alpha Gallery", "shop=books", False, at=MID)]
+        self.assertEqual({("Alpha Gallery", AT[0]): 9, ("Alpha Gallery", MID[0]): 2}, self.ranks(rows))
 
-    def test_a_landmark_overture_files_as_a_business_takes_its_prominence(self):
-        # Big Ben is a fountain, Somerset House a cultural center.
-        self.assertEqual({"Omega Cathedral": 9}, self.ranks([place("Omega Cathedral", "public_fountain", 0.95)]))
-        self.assertEqual({"Omega Cathedral": 9}, self.ranks([place("Omega Cathedral", "cultural_center", 0.95)]))
+    def test_reads_the_wikipedia_counts(self):
+        text = 'item,links\nhttp://www.wikidata.org/entity/Q1,40\nnot-an-item,3\nhttp://www.wikidata.org/entity/Q2,x\n'
+        self.assertEqual({"Q1": 40}, parse_wikipedia_counts(text))
 
-    def test_a_place_named_for_a_famous_one_doesnt_share_its_prominence(self):
-        self.assertEqual({"Omega Cathedral School": 7}, self.ranks([place("Omega Cathedral School", "place_of_learning", 0.95, at=NEAR)]))
-
-    def test_a_shops_far_branches_stay_however_famous_the_name(self):
-        # A chain's head office is a Wikidata item too: its shops elsewhere aren't copies of it.
-        notable = Notable([("Delta Store", AT[0], AT[1], 40)])
-        rows = [place("Delta Store", "grocery_store", 0.95), place("Delta Store", "grocery_store", 0.95, at=FAR)]
-        self.assertEqual(2, len(select_places(rows, notable)))
-
-    def test_wikidata_never_moves_a_listing_and_keeps_far_ones_outside_venue_categories(self):
-        # A church or a park far from a same-named item is another place, so it stays where Overture
-        # puts it; only the one beside the item takes its prominence.
-        notable = Notable([("Omega Cathedral", AT[0], AT[1], 70), ("Omega Park", AT[0], AT[1], 21)])
-        rows = [place("Omega Cathedral", "christian_place_of_worship", 0.95),
-                place("Omega Cathedral", "christian_place_of_worship", 0.95, at=FAR),
-                place("Omega Park", "park", 0.9, at=FAR)]
-        self.assertEqual(
-            sorted([("Omega Cathedral", AT[0], 9), ("Omega Cathedral", FAR[0], 7), ("Omega Park", FAR[0], 7)]),
-            sorted((p[0], p[2], p[4]) for p in select_places(rows, notable)),
-        )
-
-    def test_a_famous_venues_far_meta_only_copies_are_dropped(self):
-        # People check in to "O2 Arena" from all over London (maintainer, 2026-10-13).
-        notable = Notable([("Omega Arena", AT[0], AT[1], 37)])
-        rows = [place("Omega Arena", "stadium_arena", 0.95, at=NEAR),
-                place("Omega Arena", "music_venue", 0.95, at=FAR),
-                place("Omega Arena", "arts_and_entertainment", 0.95, at=(51.45, -0.12)),
-                place("Omega Arena", "movie_theater", 0.95, at=(51.55, -0.12))]
-        self.assertEqual([("Omega Arena", NEAR[0])], [(p[0], p[2]) for p in select_places(rows, notable)])
-
-    def test_a_far_copy_more_confident_than_the_real_venue_doesnt_displace_it(self):
-        notable = Notable([("Omega Arena", AT[0], AT[1], 37)])
-        rows = [place("Omega Arena", "stadium_arena", 0.95), place("Omega Arena", "stadium_arena", 1.0, at=FAR)]
-        self.assertEqual([("Omega Arena", AT[0])], [(p[0], p[2]) for p in select_places(rows, notable)])
-
-    def test_a_far_copy_stays_when_another_source_vouches_for_it_or_its_own_item_is_near(self):
-        notable = Notable([("Omega Arena", AT[0], AT[1], 37), ("Omega Arena", FAR[0], FAR[1], 3)])
-        rows = [place("Omega Arena", "music_venue", 0.95, at=FAR),
-                place("Omega Arena", "music_venue", 0.95, at=(51.45, -0.12), meta_only=False)]
-        self.assertEqual(2, len(select_places(rows, notable)))
-
-    def test_a_far_copy_of_a_less_famous_venue_stays(self):
-        # The Elizabethan Hope Theatre shares its name with a real fringe theatre across London.
-        notable = Notable([("Omega Arena", AT[0], AT[1], 19)])
-        self.assertEqual(1, len(select_places([place("Omega Arena", "music_venue", 0.95, at=FAR)], notable)))
-
-    def test_reads_the_query_services_csv(self):
-        text = ('item,name,loc,links\nhttp://www.wikidata.org/entity/Q1,Omega Cathedral,Point(-0.12 51.5),70\n'
-                'http://www.wikidata.org/entity/Q2,No Place,,3\nhttp://www.wikidata.org/entity/Q3,Bad Links,Point(-0.12 51.5),x\n')
-        self.assertEqual([("Omega Cathedral", 51.5, -0.12, 70, "http://www.wikidata.org/entity/Q1")], parse_wikidata(text))
+    def test_items_are_asked_in_batches_and_unanswered_ones_have_none(self):
+        asked = []
+        def count(ids):
+            asked.append(list(ids))
+            return {i: 5 for i in ids if i != "Q3"}
+        editions = wikipedia_editions([f"Q{i}" for i in range(1, 251)], count)
+        self.assertEqual([100, 100, 50], [len(a) for a in asked])
+        self.assertEqual(5, editions["Q1"])
+        self.assertNotIn("Q3", editions)
 
     def test_the_query_service_is_retried_when_it_asks_us_to_slow_down(self):
         import io as _io, urllib.error
@@ -227,20 +233,31 @@ class NotableTest(unittest.TestCase):
             calls.append(request)
             if len(calls) < 3:
                 raise urllib.error.HTTPError(request.full_url, 429, "Too Many Requests", {"Retry-After": "7"} if len(calls) == 1 else {}, None)
-            return _io.BytesIO(b"name,loc,links\n")
-        self.assertEqual("name,loc,links\n", query_service("q", urlopen=urlopen, sleep=pauses.append))
+            return _io.BytesIO(b"item,links\n")
+        self.assertEqual("item,links\n", query_service("q", urlopen=urlopen, sleep=pauses.append))
         self.assertEqual([7, 20], pauses)
+
+    def test_a_gateway_failure_is_asked_for_again(self):
+        import io as _io, urllib.error
+        calls, pauses = [], []
+        def urlopen(request, timeout):
+            calls.append(request)
+            if len(calls) == 1:
+                raise urllib.error.HTTPError(request.full_url, 502, "Bad Gateway", {}, None)
+            return _io.BytesIO(b"item,links\n")
+        self.assertEqual("item,links\n", query_service("q", urlopen=urlopen, sleep=pauses.append))
+        self.assertEqual([10], pauses)
 
     def test_a_cut_off_answer_is_asked_for_again(self):
         import http.client, io as _io
         calls, pauses = [], []
         class Cut:
             def read(self):
-                raise http.client.IncompleteRead(b"name,lo")
+                raise http.client.IncompleteRead(b"item,li")
         def urlopen(request, timeout):
             calls.append(request)
-            return Cut() if len(calls) == 1 else _io.BytesIO(b"name,loc,links\n")
-        self.assertEqual("name,loc,links\n", query_service("q", urlopen=urlopen, sleep=pauses.append))
+            return Cut() if len(calls) == 1 else _io.BytesIO(b"item,links\n")
+        self.assertEqual("item,links\n", query_service("q", urlopen=urlopen, sleep=pauses.append))
         self.assertEqual([10], pauses)
 
     def test_any_other_query_service_failure_fails_the_build(self):
@@ -249,26 +266,6 @@ class NotableTest(unittest.TestCase):
             raise urllib.error.HTTPError(request.full_url, 500, "Server Error", {}, None)
         with self.assertRaises(urllib.error.HTTPError):
             query_service("q", urlopen=urlopen, sleep=lambda s: self.fail("slept"))
-
-    def test_reads_the_wikipedia_counts(self):
-        text = 'item,links\nhttp://www.wikidata.org/entity/Q1,40\nnot-an-item,3\nhttp://www.wikidata.org/entity/Q2,x\n'
-        self.assertEqual({"Q1": 40}, parse_wikipedia_counts(text))
-
-    def test_prominence_counts_wikipedia_editions_not_every_sitelink(self):
-        # Q1 has 30 sitelinks but 12 Wikipedia editions; Q2's 4 sitelinks can't reach a threshold, so
-        # it isn't asked about; Q3 isn't answered for, so it has none.
-        rows = [("Omega Hall", 51.5, -0.12, 30, "http://www.wikidata.org/entity/Q1"),
-                ("Omega Shed", 51.5, -0.12, 4, "http://www.wikidata.org/entity/Q2"),
-                ("Omega Arch", 51.5, -0.12, 9, "http://www.wikidata.org/entity/Q3")]
-        asked = []
-        def count(ids):
-            asked.extend(ids)
-            return {"Q1": 12}
-        self.assertEqual(
-            [("Omega Hall", 51.5, -0.12, 12), ("Omega Shed", 51.5, -0.12, 0), ("Omega Arch", 51.5, -0.12, 0)],
-            with_wikipedia_counts(rows, count),
-        )
-        self.assertEqual(["Q1", "Q3"], asked)
 
 
 class MatchKeyTest(unittest.TestCase):
@@ -295,7 +292,7 @@ class MatchKeyTest(unittest.TestCase):
         self.assertEqual("Omega-Link-UK", display_name("Omega-Link-UK"))
         self.assertEqual("Omega Church", display_name("Omega Church-London"))
         self.assertEqual("Omega Church", display_name("Omega Church- UK"))
-        self.assertEqual("Omega Hall", display_name("Omega Hall \u2013 London"))
+        self.assertEqual("Omega Hall", display_name("Omega Hall – London"))
         self.assertEqual("City of Westminster", display_name("City of Westminster"))
         self.assertEqual("London, UK", display_name("London, UK"))
         self.assertEqual("London Borough of Omega", display_name("London Borough of Omega"))
@@ -308,6 +305,7 @@ class MatchKeyTest(unittest.TestCase):
 
     def test_an_apostrophe_joins_its_word(self):
         self.assertEqual(match_key("Saint Omega's Hall"), match_key("Saint Omegas Hall"))
+        self.assertEqual(match_key("Saint Omega’s Hall"), match_key("Saint Omegas Hall"))
 
     def test_drops_case_punctuation_a_leading_the_and_trailing_london(self):
         self.assertEqual("alpha museum", match_key("The Alpha Museum, London UK"))
@@ -320,20 +318,18 @@ class MatchKeyTest(unittest.TestCase):
 
 class StreetsAndPostcodesTest(unittest.TestCase):
     def test_a_street_is_named_with_its_neighborhood_and_collapses_within_it(self):
-        areas = area_grid([("Exampleton", "neighborhood", 51.50, -0.12), ("Southby", "macrohood", 51.53, -0.12),
-                           ("London Borough of Example", "neighborhood", 51.515, -0.12), ("Tiny", "microhood", 51.515, -0.12)])
-        rows = [("Alpha Road", "road", 51.500, -0.12), ("Alpha Road", "road", 51.505, -0.12),  # two cells, one area
-                ("Alpha Road", "road", 51.530, -0.12),                                          # another area
-                ("Alpha Road", "road", 51.700, -0.12),                                          # none near
-                ("Alpha Line", "rail", 51.5, -0.12), (None, "road", 51.5, -0.12)]
+        areas = area_grid([("Exampleton", "neighbourhood", 51.50, -0.12), ("Southby", "suburb", 51.53, -0.12),
+                           ("London Borough of Example", "suburb", 51.515, -0.12), ("Tiny", "city_block", 51.515, -0.12)])
+        rows = [("Alpha Road", 51.500, -0.12), ("Alpha Road", 51.505, -0.12),  # two cells, one area
+                ("Alpha Road", 51.530, -0.12),                                  # another area
+                ("Alpha Road", 51.700, -0.12)]                                  # none near
         self.assertEqual(["Alpha Road", "Alpha Road, Exampleton", "Alpha Road, Southby"],
                          sorted(name for name, _, _ in select_streets(rows, areas)))
 
     def test_a_street_two_old_cells_from_its_area_is_still_named_with_it(self):
         # About 2.23 km apart north-south, inside AREA_RADIUS_METERS but two of the old 2.2 km cells off.
-        areas = area_grid([("Exampleton", "neighborhood", 51.53001, -0.12)])
-        self.assertEqual(["Beta Road, Exampleton"],
-                         [n for n, _, _ in select_streets([("Beta Road", "road", 51.50999, -0.12)], areas)])
+        areas = area_grid([("Exampleton", "quarter", 51.53001, -0.12)])
+        self.assertEqual(["Beta Road, Exampleton"], [n for n, _, _ in select_streets([("Beta Road", 51.50999, -0.12)], areas)])
 
     def test_points_within_a_cells_width_are_in_neighboring_cells(self):
         import random
@@ -346,9 +342,8 @@ class StreetsAndPostcodesTest(unittest.TestCase):
                     self.assertIn(cell_of(*b, meters), near_cells(cell_of(*a, meters)))
 
     def test_a_street_already_naming_its_area_isnt_given_it_again(self):
-        areas = area_grid([("Exampleton", "neighborhood", 51.5, -0.12)])
-        self.assertEqual(["High Street Exampleton"],
-                         [n for n, _, _ in select_streets([("High Street Exampleton", "road", 51.5, -0.12)], areas)])
+        areas = area_grid([("Exampleton", "neighbourhood", 51.5, -0.12)])
+        self.assertEqual(["High Street Exampleton"], [n for n, _, _ in select_streets([("High Street Exampleton", 51.5, -0.12)], areas)])
 
     def test_postcodes_are_written_with_one_space(self):
         self.assertEqual("E1 6AN", postcode_text("E1  6AN"))
@@ -372,70 +367,50 @@ class StreetsAndPostcodesTest(unittest.TestCase):
         self.assertEqual([], select_postcodes(rows, lambda e, n: (51.2, -0.6)))
 
 
-class SourcesTest(unittest.TestCase):
-    def test_only_openstreetmaps_own_features_are_credited_by_its_line(self):
-        self.assertTrue(from_osm_only([{"dataset": "OpenStreetMap"}, {"dataset": "Overture"}]))
-        self.assertFalse(from_osm_only([{"dataset": "TomTom"}]))
-        self.assertFalse(from_osm_only([{"dataset": "OpenStreetMap"}, {"dataset": "Esri Community Maps"}]))
-        self.assertFalse(from_osm_only([]))
+class DownloadTest(unittest.TestCase):
+    def test_reads_geofabriks_md5_file(self):
+        self.assertEqual("0123456789abcdef0123456789abcdef", geofabrik_md5("0123456789abcdef0123456789abcdef  alpha-latest.osm.pbf\n"))
 
-
-class FoursquareNoticeTest(unittest.TestCase):
-    def test_the_notice_is_kept_whole_with_our_changes_after_it(self):
-        original = "(c) Foursquare Labs, Inc.\nLicensed under the Apache License, Version 2.0.\n\n"
-        shipped = foursquare_notice(original)
-        self.assertTrue(shipped.startswith(original.rstrip()))
-        self.assertIn("Changes by StopDash", shipped)
-
-    def test_a_page_that_is_not_the_notice_stops_the_build(self):
+    def test_a_page_that_isnt_an_md5_file_stops_the_build(self):
         with self.assertRaises(SystemExit):
-            foursquare_notice("<html>Not found</html>")
-
-    def test_only_the_apache_license_is_shipped_as_the_license(self):
-        text = "Apache License\nVersion 2.0, January 2004\n"
-        self.assertEqual(text, foursquare_license(text))
-        with self.assertRaises(SystemExit):
-            foursquare_license("<html>Access denied</html>")
+            geofabrik_md5("<html>Not found</html>")
 
 
 class OdblNoticeTest(unittest.TestCase):
-    def test_the_street_notice_names_the_license_and_its_uri(self):
+    def test_the_notice_names_the_license_its_uri_and_what_it_covers(self):
         self.assertIn("OpenStreetMap contributors", ODBL_NOTICE)
         self.assertIn("Open Database License (ODbL) v1.0", ODBL_NOTICE)
         self.assertIn("https://opendatacommons.org/licenses/odbl/1-0/", ODBL_NOTICE)
+        self.assertIn("place (kind P) and street (kind S)", ODBL_NOTICE)
 
 
 class RenderTest(unittest.TestCase):
     def test_header_then_sorted_tab_separated_lines(self):
-        text = render([("Beta\tHall", "museum", 51.5, -0.12, 9), ("・・・", "museum", 51.5, -0.12, 9)],
+        text = render([("Beta\tHall", "tourism=museum", 51.5, -0.12, 9), ("・・・", "tourism=museum", 51.5, -0.12, 9)],
                       [("Alpha Road", 51.5, -0.12), ("ロード", 51.5, -0.12)],
                       [("XX1 1XX", 51.5, -0.12)], "test sources")
         lines = text.splitlines()
         self.assertEqual(4, len(lines))
         self.assertEqual("# stopdash place index v1\ttest sources", lines[0])
-        self.assertEqual(["C\tXX1 1XX\t\t51.50000\t-0.12000\t4", "P\tBeta Hall\tmuseum\t51.50000\t-0.12000\t9",
+        self.assertEqual(["C\tXX1 1XX\t\t51.50000\t-0.12000\t4", "P\tBeta Hall\ttourism=museum\t51.50000\t-0.12000\t9",
                           "S\tAlpha Road\t\t51.50000\t-0.12000\t4"], lines[1:])
 
     def test_a_run_of_whitespace_reads_as_one_space(self):
-        text = render([("Omega Church,\t   Zeta Green", "church", 51.5, -0.12, 9)], [("Alpha  Road", 51.5, -0.12)], [], "test sources")
-        names = [line.split("\t")[1] for line in text.splitlines()[1:]]
-        self.assertEqual(["Omega Church, Zeta Green", "Alpha Road"], names)
+        text = render([("Omega Church,\t   Zeta Green", "c", 51.5, -0.12, 9)], [("Alpha  Road", 51.5, -0.12)], [], "test sources")
+        self.assertEqual(["Omega Church, Zeta Green", "Alpha Road"], [line.split("\t")[1] for line in text.splitlines()[1:]])
 
     def test_saint_reads_st_without_its_full_stop(self):
-        text = render([("Alpha St. Omega's Church", "church", 51.5, -0.12, 9), ("Beta St.Omega Hall", "museum", 51.5, -0.12, 9)],
+        text = render([("Alpha St. Omega's Church", "c", 51.5, -0.12, 9), ("Beta St.Omega Hall", "m", 51.5, -0.12, 9)],
                       [("Gamma St.", 51.5, -0.12)], [], "test sources")
-        names = [line.split("\t")[1] for line in text.splitlines()[1:]]
-        self.assertEqual(["Alpha St Omega's Church", "Beta St Omega Hall", "Gamma St"], names)
+        self.assertEqual(["Alpha St Omega's Church", "Beta St Omega Hall", "Gamma St"], [line.split("\t")[1] for line in text.splitlines()[1:]])
 
     def test_saint_in_any_case_keeps_its_own_capitals(self):
-        text = render([("ST. Omega Church", "church", 51.5, -0.12, 9), ("st.omegas Hall", "museum", 51.5, -0.12, 9)],
+        text = render([("ST. Omega Church", "c", 51.5, -0.12, 9), ("st.omegas Hall", "m", 51.5, -0.12, 9)],
                       [("Delta ST.", 51.5, -0.12)], [], "test sources")
-        names = [line.split("\t")[1] for line in text.splitlines()[1:]]
-        self.assertEqual(["ST Omega Church", "st omegas Hall", "Delta ST"], names)
+        self.assertEqual(["ST Omega Church", "st omegas Hall", "Delta ST"], [line.split("\t")[1] for line in text.splitlines()[1:]])
 
     def test_a_word_starting_st_is_left_alone(self):
-        text = render([("Stamford Hall", "museum", 51.5, -0.12, 9)], [], [], "test sources")
-        self.assertIn("P\tStamford Hall\t", text)
+        self.assertIn("P\tStamford Hall\t", render([("Stamford Hall", "m", 51.5, -0.12, 9)], [], [], "test sources"))
 
 
 if __name__ == "__main__":

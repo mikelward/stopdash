@@ -418,22 +418,21 @@ The app finds stops two ways:
   or postcode".
   - **Found on the device first** (maintainer, 2026-10-11; `dev-docs/PLACES.md`): a **bundled London
     place index** — public places (embassies, theatres, schools, parks, leisure centers, places of
-    worship, museums, hospitals, venues…) and well-established businesses from Overture Maps, named
-    streets, and every London postcode from OS Code-Point Open — about 440,000 entries, 5 MB in the
-    download. It's read once, off the main thread, as the search opens, and searched as the rider
+    worship, museums, hospitals, venues…), shops and businesses, and named streets, all from
+    **OpenStreetMap** (maintainer, 2026-10-13: OpenStreetMap only, so no check-in copies from Foursquare or
+    the other aggregators), and every London postcode from OS Code-Point Open — about 410,000 entries,
+    4.5 MB in the download. It's read once, off the main thread, as the search opens, and searched as the rider
     types, so its places are **listed with the bundled stations at once**, offline, with nothing sent.
     It ranks by the stop search's tiers (a prefix, then a substring, then letters in order from the
     name's first letter), a leading "The" passed over; then a place Wikipedia covers widely (five or more
     editions, maintainer 2026-10-13), even over a lesser place named exactly what's typed; then an exact
     name; then the **better known** (maintainer, 2026-10-12), by how many Wikipedia editions cover the
     place (Wikidata), so "st paul" finds St Paul's Cathedral before the lesser places it also starts,
-    churches named just "St Paul" included; then the nearer. Overture's listings are cleaned when the index is built: near-duplicates of one place merge,
-    and a museum's or monument's far-off copies (check-ins) are dropped. Wikidata ranks only the
-    listing nearest its item, and never moves one (maintainer, 2026-10-12): a name alone can't say a
-    far listing is the famous place rather than another of its name, so most stray copies stay listed,
-    below it and with their own postcode district. A world-famous venue's (20+ Wikipedia editions) far
-    copies that only Meta vouches for are the exception, and are dropped (maintainer, 2026-10-13):
-    people check in to "O2 Arena" from all over London.
+    churches named just "St Paul" included; then the nearer. A place counts
+    as well known through the Wikidata item it names in its own OpenStreetMap tags, never by matching
+    names, so a shop named like a cathedral isn't the cathedral; a chain's item tagged on its branches
+    is a brand's and lends them nothing. When a place is mapped twice (a point inside its outline, a
+    school's site and its building), it is listed once.
   - **On the device first** (maintainer, 2026-10-11): the index covers London, so an address is found
     by its street, and a place it doesn't hold, such as an exact house number, isn't listed from it.
   - **Outside London, from TfL** (maintainer, 2026-10-11): below everything bundled, a **Search

@@ -130,7 +130,7 @@ jobs:
         # A hand-run tool (TODO *Space out bunched Tube trains*); this keeps its scoring honest.
         run: python3 scripts/arrivals_recorder_test.py
       - name: Test the place index builder
-        # Its selection rules only: the fetches (pyarrow, pyproj) aren't imported by the tests.
+        # Its selection rules only: the reads and fetches (osmium, pyproj) aren't imported by the tests.
         run: python3 scripts/build_place_index_test.py
       - name: Test the Analytics definitions registration
         # Run by hand against the Analytics property (dev-docs/firebase.md step 6), never by CI, so a

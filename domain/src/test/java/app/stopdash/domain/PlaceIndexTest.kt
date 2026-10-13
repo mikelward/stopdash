@@ -211,9 +211,9 @@ class PlaceIndexTest {
         assertTrue("only ${places.size} entries", places.size > 400_000)
         val searched = System.nanoTime()
         assertEquals("Tate Modern", places.search("tate modern").first().name)
-        assertEquals("The British Museum", places.search("british museum").first().name)
+        assertEquals("British Museum", places.search("british museum").first().name)
         assertEquals(PlaceIndex.Kind.POSTCODE, places.search("sw1a 1aa").first().kind)
-        assertTrue(places.search("brtmus").any { it.name == "The British Museum" })
+        assertTrue(places.search("brtmus").any { it.name == "British Museum" })
         // A well-known place leads the lesser ones its query also starts (Wikidata's coverage).
         assertEquals("St Paul's Cathedral", places.search("st paul").first().name)
         // King's Cross (an interchange, public TfL data) is in an N1 district.
