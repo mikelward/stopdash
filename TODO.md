@@ -3782,6 +3782,11 @@ and these carry the rest as their own PRs:
       Walk every screen and the widget for content that changes after first draw, and give each an
       enter/exit or placement animation (the trip's header and the favorite journeys' location card use
       `CARD_MOVE_MILLIS`), or note why it can't (the widget's RemoteViews can't animate).
+- [ ] **Decide whether 300 ms is the right slide** (maintainer, 2026-10-13). A refresh's re-sort
+      slides over `CARD_MOVE_MILLIS`, taken from a trip's cards (2026-10-04), whose 300 ms was never
+      argued for; it matches the loading screen's row-by-row reveal (`REVEAL_MILLIS`), the maintainer's
+      pick from the demo (2026-10-09). Taps are held for the whole slide, so its length is also how long
+      a tap is ignored. Try it on a device.
 - [x] **"Update available" indicator (maintainer, 2026-09-21).** A red dot on the
       departures overflow (⋮) icon plus an "Update available" menu item that opens the Play
       listing, driven by a release-only Play In-App Update *availability* check
