@@ -78,13 +78,17 @@ class PlaceIndexTest {
     }
 
     @Test
-    fun `an exact name leads, then the better known, whatever the names' lengths`() {
-        // Length is no measure of a match (maintainer, 2026-10-12): a well-known long name leads a
-        // lesser short one.
-        val places = index(line("P", "Zeta Short", 2), line("P", "Zeta Cathedral of Long Name", 9), line("P", "Zeta", 2))
-        assertEquals(listOf("Zeta", "Zeta Cathedral of Long Name", "Zeta Short"), places.names("zeta"))
+    fun `a well-known place leads, then an exact name, then the better known, whatever the names' lengths`() {
+        // Wikipedia's coverage leads even an exact name (maintainer, 2026-10-13: churches named just
+        // "St Paul" mustn't come before the cathedral), and length is no measure of a match
+        // (maintainer, 2026-10-12): a well-known long name leads a lesser short one.
+        val places = index(line("P", "Zeta Short", 7), line("P", "Zeta Cathedral of Long Name", 9), line("P", "Zeta", 2))
+        assertEquals(listOf("Zeta Cathedral of Long Name", "Zeta", "Zeta Short"), places.names("zeta"))
+        // Among the well known, an exact name still leads.
+        val known = index(line("P", "Zeta Hall Gardens", 9), line("P", "Zeta Hall", 8))
+        assertEquals(listOf("Zeta Hall", "Zeta Hall Gardens"), known.names("zeta hall"))
         // "The" before an exact name is still exact.
-        val the = index(line("P", "Zeta Gallery Shop", 9), line("P", "The Zeta Gallery", 7))
+        val the = index(line("P", "Zeta Gallery Shop", 7), line("P", "The Zeta Gallery", 2))
         assertEquals(listOf("The Zeta Gallery", "Zeta Gallery Shop"), the.names("zeta gallery"))
     }
 

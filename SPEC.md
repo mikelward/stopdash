@@ -423,9 +423,11 @@ The app finds stops two ways:
     download. It's read once, off the main thread, as the search opens, and searched as the rider
     types, so its places are **listed with the bundled stations at once**, offline, with nothing sent.
     It ranks by the stop search's tiers (a prefix, then a substring, then letters in order from the
-    name's first letter), a leading "The" passed over; then an exact name; then the **better known**
-    (maintainer, 2026-10-12), by how many Wikipedia editions cover the place (Wikidata), so "st paul"
-    finds St Paul's Cathedral before the lesser places it also starts; then the nearer. Overture's listings are cleaned when the index is built: near-duplicates of one place merge,
+    name's first letter), a leading "The" passed over; then a place Wikipedia covers widely (five or more
+    editions, maintainer 2026-10-13), even over a lesser place named exactly what's typed; then an exact
+    name; then the **better known** (maintainer, 2026-10-12), by how many Wikipedia editions cover the
+    place (Wikidata), so "st paul" finds St Paul's Cathedral before the lesser places it also starts,
+    churches named just "St Paul" included; then the nearer. Overture's listings are cleaned when the index is built: near-duplicates of one place merge,
     and a museum's or monument's far-off copies (check-ins) are dropped. Wikidata ranks only the
     listing nearest its item, and never moves one (maintainer, 2026-10-12): a name alone can't say a
     far listing is the famous place rather than another of its name, so most stray copies stay listed,
