@@ -2,6 +2,7 @@ package app.stopdash.ui
 
 import app.stopdash.R
 import app.stopdash.domain.Coordinates
+import app.stopdash.domain.FavoritePlaceIcon
 import app.stopdash.domain.ModeIcon
 import app.stopdash.domain.PlaceHit
 import app.stopdash.domain.PlaceKind
@@ -24,8 +25,16 @@ class RowTagTest {
             placeIcon(place)
             placeTypeLabel(place)
         }
-        assertEquals(R.drawable.ic_type_pub, placeIcon(PlaceHit("Zeta", at, PlaceKind.PLACE, type = PlaceType.PUB)))
+        assertEquals(R.drawable.ic_place_pub, placeIcon(PlaceHit("Zeta", at, PlaceKind.PLACE, type = PlaceType.PUB)))
         assertEquals(R.drawable.ic_kind_street, placeIcon(PlaceHit("Zeta Road", at, PlaceKind.STREET)))
         assertEquals(R.string.station_search_kind_postcode, placeTypeLabel(PlaceHit("XX1 1XX", at, PlaceKind.POSTCODE)))
+    }
+
+    @Test
+    fun `the favorite picker can draw every choice, and offers each glyph once`() {
+        val drawables = FavoritePlaceIcon.CHOICES.map { placeIconArt.getValue(it).drawable }
+        assertEquals(drawables.size, drawables.distinct().size)
+        // And a place saved from search starts on an icon the picker offers.
+        for (type in PlaceType.entries) FavoritePlaceIcon.forType(type)?.let { assertEquals(true, it in placeIconArt) }
     }
 }

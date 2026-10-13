@@ -1554,8 +1554,13 @@ weekdays, say — in its editor, as one row of seven day toggles under "Show on 
 2026-09-28). Every day is the default, so a place saved before the choice existed keeps its chip, and
 no days at all keeps the place for the To… picker and Settings without a chip. The day is the
 device's, and the row follows it past midnight and across a time-zone change while the list is up. Every place — Home and Work included — has a name the rider can edit, and can wear **one icon**
-from a short fixed set (house, office building, briefcase, backpack, graduation cap, park, stadium,
-hospital, airport, gym, store, café, restaurant, theater, beach, heart). The icons are monochrome
+from the picker (house, office building, briefcase, backpack, graduation cap, park, stadium, hospital,
+airport, gym, store, café, restaurant, theater, beach and heart, and since 2026-10-13 every place type
+search shows: pub, supermarket, doctor, church and the rest), a scrolling grid ordered by how often a
+rider is likely to save such a place, the personal ones first (maintainer, 2026-10-13). A place saved
+from search starts on its type's icon (the pin, for a place of no type of its own), unless the rider
+has chosen one; once saved, its icon is the rider's, as its label is, and moving the place later
+doesn't change it. The icons are monochrome
 Material Symbols tinted like the text around them, not emoji: the system's color emoji were too busy
 to read at chip size (maintainer, 2026-09-28). A place with an icon chooses what its chip shows —
 **both** (the default), **the icon alone**, or **the name** — while the saved-places list and the To…
