@@ -99,7 +99,7 @@ object PlaceHits {
     /**
      * The bundled index's matches for [query] ([PlaceIndex.search], already ranked) as the To… list
      * shows them: a place, a street or a postcode, each with its coordinate; only postcodes when
-     * [postcodesOnly].
+     * [postcodesOnly], unless no postcode starts [query], when it's a name after all ("o2").
      */
     @androidx.annotation.WorkerThread
     fun fromIndex(
@@ -111,7 +111,13 @@ object PlaceHits {
         // Where the trip starts: the nearer of equal matches first.
         near: Coordinates? = null,
     ): List<PlaceHit> =
-        index.search(query, limit, checkpoint, if (postcodesOnly) PlaceIndex.Kind.POSTCODE else null, near).map { entry ->
+        (
+            index.search(query, limit, checkpoint, if (postcodesOnly) PlaceIndex.Kind.POSTCODE else null, near)
+                // A query shaped like a postcode that no postcode starts ("o2": no area begins with O) is a
+                // name, so it finds places and streets like any other ("The O2 Arena"), never a postcode the
+                // loose match would let in ("XX1B" isn't XX1 1BA).
+                .ifEmpty { if (postcodesOnly) index.search(query, limit, checkpoint, near = near, except = PlaceIndex.Kind.POSTCODE) else emptyList() }
+        ).map { entry ->
             val kind = when (entry.kind) {
                 PlaceIndex.Kind.PLACE -> PlaceKind.PLACE
                 PlaceIndex.Kind.STREET -> PlaceKind.STREET

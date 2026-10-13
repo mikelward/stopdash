@@ -122,4 +122,27 @@ class PlaceHitsTest {
             bounds,
         )
     }
+
+    private fun index(vararg lines: String) = PlaceIndex.read(
+        java.io.BufferedReader(java.io.StringReader((listOf("# stopdash place index v1\ttest") + lines).joinToString("\n"))),
+    )
+
+    @Test
+    fun `a postcode-shaped query lists only postcodes when some start it`() {
+        val places = index("C\tXX1 1XX\t\t51.50000\t-0.12000\t4", "P\tXX1 Cafe\tcafe\t51.50000\t-0.12000\t2")
+        assertEquals(listOf("XX1 1XX"), PlaceHits.fromIndex(places, "xx1", postcodesOnly = true).map { it.name })
+    }
+
+    @Test
+    fun `a postcode-shaped query no postcode starts finds places`() {
+        // "o2": no postcode area starts with O, so it's a name ("The O2 Arena").
+        val places = index("C\tXX1 1XX\t\t51.50000\t-0.12000\t4", "P\tQ2 Arena\tstadium_arena\t51.50000\t-0.12000\t7")
+        assertEquals(listOf("Q2 Arena"), PlaceHits.fromIndex(places, "q2", postcodesOnly = true).map { it.name })
+    }
+
+    @Test
+    fun `a postcode-shaped query no postcode starts never lists a postcode it only loosely matches`() {
+        val places = index("C\tXX1 1BA\t\t51.50000\t-0.12000\t4", "P\tXX1B Studio\tart_gallery\t51.50000\t-0.12000\t7")
+        assertEquals(listOf("XX1B Studio"), PlaceHits.fromIndex(places, "xx1b", postcodesOnly = true).map { it.name })
+    }
 }

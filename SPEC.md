@@ -4330,7 +4330,8 @@ Mirrors the sibling fleet:
   partial the editor shows a passive "Postcode …" hint (from two characters, the same floor station
   completions use) above the bundled postcodes it starts ("SW1A" lists SW1A's), each pickable at once
   with nothing sent. A postcode-shaped query (a digit present) lists postcodes only (a plain two-letter
-  prefix, how a station name starts, still searches stops). From… and To… find postcodes too, from the
+  prefix, how a station name starts, still searches stops), unless no bundled postcode starts it: then it's
+  a name ("o2", as no area starts with O) and finds places and streets, never a postcode. From… and To… find postcodes too, from the
   bundled place index (*Finding stops*). The **search query text is not persisted** (it isn't written to saved
   state, `FavoritePlacesStore`, or backup — *Privacy*, `docs/PRIVACY.md`); the place the user then
   **chooses** is saved by its coordinate and its resolved name exactly as a chosen station is — and for
