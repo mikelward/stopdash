@@ -367,6 +367,9 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
 - **per-refresh request counts and timing**: how many TfL requests a refresh made, of which
   kinds, how long it took, and how long it waited on the app's own rate limit — counts and
   milliseconds only, no stop or place,
+- **a slow station search source**: when one of the search's on-device reads (the station
+  index, the place index, the bus stops, your saved stops or your favorite places) takes longer
+  than a quarter of a second, which one and how many milliseconds — never what was typed or read,
 - **trip timing**: how long each journey planner request took and how many routes it returned,
   and how long a trip's routes took to show, with what the page last waited for, by kind (a
   refresh, the line checks, line routes and how many) — counts and milliseconds only, never

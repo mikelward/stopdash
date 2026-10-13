@@ -24,8 +24,8 @@ import app.stopdash.domain.Workers
 import app.stopdash.domain.YourStops
 import app.stopdash.domain.sameStationIds
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -99,8 +99,11 @@ class StationSearchViewModel(
     // outside London (maintainer, 2026-10-11). Sends only the typed text. Null, the default, offers no
     // such search; only a picker that routes to or from a place passes one.
     private val findOutside: (suspend (String) -> List<PlaceCandidate>)? = null,
-    // Notes an outside-London lookup that failed, in the debug log; never the query.
+    // Notes an outside-London lookup that failed, or a source read slower than [SLOW_SOURCE_MILLIS],
+    // in the debug log; never the query.
     private val warn: (String) -> Unit = {},
+    // A monotonic clock in milliseconds, for timing each source's read.
+    private val nowMillis: () -> Long = { System.nanoTime() / 1_000_000 },
     // With no start set ([setNear]), rank same-named stops and places from the latest Recent pick that
     // has a position: From…'s last start, where the rider's position isn't known (maintainer, 2026-10-12).
     private val nearFromRecent: Boolean = false,
@@ -205,14 +208,15 @@ class StationSearchViewModel(
     // again (a Retry) adds to them rather than starting the list over.
     private var entriesFor: String? = null
 
-    // Loaded once, on first use, so opening the search never waits on the asset read.
-    private val index = viewModelScope.async(io, start = CoroutineStart.LAZY) { loadIndex() }
+    // Started at once, off the main thread, so it's ready by the first letter typed. It used to wait for
+    // that letter, while the place index below didn't, so places could list first and hold the top rows.
+    private val index = viewModelScope.async(io) { timed("station index") { loadIndex() } }
 
     // Started at once (it takes a moment to read), so it's usually ready by the first letter typed.
-    private val placeIndex = viewModelScope.async(io) { loadPlaceIndex() }
+    private val placeIndex = viewModelScope.async(io) { timed("place index") { loadPlaceIndex() } }
 
     // Started at once for the same reason.
-    private val busStops = viewModelScope.async(io) { loadBusStops() }
+    private val busStops = viewModelScope.async(io) { timed("bus stops") { loadBusStops() } }
 
     // Which read is the latest: an older one that lands after a newer one started is ignored, so a
     // star changed between the two can't be overwritten by the stale list. Declared before [yours],
@@ -464,16 +468,25 @@ class StationSearchViewModel(
         }
     }
 
+    // [load], noted in the debug log if it took longer than [SLOW_SOURCE_MILLIS]: by name and duration only.
+    private suspend fun <T> timed(source: String, load: suspend () -> T): T {
+        val started = nowMillis()
+        return load().also {
+            val took = nowMillis() - started
+            if (took > SLOW_SOURCE_MILLIS) warn("station search: $source read took $took ms")
+        }
+    }
+
     private fun readYours(): Deferred<YourStops> {
         val generation = ++yoursGeneration
         return viewModelScope.async(io) {
             // A star the device couldn't name may be a listed station: name it from the bundled list.
-            val loaded = loadYours()
+            val loaded = timed("saved stops") { loadYours() }
             val unfiltered = if (loaded.unnamedStarred.isEmpty()) loaded else loaded.namedFrom(index.await())
             // Read alongside the stops so the To… picker shows both from the same open; independent, so
             // a places read failure never drops the stops. Null = couldn't read (a retryable notice),
             // distinct from an empty list (genuinely no saved places).
-            val places = loadPlaces()
+            val places = timed("favorite places") { loadPlaces() }
             // From here to publishing nothing suspends: the removals are those confirmed by now, not when
             // the read began, so one confirmed while it read stays gone (Codex, #745).
             val named = unfiltered.withoutRecent(removing.toSet())
@@ -555,9 +568,16 @@ class StationSearchViewModel(
             // An address's house number isn't in the bundle, so its street is what's searched.
             val placeLookup: Deferred<List<PlaceHit>> =
                 async { if (searchPlaces) bundledPlacesFor(placeIndex.await(), PlaceHits.withoutHouseNumber(trimmed), from) else emptyList() }
+            // Set once the stations have had their first chance to list: until then a place found first
+            // waits, so the two are ranked together. Listed alone, a place would hold the top rows, and the
+            // stations (King's Cross & St Pancras for "st pan") could only join below it. No timeout
+            // (maintainer, 2026-10-13): a slow station list is a bug to fix, not one to rank around,
+            // and [timed] logs whichever source was slow.
+            val stationsTried = CompletableDeferred<Unit>()
             launch {
                 val places = placeLookup.await()
                 if (places.isEmpty()) return@launch
+                stationsTried.await()
                 rows.withLock {
                     if (placesListed) return@withLock
                     placesListed = true
@@ -583,10 +603,14 @@ class StationSearchViewModel(
             // few go up at once, and the rest join the bus stops below them.
             if (!busStops.isCompleted && local.isNotEmpty()) {
                 rows.withLock {
+                    // The places, when already found: ranked in with these stations, not above them.
+                    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+                    val places = if (!placesListed && placeLookup.isCompleted) placeLookup.getCompleted() else emptyList()
+                    if (places.isNotEmpty()) placesListed = true
                     val before = shown
                     val first = local.take(LOCAL_PREVIEW)
                     val (entries, listed, areas) = withContext(compute) {
-                        val entries = SearchResults.appended(before, trimmed, first, emptyList(), tier = { stations.tier(trimmed, it) })
+                        val entries = SearchResults.appended(before, trimmed, first, places, leads = stations::leads, tier = { stations.tier(trimmed, it) })
                         Triple(entries, shownPlaces(entries), areasOf(entries, stations))
                     }
                     shown = entries
@@ -595,6 +619,8 @@ class StationSearchViewModel(
                     _state.update { it.copy(result = Result.Matches(first, places = listed, entries = entries, areas = areas)) }
                 }
             }
+            // With the bus stops still unread, the places go up now rather than wait for them.
+            if (!busStops.isCompleted) stationsTried.complete(Unit)
             val buses = busStops.await()
             rows.withLock {
                 // The places, when already found (the place index is read as the model is made, so
@@ -619,6 +645,7 @@ class StationSearchViewModel(
                     _state.update { it.copy(result = Result.Matches(ranked, places = listed.first, entries = entries, areas = listed.second)) }
                 }
             }
+            stationsTried.complete(Unit)
             // The places, if they weren't ready with the stops: below whatever is listed.
             val places = placeLookup.await()
             // The place index too, for the rows' districts, where no place search waited on it (the
@@ -754,6 +781,9 @@ class StationSearchViewModel(
         // How many of the index's matches show before the bus stops are read: enough to tap the obvious
         // station at once, few enough that most of the list arrives below them rather than around them.
         const val LOCAL_PREVIEW = 4
+
+        /** A source read slower than this is logged ([timed]): each is on the device and should be quicker. */
+        const val SLOW_SOURCE_MILLIS = 250L
         private const val KEY_QUERY = "query"
         private const val KEY_PENDING_REMOVAL = "pendingRemoval"
         private const val KEY_REMOVE_FAILED = "removeRecentFailed"

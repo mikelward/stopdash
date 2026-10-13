@@ -2283,6 +2283,7 @@ class MainActivity : ComponentActivity() {
                                                     searchPlaces = false,
                                                     // A Recent row removed here leaves From…'s list, which this is.
                                                     recordRemove = { withContext(Dispatchers.IO) { recents.remove(it) } },
+                                                    warn = ::logDepartureWarning,
                                                 )
                                             }
                                         },
