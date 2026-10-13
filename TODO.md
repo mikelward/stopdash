@@ -2469,7 +2469,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         counts as "insufficient", whether to wait for GPS and how long) is device-tuning the
         sandbox can't validate and a change to the maintainer-approved provider-name design.
         Preserve `Location.accuracy` through both paths and prefer the most accurate fix;
-        settle the threshold and the latency trade on a device.
+        settle the threshold and the latency trade on a device. **Narrowed (bug report,
+        2026-10-13):** the fresh fix and the precise follow-up asked fused at Android's default,
+        balanced power, where it answers from Wi-Fi/cell without GPS; under a precise grant both
+        now ask fused and GPS for high accuracy, so "fused" means what the proxy assumes far more
+        often. A cached fused fix can still be Wi-Fi-derived.
 - [x] **Star a journey** (maintainer, 2026-09-23). Two stations on one line, starred by tapping a
       station on a route page's stop list; cards atop the near-me list show that line's trains from
       the nearer end that call at the other. The heading's ⇄ swaps direction, and a tap on the
