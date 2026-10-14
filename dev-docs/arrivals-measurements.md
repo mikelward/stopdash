@@ -29,6 +29,7 @@ Recordings stay outside the repository (AGENTS.md *Privacy*). All of these stops
 | Morning peak | Tue 2026-10-13, 06:29 – 09:29 | 15 below |
 | Midday | Tue 11:07 – 12:37 | 15 below |
 | Evening | Tue 19:01 – 20:31 | 15 below |
+| End of morning peak | Wed 2026-10-14, 09:14 – 10:14 | Camden Town, Euston, King's Cross, Tottenham Court Road |
 
 The 15: King's Cross, Bond Street, Liverpool Street, Stratford, Waterloo, Camden Town,
 Stockwell, Baker Street, Farringdon, Paddington (both tube stations), and the Elizabeth line at
@@ -123,6 +124,53 @@ Signals still to test against the recordings, to tell the copy from the real tra
 - A location that can't fit the queue: a siding, "Around …", or the two trains' locations out
   of order.
 - A blank location.
+
+The hour below gives first numbers, from TfL's own record, for a time that slides later and for
+two trains swapping order. Neither is settled.
+
+## Slipping times and order swaps
+
+From the Wednesday hour (all lines at the four stops), against when each train actually reached
+its platform (the recorder's arrival estimates). It followed a report from another Northern line
+platform: one train's time kept sliding for about 11 minutes, always about 30 s behind whichever
+train was ahead of it, and TfL briefly listed the two trains in the wrong order a minute before
+they came. Both trains were real, about 2 minutes apart.
+
+"Came" here is TfL's own record, as everywhere in this doc: placed "At Platform", or leaving the
+board at its due time. The recorder voids a train standing at the platform alongside another, or
+reaching it under 90 s after one, which is how a copy usually shows; but a copy TfL drops right
+at its due time would still count as having come. Only a station display, watched alongside, is
+independent of the feed.
+
+**Slipping times.** Each train due within 5 minutes for at least a minute, by how fast its
+expected arrival moved later per second of polling: 0 counts down as it should, 1 doesn't count
+down at all.
+
+| Slide | Trains | Came | Vanished | Came after the first time shown within 5 min (median) |
+|---|---|---|---|---|
+| Under 0.25 | 361 | 328 | 3 | +28 s |
+| 0.25–0.5 | 83 | 74 | 3 | +118 s |
+| 0.5–0.75 | 3 | 3 | 0 | +298 s |
+| 0.75 or more | 0 | – | – | – |
+
+The rest left the board with under 30 s to go and were never placed at the platform, so their
+arrival isn't known. Against the time on the board at the moment, 1 to 3 minutes out, a train
+whose time had been sliding came a median 19 s after the time shown, and one that had been
+counting down 20 s after (more than a minute late: 18% and 17%; 688 and 1,806 times shown).
+
+- Trains whose time partly slid came at much the same rate as the rest in TfL's record (89%
+  against 91%). None stopped counting down entirely (a slide of 0.75 or more).
+- Their earlier times were too soon, but the time on the board at the moment was as good as any
+  other train's.
+
+**Order swaps.** Two trains at one platform, both due within 5 minutes, whose order TfL swapped
+at least once: 10 pairs in the hour. In the 6 where both came, the order TfL showed last was
+right every time (the order it showed first, 5 times). The other 4 can't be checked from the
+feed: in 3, one train left the board near its due time without being placed at the platform, and
+1 was still listed when the recording ended. None left early.
+
+Numbers only: one hour at four stations at the end of a peak, judged by TfL's own record, which
+settles neither signal. A station display, watched alongside, is what would.
 
 ## Not yet measured
 

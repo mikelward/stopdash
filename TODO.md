@@ -1667,7 +1667,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               recordings looked); a trip follows the earlier, the later marked doubtful.
         - [ ] **Tell a doubtful train from a real one** (maintainer, 2026-10-11): keep collecting
               reports (each mark is logged with the feed's train ids) against what the station display
-              showed, and hide a doubtful train outright only once a rule separates the two.
+              showed, and hide a doubtful train outright only once a rule separates the two. First
+              numbers for a time sliding later and for two trains swapping order are in
+              `dev-docs/arrivals-measurements.md` (2026-10-14, TfL's own record only); neither is
+              settled without a station display to check against.
         - [x] Which train makes each departure, and one train's calls ahead (`VehicleSource`).
         - [x] Following a started trip from its train's calls (`OnTheWay`, `:domain`).
           - [x] **A loop train's boarding call jumping over five minutes at once**: a loop train still
