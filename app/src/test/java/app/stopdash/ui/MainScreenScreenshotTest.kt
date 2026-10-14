@@ -3819,6 +3819,72 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `a journey whose origin is being checked again says it's checking, not that it couldn't`() {
+        // Back from the background: the origin's last arrivals have gone stale and the fresh fix a return
+        // starts with is under way. The card says it's checking, as the stamp does, never "couldn't check"
+        // for a check about to be made (maintainer, 2026-10-05); once nothing is under way, it says it couldn't.
+        val stale = StopArrivals(
+            "940GZZLUVIC", "Victoria",
+            listOf(dep("victoria", "Victoria", "northbound", "Walthamstow Central", -120, "Northbound - Platform 5")),
+            fetchedAt = now.minusSeconds(1800),
+        )
+        var refreshing by mutableStateOf(true)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(
+                        LocalRouteStops provides RouteStopsRepository(
+                            object : RouteSequenceSource {
+                                override suspend fun routeSequence(lineId: String, direction: String) = victoriaLine
+                            },
+                        ),
+                    ) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(listOf(manorHouse(), stale), now.minusSeconds(1800)),
+                            now,
+                            {},
+                            refreshing = refreshing,
+                            stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
+                            journeys = listOf(victoriaToWarrenStreet),
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("Checking trains", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onAllNodesWithText("Couldn't check trains").assertCountEquals(0)
+        refreshing = false
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Couldn't check trains").assertExists()
+        composeRule.onAllNodesWithText("Checking trains", substring = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun `a journey whose origin couldn't be fetched says it's checking while it's asked again`() {
+        var refreshing by mutableStateOf(true)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(listOf(manorHouse()), now.minusSeconds(60), unavailableStopIds = setOf("940GZZLUVIC")),
+                        now,
+                        {},
+                        refreshing = refreshing,
+                        stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
+                        journeys = listOf(victoriaToWarrenStreet),
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithText("Checking trains", substring = true).assertCountEquals(1)
+        composeRule.onAllNodesWithText("Couldn't check trains").assertCountEquals(0)
+        refreshing = false
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Couldn't check trains").assertExists()
+    }
+
+    @Test
     fun `a journey whose origin couldn't be fetched says so, not that it's checking`() {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
