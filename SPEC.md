@@ -149,8 +149,16 @@ The app finds stops two ways:
     the rider elsewhere. A sure fix more than 250 m from a place while on one of its access points means
     that access point isn't fixed there (a moved router, a hotspot not marked metered), so it is
     forgotten; a metered network (a phone's hotspot, a train's Wi-Fi) moves with the rider, so it is
-    never learned. A remembered precise fix young enough to stand comes first; an older one gives way
-    to the place. Nothing to set up: before anything is learned it behaves as below. What is kept, and
+    never learned. **The network is learned too** (maintainer, 2026-10-14): an office can have hundreds
+    of access points, more than can be learned one by one, so a place also learns the networks the
+    phone is on there, and on an access point it never saw but on one of those networks, the rider is
+    taken to be at the place **when the rough fix, taken now, is within 1 km of it** (a last-known
+    position is where the rider was, so it never places a network) — a network name alone could
+    be another site of the same company, or a public network, so it takes the rough fix to place it;
+    an access point needs no rough fix, which is why both are kept. A sure fix on the network between
+    250 m and 1 km from the place, where it would mislead, forgets it there; one at another saved
+    place leaves it at both, and a rough fix near both then says neither. A remembered precise fix
+    young enough to stand comes first; an older one gives way to the place. Nothing to set up: before anything is learned it behaves as below. What is kept, and
     when it goes, is in *Privacy*.
   - Otherwise the list is shown from the coarse fix at once, under an **"Approximate location"**
     banner, and GPS is **asked again** for a few more seconds. A precise fix within 100 m confirms
@@ -4025,9 +4033,12 @@ London*, or a complete postcode the bundle doesn't hold), which sends only that 
 Planner; the query is never saved or logged. The
 places picked from it are remembered for its *Recent* lists (*From…*'s and *To…*'s apart), and each starred row's place (so
 a star is listed by name), in the app's no-backup storage: never logged, sent, or backed up. So
-are the **Wi-Fi access points learned at saved places** (*Finding stops*): each access point's
-address, beside the place's id and where the place was when it was learned — no network name, no
-fix, and nothing about networks the phone isn't on. They are never logged (the log counts them),
+are the **Wi-Fi access points and networks learned at saved places** (*Finding stops*): each access
+point's address and each network's id, beside the place's id and where the place was when it was
+learned. A network's id is a keyed hash of its name, never the name: the key is random, made on the
+phone, kept beside the list and deleted with it, so the id can't be matched against a list of
+common names. No fix, and nothing about networks the phone isn't on. They are never logged (the log
+counts them),
 sent, or backed up. They are deleted when the setting is turned off, a place's own when it is
 removed or moved, and all of them the next time the app comes to the foreground after precise
 location was taken away (Android gives the address only with it, and closes the app when it's taken

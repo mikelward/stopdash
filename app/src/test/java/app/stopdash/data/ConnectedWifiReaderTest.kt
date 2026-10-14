@@ -6,7 +6,6 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.NetworkInfo
 import androidx.test.core.app.ApplicationProvider
-import app.stopdash.domain.ConnectedWifi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -37,11 +36,16 @@ class ConnectedWifiReaderTest {
         )
     }
 
-    private fun capabilities(bssid: String, metered: Boolean): NetworkCapabilities =
+    private fun capabilities(bssid: String, metered: Boolean, ssid: String? = null): NetworkCapabilities =
         ShadowNetworkCapabilities.newInstance().also { caps ->
             shadowOf(caps).addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
             if (!metered) shadowOf(caps).addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
-            shadowOf(caps).setTransportInfo(ShadowWifiInfo.newInstance().also { shadowOf(it).setBSSID(bssid) })
+            shadowOf(caps).setTransportInfo(
+                ShadowWifiInfo.newInstance().also { info ->
+                    shadowOf(info).setBSSID(bssid)
+                    ssid?.let { shadowOf(info).setSSID(it) }
+                },
+            )
         }
 
     private fun precise() = shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION)
@@ -56,7 +60,7 @@ class ConnectedWifiReaderTest {
             val callback = shadowOf(manager).networkCallbacks.single()
             callback.onCapabilitiesChanged(checkNotNull(manager.activeNetwork), capabilities("aa:bb:cc:00:00:01", metered))
             runCurrent()
-            assertEquals(ConnectedWifi("aa:bb:cc:00:00:01", metered), reading.getCompleted())
+            assertEquals(WifiReading("aa:bb:cc:00:00:01", ssid = null, metered), reading.getCompleted())
             assertTrue(shadowOf(manager).networkCallbacks.isEmpty())
         }
     }
@@ -74,7 +78,7 @@ class ConnectedWifiReaderTest {
         val wifiNetwork = ShadowNetwork.newInstance(ConnectivityManager.TYPE_WIFI)
         shadowOf(manager).networkCallbacks.single().onCapabilitiesChanged(wifiNetwork, capabilities("aa:bb:cc:00:00:01", metered = false))
         runCurrent()
-        assertEquals(ConnectedWifi("aa:bb:cc:00:00:01", metered = false), reading.getCompleted())
+        assertEquals(WifiReading("aa:bb:cc:00:00:01", ssid = null, metered = false), reading.getCompleted())
     }
 
     @Test
@@ -87,7 +91,7 @@ class ConnectedWifiReaderTest {
         val wifiNetwork = manager.allNetworks.first { manager.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true }
         shadowOf(manager).networkCallbacks.single().onCapabilitiesChanged(wifiNetwork, capabilities("aa:bb:cc:00:00:01", metered = false))
         runCurrent()
-        assertEquals(ConnectedWifi("aa:bb:cc:00:00:01", metered = false), reading.getCompleted())
+        assertEquals(WifiReading("aa:bb:cc:00:00:01", ssid = null, metered = false), reading.getCompleted())
     }
 
     @Test
@@ -120,5 +124,25 @@ class ConnectedWifiReaderTest {
         runCurrent()
         assertNull(reading.getCompleted())
         assertTrue(shadowOf(manager).networkCallbacks.isEmpty())
+    }
+
+    @Test
+    fun `the network's name is read with the access point`() = runTest {
+        precise()
+        onWifi()
+        val reading = async { ConnectedWifiReader(app).connected() }
+        runCurrent()
+        shadowOf(manager).networkCallbacks.single()
+            .onCapabilitiesChanged(checkNotNull(manager.activeNetwork), capabilities("aa:bb:cc:00:00:01", metered = false, ssid = "ExampleWifi"))
+        runCurrent()
+        assertEquals(WifiReading("aa:bb:cc:00:00:01", ssid = "ExampleWifi", metered = false), reading.getCompleted())
+    }
+
+    @Test
+    fun `a network's name comes without Android's quotes, and a withheld or blank one as none`() {
+        assertEquals("ExampleWifi", ConnectedWifiReader.networkName("\"ExampleWifi\""))
+        // A name Android can't read as text comes as hex, unquoted.
+        assertEquals("4578616d706c65", ConnectedWifiReader.networkName("4578616d706c65"))
+        for (none in listOf(null, "", "\"\"", "<unknown ssid>", " ")) assertNull(none, ConnectedWifiReader.networkName(none))
     }
 }

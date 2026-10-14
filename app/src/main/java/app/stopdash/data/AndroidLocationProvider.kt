@@ -17,8 +17,8 @@ import app.stopdash.domain.FixSelection
 import app.stopdash.domain.LocationFix
 import app.stopdash.domain.LocationProvider
 import app.stopdash.domain.PreciseFixMemory
+import app.stopdash.domain.WifiMatch
 import app.stopdash.domain.WifiPlaceSource
-import app.stopdash.domain.WifiPlaces
 import app.stopdash.domain.raceFix
 import java.time.Duration
 import kotlin.coroutines.resume
@@ -170,18 +170,23 @@ class AndroidLocationProvider(
         }
         // No precise fix to stand on (a rough one, a last-known one, or none): at a saved place whose
         // Wi-Fi the phone is on, that place is where the rider is, with no banner and no wait for GPS.
-        if (coordinates == null || isCoarse || fromFallback) recognizedPlace()?.let { return it }
+        // Only a rough fix taken now places a network: a last-known one is where the rider was, and on the
+        // same network at another site it would put them back where they'd left (Codex). Without one, only
+        // an access point the place learned can say.
+        val near = coordinates.takeIf { isCoarse }
+        if (coordinates == null || isCoarse || fromFallback) recognizedPlace(near)?.let { return it }
         recalledGuess?.let { return it }
         return coordinates?.let { LocationFix(it, isFallback = fromFallback, isCoarse = isCoarse, accuracyMeters = used?.accuracyMeters) }
     }
 
     /**
-     * The saved place the connected Wi-Fi says the rider is at, as a fix, or null. Within
-     * [WifiPlaces.RECOGNIZED_ACCURACY_METERS] of it: that's how close a sure fix had to be to teach it.
+     * The saved place the connected Wi-Fi says the rider is at, as a fix, or null; [near] is the rough
+     * fix it stands in for, which a place's network alone needs to be near. As accurate as what told it
+     * ([app.stopdash.domain.RecognizedPlace.accuracyMeters]).
      */
-    private suspend fun recognizedPlace(): LocationFix? {
-        val place = try {
-            wifiPlaces.recognize()
+    private suspend fun recognizedPlace(near: Coordinates?): LocationFix? {
+        val recognized = try {
+            wifiPlaces.recognize(near)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -189,10 +194,15 @@ class AndroidLocationProvider(
             warn("Wi-Fi place check failed: ${e::class.simpleName}")
             null
         } ?: return null
-        // Which place, or which network, is never logged (SPEC Privacy).
-        warn("location fix: a saved place, from its Wi-Fi")
-        position("saved place, from its Wi-Fi", place.coordinate)
-        return LocationFix(place.coordinate, isFallback = false, accuracyMeters = WifiPlaces.RECOGNIZED_ACCURACY_METERS, ageMillis = 0)
+        // Which place, or which network, is never logged (SPEC Privacy): only whether an access point
+        // it learned or its network told it.
+        val by = when (recognized.by) {
+            WifiMatch.ACCESS_POINT -> "its Wi-Fi"
+            WifiMatch.NETWORK -> "its Wi-Fi network"
+        }
+        warn("location fix: a saved place, from $by")
+        position("saved place, from $by", recognized.place.coordinate)
+        return LocationFix(recognized.place.coordinate, isFallback = false, accuracyMeters = recognized.accuracyMeters, ageMillis = 0)
     }
 
     // A fix taken here, for the saved places' Wi-Fi to learn from in the background.

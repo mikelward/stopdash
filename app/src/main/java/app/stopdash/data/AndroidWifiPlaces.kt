@@ -4,12 +4,14 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import app.stopdash.domain.ConnectedWifi
+import app.stopdash.domain.Coordinates
 import app.stopdash.savedPlacesOf
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.LearnedPlace
 import app.stopdash.domain.LocationFix
 import app.stopdash.domain.MoveFollow
+import app.stopdash.domain.RecognizedPlace
 import app.stopdash.domain.WifiPlaceSource
 import app.stopdash.domain.WifiPlaces
 import kotlinx.coroutines.CancellationException
@@ -25,7 +27,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * The saved places' Wi-Fi on the phone (SPEC *Finding stops → Wi-Fi at saved places*): which saved
- * place the connected access point says the rider is at, and what each sure fix teaches
+ * place the connected access point or network says the rider is at, and what each sure fix teaches
  * ([WifiPlaces]). Only while the setting is on and precise location is allowed; otherwise nothing is
  * read or used, and what was learned is deleted. While either can't be told (the stored choice not yet
  * read, a newer build's list) nothing is used, learned or deleted.
@@ -42,7 +44,7 @@ class AndroidWifiPlaces(
     private val places: suspend () -> FavoritePlacesSet,
     // The setting, or null while its stored choice hasn't been read: a slow start decides nothing.
     private val enabled: suspend () -> Boolean?,
-    private val wifi: suspend () -> ConnectedWifi?,
+    private val wifi: suspend () -> WifiReading?,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     // Where a fix is learned from, so the fix itself is never held up; the app's lives as long as it.
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob()),
@@ -51,13 +53,21 @@ class AndroidWifiPlaces(
     // One read-change-write at a time: fixes from the list and from its updates can land together.
     private val lock = Mutex()
 
-    override suspend fun recognize(): FavoritePlace? = withContext(io) {
+    override suspend fun recognize(near: Coordinates?): RecognizedPlace? = withContext(io) {
         // Nothing learned: no reason to ask what the phone is connected to.
         if (withCurrent { _, learned -> learned.isNotEmpty() } != true) return@withContext null
-        val connected = wifi() ?: return@withContext null
-        // Everything else read again after the wait (see [withCurrent]).
-        withCurrent { saved, learned -> WifiPlaces.recognize(learned, saved, connected) }
+        val reading = wifi() ?: return@withContext null
+        // Everything else read again after the wait (see [withCurrent]). The network's id only when a
+        // place has one to match it with, so no key is made for nothing.
+        withCurrent { saved, learned ->
+            WifiPlaces.recognize(learned, saved, connected(reading, keyed = learned.any { it.networks.isNotEmpty() }), near)
+        }
     }
+
+    // What the rules are handed of [reading]: the network's keyed id ([keyed]) in place of its name.
+    // Only under the lock, with the setting on and precise location allowed: the first id makes the key.
+    private fun connected(reading: WifiReading, keyed: Boolean = true) =
+        ConnectedWifi(reading.bssid, reading.metered, reading.ssid?.takeIf { keyed }?.let(store::networkId))
 
     override fun observe(fix: LocationFix) {
         // Most fixes teach nothing: settled here, before anything is started.
@@ -97,10 +107,10 @@ class AndroidWifiPlaces(
     private suspend fun learn(fix: LocationFix) {
         // Tidied first, so a sure fix off Wi-Fi still clears a removed or moved place.
         tidy() ?: return
-        val connected = wifi() ?: return
+        val reading = wifi() ?: return
         // Everything else read again after the wait (see [withCurrent]).
         withCurrent { saved, before ->
-            val after = WifiPlaces.learn(before, saved, fix, connected)
+            val after = WifiPlaces.learn(before, saved, fix, connected(reading))
             if (after != before) {
                 store.write(after)
                 warn(changed(before, after))
@@ -119,7 +129,8 @@ class AndroidWifiPlaces(
 
     // Counts only, never which network or place (SPEC Privacy).
     private fun changed(before: List<LearnedPlace>, after: List<LearnedPlace>): String =
-        "Wi-Fi at saved places: ${WifiPlaces.count(after)} access points known, was ${WifiPlaces.count(before)}"
+        "Wi-Fi at saved places: ${WifiPlaces.count(after)} access points and ${WifiPlaces.networkCount(after)} networks known, " +
+            "was ${WifiPlaces.count(before)} and ${WifiPlaces.networkCount(before)}"
 
     /** Deletes everything learned (the setting was turned off), in the background, outliving any screen. */
     fun forget() {
