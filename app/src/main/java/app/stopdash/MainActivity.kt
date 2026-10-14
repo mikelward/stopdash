@@ -315,6 +315,7 @@ import app.stopdash.ui.StopClosureChecks
 import app.stopdash.ui.StopRef
 import app.stopdash.ui.PlaceDirectSection
 import app.stopdash.ui.PlaceDirectViewModel
+import app.stopdash.ui.tripStopPlace
 import app.stopdash.ui.TripEnds
 import app.stopdash.ui.TripScreen
 import app.stopdash.ui.TripStart
@@ -5127,9 +5128,28 @@ class MainActivity : ComponentActivity() {
         // from here nothing more to wait for ([TripViewModel.fixSettled]).
         LaunchedEffect(trip, relocatingNow) { if (!relocatingNow) trip.fixSettled(pickId) }
         val pulling by trip.pulling.collectAsStateWithLifecycle()
+        // A stop or station the trip goes to is a place too (maintainer, 2026-10-14: "Stations are
+        // places"): placed from the bundled lists, off the main thread, and paired with its id so a
+        // place found for the last destination never stands in for this one.
+        val stopPlaced by produceState<Pair<String, TripDestination.Place?>?>(null, toId, toName, favorite) {
+            value = if (favorite != null) {
+                null
+            } else {
+                toId?.let { id ->
+                    val position = tripStopPlace(
+                        id,
+                        stations = { StationIndexStore.load(appContext) },
+                        busStops = { BusStopIndexStore.load(appContext) },
+                        warn = ::logDepartureWarning,
+                    )
+                    id to position?.let { TripDestination.Place(it, toName) }
+                }
+            }
+        }
+        val directPlace = favorite ?: stopPlaced?.takeIf { it.first == toId }?.second
         // A place's Direct section (SPEC *Direct to a place*): only for a place the rider isn't already
         // at, by the same 200 m the place chips hide within, so a trip there looks nothing up.
-        val direct = favorite?.takeUnless { place ->
+        val direct = directPlace?.takeUnless { place ->
             here != null && NearestStops.distanceMeters(
                 here.latitude, here.longitude, place.coordinate.latitude, place.coordinate.longitude,
             ) <= FavoriteShortcuts.HIDE_WITHIN_METERS

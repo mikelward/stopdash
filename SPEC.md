@@ -1967,7 +1967,10 @@ buggy that Station suits them too. A change plans the trip again at once, as a w
 routes with stairs.
 
 **Direct to a place** (maintainer, 2026-10-07). A trip to a place (a favorite, or a place or postcode
-picked in *To…*) shows a **Direct** section under its choices and over its routes: each line from the
+picked in *To…*) shows a **Direct** section under its choices and over its routes, and so does a trip to a
+**station or stop**: a station is a place too (maintainer, 2026-10-14), at its own position from the
+bundled station and bus stop lists (an interchange at the middle of its stations), so placing it asks
+nothing; one neither list places gets no Direct section. Each line from the
 trip's origin stops whose route calls at a stop within the rider's max walk of the place, at their walking
 pace (as far as the Planner lets the routes' own last walk go, so a stop the routes walk on from counts
 here too; maintainer, 2026-10-07; a change to either looks again),
