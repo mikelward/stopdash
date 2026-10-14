@@ -5,6 +5,7 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.RouteFocus
 import app.stopdash.domain.RouteTopology
+import app.stopdash.domain.StopQualifier
 import java.time.Instant
 import java.util.concurrent.Executors
 import kotlin.coroutines.CoroutineContext
@@ -67,6 +68,15 @@ class RouteDetailWorkTest {
             assertEquals(false, work.grayed)
             val withDoubtful = row.copy(upcoming = row.upcoming.mapIndexed { i, d -> if (i == 2) d.copy(doubtful = true) else d })
             assertEquals(true, runBlocking { routeDetailWork(withDoubtful, focus = null, RouteTopology.EMPTY, worker) }.grayed)
+            // Where it's boarded is found there too: the followed train's platform, or a bus's pole.
+            assertEquals(null, work.boarding)
+            val platformed = row.copy(upcoming = row.upcoming.map { it.copy(platform = "Southbound - Platform 2") })
+            assertEquals(
+                StopQualifier.Platform("2", null),
+                runBlocking { routeDetailWork(platformed, focus = null, RouteTopology.EMPTY, worker) }.boarding,
+            )
+            val bus = platformed.copy(mode = "bus", stopLetter = "K", upcoming = platformed.upcoming.map { it.copy(mode = "bus") })
+            assertEquals(StopQualifier.BusStop("K", null), runBlocking { routeDetailWork(bus, focus = null, RouteTopology.EMPTY, worker) }.boarding)
             // Either of a close pair is grayed too.
             val withPaired = row.copy(upcoming = row.upcoming.mapIndexed { i, d -> if (i == 2) d.copy(paired = true) else d })
             assertEquals(true, runBlocking { routeDetailWork(withPaired, focus = null, RouteTopology.EMPTY, worker) }.grayed)

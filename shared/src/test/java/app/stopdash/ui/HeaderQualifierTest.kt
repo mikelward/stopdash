@@ -120,4 +120,28 @@ class HeaderQualifierTest {
             busPoleLabels(listOf(BusPoleCues("", "Euston", "W"), BusPoleCues("", "Euston", ""))),
         )
     }
+
+    @Test
+    fun `a boarding stop is named by the platform its train leaves from`() {
+        assertEquals(
+            "King's Cross St. Pancras – Platform 7",
+            groupHeaderTitle("King's Cross St. Pancras", boardingQualifier("Northbound - Platform 7", "", "", bus = false)),
+        )
+        // The number its row is split on, where the train itself names none ("Platform Unknown").
+        assertEquals(StopQualifier.Platform("7", null), boardingQualifier("Platform Unknown", "7", "", bus = false))
+        assertEquals(StopQualifier.Platform("7", null), boardingQualifier(null, "7", "", bus = false))
+        // Never a direction word: the stop list is headed by that.
+        assertNull(boardingQualifier("Northbound", "", "", bus = false))
+        assertNull(boardingQualifier("Platform Unknown", "Unknown", "", bus = false))
+    }
+
+    @Test
+    fun `a boarding bus stop is named by its pole's letter alone`() {
+        assertEquals("Park – Stop K", groupHeaderTitle("Park", boardingQualifier(null, "", "k", bus = true)))
+        assertEquals("Stop K", groupHeaderSpoken(boardingQualifier(null, "", "K", bus = true)))
+        // TfL's stop-local platform on a bus prediction is never read as one (Codex, #850).
+        assertEquals(StopQualifier.BusStop("K", null), boardingQualifier("Platform 1", "", "K", bus = true))
+        // A letterless pole: the bare place.
+        assertNull(boardingQualifier("Platform 1", "", " ", bus = true))
+    }
 }

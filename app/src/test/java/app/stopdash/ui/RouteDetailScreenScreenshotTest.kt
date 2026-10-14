@@ -882,9 +882,11 @@ class RouteDetailScreenScreenshotTest {
         composeRule.waitForIdle()
 
         // The list is headed by the way the train runs, read off its platform; it opens on the
-        // boarding stop, so no "From" label repeats it — and a screen reader hears it as "Your stop".
+        // boarding stop, which a screen reader hears as "Your stop". Above it the page says where the
+        // train leaves from, platform and all, which a ride's card no longer heads (maintainer, 2026-10-14).
         composeRule.onNodeWithText("Northbound").assertIsDisplayed()
-        composeRule.onNodeWithText("From Victoria").assertDoesNotExist()
+        composeRule.onNodeWithText("From Victoria – Platform 5").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("From Victoria, Platform 5").assertIsDisplayed()
         composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your stop"))
             .assertIsDisplayed()
         composeRule.onNodeWithText("Seven Sisters").assertIsDisplayed()
@@ -1674,6 +1676,46 @@ class RouteDetailScreenScreenshotTest {
     }
 
     @Test
+    fun aBusRoute_namesItsPoleLetter() {
+        // A bus boarded at a lettered pole: the page says which one, as the card's heading no longer
+        // does for a ride boarding at several (maintainer, 2026-10-14). Synthetic stops.
+        val stop = StopArrivals(
+            stopId = "490000001N",
+            stopName = "Park",
+            // TfL's stop-local platform on a bus prediction, never read as a platform (Codex, #850).
+            departures = listOf(Departure("b1", "B1", "outbound", "Hill", "Platform 1", now.plusSeconds(120), "bus")),
+            fetchedAt = now,
+            stopLetter = "K",
+            bearing = "N",
+            towards = "Hill",
+        )
+        val row = DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
+        setDetail {
+            StopDashTheme {
+                RouteDetailScreen(
+                    row = row,
+                    isStarred = false,
+                    starrable = true,
+                    disruptionUnknown = false,
+                    stale = false,
+                    now = now,
+                    onToggleStar = {},
+                    onBack = {},
+                    routeStops = RouteStopsUi.Loaded(listOf(RouteStop("490000001N", "Park"), RouteStop("490000002N", "Hill"))),
+                )
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("From Park – Stop K").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("From Park, Stop K").assertIsDisplayed()
+        // Its compass heads the stop list, as before; the sign's "towards" isn't repeated.
+        composeRule.onNodeWithText("Northbound").assertIsDisplayed()
+
+        captureSnapshot("route-detail-bus-pole.png")
+    }
+
+    @Test
     fun aBusRoute_starsAJourneyToo() {
         val stop = StopArrivals(
             stopId = "490000001N",
@@ -1860,7 +1902,7 @@ class RouteDetailScreenScreenshotTest {
         setDetail {
             StopDashTheme {
                 RouteDetailScreen(
-                    row = healthyRow(),
+                    row = healthyRow(platform = "Northbound - Platform 5"),
                     isStarred = false,
                     starrable = true,
                     disruptionUnknown = false,
@@ -1874,6 +1916,9 @@ class RouteDetailScreenScreenshotTest {
         }
         composeRule.onNodeWithText("Stops shown once departures refresh").assertIsDisplayed()
         composeRule.onNodeWithText("Green Park").assertDoesNotExist()
+        // The platform is an old prediction's too, so the page names the stop alone (Codex, #850).
+        composeRule.onNodeWithText("From Victoria").assertIsDisplayed()
+        composeRule.onNodeWithText("Platform 5", substring = true).assertDoesNotExist()
     }
 
     @Test

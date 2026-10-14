@@ -5468,11 +5468,10 @@ internal fun RouteDetailScreen(
                 .verticalScroll(scrollState)
                 .padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
-            // "From Victoria" names the boarding stop only while no stop list does: the list opens on
-            // it, so with the list shown the label is repeated noise, but a status row (no train to
-            // follow) or a loading, failed, or withheld list would otherwise leave the page not saying
-            // which stop it's about — ambiguous when one line is watched at two stops (Codex).
-            // The service's full name first, so the pill's short code (LNR, AWC, HAM) is never
+            // "From King's Cross St. Pancras – Platform 7" names where the tapped departure leaves
+            // from, with or without the stop list: a favorite ride's card holds several stops'
+            // trains under one heading, so the page is where its stop and platform are told
+            // (maintainer, 2026-10-14). The service's full name first, so the pill's short code (LNR, AWC, HAM) is never
             // a puzzle; left out where the pill already says it all (a bus number, DLR).
             // TfL can leave the soonest departure's mode off: take it from another departure, else
             // from the line id, so a tube line still reads "Victoria line".
@@ -5493,13 +5492,20 @@ internal fun RouteDetailScreen(
                 )
             }
             val place = row.hubName.ifBlank { row.stopName }
-            val showFrom = stops !is RouteStopsUi.Loaded && place.isNotBlank()
+            val showFrom = place.isNotBlank()
             if (showFrom) {
+                // The platform the followed train leaves from, else the bus pole's letter, worked out with
+                // the row's trains ([routeDetailWork]). A stale row's platform is an old prediction's, so
+                // it's left off, as its stop list is (SPEC D4); a pole's letter is the stop's own.
+                val boarding = workForRow?.boarding?.takeUnless { stale && it is StopQualifier.Platform }
+                // Heard with a pause, not a dash ("From Victoria, Platform 5").
+                val spoken = groupHeaderSpoken(boarding)?.let { stringResource(R.string.route_detail_from, "$place, $it") }
                 Text(
-                    text = stringResource(R.string.route_detail_from, place),
+                    text = stringResource(R.string.route_detail_from, groupHeaderTitle(place, boarding)),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = if (service != null) 4.dp else 0.dp),
+                    modifier = Modifier.padding(top = if (service != null) 4.dp else 0.dp)
+                        .let { if (spoken != null) it.semantics { contentDescription = spoken } else it },
                 )
             }
             // The followed route's countdowns, leading the page — the card's one-line format, times
@@ -6028,7 +6034,7 @@ private fun RowScope.DestinationLabelContent(label: String, branch: String?, mod
 /**
  * What the route page shows of its row, worked out together off the main thread ([routeDetailWork]):
  * every upcoming train on the followed route ([routeDepartures]), its trains with no time
- * ([routeUntimed]), and the terminus or termini it runs to.
+ * ([routeUntimed]), the terminus or termini it runs to, and the platform or pole it's boarded at.
  */
 internal data class RouteDetailWork(
     val departures: List<Departure>,
@@ -6037,6 +6043,9 @@ internal data class RouteDetailWork(
     // Whether any of [departures] is grayed ([Departure.grayed]: it may not run, [DoubtfulTrains]),
     // found here so the page walks them for graying only when one is.
     val grayed: Boolean = false,
+    // Where the followed train leaves from, after the place: its platform, or a bus's pole letter
+    // ([boardingQualifier]); null when neither is known.
+    val boarding: StopQualifier? = null,
 ) {
     companion object {
         val NONE = RouteDetailWork(emptyList(), emptyList(), emptyList())
@@ -6067,7 +6076,15 @@ internal suspend fun routeDetailWork(
             .distinct()
     }
     val departures = routeDepartures(row, focus, topology)
-    RouteDetailWork(departures, routeUntimed(row, focus, topology), destinations, departures.any { it.grayed })
+    // A bus as the departure rows judge one: any of its predictions says so, as TfL can leave the mode off some.
+    val bus = row.mode.equals("bus", ignoreCase = true) || row.upcoming.any { it.mode.equals("bus", ignoreCase = true) }
+    RouteDetailWork(
+        departures,
+        routeUntimed(row, focus, topology),
+        destinations,
+        departures.any { it.grayed },
+        boardingQualifier(followed?.platform, row.platform, row.stopLetter, bus),
+    )
 }
 
 /**
