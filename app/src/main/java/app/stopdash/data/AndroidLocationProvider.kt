@@ -368,11 +368,12 @@ class AndroidLocationProvider(
 
     /**
      * One fresh fix from [provider] (or `null`). [LocationManager.getCurrentLocation] delivers a
-     * single fix representing the present moment (its contract bounds any historical location to
-     * the order of seconds, never minutes) and self-cancels, so there is no long-lived listener
-     * to leak; the [CancellationSignal] only covers the caller giving up (a [FixSelection]
+     * single fix meant to represent the present moment and self-cancels, so there is no long-lived
+     * listener to leak; the [CancellationSignal] only covers the caller giving up (a [FixSelection]
      * timeout, or the screen going away). The minutes-scale cache a re-locate must bypass is
-     * `getLastKnownLocation`, which [FixSelection]'s `forceFresh` already skips.
+     * `getLastKnownLocation`, which [FixSelection]'s `forceFresh` already skips. Its contract bounds
+     * a historical fix to seconds, but the passive provider has handed back one minutes old, so a
+     * fix past [FixSelection.CURRENT_FIX_MAX_AGE_MILLIS] is logged and counts as none.
      */
     private suspend fun requestFreshFixFrom(manager: LocationManager, provider: String): Located? =
         try {
@@ -380,7 +381,7 @@ class AndroidLocationProvider(
                 val signal = CancellationSignal()
                 cont.invokeOnCancellation { signal.cancel() }
                 manager.getCurrentLocation(provider, currentLocationRequest(provider), signal, context.mainExecutor) { location ->
-                    cont.resume(location?.toLocated(provider))
+                    cont.resume(location?.toLocated(provider)?.takeIfCurrent())
                 }
             }
         } catch (e: CancellationException) {
@@ -435,6 +436,15 @@ class AndroidLocationProvider(
         val accuracyMeters: Float?,
         val elapsedRealtimeNanos: Long,
     )
+
+    // This fix, if it is recent enough to be the current one it was handed back as. Called on the
+    // main thread, where getCurrentLocation delivers; the age and provider are coarse diagnostics.
+    private fun Located.takeIfCurrent(): Located? {
+        val ageMillis = (SystemClock.elapsedRealtimeNanos() - elapsedRealtimeNanos) / 1_000_000
+        if (FixSelection.isCurrent(ageMillis)) return this
+        warn("fresh fix: $provider provider gave a ${ageMillis / 1_000} s old fix, not used")
+        return null
+    }
 
     private fun Location.toLocated(provider: String) = Located(
         coordinates = toCoordinates(),

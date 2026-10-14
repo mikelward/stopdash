@@ -60,6 +60,22 @@ object FixSelection {
     const val COARSE_GRACE_MILLIS = 2_000L
 
     /**
+     * The oldest a fix a provider hands back as its current one may be and still count as one. The
+     * platform bounds a current fix to seconds, but the passive provider has handed back one taken
+     * five minutes earlier, which beat fused (2.5 s later, same place) and showed "Approximate
+     * location" (bug report, 2026-10-14). An older one counts as no answer from that provider, so
+     * the others are still waited for; the last-known fallback stays the place for an old fix.
+     * Reversible — one constant.
+     */
+    const val CURRENT_FIX_MAX_AGE_MILLIS = 30_000L
+
+    /**
+     * Whether a fix [ageMillis] old, handed back by a provider as its current one, counts as current:
+     * at most [CURRENT_FIX_MAX_AGE_MILLIS]. One older counts as no answer from that provider.
+     */
+    fun isCurrent(ageMillis: Long): Boolean = ageMillis <= CURRENT_FIX_MAX_AGE_MILLIS
+
+    /**
      * How long the follow-up request to GPS/fused waits after the list was shown from a coarse fix
      * ([LocationProvider.precise]). Longer than [FRESH_FIX_PER_PROVIDER_TIMEOUT_MILLIS]: the list is
      * already up, so this wait blocks nothing, and a GPS that missed the grace often lands a few

@@ -4,6 +4,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -353,5 +354,14 @@ class FixSelectionTest {
         assertEquals(false, fallbackFlag(lastKnownAgeMillis = null) { null })
         // Fresh fix fails but a bounded cached fix is used → fallback.
         assertEquals(true, fallbackFlag(lastKnownAgeMillis = 300_000L, forceFresh = true) { null })
+    }
+
+    @Test
+    fun `a fix handed back as current counts as one only while it's at most half a minute old`() {
+        assertTrue(FixSelection.isCurrent(0))
+        assertTrue(FixSelection.isCurrent(FixSelection.CURRENT_FIX_MAX_AGE_MILLIS))
+        assertFalse(FixSelection.isCurrent(FixSelection.CURRENT_FIX_MAX_AGE_MILLIS + 1))
+        // The bug report's: a passive fix five minutes old.
+        assertFalse(FixSelection.isCurrent(309_000))
     }
 }
