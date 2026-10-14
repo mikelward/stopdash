@@ -3838,6 +3838,36 @@ and these carry the rest as their own PRs:
 
 ## Phase 5 — Distribution and polish
 
+- [x] **Translate the app into Londoners' main languages** (maintainer, 2026-10-13): Romanian,
+      Spanish, Polish, Bengali, Portuguese (European, with Brazilian overrides), Italian, Turkish,
+      German and French, phone and watch, as language-only folders every region reads
+      (`RegionalLocalesTest`), listed in the per-app language setting. See SPEC *Language*.
+      - [ ] **Device check:** the per-app language setting lists all nine; the widget, tile and
+            watch rows fit in the longest languages (German, Polish, Romanian).
+      - [ ] **Native-speaker review** of each language; the first pass was machine-made.
+      - [ ] **Name "Allow all the time" from the device** (Codex on #843). The background-location
+            steps quote Android's own button labels, which differ by language, by region (Spain's
+            Spanish from Latin America's, so `values-b+es+419` carries Latin America's; European
+            Portuguese from Brazil's) and maybe by manufacturer, and the first pass quoted them from
+            memory. `PackageManager.getBackgroundPermissionOptionLabel()` gives the device's own
+            label for "Allow all the time" (read off the main thread); "While using the app" has no
+            such API, so it stays quoted and needs a device check in each language.
+- [ ] **Translations pass** (standing): once the maintainer has confirmed them on a device,
+      translate the strings marked `TODO: translate` into every language (terms from
+      `dev-docs/translations.md`) and drop the marks (AGENTS *Translations*).
+- [ ] **Move the English the app builds in code into string resources**, English-only and marked
+      for the translations pass. Found by a sweep: the widget's own text (its stamp, "Tap to
+      refresh", "Too small", empty states, "Disrupted:" description, an English-weekday
+      `Locale.UK` stamp); stop headers' "Platform N" / "Stop X" / "towards" / compass bearings
+      (`HeaderQualifier`); countdowns' "min" (`Countdown`) and the " min" suffixes and " · " joiners
+      in the UI; "N min ago" (`RelativeTime`); distances' units and their "." decimal
+      (`StopDistance`); mode names (`ModeIcon`, search's group names and subtitles); the
+      "<name> line" label; the " to " join of a closure's stops; "via" in spoken branch labels;
+      the Live Update chip's compass letters; the watch's "Disrupted:". Four places parse that
+      English back (`removeSuffix(" min")`, `removePrefix("Updated ")`, capitalizing
+      `formatAge`'s output) and must change with it, and hidden lines are saved by their English
+      label, so a language switch would leave them English.
+
 - [ ] **Audit where content changes under the rider and should animate** (maintainer, 2026-10-09). Hold
       still comes first, but where something must appear, go or move while the rider is looking (a card
       shown or put away, a row arriving or leaving, a list re-sorting), it should slide rather than jump.

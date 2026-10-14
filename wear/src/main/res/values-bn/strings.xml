@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="watch_open_phone">আপনার ফোনে StopDash খুলুন</string>
+    <string name="watch_add_stops">আপনার ফোনে স্টপ যোগ করুন</string>
+    <string name="watch_partly_out_of_date">কিছু স্টপের তথ্য পুরোনো</string>
+    <string name="tile_updated_now">এইমাত্র আপডেট</string>
+    <string name="tile_updated_ago">%d মি. আগে</string>
+    <string name="tile_out_of_date">তথ্য পুরোনো</string>
+    <string name="tile_all_stops">সব স্টপ</string>
+    <string name="watch_refresh">রিফ্রেশ করুন</string>
+    <string name="watch_refreshing">রিফ্রেশ হচ্ছে…</string>
+    <string name="watch_refresh_rate_limited">রিফ্রেশ হয়নি: অনুরোধ সীমিত</string>
+    <string name="watch_refresh_unreachable">রিফ্রেশ হয়নি: TfL-এ সংযোগ নেই</string>
+    <string name="watch_refresh_key_rejected">রিফ্রেশ হয়নি: API কী প্রত্যাখ্যাত</string>
+    <string name="watch_phone_out_of_reach">ফোন নাগালের বাইরে</string>
+    <string name="tile_no_departures">কোনো প্রস্থান নেই</string>
+    <string name="tile_may_be_out_of_date">তথ্য পুরোনো হতে পারে</string>
+    <string name="tile_only_hidden">লুকানো পরিবহন ছাড়া আর কিছু নেই</string>
+    <string name="tile_stop_empty">%1$s · %2$s</string>
+    <string name="complication_label">পরবর্তী প্রস্থান</string>
+    <string name="complication_none">নেই</string>
+    <string name="complication_unknown">\?</string>
+    <string name="complication_uncertain_time">~^1</string>
+    <string name="watch_no_rail_key">কী নেই</string>
+    <string name="watch_no_data">ডেটা নেই</string>
+    <string name="planned_alert_description">পরিকল্পিত %1$s, %2$s থেকে</string>
+    <string name="watch_disruptions_unknown">বিঘ্ন আছে কিনা যাচাই করা যায়নি</string>
+    <string name="complication_line_disrupted">%1$s (%2$s)</string>
+    <string name="complication_long_departure">%1$s → %2$s ^1</string>
+    <string name="complication_long_departure_uncertain">%1$s → %2$s ~^1</string>
+    <string name="complication_long_none">%1$s: কোনো প্রস্থান নেই</string>
+    <string name="complication_long_unsure">%1$s: তথ্য পুরোনো হতে পারে</string>
+    <string name="complication_long_stale">%1$s: তথ্য পুরোনো</string>
+    <string name="complication_pick_title">কোন সারি দেখাবে?</string>
+    <string name="complication_pick_default">উপরের সারি</string>
+    <string name="complication_pick_default_detail">তারকাচিহ্নিত আগে</string>
+    <string name="complication_pick_row">%1$s · %2$s</string>
+    <string name="complication_pick_none">বেছে নেওয়ার মতো কোনো সারি এখনো নেই</string>
+    <string name="watch_trip">যাত্রাপথে</string>
+    <string name="watch_trip_channel_description">ফোন কোনো ট্রিপ অনুসরণ করার সময় আপনি যে ধাপে আছেন</string>
+    <string name="watch_trip_previous">আগের ধাপ</string>
+    <string name="watch_trip_next">পরের ধাপ</string>
+    <plurals name="watch_more_stops_on_phone">
+        <item quantity="one">ফোনে আরও %dটি স্টপ</item>
+        <item quantity="other">ফোনে আরও %dটি স্টপ</item>
+    </plurals>
+</resources>

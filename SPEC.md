@@ -3601,6 +3601,18 @@ South Africa, Canada and the rest Android groups with UK English) read the same 
 through Android's own locale fallback, so they need no copy of their own; English (United States)
 reads the base. TfL's own line and place names stay as TfL spells them.
 
+Beyond English, the app speaks the main languages of Londoners (maintainer, 2026-10-13): the six
+most common main languages after English in London's 2021 Census — Romanian, Spanish, Polish,
+Bengali, Portuguese and Italian — plus Turkish, German and French. Each is a language-only
+translation, so every region of the language reads it (Canadian French, Austrian German, Mexican
+Spanish), and the system's per-app language setting lists them. Spanish is neutral, read alike in
+Spain and Latin America, save the Android button names it quotes, which follow each region's phone; Portuguese is European, with Brazilian overrides where the words differ
+(*autocarro*/*ônibus*), the en-GB pattern. The watch follows the watch's own language. What TfL
+publishes stays as published — stop, line and place names and the text of disruption messages
+come in English. A new string ships in English first, until the maintainer has seen it on a
+device; a translations pass then brings every language up to date, so meanwhile a translated
+app may show its newest strings in English.
+
 ## Architecture
 
 - **Kotlin + Jetpack Compose**: an `:app` module (mirroring simmo and Type Launcher), with

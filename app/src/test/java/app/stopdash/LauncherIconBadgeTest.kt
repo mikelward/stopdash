@@ -64,8 +64,8 @@ class LauncherIconBadgeTest {
     fun `the in-app name stays unbadged`() {
         // The header reads @string/app_name and is baked into recorded screenshots.
         assertTrue(
-            File("src/main/res/values/strings.xml").readText()
-                .contains("""<string name="app_name">StopDash</string>"""),
+            Regex("""<string name="app_name"[^>]*>StopDash</string>""")
+                .containsMatchIn(File("src/main/res/values/strings.xml").readText()),
         )
     }
 

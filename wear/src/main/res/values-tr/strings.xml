@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="watch_open_phone">Telefonunuzda StopDash uygulamasını açın</string>
+    <string name="watch_add_stops">Telefonunuzdan durak ekleyin</string>
+    <string name="watch_partly_out_of_date">Bazı duraklar güncel değil</string>
+    <string name="tile_updated_now">Az önce güncellendi</string>
+    <string name="tile_updated_ago">%d dk önce</string>
+    <string name="tile_out_of_date">Güncel değil</string>
+    <string name="tile_all_stops">Tüm duraklar</string>
+    <string name="watch_refresh">Yenile</string>
+    <string name="watch_refreshing">Yenileniyor…</string>
+    <string name="watch_refresh_rate_limited">Yenilenemedi: istek sınırı</string>
+    <string name="watch_refresh_unreachable">Yenilenemedi: TfL yanıt vermiyor</string>
+    <string name="watch_refresh_key_rejected">Yenilenemedi: API anahtarı reddedildi</string>
+    <string name="watch_phone_out_of_reach">Telefona ulaşılamıyor</string>
+    <string name="tile_no_departures">Kalkış yok</string>
+    <string name="tile_may_be_out_of_date">Güncel olmayabilir</string>
+    <string name="tile_only_hidden">Ulaşım türleri gizliyken gösterilecek başka bir şey yok</string>
+    <string name="tile_stop_empty">%1$s · %2$s</string>
+    <string name="complication_label">Sonraki kalkış</string>
+    <string name="complication_none">Yok</string>
+    <string name="complication_unknown">\?</string>
+    <string name="complication_uncertain_time">~^1</string>
+    <string name="watch_no_rail_key">Anahtar yok</string>
+    <string name="watch_no_data">Veri yok</string>
+    <string name="planned_alert_description">Planlı %1$s, %2$s itibarıyla</string>
+    <string name="watch_disruptions_unknown">Aksaklıklar kontrol edilemedi</string>
+    <string name="complication_line_disrupted">%1$s (%2$s)</string>
+    <string name="complication_long_departure">%1$s → %2$s ^1</string>
+    <string name="complication_long_departure_uncertain">%1$s → %2$s ~^1</string>
+    <string name="complication_long_none">%1$s: kalkış yok</string>
+    <string name="complication_long_unsure">%1$s: güncel olmayabilir</string>
+    <string name="complication_long_stale">%1$s: güncel değil</string>
+    <string name="complication_pick_title">Hangi satır gösterilsin?</string>
+    <string name="complication_pick_default">Üst satır</string>
+    <string name="complication_pick_default_detail">Önce yıldızlılar</string>
+    <string name="complication_pick_row">%1$s · %2$s</string>
+    <string name="complication_pick_none">Henüz seçilecek satır yok</string>
+    <string name="watch_trip">Yolda</string>
+    <string name="watch_trip_channel_description">Telefonunuz bir yolculuğu takip ederken bulunduğunuz adım</string>
+    <string name="watch_trip_previous">Önceki adım</string>
+    <string name="watch_trip_next">Sonraki adım</string>
+    <plurals name="watch_more_stops_on_phone">
+        <item quantity="one">Telefonda %d durak daha</item>
+        <item quantity="other">Telefonda %d durak daha</item>
+    </plurals>
+</resources>
