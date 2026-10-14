@@ -1467,7 +1467,11 @@ found and dropped without riding past its card; Remove only ever removes the fav
 where it starts, then, with that standing in its From row, where it ends; the From row changes the
 start, and Back from the end drops back to it. Both searches lead with the rider's **favorite places**
 as chips (maintainer, 2026-10-10), so Home, Work or a place of their own can be either end. The pair is
-saved on a line both stations serve (rail before bus), as a long press saves one, and the list says what
+saved on a line both stations serve (rail before bus), as a long press saves one; where none does, a
+station's **own bus stops** count too, those within 150 m of it as on the near-me list (maintainer,
+2026-10-14): TfL files a Tube or rail station's bus stops apart from it, so a bus stopping outside the
+station is direct, never a trip with a change. They're found on the device from the bundled stops (TfL is
+asked only outside them), and only once no line served both. The list says what
 it's doing ("Adding Euston ➔ Waterloo…") and why a pair wasn't added: the same station twice, already a
 favorite, or the lookup or the save failed. A pair StopDash **can't follow yet** — no one line serves
 both, or an end is a favorite place — is saved anyway and listed **grayed**, after the rest, with

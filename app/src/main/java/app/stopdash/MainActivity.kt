@@ -2365,6 +2365,8 @@ class MainActivity : ComponentActivity() {
                                                         StationMatch(from.stationId, from.name),
                                                         StationMatch(to.stationId, to.name),
                                                         stationFinder,
+                                                        // A station's own bus stops, by its public position.
+                                                        stationAreaStopFinder,
                                                         journeyStore,
                                                         warn = ::logStarWarning,
                                                     )

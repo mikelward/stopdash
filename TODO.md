@@ -2580,6 +2580,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         opening the journey's own view.
     - [ ] **Add's direct check weighs only a line both stations serve**: a bus between stops near each
           station is direct on the card but saved grayed at Add. Check with the same lookups before graying it.
+      - [x] **A station's own bus stops count** (maintainer, 2026-10-14): where no line serves both, the bus
+            stops within 150 m of a station (the near-me list's rule) are weighed before graying the pair,
+            found from the bundled stops. The card's wider reach (320 m, the rider's max walk) is still open.
   - [ ] **Rename a starred journey** — needs a label in the stored file (a schema version bump, so
         an older build can't drop it on its next write).
   - [ ] **Converge "journey" and "trip"** (maintainer, 2026-10-05: "longer term we'll need to

@@ -64,4 +64,46 @@ class JourneyPairTest {
         val named = listOf(StopLocation("490000000C", "Somewhere", 51.5, -0.1, listOf(LineRef("30", "30", "bus")), clusterId = "Somewhere"))
         assertEquals("", (JourneyPair.resolve("Somewhere", named, "King's Cross", kxBus) as JourneyPair.Result.Found).journey.from.areaId)
     }
+
+    // A station's own bus stops, which TfL files apart from it: synthetic poles around Euston's
+    // published position (SPEC *Privacy*), about 55 m and 330 m north of it.
+    private val eustonPlaced = StopLocation("940GZZLUEUS", "Euston Underground Station", 51.5282, -0.1337, listOf(LineRef("northern", "Northern", "tube")), clusterId = "940GZZLUEUS")
+    private fun pole(id: String, latitude: Double, vararg routes: String) =
+        StopLocation(id, "Stop $id", latitude, -0.1337, routes.map { LineRef(it, it, "bus") }, clusterId = "490G0$id")
+    private val outside = pole("490EXAMPLEA", 51.5287, "X1", "X2")
+    private val acrossTheRoad = pole("490EXAMPLEB", 51.5286, "X1")
+    private val farther = pole("490EXAMPLEC", 51.5312, "X3")
+
+    @Test
+    fun `a station's own bus stops are added after its stops, nearest first, and none farther`() {
+        val withBuses = JourneyPair.withStationBuses(listOf(eustonPlaced), listOf(farther, outside, acrossTheRoad, outside))
+        assertEquals(listOf("940GZZLUEUS", "490EXAMPLEB", "490EXAMPLEA"), withBuses.map { it.id })
+    }
+
+    @Test
+    fun `a bus stop end looks for no more stops, and neither does an unplaced station`() {
+        assertEquals(emptyList<StopLocation>(), JourneyPair.stationPositions(listOf(outside, acrossTheRoad)))
+        assertEquals(listOf(outside), JourneyPair.withStationBuses(listOf(outside), listOf(acrossTheRoad)))
+        val unplaced = eustonPlaced.copy(latitude = 0.0, longitude = 0.0)
+        assertEquals(emptyList<StopLocation>(), JourneyPair.stationPositions(listOf(unplaced)))
+        assertEquals(listOf(unplaced), JourneyPair.withStationBuses(listOf(unplaced), listOf(outside)))
+    }
+
+    @Test
+    fun `a station's stops sharing a position are looked around once`() {
+        val platform = eustonPlaced.copy(id = "9400ZZLUEUS1")
+        assertEquals(listOf(eustonPlaced), JourneyPair.stationPositions(listOf(eustonPlaced, platform, outside)))
+    }
+
+    @Test
+    fun `a bus from a stop to one outside a station makes a journey to the station`() {
+        val from = listOf(pole("490EXAMPLED", 51.54, "X1"))
+        assertEquals(JourneyPair.Result.NoDirectLine, JourneyPair.resolve("Example Road", from, "Euston", listOf(eustonPlaced)))
+        val toAll = JourneyPair.withStationBuses(listOf(eustonPlaced), listOf(outside, farther))
+        val journey = (JourneyPair.resolve("Example Road", from, "Euston", toAll) as JourneyPair.Result.Found).journey
+        assertEquals("X1", journey.lineId)
+        assertEquals("bus", journey.mode)
+        assertEquals("490EXAMPLEA", journey.to.stopId)
+        assertEquals("Euston", journey.to.name)
+    }
 }

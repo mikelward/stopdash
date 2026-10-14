@@ -7,7 +7,11 @@ import app.stopdash.domain.LineRef
 import app.stopdash.domain.PendingEnd
 import app.stopdash.domain.PendingJourney
 import app.stopdash.domain.StationFinder
+import app.stopdash.domain.CachingStopFinder
+import app.stopdash.domain.NearbyStopsCache
+import app.stopdash.domain.NearestStops
 import app.stopdash.domain.StationMatch
+import app.stopdash.domain.StopFinder
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.TflException
 import java.io.IOException
@@ -42,6 +46,18 @@ class AddFavoriteJourneyPairTest {
             return stops[id].orEmpty()
         }
     }
+
+    // The stops around a station, by its position: none unless a test places some.
+    private class Buses(val stops: List<StopLocation>, val fail: TflException? = null) : StopFinder {
+        val asked = mutableListOf<Pair<Double, Double>>()
+        override suspend fun nearbyStops(latitude: Double, longitude: Double, radiusMeters: Int, stopTypes: List<String>): List<StopLocation> {
+            asked += latitude to longitude
+            fail?.let { throw it }
+            return stops
+        }
+    }
+
+    private val noBuses = Buses(emptyList())
 
     private val finder = Finder(
         mapOf(
@@ -81,7 +97,7 @@ class AddFavoriteJourneyPairTest {
     @Test
     fun `two stations on one line are saved as a journey on it`() = runTest {
         val journeys = Journeys(emptyList())
-        assertNull(addFavoriteJourneyPair(kingsCross, waterloo, finder, journeys, worker = StandardTestDispatcher(testScheduler)))
+        assertNull(addFavoriteJourneyPair(kingsCross, waterloo, finder, noBuses, journeys, worker = StandardTestDispatcher(testScheduler)))
         val saved = journeys.state.value!!.single()
         assertEquals("northern", saved.lineId)
         assertEquals(JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras", 51.5, -0.12, "940GZZLUKSX"), saved.from)
@@ -92,7 +108,7 @@ class AddFavoriteJourneyPairTest {
     fun `two stations no one line serves are saved grayed, once`() = runTest {
         val worker = StandardTestDispatcher(testScheduler)
         val journeys = Journeys(emptyList())
-        assertNull(addFavoriteJourneyPair(kingsCross, canadaWater, finder, journeys, worker = worker))
+        assertNull(addFavoriteJourneyPair(kingsCross, canadaWater, finder, noBuses, journeys, worker = worker))
         assertTrue(journeys.state.value!!.isEmpty())
         assertEquals(
             listOf(PendingJourney(PendingEnd.Station("HUBKGX", "King's Cross St. Pancras"), PendingEnd.Station("940GZZLUCWR", "Canada Water"))),
@@ -101,12 +117,12 @@ class AddFavoriteJourneyPairTest {
         // Either way round, it's the same one.
         assertEquals(
             JourneyAddNote.AlreadySaved("Canada Water", "King's Cross St. Pancras"),
-            addFavoriteJourneyPair(canadaWater, kingsCross, finder, journeys, worker = worker),
+            addFavoriteJourneyPair(canadaWater, kingsCross, finder, noBuses, journeys, worker = worker),
         )
         assertEquals(1, journeys.pending.value!!.size)
         assertEquals(
             JourneyAddNote.NotSaved("King's Cross St. Pancras", "Canada Water"),
-            addFavoriteJourneyPair(kingsCross, canadaWater, finder, Journeys(emptyList(), failAdd = true), worker = worker),
+            addFavoriteJourneyPair(kingsCross, canadaWater, finder, noBuses, Journeys(emptyList(), failAdd = true), worker = worker),
         )
     }
 
@@ -114,7 +130,7 @@ class AddFavoriteJourneyPairTest {
     fun `a grayed pair that resolves to a line later is followed, and its gray copy goes`() = runTest {
         val worker = StandardTestDispatcher(testScheduler)
         val journeys = Journeys(emptyList())
-        addFavoriteJourneyPair(kingsCross, canadaWater, finder, journeys, worker = worker)
+        addFavoriteJourneyPair(kingsCross, canadaWater, finder, noBuses, journeys, worker = worker)
         assertEquals(1, journeys.pending.value!!.size)
         // TfL now reports the Jubilee at King's Cross too.
         val later = Finder(
@@ -123,7 +139,7 @@ class AddFavoriteJourneyPairTest {
                 "940GZZLUCWR" to listOf(tube("940GZZLUCWR", "jubilee")),
             ),
         )
-        assertNull(addFavoriteJourneyPair(canadaWater, kingsCross, later, journeys, worker = worker))
+        assertNull(addFavoriteJourneyPair(canadaWater, kingsCross, later, noBuses, journeys, worker = worker))
         assertEquals("jubilee", journeys.state.value!!.single().lineId)
         assertEquals(emptyList<PendingJourney>(), journeys.pending.value)
     }
@@ -132,7 +148,7 @@ class AddFavoriteJourneyPairTest {
     fun `a followed pair that no longer resolves to a line isn't saved again grayed`() = runTest {
         val worker = StandardTestDispatcher(testScheduler)
         val journeys = Journeys(emptyList())
-        addFavoriteJourneyPair(kingsCross, waterloo, finder, journeys, worker = worker)
+        addFavoriteJourneyPair(kingsCross, waterloo, finder, noBuses, journeys, worker = worker)
         // TfL no longer reports a line both serve.
         val later = Finder(
             mapOf(
@@ -142,10 +158,137 @@ class AddFavoriteJourneyPairTest {
         )
         assertEquals(
             JourneyAddNote.AlreadySaved("Waterloo", "King's Cross St. Pancras"),
-            addFavoriteJourneyPair(waterloo, kingsCross, later, journeys, worker = worker),
+            addFavoriteJourneyPair(waterloo, kingsCross, later, noBuses, journeys, worker = worker),
         )
         assertEquals(1, journeys.state.value!!.size)
         assertEquals(emptyList<PendingJourney>(), journeys.pending.value)
+    }
+
+    // A bus stop's pole, and Euston, whose own bus stop TfL files apart from it: synthetic ids, the
+    // pole outside about 55 m north of Euston's published position (SPEC *Privacy*).
+    private val busStop = StationMatch("490G0EXAMPLE", "Example Road")
+    private val euston = StationMatch("940GZZLUEUS", "Euston")
+    private fun pole(id: String, latitude: Double, vararg routes: String) =
+        StopLocation(id, "Stop $id", latitude, -0.1337, routes.map { LineRef(it, it, "bus") }, clusterId = "490G0EXAMPLE")
+    private val busFinder = Finder(
+        mapOf(
+            "490G0EXAMPLE" to listOf(pole("490EXAMPLED", 51.54, "X1")),
+            "940GZZLUEUS" to listOf(StopLocation("940GZZLUEUS", "Euston Underground Station", 51.5282, -0.1337, listOf(LineRef("northern", "Northern", "tube")), clusterId = "940GZZLUEUS")),
+        ),
+    )
+
+    @Test
+    fun `a bus to a station's own bus stop is saved as a journey to the station`() = runTest {
+        val worker = StandardTestDispatcher(testScheduler)
+        val journeys = Journeys(emptyList())
+        val buses = Buses(listOf(pole("490EXAMPLEA", 51.5287, "X1")))
+        assertNull(addFavoriteJourneyPair(busStop, euston, busFinder, buses, journeys, worker = worker))
+        val saved = journeys.state.value!!.single()
+        assertEquals("X1", saved.lineId)
+        assertEquals("490EXAMPLEA", saved.to.stopId)
+        assertEquals("Euston", saved.to.name)
+        assertEquals(emptyList<PendingJourney>(), journeys.pending.value)
+        // Looked around the station only: a bus stop end has its poles already.
+        assertEquals(listOf(51.5282 to -0.1337), buses.asked)
+        // Either way round, it's the same one.
+        assertEquals(JourneyAddNote.AlreadySaved("Euston", "Example Road"), addFavoriteJourneyPair(euston, busStop, busFinder, buses, journeys, worker = worker))
+    }
+
+    @Test
+    fun `a grayed pair a station's bus stop now joins is followed, and its gray copy goes`() = runTest {
+        val worker = StandardTestDispatcher(testScheduler)
+        val journeys = Journeys(emptyList())
+        assertNull(addFavoriteJourneyPair(busStop, euston, busFinder, noBuses, journeys, worker = worker))
+        assertEquals(1, journeys.pending.value!!.size)
+        assertNull(addFavoriteJourneyPair(busStop, euston, busFinder, Buses(listOf(pole("490EXAMPLEA", 51.5287, "X1"))), journeys, worker = worker))
+        assertEquals("X1", journeys.state.value!!.single().lineId)
+        assertEquals(emptyList<PendingJourney>(), journeys.pending.value)
+    }
+
+    @Test
+    fun `an interchange's second station finds its own bus stop through the shared cache`() = runTest {
+        // Two stations of one interchange about 100 m apart, a bus stop by the first on another route, and
+        // one about 120 m past the second: within reach of it, about 220 m from the first (synthetic
+        // positions by Euston). An empty answer isn't cached, so the first's own stop makes it reusable.
+        val first = StopLocation("940GZZLUEUS", "Euston Underground Station", 51.5282, -0.1337, listOf(LineRef("northern", "Northern", "tube")))
+        val second = StopLocation("910GEUSTON", "Euston", 51.5291, -0.1337, listOf(LineRef("london-overground", "Overground", "overground")))
+        val byFirst = pole("490EXAMPLEG", 51.5280, "X2")
+        val outsideSecond = pole("490EXAMPLEF", 51.53018, "X1")
+        val interchange = StationMatch("HUBEUS", "Euston")
+        val finder = Finder(mapOf("490G0EXAMPLE" to listOf(pole("490EXAMPLED", 51.54, "X1")), "HUBEUS" to listOf(first, second)))
+        // TfL's answer by distance, behind the station-area cache the app gives Add, which reuses a lookup
+        // centered within its reuse distance of the one asked for.
+        val byDistance = object : StopFinder {
+            override suspend fun nearbyStops(latitude: Double, longitude: Double, radiusMeters: Int, stopTypes: List<String>) =
+                listOf(byFirst, outsideSecond).filter { NearestStops.distanceMeters(latitude, longitude, it.latitude, it.longitude) <= radiusMeters }
+        }
+        val journeys = Journeys(emptyList())
+        assertNull(addFavoriteJourneyPair(busStop, interchange, finder, CachingStopFinder(byDistance, NearbyStopsCache()), journeys, worker = StandardTestDispatcher(testScheduler)))
+        assertEquals("490EXAMPLEF", journeys.state.value!!.single().to.stopId)
+    }
+
+    @Test
+    fun `a bus stop farther from the station than its own doesn't count`() = runTest {
+        val journeys = Journeys(emptyList())
+        // About 330 m away: the next road's, not the station's.
+        val buses = Buses(listOf(pole("490EXAMPLEC", 51.5312, "X1")))
+        assertNull(addFavoriteJourneyPair(busStop, euston, busFinder, buses, journeys, worker = StandardTestDispatcher(testScheduler)))
+        assertTrue(journeys.state.value!!.isEmpty())
+        assertEquals(1, journeys.pending.value!!.size)
+    }
+
+    @Test
+    fun `a pair a line already serves looks for no bus stops`() = runTest {
+        val buses = Buses(emptyList())
+        assertNull(addFavoriteJourneyPair(kingsCross, waterloo, finder, buses, Journeys(emptyList()), worker = StandardTestDispatcher(testScheduler)))
+        assertEquals(emptyList<Pair<Double, Double>>(), buses.asked)
+    }
+
+    @Test
+    fun `a failed look for a station's bus stops is said, not saved grayed`() = runTest {
+        val journeys = Journeys(emptyList())
+        assertEquals(
+            JourneyAddNote.LookupFailed("Example Road", "Euston", DeparturesUiState.Error.Kind.OFFLINE),
+            addFavoriteJourneyPair(busStop, euston, busFinder, Buses(emptyList(), TflException.Offline(null)), journeys, worker = StandardTestDispatcher(testScheduler)),
+        )
+        assertTrue(journeys.state.value!!.isEmpty())
+        assertEquals(emptyList<PendingJourney>(), journeys.pending.value)
+    }
+
+    @Test
+    fun `two stations sharing a bus stop outside are still two`() = runTest {
+        val journeys = Journeys(emptyList())
+        // Both stations' fixtures stand at one position, so one bus stop is within reach of each.
+        val shared = Buses(listOf(StopLocation("490EXAMPLEE", "Stop E", 51.5, -0.12, listOf(LineRef("X9", "X9", "bus")))))
+        assertNull(addFavoriteJourneyPair(kingsCross, canadaWater, finder, shared, journeys, worker = StandardTestDispatcher(testScheduler)))
+        assertTrue(journeys.state.value!!.isEmpty())
+        assertEquals(1, journeys.pending.value!!.size)
+    }
+
+    @Test
+    fun `a bus stop two stations share leaves the rest of their stops to find a line`() = runTest {
+        // Two stations about 200 m apart, a stop between them on the X9 that both count as their own, and
+        // the X9 again at a stop by each alone (synthetic ids and positions).
+        val one = StopLocation("940GEXAMPLE1", "Station One", 51.5000, -0.12, listOf(LineRef("northern", "Northern", "tube")))
+        val two = StopLocation("940GEXAMPLE2", "Station Two", 51.5018, -0.12, listOf(LineRef("jubilee", "Jubilee", "tube")))
+        val finder = Finder(mapOf("940GEXAMPLE1" to listOf(one), "940GEXAMPLE2" to listOf(two)))
+        val between = StopLocation("490EXAMPLEH", "Stop H", 51.5009, -0.12, listOf(LineRef("X9", "X9", "bus")))
+        val byOne = StopLocation("490EXAMPLEJ", "Stop J", 51.4990, -0.12, listOf(LineRef("X9", "X9", "bus")))
+        val byTwo = StopLocation("490EXAMPLEK", "Stop K", 51.5028, -0.12, listOf(LineRef("X9", "X9", "bus")))
+        val journeys = Journeys(emptyList())
+        assertNull(
+            addFavoriteJourneyPair(
+                StationMatch("940GEXAMPLE1", "Station One"),
+                StationMatch("940GEXAMPLE2", "Station Two"),
+                finder,
+                Buses(listOf(between, byOne, byTwo)),
+                journeys,
+                worker = StandardTestDispatcher(testScheduler),
+            ),
+        )
+        val saved = journeys.state.value!!.single()
+        assertEquals("X9", saved.lineId)
+        assertEquals(setOf("490EXAMPLEJ", "490EXAMPLEK"), setOf(saved.from.stopId, saved.to.stopId))
     }
 
     @Test
@@ -189,19 +332,19 @@ class AddFavoriteJourneyPairTest {
     fun `why a pair isn't added is said`() = runTest {
         val worker = StandardTestDispatcher(testScheduler)
         val journeys = Journeys(emptyList())
-        assertEquals(JourneyAddNote.SameStation("Waterloo", "Waterloo"), addFavoriteJourneyPair(waterloo, waterloo, finder, journeys, worker = worker))
+        assertEquals(JourneyAddNote.SameStation("Waterloo", "Waterloo"), addFavoriteJourneyPair(waterloo, waterloo, finder, noBuses, journeys, worker = worker))
         assertEquals(
             JourneyAddNote.LookupFailed("King's Cross St. Pancras", "Waterloo", DeparturesUiState.Error.Kind.OFFLINE),
-            addFavoriteJourneyPair(kingsCross, waterloo, Finder(emptyMap(), TflException.Offline(null)), journeys, worker = worker),
+            addFavoriteJourneyPair(kingsCross, waterloo, Finder(emptyMap(), TflException.Offline(null)), noBuses, journeys, worker = worker),
         )
         assertEquals(
             JourneyAddNote.NotSaved("King's Cross St. Pancras", "Waterloo"),
-            addFavoriteJourneyPair(kingsCross, waterloo, finder, Journeys(emptyList(), failAdd = true), worker = worker),
+            addFavoriteJourneyPair(kingsCross, waterloo, finder, noBuses, Journeys(emptyList(), failAdd = true), worker = worker),
         )
         assertTrue(journeys.state.value!!.isEmpty())
         // A file this build can't read is kept as it is, so nothing would be saved: said, not passed off as added.
         val unreadable = Journeys(null)
-        assertEquals(JourneyAddNote.NotSaved("King's Cross St. Pancras", "Waterloo"), addFavoriteJourneyPair(kingsCross, waterloo, finder, unreadable, worker = worker))
+        assertEquals(JourneyAddNote.NotSaved("King's Cross St. Pancras", "Waterloo"), addFavoriteJourneyPair(kingsCross, waterloo, finder, noBuses, unreadable, worker = worker))
         assertEquals(null, unreadable.state.value)
     }
 
@@ -209,10 +352,10 @@ class AddFavoriteJourneyPairTest {
     fun `a pair already saved is said, either way round`() = runTest {
         val worker = StandardTestDispatcher(testScheduler)
         val journeys = Journeys(emptyList())
-        addFavoriteJourneyPair(kingsCross, waterloo, finder, journeys, worker = worker)
+        addFavoriteJourneyPair(kingsCross, waterloo, finder, noBuses, journeys, worker = worker)
         assertEquals(
             JourneyAddNote.AlreadySaved("Waterloo", "King's Cross St. Pancras"),
-            addFavoriteJourneyPair(waterloo, kingsCross, finder, journeys, worker = worker),
+            addFavoriteJourneyPair(waterloo, kingsCross, finder, noBuses, journeys, worker = worker),
         )
         assertEquals(1, journeys.state.value!!.size)
     }
@@ -228,7 +371,7 @@ class AddFavoriteJourneyPairTest {
                     ranOn = Thread.currentThread().name
                 }
             }
-            runBlocking { addFavoriteJourneyPair(kingsCross, waterloo, finder, journeys, worker = worker.asCoroutineDispatcher()) }
+            runBlocking { addFavoriteJourneyPair(kingsCross, waterloo, finder, noBuses, journeys, worker = worker.asCoroutineDispatcher()) }
             assertTrue(ranOn.orEmpty().startsWith("add-worker"))
         } finally {
             worker.shutdown()
