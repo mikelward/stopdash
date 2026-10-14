@@ -901,7 +901,7 @@ Green or Finchley Central shows no "/Bank".
 
 Where the pair won't fit, the **branch is kept whole** — it is the cue that tells the two trunks
 apart, so truncating it would lose which train this is — and the **terminus yields**: it shortens
-common whole words to a compact form (`East`→`E.`, `Street`→`St`, `Lane`→`Ln`, `Market`→`Mkt`, `Station`→`Stn`, `Broadway`→`Bwy`, `Square`→`Sq`, and the rest —
+common whole words to a compact form (`East`→`E.`, `Street`→`St`, `Lane`→`Ln`, `Market`→`Mkt`, `Station`→`Stn`, `Broadway`→`Bwy`, `Square`→`Sq`, `Terminal`→`T.`, `International`→`Intl` as a station's name already shows it, TfL's own `Cross`→`X`, and the rest —
 `DestinationAbbreviations`; each part of a slash-separated name alike, so "Shepherd's Bush
 Market/Wood Lane" keeps both places, and below the floor each place elides on its own rather than all but
 the first behind one trailing `…`), then, for a name no word maps, drops to its **floor** — the first word
@@ -1231,6 +1231,27 @@ the **journey's own view**: the journey in full, **Swap direction** and **Remove
 its trains with each group headed by where it boards (the platform or pole), rendered from the same
 snapshot as the list; unstarring closes it.
 
+**Grouped by stop or by ride** (maintainer, 2026-10-14), Settings → **Group favorite rides**. A ride
+boarding from several stops used to head each stop's departures like a near-me stop, so its heading
+read as empty and its trains as the near-me list already started. **Group by ride**, the default,
+keeps the heading directly over one card of all its stops' trains and heads no stop at all, as a ride
+boarding from one stop always read: a rider who favorited the ride knows where it boards. **Group by
+stop** drops the ride's heading instead: each stop it boards from is headed as a bus place's heading
+reads, the stop with its platform or pole ➔ where the ride goes, then the ride's gold star as on its
+own title, then how far the stop is ("Park – Stop L ➔ Hill ★ (120 m)"; the distance is the first thing to go on a
+tight line, and a far ride's, measured to its origin, heads only the origin's stop). A tap on one
+opens the journey's own view, where Swap direction is. Until the ride has departures to group (checking, couldn't check, none due) it keeps
+its heading, so the note under it says which ride. Either way the journey's own view heads every
+group.
+
+**Long names shorten evenly** (maintainer, 2026-10-14): a ride's two ends, or a stop and where its
+ride goes, step down together through the same steps every shortened name takes (*Departures →
+destination label*): in full, then both with their common words shortened (*International* → *Intl*,
+*Street* → *St*, *Cross* → *X*), then both to their floor ("Battersea P."), and only then elide, each
+in an even share of the line (the shorter keeping all it needs), so neither is lost to the other's
+length. A
+stop's platform shortens with them ("Platform 7" → "Plat 7"); a pole's letter never does.
+
 A journey more than **a mile from both ends** of the rider's fix is **held back** (maintainer,
 2026-09-24): the foot of the list, below the farther cards, has a **Faraway favorites** button, and
 until it's tapped those
@@ -1252,10 +1273,10 @@ stop whose name starts the same ("Hill Station", "Hill Station / High Road") wit
 road that merely passes by — and it applies to the far end only. At the near end a bus journey
 also boards from the **poles beside its origin** (maintainer, 2026-09-24): a pole in the same TfL
 stop area whose line — one the origin itself doesn't serve — reaches the far end on its route (a bus
-from stop K beside the starred bus's stop L). Its buses join the card under their pole's own heading,
-and the widget pins them from that pole. It costs one lookup of the stop area's poles a day,
-the routes of lines found only at those poles, and one more arrivals request per qualifying pole
-per refresh.
+from stop K beside the starred bus's stop L). Its buses join the card under their pole's letter
+(grouped by ride, only in the journey's own view), and the widget pins them from that pole. It costs one lookup of the
+stop area's poles a day, the routes of lines found only at those poles, and one more arrivals
+request per qualifying pole per refresh.
 
 **Every direct route, by any mode** (maintainer, 2026-10-08). A journey between two stations shows
 the buses between them too, and a bus journey the trains: beside its origin the card boards from
@@ -3472,7 +3493,8 @@ An overflow-menu entry opens a Settings screen, hosted at the activity top level
 licenses screen (an overlay whose own Back closes it) rather than through a navigation graph
 — stopdash still has no nav library. Its first row opens the favorite-places editor (D9), and the second the favorite journeys (*Journeys*);
 four location and widget rows follow below them, in order. "Fix train spacing" sits with the
-rows that decide what the boards show (*Bunched tube trains are spaced out*). **Location** says how much location
+rows that decide what the boards show (*Bunched tube trains are spaced out*), with **Group favorite
+rides** under it: Group by ride, the default, or Group by stop (*Journeys*). **Location** says how much location
 StopDash may use while in use: Precise, Approximate or Not allowed. Tapping it asks Android for
 precise location, or opens Android's settings for the app when precise is already allowed or
 Android has stopped asking. Next comes "Remember Wi-Fi at saved places" (*Finding stops*), on by

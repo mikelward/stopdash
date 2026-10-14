@@ -1778,8 +1778,7 @@ private fun destinationTitleForms(destination: String): List<String> {
 
 /** [destinationTitleForms] from [resources], for a worker ([OnTheWayBanner]). */
 internal fun destinationTitleForms(resources: Resources, destination: String): List<String> =
-    listOf(destination, DestinationAbbreviations.abbreviate(destination), DestinationAbbreviations.floor(destination))
-        .map { resources.getString(R.string.on_the_way_title, it) }
+    DestinationAbbreviations.forms(destination).map { resources.getString(R.string.on_the_way_title, it) }
 
 /** What the rider does next, as a title and a detail line — the trip's screen and its banner alike. */
 @Composable

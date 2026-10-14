@@ -159,6 +159,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.work.WorkManager
 import app.stopdash.data.AndroidLocationProvider
 import app.stopdash.data.AndroidWifiPlaces
+import app.stopdash.data.RideGroupingSetting
 import app.stopdash.data.TrainSpacingSetting
 import app.stopdash.data.WifiPlacesSetting
 import app.stopdash.data.AppDirs
@@ -1355,6 +1356,9 @@ class MainActivity : ComponentActivity() {
                 val trainSpacing by TrainSpacingSetting.changes.collectAsStateWithLifecycle()
                 val trainSpacingLoaded by TrainSpacingSetting.isLoaded.collectAsStateWithLifecycle()
                 val trainSpacingWriteFailed by TrainSpacingSetting.writeFailed.collectAsStateWithLifecycle()
+                val rideGrouping by RideGroupingSetting.changes.collectAsStateWithLifecycle()
+                val rideGroupingLoaded by RideGroupingSetting.isLoaded.collectAsStateWithLifecycle()
+                val rideGroupingWriteFailed by RideGroupingSetting.writeFailed.collectAsStateWithLifecycle()
                 val showDisruptionsRow by DisruptionsRowSetting.changes.collectAsStateWithLifecycle()
                 val showDisruptionsRowLoaded by DisruptionsRowSetting.isLoaded.collectAsStateWithLifecycle()
                 val showDisruptionsRowWriteFailed by DisruptionsRowSetting.writeFailed.collectAsStateWithLifecycle()
@@ -2688,6 +2692,11 @@ class MainActivity : ComponentActivity() {
                                     onTrainSpacingChange = TrainSpacingSetting::set,
                                     trainSpacingWriteFailed = trainSpacingWriteFailed,
                                     onDismissTrainSpacingError = TrainSpacingSetting::writeFailureShown,
+                                    rideGrouping = rideGrouping,
+                                    onRideGroupingChange = RideGroupingSetting::set,
+                                    rideGroupingLoaded = rideGroupingLoaded,
+                                    rideGroupingWriteFailed = rideGroupingWriteFailed,
+                                    onDismissRideGroupingError = RideGroupingSetting::writeFailureShown,
                                     widgetFollows = widgetFollows,
                                     onWidgetFollowsChange = { on ->
                                         // Turned on through the disclosure and Android's prompt; off only in Android's
@@ -3957,6 +3966,10 @@ class MainActivity : ComponentActivity() {
                     nearestStops = ready.nearestStopByLine,
                     lineMeters = ready.nearestMetersByLine,
                     journeys = shownJourneys,
+                    // Read at app start, long before a ride's stops have departures to group by; null
+                    // (its trains held) in the rare start where they come first.
+                    rideGrouping = RideGroupingSetting.changes.collectAsStateWithLifecycle().value
+                        .takeIf { RideGroupingSetting.isLoaded.collectAsStateWithLifecycle().value },
                     // Null until worked out: the row holds meanwhile.
                     placeLines = placeLinesOf(applicationContext).collectAsStateWithLifecycle().value,
                     farJourneyMeters = farJourneyMeters,

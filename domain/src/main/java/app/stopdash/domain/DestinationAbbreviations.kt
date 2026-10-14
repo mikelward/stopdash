@@ -48,7 +48,23 @@ object DestinationAbbreviations {
         "Bridge" to "Br",
         "Heath" to "Hth",
         "Hospital" to "Hosp",
+        // As a station's name already shows it ([abbreviateStationName]), so a destination or a ride's
+        // end shortens the same way (maintainer, 2026-10-14).
+        "International" to "Intl",
+        // TfL's own form, and the riders' ("King's X", "Charing X"), so no period (maintainer, 2026-10-14).
+        "Cross" to "X",
+        // An airport's terminals (maintainer, 2026-10-14): "Heathrow T. 5", "Heathrow T. 2 & 3".
+        "Terminal" to "T.",
+        "Terminals" to "T.",
     )
+
+    /**
+     * The forms every shortened name steps through, longest first: in full, then [abbreviate], then
+     * [floor], and only below that an elision. One list for every place a name shortens — a
+     * departure's destination, a trip's banner, a favorite ride's heading — so each shortens alike
+     * (maintainer, 2026-10-14). The same form may repeat.
+     */
+    fun forms(name: String): List<String> = listOf(name, abbreviate(name), floor(name))
 
     /**
      * The name with each recognized standalone word replaced by its short form, in each part of a

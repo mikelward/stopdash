@@ -2,7 +2,9 @@ package app.stopdash.ui
 
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -13,11 +15,17 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import app.stopdash.R
 import app.stopdash.domain.DestinationAbbreviations
+import app.stopdash.domain.EvenShortening
+import kotlin.math.roundToInt
 
 /**
  * A place name shortened to fit (SPEC destination-label): in full when it fits, else with common
@@ -35,9 +43,8 @@ internal fun ShortenedName(
     modifier: Modifier = Modifier,
     color: Color = Color.Unspecified,
 ) {
-    val abbreviated = remember(name) { DestinationAbbreviations.abbreviate(name) }
-    val floor = remember(name) { DestinationAbbreviations.floor(name) }
-    ShortenedText(listOf(name, abbreviated, floor), style, modifier, color)
+    val forms = remember(name) { DestinationAbbreviations.forms(name) }
+    ShortenedText(forms, style, modifier, color)
 }
 
 /**
@@ -144,5 +151,167 @@ internal fun ShortenedLines(forms: List<String>, style: TextStyle, maxLines: Int
             overflow = TextOverflow.Ellipsis,
             modifier = if (display != full) Modifier.semantics { contentDescription = full } else Modifier,
         )
+    }
+}
+
+/**
+ * [EvenShortening.choose] for a line [maxWidth] px wide with [gap] px between the parts, measured in
+ * [style] as drawn; worked out again when the forms, the style, the font scale or the width change.
+ */
+@Composable
+private fun rememberEvenPair(first: List<String>, second: List<String>, style: TextStyle, maxWidth: Int, gap: Int): EvenShortening.Choice =
+    rememberEvenPair(first, second, style, maxWidth, listOf(gap))
+
+/**
+ * As above, with what sits between the parts taking [gaps] px at each level, and an optional [extra]
+ * px beside them shown only while both parts fit in full (null for none).
+ */
+@Composable
+private fun rememberEvenPair(
+    first: List<String>,
+    second: List<String>,
+    style: TextStyle,
+    maxWidth: Int,
+    gaps: List<Int>,
+    extra: Int? = null,
+): EvenShortening.Choice {
+    val measurer = rememberTextMeasurer()
+    val fontScale = LocalDensity.current.fontScale
+    return remember(first, second, style, fontScale, maxWidth, gaps, extra) {
+        val widthOf = { text: String -> measurer.measure(text, style, maxLines = 1).size.width }
+        if (extra == null) {
+            EvenShortening.choose(first, second, maxWidth, gaps, widthOf)
+        } else {
+            EvenShortening.choose(first, second, maxWidth, gaps, extra, widthOf)
+        }
+    }
+}
+
+/**
+ * A favorite ride's heading, "[from] ➔ [to]", its two ends shortened evenly ([EvenShortening]) so a
+ * long name at one end never pushes the other off the line. Each end's forms come longest first
+ * ([DestinationAbbreviations.forms]), worked out with the card, so only measuring happens here. While some level
+ * fits it is one text, as the ride's title reads; below that, each end elides in its own share either
+ * side of the arrow.
+ */
+@Composable
+internal fun RideTitle(from: List<String>, to: List<String>, style: TextStyle, color: Color, modifier: Modifier = Modifier) {
+    BoxWithConstraints(modifier = modifier) {
+        val density = LocalDensity.current
+        // The arrow's inline box ([arrowInlineContent]), which takes the spaces either side of it.
+        val arrow = if (style.fontSize.isSp) with(density) { (style.fontSize.toPx() * 1.15f).roundToInt() } else 0
+        val pair = rememberEvenPair(from, to, style, constraints.maxWidth, arrow)
+        val inline = arrowInlineContent(color)
+        val firstMax = pair.firstMax
+        val secondMax = pair.secondMax
+        if (firstMax == null || secondMax == null) {
+            Text(
+                text = withArrowIcons(stringResource(R.string.journey_title, pair.first, pair.second)),
+                inlineContent = inline,
+                style = style,
+                color = color,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                RideEnd(pair.first, firstMax, style, color)
+                Text(text = withArrowIcons(" $ARROW "), inlineContent = inline, style = style, maxLines = 1, softWrap = false)
+                RideEnd(pair.second, secondMax, style, color)
+            }
+        }
+    }
+}
+
+/** One end of a [RideTitle] too long for the line, eliding within the [max] px its share allows. */
+@Composable
+private fun RideEnd(text: String, max: Int, style: TextStyle, color: Color) {
+    Text(
+        text = text,
+        style = style,
+        color = color,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.widthIn(max = with(LocalDensity.current) { max.toDp() }),
+    )
+}
+
+/**
+ * A stop a favorite ride boards from, grouped by stop, read as a bus place's heading reads: the stop's
+ * name ([stop], its forms longest first) with its platform or pole ([qualifier], " – Platform 7" then
+ * " – Plat 7"), then "➔" and where the ride goes ([destination], forms likewise), the two names
+ * shortened evenly ([EvenShortening]). [marker] (a favorite ride's star, [markerWidth] wide) follows
+ * the destination as it follows a ride's own title. How far the stop is ([distance], "120 m", dimmed in
+ * [distanceColor] as on a near-me heading) comes last while both names fit whole beside it, and is the
+ * first thing to go. The forms are worked out with the card, so only measuring happens here.
+ */
+@Composable
+internal fun RideStopTitle(
+    stop: List<String>,
+    qualifier: List<String>,
+    destination: List<String>,
+    style: TextStyle,
+    color: Color,
+    modifier: Modifier = Modifier,
+    distance: String? = null,
+    distanceColor: Color = color,
+    marker: (@Composable () -> Unit)? = null,
+    markerWidth: Dp = 0.dp,
+) {
+    BoxWithConstraints(modifier = modifier) {
+        val density = LocalDensity.current
+        val measurer = rememberTextMeasurer()
+        val fontScale = density.fontScale
+        // The marker is always drawn, so the names share what's left beside it.
+        val width = (constraints.maxWidth - with(density) { markerWidth.roundToPx() }).coerceAtLeast(0)
+        // The arrow's inline box ([arrowInlineContent]), which takes the spaces either side of it.
+        val arrow = if (style.fontSize.isSp) with(density) { (style.fontSize.toPx() * 1.15f).roundToInt() } else 0
+        val gaps = remember(qualifier, style, fontScale, arrow) {
+            qualifier.map { measurer.measure(it, style, maxLines = 1).size.width + arrow }.ifEmpty { listOf(arrow) }
+        }
+        val distanceText = distance?.let { " ($it)" }
+        val distanceWidth = remember(distanceText, style, fontScale) {
+            distanceText?.let { measurer.measure(it, style, maxLines = 1).size.width }
+        }
+        val pair = rememberEvenPair(stop, destination, style, width, gaps, distanceWidth)
+        val shownQualifier = qualifier.getOrNull(minOf(pair.level, qualifier.lastIndex))
+        val inline = arrowInlineContent(color)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = pair.first,
+                style = style,
+                color = color,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+                modifier = pair.firstMax?.let { Modifier.widthIn(max = with(density) { it.toDp() }) } ?: Modifier,
+            )
+            if (shownQualifier != null) {
+                Text(
+                    // A letterless pole's "➔ Archway" carries the arrow, drawn as the app draws it.
+                    text = withArrowIcons(shownQualifier),
+                    inlineContent = inline,
+                    style = style,
+                    color = color,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
+            Text(text = withArrowIcons(" $ARROW "), inlineContent = inline, style = style, maxLines = 1, softWrap = false)
+            Text(
+                text = pair.second,
+                style = style,
+                color = color,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+                modifier = pair.secondMax?.let { Modifier.widthIn(max = with(density) { it.toDp() }) } ?: Modifier,
+            )
+            marker?.invoke()
+            if (distanceText != null && pair.extra) {
+                Text(text = distanceText, style = style, color = distanceColor, maxLines = 1, softWrap = false)
+            }
+        }
     }
 }
