@@ -877,7 +877,7 @@
          near-me list starts there rather than from a rough network location. Off deletes what it
          learned. -->
     <string name="settings_wifi_places_title">Remember Wi-Fi at saved places</string>
-    <string name="settings_wifi_places_summary">Shows stops at once on your home or work Wi-Fi</string>
+    <string name="settings_wifi_places_summary">Fix slow or wrong location at home and at work</string>
     <string name="settings_wifi_places_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
     <string name="settings_widget_follows_title">Automatic watch and widget location</string>
     <string name="settings_widget_follows_summary">Shows the stops where you are, using your location in the background.</string>

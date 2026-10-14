@@ -77,7 +77,7 @@ class SettingsScreenScreenshotTest {
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Remember Wi-Fi at saved places").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Shows stops at once on your home or work Wi-Fi").assertIsDisplayed()
+        composeRule.onNodeWithText("Fix slow or wrong location at home and at work").assertIsDisplayed()
         composeRule.onNodeWithTag("wifiPlacesSwitch").assertIsOn().performClick()
         assertEquals(listOf(false), chosen)
         // Under the location row it's about.
