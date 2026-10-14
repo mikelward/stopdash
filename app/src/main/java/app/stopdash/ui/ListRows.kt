@@ -47,7 +47,8 @@ internal class ListInputs(val listKey: Any?, val parts: Inputs) {
  *
  * [source] and [now] are the snapshot and time these rows were built from. Anything judged against
  * the rows (the journey cards) reads them too, so rows held over from an earlier snapshot are never
- * judged against a newer one (Codex, #524).
+ * judged against a newer one (Codex, #524). [byKey] finds one of [all] by its identity, for an open
+ * route page.
  */
 internal class ListRows(
     val source: DeparturesUiState.Loaded,
@@ -59,7 +60,29 @@ internal class ListRows(
     val destinationClosures: List<DepartureRow>,
     val destinationsUnknown: Set<String>,
     val placeModes: Map<String, Set<String>> = emptyMap(),
+    val byKey: RowsByKey = RowsByKey.NONE,
 )
+
+/**
+ * Rows found by their identity ([DepartureRow.detailKey]), the first of each as the list has them, so an open
+ * route page finds its row without walking the rows in composition (AGENTS.md *Main thread*, Codex, #854).
+ * Worked out with the rows, on the list's worker.
+ */
+internal class RowsByKey private constructor(private val byKey: Map<String, DepartureRow>) {
+    operator fun get(key: String): DepartureRow? = byKey[key]
+
+    companion object {
+        val NONE = RowsByKey(emptyMap())
+
+        @WorkerThread
+        fun of(rows: List<DepartureRow>): RowsByKey {
+            if (rows.isEmpty()) return NONE
+            val byKey = HashMap<String, DepartureRow>(rows.size * 2)
+            rows.forEach { byKey.putIfAbsent(it.detailKey(), it) }
+            return RowsByKey(byKey)
+        }
+    }
+}
 
 /**
  * The list's [rows] as its stop cards draw them: grouped by place and direction ([groups],
@@ -90,7 +113,8 @@ internal val noRows = RowsRevision(emptyList())
  * The rows the list draws ([shownRowsOf]), and the closures dismissed from it that keep a heading.
  * [from] is the [ListRows] they were built from, whose snapshot and time the screen is drawn against;
  * [cards] the journey cards judged from it, drawn above the list, [cardRows] the rows they show, and
- * [journeys] the journeys they were judged for.
+ * [journeys] the journeys they were judged for. [rowsByKey] and [cardRowsByKey] find one of [rows] and
+ * [cardRows] by its identity, for an open route page.
  */
 internal class ShownRows(
     val rows: List<DepartureRow>,
@@ -103,6 +127,8 @@ internal class ShownRows(
     val journeys: List<FavoriteJourney>,
     // How far each place [cards] board from is ([ridePlaceMeters]), for their by-stop headings.
     val ridePlaceMeters: Map<String, Double> = emptyMap(),
+    val rowsByKey: RowsByKey = RowsByKey.NONE,
+    val cardRowsByKey: RowsByKey = RowsByKey.NONE,
 )
 
 /**
@@ -151,6 +177,8 @@ internal class PlatformView(
     val now: Instant,
     // [rows] as the view's stop cards draw them (one place, so warnings lead).
     val listCards: ListCards = ListCards.NONE,
+    // One of [rows] by its identity, for an open route page.
+    val byKey: RowsByKey = RowsByKey.NONE,
 )
 
 /** [ListRows] for [stops], worked out on the list's worker, never in composition. */
@@ -198,7 +226,7 @@ internal fun listRowsOf(
     val destinationClosures = DepartureRows.withoutDismissed(DepartureRows.across(journeyDestinationStops, now), dismissed)
         .filter { it.stopDisruption != null }
     val modes = placeModes(stops).mapValues { (_, modes) -> modes.filterNotTo(LinkedHashSet()) { HiddenModes.isHidden(it, hiddenModes) } }
-    return ListRows(source, now, all, nearby, shared, marked, destinationClosures, journeyDestinationsUnknown, modes)
+    return ListRows(source, now, all, nearby, shared, marked, destinationClosures, journeyDestinationsUnknown, modes, RowsByKey.of(all))
 }
 
 /**
@@ -237,6 +265,8 @@ internal fun shownRowsOf(
     return ShownRows(
         rows, listCards, dismissedClosures, from, cards, journeyRowsShown, journeys,
         ridePlaceMeters(cards, listCards.groups, stopDistanceMeters),
+        RowsByKey.of(rows),
+        RowsByKey.of(journeyRowsShown),
     )
 }
 
@@ -303,5 +333,5 @@ internal fun platformViewOf(
     val places = platformStops.mapTo(HashSet()) { stopPlaceKey(it) }
     val closures = rows.filter { it.stopDisruption != null && stopPlaceKey(it) in places }
     val viewRows = closures + stopRows.filter { it.stopDisruption == null && it in groupRows }
-    return PlatformView(viewRows, title, source, now, ListCards.of(viewRows, warningsLead = true, topology))
+    return PlatformView(viewRows, title, source, now, ListCards.of(viewRows, warningsLead = true, topology), RowsByKey.of(viewRows))
 }

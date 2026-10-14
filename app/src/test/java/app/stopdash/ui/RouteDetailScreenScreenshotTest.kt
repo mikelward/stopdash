@@ -162,6 +162,41 @@ class RouteDetailScreenScreenshotTest {
     }
 
     @Test
+    fun aTappedRouteGoneFromItsPlatform_followsItsTrainAtAnother_notAnotherRoute() {
+        fun rail(destination: String, platform: String, minutes: Long) =
+            Departure("great-example", "Great Example", "", destination, platform, now.plusSeconds(minutes * 60), "national-rail")
+        // Platform 1 has only Near trains left; the Far train the page was opened for leaves from Platform 3.
+        val rows = DepartureRows.across(
+            listOf(StopArrivals("910GEXAMPLE", "Example", listOf(rail("Near", "Platform 1", 4), rail("Far", "Platform 3", 9)), now)),
+            now,
+        )
+        val platform1 = rows.single { it.platform == "1" }
+        setDetail {
+            StopDashTheme {
+                RouteDetailScreen(
+                    row = platform1,
+                    isStarred = false,
+                    starrable = false,
+                    disruptionUnknown = false,
+                    stale = false,
+                    now = now,
+                    onToggleStar = {},
+                    onBack = {},
+                    routeStops = RouteStopsUi.Loading,
+                    focus = RouteFocus("Far", null),
+                    siblings = rows,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        // Still Far's page: its train at Platform 3, never Platform 1's Near trains.
+        composeRule.onNodeWithText("Far").assertIsDisplayed()
+        composeRule.onNodeWithText("9 min").assertIsDisplayed()
+        composeRule.onNodeWithText("4 min").assertDoesNotExist()
+        composeRule.onNodeWithText("From Example – Platform 3").assertIsDisplayed()
+    }
+
+    @Test
     fun anEqualRowPassedAfresh_keepsItsCountdown_andARefreshedRowShowsOnlyItsOwnTrains() {
         fun rowOf(vararg minutes: Long): DepartureRow {
             val stop = StopArrivals(
