@@ -4,13 +4,14 @@ import android.Manifest
 import android.app.Application
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import app.stopdash.domain.ConnectedWifi
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.LearnedPlace
 import app.stopdash.domain.LocationFix
+import app.stopdash.domain.RecognizedPlace
+import app.stopdash.domain.WifiMatch
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -33,7 +34,7 @@ class AndroidWifiPlacesTest {
     private val app: Application = ApplicationProvider.getApplicationContext()
     private val store = WifiPlacesStore({ app.getSharedPreferences(WifiPlacesStore.FILE, Context.MODE_PRIVATE) })
     private val home = FavoritePlace("home", FavoriteKind.HOME, "Home", Coordinates(51.5, -0.12))
-    private val router = ConnectedWifi("aa:bb:cc:00:00:01", metered = false)
+    private val router = WifiReading("aa:bb:cc:00:00:01", ssid = null, metered = false)
     private val atHome = LocationFix(home.coordinate, isFallback = false, accuracyMeters = 10f, ageMillis = 0)
 
     private val work = FavoritePlace("work", FavoriteKind.WORK, "Work", Coordinates(51.51, -0.12))
@@ -42,7 +43,7 @@ class AndroidWifiPlacesTest {
     private var on: Boolean? = true
     private var savedPlaces: FavoritePlacesSet = FavoritePlacesSet.Loaded(listOf(home))
     private var wifiReads = 0
-    private var connected: ConnectedWifi? = router
+    private var connected: WifiReading? = router
     // When set, reading the Wi-Fi waits for it: a lesson caught mid-way.
     private var wifiGate: CompletableDeferred<Unit>? = null
     // When set, the saved places' nth read waits for the gate.
@@ -77,9 +78,9 @@ class AndroidWifiPlacesTest {
         wifiPlaces.observe(atHome)
         runCurrent()
         assertEquals(listOf(LearnedPlace("home", home.coordinate, listOf("aa:bb:cc:00:00:01"))), stored())
-        assertEquals(home, wifiPlaces.recognize())
+        assertEquals(home, wifiPlaces.recognize(near = null)?.place)
         // The log says how many, never which network or place.
-        assertEquals(listOf("Wi-Fi at saved places: 1 access points known, was 0"), log)
+        assertEquals(listOf("Wi-Fi at saved places: 1 access points and 0 networks known, was 0 and 0"), log)
     }
 
     @Test
@@ -94,7 +95,7 @@ class AndroidWifiPlacesTest {
     @Test
     fun `with nothing learned, recognizing reads no Wi-Fi`() = runTest {
         precise()
-        assertNull(places().recognize())
+        assertNull(places().recognize(near = null))
         assertEquals(0, wifiReads)
     }
 
@@ -104,7 +105,7 @@ class AndroidWifiPlacesTest {
         store.write(listOf(LearnedPlace("home", home.coordinate, listOf("aa:bb:cc:00:00:01"))))
         on = false
         val wifiPlaces = places()
-        assertNull(wifiPlaces.recognize())
+        assertNull(wifiPlaces.recognize(near = null))
         assertTrue(stored().isEmpty())
         wifiPlaces.observe(atHome)
         runCurrent()
@@ -144,7 +145,7 @@ class AndroidWifiPlacesTest {
         store.write(listOf(LearnedPlace("home", home.coordinate, listOf("aa:bb:cc:00:00:01"))))
         wifiGate = CompletableDeferred()
         val wifiPlaces = places()
-        val recognizing = async { wifiPlaces.recognize() }
+        val recognizing = async { wifiPlaces.recognize(near = null) }
         runCurrent()
         assertEquals(1, wifiReads)
         on = false
@@ -184,7 +185,7 @@ class AndroidWifiPlacesTest {
         val wifiPlaces = places()
         wifiPlaces.reconcile()
         runCurrent()
-        assertNull(wifiPlaces.recognize())
+        assertNull(wifiPlaces.recognize(near = null))
         wifiPlaces.observe(atHome.copy(coordinates = work.coordinate))
         runCurrent()
         assertEquals(learned, stored())
@@ -200,7 +201,7 @@ class AndroidWifiPlacesTest {
         val wifiPlaces = places()
         wifiPlaces.observe(atHome)
         runCurrent()
-        assertNull(wifiPlaces.recognize())
+        assertNull(wifiPlaces.recognize(near = null))
         assertEquals(newer, prefs.getString("learned", null))
         on = false
         wifiPlaces.reconcile()
@@ -216,7 +217,7 @@ class AndroidWifiPlacesTest {
         // The second read: the one the recognition is decided with, after the Wi-Fi is read.
         holdPlaces = 2 to gate
         val wifiPlaces = places()
-        val recognizing = async { wifiPlaces.recognize() }
+        val recognizing = async { wifiPlaces.recognize(near = null) }
         runCurrent()
         assertEquals(2, placesReads)
         on = false
@@ -233,7 +234,7 @@ class AndroidWifiPlacesTest {
         shadowOf(app).grantPermissions(Manifest.permission.ACCESS_COARSE_LOCATION)
         shadowOf(app).denyPermissions(Manifest.permission.ACCESS_FINE_LOCATION)
         store.write(listOf(LearnedPlace("home", home.coordinate, listOf("aa:bb:cc:00:00:01"))))
-        assertNull(places().recognize())
+        assertNull(places().recognize(near = null))
         assertTrue(stored().isEmpty())
     }
 
@@ -245,7 +246,7 @@ class AndroidWifiPlacesTest {
         val wifiPlaces = places()
         wifiPlaces.observe(atHome)
         runCurrent()
-        assertNull(wifiPlaces.recognize())
+        assertNull(wifiPlaces.recognize(near = null))
         assertEquals(1, stored().size)
         savedPlaces = FavoritePlacesSet.Loaded(emptyList())
         wifiPlaces.observe(atHome)
@@ -318,5 +319,61 @@ class AndroidWifiPlacesTest {
         prefs.edit().putString("learned", newer).commit()
         assertNull(WifiPlacesStore({ prefs }).read())
         assertEquals(newer, prefs.getString("learned", null))
+    }
+
+    // Everything stored in the Wi-Fi places file, as written.
+    private fun storedFile(): Map<String, *> = app.getSharedPreferences(WifiPlacesStore.FILE, Context.MODE_PRIVATE).all
+
+    @Test
+    fun `a network is kept only as its keyed id, and then recognizes the place on another of its access points near the rough fix`() = runTest {
+        precise()
+        connected = WifiReading("aa:bb:cc:00:10:01", ssid = "ExampleWifi", metered = false)
+        val log = mutableListOf<String>()
+        val wifiPlaces = places(log)
+        wifiPlaces.observe(atHome)
+        runCurrent()
+        val id = stored().single().networks.single()
+        assertEquals(store.networkId("ExampleWifi"), id)
+        // Never the name itself, anywhere in what's stored.
+        assertTrue(storedFile().toString(), storedFile().values.none { "ExampleWifi" in it.toString() })
+        assertEquals(listOf("Wi-Fi at saved places: 1 access points and 1 networks known, was 0 and 0"), log)
+        // Another access point of the same network, with a rough fix near home.
+        connected = WifiReading("aa:bb:cc:00:10:02", ssid = "ExampleWifi", metered = false)
+        assertEquals(RecognizedPlace(home, WifiMatch.NETWORK), wifiPlaces.recognize(near = Coordinates(51.505, -0.12)))
+        // With no rough fix the network alone says nothing.
+        assertNull(wifiPlaces.recognize(near = null))
+    }
+
+    @Test
+    fun `turning it off deletes the network key with the list, so what's learned next can't be matched to it`() = runTest {
+        precise()
+        connected = WifiReading("aa:bb:cc:00:10:01", ssid = "ExampleWifi", metered = false)
+        val wifiPlaces = places()
+        wifiPlaces.observe(atHome)
+        runCurrent()
+        val before = stored().single().networks.single()
+        wifiPlaces.forget()
+        runCurrent()
+        assertTrue(storedFile().toString(), storedFile().isEmpty())
+        wifiPlaces.observe(atHome)
+        runCurrent()
+        assertTrue(before != stored().single().networks.single())
+    }
+
+    @Test
+    fun `recognizing with no network learned makes no key`() = runTest {
+        precise()
+        store.write(listOf(LearnedPlace("home", home.coordinate, listOf("aa:bb:cc:00:00:01"))))
+        connected = WifiReading("aa:bb:cc:00:10:01", ssid = "ExampleWifi", metered = false)
+        assertNull(places().recognize(near = home.coordinate))
+        assertEquals(setOf("learned"), storedFile().keys)
+    }
+
+    @Test
+    fun `a list stored before networks were learned reads with none`() = runTest {
+        app.getSharedPreferences(WifiPlacesStore.FILE, Context.MODE_PRIVATE).edit()
+            .putString("learned", """{"version":1,"places":[{"placeId":"home","lat":51.5,"lon":-0.12,"accessPoints":["aa:bb:cc:00:00:01"]}]}""")
+            .commit()
+        assertEquals(listOf(LearnedPlace("home", home.coordinate, listOf("aa:bb:cc:00:00:01"))), stored())
     }
 }

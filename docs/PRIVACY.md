@@ -259,10 +259,14 @@ comes first.
 **Wi-Fi at saved places, kept on the phone and never backed up:** when your phone gets a precise (GPS)
 location within 100 m of one of your saved places (Home, Work, School or one of your own) while it's
 on Wi-Fi, stopdash remembers, for that place, the **address of the Wi-Fi access point** it's connected
-to (its BSSID, an identifier of the router, not the network's name or anything sent over it). Next
-time, if the phone can't get a precise location but is on one of those access points, the near-me list
-starts from that saved place rather than from a rough network position. Only the access point's
-address is kept, beside the place and where it was; nothing about other networks around you is read,
+to (its BSSID, an identifier of the router, not anything sent over it), and an **id for the network's
+name**: a keyed hash of the name, never the name itself, under a random key made on your phone and
+deleted with the list, so the id can't be turned back into a name by trying common ones. Next time,
+if the phone can't get a precise location but is on one of those access points, the near-me list
+starts from that saved place rather than from a rough network position. On another access point of
+the same network (an office has many), it does the same when your rough position is within a
+kilometer of the place. Only the access point's address and the network's id are kept, beside the
+place and where it was; nothing about other networks around you is read,
 and a metered network (a phone's hotspot, a train's Wi-Fi) is never kept. It is stored in app storage
 that Android never backs up or transfers, and is never logged, sent anywhere, or put in a bug report
 (a report you choose to send says when a position came from a saved place's Wi-Fi, as it says where

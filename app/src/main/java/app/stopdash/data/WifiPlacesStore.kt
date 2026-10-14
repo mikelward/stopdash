@@ -5,6 +5,10 @@ import android.content.SharedPreferences
 import androidx.annotation.WorkerThread
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.LearnedPlace
+import java.security.SecureRandom
+import java.util.Base64
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -43,7 +47,7 @@ class WifiPlacesStore internal constructor(
         }
         // A newer build's list: not this one's to read, so it's left as it is.
         if (persisted.version != VERSION) return null
-        return persisted.places.map { LearnedPlace(it.placeId, Coordinates(it.lat, it.lon), it.accessPoints) }
+        return persisted.places.map { LearnedPlace(it.placeId, Coordinates(it.lat, it.lon), it.accessPoints, it.networks) }
     }
 
     /** Replaces what is stored with [learned]; an empty list removes the file's entry. */
@@ -53,14 +57,43 @@ class WifiPlacesStore internal constructor(
             clear()
             return
         }
-        val persisted = PersistedWifiPlaces(VERSION, learned.map { PersistedWifiPlace(it.placeId, it.at.latitude, it.at.longitude, it.accessPoints) })
+        val persisted = PersistedWifiPlaces(
+            VERSION,
+            learned.map { PersistedWifiPlace(it.placeId, it.at.latitude, it.at.longitude, it.accessPoints, it.networks) },
+        )
         prefs.edit().putString(KEY, json.encodeToString(PersistedWifiPlaces.serializer(), persisted)).apply()
     }
 
-    /** Forgets everything learned: the setting turned off, or precise location taken away. */
+    /** Forgets everything learned, and the key its networks were kept by: the setting turned off, or precise location taken away. */
     @WorkerThread
     fun clear() {
-        if (prefs.contains(KEY)) prefs.edit().remove(KEY).apply()
+        if (prefs.contains(KEY) || prefs.contains(NETWORK_KEY)) prefs.edit().remove(KEY).remove(NETWORK_KEY).apply()
+    }
+
+    /**
+     * The id a network named [name] is kept by: a keyed hash (HMAC-SHA256), never the name. Without
+     * the key it can't be matched against a list of common names, as a plain hash can. The key is
+     * random, made the first time one is needed, kept beside the list and deleted with it.
+     */
+    @WorkerThread
+    fun networkId(name: String): String {
+        val mac = Mac.getInstance(HMAC)
+        mac.init(SecretKeySpec(networkKey(), HMAC))
+        return mac.doFinal(name.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }.take(ID_HEX_DIGITS)
+    }
+
+    private fun networkKey(): ByteArray {
+        prefs.getString(NETWORK_KEY, null)?.let { stored ->
+            try {
+                return Base64.getDecoder().decode(stored)
+            } catch (e: IllegalArgumentException) {
+                // A new key: the networks kept by the old one match nothing now, and are relearned.
+                warn("Wi-Fi places network key unreadable (${e::class.simpleName}), replacing it")
+            }
+        }
+        val key = ByteArray(KEY_BYTES).also(SecureRandom()::nextBytes)
+        prefs.edit().putString(NETWORK_KEY, Base64.getEncoder().encodeToString(key)).apply()
+        return key
     }
 
     companion object {
@@ -68,6 +101,12 @@ class WifiPlacesStore internal constructor(
         const val FILE = "wifi_places"
 
         private const val KEY = "learned"
+        private const val NETWORK_KEY = "network_key"
+        private const val HMAC = "HmacSHA256"
+        private const val KEY_BYTES = 32
+
+        // 128 bits: no two of one phone's networks will share an id.
+        private const val ID_HEX_DIGITS = 32
         private const val VERSION = 1
 
         private val json = Json { ignoreUnknownKeys = true }
@@ -81,4 +120,11 @@ class WifiPlacesStore internal constructor(
 internal data class PersistedWifiPlaces(val version: Int, val places: List<PersistedWifiPlace>)
 
 @Serializable
-internal data class PersistedWifiPlace(val placeId: String, val lat: Double, val lon: Double, val accessPoints: List<String>)
+internal data class PersistedWifiPlace(
+    val placeId: String,
+    val lat: Double,
+    val lon: Double,
+    val accessPoints: List<String>,
+    // Absent from what an earlier build stored, which learned no networks.
+    val networks: List<String> = emptyList(),
+)

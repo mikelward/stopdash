@@ -13,6 +13,8 @@ import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FixSelection
 import app.stopdash.domain.LocationFix
+import app.stopdash.domain.RecognizedPlace
+import app.stopdash.domain.WifiMatch
 import app.stopdash.domain.WifiPlaceSource
 import app.stopdash.domain.WifiPlaces
 import java.time.Duration
@@ -150,10 +152,16 @@ class AndroidLocationProviderTest {
     }
 
     // A saved place's Wi-Fi as the provider sees it: what it recognizes, and every fix it's shown.
-    private class FakeWifiPlaces(private val place: FavoritePlace?) : WifiPlaceSource {
+    private class FakeWifiPlaces(private val place: FavoritePlace?, private val by: WifiMatch = WifiMatch.ACCESS_POINT) : WifiPlaceSource {
         var asked = 0
+        // The rough fix each recognition was asked near.
+        val near = mutableListOf<Coordinates?>()
         val observed = mutableListOf<LocationFix>()
-        override suspend fun recognize(): FavoritePlace? = place.also { asked++ }
+        override suspend fun recognize(near: Coordinates?): RecognizedPlace? {
+            asked++
+            this.near += near
+            return place?.let { RecognizedPlace(it, by) }
+        }
         override fun observe(fix: LocationFix) {
             observed += fix
         }
@@ -200,6 +208,20 @@ class AndroidLocationProviderTest {
         assertEquals(WifiPlaces.RECOGNIZED_ACCURACY_METERS, checkNotNull(fix.accuracyMeters), 0f)
         // A rough fix teaches nothing.
         assertTrue(wifi.observed.isEmpty())
+    }
+
+    @Test
+    fun `indoors on a saved place's network, the place is asked near the rough fix and stands in for it as less sure`() = runTest {
+        indoors(51.505)
+        val wifi = FakeWifiPlaces(home, WifiMatch.NETWORK)
+        val log = mutableListOf<String>()
+        val fix = checkNotNull(locate(AndroidLocationProvider(app, warn = { log += it }, remembers = false, wifiPlaces = wifi)))
+        assertEquals(listOf(51.505), wifi.near.map { it?.latitude })
+        assertEquals(home.coordinate, fix.coordinates)
+        assertEquals(false, fix.isCoarse)
+        assertEquals(WifiPlaces.FORGET_BEYOND_METERS.toFloat(), checkNotNull(fix.accuracyMeters), 0f)
+        // Which kind told it, never which place or network.
+        assertTrue(log.toString(), "location fix: a saved place, from its Wi-Fi network" in log)
     }
 
     @Test
@@ -258,6 +280,8 @@ class AndroidLocationProviderTest {
         assertEquals(51.7, fix.coordinates.latitude, 0.0)
         assertEquals(true, fix.isFallback)
         assertTrue(wifi.observed.isEmpty())
+        // Nor does it place a network: where the rider was isn't where the network they're on now is.
+        assertEquals(listOf<Coordinates?>(null), wifi.near)
     }
 
     @Test
