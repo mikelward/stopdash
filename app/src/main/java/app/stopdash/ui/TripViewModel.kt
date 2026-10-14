@@ -116,8 +116,8 @@ class TripViewModel(
     // pull's fresh fix or a recreated activity makes to it and by its Direct section, not by a trip elsewhere.
     private val linePulls: String = linePullsTo(""),
     private val lineStatusReuse: java.time.Duration = java.time.Duration.ZERO,
-    // Emits when where departures come from changes (a National Rail key added or removed): the
-    // current value first, then each change, as the list's model takes it.
+    // Emits when what a stop's departures are changes (a National Rail key added or removed, train
+    // spacing turned on or off): the current value first, then each change, as the list's model takes it.
     departureSourceChanges: Flow<Any?> = emptyFlow(),
     // A bus stop pair's poles ("490G…", a road's two sides): a bus leg's boarding stop is fetched on
     // every pole of its pair, since the one the Planner names can be the side the bus doesn't use.

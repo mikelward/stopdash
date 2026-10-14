@@ -822,6 +822,13 @@
     <string name="settings_wifi_places_title">Remember Wi-Fi at saved places</string>
     <string name="settings_wifi_places_summary">Fix slow or wrong location at home and at work</string>
     <string name="settings_wifi_places_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
+    <!-- TODO: translate -->
+    <!-- The switch for spacing out bunched tube trains: TfL times a queue of trains as if the line
+         ahead were clear, so trains read due seconds apart that can only run a couple of minutes
+         apart. On, each is shown no sooner than its line's gap after the one ahead; off shows TfL's
+         own times. -->
+    <string name="settings_train_spacing_title" tools:ignore="MissingTranslation">Fix train spacing</string>
+    <string name="settings_train_spacing_summary" tools:ignore="MissingTranslation">Adjust times when trains are impossibly close</string>
     <string name="settings_widget_follows_title">Automatic watch and widget location</string>
     <string name="settings_widget_follows_summary">Shows the stops where you are, using your location in the background.</string>
     <!-- Shown under the toggle when the setting saved but the background refresh couldn't be

@@ -672,7 +672,15 @@ surface shows, the widget and watch included, in the same color as any other (ma
 Each line is spaced on its own; two lines sharing a platform's track aren't yet held back by each
 other's trains. A trip waiting for the train it follows still times it by that train's own calls,
 which TfL doesn't space, so its countdown can read sooner than the board's (to do). Each move is noted
-in the debug log with how far.
+in the debug log with how far. A switch in Settings, **Fix train spacing** ("Adjust times when trains
+are impossibly close"), turns spacing off for a rider who would rather see TfL's own times, to compare
+with a station display, say (maintainer, 2026-10-14). It's on by default, and the doubtful rule above
+holds either way. Changing it fetches every stop on screen again at once, and the widget redraws from
+what that fetch saves. Two short windows are accepted (maintainer, 2026-10-14), since the times in
+them are the other honest prediction of the same trains, not wrong ones: offline, the times already
+shown stay until they go stale, as after any failed refresh; and a widget or watch refresh with no
+list behind it may keep its saved times until they're past reuse (under a minute) before fetching
+under the new choice.
 
 **The unit of display is one card per platform or pole** (maintainer, 2026-09-22) — a
 group of same-cluster stops split by platform / stop letter (see below). Each card is
@@ -3453,7 +3461,8 @@ the Open Government Licence v3.0. A test pins the credits so a rewording can't d
 An overflow-menu entry opens a Settings screen, hosted at the activity top level like the
 licenses screen (an overlay whose own Back closes it) rather than through a navigation graph
 — stopdash still has no nav library. Its first row opens the favorite-places editor (D9), and the second the favorite journeys (*Journeys*);
-four location and widget rows follow below them, in order. **Location** says how much location
+four location and widget rows follow below them, in order. "Fix train spacing" sits with the
+rows that decide what the boards show (*Bunched tube trains are spaced out*). **Location** says how much location
 StopDash may use while in use: Precise, Approximate or Not allowed. Tapping it asks Android for
 precise location, or opens Android's settings for the app when precise is already allowed or
 Android has stopped asking. Next comes "Remember Wi-Fi at saved places" (*Finding stops*), on by

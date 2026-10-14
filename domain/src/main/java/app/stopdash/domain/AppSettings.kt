@@ -152,6 +152,15 @@ interface AppSettings {
     suspend fun setRememberWifiAtPlaces(remember: Boolean) {}
 
     /**
+     * Whether bunched tube trains are spaced out ([SpacedTrains]; SPEC *Bunched tube trains are spaced
+     * out*): on by default, and off shows TfL's own times.
+     */
+    fun trainSpacing(): Flow<Boolean> = flowOf(true)
+
+    /** Set [trainSpacing]. Suspending, off the main thread; best-effort. */
+    suspend fun setTrainSpacing(on: Boolean) {}
+
+    /**
      * The networks the disruptions row always covers, by key (maintainer, 2026-10-05), on top of the
      * lines near the rider; null until chosen, read as the default (the tube).
      */

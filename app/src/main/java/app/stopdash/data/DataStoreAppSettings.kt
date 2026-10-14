@@ -157,6 +157,13 @@ class DataStoreAppSettings internal constructor(
         dataStore.updateData { (it ?: PersistedSettings()).copy(rememberWifiAtPlaces = remember) }
     }
 
+    override fun trainSpacing(): Flow<Boolean> =
+        persisted().map { it?.trainSpacing ?: true }
+
+    override suspend fun setTrainSpacing(on: Boolean) {
+        dataStore.updateData { (it ?: PersistedSettings()).copy(trainSpacing = on) }
+    }
+
     override fun summaryNetworks(): Flow<Set<String>?> =
         persisted().map { it?.summaryNetworks }
 
@@ -337,6 +344,8 @@ data class PersistedSettings(
     val avoidedLines: Set<String> = emptySet(),
     // Whether saved places are recognized by their Wi-Fi; null (an older file) for the default, on.
     val rememberWifiAtPlaces: Boolean? = null,
+    // Whether bunched tube trains are spaced out; null (an older file) for the default, on.
+    val trainSpacing: Boolean? = null,
 )
 
 /**

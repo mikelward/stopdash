@@ -134,6 +134,24 @@ class DataStoreAppSettingsTest {
     }
 
     @Test
+    fun `train spacing is on by default and persists turning it off and on`() = runTest {
+        val store = DataStoreAppSettings(FakeDataStore(null))
+        assertTrue(store.trainSpacing().first())
+        store.setTrainSpacing(false)
+        assertFalse(store.trainSpacing().first())
+        store.setTrainSpacing(true)
+        assertTrue(store.trainSpacing().first())
+    }
+
+    @Test
+    fun `a settings file from before train spacing reads it as on`() = runTest {
+        // Written by an older build: no trainSpacing key at all.
+        val older = SettingsSerializer.readFrom("""{"liveWidgetRefresh":true}""".byteInputStream())
+        assertNull(checkNotNull(older).trainSpacing)
+        assertTrue(DataStoreAppSettings(FakeDataStore(older)).trainSpacing().first())
+    }
+
+    @Test
     fun `live widget refresh reads the default when nothing is stored`() = runTest {
         val store = DataStoreAppSettings(FakeDataStore(null))
         assertFalse(store.liveWidgetRefresh().first())
