@@ -1305,7 +1305,11 @@ A pole is dropped only once it has been judged: while its lookup or a line's rou
 loading or has failed, the card says so and the widget keeps what it had. The origin's departures are fetched alongside the near-me stops (one request, none
 when it's already near) and stay out of the near-me list; each line's route is the same lookup the
 route page makes (one per line at the origin, a day). Until they are in, the card says it's
-checking rather than claim there are none.
+checking rather than claim there are none. Departures too old to stand behind, or a fetch that failed,
+leave it saying it couldn't check — except while a refresh is asking for them again (back from the
+background, the fresh fix that starts with included), when it says it's checking, as the list's stamp
+does, never "couldn't check" for a check about to be made, as the disruptions row has it (maintainer,
+2026-10-05).
 
 **On the widget**, a journey's departures lead the list too (maintainer, 2026-09-23), in the
 direction the app last showed. The widget can't load routes, so the app saves, with the widget's

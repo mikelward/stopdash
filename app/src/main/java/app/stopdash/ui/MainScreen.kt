@@ -776,7 +776,7 @@ fun MainScreen(
                 segmentsPending && starSequences[journey.lineId] != null -> JourneyCardState.Checking("its stops placed on ${journey.lineId}'s route")
                 // Asked for and not come back: the fetch failed with nothing earlier to show.
                 origin == null && fetchedId != null && fetchedId in ld?.unavailableStopIds.orEmpty() ->
-                    JourneyCardState.NotChecked()
+                    JourneyCardState.NotChecked(refreshAsks = true)
                 journey.lineId !in journeySequences -> JourneyCardState.Checking("${journey.lineId}'s route")
                 journeySequences[journey.lineId] == null -> JourneyCardState.RouteFailed
                 // The route can't place the stops this way round (no single way-back stop).
@@ -851,7 +851,10 @@ fun MainScreen(
                             )
                         // A route that failed to load is the one gap a retry can close.
                         trains.routeFailed -> JourneyCardState.RouteFailed
-                        !current || trains.unresolved || siblingsMissed -> JourneyCardState.NotChecked(retry = polesFailed)
+                        // A departure's path left unresolved, or a pole's lookup failed, is nothing a refresh
+                        // asks again.
+                        !current || trains.unresolved || siblingsMissed ->
+                            JourneyCardState.NotChecked(retry = polesFailed, refreshAsks = !trains.unresolved && !polesFailed)
                         // None from the nearest stops: "More" still opens the rest, if more board it (Codex, #691).
                         else -> JourneyCardState.Trains(emptyList(), capped = journeySiblings[journey.key]?.capped == true)
                     }
@@ -1986,6 +1989,7 @@ private fun LoadedContent(
                         pending = shownPending,
                         trackedPending = pending,
                         hiddenModes = hiddenModes,
+                        refreshing = refreshing,
                         holdLanded = holdLanded,
                         pendingTracker = pendingTracker,
                         fetchedStopIds = state.stops.mapTo(HashSet()) { it.stopId } - state.openedLoadingStopIds,
@@ -2509,6 +2513,9 @@ private fun DepartureList(
     trackedPending: List<StopRef> = pending,
     // The modes hidden from this list, filtered out of a held card's lines too.
     hiddenModes: Set<String> = emptySet(),
+    // A refresh or relocate under way: a journey card missing only departures it asks again says it's
+    // checking, not that it couldn't ([JourneyCardState.NotChecked.refreshAsks]).
+    refreshing: Boolean = false,
     // Where the held cards live ([MainScreen] keeps it, so they outlive this list).
     pendingTracker: PendingTracker = remember { PendingTracker() },
     // The stops whose departures have been fetched, so an opened card with none shown can tell
@@ -2878,10 +2885,16 @@ private fun DepartureList(
                         )
                     }
                     is JourneyCardState.NotChecked -> item(key = "journey-note|${card.journey.key}") {
-                        JourneyNote(
-                            stringResource(if (card.journey.bus) R.string.journey_not_checked_bus else R.string.journey_not_checked),
-                            onRetry = onRetryJourneyRoutes.takeIf { state.retry },
-                        )
+                        if (refreshing && state.refreshAsks) {
+                            JourneyNote(
+                                stringResource(if (card.journey.bus) R.string.journey_checking_bus else R.string.journey_checking),
+                            )
+                        } else {
+                            JourneyNote(
+                                stringResource(if (card.journey.bus) R.string.journey_not_checked_bus else R.string.journey_not_checked),
+                                onRetry = onRetryJourneyRoutes.takeIf { state.retry },
+                            )
+                        }
                     }
                     JourneyCardState.RouteFailed -> item(key = "journey-note|${card.journey.key}") {
                         JourneyNote(stringResource(R.string.journey_route_failed), onRetry = onRetryJourneyRoutes)
@@ -4139,9 +4152,12 @@ internal sealed interface JourneyCardState {
 
     /**
      * The origin's last refresh failed or has gone stale, and there's nothing current to show. [retry]
-     * when a lookup a retry can redo failed (the poles beside a bus journey's origin).
+     * when a lookup a retry can redo failed (the poles beside a bus journey's origin). [refreshAsks] when
+     * all that's missing is departures a refresh asks for again: while one is under way (the fix a return
+     * from the background starts with included) the card says it's checking, as the stamp and the
+     * disruptions row do, never that it couldn't check what it's about to (maintainer, 2026-10-05).
      */
-    data class NotChecked(val retry: Boolean = false) : JourneyCardState
+    data class NotChecked(val retry: Boolean = false, val refreshAsks: Boolean = false) : JourneyCardState
 
     /**
      * The trains that call at the far end — empty only from a fresh, current fetch. [incomplete]
