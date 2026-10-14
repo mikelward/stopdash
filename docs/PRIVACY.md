@@ -424,9 +424,8 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
   platform number, TfL's id for the train, the destination TfL shows for it (where the vehicle
   ends, never where you get off), its branch and how many seconds off it was, with how old the
   board was,
-- **a tube train marked doubtful**, as one TfL may be tracking twice: a train due less than 90
-  seconds behind another of its line at the same platform, or either of two due a minute or less
-  apart within the next five minutes, by the stop ID, line id, platform number, TfL's id for the train, and the destination and
+- **a tube train marked doubtful**, as one TfL may be tracking twice: either of two of a line's
+  trains due a minute or less apart at the same platform within the next five minutes, by the stop ID, line id, platform number, TfL's id for the train, and the destination and
   branch TfL shows for it (where the vehicle ends, never where you get off),
 - **a tube train re-timed to space out a bunched queue**: by the stop ID, line id, platform number,
   TfL's id for the train, and how many seconds later it's shown,

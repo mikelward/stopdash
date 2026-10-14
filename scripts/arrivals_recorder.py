@@ -54,7 +54,7 @@ HORIZONS = ((0, 120), (120, 300), (300, 600), (600, None))
 # TfL drops a listing for a poll or two at a time; a trip round the line takes far longer.
 REAPPEARS_AFTER = datetime.timedelta(minutes=10)
 # No two trains reach one platform closer together than this: the tightest scheduled headway on the
-# Underground is the Victoria line's 100 s. The app's DoubtfulTrains.GAP holds the same value.
+# Underground is the Victoria line's 100 s.
 MIN_HEADWAY = datetime.timedelta(seconds=90)
 
 

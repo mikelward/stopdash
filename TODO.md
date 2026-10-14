@@ -1619,14 +1619,15 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               under a minute apart at one platform (`DoubledTrains`). TfL's own feed was the source
               (2026-10-11): it tracked a train under a second id 30–60 s behind the real one, with the
               other branch's destination, still "at platform" after the real one left, and nothing in
-              the feed tells the copy apart. A line's tube train under 90 s behind another at one
-              numbered platform is now grayed in the app (`DoubtfulTrains`), not hidden; a trip
-              follows one only when no other is listed.
+              the feed tells the copy apart. Two of a line's tube trains a minute or less apart at one
+              numbered platform, the first due within five minutes, are now grayed in the app
+              (`DoubtfulTrains`), not hidden; a trip follows the later only when no other is listed.
+              The 90 s rule that grayed the later of any two under 90 s apart is gone (2026-10-14):
+              61–89 s apart was mostly two real trains (`dev-docs/arrivals-measurements.md`).
         - [ ] **Decide the doubtful-train look after the trial** (maintainer, 2026-10-11): gray in the
-              app only, no time limit, to see how it looks. Then decide whether to limit it to trains
-              due soon (TfL bunches later times a minute apart, so real far-out trains get grayed), and
-              whether the widget and watch gray them too (the widget can, drawing each time as its own
-              text).
+              app only, to see how it looks, now only for pairs whose first is due within five minutes.
+              Then decide whether the widget and watch gray them too (the widget can, drawing each time
+              as its own text).
         - [ ] **Work out the route detail's countdown off the main thread** (Codex on #769): the page
               filters, orders and formats its uncapped list of trains in composition on every redraw
               (before #769 too), and graying a doubtful one adds a pass. Precompute the rendered times
@@ -1649,7 +1650,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               90 s floor for Piccadilly, Bakerloo, Circle and Hammersmith & City, Jubilee and the
               Elizabeth line left as TfL gives them (Metropolitan and District too, until measured).
               *Done (2026-10-13)*: those gaps are applied per line at each numbered platform
-              (`SpacedTrains`), each moved time grayed in the app and read as uncertain.
+              (`SpacedTrains`). A moved time was grayed and read as uncertain at first; it's shown as
+              any other since 2026-10-14, as it reads better and isn't a worse guess than TfL's.
               Still open: measure how late trains come after their last shown time, to size a grace
               before a train leaves the board; test the duplicate signals listed there; and measure
               platforms two lines share, which are spaced per line for now.
@@ -1662,7 +1664,7 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         - [x] **Gray the earlier of two trains a minute or less apart** (maintainer, 2026-10-13): one of
               the pair may not come and nothing says which, so both are grayed and read as maybe not
               running (`DoubtfulTrains.PAIR`), where the first is due within five minutes (as far as the
-              recordings looked); a trip still follows the earlier.
+              recordings looked); a trip follows the earlier, the later marked doubtful.
         - [ ] **Tell a doubtful train from a real one** (maintainer, 2026-10-11): keep collecting
               reports (each mark is logged with the feed's train ids) against what the station display
               showed, and hide a doubtful train outright only once a rule separates the two.

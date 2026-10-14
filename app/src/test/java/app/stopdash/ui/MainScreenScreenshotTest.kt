@@ -258,9 +258,9 @@ class MainScreenScreenshotTest {
     }
 
     @Test
-    fun `bunched trains are spaced out and grayed, and said so`() {
+    fun `bunched trains are spaced out, a close pair grayed and said so`() {
         // A Victoria line queue as TfL times it, 70 · 100 · 230 s, worked as arrivals are: the first two
-        // 30 s apart (either may not come, the later too close to be believed), then spaced 100 s apart.
+        // 30 s apart (either may not come), then spaced 100 s apart.
         val raw = listOf(
             dep("victoria", "Victoria", "outbound", "Brixton", 70, "Southbound - Platform 5"),
             dep("victoria", "Victoria", "outbound", "Brixton", 100, "Southbound - Platform 5"),
@@ -271,9 +271,9 @@ class MainScreenScreenshotTest {
         capture("main-spaced-trains.png") {
             MainScreen(DeparturesUiState.Loaded(listOf(euston), now), now, {})
         }
-        // 1 · 2 · 4 min, every one grayed: the first two may not run, the third is re-timed.
+        // 1 · 2 · 4 min, the first two grayed as they may not run; the third, re-timed, as any other.
         composeRule.onNodeWithText("1 · 2 · 4 min").assertExists()
-        composeRule.onNodeWithContentDescription("1 min, may not be running, 2 min, may not be running, 4 min, time uncertain")
+        composeRule.onNodeWithContentDescription("1 min, may not be running, 2 min, may not be running, 4 min")
             .assertExists()
     }
 

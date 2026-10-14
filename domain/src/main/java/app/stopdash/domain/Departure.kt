@@ -54,18 +54,13 @@ import java.time.Instant
  * [railServiceId] is Darwin's id for a National Rail service, which pairs a train across two boards
  * of the same station (the plain one and the one with calling points). Blank on every TfL departure.
  *
- * [doubtful] marks a tube train predicted too soon behind another of its line at one platform to both be
- * there, which TfL's tracking does when it follows one train twice ([DoubtfulTrains]): the app shows it
- * grayed rather than as a train stopdash stands behind.
- *
  * [paired] marks either of two tube trains of a line TfL times a minute or less apart at one platform
- * ([DoubtfulTrains.PAIR]): one of the two may not come, and nothing says which, so both are grayed and
- * read as maybe not running ([mayNotRun]). Unlike [doubtful], a trip still follows one: one of the two
- * is coming.
+ * ([DoubtfulTrains.PAIR]), which TfL's tracking does when it follows one train twice ([DoubtfulTrains]):
+ * one of the two may not come, and nothing says which, so both are grayed and read as maybe not running
+ * ([mayNotRun]) rather than shown as trains stopdash stands behind.
  *
- * [spaced] marks a tube train whose time was moved later to keep it a line's gap behind the one ahead
- * of it at its platform ([SpacedTrains]): it's a real train, re-timed, so the app grays its time as
- * uncertain.
+ * [doubtful] marks the later of such a pair: one of the two is coming, so a trip counts on the earlier
+ * and passes this one over.
  */
 data class Departure(
     val lineId: String,
@@ -83,11 +78,10 @@ data class Departure(
     val railServiceId: String = "",
     val doubtful: Boolean = false,
     val paired: Boolean = false,
-    val spaced: Boolean = false,
 ) {
-    /** One TfL may be tracking twice ([doubtful]), or either of a pair one of which may not come ([paired]). */
+    /** Either of a pair one of which may not come ([paired]); [doubtful] is only ever the later of one. */
     val mayNotRun: Boolean get() = doubtful || paired
 
-    /** Whether the app grays its time: it [mayNotRun], or its time was moved ([spaced]). */
-    val grayed: Boolean get() = mayNotRun || spaced
+    /** Whether the app grays its time: it [mayNotRun]. */
+    val grayed: Boolean get() = mayNotRun
 }

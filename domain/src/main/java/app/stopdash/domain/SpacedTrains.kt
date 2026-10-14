@@ -9,8 +9,9 @@ import java.util.IdentityHashMap
  * Tube trains spaced out at their platform. TfL times each train as if the line ahead were clear, so a
  * queue of trains reads as due within a minute of each other (0 · 0 · 1 · 2 · 2 min at one platform)
  * when they come about two minutes apart. Each train of a line at one numbered platform is shown no
- * sooner than its line's [gapFor] after the one ahead of it, as that one was shown, and a train moved
- * so is marked [Departure.spaced]: real, re-timed, so grayed as uncertain (maintainer, 2026-10-13).
+ * sooner than its line's [gapFor] after the one ahead of it, as that one was shown. A moved train is
+ * shown as any other: its time is a better guess than TfL's, not a worse one, so it isn't grayed
+ * (maintainer, 2026-10-14).
  *
  * The gaps are what a day of recordings at 15 hubs supported (`dev-docs/arrivals-measurements.md`):
  * 100 s for the Victoria, Northern and Central lines, where trains bunch most; 90 s for the
@@ -72,7 +73,7 @@ object SpacedTrains {
         val moved = ArrayList<Pair<Departure, Duration>>()
         val all = departures.map { d ->
             val at = shifts[d] ?: return@map d
-            d.copy(expectedArrival = at, spaced = true).also { moved += it to Duration.between(d.expectedArrival, at) }
+            d.copy(expectedArrival = at).also { moved += it to Duration.between(d.expectedArrival, at) }
         }
         return Result(all, moved)
     }

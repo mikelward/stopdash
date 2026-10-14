@@ -67,11 +67,9 @@ class RouteDetailWorkTest {
             assertEquals(false, work.grayed)
             val withDoubtful = row.copy(upcoming = row.upcoming.mapIndexed { i, d -> if (i == 2) d.copy(doubtful = true) else d })
             assertEquals(true, runBlocking { routeDetailWork(withDoubtful, focus = null, RouteTopology.EMPTY, worker) }.grayed)
-            // Either of a close pair, or a train re-timed to space them out, is grayed too.
+            // Either of a close pair is grayed too.
             val withPaired = row.copy(upcoming = row.upcoming.mapIndexed { i, d -> if (i == 2) d.copy(paired = true) else d })
             assertEquals(true, runBlocking { routeDetailWork(withPaired, focus = null, RouteTopology.EMPTY, worker) }.grayed)
-            val withSpaced = row.copy(upcoming = row.upcoming.mapIndexed { i, d -> if (i == 2) d.copy(spaced = true) else d })
-            assertEquals(true, runBlocking { routeDetailWork(withSpaced, focus = null, RouteTopology.EMPTY, worker) }.grayed)
         } finally {
             pool.shutdown()
         }

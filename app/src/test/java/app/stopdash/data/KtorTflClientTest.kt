@@ -719,26 +719,24 @@ class KtorTflClientTest {
     }
 
     @Test
-    fun `a train due too close behind another at its platform comes back marked doubtful`() = runTest {
-        // Recorded at Euston about 12:24:44: TfL listed Northern and Victoria line trains under 90 s behind
-        // another at the same platform: one 3 min out (231, 60 s behind 216), the rest further down the
-        // board, where TfL bunches its times a minute apart.
+    fun `two trains due a minute apart at their platform come back paired, the later doubtful`() = runTest {
+        // Recorded at Euston about 12:24:44: TfL listed Northern line 231 60 s behind 216 at one platform,
+        // 216 due in 2 min. Further down the board, where TfL bunches its times a minute apart, nothing
+        // is marked.
         val body = checkNotNull(javaClass.getResource("/fixtures/stoppoint_arrivals_euston.json")).readText()
         val departures = client(body, clock = { Instant.parse("2026-10-09T12:24:44Z") }).arrivals("940GZZLUEUS")
         assertTrue(departures.size > 40)
-        val doubtful = departures.filter { it.doubtful }
-        assertEquals(9, doubtful.size)
-        // Judged on TfL's own times, before spacing moves them: 231 was 60 s behind 216, so both are paired.
-        val behind = doubtful.single { it.vehicleId == "231" }
-        assertTrue(behind.paired)
-        assertTrue(departures.single { it.vehicleId == "216" && it.lineId == behind.lineId }.paired)
+        // Judged on TfL's own times, before spacing moves them.
+        assertEquals(listOf("231"), departures.filter { it.doubtful }.map { it.vehicleId })
+        assertEquals(setOf("216", "231"), departures.filter { it.paired }.map { it.vehicleId }.toSet())
+        assertTrue(departures.filter { it.paired }.all { it.lineId == "northern" })
         // Every train is still there.
         val raw = Json { ignoreUnknownKeys = true }.decodeFromString<List<TflArrivalDto>>(body)
         assertEquals(raw.size, departures.size)
     }
 
     @Test
-    fun `bunched trains come back spaced a line's gap apart at their platform, each moved one marked`() = runTest {
+    fun `bunched trains come back spaced a line's gap apart at their platform`() = runTest {
         val body = checkNotNull(javaClass.getResource("/fixtures/stoppoint_arrivals_euston.json")).readText()
         val now = Instant.parse("2026-10-09T12:24:44Z")
         val departures = client(body, clock = { now }).arrivals("940GZZLUEUS")
@@ -748,14 +746,15 @@ class KtorTflClientTest {
         val ahead = departures.single { it.vehicleId == "216" && it.lineId == "northern" }
         val behind = departures.single { it.vehicleId == "231" && it.lineId == "northern" }
         assertEquals(ahead.expectedArrival.plusSeconds(100), behind.expectedArrival)
-        assertTrue(behind.spaced)
-        val spaced = departures.filter { it.spaced }
-        assertTrue(spaced.size > 1)
-        // A spaced train is only ever moved later, and an unspaced one keeps TfL's time.
-        for (d in departures) {
+        // A train is only ever moved later, and more than that one were.
+        val moved = departures.count { d ->
             val was = checkNotNull(rawAt[d.lineId to d.vehicleId])
-            if (d.spaced) assertTrue(d.expectedArrival.isAfter(was)) else assertEquals(was, d.expectedArrival)
+            assertFalse(d.expectedArrival.isBefore(was))
+            d.expectedArrival != was
         }
+        assertTrue(moved > 1)
+        // Moved, a train is shown as any other: only the pair is grayed.
+        assertEquals(setOf("216", "231"), departures.filter { it.grayed }.map { it.vehicleId }.toSet())
         // At each spaced line's numbered platform, the trains still to come are now at least its gap apart.
         departures.filter { SpacedTrains.gapFor(it.lineId) != null && PlatformDirection.platformNumber(it.platform) != null && it.expectedArrival.isAfter(now) }
             .groupBy { it.lineId to PlatformDirection.platformNumber(it.platform) }
