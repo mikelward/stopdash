@@ -2281,12 +2281,16 @@ as it was.
   for the process, and one arrivals request a refresh for each other pole read. All free, within the
   keyless budget, and naming only stops and lines, never the rider; a route that can't be loaded
   says "Couldn't check every line" rather than drop its trains. **A train tapped on the board opens
-  its line's page** (*Line page*), with its status and its map, the ride's stretch marked where it's
-  the ride's line (the ride it was tapped for, whatever the trip has done since), else the board's stop
-  (maintainer, 2026-10-06: a tap rather than a "View line" item). It honors and makes the near-me
-  list's dismissals as every line page does (maintainer, 2026-10-08): an alert dismissed there is named
-  dismissed, its work to come dismissed is left out, and the page's own dismiss lands in the same store.
-  Its status is the trip's own disruption check's, which asks about the board's lines (of the
+  its route's page**, as a row on the main screen does (maintainer, 2026-10-14): every train on that
+  route still to come and its stops, with its line's status, over the trip so Back returns to it where
+  it was. It opened the line's page from 2026-10-06, which answered "is the line OK?" but not "when
+  are the next ones?", the question a rider looking at the board is asking. The line's page (*Line
+  page*) is now a **View line** away, its map marking the ride's stretch where it's the ride's line
+  (the ride it was tapped for), else the board's stop. The route page closes once the board no longer
+  lists the route (its last train gone, or the rider past that board), as the main screen's does. Both
+  pages honor and make the near-me list's dismissals as every line page does (maintainer, 2026-10-08):
+  an alert dismissed there is named dismissed, its work to come dismissed is left out, and a dismiss
+  there lands in the same store. Their line status is the trip's own disruption check's, which asks about the board's lines (of the
   ride's mode, as the board shows) in the same request as the trip's, so it costs no request of its own: "Checking…" while a check under way
   asks about it, and "Couldn't check" where that check failed, left the line out or has gone stale, or
   where no check asks about it any more (the board failed, or moved on to the next ride), never a good
