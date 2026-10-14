@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="watch_open_phone">Otwórz StopDash na telefonie</string>
+    <string name="watch_add_stops">Dodaj przystanki na telefonie</string>
+    <string name="watch_partly_out_of_date">Część przystanków nieaktualna</string>
+    <string name="tile_updated_now">Przed chwilą</string>
+    <string name="tile_updated_ago">%d min temu</string>
+    <string name="tile_out_of_date">Nieaktualne</string>
+    <string name="tile_all_stops">Wszystkie przystanki</string>
+    <string name="watch_refresh">Odśwież</string>
+    <string name="watch_refreshing">Odświeżam…</string>
+    <string name="watch_refresh_rate_limited">Nie odświeżono: limit zapytań</string>
+    <string name="watch_refresh_unreachable">Nie odświeżono: brak połączenia z TfL</string>
+    <string name="watch_refresh_key_rejected">Nie odświeżono: klucz API odrzucony</string>
+    <string name="watch_phone_out_of_reach">Telefon poza zasięgiem</string>
+    <string name="tile_no_departures">Brak odjazdów</string>
+    <string name="tile_may_be_out_of_date">Mogą być nieaktualne</string>
+    <string name="tile_only_hidden">Brak odjazdów poza ukrytymi</string>
+    <string name="tile_stop_empty">%1$s · %2$s</string>
+    <string name="complication_label">Następny odjazd</string>
+    <string name="complication_none">Brak</string>
+    <string name="complication_unknown">\?</string>
+    <string name="complication_uncertain_time">~^1</string>
+    <string name="watch_no_rail_key">Brak klucza</string>
+    <string name="watch_no_data">Brak danych</string>
+    <string name="planned_alert_description">Planowane: %1$s od %2$s</string>
+    <string name="watch_disruptions_unknown">Nie udało się sprawdzić utrudnień</string>
+    <string name="complication_line_disrupted">%1$s (%2$s)</string>
+    <string name="complication_long_departure">%1$s → %2$s ^1</string>
+    <string name="complication_long_departure_uncertain">%1$s → %2$s ~^1</string>
+    <string name="complication_long_none">%1$s: brak odjazdów</string>
+    <string name="complication_long_unsure">%1$s: mogą być nieaktualne</string>
+    <string name="complication_long_stale">%1$s: nieaktualne</string>
+    <string name="complication_pick_title">Który wiersz pokazać?</string>
+    <string name="complication_pick_default">Górny wiersz</string>
+    <string name="complication_pick_default_detail">Najpierw przypięte</string>
+    <string name="complication_pick_row">%1$s · %2$s</string>
+    <string name="complication_pick_none">Brak wierszy do wyboru</string>
+    <string name="watch_trip">W drodze</string>
+    <string name="watch_trip_channel_description">Krok, na którym jesteś, gdy telefon śledzi podróż</string>
+    <string name="watch_trip_previous">Poprzedni krok</string>
+    <string name="watch_trip_next">Następny krok</string>
+    <plurals name="watch_more_stops_on_phone">
+        <item quantity="one">Jeszcze %d przystanek na telefonie</item>
+        <item quantity="few">Jeszcze %d przystanki na telefonie</item>
+        <item quantity="many">Jeszcze %d przystanków na telefonie</item>
+        <item quantity="other">Jeszcze %d przystanku na telefonie</item>
+    </plurals>
+</resources>

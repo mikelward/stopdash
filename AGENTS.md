@@ -1,7 +1,7 @@
 ---
 trigger: always_on
 alwaysApply: true
-last_modified: 2026-10-13
+last_modified: 2026-10-14
 ---
 
 # AGENTS.md
@@ -378,6 +378,12 @@ TfL spells them.
 - No KVM, so no emulator: lock-screen, widget, watch and location behavior needs a device.
 - Check before concluding the sandbox can't build: `ls /opt/android-sdk` and an HTTP probe
   of `https://maven.google.com/` (403 = blocked).
+
+**Translations** (SPEC *Language*): a new user-facing string ships in English only, under a
+`<!-- TODO: translate -->` comment and `tools:ignore="MissingTranslation"`, for the maintainer to
+confirm on a device; the translations pass (`TODO.md`) then fills every `values-<lang>` with the
+terms in `dev-docs/translations.md` and drops both marks. A string whose meaning changes deletes
+its now-stale translations and takes the same marks.
 
 ## Cost and reliability
 

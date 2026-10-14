@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="watch_open_phone">Abra o StopDash no telemóvel</string>
+    <string name="watch_add_stops">Adicione paragens no telemóvel</string>
+    <string name="watch_partly_out_of_date">Algumas paragens desatualizadas</string>
+    <string name="tile_updated_now">Atualizado agora</string>
+    <string name="tile_updated_ago">Há %d min</string>
+    <string name="tile_out_of_date">Desatualizado</string>
+    <string name="tile_all_stops">Todas as paragens</string>
+    <string name="watch_refresh">Atualizar</string>
+    <string name="watch_refreshing">A atualizar…</string>
+    <string name="watch_refresh_rate_limited">Falha ao atualizar: limite de pedidos</string>
+    <string name="watch_refresh_unreachable">Falha ao atualizar: TfL inacessível</string>
+    <string name="watch_refresh_key_rejected">Falha ao atualizar: chave de API rejeitada</string>
+    <string name="watch_phone_out_of_reach">Telemóvel fora de alcance</string>
+    <string name="tile_no_departures">Sem partidas</string>
+    <string name="tile_may_be_out_of_date">Pode estar desatualizado</string>
+    <string name="tile_only_hidden">Nada mais a mostrar com transportes ocultos</string>
+    <string name="tile_stop_empty">%1$s · %2$s</string>
+    <string name="complication_label">Próxima partida</string>
+    <string name="complication_none">Nenhuma</string>
+    <string name="complication_unknown">\?</string>
+    <string name="complication_uncertain_time">~^1</string>
+    <string name="watch_no_rail_key">Sem chave</string>
+    <string name="watch_no_data">Sem dados</string>
+    <string name="planned_alert_description">Alerta planeado: %1$s, a partir de %2$s</string>
+    <string name="watch_disruptions_unknown">Não foi possível verificar perturbações</string>
+    <string name="complication_line_disrupted">%1$s (%2$s)</string>
+    <string name="complication_long_departure">%1$s para %2$s ^1</string>
+    <string name="complication_long_departure_uncertain">%1$s para %2$s ~^1</string>
+    <string name="complication_long_none">%1$s: sem partidas</string>
+    <string name="complication_long_unsure">%1$s: pode estar desatualizado</string>
+    <string name="complication_long_stale">%1$s: desatualizado</string>
+    <string name="complication_pick_title">Que entrada mostrar?</string>
+    <string name="complication_pick_default">Primeira entrada</string>
+    <string name="complication_pick_default_detail">Com estrela primeiro</string>
+    <string name="complication_pick_row">%1$s · %2$s</string>
+    <string name="complication_pick_none">Ainda não há entradas para escolher</string>
+    <string name="watch_trip">A caminho</string>
+    <string name="watch_trip_channel_description">A etapa em que está, enquanto o telemóvel acompanha uma viagem</string>
+    <string name="watch_trip_previous">Etapa anterior</string>
+    <string name="watch_trip_next">Próxima etapa</string>
+    <plurals name="watch_more_stops_on_phone">
+        <item quantity="one">Mais %d paragem no telemóvel</item>
+        <item quantity="many">Mais %d paragens no telemóvel</item>
+        <item quantity="other">Mais %d paragens no telemóvel</item>
+    </plurals>
+</resources>

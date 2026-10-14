@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="watch_open_phone">StopDash auf dem Smartphone öffnen</string>
+    <string name="watch_add_stops">Haltestellen auf dem Smartphone hinzufügen</string>
+    <string name="watch_partly_out_of_date">Einige Haltestellen veraltet</string>
+    <string name="tile_updated_now">Gerade aktualisiert</string>
+    <string name="tile_updated_ago">Vor %d Min.</string>
+    <string name="tile_out_of_date">Veraltet</string>
+    <string name="tile_all_stops">Alle Haltestellen</string>
+    <string name="watch_refresh">Aktualisieren</string>
+    <string name="watch_refreshing">Wird aktualisiert…</string>
+    <string name="watch_refresh_rate_limited">Nicht aktualisiert: gedrosselt</string>
+    <string name="watch_refresh_unreachable">Nicht aktualisiert: TfL nicht erreichbar</string>
+    <string name="watch_refresh_key_rejected">Nicht aktualisiert: API-Schlüssel abgelehnt</string>
+    <string name="watch_phone_out_of_reach">Smartphone nicht erreichbar</string>
+    <string name="tile_no_departures">Keine Abfahrten</string>
+    <string name="tile_may_be_out_of_date">Evtl. veraltet</string>
+    <string name="tile_only_hidden">Sonst nichts – Verkehrsmittel ausgeblendet</string>
+    <string name="tile_stop_empty">%1$s · %2$s</string>
+    <string name="complication_label">Nächste Abfahrt</string>
+    <string name="complication_none">Keine</string>
+    <string name="complication_unknown">\?</string>
+    <string name="complication_uncertain_time">~^1</string>
+    <string name="watch_no_rail_key">Kein Schlüssel</string>
+    <string name="watch_no_data">Keine Daten</string>
+    <string name="planned_alert_description">Geplant: %1$s ab %2$s</string>
+    <string name="watch_disruptions_unknown">Störungen nicht geprüft</string>
+    <string name="complication_line_disrupted">%1$s (%2$s)</string>
+    <string name="complication_long_departure">%1$s nach %2$s ^1</string>
+    <string name="complication_long_departure_uncertain">%1$s nach %2$s ~^1</string>
+    <string name="complication_long_none">%1$s: keine Abfahrten</string>
+    <string name="complication_long_unsure">%1$s: evtl. veraltet</string>
+    <string name="complication_long_stale">%1$s: veraltet</string>
+    <string name="complication_pick_title">Welche Zeile anzeigen?</string>
+    <string name="complication_pick_default">Oberste Zeile</string>
+    <string name="complication_pick_default_detail">Angepinnte zuerst</string>
+    <string name="complication_pick_row">%1$s · %2$s</string>
+    <string name="complication_pick_none">Noch keine Zeilen zur Auswahl</string>
+    <string name="watch_trip">Unterwegs</string>
+    <string name="watch_trip_channel_description">Dein aktueller Schritt, während dein Smartphone eine Fahrt verfolgt</string>
+    <string name="watch_trip_previous">Vorheriger Schritt</string>
+    <string name="watch_trip_next">Nächster Schritt</string>
+    <plurals name="watch_more_stops_on_phone">
+        <item quantity="one">%d weitere Haltestelle auf dem Smartphone</item>
+        <item quantity="other">%d weitere Haltestellen auf dem Smartphone</item>
+    </plurals>
+</resources>

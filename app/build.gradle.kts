@@ -193,6 +193,12 @@ android {
         buildConfig = true
     }
 
+    androidResources {
+        // Lists the translated languages in the system's per-app language setting, from the
+        // values-<lang> folders (res/resources.properties names the base's locale).
+        generateLocaleConfig = true
+    }
+
     testOptions {
         unitTests {
             isIncludeAndroidResources = true

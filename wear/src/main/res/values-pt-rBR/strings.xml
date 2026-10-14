@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="watch_open_phone">Abra o StopDash no celular</string>
+    <string name="watch_add_stops">Adicione paradas no celular</string>
+    <string name="watch_partly_out_of_date">Algumas paradas desatualizadas</string>
+    <string name="tile_all_stops">Todas as paradas</string>
+    <string name="watch_refreshing">Atualizando…</string>
+    <string name="watch_phone_out_of_reach">Celular fora de alcance</string>
+    <string name="planned_alert_description">Alerta planejado: %1$s, a partir de %2$s</string>
+    <string name="watch_disruptions_unknown">Não foi possível verificar interrupções</string>
+    <string name="watch_trip_channel_description">A etapa em que você está, enquanto o celular acompanha uma viagem</string>
+    <plurals name="watch_more_stops_on_phone">
+        <item quantity="one">Mais %d parada no celular</item>
+        <item quantity="many">Mais %d paradas no celular</item>
+        <item quantity="other">Mais %d paradas no celular</item>
+    </plurals>
+</resources>

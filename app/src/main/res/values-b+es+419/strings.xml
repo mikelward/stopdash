@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="journey_alerts_location_rationale_steps">Para permitir esta función, toca Continuar y elige Permitir todo el tiempo.</string>
+    <string name="journey_alerts_location_rationale_steps_foreground">Para permitir esta función, toca Continuar, elige Mientras la app está en uso y luego Permitir todo el tiempo.</string>
+</resources>

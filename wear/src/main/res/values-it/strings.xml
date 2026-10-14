@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="watch_open_phone">Apri StopDash sul telefono</string>
+    <string name="watch_add_stops">Aggiungi fermate sul telefono</string>
+    <string name="watch_partly_out_of_date">Alcune fermate non aggiornate</string>
+    <string name="tile_updated_now">Aggiornato ora</string>
+    <string name="tile_updated_ago">%d min fa</string>
+    <string name="tile_out_of_date">Non aggiornato</string>
+    <string name="tile_all_stops">Tutte le fermate</string>
+    <string name="watch_refresh">Aggiorna</string>
+    <string name="watch_refreshing">Aggiornamento…</string>
+    <string name="watch_refresh_rate_limited">Impossibile aggiornare: richieste limitate</string>
+    <string name="watch_refresh_unreachable">Impossibile aggiornare: TfL non raggiungibile</string>
+    <string name="watch_refresh_key_rejected">Impossibile aggiornare: chiave API rifiutata</string>
+    <string name="watch_phone_out_of_reach">Telefono non raggiungibile</string>
+    <string name="tile_no_departures">Nessuna partenza</string>
+    <string name="tile_may_be_out_of_date">Forse non aggiornato</string>
+    <string name="tile_only_hidden">Nient\'altro da mostrare: mezzi nascosti</string>
+    <string name="tile_stop_empty">%1$s · %2$s</string>
+    <string name="complication_label">Prossima partenza</string>
+    <string name="complication_none">Nessuna</string>
+    <string name="complication_unknown">\?</string>
+    <string name="complication_uncertain_time">~^1</string>
+    <string name="watch_no_rail_key">Senza chiave</string>
+    <string name="watch_no_data">Nessun dato</string>
+    <string name="planned_alert_description">%1$s in programma dal giorno %2$s</string>
+    <string name="watch_disruptions_unknown">Impossibile verificare i disservizi</string>
+    <string name="complication_line_disrupted">%1$s (%2$s)</string>
+    <string name="complication_long_departure">%1$s per %2$s ^1</string>
+    <string name="complication_long_departure_uncertain">%1$s per %2$s ~^1</string>
+    <string name="complication_long_none">%1$s: nessuna partenza</string>
+    <string name="complication_long_unsure">%1$s: forse non aggiornato</string>
+    <string name="complication_long_stale">%1$s: non aggiornato</string>
+    <string name="complication_pick_title">Quale riga mostrare?</string>
+    <string name="complication_pick_default">Prima riga</string>
+    <string name="complication_pick_default_detail">Prima quelle con stella</string>
+    <string name="complication_pick_row">%1$s · %2$s</string>
+    <string name="complication_pick_none">Ancora nessuna riga da scegliere</string>
+    <string name="watch_trip">In viaggio</string>
+    <string name="watch_trip_channel_description">La tappa attuale, mentre il telefono segue un viaggio</string>
+    <string name="watch_trip_previous">Tappa precedente</string>
+    <string name="watch_trip_next">Tappa successiva</string>
+    <plurals name="watch_more_stops_on_phone">
+        <item quantity="one">%d altra fermata sul telefono</item>
+        <item quantity="many">%d altre fermate sul telefono</item>
+        <item quantity="other">%d altre fermate sul telefono</item>
+    </plurals>
+</resources>

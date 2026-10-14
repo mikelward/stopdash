@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The en-US base (tools:locale): en-GB overrides only what differs, in values-en-rGB. -->
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="en">
-    <string name="app_name">StopDash</string>
+    <string name="app_name" translatable="false">StopDash</string>
 
     <string name="stale_stamp">Tap to refresh</string>
     <!-- Pending stamp shown before the first snapshot is available (cold start, while the
@@ -51,8 +51,7 @@
     <string name="route_detail_no_disruption">No disruptions reported</string>
     <string name="route_detail_alert_dismissed">Service alert dismissed</string>
     <!-- Overflow item on a route's page: opens its line's page, with the line's map. -->
-    <!-- TODO: translate -->
-    <string name="route_detail_view_line" tools:ignore="MissingTranslation">View line</string>
+    <string name="route_detail_view_line">View line</string>
     <!-- A line alert wholly before the rider's stop, which a bus from there has passed: %1$s is its label ("Diversion"). -->
     <string name="route_detail_alert_behind">%1$s before this stop</string>
     <!-- As route_detail_alert_behind, %2$s being where it is ("Bank to Moorgate"). -->
@@ -94,149 +93,102 @@
          disruption status was never checked (SPEC Disruptions: not verified-clean). -->
     <string name="disruptions_unknown">Couldn\'t check for disruptions</string>
     <!-- The widget's note while a tap's refresh of its stops runs, and why one fetched nothing. -->
-    <!-- TODO: translate -->
-    <string name="widget_refreshing" tools:ignore="MissingTranslation">Refreshing…</string>
-    <!-- TODO: translate -->
-    <string name="widget_refresh_rate_limited" tools:ignore="MissingTranslation">Couldn\'t refresh: rate-limited</string>
-    <!-- TODO: translate -->
-    <string name="widget_refresh_unreachable" tools:ignore="MissingTranslation">Couldn\'t refresh: TfL unreachable</string>
-    <!-- TODO: translate -->
-    <string name="widget_refresh_key_rejected" tools:ignore="MissingTranslation">Couldn\'t refresh: API key rejected</string>
+    <string name="widget_refreshing">Refreshing…</string>
+    <string name="widget_refresh_rate_limited">Couldn\'t refresh: rate-limited</string>
+    <string name="widget_refresh_unreachable">Couldn\'t refresh: TfL unreachable</string>
+    <string name="widget_refresh_key_rejected">Couldn\'t refresh: API key rejected</string>
     <!-- The compact widget's short form of any of the three above. -->
-    <!-- TODO: translate -->
-    <string name="widget_refresh_failed_short" tools:ignore="MissingTranslation">Couldn\'t refresh</string>
+    <string name="widget_refresh_failed_short">Couldn\'t refresh</string>
     <!-- A trip's disruptions row, always shown over its routes; the line pills, "None", or the check's state follow. -->
-    <!-- TODO: translate -->
-    <string name="trip_disruptions_label" tools:ignore="MissingTranslation">Disruptions:</string>
+    <string name="trip_disruptions_label">Disruptions:</string>
     <!-- After "Disruptions:" on a trip once every line and stop shown is checked and none is disrupted. -->
-    <!-- TODO: translate -->
-    <string name="trip_disruptions_none" tools:ignore="MissingTranslation">None</string>
+    <string name="trip_disruptions_none">None</string>
     <!-- After "Disruptions:" on a trip while its lines and stops are being checked. -->
-    <!-- TODO: translate -->
-    <string name="trip_disruptions_checking" tools:ignore="MissingTranslation">Checking…</string>
+    <string name="trip_disruptions_checking">Checking…</string>
     <!-- After "Disruptions:" on a trip when a check failed, with nothing to name. -->
-    <!-- TODO: translate -->
-    <string name="trip_disruptions_unknown" tools:ignore="MissingTranslation">Unknown</string>
+    <string name="trip_disruptions_unknown">Unknown</string>
     <!-- After "Disruptions:" on a trip, before the line pills and stops that couldn't be checked. -->
-    <!-- TODO: translate -->
-    <string name="trip_disruptions_unknown_label" tools:ignore="MissingTranslation">Unknown:</string>
+    <string name="trip_disruptions_unknown_label">Unknown:</string>
     <!-- Click label of a trip's disruptions row: it opens every line the trip rides with its status. -->
-    <!-- TODO: translate -->
-    <string name="trip_lines_open" tools:ignore="MissingTranslation">Show every line</string>
+    <string name="trip_lines_open">Show every line</string>
     <!-- On a line's page, over the line's work that hasn't started yet, each with the day it starts. -->
-    <!-- TODO: translate -->
-    <string name="line_coming_up" tools:ignore="MissingTranslation">Coming up</string>
+    <string name="line_coming_up">Coming up</string>
     <!-- Under a line's Coming up when its work for the week ahead couldn't be checked; it is asked again. -->
-    <!-- TODO: translate -->
-    <string name="line_coming_up_unknown" tools:ignore="MissingTranslation">Couldn\'t check the week ahead</string>
+    <string name="line_coming_up_unknown">Couldn\'t check the week ahead</string>
     <!-- Title of the page listing every line a trip rides with its status. -->
-    <!-- TODO: translate -->
-    <string name="trip_lines_title" tools:ignore="MissingTranslation">Line status</string>
+    <string name="trip_lines_title">Line status</string>
     <!-- Beside a line on the trip's lines page that dropped off the trip since the page opened. -->
-    <!-- TODO: translate -->
-    <string name="trip_lines_gone" tools:ignore="MissingTranslation">No longer on this trip</string>
+    <string name="trip_lines_gone">No longer on this trip</string>
     <!-- The home screen's disruptions row, counting what doesn't fit on its one line: "+3". -->
-    <string name="home_disruptions_more" tools:ignore="MissingTranslation">+%1$d</string>
+    <string name="home_disruptions_more">+%1$d</string>
     <!-- On the home screen's lines page, a line whose stops are no longer near since it opened. -->
-    <string name="home_lines_gone" tools:ignore="MissingTranslation">No longer nearby</string>
+    <string name="home_lines_gone">No longer nearby</string>
     <!-- Click label of a line on the lines page: it opens the line's own page, with its map. -->
-    <!-- TODO: translate -->
-    <string name="trip_lines_line" tools:ignore="MissingTranslation">Open line</string>
+    <string name="trip_lines_line">Open line</string>
     <!-- Heading of a line's map on its page (SPEC *Line page → Map*). -->
-    <!-- TODO: translate -->
-    <string name="line_map_title" tools:ignore="MissingTranslation">Map</string>
+    <string name="line_map_title">Map</string>
     <!-- Beside the map's heading: unfolds every station. -->
-    <!-- TODO: translate -->
-    <string name="line_map_show_all" tools:ignore="MissingTranslation">Show all stations</string>
+    <string name="line_map_show_all">Show all stations</string>
     <!-- Beside the map's heading once something is unfolded: folds it back as it opened. -->
-    <!-- TODO: translate -->
-    <string name="line_map_fold" tools:ignore="MissingTranslation">Fold</string>
+    <string name="line_map_fold">Fold</string>
     <!-- In place of the map while the line's route data loads. -->
-    <!-- TODO: translate -->
-    <string name="line_map_loading" tools:ignore="MissingTranslation">Loading map…</string>
+    <string name="line_map_loading">Loading map…</string>
     <!-- In place of the map for a line whose routes can't be drawn (a loop with no end). -->
-    <!-- TODO: translate -->
-    <string name="line_map_unavailable" tools:ignore="MissingTranslation">No map for this line</string>
+    <string name="line_map_unavailable">No map for this line</string>
     <!-- In place of the map when the line's route data couldn't be loaded, with why. -->
-    <!-- TODO: translate -->
-    <string name="line_map_failed_offline" tools:ignore="MissingTranslation">Couldn\'t load the map — you\'re offline</string>
-    <!-- TODO: translate -->
-    <string name="line_map_failed_rate_limited" tools:ignore="MissingTranslation">Couldn\'t load the map — TfL is rate-limiting</string>
-    <!-- TODO: translate -->
-    <string name="line_map_failed_unreachable" tools:ignore="MissingTranslation">Couldn\'t load the map — can\'t reach TfL</string>
-    <!-- TODO: translate -->
-    <string name="line_map_failed_key_rejected" tools:ignore="MissingTranslation">Couldn\'t load the map — TfL rejected your API key</string>
+    <string name="line_map_failed_offline">Couldn\'t load the map — you\'re offline</string>
+    <string name="line_map_failed_rate_limited">Couldn\'t load the map — TfL is rate-limiting</string>
+    <string name="line_map_failed_unreachable">Couldn\'t load the map — can\'t reach TfL</string>
+    <string name="line_map_failed_key_rejected">Couldn\'t load the map — TfL rejected your API key</string>
     <!-- A fold of stations on one track, by its first and last: "Burnt Oak to Chalk Farm". -->
-    <!-- TODO: translate -->
-    <string name="line_map_run" tools:ignore="MissingTranslation">%1$s to %2$s</string>
+    <string name="line_map_run">%1$s to %2$s</string>
     <!-- Under a station on the map whose every track is closed, and under a fold holding one, its rail drawn with a no-entry sign. -->
-    <!-- TODO: translate -->
-    <string name="line_map_no_service" tools:ignore="MissingTranslation">No service</string>
-    <!-- TODO: translate -->
-    <string name="line_map_no_service_one_way" tools:ignore="MissingTranslation">No service one way</string>
+    <string name="line_map_no_service">No service</string>
+    <string name="line_map_no_service_one_way">No service one way</string>
     <!-- A screen reader's word for a station on the map with a closed track drawn to it, still served. -->
-    <!-- TODO: translate -->
-    <string name="line_map_beside_closure" tools:ignore="MissingTranslation">Next to a closure</string>
+    <string name="line_map_beside_closure">Next to a closure</string>
     <!-- Under the map's heading when a closure TfL places can't be put on the map. -->
-    <!-- TODO: translate -->
-    <string name="line_map_closure_not_placed" tools:ignore="MissingTranslation">This closure isn\'t on the map</string>
+    <string name="line_map_closure_not_placed">This closure isn\'t on the map</string>
     <!-- Under a station on a line's map that a closure still to come will shut, by the day it starts ("No service from 10 Oct"). -->
-    <!-- TODO: translate -->
-    <string name="line_map_no_service_from" tools:ignore="MissingTranslation">No service from %1$s</string>
+    <string name="line_map_no_service_from">No service from %1$s</string>
     <!-- A screen reader's words for a fold on the map holding a station a closure still to come will shut, drawn as a calendar. -->
-    <!-- TODO: translate -->
-    <string name="line_map_fold_upcoming" tools:ignore="MissingTranslation">Has a closure coming up</string>
+    <string name="line_map_fold_upcoming">Has a closure coming up</string>
     <!-- A screen reader's words for a fold on the map holding a station an alert names, drawn ⚠. -->
-    <!-- TODO: translate -->
-    <string name="line_map_fold_alert" tools:ignore="MissingTranslation">Has an alert</string>
+    <string name="line_map_fold_alert">Has an alert</string>
     <!-- A screen reader's word for a starred station on the map, which draws a star. -->
-    <!-- TODO: translate -->
-    <string name="line_map_starred" tools:ignore="MissingTranslation">Starred</string>
+    <string name="line_map_starred">Starred</string>
     <!-- Said to a screen reader for a station or fold on a line's map reached by a track the line runs one
          way only, drawn as an arrow: which way it runs, as the map reads top to bottom. -->
-    <!-- TODO: translate -->
-    <string name="line_map_one_way_down" tools:ignore="MissingTranslation">One way, down the map</string>
-    <!-- TODO: translate -->
-    <string name="line_map_one_way_up" tools:ignore="MissingTranslation">One way, up the map</string>
+    <string name="line_map_one_way_down">One way, down the map</string>
+    <string name="line_map_one_way_up">One way, up the map</string>
     <!-- Under a station on a line's map: the line's station nearest the rider, kept unfolded. -->
-    <!-- TODO: translate -->
-    <string name="line_map_nearest" tools:ignore="MissingTranslation">Nearest</string>
+    <string name="line_map_nearest">Nearest</string>
     <!-- The same, with how far the rider is from it: "Nearest · 300 m". -->
-    <!-- TODO: translate -->
-    <string name="line_map_nearest_at" tools:ignore="MissingTranslation">Nearest · %1$s</string>
+    <string name="line_map_nearest_at">Nearest · %1$s</string>
     <!-- Under a fold on the map: how many stations it holds. -->
-    <!-- TODO: translate -->
-    <plurals name="line_map_stations" tools:ignore="MissingTranslation">
+    <plurals name="line_map_stations">
         <item quantity="one">%d station</item>
         <item quantity="other">%d stations</item>
     </plurals>
     <!-- Click label of a fold on the map: it shows the stations folded into it. -->
-    <!-- TODO: translate -->
-    <plurals name="line_map_show" tools:ignore="MissingTranslation">
+    <plurals name="line_map_show">
         <item quantity="one">Show %d station</item>
         <item quantity="other">Show %d stations</item>
     </plurals>
     <!-- The trip's lines page for a trip with no ride (all walking). -->
-    <!-- TODO: translate -->
-    <string name="trip_lines_none" tools:ignore="MissingTranslation">No lines on this trip</string>
+    <string name="trip_lines_none">No lines on this trip</string>
     <!-- Beside a line on the trip's lines page when TfL reports nothing wrong on it. -->
-    <!-- TODO: translate -->
-    <string name="trip_lines_good" tools:ignore="MissingTranslation">Good service</string>
+    <string name="trip_lines_good">Good service</string>
     <!-- Beside a line on the trip's lines page whose status or trains couldn't be checked. -->
-    <!-- TODO: translate -->
-    <string name="trip_lines_unknown" tools:ignore="MissingTranslation">Couldn\'t check</string>
+    <string name="trip_lines_unknown">Couldn\'t check</string>
     <!-- On the trip's lines page when a line couldn't be checked: what that means for its times. -->
-    <!-- TODO: translate -->
-    <string name="trip_lines_unknown_note" tools:ignore="MissingTranslation">Some lines couldn\'t be checked, so their times may be wrong.</string>
+    <string name="trip_lines_unknown_note">Some lines couldn\'t be checked, so their times may be wrong.</string>
     <!-- A disruption chip on the trip's lines page for an alert the rider dismissed; %1$s is TfL's status. -->
-    <!-- TODO: translate -->
-    <string name="trip_lines_dismissed" tools:ignore="MissingTranslation">%1$s · dismissed</string>
+    <string name="trip_lines_dismissed">%1$s · dismissed</string>
     <!-- Under the trip's lines: the stops with a closure notice in force, joined. -->
-    <!-- TODO: translate -->
-    <string name="trip_lines_stops" tools:ignore="MissingTranslation">Stop notices: %1$s</string>
+    <string name="trip_lines_stops">Stop notices: %1$s</string>
     <!-- Under the trip's lines: the stops whose closures couldn't be checked, joined. -->
-    <!-- TODO: translate -->
-    <string name="trip_lines_stops_unknown" tools:ignore="MissingTranslation">Stops not checked: %1$s</string>
+    <string name="trip_lines_stops_unknown">Stops not checked: %1$s</string>
     <!-- While a cold load is still bringing stops in: line status is checked once they're all back. -->
     <string name="disruptions_checking">Checking for disruptions</string>
     <!-- Spoken after a near-me place's name while its closure check is still out (a spinner shows). -->
@@ -256,8 +208,7 @@
     <!-- No live times, but one might be coming: the stale countdown's "?" (maintainer, 2026-10-03). -->
     <string name="status_times_unknown" translatable="false">?</string>
     <string name="status_times_unknown_description">Times unknown</string>
-    <!-- TODO: translate -->
-    <string name="status_times_loading_description" tools:ignore="MissingTranslation">Loading times</string>
+    <string name="status_times_loading_description">Loading times</string>
     <!-- Instead of the dash when no source answered for the line: a National Rail line whose board
          failed, or that no board covers (maintainer, 2026-09-24). -->
     <string name="status_no_data">No data</string>
@@ -417,22 +368,17 @@
     <string name="line_stop_from">From</string>
     <!-- A stop's details opened from a route page's stop: heads them with the departure tapped. %1$s is
          where it was boarded, %2$s where the train goes, "From Victoria, towards Walthamstow Central". -->
-    <!-- TODO: translate -->
-    <string name="route_stop_departure" tools:ignore="MissingTranslation">From %1$s, towards %2$s</string>
+    <string name="route_stop_departure">From %1$s, towards %2$s</string>
     <!-- As route_stop_departure, for a departure TfL names no destination for: "From Victoria". -->
-    <!-- TODO: translate -->
-    <string name="route_stop_departure_from" tools:ignore="MissingTranslation">From %1$s</string>
+    <string name="route_stop_departure_from">From %1$s</string>
     <!-- A stop's details opened from a route page's stop: starts the trip there on the way, on that line. -->
-    <!-- TODO: translate -->
-    <string name="route_stop_go" tools:ignore="MissingTranslation">Go</string>
+    <string name="route_stop_go">Go</string>
     <!-- A stop's details: go to this stop, as To… does. -->
     <string name="line_stop_to">To</string>
     <!-- A stop's details: the departures at the stop and the stops around it, on a page that starts nothing. -->
-    <!-- TODO: translate -->
-    <string name="line_stop_departures" tools:ignore="MissingTranslation">Departures</string>
+    <string name="line_stop_departures">Departures</string>
     <!-- A stop's departures opened from its details: back to the details, in the bar where To… would be. -->
-    <!-- TODO: translate -->
-    <string name="station_browse_back" tools:ignore="MissingTranslation">Back</string>
+    <string name="station_browse_back">Back</string>
     <string name="line_stop_open_line">Open %1$s</string>
     <string name="line_stop_favorite">Add to favorite places</string>
     <!-- Placeholder in the destination search opened by "To…", beside its "To" label; it finds
@@ -1069,36 +1015,30 @@
     <string name="on_the_way_replace_title">Replace current trip?</string>
     <string name="on_the_way_replace">Replace</string>
     <string name="on_the_way_end">End trip</string>
-    <!-- TODO: translate -->
-    <string name="on_the_way_plan_again" tools:ignore="MissingTranslation">Plan again from %1$s</string>
-    <string name="on_the_way_keep_going" tools:ignore="MissingTranslation">Keep going</string>
+    <string name="on_the_way_plan_again">Plan again from %1$s</string>
+    <string name="on_the_way_keep_going">Keep going</string>
     <!-- Under "Missed ‹station›": the rider stayed on because the line they were to change onto is
          closed. Avoids that line and plans again. The argument names it as it reads alone ("Central line"). -->
-    <!-- TODO: translate -->
-    <string name="on_the_way_line_closed" tools:ignore="MissingTranslation">%1$s closed</string>
+    <string name="on_the_way_line_closed">%1$s closed</string>
     <!-- Under a missed change: the stop gone past is closed, so it's avoided and the trip planned again ("Bank closed"). -->
-    <!-- TODO: translate -->
-    <string name="on_the_way_stop_closed" tools:ignore="MissingTranslation">%1$s closed</string>
+    <string name="on_the_way_stop_closed">%1$s closed</string>
     <!-- A train on the trip's board that leaves the plan: its heading, in brackets, and its times. -->
-    <string name="on_the_way_off_plan_heading" tools:ignore="MissingTranslation">(%1$s)</string>
-    <string name="on_the_way_off_plan_times" tools:ignore="MissingTranslation">%1$s min</string>
+    <string name="on_the_way_off_plan_heading">(%1$s)</string>
+    <string name="on_the_way_off_plan_times">%1$s min</string>
     <!-- Under an opened off-plan row: where the rider changes back onto their route. -->
-    <string name="on_the_way_off_plan_change" tools:ignore="MissingTranslation">Change at %1$s</string>
-    <string name="on_the_way_take_this" tools:ignore="MissingTranslation">Take this one</string>
+    <string name="on_the_way_off_plan_change">Change at %1$s</string>
+    <string name="on_the_way_take_this">Take this one</string>
     <!-- Shows the branches off the trip's ride: another way the rider may be taking. -->
-    <string name="on_the_way_other_routes" tools:ignore="MissingTranslation">Other routes</string>
+    <string name="on_the_way_other_routes">Other routes</string>
     <string name="on_the_way_done">Done</string>
     <!-- The whole trip on its screen's card, beside where it goes: %2$d the minutes left, then %1$s the clock time it gets there.
          "About" (~): TfL's prediction where the rider gets off, with only walks after. -->
-    <!-- TODO: translate -->
-    <string name="on_the_way_trip_eta" tools:ignore="MissingTranslation">%2$d min · ~%1$s</string>
+    <string name="on_the_way_trip_eta">%2$d min · ~%1$s</string>
     <!-- As on_the_way_trip_eta, partly estimated from the plan: "est." leads, and is the first thing
          the card drops when the row is short (maintainer, 2026-10-04). -->
-    <!-- TODO: translate -->
-    <string name="on_the_way_trip_eta_estimated" tools:ignore="MissingTranslation">est. %2$d min · %1$s</string>
+    <string name="on_the_way_trip_eta_estimated">est. %2$d min · %1$s</string>
     <!-- The step at hand on the card, beside a ride's stops: %2$d the minutes until it's done, then %1$s the clock time. -->
-    <!-- TODO: translate -->
-    <string name="on_the_way_step_time" tools:ignore="MissingTranslation">%2$d min · %1$s</string>
+    <string name="on_the_way_step_time">%2$d min · %1$s</string>
     <!-- Moves the trip on to its next step, as if the rider had got there. -->
     <string name="on_the_way_go_next">Next</string>
     <!-- Moves the trip back to its previous step, to undo a Next tapped too soon. -->
