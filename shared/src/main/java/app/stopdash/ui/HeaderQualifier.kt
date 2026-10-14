@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import app.stopdash.domain.PlatformDirection
 import app.stopdash.domain.StopQualifier
 
 /**
@@ -75,6 +76,26 @@ fun busPoleLabels(poles: List<BusPoleCues>): List<String?> {
  */
 fun groupHeaderTitle(name: String, qualifier: StopQualifier?): String =
     groupHeaderLabel(qualifier)?.let { "$name${groupHeaderJoin(it)}$it" } ?: name
+
+/**
+ * What a route page names its boarding stop by, after the place: the platform the train leaves from,
+ * as TfL names it on the train ([trainPlatform], "Southbound - Platform 7") or as its row is split
+ * ([rowPlatform], the number alone), else the bus pole's [letter]; null when neither is known, TfL's
+ * "Platform Unknown" included. A [bus] is only ever named by its pole: TfL's platform on a bus
+ * prediction is stop-local, never a platform to look for, as the departure rows treat it. What a rider
+ * looks for on the spot, and only that: the stop list is headed by the way the train runs, and a
+ * pole's sign names where its buses go, as the title does.
+ */
+fun boardingQualifier(trainPlatform: String?, rowPlatform: String, letter: String, bus: Boolean): StopQualifier? {
+    val number = if (bus) {
+        null
+    } else {
+        PlatformDirection.knownPlatformNumber(trainPlatform)
+            ?: rowPlatform.trim().takeUnless { it.isEmpty() || it.equals("Unknown", ignoreCase = true) }
+    }
+    if (number != null) return StopQualifier.Platform(number, null)
+    return letter.trim().ifEmpty { null }?.let { StopQualifier.BusStop(it, null) }
+}
 
 /**
  * What joins a place name to its qualifier [label]: " – ", or just a space before a destination,
