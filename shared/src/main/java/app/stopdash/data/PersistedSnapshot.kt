@@ -483,14 +483,12 @@ data class PersistedDeparture(
     // What a National Rail board says it runs by, so a restored train's stop list still tells its
     // way. Defaulted blank for an older snapshot.
     val via: String = "",
-    // A train predicted too close behind another to both be there ([DoubtfulTrains]), so a restored
-    // board still grays it. Defaulted false for an older snapshot.
+    // The later of two trains timed a minute or less apart ([DoubtfulTrains]), so a restored trip
+    // still passes it over. Defaulted false for an older snapshot.
     val doubtful: Boolean = false,
-    // Either of two trains timed a minute or less apart ([DoubtfulTrains.PAIR]), or a time moved to
-    // space bunched trains ([SpacedTrains]), so a restored board still grays it. Defaulted false for an
-    // older snapshot.
+    // Either of two trains timed a minute or less apart ([DoubtfulTrains.PAIR]), so a restored board
+    // still grays it. Defaulted false for an older snapshot.
     val paired: Boolean = false,
-    val spaced: Boolean = false,
 )
 
 @Serializable
@@ -607,7 +605,6 @@ private fun Departure.toPersisted(): PersistedDeparture =
         via = via,
         doubtful = doubtful,
         paired = paired,
-        spaced = spaced,
     )
 
 internal fun PersistedDeparture.toDomain(): Departure =
@@ -625,7 +622,8 @@ internal fun PersistedDeparture.toDomain(): Departure =
         destinationId = destinationId,
         vehicleId = vehicleId,
         via = via,
-        doubtful = doubtful,
+        // Only ever the later of a pair: an older build also marked a train under 90 s behind another,
+        // which is believed now, so a restored board doesn't gray it until the next refresh.
+        doubtful = doubtful && paired,
         paired = paired,
-        spaced = spaced,
     )

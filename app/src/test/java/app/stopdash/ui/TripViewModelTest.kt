@@ -4788,11 +4788,9 @@ class TripViewModelTest {
         assertEquals(R.string.trip_train_doubtful_description, trainDescription(later.copy(doubtful = true), true, checking = false, reachable))
         // One the rider can't catch says that, doubtful or not.
         assertEquals(R.string.trip_train_unusable_description, trainDescription(soon.copy(doubtful = true), false, checking = false, reachable))
-        // Either of a close pair may not be running too; a re-timed one runs, its time uncertain.
+        // Either of a close pair may not be running too.
         assertEquals(R.string.trip_train_doubtful_description, trainDescription(later.copy(paired = true), true, checking = false, reachable))
-        assertEquals(R.string.trip_train_uncertain_description, trainDescription(later.copy(spaced = true), true, checking = false, reachable))
-        assertEquals(R.string.trip_train_doubtful_description, trainDescription(later.copy(spaced = true, paired = true), true, checking = false, reachable))
-        assertEquals(R.string.trip_train_unusable_description, trainDescription(soon.copy(spaced = true), false, checking = false, reachable))
+        assertEquals(R.string.trip_train_unusable_description, trainDescription(soon.copy(paired = true), false, checking = false, reachable))
     }
 
     @Test

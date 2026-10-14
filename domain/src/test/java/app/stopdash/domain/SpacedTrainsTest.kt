@@ -31,16 +31,16 @@ class SpacedTrainsTest {
         val board = listOf(train(10, "1"), train(20, "2"), train(70, "3"), train(130, "4"), train(140, "5"))
         val result = SpacedTrains.space(board, now)
         assertEquals(listOf(10L, 110L, 210L, 310L, 410L), result.departures.map { it.expectedArrival.epochSecond - now.epochSecond })
-        // The front train keeps its time; each moved one is marked so the app grays it.
-        assertEquals(listOf(false, true, true, true, true), result.departures.map { it.spaced })
+        // The front train keeps its time; each moved one is said, with how far, for the debug log.
         assertEquals(listOf("2", "3", "4", "5"), result.moved.map { it.first.vehicleId })
         assertEquals(listOf(90L, 140L, 180L, 270L), result.moved.map { it.second.seconds })
-        // Nothing else about them changes.
-        assertEquals(board, result.departures.mapIndexed { i, d -> d.copy(expectedArrival = board[i].expectedArrival, spaced = false) })
+        // Nothing else about them changes: a moved time isn't grayed.
+        assertEquals(board, result.departures.mapIndexed { i, d -> d.copy(expectedArrival = board[i].expectedArrival) })
+        assertTrue(result.departures.none { it.grayed })
     }
 
     @Test
-    fun `a train already a gap behind keeps its time, and isn't marked`() {
+    fun `a train already a gap behind keeps its time`() {
         val board = listOf(train(30, "1"), train(130, "2"), train(400, "3"))
         val result = SpacedTrains.space(board, now)
         assertSame(board, result.departures)
@@ -111,18 +111,19 @@ class SpacedTrainsTest {
         assertEquals(listOf(310L, 110L, 210L, 10L), result.map { it.expectedArrival.epochSecond - now.epochSecond })
         assertEquals(listOf("9", "1", "1", "0"), result.map { it.vehicleId })
         // The train behind them is pushed back too, though TfL timed it well clear of the first.
-        assertEquals(listOf(true, true, true, false), result.map { it.spaced })
+        assertEquals(listOf("9", "1", "1"), SpacedTrains.space(board, now).moved.map { it.first.vehicleId })
     }
 
     @Test
-    fun `a doubtful train keeps its mark, and holds the queue behind it as TfL listed it`() {
+    fun `a pair keeps its marks, and holds the queue behind it as TfL listed it`() {
         val marked = DoubtfulTrains.mark(listOf(train(10, "1"), train(40, "2"), train(150, "3")), now).departures
         val result = SpacedTrains.space(marked, now).departures
         assertEquals(listOf(10L, 110L, 210L), result.map { it.expectedArrival.epochSecond - now.epochSecond })
-        assertEquals(listOf(false, true, false), result.map { it.doubtful })
-        // TfL timed the first two 30 s apart: either may be the one that doesn't come.
+        // TfL timed the first two 30 s apart: either may be the one that doesn't come, judged on TfL's
+        // times, not the spaced ones.
         assertEquals(listOf(true, true, false), result.map { it.paired })
-        assertEquals(listOf(false, true, true), result.map { it.spaced })
-        assertEquals(listOf(true, true, true), result.map { it.grayed })
+        assertEquals(listOf(false, true, false), result.map { it.doubtful })
+        // The third, moved but not paired, is shown as any other.
+        assertEquals(listOf(true, true, false), result.map { it.grayed })
     }
 }

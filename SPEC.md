@@ -643,25 +643,22 @@ TfL's tracking sometimes follows one train under a second id a signal section be
 platform lists a train that never comes, often for the other branch: a "Morden via Bank" train a
 minute behind the real Battersea one, still "at platform" after it had gone. Nothing in TfL's answer
 tells the copy apart (it has its own id and moves station by station), and the station's display, fed
-from the signalling, shows it once. No two trains of a line can use one platform that close — the
-tightest scheduled headway on the Underground is about 100 seconds — so of a line's tube trains due at
-one numbered platform less than **90 seconds** apart, the later one's time is **grayed** in the app
-and read aloud as maybe not running: it may be real, so it isn't hidden, but it isn't one stopdash
-stands behind either (principle 1). Of two trains TfL times **a minute or less** apart, the first due
-within **five minutes**, either may be the one that doesn't come, and nothing says which (maintainer,
-2026-10-13): recordings of such pairs found one dropped from the board before it was due about half
-the time (`dev-docs/arrivals-measurements.md`), so the **earlier is grayed** and read the same way too.
-Further out the recordings say nothing, and TfL's whole-minute times would pair most real trains, so
-the earlier is left alone there. A trip still follows the earlier of such a pair, since one of the two
-is coming. Further out TfL rounds its
-times to whole minutes and bunches them, so some real trains are grayed too; the trial is to see how
-that looks before the rule settles, and the widget and watch show these times as usual meanwhile. A
-train TfL still lists after it was due counts for nothing. A trip follows, and times its arrival by, a
-doubtful train only when no other is listed. Each one marked is noted in the debug log, so what the
-feed looked like can be compared with what the rider saw. Buses, and platforms TfL names by direction
-alone, are left as they are.
+from the signalling, shows it once. Of two of a line's tube trains TfL times **a minute or less** apart
+at one numbered platform, the first due within **five minutes**, either may be the one that doesn't
+come, and nothing says which (maintainer, 2026-10-13): recordings of such pairs found one dropped from
+the board before it was due about half the time (`dev-docs/arrivals-measurements.md`). So **both are
+grayed** in the app and read aloud as maybe not running: either may be real, so neither is hidden, but
+neither is one stopdash stands behind (principle 1). A trip follows, and times its arrival by, the
+earlier of such a pair, since one of the two is coming, and the later only when no other is listed.
+Trains further apart are believed (maintainer, 2026-10-14): those **61 to 89 seconds** apart were
+mostly two real trains in the recordings, and spacing (below) shows them a line's gap apart. Further
+out the recordings say nothing, and TfL's whole-minute times would pair most real trains, so a pair
+there is left alone too. The widget and watch show these times as usual during the trial. A train TfL
+still lists after it was due counts for nothing. Each one marked is noted in the debug log, so what
+the feed looked like can be compared with what the rider saw. Buses, and platforms TfL names by
+direction alone, are left as they are.
 
-**Bunched tube trains are spaced out, and their moved times grayed** (maintainer, 2026-10-13). TfL
+**Bunched tube trains are spaced out** (maintainer, 2026-10-13). TfL
 times each train as if the line ahead were clear, so a queue reads as due within a minute of each
 other (0 · 0 · 1 · 2 · 2 min) when the trains come about two minutes apart. Each train of a line at one
 numbered platform is shown no sooner than its line's gap after the one ahead of it, as that one is
@@ -670,8 +667,8 @@ Bakerloo, Circle and Hammersmith & City. Those are what a day of recordings at h
 Jubilee's times already run late and spacing made them later, and the other lines weren't measured,
 so theirs stay as TfL gives them. Spacing judges TfL's own order, never moves a time earlier, and
 takes the doubtful rule above on TfL's times before it moves any. The moved times are what every
-surface shows, the widget and watch included; in the app a moved time is **grayed** and read aloud as
-uncertain, since it's a real train re-timed rather than one stopdash stands behind as TfL gave it.
+surface shows, the widget and watch included, in the same color as any other (maintainer,
+2026-10-14): a spaced time is a better guess than TfL's own, not a worse one, so it isn't grayed.
 Each line is spaced on its own; two lines sharing a platform's track aren't yet held back by each
 other's trains. A trip waiting for the train it follows still times it by that train's own calls,
 which TfL doesn't space, so its countdown can read sooner than the board's (to do). Each move is noted
