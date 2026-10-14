@@ -51,6 +51,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.referentialEqualityPolicy
@@ -75,6 +76,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import app.stopdash.R
 import app.stopdash.StopdashDebugLog
 import app.stopdash.domain.DismissedAlert
@@ -98,6 +101,7 @@ import app.stopdash.domain.StopGroup
 import app.stopdash.domain.RouteMiss
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DestinationAbbreviations
+import app.stopdash.domain.RouteFocus
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.OffPlan
 import app.stopdash.domain.Staleness
@@ -177,37 +181,87 @@ internal fun OnTheWayScreen(
     // 2026-10-05). Null offers none.
     onTake: ((TripLeg, OffPlan.Branch) -> Unit)? = null,
     // The lines' statuses the trip's last check found ([ActiveTripTracker.lineChecks]), the board's among
-    // them: a train tapped on the board opens its line's page with its status (maintainer, 2026-10-06).
+    // them: a train tapped on the board opens its route's page with its line's status (maintainer, 2026-10-14).
     lineChecks: RouteDisruption.LinesChecked? = null,
-    // The service alerts the rider dismissed on the near-me list, which a board line's page honors as every
-    // line page does (maintainer, 2026-10-08), and how its page dismisses one. Null offers no dismiss.
+    // The service alerts the rider dismissed on the near-me list, which a board train's route page and its line's
+    // page honor as every line page does (maintainer, 2026-10-08), and how they dismiss one. Null offers no dismiss.
     dismissed: Set<DismissedAlert> = emptySet(),
     lineDismissal: LineAlertDismissal? = null,
 ) {
     BackHandler(onBack = onBack)
-    // A train tapped on the board: its line's page over this one, instead of a "View line" item
-    // (maintainer, 2026-10-06). Kept as the line and the stop it was tapped at, so a rotation keeps it open
-    // whatever the board has done meanwhile.
-    var boardLine by rememberSaveable { mutableStateOf<List<String>?>(null) }
-    // And the ride it was tapped for, kept whole and saved with the page ([TappedRideSaver]): its stretch
-    // stays on the map whatever the trip does since, its end and a rotation after it included, with nothing
-    // live to find it again in (Codex, #627).
+    // A train tapped on the board: its route's page over this one, every train on it to come, as a row on the
+    // main screen opens (maintainer, 2026-10-14), its line's page a "View line" away. Kept by the row's identity
+    // ([detailKey]) and the route tapped on its card, so a rotation keeps it open, and found again in each board
+    // as it refreshes.
+    var boardRoute by rememberSaveable { mutableStateOf<String?>(null) }
+    // Its line, so the page is up from the tap, headed by the line's pill, while its row is found.
+    var boardLineId by rememberSaveable { mutableStateOf("") }
+    var boardLineName by rememberSaveable { mutableStateOf("") }
+    var boardMode by rememberSaveable { mutableStateOf("") }
+    var boardDestination by rememberSaveable { mutableStateOf<String?>(null) }
+    var boardBranch by rememberSaveable { mutableStateOf<String?>(null) }
+    // And the ride it was tapped for, kept whole and saved with the page ([TappedRideSaver]): its line's page
+    // keeps the ride's stretch on the map whatever the trip does since (Codex, #627).
     var boardRide by rememberSaveable(stateSaver = TappedRideSaver) { mutableStateOf<TripLeg?>(null) }
-    // For the usage stats, the board's line page while it's open over the trip, else the trip.
-    ReportScreen(if (boardLine != null) UsageEvent.Screen.LINE else UsageEvent.Screen.ON_THE_WAY)
-    boardLine?.let { line ->
+    val routeLineOpen = rememberSaveable(boardRoute) { mutableStateOf(false) }
+    val closeRoute = { boardRoute = null; boardRide = null }
+    // The board's row for it, its line's status as the trip's last check found it marked on it, worked out on
+    // the worker; the last answer stands in while a refreshed board's is, so a refresh never blinks the page. One
+    // worked out for another status than the check's now is said as checking until its own is in, so a line
+    // newly disrupted never reads clean meanwhile (Codex, #844).
+    val board = nextTrains?.takeIf { trip != null }
+    val boardStatus = boardLineStatus(lineChecks, boardLineId, now)
+    val routeSlot = remember { mutableStateOf<Worked<Inputs, BoardRoute?>?>(null) }
+    val route = rememberWorked(
+        routeSlot,
+        Inputs(boardRoute, board, boardStatus.status, dismissed),
+        keep = { held, wanted -> held.parts[0] != null && held.parts[0] == wanted.parts[0] },
+    ) { boardRoute?.let { key -> board?.let { boardRouteOf(it, key, boardStatus.status, dismissed) } } }
+    // Gone from the board (its last train left, or the rider is past this board), it stays closed rather than
+    // reopening should a later board list it again, as the main screen's does. Not while the board is still
+    // loading: the row isn't gone, just not in yet.
+    LaunchedEffect(boardRoute, board == null, route?.row == null, board?.pending) {
+        if (boardRoute != null && (board == null || (route != null && route.row == null && !board.pending))) closeRoute()
+    }
+    // For the usage stats, the board's route page while it's open over the trip, its line's page over that,
+    // else the trip.
+    ReportScreen(
+        when {
+            boardRoute == null -> UsageEvent.Screen.ON_THE_WAY
+            routeLineOpen.value -> UsageEvent.Screen.LINE
+            else -> UsageEvent.Screen.ROUTE
+        },
+    )
+    if (boardRoute != null && board != null) {
+        val statusPending = route != null && !sameAlert(route.status, boardStatus.status)
         CompositionLocalProvider(LocalDismissLineAlert provides lineDismissal) {
-            BoardLinePage(line, boardRide, lineChecks, dismissed, now, onClose = { boardLine = null; boardRide = null })
+            BoardRoutePage(
+                route?.row,
+                boardLineId,
+                boardLineName,
+                boardMode,
+                board,
+                boardStatus,
+                statusPending,
+                boardRide,
+                boardDestination?.let { RouteFocus(it, boardBranch) },
+                routeLineOpen,
+                lineDismissal,
+                now,
+                onClose = closeRoute,
+            )
         }
     }
-    // A dismiss on a train's line page that couldn't be written: that page says so while it's open, and this
-    // screen once it's closed, as every host of a line page does (Codex, #696).
+    // A dismiss from a train's route or line page that couldn't be written: a line page says so while it's open,
+    // and this screen once the pages over it are closed, as every host of a line page does (Codex, #696).
     val snackbars = remember { SnackbarHostState() }
     val dismissFailedMessage = stringResource(R.string.dismiss_write_failed)
     val dismissFailed = lineDismissal?.failed == true
     val linePagesOpen = lineDismissal?.pagesOpen?.intValue ?: 0
-    LaunchedEffect(dismissFailed, linePagesOpen == 0) {
-        if (dismissFailed && linePagesOpen == 0) {
+    // Nor while a train's route page is open over the trip: a dismiss there is said once it's closed.
+    val routeClosed = boardRoute == null
+    LaunchedEffect(dismissFailed, linePagesOpen == 0 && routeClosed) {
+        if (dismissFailed && linePagesOpen == 0 && routeClosed) {
             // Cleared, then shown, so a second failure while this one shows is said too.
             lineDismissal?.onFailureShown?.invoke()
             snackbars.showSnackbar(dismissFailedMessage)
@@ -298,9 +352,9 @@ internal fun OnTheWayScreen(
             // close enough to read as the card's own (4dp, as the board's rows; maintainer, 2026-10-03).
             item(key = "next") {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    // The phone's compass only on a walk with a way to point, and not behind the line page a
+                    // The phone's compass only on a walk with a way to point, and not behind the route page a
                     // train tapped opens over the trip (SPEC *On the way*; Codex, #775): battery.
-                    val heading = LocalHeadingSource.current.heading(boardLine == null && (progress as? TripProgress.Walking)?.bearing != null)
+                    val heading = LocalHeadingSource.current.heading(boardRoute == null && (progress as? TripProgress.Walking)?.bearing != null)
                     NextStep(destination, eta?.takeIf { !stale || asOf != null }, progress, now, current, asOf = asOf, heading = heading, pointing = true)
                     // Why the ride now runs only to a change: none of the plan's trains was listed, so the trip
                     // took a branch by itself, said loudly until the rider is past it (maintainer, 2026-10-06).
@@ -314,10 +368,14 @@ internal fun OnTheWayScreen(
                     // board's branches don't say which forks are behind them, so the ride's own stand in (Codex, #586).
                     val aboardBoard = nextTrains != null && trip != null && (trip.boarded || trip.onBoardSeen) && sameRide(nextTrains.ride, trip.leg)
                     if (nextTrains != null && trip != null) {
-                        NextTrainsSection(nextTrains, now, onTake, offPlan = !aboardBoard) { row ->
-                            val ride = listOfNotNull(nextTrains.ride, trip.leg).firstOrNull { it.lineId == row.lineId }
-                            boardRide = ride
-                            boardLine = listOf(row.lineId, row.lineName, row.mode, row.stopId, row.stopName)
+                        NextTrainsSection(nextTrains, now, onTake, offPlan = !aboardBoard) { row, focus ->
+                            boardRide = listOfNotNull(nextTrains.ride, trip.leg).firstOrNull { it.lineId == row.lineId }
+                            boardLineId = row.lineId
+                            boardLineName = row.lineName
+                            boardMode = row.mode
+                            boardDestination = focus?.destination
+                            boardBranch = focus?.branch
+                            boardRoute = row.detailKey()
                         }
                     }
                     // On board, the board's gone (or isn't theirs to change from): the branches still ahead, for a
@@ -973,8 +1031,8 @@ internal fun nextDueOf(board: ActiveTripTracker.NextBoard, sequences: Map<String
  * The next ride's trains ([NextTrains]) under that ride's own row, drawn as the departures board
  * draws a stop (maintainer, 2026-09-28): its platform header over the board's own card, a row per
  * line and terminus with its next few times, so they read as the board rather than as another step.
- * A time due before the rider can be there is grayed. A row tapped opens its line's page
- * ([onOpenLine], maintainer 2026-10-06); null leaves the rows with nothing to open.
+ * A time due before the rider can be there is grayed. A row tapped opens its route's page, with the route
+ * tapped on its card ([onOpenRoute], maintainer 2026-10-14); null leaves the rows with nothing to open.
  */
 @Composable
 private fun NextTrainsSection(
@@ -984,7 +1042,7 @@ private fun NextTrainsSection(
     onTake: ((TripLeg, OffPlan.Branch) -> Unit)? = null,
     // Whether the board offers its branches off the plan: not once the rider is on board its ride.
     offPlan: Boolean = true,
-    onOpenLine: ((DepartureRow) -> Unit)? = null,
+    onOpenRoute: ((DepartureRow, RouteFocus?) -> Unit)? = null,
 ) {
     val groups = next.groups
     Column(Modifier.fillMaxWidth().testTag("onTheWayTrains"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1004,7 +1062,7 @@ private fun NextTrainsSection(
                 starred = emptySet(),
                 onToggleStar = {},
                 starringAvailable = false,
-                onOpenDetail = onOpenLine?.let { open -> { row, _ -> open(row) } },
+                onOpenDetail = onOpenRoute,
                 grayBefore = next.readyAt,
             )
         }
@@ -1039,47 +1097,105 @@ private fun NextTrainsSection(
 }
 
 /**
- * The line of a train tapped on the board ([line]: its id, name, mode and the stop it was tapped at) on a
- * page of its own ([OneLinePage]), with its status as the trip's last check found it ([boardLineStatus]).
- * The ride it was tapped for ([tapped], kept as it was tapped) gives its map where it boards and gets off
- * and its stretch, whatever the trip has done since, its end included; with none (another line's train)
- * the board's stop is kept on the map as the rider's.
+ * The board's row for a route tapped on it ([boardRouteOf]), null when the board no longer lists it, and the
+ * line [status] it was worked out with.
+ */
+internal class BoardRoute(val row: DepartureRow?, val status: LineStatus?)
+
+/**
+ * The row of [next]'s board opened by [key] ([detailKey]), as the main screen's route page has it: its line's
+ * [status] as the trip's last check found it, this way's alone and only where it's disrupted, with its work to
+ * come ([DepartureRows.forStop]'s rule), then the near-me list's [dismissed] alerts marked or left out
+ * ([withDismissedMarked]). Its row null when the board doesn't list it.
+ */
+@WorkerThread
+internal fun boardRouteOf(next: NextTrains, key: String, status: LineStatus?, dismissed: Set<DismissedAlert>): BoardRoute {
+    val row = next.groups.firstNotNullOfOrNull { group -> group.rows.firstOrNull { it.detailKey() == key } } ?: return BoardRoute(null, status)
+    val way = status?.forDirection(row.direction)
+    return BoardRoute(withDismissedMarked(row.copy(status = way?.takeIf(LineStatus::disrupted), plannedAlerts = way?.planned.orEmpty()), dismissed), status)
+}
+
+/**
+ * A train's route tapped on the board ([row]), on the main screen's route page ([RouteDetailScreen]): every
+ * train on it to come, its stops, and its line's status as the trip's last check found it ([status],
+ * [boardLineStatus]), the line's own page a "View line" away ([lineOpen]), its map keeping the ride it was
+ * tapped for ([ride]). Drawn in a window of its own over the trip, as a line page is, so the trip under it keeps
+ * its place. Its alerts dismiss into the near-me list's store ([dismissal]), as every line page's do. Up from the
+ * tap: until its [row] is found, headed by the line's pill alone ([BoardRoutePending]). [statusPending] while the
+ * row was worked out for another status than the check's now: checking, never clean, until its own is in.
  */
 @Composable
-private fun BoardLinePage(
-    line: List<String>,
-    tapped: TripLeg?,
-    checks: RouteDisruption.LinesChecked?,
-    dismissed: Set<DismissedAlert>,
+private fun BoardRoutePage(
+    row: DepartureRow?,
+    lineId: String,
+    lineName: String,
+    mode: String,
+    board: NextTrains,
+    status: BoardLineStatus,
+    statusPending: Boolean,
+    ride: TripLeg?,
+    focus: RouteFocus?,
+    lineOpen: MutableState<Boolean>,
+    dismissal: LineAlertDismissal?,
     now: Instant,
     onClose: () -> Unit,
 ) {
-    val (lineId, lineName, mode, stopId, stopName) = line
-    val found = boardLineStatus(checks, lineId, now)
-    val slot = remember { mutableStateOf<Worked<Inputs, TripRow>?>(null) }
-    // Whether its alert is one dismissed, worked out on the worker (its key is built from its text), and held
-    // while the dismissals change until the answer is in: a dismissal of work to come, no verdict, never takes
-    // the page down (Lines… does the same, [LinesViewModel.lineDismissed]). Unknown, the page says it's checking.
-    val alertSlot = remember { mutableStateOf<Worked<Inputs, Boolean>?>(null) }
-    val alertDismissed = rememberWorked(
-        alertSlot,
-        Inputs(found.status, dismissed),
-        keep = { held, wanted -> sameAlert(held.parts[0] as LineStatus?, wanted.parts[0] as LineStatus?) },
-    ) { lineAlertDismissed(found.status, dismissed) }
-    val worked = rememberWorked(
-        slot,
-        Inputs(lineId, lineName, mode, stopId, stopName, tapped, dismissed, found.status, alertDismissed == true, found.unknown, found.checking || alertDismissed == null),
-        keep = ::sameVerdict,
+    Dialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
-        // The near-me list's dismissals, as every line page honors them (maintainer, 2026-10-08): the alert
-        // named dismissed, and its work to come less what was dismissed.
-        lineRow(
-            mode, lineId, lineName, stopId, stopName, found.status,
-            dismissed = alertDismissed == true, ride = tapped, unknown = found.unknown, checking = found.checking || alertDismissed == null,
-            planned = plannedShown(lineId, found.status, dismissed),
-        )
+        Box(Modifier.fillMaxSize().testTag("onTheWayRoutePage")) {
+            if (row == null) {
+                BoardRoutePending(lineId, lineName, mode, onClose)
+            } else {
+                val checking = status.checking || statusPending
+                RouteDetailScreen(
+                    lineOpen = lineOpen,
+                    row = row,
+                    // Nothing on the trip stars a row, as on a trip's own route pages.
+                    isStarred = false,
+                    starrable = false,
+                    // The line's check alone vouches for it here: the trip's own check tells of its stops, on the
+                    // trip under this page.
+                    disruptionUnknown = status.unknown,
+                    disruptionChecking = checking,
+                    // Too old to stand behind as the board says it, or by its own age (D4): its times held back.
+                    stale = board.stale || Staleness.isStale(row.fetchedAt, now),
+                    now = now,
+                    onToggleStar = {},
+                    onBack = onClose,
+                    focus = focus,
+                    onDismissAlert = dismissal?.let { d -> row.status?.let { s -> { d.dismiss(s) } } },
+                    onDismissPlanned = dismissal?.dismissPlanned?.let { d -> { planned -> d(row.lineId, planned) } },
+                    ride = ride,
+                    lineUnknown = status.unknown,
+                    lineChecking = checking,
+                )
+            }
+        }
     }
-    OneLinePage(worked, lineId, lineName, mode, onClose)
+}
+
+/**
+ * A board train's route page while its row is found ([BoardRoutePage]): its bar as the page has it, Back and the
+ * line's pill, over nothing yet, so the tap is answered at once and nothing moves when the rest comes in.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BoardRoutePending(lineId: String, lineName: String, mode: String, onBack: () -> Unit) {
+    Scaffold(
+        modifier = Modifier.fillMaxSize().testTag("onTheWayRoutePending"),
+        topBar = {
+            TopAppBar(
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
+                    }
+                },
+                title = { LinePill(lineName = lineName, lineId = lineId, mode = mode) },
+            )
+        },
+    ) { padding -> Box(Modifier.fillMaxSize().padding(padding)) }
 }
 
 /**
