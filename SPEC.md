@@ -4032,14 +4032,19 @@ nothing typed, except what the rider asks TfL to look up outside London (a tap o
 London*, or a complete postcode the bundle doesn't hold), which sends only that text to TfL's Journey
 Planner; the query is never saved or logged. The
 places picked from it are remembered for its *Recent* lists (*From…*'s and *To…*'s apart), and each starred row's place (so
-a star is listed by name), in the app's no-backup storage: never logged, sent, or backed up. So
-are the **Wi-Fi access points and networks learned at saved places** (*Finding stops*): each access
+a star is listed by name), in the app's no-backup storage: never logged, sent, or backed up. The
+**Wi-Fi access points and networks learned at saved places** (*Finding stops*) are kept on the
+phone too: each access
 point's address and each network's id, beside the place's id and where the place was when it was
 learned. A network's id is a keyed hash of its name, never the name: the key is random, made on the
-phone, kept beside the list and deleted with it, so the id can't be matched against a list of
-common names. No fix, and nothing about networks the phone isn't on. They are never logged (the log
-counts them),
-sent, or backed up. They are deleted when the setting is turned off, a place's own when it is
+phone, kept beside the list (and so in its backup) and deleted with it. That keeps the name from
+being read off the stored list, and an id from being matched on its own or across phones; it doesn't
+stop someone holding the whole list, key included, from testing a guessed name. No fix, and nothing about networks the phone isn't on. They are never logged (the log
+counts them) or sent by stopdash; they leave the phone only in the rider's own Android backup and
+device transfer, with the saved places, key included, so a new phone at home or work recognizes
+them at once (maintainer,
+2026-10-14; they were first kept out of it, which only cost a new phone the days to relearn them,
+while the places they belong to went with the backup anyway). They are deleted when the setting is turned off, a place's own when it is
 removed or moved, and all of them the next time the app comes to the foreground after precise
 location was taken away (Android gives the address only with it, and closes the app when it's taken
 away) — checked on every foreground and every change to the places, not left to the next fix. Reading the network the phone is on is an install-time permission with no prompt, and
