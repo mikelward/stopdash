@@ -23,6 +23,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -257,6 +258,42 @@ class AndroidLocationProviderTest {
         assertEquals(51.7, fix.coordinates.latitude, 0.0)
         assertEquals(true, fix.isFallback)
         assertTrue(wifi.observed.isEmpty())
+    }
+
+    @Test
+    fun `a minutes-old fix handed back as current is turned away, and GPS's own answer is used`() = runTest {
+        shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+        listOf(LocationManager.FUSED_PROVIDER, LocationManager.NETWORK_PROVIDER)
+            .forEach { shadowOf(manager).setProviderEnabled(it, false) }
+        listOf(LocationManager.GPS_PROVIDER, LocationManager.PASSIVE_PROVIDER)
+            .forEach { shadowOf(manager).setProviderEnabled(it, true) }
+        // Long enough on the clock for a fix to be five minutes old.
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMinutes(10))
+        val warnings = mutableListOf<String>()
+        val got = async { AndroidLocationProvider(app, warn = { warnings += it }, remembers = false).current(forceFresh = true) }
+        runCurrent()
+        shadowOf(Looper.getMainLooper()).idle()
+        // The passive provider hands back a precise fix taken five minutes ago as its current one, as
+        // on a device (bug report, 2026-10-14).
+        shadowOf(manager).simulateLocation(
+            LocationManager.PASSIVE_PROVIDER,
+            gps(51.6).apply { elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos() - Duration.ofSeconds(309).toNanos() },
+        )
+        shadowOf(Looper.getMainLooper()).idle()
+        runCurrent()
+        // Past the grace a rough fix waits for an accurate one: held there, the old fix would have
+        // been used by now, flagged approximate.
+        advanceTimeBy(FixSelection.COARSE_GRACE_MILLIS + 500)
+        runCurrent()
+        assertFalse(got.isCompleted)
+        shadowOf(manager).simulateLocation(gps(51.7))
+        shadowOf(Looper.getMainLooper()).idle()
+        runCurrent()
+        val fix = checkNotNull(got.getCompleted())
+        assertEquals(51.7, fix.coordinates.latitude, 0.0)
+        assertEquals(false, fix.isCoarse)
+        assertEquals(false, fix.isFallback)
+        assertTrue(warnings.toString(), warnings.any { it == "fresh fix: passive provider gave a 309 s old fix, not used" })
     }
 
     @Test

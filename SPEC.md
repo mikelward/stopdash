@@ -244,7 +244,9 @@ The app finds stops two ways:
   and an approximate (network) one after a ~2 s grace if no accurate fix beats it — so indoors or
   underground, where fused and GPS can't see the sky, the list starts from the network fix in a few
   seconds rather than after each accurate provider in turn has timed out (~10 s; maintainer bug
-  report, 2026-09-23). If a fresh fix
+  report, 2026-09-23). A fix a provider hands back as current but already more than half a minute
+  old counts as no answer: the passive provider handed back one five minutes old, which beat GPS by
+  a few seconds and showed "Approximate location" (bug report, 2026-10-14). If a fresh fix
   is slow or absent, a *somewhat-stale* cached one substitutes for it rather than making the
   user wait or fail — but only within a bounded age, past which stopdash reports "couldn't get
   your location" rather than showing a previous location's stops as current (a user who has
