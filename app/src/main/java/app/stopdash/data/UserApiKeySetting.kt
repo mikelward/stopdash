@@ -1,6 +1,7 @@
 package app.stopdash.data
 
 import androidx.annotation.WorkerThread
+import app.stopdash.StopdashDebugLog
 import app.stopdash.domain.AppSettings
 import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.DistanceUnits
@@ -771,6 +772,63 @@ object WifiPlacesSetting {
     /** Settings has told the user a choice didn't save. */
     fun writeFailureShown() = holder.writeFailureShown()
 }
+
+/**
+ * Whether bunched tube trains are spaced out (SPEC *Bunched tube trains are spaced out*), held in
+ * memory and persisted in order as [WifiPlacesSetting] is. On by default; off shows TfL's own times.
+ * Every client reads it as it fetches a stop's arrivals ([KtorTflClient.arrivals]), so every surface
+ * follows one choice.
+ */
+object TrainSpacingSetting {
+    private val holder = StoredSettingHolder(
+        CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        initial = true,
+        read = AppSettings::trainSpacing,
+        write = { settings, on -> settings.setTrainSpacing(on) },
+        label = "train spacing",
+        // Noted in the debug log, so a report of times that differ from TfL's (or don't) says why.
+        changed = { _, after -> logTrainSpacing(after) },
+    )
+
+    /** Whether it's on, as a flow, for the Settings switch and [DepartureSourceSettings]. */
+    val changes: StateFlow<Boolean> get() = holder.changes
+
+    /** Begins reading the stored choice. Idempotent. */
+    fun warm(appSettings: AppSettings) = holder.warm(appSettings)
+
+    /** Whether the stored choice has been read. */
+    val isLoaded: StateFlow<Boolean> get() = holder.isLoaded
+
+    /**
+     * The choice once the stored one has been read (see [StoredSettingHolder.loaded]), so a cold
+     * start's first fetch spaces trains only if the rider hasn't turned it off.
+     */
+    suspend fun loaded(): Boolean = holder.loaded()
+
+    /** The user turned it on or off: applied at once, persisted in order. */
+    fun set(on: Boolean) = holder.set(on)
+
+    /** True while the latest choice failed to save; Settings says so. */
+    val writeFailed: StateFlow<Boolean> get() = holder.writeFailed
+
+    /** Settings has told the user a choice didn't save. */
+    fun writeFailureShown() = holder.writeFailureShown()
+}
+
+internal fun logTrainSpacing(on: Boolean) = StopdashDebugLog.info("settings: train spacing %s", if (on) "on" else "off")
+
+/**
+ * The settings that change what a stop's departures are (the National Rail key, [TrainSpacingSetting]),
+ * as one flow for a departures model's `departureSourceChanges`: the current values first, then each
+ * change to either, so arrivals fetched under the old ones are dropped and fetched again.
+ */
+object DepartureSourceSettings {
+    val changes: Flow<Any?> get() = departureSourceChanges(RailApiKeySetting.changes, TrainSpacingSetting.changes)
+}
+
+/** [railKey] and [trainSpacing] together: the current pair first, then one on each change to either. */
+internal fun departureSourceChanges(railKey: Flow<String?>, trainSpacing: Flow<Boolean>): Flow<Any?> =
+    combine(railKey, trainSpacing, ::Pair)
 
 /**
  * The networks the home screen's disruptions row always covers (maintainer, 2026-10-05), by

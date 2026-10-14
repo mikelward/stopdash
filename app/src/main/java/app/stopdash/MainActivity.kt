@@ -159,6 +159,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.work.WorkManager
 import app.stopdash.data.AndroidLocationProvider
 import app.stopdash.data.AndroidWifiPlaces
+import app.stopdash.data.TrainSpacingSetting
 import app.stopdash.data.WifiPlacesSetting
 import app.stopdash.data.AppDirs
 import app.stopdash.data.BundledStopsStore
@@ -189,6 +190,7 @@ import app.stopdash.data.DataStoreNearbySetStore
 import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.data.DataStoreFavoriteJourneysStore
 import app.stopdash.data.DataStoreStarredRowsStore
+import app.stopdash.data.DepartureSourceSettings
 import app.stopdash.data.DisruptionsRowSetting
 import app.stopdash.data.DistanceUnitsSetting
 import app.stopdash.data.FileActiveTripStore
@@ -1350,6 +1352,9 @@ class MainActivity : ComponentActivity() {
                 val rememberWifi by WifiPlacesSetting.changes.collectAsStateWithLifecycle()
                 val rememberWifiLoaded by WifiPlacesSetting.isLoaded.collectAsStateWithLifecycle()
                 val rememberWifiWriteFailed by WifiPlacesSetting.writeFailed.collectAsStateWithLifecycle()
+                val trainSpacing by TrainSpacingSetting.changes.collectAsStateWithLifecycle()
+                val trainSpacingLoaded by TrainSpacingSetting.isLoaded.collectAsStateWithLifecycle()
+                val trainSpacingWriteFailed by TrainSpacingSetting.writeFailed.collectAsStateWithLifecycle()
                 val showDisruptionsRow by DisruptionsRowSetting.changes.collectAsStateWithLifecycle()
                 val showDisruptionsRowLoaded by DisruptionsRowSetting.isLoaded.collectAsStateWithLifecycle()
                 val showDisruptionsRowWriteFailed by DisruptionsRowSetting.writeFailed.collectAsStateWithLifecycle()
@@ -2679,6 +2684,10 @@ class MainActivity : ComponentActivity() {
                                     },
                                     rememberWifiWriteFailed = rememberWifiWriteFailed,
                                     onDismissRememberWifiError = WifiPlacesSetting::writeFailureShown,
+                                    trainSpacing = trainSpacing.takeIf { trainSpacingLoaded },
+                                    onTrainSpacingChange = TrainSpacingSetting::set,
+                                    trainSpacingWriteFailed = trainSpacingWriteFailed,
+                                    onDismissTrainSpacingError = TrainSpacingSetting::writeFailureShown,
                                     widgetFollows = widgetFollows,
                                     onWidgetFollowsChange = { on ->
                                         // Turned on through the disclosure and Android's prompt; off only in Android's
@@ -3525,7 +3534,7 @@ class MainActivity : ComponentActivity() {
                     initializer {
                         MainViewModel(
                             client = departuresClient(appContext),
-                            departureSourceChanges = RailApiKeySetting.changes,
+                            departureSourceChanges = DepartureSourceSettings.changes,
                             hiddenModes = { HiddenModesSetting.current },
                             hiddenModeChanges = HiddenModesSetting.changes,
                             seedStops = ready.eagerStops,
@@ -5017,7 +5026,7 @@ class MainActivity : ComponentActivity() {
                     TripViewModel(
                         journeyPlanner(appContext), departuresClient(appContext, boardAtEveryStop = true), fromId,
                         destinations, warn = ::logDepartureWarning,
-                        arrivals = ArrivalsCache.SHARED, departureSourceChanges = RailApiKeySetting.changes,
+                        arrivals = ArrivalsCache.SHARED, departureSourceChanges = DepartureSourceSettings.changes,
                         sharedLines = LineStatusCache.SHARED, lineStatusReuse = LINE_STATUS_REUSE,
                         linePulls = TripViewModel.linePullsTo(destKey),
                         closureCache = StopClosureCache.SHARED,
@@ -5248,7 +5257,7 @@ class MainActivity : ComponentActivity() {
     private fun searchedDeparturesModel(appContext: Context, stops: List<StopRef>, writeFailures: WriteFailures): MainViewModel =
         MainViewModel(
             client = departuresClient(appContext),
-            departureSourceChanges = RailApiKeySetting.changes,
+            departureSourceChanges = DepartureSourceSettings.changes,
             // A pull on a station's page holds for that station's lines alone.
             linesPullSurface = "station:" + stops.joinToString(",") { it.id },
             // No hidden modes: a searched station's page shows all of its services, so
@@ -7135,7 +7144,7 @@ private fun fartherCardModel(
     writeFailures: WriteFailures,
 ) = MainViewModel(
     client = client,
-    departureSourceChanges = RailApiKeySetting.changes,
+    departureSourceChanges = DepartureSourceSettings.changes,
     // Pulled with the near-me list it opens from.
     linesPullSurface = NEARBY_LINE_PULLS,
     hiddenModes = { HiddenModesSetting.current },

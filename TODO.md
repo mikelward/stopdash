@@ -1652,6 +1652,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               *Done (2026-10-13)*: those gaps are applied per line at each numbered platform
               (`SpacedTrains`). A moved time was grayed and read as uncertain at first; it's shown as
               any other since 2026-10-14, as it reads better and isn't a worse guess than TfL's.
+              A Settings switch, *Fix train spacing*, turns it off for TfL's own times (2026-10-14);
+              on by default.
               Still open: measure how late trains come after their last shown time, to size a grace
               before a train leaves the board; test the duplicate signals listed there; and measure
               platforms two lines share, which are spaced per line for now.

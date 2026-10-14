@@ -408,6 +408,7 @@ class KtorTflClientTest {
         keyAnswered: (String, Boolean) -> Unit = { _, _ -> },
         clock: () -> java.time.Instant = java.time.Instant::now,
         stationIndex: () -> app.stopdash.domain.StationIndex? = { null },
+        trainSpacing: suspend () -> Boolean = { true },
     ): KtorTflClient {
         val engine = MockEngine { request ->
             capture(request)
@@ -422,7 +423,7 @@ class KtorTflClientTest {
             if (httpTimeout) install(HttpTimeout)
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
-        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, appKey = { appKey }, warn = warn, keyAnswered = keyAnswered, clock = clock, stationIndex = stationIndex)
+        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, appKey = { appKey }, warn = warn, keyAnswered = keyAnswered, clock = clock, stationIndex = stationIndex, trainSpacing = trainSpacing)
     }
 
     @Test
@@ -763,6 +764,27 @@ class KtorTflClientTest {
                     assertTrue("$key", !java.time.Duration.between(a, b).minus(checkNotNull(SpacedTrains.gapFor(key.first))).isNegative)
                 }
             }
+    }
+
+    @Test
+    fun `with spacing turned off, trains come back at TfL's own times, the pair still grayed`() = runTest {
+        val body = checkNotNull(javaClass.getResource("/fixtures/stoppoint_arrivals_euston.json")).readText()
+        val now = Instant.parse("2026-10-09T12:24:44Z")
+        val departures = client(body, clock = { now }, trainSpacing = { false }).arrivals("940GZZLUEUS")
+        val raw = Json { ignoreUnknownKeys = true }.decodeFromString<List<TflArrivalDto>>(body).map { it.toDeparture() }
+        val rawAt = raw.associate { (it.lineId to it.vehicleId) to it.expectedArrival }
+        // Every train at TfL's time: 231 still 60 s behind 216, where spacing on shows it 100 s behind.
+        assertEquals(raw.size, departures.size)
+        departures.forEach { assertEquals(checkNotNull(rawAt[it.lineId to it.vehicleId]), it.expectedArrival) }
+        val ahead = departures.single { it.vehicleId == "216" && it.lineId == "northern" }
+        val behind = departures.single { it.vehicleId == "231" && it.lineId == "northern" }
+        assertEquals(ahead.expectedArrival.plusSeconds(60), behind.expectedArrival)
+        // The doubtful rule doesn't hang on spacing: the close pair is grayed either way.
+        assertEquals(setOf("216", "231"), departures.filter { it.grayed }.map { it.vehicleId }.toSet())
+        assertEquals(listOf("231"), departures.filter { it.doubtful }.map { it.vehicleId })
+        // And the same feed spaced, with the switch on, does move trains, so the comparison above means something.
+        val spaced = client(body, clock = { now }, trainSpacing = { true }).arrivals("940GZZLUEUS")
+        assertTrue(spaced.any { it.expectedArrival != rawAt[it.lineId to it.vehicleId] })
     }
 
     @Test

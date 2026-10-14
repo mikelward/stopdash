@@ -263,9 +263,10 @@ class MainViewModel(
     // records the row's place so "Find a station" can list the star by name later (SPEC *Finding
     // stops*). Handles its own failures; nothing by default.
     private val onStarToggled: suspend (DepartureRow) -> Unit = {},
-    // A setting that changes what a stop's departures include (the National Rail key): its current
-    // value is ignored, and each later change refetches every stop at once, none carried over, so
-    // adding or clearing the key shows without waiting for the next auto-refresh.
+    // The settings that change what a stop's departures are (the National Rail key, train spacing):
+    // their current values are ignored, and each later change refetches every stop at once, none
+    // carried over, so adding or clearing the key, or turning spacing on or off, shows without waiting
+    // for the next auto-refresh.
     departureSourceChanges: Flow<Any?> = emptyFlow(),
     // The modes and lines the rider has hidden right now (SPEC *Finding stops → Hiding a mode*): with
     // National Rail among them, a station's board isn't asked for where nothing shown runs on it.
@@ -808,8 +809,8 @@ class MainViewModel(
         viewModelScope.launch {
             departureSourceChanges.drop(1).collect {
                 arrivalsFetchedAt.clear()
-                // Arrivals fetched under the old source (a National Rail key added or removed) no
-                // longer stand, on this screen or any other.
+                // Arrivals fetched under the old source (a National Rail key added or removed, train
+                // spacing turned on or off) no longer stand, on this screen or any other.
                 sharedArrivals?.clear()
                 // The arrivals' source changed, not the lines': their answers stand.
                 forceNextFetch(lines = false)

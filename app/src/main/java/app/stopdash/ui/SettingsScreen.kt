@@ -183,6 +183,12 @@ fun SettingsScreen(
     onStopAvoiding: (String) -> Unit = {},
     avoidedWriteFailed: Boolean = false,
     onDismissAvoidedError: () -> Unit = {},
+    // Whether bunched tube trains are spaced out (SPEC *Bunched tube trains are spaced out*), null until
+    // the stored choice is read, when the switch is disabled; a write that failed is said under it.
+    trainSpacing: Boolean? = true,
+    onTrainSpacingChange: (Boolean) -> Unit = {},
+    trainSpacingWriteFailed: Boolean = false,
+    onDismissTrainSpacingError: () -> Unit = {},
     // Opens StopDash's Play Store page on a connected watch that doesn't have it (SPEC *Wear OS*),
     // the near-me card's offer kept here for good; null (no such watch) shows no row.
     onInstallOnWatch: (() -> Unit)? = null,
@@ -312,6 +318,21 @@ fun SettingsScreen(
                     SettingErrorRow(
                         text = stringResource(R.string.hidden_modes_write_failed),
                         onDismiss = onDismissAvoidedError,
+                    )
+                }
+                // Under what's hidden and avoided: like them, it decides what the boards show.
+                SettingSwitchRow(
+                    title = stringResource(R.string.settings_train_spacing_title),
+                    summary = stringResource(R.string.settings_train_spacing_summary),
+                    checked = trainSpacing == true,
+                    onCheckedChange = onTrainSpacingChange,
+                    enabled = trainSpacing != null,
+                    switchTestTag = "trainSpacingSwitch",
+                )
+                if (trainSpacingWriteFailed) {
+                    SettingErrorRow(
+                        text = stringResource(R.string.hidden_modes_write_failed),
+                        onDismiss = onDismissTrainSpacingError,
                     )
                 }
                 val fontSize = LocalFontSizeState.current

@@ -102,6 +102,41 @@ class SettingsScreenScreenshotTest {
     }
 
     @Test
+    fun fixing_train_spacing_is_on_by_default_and_a_tap_turns_it_off() {
+        val chosen = mutableListOf<Boolean>()
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = {}, onTrainSpacingChange = { chosen += it })
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Fix train spacing").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Adjust times when trains are impossibly close").assertIsDisplayed()
+        captureSnapshot("settings-train-spacing.png")
+        composeRule.onNodeWithTag("trainSpacingSwitch").assertIsOn().performClick()
+        assertEquals(listOf(false), chosen)
+        // Above the text size, with the rows that decide what the boards show.
+        val spacing = composeRule.onNodeWithTag("trainSpacingSwitch").getUnclippedBoundsInRoot().top
+        val distance = composeRule.onNodeWithText("Distance units").getUnclippedBoundsInRoot().top
+        org.junit.Assert.assertTrue("spacing above distance units", spacing < distance)
+    }
+
+    @Test
+    fun train_spacing_is_not_offered_until_the_stored_choice_is_read_and_says_when_it_did_not_save() {
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(
+                    liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = {},
+                    trainSpacing = null, trainSpacingWriteFailed = true,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("trainSpacingSwitch").performScrollTo().assertIsOff().assertIsNotEnabled()
+        composeRule.onNodeWithText("Couldn't save that; it resets when StopDash restarts").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
     fun the_disruptions_summary_comes_third_and_its_page_turns_the_row_off() {
         val chosen = mutableListOf<Boolean>()
         composeRule.setContent {

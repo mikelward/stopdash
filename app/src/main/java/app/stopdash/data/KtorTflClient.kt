@@ -143,6 +143,11 @@ class KtorTflClient(
     // line) and mapping a plan (which reads the bundled station index) froze the screen for seconds
     // when it ran on a caller's main thread, as a screen's own loads do. A test swaps in its own.
     private val decodeDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    // Whether bunched tube trains are spaced out ([withSpacing]), read as each stop's arrivals are: the
+    // rider's choice in Settings by default, so every client follows it, the widget's included; it
+    // waits for the stored choice on a cold start, and reads on at once in a test, where nothing is
+    // stored. A test swaps in its own.
+    private val trainSpacing: suspend () -> Boolean = TrainSpacingSetting::loaded,
 ) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, StopZoneSource, JourneyPlanner, PostcodeResolver, PlaceSearch, VehicleSource,
     LiftOutageSource, TimetableSource {
     override suspend fun journeys(
@@ -440,7 +445,9 @@ class KtorTflClient(
                 // Already on the decode dispatcher; the hop names it here, where lint can see it.
                 .let {
                     withContext(decodeDispatcher) {
-                        withSpacing(stopId, withDoubtfulMarked(stopId, Turnback.relabel(it, stopId, stationIndex()?.terminusEnds(stopId).orEmpty())))
+                        val marked = withDoubtfulMarked(stopId, Turnback.relabel(it, stopId, stationIndex()?.terminusEnds(stopId).orEmpty()))
+                        // Turned off in Settings: TfL's own times, the doubtful marks kept.
+                        if (trainSpacing()) withSpacing(stopId, marked) else marked
                     }
                 }
                 .let(DepartureRows::inferDirections)
