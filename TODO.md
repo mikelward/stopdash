@@ -1550,6 +1550,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             keeps its first walk from where the rider was (Codex on #648). Only an open Direct route is let go
             (and said); the cards stay with the plan's error and Retry. Drop, mark, or keep them as they are?
       - [ ] **Retire favorite journeys** now Direct covers them (no migration: no users yet).
+      - [x] **Direct on a trip to a station or stop** (maintainer, 2026-10-14: "Stations are places, or
+            should be"): placed from the bundled station and bus stop lists, the same section as a place's.
+      - [ ] **A station is a place throughout** (maintainer, 2026-10-14): only Direct treats one as a place
+            so far; the trip still plans to it as a stop (hub expansion, arrival at any of its stops) and its
+            To field has no place chip. Converge where it reads the same to the rider.
       - [ ] **Pin a place's Direct trains to the widget** (PR 3 of the favorite-destinations plan).
       - [ ] **Walk to the Direct row's stop**: show it ("Bond Street (3 min)") as a trip card does.
       - [x] **Mode toggles** at the top of a trip, remembered across trips (the Planner's `mode=`):
