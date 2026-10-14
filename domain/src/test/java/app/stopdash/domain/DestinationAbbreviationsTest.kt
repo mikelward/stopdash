@@ -18,6 +18,8 @@ class DestinationAbbreviationsTest {
         assertEquals("H. Barnet", abbrev("High Barnet"))
         assertEquals("U. Holloway", abbrev("Upper Holloway"))
         assertEquals("L. Sydenham", abbrev("Lower Sydenham"))
+        assertEquals("Heathrow T. 5", abbrev("Heathrow Terminal 5"))
+        assertEquals("Heathrow T. 2 & 3", abbrev("Heathrow Terminals 2 & 3"))
     }
 
     @Test
@@ -80,7 +82,7 @@ class DestinationAbbreviationsTest {
         assertEquals("Morden", abbrev("Morden"))
         assertEquals("Brixton", abbrev("Brixton"))
         assertEquals("Elephant & Castle", abbrev("Elephant & Castle"))
-        assertEquals("Heathrow Terminal 4", abbrev("Heathrow Terminal 4"))
+        assertEquals("Cockfosters", abbrev("Cockfosters"))
     }
 
     @Test
@@ -91,6 +93,30 @@ class DestinationAbbreviationsTest {
         assertEquals(gt, abbrev(gt))
         val bdwy = abbrev("Ealing Broadway")
         assertEquals(bdwy, abbrev(bdwy))
+    }
+
+    @Test
+    fun `international shortens as a station's name does, for every name that shortens`() {
+        assertEquals("Stratford Intl", abbrev("Stratford International"))
+        assertEquals("Stratford Intl", floor("Stratford International"))
+        assertEquals(
+            listOf("Stratford International", "Stratford Intl", "Stratford Intl"),
+            DestinationAbbreviations.forms("Stratford International"),
+        )
+        // In full, common words shortened, then initials: the one list every shortened name steps through.
+        assertEquals(listOf("Battersea Power", "Battersea Power", "Battersea P."), DestinationAbbreviations.forms("Battersea Power"))
+    }
+
+    @Test
+    fun `cross takes TfL's own X, which is also the floor`() {
+        // TfL's and the riders' own form, so no period; and as a mapped word it is the floor, never
+        // initials ("King's C. S. P.") that lose which station it is.
+        assertEquals("Charing X", abbrev("Charing Cross"))
+        assertEquals("King's X St. Pancras", abbrev("King's Cross St. Pancras"))
+        assertEquals("King's X St. Pancras", floor("King's Cross St. Pancras"))
+        assertEquals("New X Gate", abbrev("New Cross Gate"))
+        // A whole word only: Crossharbour keeps its name.
+        assertEquals("Crossharbour", abbrev("Crossharbour"))
     }
 
     @Test

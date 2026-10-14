@@ -12,6 +12,7 @@ import app.stopdash.domain.AppSettings
 import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.DEFAULT_FONT_SCALE
 import app.stopdash.domain.DistanceUnits
+import app.stopdash.domain.RideGrouping
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.HiddenModesChoice
 import app.stopdash.domain.ModeGroups
@@ -162,6 +163,13 @@ class DataStoreAppSettings internal constructor(
 
     override suspend fun setTrainSpacing(on: Boolean) {
         dataStore.updateData { (it ?: PersistedSettings()).copy(trainSpacing = on) }
+    }
+
+    override fun rideGrouping(): Flow<RideGrouping> =
+        persisted().map { RideGrouping.fromStored(it?.rideGrouping) }
+
+    override suspend fun setRideGrouping(grouping: RideGrouping) {
+        dataStore.updateData { (it ?: PersistedSettings()).copy(rideGrouping = grouping.name) }
     }
 
     override fun summaryNetworks(): Flow<Set<String>?> =
@@ -346,6 +354,9 @@ data class PersistedSettings(
     val rememberWifiAtPlaces: Boolean? = null,
     // Whether bunched tube trains are spaced out; null (an older file) for the default, on.
     val trainSpacing: Boolean? = null,
+    // How the near-me list groups a favorite ride's departures, by enum name, or null for the default
+    // (by stop); a string for the same reason as [distanceUnits].
+    val rideGrouping: String? = null,
 )
 
 /**

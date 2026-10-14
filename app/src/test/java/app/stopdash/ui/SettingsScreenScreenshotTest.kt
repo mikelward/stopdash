@@ -29,6 +29,7 @@ import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.ModeGroups
+import app.stopdash.domain.RideGrouping
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.ui.theme.StopDashTheme
@@ -119,6 +120,47 @@ class SettingsScreenScreenshotTest {
         val spacing = composeRule.onNodeWithTag("trainSpacingSwitch").getUnclippedBoundsInRoot().top
         val distance = composeRule.onNodeWithText("Distance units").getUnclippedBoundsInRoot().top
         org.junit.Assert.assertTrue("spacing above distance units", spacing < distance)
+    }
+
+    @Test
+    fun favorite_rides_group_by_ride_by_default_and_a_tap_groups_them_by_stop() {
+        val chosen = mutableListOf<RideGrouping>()
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = {}, onRideGroupingChange = { chosen += it })
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Group favourite rides").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("rideGrouping-RIDE").performScrollTo().assertIsSelected()
+        composeRule.onNodeWithTag("rideGrouping-STOP").assertIsNotSelected()
+        composeRule.onNodeWithText("Group by ride").assertIsDisplayed()
+        composeRule.onNodeWithText("Group by stop").assertIsDisplayed()
+        captureSnapshot("settings-ride-grouping.png")
+        composeRule.onNodeWithTag("rideGrouping-STOP").performClick()
+        assertEquals(listOf(RideGrouping.STOP), chosen)
+        // Under the train spacing and above the distance units, with the rows that decide how the boards read.
+        val spacing = composeRule.onNodeWithTag("trainSpacingSwitch").getUnclippedBoundsInRoot().top
+        val grouping = composeRule.onNodeWithTag("rideGrouping-RIDE").getUnclippedBoundsInRoot().top
+        val distance = composeRule.onNodeWithText("Distance units").getUnclippedBoundsInRoot().top
+        org.junit.Assert.assertTrue("grouping under spacing", spacing < grouping)
+        org.junit.Assert.assertTrue("grouping above distance units", grouping < distance)
+    }
+
+    @Test
+    fun ride_grouping_selects_nothing_until_the_stored_choice_is_read_and_says_when_it_did_not_save() {
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(
+                    liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = {},
+                    rideGrouping = RideGrouping.RIDE, rideGroupingLoaded = false, rideGroupingWriteFailed = true,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("rideGrouping-RIDE").performScrollTo().assertIsNotSelected().assertIsNotEnabled()
+        composeRule.onNodeWithTag("rideGrouping-STOP").assertIsNotSelected().assertIsNotEnabled()
+        composeRule.onNodeWithText("Couldn't save that; it resets when StopDash restarts").performScrollTo().assertIsDisplayed()
     }
 
     @Test

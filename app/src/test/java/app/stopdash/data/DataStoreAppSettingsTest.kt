@@ -5,6 +5,7 @@ import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.DistanceUnits
 import app.stopdash.domain.HiddenModesChoice
 import app.stopdash.domain.MaxWalk
+import app.stopdash.domain.RideGrouping
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripModes
 import kotlinx.coroutines.flow.Flow
@@ -149,6 +150,24 @@ class DataStoreAppSettingsTest {
         val older = SettingsSerializer.readFrom("""{"liveWidgetRefresh":true}""".byteInputStream())
         assertNull(checkNotNull(older).trainSpacing)
         assertTrue(DataStoreAppSettings(FakeDataStore(older)).trainSpacing().first())
+    }
+
+    @Test
+    fun `favorite rides group by ride by default and persist grouping by stop`() = runTest {
+        val store = DataStoreAppSettings(FakeDataStore(null))
+        assertEquals(RideGrouping.RIDE, store.rideGrouping().first())
+        store.setRideGrouping(RideGrouping.STOP)
+        assertEquals(RideGrouping.STOP, store.rideGrouping().first())
+        store.setRideGrouping(RideGrouping.RIDE)
+        assertEquals(RideGrouping.RIDE, store.rideGrouping().first())
+    }
+
+    @Test
+    fun `a settings file from before ride grouping reads it as by ride`() = runTest {
+        // Written by an older build: no rideGrouping key at all.
+        val older = SettingsSerializer.readFrom("""{"liveWidgetRefresh":true}""".byteInputStream())
+        assertNull(checkNotNull(older).rideGrouping)
+        assertEquals(RideGrouping.RIDE, DataStoreAppSettings(FakeDataStore(older)).rideGrouping().first())
     }
 
     @Test

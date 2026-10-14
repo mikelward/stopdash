@@ -58,6 +58,7 @@ import app.stopdash.LocationAccess
 import app.stopdash.R
 import app.stopdash.domain.DEFAULT_FONT_SCALE
 import app.stopdash.domain.DistanceUnits
+import app.stopdash.domain.RideGrouping
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.ModeGroups
@@ -189,6 +190,13 @@ fun SettingsScreen(
     onTrainSpacingChange: (Boolean) -> Unit = {},
     trainSpacingWriteFailed: Boolean = false,
     onDismissTrainSpacingError: () -> Unit = {},
+    // How the near-me list groups a favorite ride's departures (SPEC *Journeys*), as [distanceUnits] is
+    // handled: nothing selected until the stored choice is read.
+    rideGrouping: RideGrouping = RideGrouping.RIDE,
+    onRideGroupingChange: (RideGrouping) -> Unit = {},
+    rideGroupingLoaded: Boolean = true,
+    rideGroupingWriteFailed: Boolean = false,
+    onDismissRideGroupingError: () -> Unit = {},
     // Opens StopDash's Play Store page on a connected watch that doesn't have it (SPEC *Wear OS*),
     // the near-me card's offer kept here for good; null (no such watch) shows no row.
     onInstallOnWatch: (() -> Unit)? = null,
@@ -333,6 +341,18 @@ fun SettingsScreen(
                     SettingErrorRow(
                         text = stringResource(R.string.hidden_modes_write_failed),
                         onDismiss = onDismissTrainSpacingError,
+                    )
+                }
+                // Under the train spacing: like it, it decides how the boards read.
+                RideGroupingRow(
+                    selected = rideGrouping,
+                    onSelect = onRideGroupingChange,
+                    enabled = rideGroupingLoaded,
+                )
+                if (rideGroupingWriteFailed) {
+                    SettingErrorRow(
+                        text = stringResource(R.string.hidden_modes_write_failed),
+                        onDismiss = onDismissRideGroupingError,
                     )
                 }
                 val fontSize = LocalFontSizeState.current
@@ -864,6 +884,45 @@ private fun DistanceUnitsRow(selected: DistanceUnits, onSelect: (DistanceUnits) 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // The row handles the tap; the button only shows the state.
+                RadioButton(selected = isSelected, onClick = null, enabled = enabled)
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(text = label, style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+    }
+}
+
+/**
+ * How the near-me list groups a favorite ride's departures ([RideGrouping]), as [DistanceUnitsRow]
+ * lays out its choice: nothing selected until the stored choice is read.
+ */
+@Composable
+private fun RideGroupingRow(selected: RideGrouping, onSelect: (RideGrouping) -> Unit, enabled: Boolean) {
+    val options = listOf(
+        RideGrouping.RIDE to stringResource(R.string.settings_ride_grouping_ride),
+        RideGrouping.STOP to stringResource(R.string.settings_ride_grouping_stop),
+    )
+    Column(modifier = Modifier.fillMaxWidth().selectableGroup()) {
+        Text(
+            text = stringResource(R.string.settings_ride_grouping_title),
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+        )
+        options.forEach { (grouping, label) ->
+            val isSelected = enabled && grouping == selected
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(
+                        selected = isSelected,
+                        enabled = enabled,
+                        role = Role.RadioButton,
+                        onClick = { onSelect(grouping) },
+                    )
+                    .testTag("rideGrouping-${grouping.name}")
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 RadioButton(selected = isSelected, onClick = null, enabled = enabled)
                 Spacer(modifier = Modifier.width(16.dp))
                 Text(text = label, style = MaterialTheme.typography.bodyLarge)

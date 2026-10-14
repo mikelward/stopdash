@@ -139,6 +139,7 @@ import app.stopdash.domain.DestinationAbbreviations
 import app.stopdash.domain.DestinationGroup
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.EmptyTimes
+import app.stopdash.domain.EvenShortening
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.JourneyCall
@@ -160,6 +161,7 @@ import app.stopdash.domain.NoticePlan
 import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.PlatformDirection
 import app.stopdash.domain.RelativeTime
+import app.stopdash.domain.RideGrouping
 import app.stopdash.domain.RouteFocus
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.RouteMiss
@@ -260,6 +262,11 @@ fun MainScreen(
     // The favorite journeys (SPEC *Journeys*), each already turned so its origin is the end nearer the
     // rider: shown as cards atop the near-me list, and starrable from a route page's stop list.
     journeys: List<FavoriteJourney> = emptyList(),
+    // How their cards group their departures on the list (SPEC *Journeys*): the near-me list passes the
+    // rider's choice, null until it is read, when a ride holds its trains as though still checking so
+    // they never draw one way and regroup the other (Codex, #849); by ride when not given, so a caller
+    // with no setting behind it keeps each ride's own heading.
+    rideGrouping: RideGrouping? = RideGrouping.RIDE,
     // The journeys more than a mile from the rider (key → meters to the nearer end): held behind the
     // Faraway favorites button, and not fetched until it's tapped ([Journeys.farJourneys]).
     farJourneyMeters: Map<String, Double> = emptyMap(),
@@ -1086,6 +1093,8 @@ fun MainScreen(
     val shownRows = platformRows ?: rows
     // The drawn rows' stop cards, worked out with them: the platform view's own, or the list's.
     val shownCards = if (platformRows != null) platformView?.takeUnless { platformGone }?.listCards ?: ListCards.NONE else shown?.listCards ?: ListCards.NONE
+    // How far each place a journey card boards from is, worked out with the rows; none in a platform view.
+    val shownRidePlaceMeters = if (platformRows != null) emptyMap() else shown?.ridePlaceMeters.orEmpty()
     BackHandler(enabled = platformRows != null) { closeView() }
     val drawnNow = (if (platformRows != null) platformView?.now else drawnFrom?.now) ?: now
     // A platform or station view's rows are built apart from the list's, maybe from another
@@ -1550,6 +1559,8 @@ fun MainScreen(
                             journeyCards = if (platformRows != null) emptyList() else journeyCards.filter { it.journey.key !in farJourneyMeters },
                             farJourneyCards = if (platformRows != null || !farRevealed) emptyList() else journeyCards.filter { it.journey.key in farJourneyMeters },
                             farJourneyMeters = farJourneyMeters,
+                            rideGrouping = rideGrouping,
+                            ridePlaceMeters = shownRidePlaceMeters,
                             onRevealFar = if (platformRows == null && !farRevealed && farJourneyMeters.isNotEmpty()) {
                                 {
                                     UsageEvents.log(UsageEvent.FarawayFavorites)
@@ -1764,6 +1775,8 @@ private fun LoadedContent(
     onUnstarJourney: ((FavoriteJourney) -> Unit)? = null,
     farJourneyCards: List<JourneyCard> = emptyList(),
     farJourneyMeters: Map<String, Double> = emptyMap(),
+    rideGrouping: RideGrouping? = RideGrouping.RIDE,
+    ridePlaceMeters: Map<String, Double> = emptyMap(),
     onRevealFar: (() -> Unit)? = null,
     starred: Set<StarredRow> = emptySet(),
     onToggleStar: (DepartureRow) -> Unit = {},
@@ -2007,6 +2020,8 @@ private fun LoadedContent(
                         onUnstarJourney = onUnstarJourney,
                         farJourneyCards = farJourneyCards,
                         farJourneyMeters = farJourneyMeters,
+                        rideGrouping = rideGrouping,
+                        ridePlaceMeters = ridePlaceMeters,
                         onRevealFar = onRevealFar,
                         // Not in a journey's own view, nor when every nearby row is already on a journey
                         // card above.
@@ -2530,6 +2545,10 @@ private fun DepartureList(
     // button that reveals them, null once they are (or when there are none).
     farJourneyCards: List<JourneyCard> = emptyList(),
     farJourneyMeters: Map<String, Double> = emptyMap(),
+    // How the journey cards group their departures off their own view ([RideGrouping]).
+    rideGrouping: RideGrouping? = RideGrouping.RIDE,
+    // How far each place the cards board from is, worked out with the rows ([ridePlaceMeters]).
+    ridePlaceMeters: Map<String, Double> = emptyMap(),
     onRevealFar: (() -> Unit)? = null,
     // True in a journey's own view: the title bar names the journey, so its heading is dropped, and
     // each of its groups is headed by its platform/pole so the rider sees where to board.
@@ -2693,6 +2712,14 @@ private fun DepartureList(
     }
     fun LazyListScope.journeyItems(cards: List<JourneyCard>, farMeters: Map<String, Double>? = null) {
             cards.forEachIndexed { index, card ->
+                val distanceLabel = distanceSystem?.let { system -> farMeters?.get(card.journey.key)?.let { StopDistance.label(it, system) } }
+                val onOpen = onOpenJourney?.let { open -> { open(card.journey) } }
+                // Grouped by stop (SPEC *Journeys*), each stop the ride boards from carries the star and
+                // where it goes, so the ride needs no heading of its own — once it has departures to
+                // group. Until then (checking, couldn't check, none due) its heading stays, so the note
+                // under it says which ride.
+                val byStop = !journeyView && rideGrouping == RideGrouping.STOP &&
+                    (card.state as? JourneyCardState.Trains)?.rows?.isNotEmpty() == true
                 if (journeyView) {
                     item(key = "journey-actions|${card.journey.key}") {
                         JourneyActions(
@@ -2701,15 +2728,17 @@ private fun DepartureList(
                             onUnstar = onUnstarJourney?.let { unstar -> { unstar(card.journey) } },
                         )
                     }
-                } else {
+                } else if (!byStop) {
                     item(key = "journey-header|${card.journey.key}") {
                         JourneyHeader(
                             card.journey,
+                            card.fromForms,
+                            card.toForms,
                             // First on screen, or first under the "Faraway favorites" label: no break.
                             firstOnScreen = index == 0,
                             onSwap = { onFlipJourney(card.journey) },
-                            onOpen = onOpenJourney?.let { open -> { open(card.journey) } },
-                            distanceLabel = distanceSystem?.let { system -> farMeters?.get(card.journey.key)?.let { StopDistance.label(it, system) } },
+                            onOpen = onOpen,
+                            distanceLabel = distanceLabel,
                         )
                     }
                 }
@@ -2727,7 +2756,13 @@ private fun DepartureList(
                         JourneyNote(stringResource(R.string.journey_destination_unchecked, card.journey.to.name))
                     }
                 }
-                when (val state = card.state) {
+                // Until the grouping is read, its trains are held as though still checking (rideGrouping).
+                val heldState = if (!journeyView && rideGrouping == null && card.state is JourneyCardState.Trains) {
+                    JourneyCardState.Checking("ride grouping")
+                } else {
+                    card.state
+                }
+                when (val state = heldState) {
                     is JourneyCardState.Trains -> if (state.rows.isEmpty()) {
                         // Only trains to change from: "no direct trains" unless some departure couldn't be
                         // checked (it may be direct), which the note below says instead.
@@ -2756,14 +2791,27 @@ private fun DepartureList(
                             }
                         }
                     } else {
-                        // Any bus boarding elsewhere than the origin (a pole beside it), even when it's the
-                        // only one: each stop's buses go under its own heading and pole letter, so none
-                        // reads as leaving from the stop the rider is at. The journey's own view heads
-                        // every group that way ("King's Cross St Pancras – Platform 7"), so it shows
-                        // where to board; the list's card otherwise leaves that to the journey heading.
-                        val severalStops = state.rows.any { it.stopId != card.boardingIds.firstOrNull() }
-                        state.groups.forEachIndexed { groupIndex, group ->
-                            if (severalStops || journeyView) {
+                        // Grouped by ride, the journey heading stands over one card holding every stop's
+                        // trains, as a ride boarding from one stop always drew, so the near-me list starts at
+                        // the first heading below it: a rider who favorited the ride knows where it boards
+                        // (maintainer, 2026-10-14). Grouped by stop, each stop's heading carries the star
+                        // and where the ride goes in its place. The journey's own view heads every group
+                        // with where it boards ("King's Cross St Pancras – Platform 7").
+                        if (!journeyView && !byStop) {
+                            item(key = "journey-card|${card.journey.key}|ride") {
+                                StopGroupCard(
+                                    state.rideCard,
+                                    now,
+                                    starred = starred,
+                                    onToggleStar = onToggleStar,
+                                    starringAvailable = starringAvailable,
+                                    onOpenDetail = onOpenDetail,
+                                    onOpenSettings = onOpenSettings,
+                                )
+                            }
+                        }
+                        if (journeyView || byStop) state.groups.forEachIndexed { groupIndex, group ->
+                            if (journeyView) {
                                 item(key = "journey-stop|${card.journey.key}|${group.key}") {
                                     StopGroupHeader(
                                         group.stopName,
@@ -2771,7 +2819,27 @@ private fun DepartureList(
                                         distanceLabel = null,
                                         // In the journey view the first group heads the page under the
                                         // actions, with no group break above it.
-                                        firstOnScreen = journeyView && groupIndex == 0,
+                                        firstOnScreen = groupIndex == 0,
+                                    )
+                                }
+                            } else if (byStop) {
+                                // How far the stop is, as its near-me heading says it ([ridePlaceMeters]); else,
+                                // for a far ride whose stops have no distance, how far its origin is.
+                                val stopDistance = ridePlaceMeters[group.placeKey]?.let { meters ->
+                                    distanceSystem?.let { StopDistance.label(meters, it) }
+                                }
+                                item(key = "journey-stop|${card.journey.key}|${group.key}") {
+                                    RideStopHeader(
+                                        group.stopName,
+                                        group.qualifier,
+                                        state.stopForms[groupIndex],
+                                        card.toForms,
+                                        // The ride's first stop takes the place of its heading: no break when
+                                        // that's first on screen, with nothing (a closure) above it.
+                                        firstOnScreen = index == 0 && groupIndex == 0 && card.closures.isEmpty() && !card.destinationUnchecked,
+                                        onOpen = onOpen,
+                                        // A far ride's distance is to its origin: on that stop's heading only.
+                                        distanceLabel = stopDistance ?: distanceLabel?.takeIf { group.key in card.originGroupKeys },
                                     )
                                 }
                             }
@@ -4021,7 +4089,36 @@ internal data class JourneyCard(
     val destinationUnchecked: Boolean = false,
     // The departures left out as unchecked, by line, stop and reason, for the debug log.
     val misses: Set<RouteMiss> = emptySet(),
-)
+) {
+    /** Its heading's ends, each longest first ([DestinationAbbreviations.forms]): worked out with the card, on the worker. */
+    val fromForms: List<String> = DestinationAbbreviations.forms(journey.from.name)
+    val toForms: List<String> = DestinationAbbreviations.forms(journey.to.name)
+
+    /**
+     * The keys of its groups that board at its origin, the end a far ride's distance is measured to
+     * ([MainScreen]'s `farJourneyMeters`): grouped by stop, only those headings may carry that distance,
+     * not a neighboring pole's. Worked out with the card, on the worker.
+     */
+    val originGroupKeys: Set<String> = (state as? JourneyCardState.Trains)?.groups
+        ?.filter { group -> group.rows.any { it.stopId == journey.from.stopId } }
+        ?.mapTo(HashSet()) { it.key }
+        .orEmpty()
+}
+
+/**
+ * A stop's by-stop heading ([RideStopHeader]): its name's forms and its platform's or pole's (joined,
+ * " – Platform 6" then " – Plat 6"; none for a bare stop), each longest first, worked out with the
+ * card's groups on the worker.
+ */
+internal class RideStopForms(val name: List<String>, val qualifier: List<String>) {
+    companion object {
+        fun of(group: StopGroup): RideStopForms {
+            val label = groupHeaderLabel(group.qualifier)
+            val qualifier = label?.let { EvenShortening.qualifierForms(it).map { form -> "${groupHeaderJoin(it)}$form" } }.orEmpty()
+            return RideStopForms(DestinationAbbreviations.forms(group.stopName), qualifier)
+        }
+    }
+}
 
 /** How long a journey card stays "Checking trains" before the log says what it waits on. */
 internal val CHECKING_LOGGED_AFTER: java.time.Duration = java.time.Duration.ofSeconds(5)
@@ -4088,6 +4185,24 @@ internal sealed interface JourneyCardState {
 
         /** Each of [groups] as its stop card draws it ([stopCard]), worked out with them. */
         val cards: List<StopCard> = groups.map { stopCard(it, topology) }
+
+        /** Each of [groups]' heading forms when grouped by stop ([RideStopForms]), worked out with them. */
+        val stopForms: List<RideStopForms> = groups.map { RideStopForms.of(it) }
+
+        /**
+         * [cards] as one card, every stop's rows in order: grouped by ride (SPEC *Journeys*), a ride
+         * boarding from several stops draws as one boarding from a single stop does.
+         */
+        val rideCard: StopCard = cards.singleOrNull() ?: StopCard(
+            StopGroup(
+                stopName = groups.firstOrNull()?.stopName.orEmpty(),
+                key = "ride",
+                showHeader = false,
+                rows = cards.flatMap { it.group.rows },
+                placeKey = groups.firstOrNull()?.placeKey.orEmpty(),
+            ),
+            cards.flatMap { it.lines },
+        )
 
         /** [changes] by change stop, in order, each stop's rows by boarding stop as [groups] are. */
         val changeStops: List<ChangeStop> = changes.groupBy { it.stopId }.map { (stopId, atStop) ->
@@ -4208,6 +4323,58 @@ private fun JourneyActions(journey: FavoriteJourney, onSwap: () -> Unit, onUnsta
 }
 
 /**
+ * A stop a favorite ride boards from, heading its departures on the list when rides are grouped by stop
+ * (SPEC *Journeys*): the stop with its platform or pole ➔ where the ride goes, read as a bus place's
+ * heading reads, then the ride's gold star as on its own title, then the distance ("Park – Stop L ➔
+ * Hill ★ (120 m)"), the two names shortened evenly. A tap opens the ride's own view, as its heading's would, where Swap direction is.
+ */
+@Composable
+private fun RideStopHeader(
+    name: String,
+    qualifier: StopQualifier?,
+    // The stop's and its platform's forms ([RideStopForms]), and where the ride goes, worked out with the card.
+    forms: RideStopForms,
+    destinationForms: List<String>,
+    firstOnScreen: Boolean,
+    onOpen: (() -> Unit)?,
+    // How far the stop is ("120 m"), dimmed after its platform while the line has room; null for none.
+    distanceLabel: String? = null,
+) {
+    val style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+    // "Park, Stop L to Hill, 120 m": the stop as a heading reads it, never the drawn arrow.
+    val stop = groupHeaderSpoken(qualifier)?.let { "$name, $it" } ?: name
+    val title = stringResource(R.string.journey_title_spoken, stop, destinationForms.first())
+    val spoken = distanceLabel?.let { "$title, $it" } ?: title
+    val openLabel = stringResource(R.string.action_open_journey)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (onOpen != null) Modifier.clickable(onClickLabel = openLabel, onClick = onOpen) else Modifier)
+            .padding(start = 4.dp, end = 4.dp, top = if (firstOnScreen) 0.dp else 16.dp)
+            .semantics(mergeDescendants = true) { contentDescription = spoken },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val starTint = LocalStarredBorderColor.current
+        RideStopTitle(
+            stop = forms.name,
+            qualifier = forms.qualifier,
+            destination = destinationForms,
+            style = style,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+            distance = distanceLabel,
+            distanceColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            // After where it goes, as on the ride's own title. Decorative: the heading is a favorite
+            // ride's by construction, and says where it goes.
+            marker = {
+                Icon(Icons.Filled.Star, contentDescription = null, tint = starTint, modifier = Modifier.padding(start = 4.dp).size(16.dp))
+            },
+            markerWidth = 20.dp,
+        )
+    }
+}
+
+/**
  * A journey card's heading, "Highgate ➔ King's Cross St Pancras ★": the direction shown, styled like
  * a stop group header (same weight and group-break space) so the list reads as one. A tap on the
  * heading opens the journey's own view ([onOpen], null leaves it inert — as in that view); the ⇄
@@ -4217,6 +4384,9 @@ private fun JourneyActions(journey: FavoriteJourney, onSwap: () -> Unit, onUnsta
 @Composable
 private fun JourneyHeader(
     journey: FavoriteJourney,
+    // Its ends' forms ([JourneyCard.fromForms]), worked out with the card.
+    fromForms: List<String>,
+    toForms: List<String>,
     firstOnScreen: Boolean,
     // Null hides the ⇄ (a far journey's collapsed heading: nothing below it to swap).
     onSwap: (() -> Unit)?,
@@ -4242,13 +4412,12 @@ private fun JourneyHeader(
                 .semantics(mergeDescendants = true) { contentDescription = spoken },
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = withArrowIcons(stringResource(R.string.journey_title, journey.from.name, journey.to.name)),
-                inlineContent = arrowInlineContent(MaterialTheme.colorScheme.onSurface),
+            // Both ends shorten evenly, so a long name at one never pushes the other off the line.
+            RideTitle(
+                from = fromForms,
+                to = toForms,
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
             )
             // The gold star marks a favorite journey, telling its heading apart from a bus place's

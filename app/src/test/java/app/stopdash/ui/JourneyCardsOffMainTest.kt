@@ -13,6 +13,7 @@ import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
+import app.stopdash.domain.RideGrouping
 import app.stopdash.domain.RouteSequenceSource
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.FavoriteJourney
@@ -214,6 +215,8 @@ class JourneyCardsOffMainTest {
                         now = now,
                         onRefresh = {},
                         journeys = listOf(parkToHill),
+                        // Grouped by stop, so each pole's heading names it once its buses are in.
+                        rideGrouping = RideGrouping.STOP,
                         listKey = "park",
                         listWork = listWork,
                     )
@@ -235,7 +238,7 @@ class JourneyCardsOffMainTest {
         }
         settle(scheduler)
         assertEquals(listOf("PARKK"), listWork.siblings.value?.value?.get(parkToHill.key)?.poles?.map { it.id })
-        // The card heads pole K's bus under its own letter.
+        // The card heads pole K's bus under its own letter (grouped by stop).
         composeRule.onAllNodesWithText("Stop K", substring = true, useUnmergedTree = true).assertCountEquals(1)
         composeRule.onAllNodesWithText("Checking buses…").assertCountEquals(0)
         composeRule.onAllNodesWithText("Couldn't check buses").assertCountEquals(0)

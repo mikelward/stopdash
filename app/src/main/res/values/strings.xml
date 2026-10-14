@@ -829,6 +829,12 @@
          own times. -->
     <string name="settings_train_spacing_title" tools:ignore="MissingTranslation">Fix train spacing</string>
     <string name="settings_train_spacing_summary" tools:ignore="MissingTranslation">Adjust times when trains are impossibly close</string>
+    <!-- TODO: translate -->
+    <!-- How the near-me list groups a favorite ride's departures: under each stop the ride leaves
+         from, starred and saying where it goes (the default), or under the ride's own name. -->
+    <string name="settings_ride_grouping_title" tools:ignore="MissingTranslation">Group favorite rides</string>
+    <string name="settings_ride_grouping_ride" tools:ignore="MissingTranslation">Group by ride</string>
+    <string name="settings_ride_grouping_stop" tools:ignore="MissingTranslation">Group by stop</string>
     <string name="settings_widget_follows_title">Automatic watch and widget location</string>
     <string name="settings_widget_follows_summary">Shows the stops where you are, using your location in the background.</string>
     <!-- Shown under the toggle when the setting saved but the background refresh couldn't be

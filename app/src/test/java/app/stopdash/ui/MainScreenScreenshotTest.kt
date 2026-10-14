@@ -35,8 +35,12 @@ import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
@@ -75,6 +79,7 @@ import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.RailFeed
+import app.stopdash.domain.RideGrouping
 import app.stopdash.domain.RoutePattern
 import app.stopdash.domain.RouteSequenceSource
 import app.stopdash.domain.RouteStopsRepository
@@ -3020,6 +3025,8 @@ class MainScreenScreenshotTest {
         origin: StopArrivals,
         source: RouteSequenceSource,
         journey: FavoriteJourney = victoriaToWarrenStreet,
+        rideGrouping: RideGrouping? = RideGrouping.RIDE,
+        stopDistanceMeters: Map<String, Double> = mapOf("940GZZLUMRH" to 300.0),
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -3029,8 +3036,9 @@ class MainScreenScreenshotTest {
                             DeparturesUiState.Loaded(listOf(manorHouse(), origin), now.minusSeconds(60)),
                             now,
                             {},
-                            stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
+                            stopDistanceMeters = stopDistanceMeters,
                             journeys = listOf(journey),
+                            rideGrouping = rideGrouping,
                         )
                     }
                 }
@@ -3454,37 +3462,38 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithText("Checking buses…").assertExists()
     }
 
+    // Synthetic ids: the journey boards b1 at stop L; b3 leaves stop K beside it, for Hill too.
+    private val parkB1 = LineSequence(
+        routes = listOf(LineRoute("Park ↔ Hill", listOf("490000001L", "490000002N"))),
+        stopNames = mapOf("490000001L" to "Park", "490000002N" to "Hill"),
+        stopAreas = mapOf("490000001L" to "490G1"),
+    )
+    private val parkB3 = LineSequence(
+        routes = listOf(LineRoute("Park ↔ Hill", listOf("490000001K", "490000002N"))),
+        stopNames = mapOf("490000001K" to "Park", "490000002N" to "Hill"),
+    )
+    private val parkSource = object : RouteSequenceSource, StopAreaSource {
+        override suspend fun routeSequence(lineId: String, direction: String) = if (lineId == "b3") parkB3 else parkB1
+        override suspend fun stopAreaPoles(areaId: String) = listOf(
+            StopLocation("490000001L", "Park", 51.5, -0.12, listOf(LineRef("b1", "B1", "bus")), "490G1", stopLetter = "L"),
+            StopLocation("490000001K", "Park", 51.5, -0.12, listOf(LineRef("b3", "B3", "bus")), "490G1", stopLetter = "K"),
+        )
+    }
+    private fun parkPole(id: String, letter: String, line: String, inSeconds: Long) = StopArrivals(
+        id, "Park",
+        listOf(Departure(line, line.uppercase(), "outbound", "Hill", null, now.plusSeconds(inSeconds), "bus")),
+        fetchedAt = now.minusSeconds(60), clusterId = "490G1", stopLetter = letter,
+    )
+    private val parkToHill = FavoriteJourney(JourneyEnd("490000001L", "Park"), JourneyEnd("490000002N", "Hill"), "b1", "B1", "bus")
+
     @Test
-    fun `a bus journey shows buses from the stop beside its origin under that stop's letter`() {
-        // Synthetic ids: the journey boards b1 at stop L; b3 leaves stop K beside it, for Hill too.
-        val b1 = LineSequence(
-            routes = listOf(LineRoute("Park ↔ Hill", listOf("490000001L", "490000002N"))),
-            stopNames = mapOf("490000001L" to "Park", "490000002N" to "Hill"),
-            stopAreas = mapOf("490000001L" to "490G1"),
-        )
-        val b3 = LineSequence(
-            routes = listOf(LineRoute("Park ↔ Hill", listOf("490000001K", "490000002N"))),
-            stopNames = mapOf("490000001K" to "Park", "490000002N" to "Hill"),
-        )
-        val source = object : RouteSequenceSource, StopAreaSource {
-            override suspend fun routeSequence(lineId: String, direction: String) = if (lineId == "b3") b3 else b1
-            override suspend fun stopAreaPoles(areaId: String) = listOf(
-                StopLocation("490000001L", "Park", 51.5, -0.12, listOf(LineRef("b1", "B1", "bus")), "490G1", stopLetter = "L"),
-                StopLocation("490000001K", "Park", 51.5, -0.12, listOf(LineRef("b3", "B3", "bus")), "490G1", stopLetter = "K"),
-            )
-        }
-        fun pole(id: String, letter: String, line: String, inSeconds: Long) = StopArrivals(
-            id, "Park",
-            listOf(Departure(line, line.uppercase(), "outbound", "Hill", null, now.plusSeconds(inSeconds), "bus")),
-            fetchedAt = now.minusSeconds(60), clusterId = "490G1", stopLetter = letter,
-        )
-        val parkToHill = FavoriteJourney(JourneyEnd("490000001L", "Park"), JourneyEnd("490000002N", "Hill"), "b1", "B1", "bus")
+    fun `a bus journey shows buses from the stop beside its origin, under that stop's letter in its own view`() {
         var origins: List<StopRef> = emptyList()
-        var stops by mutableStateOf(listOf(manorHouse(), pole("490000001L", "L", "b1", 120), pole("490000001K", "K", "b3", 240)))
+        var stops by mutableStateOf(listOf(manorHouse(), parkPole("490000001L", "L", "b1", 120), parkPole("490000001K", "K", "b3", 240)))
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    CompositionLocalProvider(LocalRouteStops provides RouteStopsRepository(source)) {
+                    CompositionLocalProvider(LocalRouteStops provides RouteStopsRepository(parkSource)) {
                         MainScreen(
                             DeparturesUiState.Loaded(stops, now.minusSeconds(60)),
                             now,
@@ -3498,16 +3507,167 @@ class MainScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        // The stop beside the origin is fetched too, and its bus shows under its own letter.
+        // The stop beside the origin is fetched too, and its bus shows on the card. On the list the
+        // journey heading stands over both stops' buses with no stop heading of their own (maintainer,
+        // 2026-10-14): the rider who favorited the ride knows where it boards.
         assertEquals(setOf("490000001L", "490000001K"), origins.mapTo(HashSet()) { it.id })
-        composeRule.onNodeWithText("Stop K", substring = true).assertExists()
-        composeRule.onNodeWithText("Stop L", substring = true).assertExists()
+        composeRule.onNodeWithText("Park ➔ Hill").assertExists()
+        composeRule.onAllNodesWithText("B1").onFirst().assertExists()
+        composeRule.onAllNodesWithText("B3").onFirst().assertExists()
+        composeRule.onAllNodesWithText("Stop K", substring = true).assertCountEquals(0)
+        composeRule.onAllNodesWithText("Stop L", substring = true).assertCountEquals(0)
+        // One card holds both stops' buses, as a ride boarding from one stop draws: the card's own
+        // traversal group, apart from the near-me list's.
+        composeRule.onAllNodes(
+            SemanticsMatcher.expectValue(SemanticsProperties.IsTraversalGroup, true) and
+                hasAnyDescendant(hasText("B1")) and hasAnyDescendant(hasText("B3")) and
+                !hasAnyDescendant(hasText("Cockfosters")),
+        ).onFirst().assertExists()
         captureSnapshot("main-journey-card-sibling-pole.png")
 
-        // Only the neighboring stop has a bus: it still shows under its own letter.
-        stops = listOf(manorHouse(), pole("490000001L", "L", "b1", 120).copy(departures = emptyList()), pole("490000001K", "K", "b3", 240))
+        // Its own view heads each stop's buses with that stop's letter, to say where to board.
+        composeRule.onNodeWithText("Park ➔ Hill").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Stop K", substring = true).assertExists()
+        composeRule.onNodeWithText("Stop L", substring = true).assertExists()
+        captureSnapshot("main-journey-view-sibling-pole.png")
+
+        // Only the neighboring stop has a bus: it still shows there under its own letter.
+        stops = listOf(manorHouse(), parkPole("490000001L", "L", "b1", 120).copy(departures = emptyList()), parkPole("490000001K", "K", "b3", 240))
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Stop K", substring = true).assertExists()
+    }
+
+    @Test
+    fun `grouped by stop, each stop a ride boards from carries its star and where it goes`() {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalRouteStops provides RouteStopsRepository(parkSource)) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(
+                                listOf(manorHouse(), parkPole("490000001L", "L", "b1", 120), parkPole("490000001K", "K", "b3", 240)),
+                                now.minusSeconds(60),
+                            ),
+                            now,
+                            {},
+                            stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0, "490000001L" to 120.0, "490000001K" to 240.0),
+                            journeys = listOf(parkToHill),
+                            rideGrouping = RideGrouping.STOP,
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        // No ride heading: each stop's heading names the stop and its letter, and where the ride goes.
+        composeRule.onAllNodesWithContentDescription("Park to Hill").assertCountEquals(0)
+        // Read as a bus place's heading reads: the stop and its letter ➔ where the ride goes.
+        composeRule.onNodeWithContentDescription("Park, Stop L to Hill, 120 m").assertExists()
+        composeRule.onNodeWithContentDescription("Park, Stop K to Hill, 120 m").assertExists()
+        composeRule.onAllNodesWithText(" – Stop K", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.onAllNodesWithText(" – Stop L", useUnmergedTree = true).assertCountEquals(1)
+        // Each says how far, as a near-me stop's heading would: the place's nearest pole, on both.
+        composeRule.onAllNodesWithText(" (120 m)", useUnmergedTree = true).assertCountEquals(2)
+        composeRule.onAllNodesWithText("B1").onFirst().assertExists()
+        composeRule.onAllNodesWithText("B3").onFirst().assertExists()
+        captureSnapshot("main-journey-card-by-stop.png")
+
+        // A tap on a stop's heading opens the ride's own view, as the ride's heading would, with its
+        // stops headed by their letters.
+        composeRule.onNodeWithContentDescription("Park, Stop L to Hill, 120 m").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Swap direction").assertExists()
+        composeRule.onAllNodesWithContentDescription("Park, Stop L to Hill", substring = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun `grouped by stop, a ride with nothing to group yet keeps its heading`() {
+        val journey = FavoriteJourney(
+            JourneyEnd("940GZZLUMRH", "Manor House"), JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), "piccadilly",
+        )
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(listOf(manorHouse()), now.minusSeconds(60)),
+                        now,
+                        {},
+                        stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
+                        journeys = listOf(journey),
+                        rideGrouping = RideGrouping.STOP,
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        // The note says which ride it's checking.
+        composeRule.onNodeWithContentDescription("Manor House to King's Cross St. Pancras").assertExists()
+        composeRule.onNodeWithText("Checking trains…").assertExists()
+    }
+
+    // The Piccadilly line from King's Cross to Heathrow (public big-station ids and names), the ride's
+    // near end named as station search names the interchange: long at both ends.
+    private val kingsCrossToHeathrowLine = LineSequence(
+        routes = listOf(LineRoute("Cockfosters ↔ Heathrow Terminal 5", listOf("940GZZLUKSX", "940GZZLUHRC", "940GZZLUHR5"))),
+        stopNames = mapOf(
+            "940GZZLUKSX" to "King's Cross St. Pancras",
+            "940GZZLUHRC" to "Heathrow Terminals 2 & 3",
+            "940GZZLUHR5" to "Heathrow Terminal 5",
+        ),
+    )
+    private val kingsCrossToHeathrow = FavoriteJourney(
+        JourneyEnd("940GZZLUKSX", "King's Cross & St Pancras International"),
+        JourneyEnd("940GZZLUHRC", "Heathrow Terminals 2 & 3"),
+        "piccadilly",
+    )
+    private fun kingsCrossPiccadilly() = StopArrivals(
+        "940GZZLUKSX",
+        "King's Cross St. Pancras",
+        listOf(
+            dep("piccadilly", "Piccadilly", "outbound", "Heathrow Terminal 5", 120, "Westbound - Platform 6"),
+            dep("piccadilly", "Piccadilly", "outbound", "Heathrow Terminal 5", 540, "Westbound - Platform 6"),
+        ),
+        fetchedAt = now.minusSeconds(60),
+    )
+    private val kingsCrossToHeathrowSource = object : RouteSequenceSource {
+        override suspend fun routeSequence(lineId: String, direction: String) = kingsCrossToHeathrowLine
+    }
+
+    @Test
+    fun `grouped by ride, long names at both ends shorten evenly, each end kept`() {
+        journeyScreen(kingsCrossPiccadilly(), kingsCrossToHeathrowSource, kingsCrossToHeathrow, RideGrouping.RIDE)
+        val heading = hasAnyAncestor(hasContentDescription("King's Cross & St Pancras International to Heathrow Terminals 2 & 3"))
+        composeRule.onAllNodes(heading and hasText("King's X", substring = true), useUnmergedTree = true).onFirst().assertExists()
+        composeRule.onAllNodes(heading and hasText("Heathrow", substring = true), useUnmergedTree = true).onFirst().assertExists()
+        captureSnapshot("main-journey-long-names-by-ride.png")
+    }
+
+    @Test
+    fun `a ride holds its trains under its heading until the grouping is read`() {
+        // Read at app start, so this is the rare start where the trains come first: they wait rather
+        // than draw one way and regroup the other.
+        journeyScreen(kingsCrossPiccadilly(), kingsCrossToHeathrowSource, kingsCrossToHeathrow, rideGrouping = null)
+        composeRule.onNodeWithContentDescription("King's Cross & St Pancras International to Heathrow Terminals 2 & 3").assertExists()
+        composeRule.onNodeWithText("Checking trains…").assertExists()
+        composeRule.onAllNodesWithText("Heathrow Terminal 5").assertCountEquals(0)
+    }
+
+    @Test
+    fun `grouped by stop, a long stop and destination shorten evenly with the platform, the distance going first`() {
+        journeyScreen(
+            kingsCrossPiccadilly(), kingsCrossToHeathrowSource, kingsCrossToHeathrow, RideGrouping.STOP,
+            mapOf("940GZZLUMRH" to 300.0, "940GZZLUKSX" to 450.0),
+        )
+        composeRule.onAllNodesWithContentDescription("King's Cross & St Pancras International to Heathrow Terminals 2 & 3").assertCountEquals(0)
+        // Too long for the line in full: the distance goes, then both ends and the platform shorten.
+        composeRule.onAllNodesWithText(" (450 m)", useUnmergedTree = true).assertCountEquals(0)
+        composeRule.onAllNodesWithText(" – Plat 6", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.onAllNodesWithText("King's X", substring = true, useUnmergedTree = true).assertCountEquals(1)
+        composeRule.onAllNodesWithText("Heathrow T.", substring = true, useUnmergedTree = true).assertCountEquals(1)
+        // The screen reader still hears it whole, distance included.
+        composeRule.onNodeWithContentDescription("450 m", substring = true).assertExists()
+        captureSnapshot("main-journey-long-names-by-stop.png")
     }
 
     @Test

@@ -101,7 +101,29 @@ internal class ShownRows(
     val cards: List<JourneyCard>,
     val cardRows: List<DepartureRow>,
     val journeys: List<FavoriteJourney>,
+    // How far each place [cards] board from is ([ridePlaceMeters]), for their by-stop headings.
+    val ridePlaceMeters: Map<String, Double> = emptyMap(),
 )
+
+/**
+ * How far each place the journey [cards] board from is, as a near-me heading says it: the place's
+ * nearest stop among its near-me groups ([nearMe]) and the cards' own, by place key. Empty off the
+ * near-me list (no distances, D1). Walks the rows, so on the worker with them (AGENTS.md *Main
+ * thread*); each by-stop heading then only looks its place up.
+ */
+@WorkerThread
+internal fun ridePlaceMeters(cards: List<JourneyCard>, nearMe: List<StopGroup>, stopDistanceMeters: Map<String, Double>): Map<String, Double> {
+    if (stopDistanceMeters.isEmpty()) return emptyMap()
+    val rideGroups = cards.flatMap { (it.state as? JourneyCardState.Trains)?.groups.orEmpty() }
+    if (rideGroups.isEmpty()) return emptyMap()
+    val places = rideGroups.mapTo(HashSet()) { it.placeKey }
+    return (rideGroups + nearMe.filter { it.placeKey in places })
+        .groupBy { it.placeKey }
+        .mapNotNull { (place, groups) ->
+            groups.asSequence().flatMap { it.rows.asSequence() }.mapNotNull { stopDistanceMeters[it.stopId] }.minOrNull()?.let { place to it }
+        }
+        .toMap()
+}
 
 /** A platform or station view ([platformViewOf]): what the saved view keys on, and its inputs. */
 internal class PlatformInputs(val stopIds: String, val splitKey: String, val station: Boolean, val parts: Inputs) {
@@ -212,7 +234,10 @@ internal fun shownRowsOf(
     // On the near-me list (distances present) a place is ordered by distance, not lifted for carrying a
     // line-status alert; the watched list keeps warnings leading (D1, SPEC *Disruptions*).
     val listCards = ListCards.of(rows, warningsLead = stopDistanceMeters.isEmpty(), topology)
-    return ShownRows(rows, listCards, dismissedClosures, from, cards, journeyRowsShown, journeys)
+    return ShownRows(
+        rows, listCards, dismissedClosures, from, cards, journeyRowsShown, journeys,
+        ridePlaceMeters(cards, listCards.groups, stopDistanceMeters),
+    )
 }
 
 /**

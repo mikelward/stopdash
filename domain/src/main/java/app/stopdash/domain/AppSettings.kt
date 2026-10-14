@@ -160,6 +160,12 @@ interface AppSettings {
     /** Set [trainSpacing]. Suspending, off the main thread; best-effort. */
     suspend fun setTrainSpacing(on: Boolean) {}
 
+    /** How the near-me list groups a favorite ride's departures ([RideGrouping]); by stop until chosen. */
+    fun rideGrouping(): Flow<RideGrouping> = flowOf(RideGrouping.RIDE)
+
+    /** Set [rideGrouping]. Suspending, off the main thread; best-effort. */
+    suspend fun setRideGrouping(grouping: RideGrouping) {}
+
     /**
      * The networks the disruptions row always covers, by key (maintainer, 2026-10-05), on top of the
      * lines near the rider; null until chosen, read as the default (the tube).

@@ -9,6 +9,7 @@ import app.stopdash.domain.HiddenModesChoice
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.RailKeyDefault
+import app.stopdash.domain.RideGrouping
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripModes
 import app.stopdash.domain.UsageEvent
@@ -816,6 +817,39 @@ object TrainSpacingSetting {
 }
 
 internal fun logTrainSpacing(on: Boolean) = StopdashDebugLog.info("settings: train spacing %s", if (on) "on" else "off")
+
+/**
+ * How the near-me list groups a favorite ride's departures (SPEC *Journeys*, maintainer 2026-10-14),
+ * held in memory for the list to read on its first frame and persisted in order as
+ * [DistanceUnitsSetting] is. Starts at [RideGrouping.RIDE], the stored default.
+ */
+object RideGroupingSetting {
+    private val holder = StoredSettingHolder(
+        CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        initial = RideGrouping.RIDE,
+        read = AppSettings::rideGrouping,
+        write = { settings, grouping -> settings.setRideGrouping(grouping) },
+        label = "ride grouping",
+    )
+
+    /** [RideGrouping] as a flow, for the list and the Settings row. */
+    val changes: StateFlow<RideGrouping> get() = holder.changes
+
+    /** Begins reading the stored choice. Idempotent. */
+    fun warm(appSettings: AppSettings) = holder.warm(appSettings)
+
+    /** Whether the stored choice has been read, so Settings can hold its row until then. */
+    val isLoaded: StateFlow<Boolean> get() = holder.isLoaded
+
+    /** The user chose [grouping]: applied at once, persisted in order. */
+    fun set(grouping: RideGrouping) = holder.set(grouping)
+
+    /** True while the latest choice failed to save; Settings says so. */
+    val writeFailed: StateFlow<Boolean> get() = holder.writeFailed
+
+    /** Settings has told the user a choice didn't save. */
+    fun writeFailureShown() = holder.writeFailureShown()
+}
 
 /**
  * The settings that change what a stop's departures are (the National Rail key, [TrainSpacingSetting]),
