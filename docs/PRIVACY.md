@@ -256,19 +256,23 @@ described below). Past 10 minutes it is no longer used,
 and it is deleted the next time the app takes a location or when the app's process ends, whichever
 comes first.
 
-**Wi-Fi at saved places, kept on the phone and never backed up:** when your phone gets a precise (GPS)
+**Wi-Fi at saved places, kept on the phone and in your own backup:** when your phone gets a precise (GPS)
 location within 100 m of one of your saved places (Home, Work, School or one of your own) while it's
 on Wi-Fi, stopdash remembers, for that place, the **address of the Wi-Fi access point** it's connected
 to (its BSSID, an identifier of the router, not anything sent over it), and an **id for the network's
 name**: a keyed hash of the name, never the name itself, under a random key made on your phone and
-deleted with the list, so the id can't be turned back into a name by trying common ones. Next time,
+kept beside the list (so it goes in your backup with it), and deleted with the list. The name can't
+be read off what's stored, though someone holding a copy of the whole list, key included, could
+check a name they already suspect. Next time,
 if the phone can't get a precise location but is on one of those access points, the near-me list
 starts from that saved place rather than from a rough network position. On another access point of
 the same network (an office has many), it does the same when your rough position is within a
 kilometer of the place. Only the access point's address and the network's id are kept, beside the
 place and where it was; nothing about other networks around you is read,
-and a metered network (a phone's hotspot, a train's Wi-Fi) is never kept. It is stored in app storage
-that Android never backs up or transfers, and is never logged, sent anywhere, or put in a bug report
+and a metered network (a phone's hotspot, a train's Wi-Fi) is never kept. Like your saved places, it
+leaves the phone only in your own Android backup and device-to-device transfer, key included, so a new
+phone recognizes your places at once; stopdash itself never logs it, sends it anywhere, or puts it in a
+bug report
 (a report you choose to send says when a position came from a saved place's Wi-Fi, as it says where
 any other position came from). Turning off Settings → Remember Wi-Fi at saved places deletes it, and
 removing or moving a saved place deletes that place's; if you take away precise location, it is

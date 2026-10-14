@@ -14,11 +14,12 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 
 /**
- * The access points learned at the saved places ([app.stopdash.domain.WifiPlaces]), kept on the phone
- * only (SPEC *Privacy*): in a preferences file of their own that Android backup and device transfer
- * leave out (`backup_rules.xml`, `data_extraction_rules.xml`), so a router's address never leaves
- * the phone. They are relearned within a day or two, so a list that can't be read is dropped rather
- * than kept: unlike the saved places themselves, nothing the user made is lost with it.
+ * The access points and networks learned at the saved places ([app.stopdash.domain.WifiPlaces]), kept
+ * on the phone and in the rider's own Android backup and device transfer, with the key the networks
+ * are kept by, as the saved places themselves are (SPEC *Privacy*, maintainer 2026-10-14): a new phone
+ * at home or work recognizes it at once. They are relearned within a day or two, so a list that can't
+ * be read is dropped rather than kept: unlike the saved places themselves, nothing the user made is
+ * lost with it.
  */
 class WifiPlacesStore internal constructor(
     // Opened on first use, off the main thread, rather than when the store is made.
@@ -71,9 +72,11 @@ class WifiPlacesStore internal constructor(
     }
 
     /**
-     * The id a network named [name] is kept by: a keyed hash (HMAC-SHA256), never the name. Without
-     * the key it can't be matched against a list of common names, as a plain hash can. The key is
-     * random, made the first time one is needed, kept beside the list and deleted with it.
+     * The id a network named [name] is kept by: a keyed hash (HMAC-SHA256), never the name. The key is
+     * random, made the first time one is needed, kept beside the list (and so in its backup) and
+     * deleted with it. That keeps the name from being read off the file, and an id from being matched
+     * on its own or against another phone's; it doesn't stop someone holding the whole file, key
+     * included, from testing a guessed name (Codex).
      */
     @WorkerThread
     fun networkId(name: String): String {
@@ -97,7 +100,7 @@ class WifiPlacesStore internal constructor(
     }
 
     companion object {
-        /** The preferences file, named in the backup rules so it's left out of backup and transfer. */
+        /** The preferences file, named by the backup test that checks it rides backup and transfer. */
         const val FILE = "wifi_places"
 
         private const val KEY = "learned"
