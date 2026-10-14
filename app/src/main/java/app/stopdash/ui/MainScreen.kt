@@ -191,12 +191,15 @@ import app.stopdash.domain.UsageEvent
 import app.stopdash.domain.WidgetJourneyCheck
 import app.stopdash.domain.abbreviateBranch
 import app.stopdash.domain.cleanDisruptionBody
+import app.stopdash.domain.focusedDeparture
 import app.stopdash.domain.followedDeparture
 import app.stopdash.domain.hasTrains
 import app.stopdash.domain.isPole
 import app.stopdash.domain.lineLabel
 import app.stopdash.domain.planNotices
+import app.stopdash.domain.routeAnchor
 import app.stopdash.domain.routeDepartures
+import app.stopdash.domain.otherPlatforms
 import app.stopdash.domain.routeUntimed
 import app.stopdash.domain.serviceName
 import app.stopdash.domain.stopPlaceKey
@@ -206,6 +209,7 @@ import app.stopdash.telemetry.UsageEvents
 import app.stopdash.ui.theme.LocalStarredBorderColor
 import java.time.Instant
 import java.time.format.DateTimeFormatter
+import java.util.IdentityHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.coroutineScope
@@ -1143,6 +1147,11 @@ fun MainScreen(
     // RouteFocus, so it survives rotation with no custom Saver; null destination = no focus.
     var detailDestination by rememberSaveable { mutableStateOf<String?>(null) }
     var detailBranch by rememberSaveable { mutableStateOf<String?>(null) }
+    // The way the tapped row's trains run (its TfL direction), so the page can move to another platform's
+    // row the same way once its own is gone ([routeAnchor]).
+    var detailWay by rememberSaveable { mutableStateOf("") }
+    // Counts the pages opened, so state kept with one (its line page) survives its moving to another row.
+    var detailOpened by rememberSaveable { mutableIntStateOf(0) }
     // Opens a row's route page, counted as a tap on [tap]'s kind (UsageEvent; opted in only): a
     // row on a journey's change card is a change card, any other a stop row.
     fun openDetail(tap: UsageEvent.Tap): (DepartureRow, RouteFocus?) -> Unit = { row, focus ->
@@ -1150,23 +1159,44 @@ fun MainScreen(
         detailKey = row.detailKey()
         detailDestination = focus?.destination
         detailBranch = focus?.branch
+        detailWay = row.direction
+        detailOpened++
     }
+    // The key is looked up among the drawn rows (an open platform view's, else the list's), by an index
+    // worked out with them ([RowsByKey]), so composition walks no rows (AGENTS.md *Main thread*, Codex, #854).
+    val shownByKey = if (platformRows == null) shown?.rowsByKey else platformView?.takeUnless { platformGone }?.byKey
     // A journey card's train opens too: its farther origin isn't in the near-me rows, so the key is
     // also looked up among the journey cards' rows (shown only on the full list, as the cards are).
     // Worked out with the cards ([ShownRows.cardRows]).
-    val journeyRows = if (platformRows != null) emptyList() else journeyRowsShown
+    val journeyByKey = if (platformRows != null) null else shown?.cardRowsByKey
     // And, last, among every loaded stop's rows: a page opened from a journey card stays open when
     // that journey is unstarred from the page itself, while its origin's departures are still loaded.
     val loadedRows = drawnFrom?.all.orEmpty()
     // With the snapshot and time of the rows it came from, which the page is drawn against (Codex,
     // #524): the drawn list's (or an open platform view's), or the journey cards' and loaded rows,
     // which are the drawn list's too.
-    val detailHit = detailKey?.let { key ->
-        shownRows.firstOrNull { it.detailKey() == key }?.let { Triple(it, drawnState, drawnNow) }
-            ?: (journeyRows.firstOrNull { it.detailKey() == key }
-                ?: loadedRows.takeIf { platformRows == null }?.firstOrNull { it.detailKey() == key })
+    // Every loaded stop's rows count from a platform or station view too: a route's page moved to another
+    // platform's row ([routeAnchor]) stays open over the view it was opened from, which lists only its own.
+    val detailFound = detailKey?.let { key ->
+        shownByKey?.get(key)?.let { Triple(it, drawnState, drawnNow) }
+            ?: (journeyByKey?.get(key) ?: drawnFrom?.byKey?.get(key))
                 ?.let { Triple(it, drawnFrom?.source, drawnFrom?.now ?: now) }
     }
+    // Every loaded stop's rows, where the row came from the list's own snapshot: the route's trains on its
+    // stop's other platforms are listed too (maintainer, 2026-10-14).
+    val detailSiblings = loadedRows.takeIf { detailFound != null && detailFound.second === drawnFrom?.source }.orEmpty()
+    // What the open page was last drawn from, standing in while its row is gone and the route is looked
+    // for at another platform ([routeAnchor], below): the page holds still for the worker's hop rather than
+    // flash the list between the two (Codex, #854). Kept with the page's opening, so another page never
+    // starts from this one's.
+    val detailDrawn = remember(detailOpened) { DetailDrawn() }
+    SideEffect {
+        if (detailFound != null) {
+            detailDrawn.hit = detailFound
+            detailDrawn.siblings = detailSiblings
+        }
+    }
+    val detailHit = detailFound ?: detailDrawn.hit?.takeIf { detailKey != null }
     val detailRow = detailHit?.first
     // When the open route's row leaves the list — its last departure passed on the 10s clock, or it
     // was pruned — clear the saved key so the vanished page stays closed rather than silently
@@ -1175,8 +1205,24 @@ fun MainScreen(
     // Not while the rows are still being worked out (a return to the list, a rotation): the row isn't
     // gone, just not in yet.
     val rowsKnown = !listPending && !platformPending
-    LaunchedEffect(detailKey, detailRow == null, rowsKnown) {
-        if (detailKey != null && detailRow == null && rowsKnown) detailKey = null
+    // The page is the route's, not the platform's (maintainer, 2026-10-15): its row gone while another
+    // platform at the stop still has the route (the platform's last train left, or the train moved
+    // platform), the page moves to that platform's row ([routeAnchor], looked for on the worker) rather
+    // than closing. It closes once no platform has one.
+    val anchorWorker = LocalWorker.current
+    val anchorTopology = LocalRouteTopology.current
+    // Among every loaded stop's rows, which the page is found in from a platform or station view too: the view
+    // lists only its own platforms. Keyed on everything it reads, the rows (the ones they came with) and the
+    // topology by identity, so a lookup is done again when any of it changes, and an answer from rows or a
+    // topology since replaced never closes a page that the new ones still have (Codex, #854).
+    LaunchedEffect(detailKey, detailFound == null, rowsKnown, drawnFrom, ByIdentity(anchorTopology), detailDestination, detailBranch, detailWay) {
+        val key = detailKey
+        if (key != null && detailFound == null && rowsKnown) {
+            val moved = detailDestination?.let { destination ->
+                movedRouteRow(loadedRows, key, detailWay, RouteFocus(destination, detailBranch), anchorTopology, anchorWorker)
+            }
+            detailKey = moved?.detailKey()
+        }
     }
     // Surface a failed star write as a snackbar (SPEC principle 2: a tap that didn't take isn't
     // swallowed). Gated on the list being shown — the snackbar host lives in the departures Scaffold,
@@ -1224,9 +1270,10 @@ fun MainScreen(
     // line's full disruption text, and where the maps/nav hand-off will land (`TODO.md`).
     val detailLoaded = detailHit?.second
     val detailNow = detailHit?.third ?: now
-    // The route's line page ("View line") open over it, kept with the route it's for: by its saved key, so
-    // it stays open while a rotation's rows are worked out again.
-    val routeLineOpen = rememberSaveable(detailKey) { mutableStateOf(false) }
+    // The route's line page ("View line") open over it, kept with the page it's for: by the page's saved
+    // opening, so it stays open while a rotation's rows are worked out again, and while the page moves to
+    // another platform's row.
+    val routeLineOpen = rememberSaveable(detailOpened) { mutableStateOf(false) }
     // For the usage stats: the route's page, its line's page over it, or what's beneath. A page still
     // open while its rows are worked out again (a rotation, a return to the list) is still that page.
     val routeOpen = (detailLoaded != null && detailRow != null) || (detailKey != null && !rowsKnown)
@@ -1278,6 +1325,8 @@ fun MainScreen(
             onToggleJourney = onToggleJourney,
             onDismissJourneyTip = onDismissJourneyTip,
             onOpenStop = LocalOpenRouteStop.current,
+            // Held with the row while it stands in, so the page's work isn't asked again for the hop.
+            siblings = if (detailFound != null) detailSiblings else detailDrawn.siblings,
         )
         return
     }
@@ -5105,6 +5154,34 @@ private fun CollapsibleStatus(
 internal fun DepartureRow.detailKey(): String = "$stopId|$lineId|$directionKey|$platform"
 
 /**
+ * The row an open route page moves to once its own ([key], [detailKey]) is gone: the row among [rows] where its
+ * [focus] route still leaves from, the same [way] ([routeAnchor]), looked for on [worker]. Null once no platform
+ * has it.
+ */
+internal suspend fun movedRouteRow(
+    rows: List<DepartureRow>,
+    key: String,
+    way: String,
+    focus: RouteFocus,
+    topology: RouteTopology,
+    worker: CoroutineDispatcher,
+): DepartureRow? {
+    val parts = key.split('|')
+    if (parts.size < 2 || rows.isEmpty()) return null
+    return withContext(worker) { routeAnchor(rows, parts[0], parts[1], way, focus, topology) }
+}
+
+/**
+ * What an open route page was last drawn from: its row with the snapshot and time it's drawn against, and the
+ * rows beside it ([RouteDetailScreen]'s siblings). Written after each composition that found the row, read
+ * only once it's gone.
+ */
+private class DetailDrawn {
+    var hit: Triple<DepartureRow, DeparturesUiState.Loaded?, Instant>? = null
+    var siblings: List<DepartureRow> = emptyList()
+}
+
+/**
  * [row]'s line on a page of its own ([OneLinePage]), as a route page's "View line" opens it (maintainer,
  * 2026-10-06), its row worked out by [routeLineRow].
  */
@@ -5304,13 +5381,35 @@ internal fun RouteDetailScreen(
     // Whether its line's page ("View line") is open over it: held by the caller, whose usage stats count
     // the page shown ([UsageEvent.Screen.LINE]); one of its own otherwise.
     lineOpen: MutableState<Boolean> = rememberSaveable { mutableStateOf(false) },
+    // The rows [row] was found among, from the same fetch: the route's trains on its stop's other
+    // platforms are listed with its own ([otherPlatforms], picked out with the page's trains on the
+    // worker). Empty lists [row]'s alone.
+    siblings: List<DepartureRow> = emptyList(),
 ) {
     BackHandler(onBack = onBack)
     // "View line" in the overflow: the line's own page over this one, with its map (maintainer,
     // 2026-10-06).
     var lineShown by lineOpen
     if (lineShown) RouteLinePage(row, ride, unknown = lineUnknown, checking = lineChecking, onClose = { lineShown = false })
-    val followed = followedDeparture(row, focus, LocalRouteTopology.current)
+    // Every upcoming train on the followed route, not the card's first few — TfL predicts ~30 min
+    // ahead, and the page has the room (SPEC *Route detail*).
+    val topology = LocalRouteTopology.current
+    // The route's trains and termini, worked out off the main thread from the row ([routeDetailWork]),
+    // each answer kept with the ask it was worked out for: a token remembered under the same keys,
+    // compared the same way, so it changes exactly when the work is asked for again (a refreshed row),
+    // and an equal row passed afresh (the trip page's copy) keeps its answer. Trains are shown only
+    // from the current ask's answer, never a refreshed-away row's (a canceled train would read as
+    // live); until it lands the countdown keeps its line, so nothing below it moves. The termini name
+    // the route, not a train, so the last answer's stand in meanwhile.
+    val routeWorker = LocalWorker.current
+    // The rows beside it by identity, never compared whole here.
+    val routeAsk = remember(row, focus, topology, ByIdentity(siblings)) { Any() }
+    val routeWork by produceState<Pair<Any, RouteDetailWork>?>(null, routeAsk, routeWorker) {
+        value = routeAsk to routeDetailWork(row, focus, topology, routeWorker, siblings)
+    }
+    // The route's soonest train at any platform, from the answer for this ask alone, the row's own standing in
+    // until it lands ([pageFollowed]).
+    val followed = pageFollowed(row, focus, topology, routeWork, routeAsk, siblings.isNotEmpty())
     var routeStopsRetry by rememberSaveable { mutableIntStateOf(0) }
     // A stale row's soonest prediction may not be the next train any more, so its stop list is
     // withheld rather than shown as current (SPEC D4); it returns as soon as a refresh lands.
@@ -5370,21 +5469,6 @@ internal fun RouteDetailScreen(
     val alertMarks = readAlert.second
     val alertStretchIds = alertMarks.stretch
     val alertPlaces = alertMarks.places
-    // Every upcoming train on the followed route, not the card's first few — TfL predicts ~30 min
-    // ahead, and the page has the room (SPEC *Route detail*).
-    val topology = LocalRouteTopology.current
-    // The route's trains and termini, worked out off the main thread from the row ([routeDetailWork]),
-    // each answer kept with the ask it was worked out for: a token remembered under the same keys,
-    // compared the same way, so it changes exactly when the work is asked for again (a refreshed row),
-    // and an equal row passed afresh (the trip page's copy) keeps its answer. Trains are shown only
-    // from the current ask's answer, never a refreshed-away row's (a canceled train would read as
-    // live); until it lands the countdown keeps its line, so nothing below it moves. The termini name
-    // the route, not a train, so the last answer's stand in meanwhile.
-    val routeWorker = LocalWorker.current
-    val routeAsk = remember(row, focus, topology) { Any() }
-    val routeWork by produceState<Pair<Any, RouteDetailWork>?>(null, routeAsk, routeWorker) {
-        value = routeAsk to routeDetailWork(row, focus, topology, routeWorker)
-    }
     val workForRow = routeWork?.takeIf { it.first === routeAsk }?.second
     val departures = workForRow?.departures.orEmpty().filterNot { Countdown.hasDeparted(it, now) }
     // The route's trains its board lists with no time, among its countdowns in their place; a
@@ -6062,6 +6146,9 @@ internal data class RouteDetailWork(
     // Where the followed train leaves from, after the place: its platform, or a bus's pole letter
     // ([boardingQualifier]); null when neither is known.
     val boarding: StopQualifier? = null,
+    // The train the page follows ([followedDeparture]): the tapped route's soonest at any of the stop's
+    // platforms.
+    val followed: Departure? = null,
 ) {
     companion object {
         val NONE = RouteDetailWork(emptyList(), emptyList(), emptyList())
@@ -6073,15 +6160,19 @@ internal data class RouteDetailWork(
  * each part walks the row's trains, and the termini group them by destination and branch
  * ([DepartureRows.destinationLines]). The termini are empty for a status row (no predictions), which
  * then shows only the line and its disruption; a tapped route names just that route, matching the
- * stop list below it.
+ * stop list below it. The route's trains on the stop's other platforms, among [siblings]
+ * ([otherPlatforms]), are listed with it.
  */
 internal suspend fun routeDetailWork(
     row: DepartureRow,
     focus: RouteFocus?,
     topology: RouteTopology,
     worker: CoroutineDispatcher,
+    siblings: List<DepartureRow> = emptyList(),
 ): RouteDetailWork = withContext(worker) {
-    val followed = followedDeparture(row, focus, topology)
+    val others = otherPlatforms(row, siblings)
+    // The tapped route's soonest train at any of the stop's platforms, before any other route's.
+    val followed = followedDeparture(row, focus, topology, others)
     val destinations = if (!row.hasTrains) {
         emptyList()
     } else if (focus != null && followed != null) {
@@ -6091,16 +6182,70 @@ internal suspend fun routeDetailWork(
             .mapNotNull { DepartureLabels.destinationLabel(it.destination, row.directionKey) }
             .distinct()
     }
-    val departures = routeDepartures(row, focus, topology)
+    val departures = routeDepartures(row, focus, topology, others)
+    val untimed = routeUntimed(row, focus, topology, others)
     // A bus as the departure rows judge one: any of its predictions says so, as TfL can leave the mode off some.
     val bus = row.mode.equals("bus", ignoreCase = true) || row.upcoming.any { it.mode.equals("bus", ignoreCase = true) }
+    // Each train's row, for the platform it's split on where the train names none: the followed train's may be
+    // another platform's.
+    val rowOf = IdentityHashMap<Departure, DepartureRow>()
+    if (others.isNotEmpty()) {
+        (others + row).forEach { from ->
+            from.upcoming.forEach { rowOf[it] = from }
+            from.untimed.forEach { rowOf[it.train] = from }
+        }
+    }
     RouteDetailWork(
         departures,
-        routeUntimed(row, focus, topology),
+        untimed,
         destinations,
         departures.any { it.grayed },
-        boardingQualifier(followed?.platform, row.platform, row.stopLetter, bus),
+        // Where the trains listed leave from more than one platform, or one from another row has none known, no
+        // one platform is theirs: the page then names the stop alone, never sending the rider to one platform for a
+        // train at another, nor claiming one the list itself left a train off (a "Platform Unknown" row).
+        if (others.isNotEmpty() && !onePlatform(rowOf, departures, untimed)) {
+            boardingQualifier(null, "", row.stopLetter, bus)
+        } else {
+            boardingQualifier(followed?.platform, (followed?.let { rowOf[it] } ?: row).platform, row.stopLetter, bus)
+        },
+        followed,
     )
+}
+
+/**
+ * The train the route page follows, for its stop list and title: where the page has the stop's other rows
+ * ([siblings]) and a route was tapped, the route's soonest at any platform, as its work found it
+ * ([RouteDetailWork.followed]), so a train moved to another platform is still followed (maintainer,
+ * 2026-10-15). Only from the [work] answered for the current [ask]: an answer for a row since refreshed may
+ * follow a train that has since left or been canceled, so it's never shown as live (Codex, #854). Until this
+ * ask's answer lands, and on a page with no other rows, [row]'s own on the tapped [focus] route
+ * ([focusedDeparture]), else its soonest ([followedDeparture]), which are current. Reads the row's own trains
+ * only, never the other rows, so it's fit for composition.
+ */
+internal fun pageFollowed(
+    row: DepartureRow,
+    focus: RouteFocus?,
+    topology: RouteTopology,
+    work: Pair<Any, RouteDetailWork>?,
+    ask: Any,
+    siblings: Boolean,
+): Departure? =
+    work?.takeIf { it.first === ask && focus != null && siblings }?.second?.followed
+        ?: focus?.let { focusedDeparture(row, it, topology) }
+        ?: followedDeparture(row, focus, topology)
+
+/**
+ * Whether the route page's [departures] and [untimed] trains all leave from one known platform: each its own,
+ * else the platform of its row ([rowOf]). A train at no known platform may be at any.
+ */
+private fun onePlatform(rowOf: Map<Departure, DepartureRow>, departures: List<Departure>, untimed: List<UntimedTrain>): Boolean {
+    fun platformOf(train: Departure) = PlatformDirection.knownPlatformNumber(train.platform)
+        ?: rowOf[train]?.platform?.trim()?.takeUnless { it.isEmpty() || it.equals("Unknown", ignoreCase = true) }
+    val platforms = HashSet<String>()
+    for (train in departures.asSequence() + untimed.asSequence().map { it.train }) {
+        platforms += platformOf(train) ?: return false
+    }
+    return platforms.size <= 1
 }
 
 /**

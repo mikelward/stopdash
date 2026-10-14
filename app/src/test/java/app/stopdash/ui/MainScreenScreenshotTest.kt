@@ -1005,6 +1005,302 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithText("Delayed").assertExists()
     }
 
+    @Test
+    fun `a route's page lists every train the card does, and its trains on other platforms`() {
+        fun train(destination: String, platform: String, minutes: Long, via: String = "") = Departure(
+            "great-northern", "Great Northern", "", destination, platform, now.plusSeconds(minutes * 60), "national-rail", via = via,
+        )
+        // Platform 1: three trains to Far, round a loop either way; Platform 3: one more to Far; Platform 2: the
+        // other way.
+        val stop = StopArrivals(
+            "910GEXAMPLE",
+            "Example",
+            departures = listOf(
+                train("Far", "Platform 1", 5, "North"), train("Far", "Platform 1", 8, "South"), train("Far", "Platform 1", 12, "North"),
+                train("Far", "Platform 3", 10), train("Near", "Platform 2", 6),
+            ),
+            fetchedAt = now.minusSeconds(30),
+            lines = listOf(LineRef("great-northern", "Great Northern", "national-rail")),
+            railFeed = RailFeed.LIVE,
+        )
+        capture("main-rail-loop-platforms.png") {
+            MainScreen(DeparturesUiState.Loaded(listOf(stop), now.minusSeconds(30)), now, {})
+        }
+        composeRule.onNodeWithText("5 · 8 · 12 min").performTouchInput { click() }
+        composeRule.waitForIdle()
+        captureSnapshot("route-rail-loop-platforms.png")
+        // The loop's other way round (the 8) and the other platform's train (the 10) too, the Near train not.
+        composeRule.onNodeWithText("5 · 8 · 10 · 12 min").assertExists()
+        // Trains at two platforms: the page names the station alone, never one platform for them all.
+        composeRule.onNodeWithText("From Example").assertExists()
+        composeRule.onNodeWithText("From Example – Platform 1").assertDoesNotExist()
+    }
+
+    @Test
+    fun `a route's page follows its train to another platform, and closes once no platform has the route`() {
+        fun train(destination: String, platform: String, minutes: Long) = Departure(
+            "great-northern", "Great Northern", "", destination, platform, now.plusSeconds(minutes * 60), "national-rail",
+        )
+        fun board(vararg trains: Departure) = DeparturesUiState.Loaded(
+            listOf(
+                StopArrivals(
+                    "910GEXAMPLE",
+                    "Example",
+                    departures = trains.toList(),
+                    fetchedAt = now.minusSeconds(30),
+                    lines = listOf(LineRef("great-northern", "Great Northern", "national-rail")),
+                    railFeed = RailFeed.LIVE,
+                ),
+            ),
+            now.minusSeconds(30),
+        )
+        var state by mutableStateOf(board(train("Far", "Platform 1", 5), train("Near", "Platform 2", 6)))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) { MainScreen(state, now, {}) }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Far").performTouchInput { click() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("From Example – Platform 1").assertExists()
+        // The train moves to Platform 3, and Platform 1's row is gone: the page follows it there.
+        state = board(train("Far", "Platform 3", 5), train("Near", "Platform 2", 6))
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("From Example – Platform 3").assertExists()
+        composeRule.onNodeWithText("5 min").assertExists()
+        // No platform has the route any more: the page closes, back to the list.
+        state = board(train("Near", "Platform 2", 6))
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("From Example", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithText("Near").assertExists()
+    }
+
+    @Test
+    fun `a route's page holds still while its train is looked for at another platform`() {
+        // Its row gone, the route is looked for at the stop's other platforms on the worker ([routeAnchor]):
+        // the page stays as it was meanwhile, never the list for the hop between (Codex, #854). Each of the
+        // worker's steps is run in turn, the screen checked between them.
+        val queued = java.util.concurrent.LinkedBlockingQueue<Runnable>()
+        val worker = java.util.concurrent.Executor { queued.add(it) }.asCoroutineDispatcher()
+        fun runOne(): Boolean {
+            val task = queued.poll() ?: return false
+            val thread = Thread { task.run() }
+            thread.start()
+            thread.join()
+            return true
+        }
+        fun runAll() {
+            do composeRule.waitForIdle() while (runOne())
+            composeRule.waitForIdle()
+        }
+        fun train(destination: String, platform: String, minutes: Long) = Departure(
+            "great-northern", "Great Northern", "", destination, platform, now.plusSeconds(minutes * 60), "national-rail",
+        )
+        fun board(vararg trains: Departure) = DeparturesUiState.Loaded(
+            listOf(
+                StopArrivals(
+                    "910GEXAMPLE",
+                    "Example",
+                    departures = trains.toList(),
+                    fetchedAt = now.minusSeconds(30),
+                    lines = listOf(LineRef("great-northern", "Great Northern", "national-rail")),
+                    railFeed = RailFeed.LIVE,
+                ),
+            ),
+            now.minusSeconds(30),
+        )
+        var state by mutableStateOf(board(train("Far", "Platform 1", 5), train("Near", "Platform 2", 6)))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalWorker provides worker) { MainScreen(state, now, {}) }
+                }
+            }
+        }
+        runAll()
+        composeRule.onNodeWithText("Far").performTouchInput { click() }
+        runAll()
+        composeRule.onNodeWithText("From Example – Platform 1").assertExists()
+        // The page lists the Far route alone: the list's Near row shows only once the list is back.
+        composeRule.onNodeWithText("Near").assertDoesNotExist()
+        state = board(train("Far", "Platform 3", 5), train("Near", "Platform 2", 6))
+        do {
+            composeRule.waitForIdle()
+            composeRule.onNodeWithText("Near").assertDoesNotExist()
+        } while (runOne())
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("From Example – Platform 3").assertExists()
+    }
+
+    @Test
+    fun `a route's page is looked for again in rows refreshed while it's looked for`() {
+        // A lookup for the route among rows since replaced ([movedRouteRow]) doesn't close the page: it's looked
+        // for again in the new rows (Codex, #854). That lookup is held back while the rows refresh.
+        val queued = java.util.concurrent.LinkedBlockingQueue<Runnable>()
+        val worker = java.util.concurrent.Executor { queued.add(it) }.asCoroutineDispatcher()
+        val heldBack = mutableListOf<Runnable>()
+        fun run(task: Runnable) {
+            val thread = Thread { task.run() }
+            thread.start()
+            thread.join()
+        }
+        fun runAll(holdLookups: Boolean = false) {
+            while (true) {
+                composeRule.waitForIdle()
+                val task = queued.poll() ?: break
+                if (holdLookups && "movedRouteRow" in task.toString()) heldBack += task else run(task)
+            }
+            composeRule.waitForIdle()
+        }
+        fun train(destination: String, platform: String, minutes: Long) = Departure(
+            "great-northern", "Great Northern", "", destination, platform, now.plusSeconds(minutes * 60), "national-rail",
+        )
+        fun board(vararg trains: Departure) = DeparturesUiState.Loaded(
+            listOf(
+                StopArrivals(
+                    "910GEXAMPLE",
+                    "Example",
+                    departures = trains.toList(),
+                    fetchedAt = now.minusSeconds(30),
+                    lines = listOf(LineRef("great-northern", "Great Northern", "national-rail")),
+                    railFeed = RailFeed.LIVE,
+                ),
+            ),
+            now.minusSeconds(30),
+        )
+        var state by mutableStateOf(board(train("Far", "Platform 1", 5), train("Near", "Platform 2", 6)))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalWorker provides worker) { MainScreen(state, now, {}) }
+                }
+            }
+        }
+        runAll()
+        composeRule.onNodeWithText("Far").performTouchInput { click() }
+        runAll()
+        composeRule.onNodeWithText("From Example – Platform 1").assertExists()
+        // A refresh with no Far train anywhere: the route is looked for, and that lookup held back.
+        state = board(train("Near", "Platform 2", 6))
+        runAll(holdLookups = true)
+        assertTrue(heldBack.isNotEmpty())
+        // Another refresh, the Far train back at Platform 3, before that lookup's answer lands.
+        state = board(train("Far", "Platform 3", 5), train("Near", "Platform 2", 6))
+        runAll()
+        heldBack.forEach(::run)
+        runAll()
+        composeRule.onNodeWithText("From Example – Platform 3").assertExists()
+        composeRule.onNodeWithText("Near").assertDoesNotExist()
+    }
+
+    @Test
+    fun `a route's page is looked for again under a route topology loaded while it's looked for`() {
+        // A lookup under a topology since replaced ([movedRouteRow]) doesn't close the page: it's looked for again
+        // under the new one, which may count another platform's train as the route (Codex, #854). That lookup is
+        // held back while the topology loads.
+        val queued = java.util.concurrent.LinkedBlockingQueue<Runnable>()
+        val worker = java.util.concurrent.Executor { queued.add(it) }.asCoroutineDispatcher()
+        val heldBack = mutableListOf<Runnable>()
+        fun run(task: Runnable) {
+            val thread = Thread { task.run() }
+            thread.start()
+            thread.join()
+        }
+        fun runAll(holdLookups: Boolean = false) {
+            while (true) {
+                composeRule.waitForIdle()
+                val task = queued.poll() ?: break
+                if (holdLookups && "movedRouteRow" in task.toString()) heldBack += task else run(task)
+            }
+            composeRule.waitForIdle()
+        }
+        // Two branches to Far, joined before the stop on the way there: under this topology a train to Far is
+        // one route whichever branch it ran.
+        val merging = RouteTopology(
+            mapOf(
+                "northern" to listOf(
+                    RoutePattern("Bank", listOf("STOPFAR", "910GEXAMPLE", "STOPNEXT", "STOPBANK", "STOPSOUTH"), "Far", "South"),
+                    RoutePattern("Charing X", listOf("STOPFAR", "910GEXAMPLE", "STOPNEXT", "STOPCHX", "STOPSOUTH"), "Far", "South"),
+                ),
+            ),
+        )
+        fun board(vararg trains: Departure) = DeparturesUiState.Loaded(
+            listOf(StopArrivals("910GEXAMPLE", "Example", departures = trains.toList(), fetchedAt = now.minusSeconds(30))),
+            now.minusSeconds(30),
+        )
+        val bank = dep("northern", "Northern", "outbound", "Far", 300, "Platform 1", branch = "Bank")
+        val charingX = dep("northern", "Northern", "outbound", "Far", 480, "Platform 2", branch = "Charing X")
+        var state by mutableStateOf(board(bank, charingX))
+        var topology by mutableStateOf(RouteTopology.EMPTY)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalWorker provides worker, LocalRouteTopology provides topology) {
+                        MainScreen(state, now, {})
+                    }
+                }
+            }
+        }
+        runAll()
+        composeRule.onAllNodesWithText("Far").onFirst().performTouchInput { click() }
+        runAll()
+        composeRule.onNodeWithText("From Example – Platform 1").assertExists()
+        // Platform 1's train gone, and with no topology the Charing X train is another route: the lookup is held back.
+        state = board(charingX)
+        runAll(holdLookups = true)
+        assertTrue(heldBack.isNotEmpty())
+        // The topology loads before that lookup's answer lands: the Charing X train is the route.
+        topology = merging
+        runAll()
+        heldBack.forEach(::run)
+        runAll()
+        composeRule.onNodeWithText("From Example – Platform 2").assertExists()
+    }
+
+    @Test
+    fun `a route's page opened from a platform view follows its train to another platform`() {
+        fun train(lineId: String, lineName: String, destination: String, platform: String, minutes: Long) = Departure(
+            lineId, lineName, "", destination, platform, now.plusSeconds(minutes * 60), "national-rail",
+        )
+        fun board(vararg trains: Departure) = DeparturesUiState.Loaded(
+            listOf(
+                StopArrivals(
+                    "910GEXAMPLE",
+                    "Example",
+                    departures = trains.toList(),
+                    fetchedAt = now.minusSeconds(30),
+                    lines = listOf(LineRef("great-northern", "Great Northern", "national-rail"), LineRef("thameslink", "Thameslink", "national-rail")),
+                    railFeed = RailFeed.LIVE,
+                ),
+            ),
+            now.minusSeconds(30),
+        )
+        // Platform 1 has a Thameslink train too, so its view stays open when the Great Northern one moves.
+        val near = train("thameslink", "Thameslink", "Near", "Platform 1", 6)
+        var state by mutableStateOf(board(train("great-northern", "Great Northern", "Far", "Platform 1", 5), near))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) { MainScreen(state, now, {}) }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithContentDescription("Platform 1", substring = true).onFirst().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Far").performTouchInput { click() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("From Example – Platform 1").assertExists()
+        // The Great Northern train moves to Platform 3, which the Platform 1 view doesn't list: the page follows it.
+        state = board(train("great-northern", "Great Northern", "Far", "Platform 3", 5), near)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("From Example – Platform 3").assertExists()
+        // Back to the Platform 1 view it was opened from.
+        composeRule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Near").assertExists()
+        composeRule.onNodeWithText("Far").assertDoesNotExist()
+    }
+
     // The busiest interchange on the network: King's Cross St. Pancras, six Underground lines both
     // ways. Real line ids, termini, and TfL's own `direction` values — recorded from the live
     // `/StopPoint/940GZZLUKSX/Arrivals` feed (2026-09-22). The headers group on the **platform**

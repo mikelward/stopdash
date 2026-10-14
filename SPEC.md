@@ -985,15 +985,23 @@ rather than the whole-card border the one-service card used.) A **tap on a route
 full-screen route detail page** for **the route tapped** — a card shows one row per destination,
 and the page follows that row's trains (its destination, and its branch where the card splits the
 destination by branch), not whichever of the line's trains is soonest
-(once the tapped route has no trains left it falls back to the soonest, and the title follows, so the
-title and stop list always name the same train) — its own app bar naming the route (line pill +
+(once the tapped route has no trains left at any of the stop's platforms it falls back to the row's
+soonest, and the title follows, so the title and stop list always name the same train) — its own app bar naming the route (line pill +
 destination, with the branch where the card showed one, "Hainault/Newbury Park") and
 carrying the star (so the long-press is the shortcut, the page the discoverable path), then, heading
 the body, the service's **full name** — "Victoria line", "London Northwestern Railway" — so a short
 pill code is never a puzzle (left off where the pill already is the name: a bus number, DLR), then
 **every upcoming departure on that route** — not the card's first three — on one full-width
 line of countdowns in the card's format (times only; any that don't fit ellipsize off the end, and the
-line is withheld while stale, D4), and the line's **full disruption text**, which the row's inline **⚠** glyph stands
+line is withheld while stale, D4). That is every train the card groups under that destination,
+whichever way round a loop it runs, and the route's trains from the stop's other platforms the same
+way too: the way TfL names, or for National Rail, whose board names none, any (a line TfL names no
+way for is told apart by its platforms alone, so keeps its own) (maintainer, 2026-10-14: a train the card showed was missing from the page, which kept only those
+running the soonest's "via"). **The page is the route's, not the platform's** (maintainer,
+2026-10-15): it follows the route's soonest train from any platform, its stop list and "From" with it,
+so a train moved to another platform is still followed. Its row gone (that platform's last train left,
+or the train moved), it moves to the platform that still has a train on the route, and closes only once
+none does; a row still listed falls back as above. Then the line's **full disruption text**, which the row's inline **⚠** glyph stands
 in for: shown collapsed to its first line, tapped to expand (the same widget the stop-closure card
 uses). A **web link** in an alert — with or without `https://`, as TfL writes them ("visit
 tfl.gov.uk/status-updates") — is underlined and opens in the browser on tap; only http/https links
@@ -1039,6 +1047,9 @@ the list, under the service's name, the body names where the departure leaves fr
 its train is at or the bus's pole letter where TfL gives one ("From King's Cross St. Pancras – Platform
 7", "From Park – Stop K"; maintainer, 2026-10-14): a favorite ride's card holds several stops' trains
 under one heading (*Journeys*), so this page is where a rider finds which stop and platform to go to.
+Where the trains it lists leave from more than one platform, or one listed from another of the
+station's rows has no platform known yet, it names the stop alone: no one platform is theirs, and
+naming the soonest's would send a rider to the wrong one for the rest.
 It shows with or without the list, so a status row, or a list loading, failed or withheld, still says
 which stop the page is about; a stale row names the stop alone, its platform being an old
 prediction's (D4), while a pole's letter, the stop's own, stays. A bus is named only by its pole: TfL's
@@ -1065,7 +1076,8 @@ can't decide it — on a loop both trips pass the same platform. Where the platf
 National Rail train goes the way its board's "via" names**: its board gives no direction and its
 platforms no compass, so a train round a loop to one terminus ("via Wimbledon") keeps the paths
 calling at every station the via names after boarding. The via narrows the path only — it isn't
-shown — and a via no path calls at leaves the list unavailable rather than guessed. **A train TfL shows as "Check Front
+shown, nor does it narrow the trains the page lists — and a via no path calls at leaves the list
+unavailable rather than guessed. **A train TfL shows as "Check Front
 of Train"** keeps TfL's wording on the list, as the platform board has it, but names no place: it
 has no stop list, and a trip or journey counts it only where every way it may run from its platform
 agrees (all pass the rider's stop, at least as far as where they part, or none does); otherwise it's

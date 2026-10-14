@@ -4,6 +4,7 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.PlannedAlert
+import app.stopdash.domain.RouteFocus
 import app.stopdash.domain.TripLeg
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -32,6 +33,24 @@ class BoardRouteTest {
         assertNotNull(row)
         assertEquals(listOf(at(21), at(24), at(42)), row!!.upcoming.map { it.expectedArrival })
         assertNull(row.status)
+    }
+
+    @Test
+    fun `a route gone from its platform is found at another, the same way`() {
+        fun onPlatform(platform: String, destination: String, minutes: Long, direction: String = "outbound") =
+            Departure("jubilee", "Jubilee", direction, destination, platform, at(minutes), "tube")
+        val tapped = NextTrains(jubilee, listOf(onPlatform("Westbound - Platform 13", "Stanmore", 21))).withGroups(now)
+        val key = tapped.groups.single().rows.single().detailKey()
+        // The train moved to Platform 14, and the way back leaves from Platform 15.
+        val moved = NextTrains(
+            jubilee,
+            listOf(onPlatform("Westbound - Platform 14", "Stanmore", 22), onPlatform("Eastbound - Platform 15", "Stanmore", 5, "inbound")),
+        ).withGroups(now)
+        val found = boardRouteOf(moved, key, null, emptySet(), RouteFocus("Stanmore", null), "outbound")
+        assertEquals("Westbound - Platform 14", found.row?.upcoming?.single()?.platform)
+        // Without the route tapped, or once no platform has it, none: the page closes.
+        assertNull(boardRouteOf(moved, key, null, emptySet()).row)
+        assertNull(boardRouteOf(moved, key, null, emptySet(), RouteFocus("Wembley Park", null), "outbound").row)
     }
 
     @Test

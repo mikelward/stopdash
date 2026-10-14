@@ -2,6 +2,8 @@ package app.stopdash.domain
 
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FollowedDepartureTest {
@@ -119,14 +121,182 @@ class FollowedDepartureTest {
     }
 
     @Test
-    fun `a rail route lists only the trains running the followed train's via`() {
+    fun `a rail route lists every train to its terminus, whichever way round it runs`() {
+        // A loop to one terminus both ways round, as the card groups them: the page lists them all, the
+        // stop list following the soonest (maintainer, 2026-10-14).
         fun rail(via: String, inSeconds: Long) =
             Departure("south-western-railway", "SWR", "", "London Waterloo", "Platform 1", now.plusSeconds(inSeconds), "national-rail", via = via)
         val station = row("910GSTATION", rail("North", 60), rail("South", 120), rail("North", 180))
         val untimed = UntimedTrain(rail("South", 240), canceled = true)
         val withUntimed = station.copy(untimed = listOf(untimed, UntimedTrain(rail("North", 300), canceled = true)))
-        assertEquals(listOf(60L, 180L), routeDepartures(withUntimed, null).map { it.expectedArrival.epochSecond - now.epochSecond })
-        assertEquals(listOf("North"), routeUntimed(withUntimed, null).map { it.train.via })
+        assertEquals(listOf(60L, 120L, 180L), routeDepartures(withUntimed, null).map { it.expectedArrival.epochSecond - now.epochSecond })
+        assertEquals(listOf("South", "North"), routeUntimed(withUntimed, null).map { it.train.via })
+        // As many as the card shows on that route, and more.
+        val card = DepartureRows.destinationLines(withUntimed, 3).single()
+        assertTrue(routeDepartures(withUntimed, RouteFocus.of(card)).containsAll(card.times))
+    }
+
+    @Test
+    fun `a route lists its trains on the stop's other platforms too`() {
+        fun rail(destination: String, platform: String?, inSeconds: Long) =
+            Departure("great-example", "Great Example", "", destination, platform, now.plusSeconds(inSeconds), "national-rail")
+        val rows = DepartureRows.across(
+            listOf(
+                StopArrivals(
+                    "910GEXAMPLE",
+                    "Example",
+                    listOf(
+                        rail("Far", "Platform 1", 120), rail("Far", "Platform 1", 600),
+                        // The same terminus from another platform, and from none named yet.
+                        rail("Far", "Platform 3", 300), rail("Far", null, 900),
+                        // The other way, from its own platform.
+                        rail("Near", "Platform 2", 60),
+                    ),
+                    now,
+                    untimed = listOf(UntimedTrain(rail("Far", "Platform 3", 420), canceled = true)),
+                ),
+                // Another stop's train to the same terminus isn't this stop's.
+                StopArrivals("910GOTHER", "Other", listOf(rail("Far", "Platform 1", 200)), now),
+            ),
+            now,
+        )
+        val platform1 = rows.single { it.stopId == "910GEXAMPLE" && it.platform == "1" }
+        val focus = RouteFocus.of(DepartureRows.destinationLines(platform1, 3).single())
+        assertEquals(
+            listOf(120L, 300L, 600L, 900L),
+            routeDepartures(platform1, focus, siblings = rows).map { it.expectedArrival.epochSecond - now.epochSecond },
+        )
+        assertEquals(listOf(420L), routeUntimed(platform1, focus, siblings = rows).map { it.train.expectedArrival.epochSecond - now.epochSecond })
+        // Without them, its own platform's alone, as before.
+        assertEquals(listOf(120L, 600L), routeDepartures(platform1, focus).map { it.expectedArrival.epochSecond - now.epochSecond })
+        // The other platforms' rows are picked out: never itself, another stop's, or another line's.
+        val others = otherPlatforms(platform1, rows + platform1.copy(lineId = "other-line", directionKey = "Platform 9"))
+        assertFalse(platform1 in others)
+        assertTrue(others.all { it.stopId == "910GEXAMPLE" && it.lineId == "great-example" })
+        assertEquals(setOf("2", "3", ""), others.map { it.platform }.toSet())
+    }
+
+    @Test
+    fun `a tapped route gone from its platform is followed at another, before any other route`() {
+        fun rail(destination: String, platform: String, inSeconds: Long) =
+            Departure("great-example", "Great Example", "", destination, platform, now.plusSeconds(inSeconds), "national-rail")
+        val canceled = UntimedTrain(rail("Elsewhere", "Platform 4", 30), canceled = true)
+        val rows = DepartureRows.across(
+            listOf(
+                StopArrivals(
+                    "910GEXAMPLE",
+                    "Example",
+                    // Platform 1 has only Near trains left; Far's leave from Platform 3.
+                    listOf(rail("Near", "Platform 1", 60), rail("Far", "Platform 3", 300), rail("Far", "Platform 3", 600)),
+                    now,
+                    // And a route whose only train left is a canceled one at Platform 4.
+                    untimed = listOf(canceled),
+                ),
+            ),
+            now,
+        )
+        val platform1 = rows.single { it.platform == "1" }
+        val far = RouteFocus("Far", null)
+        assertEquals("Platform 3", followedDeparture(platform1, far, siblings = rows)?.platform)
+        assertEquals(listOf(300L, 600L), routeDepartures(platform1, far, siblings = rows).map { it.expectedArrival.epochSecond - now.epochSecond })
+        // The tapped route's train, never a sooner one of another route.
+        assertEquals("Near", followedDeparture(platform1, RouteFocus("Near", null), siblings = rows)?.destination)
+        // A route left with only a train with no time, at another platform: that train, not the row's.
+        val elsewhere = RouteFocus("Elsewhere", null)
+        assertEquals(canceled.train, followedDeparture(platform1, elsewhere, siblings = rows))
+        assertEquals(listOf(canceled), routeUntimed(platform1, elsewhere, siblings = rows))
+        // Nowhere at the stop: the row's soonest, as before.
+        assertEquals("Near", followedDeparture(platform1, RouteFocus("Gone", null), siblings = rows)?.destination)
+        // Without the stop's other rows, as before too.
+        assertEquals("Near", followedDeparture(platform1, far)?.destination)
+        assertEquals(null, focusedDeparture(platform1, far))
+    }
+
+    @Test
+    fun `the route's soonest train is followed whichever platform it's at`() {
+        fun rail(destination: String, platform: String, inSeconds: Long) =
+            Departure("great-example", "Great Example", "", destination, platform, now.plusSeconds(inSeconds), "national-rail")
+        // A Far train moved to Platform 3, sooner than Platform 1's own.
+        val rows = DepartureRows.across(
+            listOf(StopArrivals("910GEXAMPLE", "Example", listOf(rail("Far", "Platform 1", 600), rail("Far", "Platform 3", 300), rail("Near", "Platform 2", 60)), now)),
+            now,
+        )
+        val platform1 = rows.single { it.platform == "1" }
+        val far = RouteFocus("Far", null)
+        assertEquals("Platform 3", followedDeparture(platform1, far, siblings = rows)?.platform)
+        // Without the other rows, the row's own.
+        assertEquals("Platform 1", followedDeparture(platform1, far)?.platform)
+        assertEquals("Platform 1", focusedDeparture(platform1, far)?.platform)
+    }
+
+    @Test
+    fun `a route's page moves to the platform it still leaves from, and closes once none does`() {
+        fun rail(destination: String, platform: String, inSeconds: Long) =
+            Departure("great-example", "Great Example", "", destination, platform, now.plusSeconds(inSeconds), "national-rail")
+        // Platform 1's row is gone; Far still leaves from Platforms 3 and 4.
+        val rows = DepartureRows.across(
+            listOf(
+                StopArrivals("910GEXAMPLE", "Example", listOf(rail("Far", "Platform 4", 600), rail("Far", "Platform 3", 300), rail("Near", "Platform 2", 60)), now),
+                StopArrivals("910GOTHER", "Other", listOf(rail("Far", "Platform 1", 30)), now),
+            ),
+            now,
+        )
+        val far = RouteFocus("Far", null)
+        // The platform with its soonest train, at its own stop, never another stop's.
+        assertEquals("3", routeAnchor(rows, "910GEXAMPLE", "great-example", "", far)?.platform)
+        // Its trains all gone: none, so the page closes.
+        assertEquals(null, routeAnchor(rows, "910GEXAMPLE", "great-example", "", RouteFocus("Gone", null)))
+        // Another line's or another way's rows are never it.
+        assertEquals(null, routeAnchor(rows, "910GEXAMPLE", "other-line", "", far))
+        assertEquals(null, routeAnchor(rows, "910GEXAMPLE", "great-example", "outbound", far))
+        // A tube line TfL names no way for is told apart by its platform alone: no other platform is its.
+        val circle = DepartureRows.across(
+            listOf(
+                StopArrivals(
+                    "940GZZLUBST",
+                    "Baker Street",
+                    listOf(Departure("circle", "Circle", "", "Edgware Road (Circle Line)", "Eastbound - Platform 6", now.plusSeconds(60), "tube")),
+                    now,
+                ),
+            ),
+            now,
+        )
+        assertEquals(null, routeAnchor(circle, "940GZZLUBST", "circle", "", RouteFocus("Edgware Road (Circle Line)", null)))
+    }
+
+    @Test
+    fun `a route's trains on another platform the other way are never its own`() {
+        // A Circle line platform each way round, both trains "to Edgware Road": the way TfL names keeps them apart.
+        fun circle(direction: String, platform: String, inSeconds: Long) =
+            Departure("circle", "Circle", direction, "Edgware Road (Circle Line)", platform, now.plusSeconds(inSeconds), "tube")
+        val rows = DepartureRows.across(
+            listOf(
+                StopArrivals(
+                    "940GZZLUBST",
+                    "Baker Street",
+                    listOf(circle("outbound", "Westbound - Platform 5", 120), circle("inbound", "Eastbound - Platform 6", 60)),
+                    now,
+                ),
+            ),
+            now,
+        )
+        val westbound = rows.single { it.direction == "outbound" }
+        assertEquals(listOf(120L), routeDepartures(westbound, null, siblings = rows).map { it.expectedArrival.epochSecond - now.epochSecond })
+        // TfL leaving the way off both: each platform is its own way, so neither takes the other's.
+        val wayless = DepartureRows.across(
+            listOf(
+                StopArrivals(
+                    "940GZZLUBST",
+                    "Baker Street",
+                    listOf(circle("", "Westbound - Platform 5", 120), circle("", "Eastbound - Platform 6", 60)),
+                    now,
+                ),
+            ),
+            now,
+        )
+        val platform5 = wayless.single { it.platform == "5" }
+        assertEquals(emptyList<DepartureRow>(), otherPlatforms(platform5, wayless))
+        assertEquals(listOf(120L), routeDepartures(platform5, null, siblings = wayless).map { it.expectedArrival.epochSecond - now.epochSecond })
     }
 
     @Test
