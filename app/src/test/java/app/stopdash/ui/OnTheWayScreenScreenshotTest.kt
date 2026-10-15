@@ -64,6 +64,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.After
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -81,6 +83,45 @@ import org.robolectric.annotation.GraphicsMode
 class OnTheWayScreenScreenshotTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+    // Every test fails if the screen wrote state off the test thread: a screen whose coroutine was carried
+    // onto another thread draws frames there too, racing the test thread's own, however rarely that loses.
+    private val writtenOff = java.util.Collections.synchronizedList(ArrayList<String>())
+    private var writes: androidx.compose.runtime.snapshots.ObserverHandle? = null
+
+    @Before
+    fun watchWrites() {
+        val testThread = Thread.currentThread()
+        writes = androidx.compose.runtime.snapshots.Snapshot.registerGlobalWriteObserver {
+            if (Thread.currentThread() !== testThread) writtenOff += Thread.currentThread().name
+        }
+    }
+
+    @After
+    fun noWritesOffTheTestThread() {
+        writes?.dispose()
+        assertEquals("state written off the test thread", emptyList<String>(), writtenOff.toList())
+    }
+
+    /**
+     * The screen's worker, held at will and released on the test thread. A real thread would do as a gate, but
+     * the rule's dispatcher is unconfined, so the screen's coroutine carried on there once the work was done: it
+     * wrote the screen's state, and at times drew a whole frame, on that thread, racing the test thread's own
+     * ("performMeasureAndLayout called during measure layout"). Held, work waits in [queue]; [release] runs it
+     * here, as does any work handed over after, until it's held again.
+     */
+    private class HeldWorker(heldAtFirst: Boolean = false) {
+        val queue = java.util.concurrent.ConcurrentLinkedQueue<Runnable>()
+        private var held = heldAtFirst
+        val dispatcher = java.util.concurrent.Executor { work -> if (this.held) queue += work else work.run() }.asCoroutineDispatcher()
+        fun hold() {
+            held = true
+        }
+        fun release() {
+            held = false
+            while (true) (queue.poll() ?: break).run()
+        }
+    }
 
     private val now: Instant = Instant.parse("2026-09-26T07:02:00Z")
     private fun at(minutes: Long): Instant = now.plus(Duration.ofMinutes(minutes))
@@ -898,66 +939,51 @@ class OnTheWayScreenScreenshotTest {
         // The board's row and its status are worked out on the screen's worker, never in composition (AGENTS.md
         // *Main thread: read and dispatch only*): with the worker held at its gate, the page shows its placeholder;
         // let go, the route comes in.
-        val gate = java.util.concurrent.CountDownLatch(1)
-        val thread = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
-        val worker = java.util.concurrent.Executor { work -> thread.execute { gate.await(); work.run() } }.asCoroutineDispatcher()
-        try {
-            composeRule.setContent {
-                StopDashTheme(dynamicColor = false) {
-                    CompositionLocalProvider(LocalWorker provides worker) {
-                        OnTheWayScreen(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), false, now, {}, {}, nextTrains = stanmoreBoard(21))
-                    }
+        val worker = HeldWorker(heldAtFirst = true)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalWorker provides worker.dispatcher) {
+                    OnTheWayScreen(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), false, now, {}, {}, nextTrains = stanmoreBoard(21))
                 }
             }
-            composeRule.onNodeWithText("Stanmore").performClick()
-            composeRule.waitForIdle()
-            // Up at once, headed by the line's pill, while the row is found (Codex, #844).
-            composeRule.onNodeWithTag("onTheWayRoutePending").assertExists()
-            composeRule.onNode(androidx.compose.ui.test.hasContentDescription(string(app.stopdash.R.string.action_back)) and onRoutePage).assertExists()
-            gate.countDown()
-            awaitRoutePage()
-        } finally {
-            gate.countDown()
-            thread.shutdownNow()
         }
+        composeRule.onNodeWithText("Stanmore").performClick()
+        composeRule.waitForIdle()
+        // Up at once, headed by the line's pill, while the row is found (Codex, #844).
+        composeRule.onNodeWithTag("onTheWayRoutePending").assertExists()
+        composeRule.onNode(androidx.compose.ui.test.hasContentDescription(string(app.stopdash.R.string.action_back)) and onRoutePage).assertExists()
+        worker.release()
+        awaitRoutePage()
     }
 
     @Test
     fun a_line_newly_disrupted_never_reads_clean_while_its_row_is_worked_out_again() {
         // The check finds the line disrupted while the page is open: until the row is worked out with that status,
         // the page says it's checking, never "No disruptions reported" from the row of the last (Codex, #844).
-        val gated = java.util.concurrent.atomic.AtomicBoolean(false)
-        val gate = java.util.concurrent.CountDownLatch(1)
-        val thread = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
-        val worker = java.util.concurrent.Executor { work -> thread.execute { if (gated.get()) gate.await(); work.run() } }.asCoroutineDispatcher()
+        val worker = HeldWorker()
         var checks by mutableStateOf(checked(LineStatus("jubilee", LineStatus.GOOD_SERVICE, "Good Service")))
-        try {
-            composeRule.setContent {
-                StopDashTheme(dynamicColor = false) {
-                    CompositionLocalProvider(LocalWorker provides worker) {
-                        OnTheWayScreen(
-                            trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), false, now, {}, {},
-                            nextTrains = stanmoreBoard(21), lineChecks = checks,
-                        )
-                    }
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalWorker provides worker.dispatcher) {
+                    OnTheWayScreen(
+                        trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), false, now, {}, {},
+                        nextTrains = stanmoreBoard(21), lineChecks = checks,
+                    )
                 }
             }
-            composeRule.onNodeWithText("Stanmore").performClick()
-            awaitRoutePage()
-            val clean = hasText(string(app.stopdash.R.string.route_detail_no_disruption)) and onRoutePage
-            composeRule.waitUntil(10_000) { composeRule.onAllNodes(clean).fetchSemanticsNodes().isNotEmpty() }
-            gated.set(true)
-            checks = checked(LineStatus("jubilee", 9, "Minor Delays"))
-            composeRule.waitForIdle()
-            composeRule.onNode(clean).assertDoesNotExist()
-            composeRule.onNode(hasText(string(app.stopdash.R.string.disruptions_checking)) and onRoutePage).assertExists()
-            gate.countDown()
-            composeRule.waitUntil(10_000) { composeRule.onAllNodes(hasText("Minor Delays") and onRoutePage).fetchSemanticsNodes().isNotEmpty() }
-            composeRule.onNode(hasText(string(app.stopdash.R.string.disruptions_checking)) and onRoutePage).assertDoesNotExist()
-        } finally {
-            gate.countDown()
-            thread.shutdownNow()
         }
+        composeRule.onNodeWithText("Stanmore").performClick()
+        awaitRoutePage()
+        val clean = hasText(string(app.stopdash.R.string.route_detail_no_disruption)) and onRoutePage
+        composeRule.waitUntil(10_000) { composeRule.onAllNodes(clean).fetchSemanticsNodes().isNotEmpty() }
+        worker.hold()
+        checks = checked(LineStatus("jubilee", 9, "Minor Delays"))
+        composeRule.waitForIdle()
+        composeRule.onNode(clean).assertDoesNotExist()
+        composeRule.onNode(hasText(string(app.stopdash.R.string.disruptions_checking)) and onRoutePage).assertExists()
+        worker.release()
+        composeRule.waitUntil(10_000) { composeRule.onAllNodes(hasText("Minor Delays") and onRoutePage).fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNode(hasText(string(app.stopdash.R.string.disruptions_checking)) and onRoutePage).assertDoesNotExist()
     }
 
     @Test
@@ -1712,35 +1738,27 @@ class OnTheWayScreenScreenshotTest {
     fun the_trip_screens_arrival_goes_over_the_route_on_the_worker() {
         // With the worker held, the trip screen shows no arrival: the legs ahead are summed there, never
         // in composition. Released, it shows, and a new prediction times it at once (Codex, #526).
-        val threads = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
-        val worker = threads.asCoroutineDispatcher()
-        val gate = java.util.concurrent.CountDownLatch(1)
-        threads.execute { gate.await() }
+        val worker = HeldWorker(heldAtFirst = true)
         val last = trip.copy(legIndex = 2, boarded = true, onBoardSeen = true)
         var progress by androidx.compose.runtime.mutableStateOf<TripProgress>(TripProgress.Riding(jubilee, "Canning Town", 2, at(31), getOffSoon = false))
-        try {
-            composeRule.setContent {
-                StopDashTheme(dynamicColor = false) {
-                    androidx.compose.runtime.CompositionLocalProvider(LocalWorker provides worker) {
-                        OnTheWayScreen(last, progress, false, now, {}, {})
-                    }
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalWorker provides worker.dispatcher) {
+                    OnTheWayScreen(last, progress, false, now, {}, {})
                 }
             }
-            composeRule.waitForIdle()
-            composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertDoesNotExist()
-            gate.countDown()
-            composeRule.waitUntil(timeoutMillis = 5_000) {
-                composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("onTheWayEta"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
-            }
-            composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertTextEquals("31 min · ~08:33")
-            // The same leg, a new prediction: timed at once from what's held.
-            progress = TripProgress.Riding(jubilee, "Canning Town", 2, at(35), getOffSoon = false)
-            composeRule.waitForIdle()
-            composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertTextEquals("35 min · ~08:37")
-        } finally {
-            gate.countDown()
-            worker.close()
         }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertDoesNotExist()
+        worker.release()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("onTheWayEta"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertTextEquals("31 min · ~08:33")
+        // The same leg, a new prediction: timed at once from what's held.
+        progress = TripProgress.Riding(jubilee, "Canning Town", 2, at(35), getOffSoon = false)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertTextEquals("35 min · ~08:37")
     }
 
     @Test
@@ -1944,146 +1962,122 @@ class OnTheWayScreenScreenshotTest {
     fun a_held_arrival_goes_once_what_its_timed_from_has_gone_by() {
         // A walk's end passes while the worker is held: the arrival timed from it goes, as one worked
         // out at the live clock would, though the arrival itself is still to come (Codex, #526).
-        val threads = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
-        val worker = threads.asCoroutineDispatcher()
-        val gate = java.util.concurrent.CountDownLatch(1)
+        val worker = HeldWorker()
         val state = OnTheWayBannerState(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), now) {}
         var clock by androidx.compose.runtime.mutableStateOf(now)
-        try {
-            composeRule.setContent {
-                StopDashTheme(dynamicColor = false) {
-                    androidx.compose.runtime.CompositionLocalProvider(LocalWorker provides worker) {
-                        OnTheWayBanner(state, clock)
-                    }
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalWorker provides worker.dispatcher) {
+                    OnTheWayBanner(state, clock)
                 }
             }
-            composeRule.waitUntil(timeoutMillis = 5_000) {
-                composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("onTheWayEta"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
-            }
-            threads.execute { gate.await() }
-            clock = at(25)
-            composeRule.waitForIdle()
-            composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertDoesNotExist()
-        } finally {
-            gate.countDown()
-            worker.close()
         }
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("onTheWayEta"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        worker.hold()
+        clock = at(25)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertDoesNotExist()
     }
 
     @Test
     fun the_pinned_cards_arrival_is_worked_out_on_the_worker() {
-        // The worker on a thread of its own, held shut: worked out in composition, the arrival would
-        // show anyway (Codex, #526).
+        // The worker held shut: worked out in composition, the arrival would show anyway (Codex, #526).
         // Its queue seen, so a tick that ran the work again would show (Codex, #526).
-        val threads = java.util.concurrent.ThreadPoolExecutor(1, 1, 0, java.util.concurrent.TimeUnit.MILLISECONDS, java.util.concurrent.LinkedBlockingQueue()) { Thread(it, "test-worker") }
-        val worker = threads.asCoroutineDispatcher()
-        // Every hold on the worker, all released in the end, so a failed assertion never leaves it stuck.
-        val gates = List(3) { java.util.concurrent.CountDownLatch(1) }
-        val (gate, again, late) = gates
-        threads.execute { gate.await() }
+        val worker = HeldWorker(heldAtFirst = true)
         // On the last ride, its train placed: an arrival to show.
         val last = trip.copy(legIndex = 2, boarded = true, onBoardSeen = true)
         var state by androidx.compose.runtime.mutableStateOf(
             OnTheWayBannerState(last, TripProgress.Riding(jubilee, "Canning Town", 2, at(31), getOffSoon = false), now) {},
         )
         var clock by androidx.compose.runtime.mutableStateOf(now)
-        try {
-            composeRule.setContent {
-                StopDashTheme(dynamicColor = false) {
-                    androidx.compose.runtime.CompositionLocalProvider(LocalWorker provides worker) {
-                        OnTheWayBanner(state, clock)
-                    }
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalWorker provides worker.dispatcher) {
+                    OnTheWayBanner(state, clock)
                 }
             }
-            composeRule.waitForIdle()
-            // The card is tapped as one, so its rows are found in the unmerged tree.
-            // Its words are worked out there too, shortening places (Codex, #526): until then, the card
-            // shows without them.
-            composeRule.onNodeWithTag("onTheWayBanner").assertExists()
-            composeRule.onNodeWithText("To Canary Wharf", useUnmergedTree = true).assertDoesNotExist()
-            composeRule.onAllNodes(androidx.compose.ui.test.hasText("Ride to", substring = true), useUnmergedTree = true).assertCountEquals(0)
-            // A placeholder meanwhile, never a blank card.
-            composeRule.onNodeWithText("On the way", useUnmergedTree = true).assertExists()
-            // With none of the step's details, which would read without the step they belong to (Codex, #526).
-            composeRule.onAllNodes(androidx.compose.ui.test.hasText(" min · ", substring = true), useUnmergedTree = true).assertCountEquals(0)
-            composeRule.onAllNodes(androidx.compose.ui.test.hasText("stop", substring = true, ignoreCase = true), useUnmergedTree = true).assertCountEquals(0)
-            composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertDoesNotExist()
-            gate.countDown()
-            composeRule.waitUntil(timeoutMillis = 5_000) {
-                composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("onTheWayEta"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
-            }
-            composeRule.onNodeWithText("To Canary Wharf", useUnmergedTree = true).assertExists()
-            composeRule.onAllNodes(androidx.compose.ui.test.hasText("Ride to", substring = true), useUnmergedTree = true).assertCountEquals(1)
+        }
+        composeRule.waitForIdle()
+        // The card is tapped as one, so its rows are found in the unmerged tree.
+        // Its words are worked out there too, shortening places (Codex, #526): until then, the card
+        // shows without them.
+        composeRule.onNodeWithTag("onTheWayBanner").assertExists()
+        composeRule.onNodeWithText("To Canary Wharf", useUnmergedTree = true).assertDoesNotExist()
+        composeRule.onAllNodes(androidx.compose.ui.test.hasText("Ride to", substring = true), useUnmergedTree = true).assertCountEquals(0)
+        // A placeholder meanwhile, never a blank card.
+        composeRule.onNodeWithText("On the way", useUnmergedTree = true).assertExists()
+        // With none of the step's details, which would read without the step they belong to (Codex, #526).
+        composeRule.onAllNodes(androidx.compose.ui.test.hasText(" min · ", substring = true), useUnmergedTree = true).assertCountEquals(0)
+        composeRule.onAllNodes(androidx.compose.ui.test.hasText("stop", substring = true, ignoreCase = true), useUnmergedTree = true).assertCountEquals(0)
+        composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertDoesNotExist()
+        worker.release()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("onTheWayEta"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("To Canary Wharf", useUnmergedTree = true).assertExists()
+        composeRule.onAllNodes(androidx.compose.ui.test.hasText("Ride to", substring = true), useUnmergedTree = true).assertCountEquals(1)
 
-            // A minute on with the worker held, still fresh: the held card counts down with the live clock,
-            // never frozen at its frame's time (Codex, #526).
-            // Holding it before anything's checked: the hold itself waits in the queue until the thread takes it.
-            val holding = java.util.concurrent.CountDownLatch(1)
-            threads.execute {
-                holding.countDown()
-                late.await()
-            }
-            assertTrue(holding.await(5, java.util.concurrent.TimeUnit.SECONDS))
-            fun eta() = composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).fetchSemanticsNode()
-                .config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString()
-            val before = eta()
-            clock = now.plusSeconds(60)
-            composeRule.waitForIdle()
-            assertNotEquals(before, eta())
-            // Nor is the frame worked out again for a tick: nothing in it changes with the clock (Codex, #526).
-            assertTrue(threads.queue.isEmpty())
-            // The live state withdraws its answer (a failed refresh): the held card isn't current either.
-            val held = state
-            state = OnTheWayBannerState(last, TripProgress.Riding(jubilee, "Canning Town", 2, at(31), getOffSoon = false), null) {}
-            composeRule.waitForIdle()
-            composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertDoesNotExist()
-            state = held
-            composeRule.waitForIdle()
-            // The clock moves past the answer's freshness while the worker is held: the held card is judged
-            // against the live clock, so its TfL-placed arrival is held back, not shown as current (Codex, #526).
-            clock = now.plusSeconds(120)
-            composeRule.waitForIdle()
-            composeRule.onNodeWithText("To Canary Wharf", useUnmergedTree = true).assertExists()
-            composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertDoesNotExist()
-            // A fresh update comes in, still held, its prediction changed (a stop more, due later): the card
-            // shows it at once, timed from the live state, never the frame's older prediction and never
-            // blinking to the placeholder (Codex, #526).
-            state = OnTheWayBannerState(last, TripProgress.Riding(jubilee, "Canning Town", 3, at(35), getOffSoon = false), now.plusSeconds(120)) {}
-            composeRule.waitForIdle()
-            composeRule.onNodeWithText("To Canary Wharf", useUnmergedTree = true).assertExists()
-            composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertExists()
-            assertTrue(eta(), eta().contains("08:37"))
-            composeRule.onAllNodes(androidx.compose.ui.test.hasText("3 stops", substring = true), useUnmergedTree = true).assertCountEquals(1)
-            // Nor is the frame worked out again for it: the same step's words and legs ahead (Codex, #526).
-            assertTrue(threads.queue.isEmpty())
-            // TfL withdraws the time: the card keeps its words, only the arrival goes, never back to the
-            // placeholder (Codex, #526).
-            state = OnTheWayBannerState(last, TripProgress.Riding(jubilee, "Canning Town", 3, null, getOffSoon = false), now.plusSeconds(120)) {}
-            composeRule.waitForIdle()
-            composeRule.onNodeWithText("To Canary Wharf", useUnmergedTree = true).assertExists()
-            composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertDoesNotExist()
-            state = OnTheWayBannerState(last, TripProgress.Riding(jubilee, "Canning Town", 3, at(35), getOffSoon = false), now.plusSeconds(120)) {}
-            late.countDown()
-            clock = now
-            composeRule.waitUntil(timeoutMillis = 5_000) {
-                composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("onTheWayEta"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
-            }
+        // A minute on with the worker held, still fresh: the held card counts down with the live clock,
+        // never frozen at its frame's time (Codex, #526).
+        worker.hold()
+        fun eta() = composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).fetchSemanticsNode()
+            .config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString()
+        val before = eta()
+        clock = now.plusSeconds(60)
+        composeRule.waitForIdle()
+        assertNotEquals(before, eta())
+        // Nor is the frame worked out again for a tick: nothing in it changes with the clock (Codex, #526).
+        assertTrue(worker.queue.isEmpty())
+        // The live state withdraws its answer (a failed refresh): the held card isn't current either.
+        val held = state
+        state = OnTheWayBannerState(last, TripProgress.Riding(jubilee, "Canning Town", 2, at(31), getOffSoon = false), null) {}
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertDoesNotExist()
+        state = held
+        composeRule.waitForIdle()
+        // The clock moves past the answer's freshness while the worker is held: the held card is judged
+        // against the live clock, so its TfL-placed arrival is held back, not shown as current (Codex, #526).
+        clock = now.plusSeconds(120)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("To Canary Wharf", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertDoesNotExist()
+        // A fresh update comes in, still held, its prediction changed (a stop more, due later): the card
+        // shows it at once, timed from the live state, never the frame's older prediction and never
+        // blinking to the placeholder (Codex, #526).
+        state = OnTheWayBannerState(last, TripProgress.Riding(jubilee, "Canning Town", 3, at(35), getOffSoon = false), now.plusSeconds(120)) {}
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("To Canary Wharf", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertExists()
+        assertTrue(eta(), eta().contains("08:37"))
+        composeRule.onAllNodes(androidx.compose.ui.test.hasText("3 stops", substring = true), useUnmergedTree = true).assertCountEquals(1)
+        // Nor is the frame worked out again for it: the same step's words and legs ahead (Codex, #526).
+        assertTrue(worker.queue.isEmpty())
+        // TfL withdraws the time: the card keeps its words, only the arrival goes, never back to the
+        // placeholder (Codex, #526).
+        state = OnTheWayBannerState(last, TripProgress.Riding(jubilee, "Canning Town", 3, null, getOffSoon = false), now.plusSeconds(120)) {}
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("To Canary Wharf", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertDoesNotExist()
+        state = OnTheWayBannerState(last, TripProgress.Riding(jubilee, "Canning Town", 3, at(35), getOffSoon = false), now.plusSeconds(120)) {}
+        worker.release()
+        clock = now
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("onTheWayEta"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
 
-            // Another trip while the worker is held again (a new trip, another route): the last trip's
-            // card doesn't stand in for it; the new one shows without a time until its own is in (Codex, #526).
-            threads.execute { again.await() }
-            val other = ActiveTrip(TripRoute(listOf(mildmay)), "Stratford", startedAt = now, legIndex = 0, vehicleId = "EXAMPLE")
-            state = OnTheWayBannerState(other, TripProgress.Waiting(mildmay, at(4)), now) {}
-            composeRule.waitForIdle()
-            composeRule.onNodeWithText("To Canary Wharf", useUnmergedTree = true).assertDoesNotExist()
-            composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertDoesNotExist()
-            again.countDown()
-            composeRule.waitUntil(timeoutMillis = 5_000) {
-                composeRule.onAllNodes(androidx.compose.ui.test.hasText("To Stratford"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
-            }
-        } finally {
-            gates.forEach { it.countDown() }
-            worker.close()
+        // Another trip while the worker is held again (a new trip, another route): the last trip's
+        // card doesn't stand in for it; the new one shows without a time until its own is in (Codex, #526).
+        worker.hold()
+        val other = ActiveTrip(TripRoute(listOf(mildmay)), "Stratford", startedAt = now, legIndex = 0, vehicleId = "EXAMPLE")
+        state = OnTheWayBannerState(other, TripProgress.Waiting(mildmay, at(4)), now) {}
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("To Canary Wharf", useUnmergedTree = true).assertDoesNotExist()
+        composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertDoesNotExist()
+        worker.release()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodes(androidx.compose.ui.test.hasText("To Stratford"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         }
     }
 
