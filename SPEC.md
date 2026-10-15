@@ -588,8 +588,10 @@ The app finds stops two ways:
   row opens a small menu, pinning or unpinning it and **"Hide all ‹group› services"** (a bare "Hide
   Train" read as hiding that one train); a long press on a place's header offers it for each group
   it serves. Starring a near-me row therefore takes the
-  menu's first item. Journey cards keep a long press as a direct star, since a favorite journey is
-  the user's explicit choice and hiding doesn't reach it.
+  menu's first item. Journey cards keep these hides out, since a favorite journey is the user's
+  explicit choice and hiding doesn't reach it: a long press on the line it was saved on pins
+  directly, and one on another of its lines offers only the ride's own hide (*Journeys → Hiding a
+  line from a ride*).
   A hidden mode's stops aren't picked for the near-me set, so they cost no request; a place that also
   serves other modes keeps them, with the hidden mode's rows left out, and the widget leaves them
   out too. With National Rail hidden, such a place's National Rail board isn't asked for either,
@@ -1292,6 +1294,22 @@ destination label*): in full, then both with their common words shortened (*Inte
 in an even share of the line (the shorter keeping all it needs), so neither is lost to the other's
 length. A
 stop's platform shortens with them ("Platform 7" → "Plat 7"); a pole's letter never does.
+
+**Hiding a line from a ride** (maintainer, 2026-10-15). A ride counts every line that stops within
+the rider's max walk of its far end, which can offer one a better line beats: a bus that leaves the
+rider a long walk short of a station a train from the same origin reaches. Another ride's long walk
+from its only direct bus is the trip the rider takes, and that walk can be the longer of the two, so
+no one distance for every ride, whether a walk time or a radius, tells them apart: the rider decides,
+ride by ride. (A distance of each ride's own would, and is an open question, `TODO.md`.) A long press on a row of a ride's card, on any line but the one it was saved on, opens a menu: pin the
+row, or **Hide ‹line› on this ride**. That leaves the line off the ride both ways, on its card in the
+list, in its own view, in the widget's pins for it and in its alerts, and offers Undo for a moment
+("‹line› hidden on this ride"). The ride's own view lists its hidden lines under **Hidden on this
+ride**, each with a **Show**. The line it was saved on can't be hidden: its route places the ride's
+stops, and its status and alerts are the ride's own, so a long press there pins at once, as it always
+did. The hides are saved with the ride, on the device and in its backup, and reach nothing else: the
+near-me list, trips and the hidden lines of *Hiding a mode* are untouched. A hide or Show that can't
+be saved says so. Choosing a ride's lines when it's added, and the same choice for a trip's *Direct*
+section, are to come (`TODO.md`).
 
 A journey more than **a mile from both ends** of the rider's fix is **held back** (maintainer,
 2026-09-24): the foot of the list, below the farther cards, has a **Faraway favorites** button, and

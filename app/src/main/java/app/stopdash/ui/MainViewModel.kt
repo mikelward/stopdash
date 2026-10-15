@@ -393,8 +393,13 @@ class MainViewModel(
         // Each journey's ends as the list names them ([WidgetJourneysReport.names]).
         names: Map<String, Pair<String, String>> = emptyMap(),
     ) {
+        setWidgetJourneys(WidgetJourneysReport(keys, checks, shownFrom, boarding, order, names))
+    }
+
+    /** The journey cards' latest [report] for the widget, every field of it ([WidgetJourneys.apply]). */
+    fun setWidgetJourneys(report: WidgetJourneysReport) {
         // Compared with what was written last on the worker, as it walks every journey ([writeWidgetJourneys]).
-        widgetJourneysReport = WidgetJourneysReport(keys, checks, shownFrom, boarding, order, names)
+        widgetJourneysReport = report
         writeWidgetJourneys()
     }
 

@@ -228,6 +228,17 @@
          stops avoiding it (maintainer, 2026-10-01). The argument names the line as it reads alone
          ("Northern line", "134"). -->
     <string name="avoid_line">Avoid %1$s</string>
+    <!-- TODO: translate -->
+    <!-- A favorite ride's long-press item leaving this line off that ride's cards, both ways, until
+         shown again from the ride's own view (maintainer, 2026-10-15). The argument names the line as
+         it reads alone ("Northern line", "134"). -->
+    <string name="hide_line_from_ride" tools:ignore="MissingTranslation">Hide %1$s on this ride</string>
+    <!-- TODO: translate -->
+    <!-- Snackbar just after that hide, with Undo; the argument names the line ("134"). -->
+    <string name="ride_line_hidden" tools:ignore="MissingTranslation">%1$s hidden on this ride</string>
+    <!-- TODO: translate -->
+    <!-- Heads the lines hidden from a favorite ride in its own view, each with a Show button. -->
+    <string name="ride_hidden_lines_title" tools:ignore="MissingTranslation">Hidden on this ride</string>
     <!-- Screen-reader label for the long press that opens that menu. -->
     <string name="more_actions">Options</string>
     <!-- One-line banner over the near-me list while modes are hidden; the argument lists them
@@ -688,7 +699,8 @@
     <string name="journey_alerts_window_invalid">End must be after start</string>
     <string name="journey_alerts_window_taken">Already set</string>
     <string name="journey_alerts_save">Save</string>
-    <!-- A change on a journey's alerts screen couldn't be saved (a disk error). -->
+    <!-- A change on a journey's alerts screen, or a line hidden from a ride or shown again, couldn't
+         be saved (a disk error). -->
     <string name="journey_alerts_write_failed">Couldn\'t save that change</string>
     <!-- Toast when a change to a journey's alerts couldn't be saved after the rider had left its screens. -->
     <string name="journey_alerts_write_failed_away">Couldn\'t save ride alerts</string>

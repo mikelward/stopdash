@@ -9,6 +9,7 @@ import androidx.work.WorkManager
 import androidx.work.testing.WorkManagerTestInitHelper
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.FavoriteJourneysStore
+import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.JourneyAlertSchedule
 import app.stopdash.domain.JourneyAlerts
 import app.stopdash.domain.JourneyEnd
@@ -503,6 +504,22 @@ class JourneyAlertChecksTest {
         val other = journey.copy(lineId = "${journey.lineId}-other")
         runBlocking { JourneyAlertChecks.sync(context, listOf(other), JourneyAlerts.defaultsFor(other), mid.toInstant(), io = io) }
         assertTrue(!stillApplies(before, read, listOf(journey), both, mid.toInstant()))
+    }
+
+    @Test
+    fun a_line_hidden_from_the_ride_while_a_check_was_out_counts_as_changed() {
+        val mid = LocalDateTime.of(2026, 10, 5, 9, 0).atZone(ZoneId.systemDefault())
+        val both = JourneyAlerts.defaultsFor(journey)
+        runBlocking { JourneyAlertChecks.sync(context, listOf(journey), both, mid.toInstant(), io = io) }
+        val read = JourneyAlertChecks.watches(listOf(journey), both, mid).getValue(journey.key)
+        val before = JourneyAlertChecks.syncs()
+        // Another line hidden from the ride after the check read it: its answer asked about that line.
+        val hiding = journey.copy(hiddenLines = setOf(HiddenModes.lineKey("bus-x", "X1")))
+        runBlocking { JourneyAlertChecks.sync(context, listOf(hiding), both, mid.toInstant(), io = io) }
+        assertTrue(!stillApplies(before, read, listOf(journey), both, mid.toInstant()))
+        // Read with the hide, the check still applies.
+        val now = JourneyAlertChecks.syncs()
+        assertTrue(stillApplies(now, JourneyAlertChecks.watches(listOf(hiding), both, mid).getValue(journey.key), listOf(hiding), both, mid.toInstant()))
     }
 
     @Test

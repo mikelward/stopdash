@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
@@ -197,7 +199,7 @@ import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.UntimedTrain
 import app.stopdash.domain.UsageEvent
-import app.stopdash.domain.WidgetJourneyCheck
+import app.stopdash.domain.WidgetJourneysReport
 import app.stopdash.domain.abbreviateBranch
 import app.stopdash.domain.cleanDisruptionBody
 import app.stopdash.domain.focusedDeparture
@@ -301,6 +303,12 @@ fun MainScreen(
     // [pendingTracker] is, so a return to it draws them at once. It follows [listKey] too.
     listWork: ListWork = remember(listKey) { ListWork() },
     onToggleJourney: ((FavoriteJourney) -> Unit)? = null,
+    // Hides a line from a ride (its entry, true) or shows it again (false), saved with the ride (SPEC
+    // *Hiding a line from a ride*); null (not read yet, or unreadable) offers neither.
+    onSetRideLineHidden: ((FavoriteJourney, String, Boolean) -> Unit)? = null,
+    // A hide or show that couldn't be saved: said once, then [onRideLineWriteFailureShown].
+    rideLineWriteFailed: Boolean = false,
+    onRideLineWriteFailureShown: () -> Unit = {},
     // Dismisses the route page's tip on starring a journey; null (dismissed, or not read yet) hides it.
     onDismissJourneyTip: (() -> Unit)? = null,
     // The journeys' far ends as shown, reported so their closures are checked; and those checks, as
@@ -325,15 +333,9 @@ fun MainScreen(
     // The favorite journeys' keys and each placed journey's latest check (the departures found to call
     // at its far end), for the widget to pin (it can't load route data itself), their order in the
     // list, nearest first, and their ends' names; reported whenever they change. The ViewModel keeps
-    // what they add up to.
-    onWidgetJourneys: (
-        Set<String>,
-        List<WidgetJourneyCheck>,
-        Map<String, String>,
-        Map<String, Set<String>>,
-        List<String>,
-        Map<String, Pair<String, String>>,
-    ) -> Unit = { _, _, _, _, _, _ -> },
+    // what they add up to. Handed over whole, so no field of it is dropped on the way (a ride's hidden
+    // lines were, Codex on #874).
+    onWidgetJourneys: (WidgetJourneysReport) -> Unit = {},
     // Whether [journeys] is the saved list yet: until it is, nothing is reported for the widget, so
     // a list still loading isn't taken for "no journeys" and unpins them.
     journeysKnown: Boolean = true,
@@ -474,6 +476,15 @@ fun MainScreen(
         onUnhide = onSetModeGroupShown?.let { setShown -> { entry: String -> setShown(ModeGroups.of(entry), true) } },
         host = snackbarHostState,
     )
+    // A ride's long-press hide offers Undo the same way, for that line on that ride (SPEC *Hiding a line
+    // from a ride*); its own view's Show brings one back later.
+    val hideRideLine = rememberRideLineHideWithUndo(onSetRideLineHidden, snackbarHostState)
+    val currentSetRideLineHidden by rememberUpdatedState(onSetRideLineHidden)
+    val showAnyRideLine = remember {
+        val show: (FavoriteJourney, String) -> Unit = { journey, entry -> currentSetRideLineHidden?.invoke(journey, entry, false) }
+        show
+    }
+    val showRideLine = showAnyRideLine.takeIf { onSetRideLineHidden != null }
     // Overflow-menu and About-dialog visibility. Saved so an open dialog survives rotation.
     var showAbout by rememberSaveable { mutableStateOf(false) }
     // National Rail ticked with no key set: asks for one first ([RailKeyDialog]).
@@ -1043,7 +1054,7 @@ fun MainScreen(
     val cardsJudged = shown != null && shown.journeys === cardJourneys
     val cardReportsCurrent = listWork.cardReports.value?.key == cardReportsWanted
     ReportChanges(cardReports?.widget?.takeIf { journeysKnown && cardsJudged && cardReportsCurrent }, listWork) {
-        onWidgetJourneys(it.keys, it.checks, it.from, it.boarding, it.order, it.names)
+        onWidgetJourneys(it)
     }
     // The farther bus cards to show ([fartherShownOf]), decided against the rows the screen draws, on the
     // list's worker; the last ones stand in meanwhile, so the cards don't drop out and back as the rows
@@ -1272,6 +1283,14 @@ fun MainScreen(
         if (journeyWriteFailed && detailRow == null) {
             onJourneyWriteFailureShown()
             snackbarHostState.showSnackbar(starWriteFailedMessage)
+        }
+    }
+    // A ride's line hidden or shown and not saved: it comes back, or stays hidden, so say so.
+    val rideLineWriteFailedMessage = stringResource(R.string.journey_alerts_write_failed)
+    LaunchedEffect(rideLineWriteFailed, detailRow == null) {
+        if (rideLineWriteFailed && detailRow == null) {
+            onRideLineWriteFailureShown()
+            snackbarHostState.showSnackbar(rideLineWriteFailedMessage)
         }
     }
     // Surface a failed dismiss write the same way as a failed star write, and gated the same way —
@@ -1607,6 +1626,8 @@ fun MainScreen(
                             journeyView = true,
                             onFlipJourney = onFlipJourney,
                             onUnstarJourney = onToggleJourney,
+                            onHideRideLine = hideRideLine,
+                            onShowRideLine = showRideLine,
                             onRetryJourneyRoutes = { journeyRouteRetry++ },
                             starred = starred,
                             onToggleStar = onToggleStar,
@@ -1647,6 +1668,7 @@ fun MainScreen(
                             // Every nearby row is on a journey card above: nothing to call "no departures".
                             nearbyShownAbove = platformRows == null && rows.isEmpty() && nearbyRows.isNotEmpty(),
                             onFlipJourney = onFlipJourney,
+                            onHideRideLine = hideRideLine,
                             onRetryJourneyRoutes = { journeyRouteRetry++ },
                             starred = starred,
                             onToggleStar = onToggleStar,
@@ -1850,6 +1872,8 @@ private fun LoadedContent(
     onOpenJourney: ((FavoriteJourney) -> Unit)? = null,
     journeyView: Boolean = false,
     onUnstarJourney: ((FavoriteJourney) -> Unit)? = null,
+    onHideRideLine: ((FavoriteJourney, LineRef) -> Unit)? = null,
+    onShowRideLine: ((FavoriteJourney, String) -> Unit)? = null,
     farJourneyCards: List<JourneyCard> = emptyList(),
     farJourneyMeters: Map<String, Double> = emptyMap(),
     rideGrouping: RideGrouping? = RideGrouping.RIDE,
@@ -2097,6 +2121,8 @@ private fun LoadedContent(
                         onOpenJourney = onOpenJourney,
                         journeyView = journeyView,
                         onUnstarJourney = onUnstarJourney,
+                        onHideRideLine = onHideRideLine,
+                        onShowRideLine = onShowRideLine,
                         farJourneyCards = farJourneyCards,
                         farJourneyMeters = farJourneyMeters,
                         rideGrouping = rideGrouping,
@@ -2639,6 +2665,10 @@ private fun DepartureList(
     journeyView: Boolean = false,
     // Unstars a journey from its own view's action row; null hides the button.
     onUnstarJourney: ((FavoriteJourney) -> Unit)? = null,
+    // Hides a line from a ride, from its rows' long press, and shows one again (by its entry) from its
+    // own view (SPEC *Hiding a line from a ride*); null offers neither.
+    onHideRideLine: ((FavoriteJourney, LineRef) -> Unit)? = null,
+    onShowRideLine: ((FavoriteJourney, String) -> Unit)? = null,
     // Why the near-me part is empty, shown under the journey cards when there are no nearby rows.
     nearbyEmptyNote: String? = null,
     // The favorite places to route to, as a chip row atop the list (near-me only); empty for none.
@@ -2812,6 +2842,14 @@ private fun DepartureList(
                             onUnstar = onUnstarJourney?.let { unstar -> { unstar(card.journey) } },
                         )
                     }
+                    // Its hidden lines, each a list item of its own, with a Show (SPEC *Hiding a line from a ride*).
+                    if (onShowRideLine != null && card.hiddenLines.isNotEmpty()) {
+                        item(key = "journey-hidden|${card.journey.key}") { RideHiddenLinesHeading() }
+                        // One interval for them all, so building the list doesn't walk them (Codex on #874).
+                        items(card.hiddenLines, key = { (entry, _) -> "journey-hidden|${card.journey.key}|$entry" }) { (entry, name) ->
+                            RideHiddenLineRow(name, onShow = { onShowRideLine(card.journey, entry) })
+                        }
+                    }
                 } else if (!byStop) {
                     item(key = "journey-header|${card.journey.key}") {
                         JourneyHeader(
@@ -2861,6 +2899,7 @@ private fun DepartureList(
                             onOpenSettings = onOpenSettings,
                             checking = journeyChecking(card.journey, checking, atOnce),
                             noTrainsSpoken = noneRes?.let { stringResource(it, card.journey.to.name) },
+                            rideLineHide = rememberRideLineHide(card.journey, onHideRideLine),
                         )
                     }
                 }
@@ -2943,7 +2982,7 @@ private fun DepartureList(
                     // No note says there's no direct train above the trains to change from: the ride's own line
                     // with a dash says so, as a suspended line's status row does.
                     journeyMore(card, state)
-                    journeyChanges(card, state, now, starred, onToggleStar, starringAvailable, onOpenChangeDetail, onOpenSettings, checking)
+                    journeyChanges(card, state, now, starred, onToggleStar, starringAvailable, onOpenChangeDetail, onOpenSettings, checking = checking, onHideRideLine = onHideRideLine)
                     if (state.incomplete) {
                         item(key = "journey-note|${card.journey.key}") {
                             JourneyNote(
@@ -4191,6 +4230,9 @@ internal data class JourneyCard(
     val fromForms: List<String> = DestinationAbbreviations.forms(journey.from.name)
     val toForms: List<String> = DestinationAbbreviations.forms(journey.to.name)
 
+    /** The lines hidden from the ride, each entry with its label, for its own view's Show: worked out with the card, on the worker. */
+    val hiddenLines: List<Pair<String, String>> = Journeys.hiddenLines(journey)
+
     /**
      * The ride's own line at its origin as a row with no times: the card's one row while it has no train
      * to show, a spinner while it's first checked and a dash when none is due (SPEC *Journeys*). Shaped as
@@ -4456,6 +4498,9 @@ private fun LazyListScope.journeyChanges(
     onOpenSettings: () -> Unit,
     // Checked again, its trains held meanwhile ([JourneyCardState.Checking.held]).
     checking: Boolean = false,
+    // A change train's line can be hidden from the ride too: the ride's trains to change from are its own
+    // trains, filtered the same way (SPEC *Hiding a line from a ride*; Codex on #874).
+    onHideRideLine: ((FavoriteJourney, LineRef) -> Unit)?,
 ) {
     state.changeStops.forEach { change ->
         val stopId = change.stopId
@@ -4485,6 +4530,7 @@ private fun LazyListScope.journeyChanges(
                     onOpenDetail = onOpenDetail,
                     onOpenSettings = onOpenSettings,
                     checking = journeyChecking(card.journey, checking),
+                    rideLineHide = rememberRideLineHide(card.journey, onHideRideLine),
                 )
             }
         }
@@ -4557,6 +4603,33 @@ private fun JourneyActions(journey: FavoriteJourney, onSwap: () -> Unit, onUnsta
                 }
             }
         }
+    }
+}
+
+/**
+ * The heading over a ride's hidden lines in its own view (SPEC *Hiding a line from a ride*), each line
+ * then its own list item ([RideHiddenLineRow]), as Settings' Hidden list reads.
+ */
+@Composable
+private fun RideHiddenLinesHeading() {
+    Text(
+        text = stringResource(R.string.ride_hidden_lines_title),
+        style = MaterialTheme.typography.bodyLarge,
+        modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 12.dp).testTag("rideHiddenLines"),
+    )
+}
+
+/** One line hidden from a ride, [name]d, with a Show that brings it back ([onShow]). */
+@Composable
+private fun RideHiddenLineRow(name: String, onShow: () -> Unit) {
+    val showDescription = stringResource(R.string.settings_hidden_show_description, name)
+    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(text = name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.width(16.dp))
+        TextButton(
+            onClick = onShow,
+            modifier = Modifier.semantics { contentDescription = showDescription },
+        ) { Text(stringResource(R.string.settings_hidden_show)) }
     }
 }
 
@@ -4722,6 +4795,9 @@ internal fun StopGroupCard(
     onOpenSettings: () -> Unit = {},
     // Offers "Hide ‹mode›" in each row's long-press menu; null keeps long-press as starring.
     onHideMode: ((String) -> Unit)? = null,
+    // A favorite ride's card: offers "Hide ‹line› on this ride" in each row's long-press menu, for the
+    // lines it offers it for ([RideLineHide.offers]).
+    rideLineHide: RideLineHide? = null,
     // Grays a time due before the rider can board ([CountdownLabel]); null grays none.
     grayBefore: Instant? = null,
     // Draws a timed row's times in place of its countdowns: a trip's later ride, which says how often
@@ -4785,6 +4861,7 @@ internal fun StopGroupCard(
                                     // they're missing, so it would read as a clean line (Codex, PR #505).
                                     onOpenDetail = onOpenDetail.takeUnless { row.quiet },
                                     onHideMode = onHideMode,
+                                    onHideFromRide = rideLineHide?.takeIf { it.offers(row.lineId) }?.onHide,
                                 ) {
                                     LinePill(lineName = row.lineName, lineId = row.lineId, mode = row.mode, modifier = pillModifier)
                                     // The reason chip lives in the weighted slack so it absorbs the shrink (and
@@ -4907,6 +4984,7 @@ internal fun StopGroupCard(
                                             // The route row's own soonest train names the route the detail follows.
                                             focus = RouteFocus.of(group2),
                                             onHideMode = onHideMode,
+                                            onHideFromRide = rideLineHide?.takeIf { it.offers(row.lineId) }?.onHide,
                                             destination = { modifier -> DestinationLabelContent(label = label, branch = group2.branch, modifier = modifier) },
                                             times = {
                                                 if (timesInstead != null) {
@@ -5003,6 +5081,8 @@ internal fun LineRouteRow(
     // card): see [RouteRow].
     onOpenInstead: (() -> Unit)? = null,
     onLongPressInstead: (() -> Unit)? = null,
+    // A favorite ride's row: see [RouteRow].
+    onHideFromRide: ((LineRef) -> Unit)? = null,
 ) {
     // Inner width ≈ screen minus the list's 16dp side padding and the row's 16dp padding.
     val cardInnerWidth = LocalConfiguration.current.screenWidthDp.dp - 64.dp
@@ -5014,6 +5094,7 @@ internal fun LineRouteRow(
         onOpenDetail = onOpenDetail,
         focus = focus,
         onHideMode = onHideMode,
+        onHideFromRide = onHideFromRide,
         onOpenInstead = onOpenInstead,
         onLongPressInstead = onLongPressInstead,
     ) {
@@ -5060,6 +5141,9 @@ internal fun RouteRow(
     // Makes a long press open a menu — the pin/unpin, then "Hide ‹mode›" for this row's mode (SPEC
     // *Finding stops → Hiding a mode*) — instead of pinning at once. Null keeps the direct pin.
     onHideMode: ((String) -> Unit)? = null,
+    // A favorite ride's row: a long press opens a menu — the pin/unpin, then "Hide ‹line› on this ride"
+    // (SPEC *Hiding a line from a ride*). Null keeps the direct pin.
+    onHideFromRide: ((LineRef) -> Unit)? = null,
     // A tap that does this instead of opening the line's page, unlabeled like the card's own tap —
     // a trip's card, where the row is one of the trip's choices, not a line to look up.
     onOpenInstead: (() -> Unit)? = null,
@@ -5080,11 +5164,14 @@ internal fun RouteRow(
     val opens = opensInstead || onOpenDetail != null
     val longPressesInstead = onLongPressInstead != null
     val hideMode = row.mode.takeIf { onHideMode != null && it.isNotBlank() && !longPressesInstead }
+    val rideHide = onHideFromRide.takeIf { row.lineId.isNotBlank() && !longPressesInstead && hideMode == null }
+    val currentRideHide by rememberUpdatedState(rideHide)
+    val menu = hideMode != null || rideHide != null
     var menuOpen by remember { mutableStateOf(false) }
     fun open() = currentOpenInstead?.invoke() ?: currentOpenDetail?.invoke(currentRow, currentFocus)
     val onLongPress: ((Offset) -> Unit)? = when {
         longPressesInstead -> { _ -> currentLongPressInstead?.invoke() }
-        hideMode != null -> { _ -> menuOpen = true }
+        menu -> { _ -> menuOpen = true }
         starrable -> { _ -> currentToggleStar(currentRow) }
         else -> null
     }
@@ -5097,7 +5184,7 @@ internal fun RouteRow(
                 // A row with no tap and no long press takes no gesture at all: a detector with
                 // nothing to do still consumes the touch.
                 if (opens || onLongPress != null) {
-                    Modifier.pointerInput(starrable, hideMode, longPressesInstead, opens) {
+                    Modifier.pointerInput(starrable, menu, longPressesInstead, opens) {
                         detectTapGestures(
                             onTap = if (opens) ({ _ -> open() }) else null,
                             onLongPress = onLongPress,
@@ -5112,7 +5199,7 @@ internal fun RouteRow(
                 if (opens) onClick(label = if (opensInstead) null else detailActionLabel) { open(); true }
                 when {
                     longPressesInstead -> onLongClick(label = moreLabel) { currentLongPressInstead?.invoke(); true }
-                    hideMode != null -> onLongClick(label = moreLabel) { menuOpen = true; true }
+                    menu -> onLongClick(label = moreLabel) { menuOpen = true; true }
                     starrable -> onLongClick(label = starActionLabel) { currentToggleStar(currentRow); true }
                 }
             }
@@ -5129,6 +5216,19 @@ internal fun RouteRow(
         verticalAlignment = Alignment.CenterVertically,
         content = content,
     )
+    val starItem: (@Composable () -> Unit)? = if (starrable) {
+        {
+            DropdownMenuItem(
+                text = { Text(starActionLabel) },
+                onClick = {
+                    menuOpen = false
+                    currentToggleStar(currentRow)
+                },
+            )
+        }
+    } else {
+        null
+    }
     if (hideMode != null) {
         HideModeMenu(
             expanded = menuOpen,
@@ -5137,20 +5237,19 @@ internal fun RouteRow(
             // Just this row's line too ("Hide Northern line"), for a rider of the mode who never takes it.
             lines = if (row.lineId.isNotBlank()) listOf(LineRef(row.lineId, row.lineName, row.mode)) else emptyList(),
             onHideMode = { mode -> onHideMode?.invoke(mode) },
-            leading = if (starrable) {
-                {
-                    DropdownMenuItem(
-                        text = { Text(starActionLabel) },
-                        onClick = {
-                            menuOpen = false
-                            currentToggleStar(currentRow)
-                        },
-                    )
-                }
-            } else {
-                null
-            },
+            leading = starItem,
         )
+    } else if (rideHide != null) {
+        StopDashMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            starItem?.invoke()
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.hide_line_from_ride, lineLabel(row.lineName.ifBlank { row.lineId }, row.mode))) },
+                onClick = {
+                    menuOpen = false
+                    currentRideHide?.invoke(LineRef(currentRow.lineId, currentRow.lineName, currentRow.mode))
+                },
+            )
+        }
     }
     }
 }

@@ -49,6 +49,7 @@ import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.FavoriteJourneysStore
 import app.stopdash.domain.JourneyAlertSchedule
 import app.stopdash.domain.JourneyAlerts
+import app.stopdash.domain.Journeys
 import app.stopdash.domain.JourneyPair
 import app.stopdash.domain.NearbyStopsCache
 import app.stopdash.domain.PendingEnd
@@ -152,6 +153,42 @@ internal suspend fun removeFavoriteJourney(
         // The journey is unstarred; only the prompt unpin is lost, and the main screen's next report
         // drops it. Not the removal's failure, so not said as one.
         warn("widget unpin after removal failed: ${e::class.simpleName}")
+    }
+}
+
+/**
+ * Hides line [entry] from [journey], or shows it again ([FavoriteJourneysStore.setLineHidden]), then, on a
+ * hide, drops that line's pins from the widget's stored snapshot at once, as Settings' Remove drops a
+ * ride's (SPEC *Hiding a line from a ride*): the main screen's next report would drop them too, but a
+ * process that dies before it leaves them on the widget until the app is next opened (Codex on #874).
+ * Under [lock], as the main screen's own pin writes are. A failed hide throws to the caller; a failed
+ * unpin is only logged ([warn]).
+ */
+internal suspend fun setRideLineHidden(
+    journey: FavoriteJourney,
+    entry: String,
+    hidden: Boolean,
+    journeys: FavoriteJourneysStore,
+    widget: SnapshotStore,
+    lock: Mutex = WidgetJourneysWrites.lock,
+    warn: (String) -> Unit = {},
+    // The hop first (AGENTS.md *Main thread*), as [removeFavoriteJourney]'s.
+    worker: CoroutineDispatcher = Dispatchers.Default,
+) = withContext(worker) {
+    journeys.setLineHidden(journey, entry, hidden)
+    // A line shown again comes back with the card's next report, which judges its departures.
+    if (!hidden) return@withContext
+    try {
+        val saved = journeys.journeys().first() ?: return@withContext
+        val hides = saved.filter { it.hiddenLines.isNotEmpty() }.associate { it.key to Journeys.hiddenLineIds(it) }
+        lock.withLock {
+            widget.updateWidgetJourneys(WidgetJourneysReport(saved.mapTo(HashSet()) { it.key }, emptyList(), hidden = hides), emptyList())
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        // The line is hidden; only the prompt unpin is lost, and the main screen's next report drops it.
+        warn("widget unpin after a ride's line hide failed: ${e::class.simpleName}")
     }
 }
 

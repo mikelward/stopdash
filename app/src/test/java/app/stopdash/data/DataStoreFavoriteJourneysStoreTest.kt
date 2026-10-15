@@ -3,6 +3,7 @@ package app.stopdash.data
 import androidx.datastore.core.DataStore
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.JourneyAlertSchedule
 import app.stopdash.domain.JourneyAlerts
 import app.stopdash.domain.PendingEnd
@@ -120,6 +121,35 @@ class DataStoreFavoriteJourneysStoreTest {
         FavoriteJourneysSerializer.writeTo(listOf(journey).toPersisted(), out)
         val back = FavoriteJourneysSerializer.readFrom(ByteArrayInputStream(out.toByteArray()))
         assertEquals(listOf(journey), back!!.toDomain())
+    }
+
+    @Test
+    fun `a line hidden from a ride is saved with it, either way round, and shown again`() = runTest {
+        val store = DataStoreFavoriteJourneysStore(FakeDataStore(null))
+        store.add(journey)
+        val bus = HiddenModes.lineKey("bus-x", "X1")
+        store.setLineHidden(journey.reversed(), bus, hidden = true)
+        assertEquals(setOf(bus), store.journeys().first()!!.single().hiddenLines)
+        // A ride not saved isn't saved by it.
+        store.setLineHidden(journey.copy(to = JourneyEnd("940GZZLUEUS", "Euston")), bus, hidden = true)
+        assertEquals(1, store.journeys().first()!!.size)
+        store.setLineHidden(journey, bus, hidden = false)
+        assertEquals(emptySet<String>(), store.journeys().first()!!.single().hiddenLines)
+    }
+
+    @Test
+    fun `hidden lines round-trip through JSON, and a file from before them reads as none hidden`() = runTest {
+        val hiding = journey.copy(hiddenLines = setOf(HiddenModes.lineKey("bus-x", "X1")))
+        val out = ByteArrayOutputStream()
+        FavoriteJourneysSerializer.writeTo(listOf(hiding).toPersisted(), out)
+        assertEquals(listOf(hiding), FavoriteJourneysSerializer.readFrom(ByteArrayInputStream(out.toByteArray()))!!.toDomain())
+        val older = """{"version":1,"journeys":[{"from":{"stopId":"A","name":"A"},"to":{"stopId":"B","name":"B"},"lineId":"northern"}]}"""
+        val read = FavoriteJourneysSerializer.readFrom(ByteArrayInputStream(older.toByteArray()))!!.toDomain()!!
+        assertEquals("northern", read.single().lineId)
+        assertEquals(emptySet<String>(), read.single().hiddenLines)
+        // An entry that's no line's, from a later build, is left out.
+        val later = PersistedFavoriteJourneys(journeys = listOf(PersistedFavoriteJourney(PersistedJourneyEnd("A", "A"), PersistedJourneyEnd("B", "B"), "northern", hiddenLines = listOf("bus", "line:bus-x=X1"))))
+        assertEquals(setOf("line:bus-x=X1"), later.toDomain()!!.single().hiddenLines)
     }
 
     @Test
