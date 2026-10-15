@@ -157,6 +157,25 @@ class LaterTripViewModel(
         viewModelScope.launch(compute) { for (request in requests) handle(request) }
     }
 
+    /**
+     * The request for [time] and these choices: the one the state answers when every part is the same, the sets
+     * the very same objects (they come by identity), else a new one. A recreated screen (a rotation) asks again
+     * with what it held, so it shows the cards in hand at once rather than "Planning…" until the model takes a
+     * new request that answers the same. Compares no set's contents, so it's a read the caller's thread can make.
+     */
+    fun request(
+        time: TripTime,
+        walkingSpeed: WalkingSpeed,
+        maxWalk: MaxWalk,
+        stepFree: StepFree,
+        tripModes: TripModes,
+        hiddenModes: Set<String>,
+        avoidedLines: Set<String>,
+    ): Request = state.value.request?.takeIf {
+        it.time == time && it.walkingSpeed == walkingSpeed && it.maxWalk == maxWalk && it.stepFree == stepFree &&
+            it.tripModes === tripModes && it.hiddenModes === hiddenModes && it.avoidedLines === avoidedLines
+    } ?: Request(time, walkingSpeed, maxWalk, stepFree, tripModes, hiddenModes, avoidedLines)
+
     /** The plan for [request]: planned when its time or choices are new, filtered again when only what's left out is. */
     fun show(request: Request) {
         requests.trySend(request)

@@ -2147,11 +2147,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               2026-10-15: a follow-up PR; Codex, #859). The later list now runs the trip for now's
               requests via up to three nearby bus stops (*Buses towards the destination*), for the time
               picked, through the requests both share.
-        - [ ] Keep the later list's cards through a rotation (maintainer, 2026-10-15: a to-do; Codex,
-              #859). The screen shows cards only for the very `Request` the model answers, and a recreated
-              composition builds a new one, so "Planning…" can show until the model takes it, then the same
-              cards return. Reuse the model's retained request on recreation when its time and scalars are
-              equal and its sets are the same objects (constant-time), so nothing moves.
+        - [x] Keep the later list's cards through a rotation (maintainer, 2026-10-15: a to-do; Codex,
+              #859). A recreated screen takes the model's request when its time and choices are the same,
+              the sets the same objects, so its cards show at once instead of "Planning…".
       - [x] **Shared-leg pill**: a leg several routes serve alike (buses 43 and 134 share the stops
             to Highgate station) as one diagonally cut pill carrying both routes, and a live row per
             line in the one card (maintainer, 2026-09-26).
