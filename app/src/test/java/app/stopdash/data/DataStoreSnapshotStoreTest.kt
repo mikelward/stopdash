@@ -77,11 +77,24 @@ class DataStoreSnapshotStoreTest {
     fun `the widget's journeys and journey-only stops round-trip`() = runTest {
         val store = DataStoreSnapshotStore(FakeDataStore(null))
         val withJourneys = snapshot().copy(
-            journeys = listOf(WidgetJourney("940GZZLUOXC", setOf(JourneyCall("victoria", "Brixton", null)), "940GZZLUOXC|940GZZLUBXN")),
+            journeys = listOf(
+                WidgetJourney(
+                    "940GZZLUOXC", setOf(JourneyCall("victoria", "Brixton", null)), "940GZZLUOXC|940GZZLUBXN",
+                    alightIds = setOf("940GZZLUBXN"),
+                ),
+            ),
             journeyOnlyStopIds = setOf("940GZZLUOXC"),
         )
         store.save(withJourneys)
         assertEquals(withJourneys, store.load())
+    }
+
+    @Test
+    fun `a pin stored before it knew where its departures get off reads back with none`() {
+        // An older build's pin has no alightIds field: it reads as none, until the app next checks the journey.
+        val older = "{\"originId\":\"940GZZLUOXC\",\"calls\":[{\"lineId\":\"victoria\",\"destination\":\"Brixton\"}],\"key\":\"k\"}"
+        val pin = kotlinx.serialization.json.Json.decodeFromString(PersistedWidgetJourney.serializer(), older)
+        assertEquals(emptyList<String>(), pin.alightIds)
     }
 
     @Test

@@ -578,6 +578,39 @@ class JourneyAlertsTest {
     }
 
     @Test
+    fun `a pinned line is placed from the poles its pin boards and gets off at`() {
+        // A line pinned beside the ride boards at its own pole, in no stop area the saved ends name, and
+        // gets off at a far-end stop of its own (maintainer, 2026-10-15).
+        val beside = busRoute.copy(
+            routes = listOf(LineRoute("Bank - North End", listOf("b1", "b2", "b3", "p4", "b5", "p6"))),
+            stopNames = busRoute.stopNames + mapOf("p4" to "Alpha Road Stand", "p6" to "North End Stand"),
+        )
+        val ride = FavoriteJourney(JourneyEnd("b4", "Alpha Road", areaId = "A4"), JourneyEnd("b6", "North End", areaId = "A6"), "99", "99", "bus")
+        val pinned = diverted.copy(lineId = "98")
+        fun alerts(pins: List<WidgetJourney>) = JourneyAlerts.results(
+            listOf(ride), mapOf(ride.key to setOf("98")), mapOf("98" to pinned),
+            directions = mapOf(ride.key to setOf("b4")), routes = mapOf("98" to beside), modes = mapOf("98" to "bus"),
+            pins = mapOf(ride.key to pins),
+        ).single().alerts
+        val pin = WidgetJourney("p4", setOf(JourneyCall("98", "North End", null)), ride.key, shownFrom = "b4", alightIds = setOf("p6", "x9"))
+        // Without the pin's poles the ride can't be placed on the line, so its alert stays on.
+        assertEquals(1, alerts(emptyList()).size)
+        assertEquals(1, alerts(listOf(pin.copy(alightIds = emptySet()))).size)
+        // With them it's placed, off the stretch; a far-end stop the line doesn't call at (x9) is no ride of its.
+        assertTrue(alerts(listOf(pin)).isEmpty())
+        // A pin for the other way, or of another line, isn't this way's ride on the line.
+        assertEquals(1, alerts(listOf(pin.copy(shownFrom = "b6"))).size)
+        assertEquals(1, alerts(listOf(pin.copy(calls = setOf(JourneyCall("97", "North End", null))))).size)
+        // Pins are each journey's, its neighboring poles' with its own.
+        val snapshot = DeparturesSnapshot(
+            stops = emptyList(), fetchedAt = java.time.Instant.EPOCH,
+            journeys = listOf(pin, pin.copy(key = WidgetJourneys.poleKey(ride.key, "p4"))),
+        )
+        assertEquals(setOf(ride.key), JourneyAlerts.pins(snapshot).keys)
+        assertEquals(2, JourneyAlerts.pins(snapshot).getValue(ride.key).size)
+    }
+
+    @Test
     fun `the way back is placed by its stop areas, its poles across the road`() {
         // The way back boards and alights at the other poles of the same stop areas (Codex on #866).
         val bothWays = busRoute.copy(

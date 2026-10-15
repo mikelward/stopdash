@@ -157,6 +157,8 @@ internal fun cardReportsOf(
                 rows.filter { it.stopId == id }.flatMapTo(HashSet()) { row -> row.upcoming.map(JourneyCall::of) },
                 card.checked[id].orEmpty(),
                 card.journey.from.stopId,
+                // Where its departures get off, so a ride alert can place each pinned line's ride.
+                card.destinationIds,
             )
         }
     }

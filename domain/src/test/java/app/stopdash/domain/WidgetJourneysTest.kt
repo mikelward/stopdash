@@ -28,6 +28,17 @@ class WidgetJourneysTest {
     }
 
     @Test
+    fun `a pin keeps where its departures get off through a check that couldn't place them`() {
+        val memory = mapOf("j" to WidgetJourney("490000001A", setOf(hill), "j", alightIds = setOf("490000009Z")))
+        // A check that didn't place them keeps the last known; one that did replaces them.
+        assertEquals(setOf("490000009Z"), WidgetJourneys.merge(memory, setOf("j"), listOf(WidgetJourneyCheck("j", "490000001A", setOf(town)))).getValue("j").alightIds)
+        val placed = WidgetJourneyCheck("j", "490000001A", setOf(town), alightIds = setOf("490000008Y"))
+        assertEquals(setOf("490000008Y"), WidgetJourneys.merge(memory, setOf("j"), listOf(placed)).getValue("j").alightIds)
+        // A moved origin's pin starts afresh, its old far-end stops with it.
+        assertEquals(emptySet<String>(), WidgetJourneys.merge(memory, setOf("j"), listOf(WidgetJourneyCheck("j", "490000003C", setOf(town)))).getValue("j").alightIds)
+    }
+
+    @Test
     fun `a moved origin starts afresh, and an unstarred journey is dropped`() {
         val memory = mapOf(
             "j" to WidgetJourney("490000001A", setOf(hill), "j"),

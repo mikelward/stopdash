@@ -379,6 +379,14 @@ object JourneyAlerts {
             }
 
     /**
+     * Each journey key's pins in [snapshot] ([WidgetJourney]: the pole each boards at, its lines, and
+     * where they get off), its neighboring poles' with its own: where [results] places each line's ride.
+     */
+    @WorkerThread
+    fun pins(snapshot: DeparturesSnapshot?): Map<String, List<WidgetJourney>> =
+        snapshot?.journeys.orEmpty().groupBy { WidgetJourneys.baseKey(it.key) }
+
+    /**
      * Each line's mode ("bus", "tube"), as [snapshot]'s stops and departures carry them: what a line a
      * journey pins rather than was saved on is ridden as ([results]), as a pin may be another mode's.
      */
@@ -409,7 +417,8 @@ object JourneyAlerts {
      * nothing it didn't hear (SPEC principle 1), so the journey keeps whatever it last showed.
      * [names] gives a line's rider-facing name where known. A bus line's alert whose stretch lies off
      * the ride each open direction takes, on the line's route in [routes], isn't the journey's
-     * ([onRide]); a line is ridden as the journey's mode where it was saved on it, else as [modes] says.
+     * ([onRide]); a line is ridden as the journey's mode where it was saved on it, else as [modes] says,
+     * from the journey's ends and from the poles its [pins] board and get off at ([ridesOn]).
      */
     @WorkerThread
     fun results(
@@ -428,6 +437,8 @@ object JourneyAlerts {
         routes: Map<String, LineSequence> = emptyMap(),
         // Each line's mode ([lineModes]), for the lines a journey pins rather than was saved on.
         modes: Map<String, String> = emptyMap(),
+        // Each journey's pins ([pins]): the poles its lines board and get off at.
+        pins: Map<String, List<WidgetJourney>> = emptyMap(),
     ): List<JourneyAlertResult> = journeys.mapNotNull { journey ->
         val asked = lines[journey.key].orEmpty()
         // A journey none of whose lines was answered says nothing new.
@@ -438,7 +449,10 @@ object JourneyAlerts {
         val ways = waysOf(journey, directions[journey.key].orEmpty())
         val alerts = asked.mapNotNull { statuses[it] }
             .filter { it.disrupted }
-            .mapNotNull { status -> onRide(status, ways.map { rideOf(it, status.lineId, modeOf(journey, status.lineId, modes)) }, routes[status.lineId]) }
+            .mapNotNull { status ->
+                val mode = modeOf(journey, status.lineId, modes)
+                onRide(status, ways.map { ridesOn(it, status.lineId, mode, pins[journey.key].orEmpty()) }, routes[status.lineId])
+            }
             .sortedWith(compareBy<LineStatus> { it.severity }.thenBy { it.lineId })
             .map { status ->
                 val name = names[status.lineId]?.takeIf { it.isNotBlank() }
@@ -474,16 +488,20 @@ object JourneyAlerts {
         if (lineId == journey.lineId) journey.mode else modes[lineId].orEmpty()
 
     /**
-     * [status] as it bears on a favorite ride's [rides] (one per open direction), weighed as a trip weighs
-     * a bus line's alerts on its line's route ([sequence]): null where every alert under way is off every
-     * ride ([RouteDisruption.offRide]), such as a diversion at the far end of a long bus route (maintainer,
-     * 2026-10-15); the worst of those that may reach one where several are under way and the one shown
-     * doesn't ([RouteDisruption.alertsOnRide]); else [status]. Unknown is on: no route, or a ride it can't
-     * place.
+     * [status] as it bears on a favorite ride's [ways] (each open direction's rides on the line, [ridesOn]),
+     * weighed as a trip weighs a bus line's alerts on its line's route ([sequence]): null where every alert
+     * under way is off every ride the route runs ([RouteDisruption.offRide]), such as a diversion at the far
+     * end of a long bus route (maintainer, 2026-10-15); the worst of those that may reach one where several
+     * are under way and the one shown doesn't ([RouteDisruption.alertsOnRide]); else [status]. A ride the
+     * route doesn't run (a pin's far-end stop another line gets off at) isn't one of them, but unknown is
+     * on: no route, or a direction none of whose rides it runs.
      */
     @WorkerThread
-    fun onRide(status: LineStatus, rides: List<TripLeg>, sequence: LineSequence?): LineStatus? {
-        if (sequence == null || rides.isEmpty()) return status
+    fun onRide(status: LineStatus, ways: List<List<TripLeg>>, sequence: LineSequence?): LineStatus? {
+        if (sequence == null || ways.isEmpty()) return status
+        val placed = ways.map { rides -> rides.filter { ridesOf(it, sequence).isNotEmpty() } }
+        if (placed.any { it.isEmpty() }) return status
+        val rides = placed.flatten()
         if (rides.all { RouteDisruption.offRide(it, status, sequence) }) return null
         val on = rides.flatMap { RouteDisruption.alertsOnRide(it, status, sequence) ?: return status }
         if (on.any { it.description == status.description && it.fullText == status.fullText }) return status
@@ -494,6 +512,17 @@ object JourneyAlerts {
     // saved where none is named.
     private fun waysOf(journey: FavoriteJourney, origins: Set<String>): List<FavoriteJourney> =
         origins.map { if (it == journey.to.stopId) journey.reversed() else journey }.distinct().ifEmpty { listOf(journey) }
+
+    // The rides [way] takes on [lineId] by [mode]: from its ends as saved ([rideOf]), and from each of [pins]
+    // for this way that boards [lineId], at its own pole, to each far-end stop its departures get off at
+    // (maintainer, 2026-10-15: a line pinned beside the ride may use poles the saved ends' areas don't hold).
+    private fun ridesOn(way: FavoriteJourney, lineId: String, mode: String, pins: List<WidgetJourney>): List<TripLeg> {
+        val saved = rideOf(way, lineId, mode)
+        val pinned = pins
+            .filter { pin -> pin.shownFrom == way.from.stopId && pin.calls.any { it.lineId == lineId } }
+            .flatMap { pin -> pin.alightIds.map { off -> saved.copy(fromId = pin.originId, toId = off, fromArea = "", toArea = "") } }
+        return (listOf(saved) + pinned).distinct()
+    }
 
     // [way] as a ride on [lineId] by [mode]: its ends as saved, as a trip's leg names them, for [onRide] to
     // find on the line's route by the stop, its stop area (the way back's poles are across the road; Codex
