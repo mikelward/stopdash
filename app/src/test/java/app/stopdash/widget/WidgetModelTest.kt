@@ -955,20 +955,20 @@ class WidgetModelTest {
         val snapshot = DeparturesSnapshot(
             stops = listOf(
                 stop("490000001A", listOf(toward("b1", "Hill", 300)), now.minusSeconds(30), name = "Stop A"),
-                stop("490000001B", listOf(toward("b1", "Hill", 60)), now.minusSeconds(30), name = "Stop B"),
+                stop("490000001B", listOf(toward("b3", "Hill", 60)), now.minusSeconds(30), name = "Stop B"),
                 stop("490000002C", listOf(toward("b2", "Town", 30)), now.minusSeconds(30), name = "Stop C"),
             ),
             fetchedAt = now.minusSeconds(30),
             journeys = listOf(
                 WidgetJourney("490000001A", setOf(JourneyCall("b1", "Hill", null)), "a", rank = 1, fromName = "Park", toName = "Hill"),
-                WidgetJourney("490000001B", setOf(JourneyCall("b1", "Hill", null)), pole, rank = 1, fromName = "Park", toName = "Hill"),
+                WidgetJourney("490000001B", setOf(JourneyCall("b3", "Hill", null)), pole, rank = 1, fromName = "Park", toName = "Hill"),
                 WidgetJourney("490000002C", setOf(JourneyCall("b2", "Town", null)), "b", rank = 0, fromName = "Park", toName = "Town"),
             ),
             journeyOnlyStopIds = setOf("490000001A", "490000001B", "490000002C"),
         )
         val byRide = widgetModel(snapshot, now, rideTitle = rideTitle).rows
         // The nearer ride first; the other's two stops under its one heading, soonest first.
-        assertEquals(listOf("b2", "b1", "b1"), byRide.map { it.row.lineId })
+        assertEquals(listOf("b2", "b3", "b1"), byRide.map { it.row.lineId })
         assertEquals(listOf("490000002C", "490000001B", "490000001A"), byRide.map { it.row.stopId })
         assertEquals(listOf("Park ➔ Town", "Park ➔ Hill", null), byRide.map { it.header?.text })
         // A screen reader hears the ride as the app's heading says it, not the arrow.
@@ -980,6 +980,112 @@ class WidgetModelTest {
         val bare = widgetModel(snapshot, now, geometry = WidgetGeometry(250.dp, 400.dp, bare = true), rideTitle = rideTitle).rows
         assertEquals(byRide.map { it.row.lineId }, bare.map { it.row.lineId })
         assertTrue(bare.all { it.header == null })
+    }
+
+    @Test
+    fun `a route a ride boards at several stops shows once, from its own stop`() {
+        // One bus route past the ride's stop and two poles beside it: each a minute apart, as one bus
+        // reaches each in turn.
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(
+                stop("490000001A", listOf(toward("b1", "Hill", 180), toward("b1", "Hill", 780)), now.minusSeconds(30), name = "Stop A"),
+                stop("490000001B", listOf(toward("b1", "Hill", 120), toward("b1", "Hill", 720)), now.minusSeconds(30), name = "Stop B"),
+                stop("490000001C", listOf(toward("b1", "Hill", 240), toward("b1", "Hill", 840)), now.minusSeconds(30), name = "Stop C"),
+            ),
+            fetchedAt = now.minusSeconds(30),
+            journeys = listOf(
+                WidgetJourney("490000001A", setOf(JourneyCall("b1", "Hill", null)), "a", rank = 0, fromName = "Park", toName = "Hill"),
+                WidgetJourney("490000001B", setOf(JourneyCall("b1", "Hill", null)), WidgetJourneys.poleKey("a", "490000001B"), rank = 0, fromName = "Park", toName = "Hill"),
+                WidgetJourney("490000001C", setOf(JourneyCall("b1", "Hill", null)), WidgetJourneys.poleKey("a", "490000001C"), rank = 0, fromName = "Park", toName = "Hill"),
+            ),
+            journeyOnlyStopIds = setOf("490000001A", "490000001B", "490000001C"),
+        )
+        val byRide = widgetModel(snapshot, now, rideTitle = rideTitle).rows
+        assertEquals(listOf("490000001A"), byRide.map { it.row.stopId })
+        assertEquals(listOf("Park ➔ Hill"), byRide.map { it.header?.text })
+        // By stop too, as the app's cards are.
+        assertEquals(listOf("490000001A"), widgetModel(snapshot, now).rows.map { it.row.stopId })
+        // A pole nearer than the ride's own stop is the one kept: the nearest copy shows, whichever stop
+        // is the ride's own.
+        val nearer = snapshot.copy(nearestFirst = listOf("490000001B", "490000001A", "490000001C"))
+        assertEquals(listOf("490000001B"), widgetModel(nearer, now, rideTitle = rideTitle).rows.map { it.row.stopId })
+        assertEquals(listOf("490000001B"), widgetModel(nearer, now).rows.map { it.row.stopId })
+        // Another route from a pole still shows: only a route shown already is left out.
+        val other = snapshot.copy(
+            stops = snapshot.stops.map { if (it.stopId == "490000001C") it.copy(departures = listOf(toward("b1", "Dale", 240))) else it },
+            journeys = snapshot.journeys.map { if (it.originId == "490000001C") it.copy(calls = setOf(JourneyCall("b1", "Dale", null))) else it },
+        )
+        assertEquals(listOf("Hill", "Dale"), widgetModel(other, now, rideTitle = rideTitle).rows.map { it.row.destination })
+    }
+
+    @Test
+    fun `a copy of a route its stop couldn't refresh never hides a current one`() {
+        // A partial refresh left the ride's own stop out of date; its pole beside it was refreshed.
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(
+                stop("490000001A", listOf(toward("b1", "Hill", 180)), now.minusSeconds(900), name = "Stop A"),
+                stop("490000001B", listOf(toward("b1", "Hill", 120)), now.minusSeconds(30), name = "Stop B"),
+            ),
+            fetchedAt = now.minusSeconds(30),
+            journeys = listOf(
+                WidgetJourney("490000001A", setOf(JourneyCall("b1", "Hill", null)), "a", rank = 0, fromName = "Park", toName = "Hill"),
+                WidgetJourney("490000001B", setOf(JourneyCall("b1", "Hill", null)), WidgetJourneys.poleKey("a", "490000001B"), rank = 0, fromName = "Park", toName = "Hill"),
+            ),
+            journeyOnlyStopIds = setOf("490000001A", "490000001B"),
+        )
+        // The current row shows, and the stale guess at the same route goes.
+        assertEquals(listOf("490000001B"), widgetModel(snapshot, now, rideTitle = rideTitle).rows.map { it.row.stopId })
+        assertEquals(listOf("490000001B"), widgetModel(snapshot, now).rows.map { it.row.stopId })
+        // Both current: the ride's own stop is the one that shows.
+        val current = snapshot.copy(stops = snapshot.stops.map { it.copy(fetchedAt = now.minusSeconds(30)) })
+        assertEquals(listOf("490000001A"), widgetModel(current, now, rideTitle = rideTitle).rows.map { it.row.stopId })
+        // Carried from a failed refresh, its stamp still young: not current either, so it gives way too.
+        val carried = current.copy(stops = current.stops.map { if (it.stopId == "490000001A") it.copy(arrivalsFresh = false) else it })
+        assertEquals(listOf("490000001B"), widgetModel(carried, now, rideTitle = rideTitle).rows.map { it.row.stopId })
+        assertEquals(listOf("490000001B"), widgetModel(carried, now).rows.map { it.row.stopId })
+        // Nearer, the out-of-date copy still gives way: a current copy wins however near the other is.
+        val nearer = snapshot.copy(nearestFirst = listOf("490000001A", "490000001B"))
+        assertEquals(listOf("490000001B"), widgetModel(nearer, now, rideTitle = rideTitle).rows.map { it.row.stopId })
+        assertEquals(listOf("490000001B"), widgetModel(nearer, now).rows.map { it.row.stopId })
+        // With no current copy at all, the out-of-date one still shows: the route isn't lost.
+        val none = snapshot.copy(stops = snapshot.stops.filter { it.stopId == "490000001A" })
+        assertEquals(listOf("490000001A"), widgetModel(none, now, rideTitle = rideTitle).rows.map { it.row.stopId })
+        // Both out of date: they go by distance between them, as both current do, the nearer kept.
+        val bothOld = snapshot.copy(
+            stops = snapshot.stops.map { it.copy(fetchedAt = now.minusSeconds(900)) },
+            nearestFirst = listOf("490000001B", "490000001A"),
+        )
+        assertEquals(listOf("490000001B"), widgetModel(bothOld, now, rideTitle = rideTitle).rows.map { it.row.stopId })
+        val bothOldFarther = bothOld.copy(nearestFirst = listOf("490000001A", "490000001B"))
+        assertEquals(listOf("490000001A"), widgetModel(bothOldFarther, now, rideTitle = rideTitle).rows.map { it.row.stopId })
+    }
+
+    @Test
+    fun `a route a nearer ride shows from no farther away is left out of a farther ride`() {
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(
+                stop("490000001A", listOf(toward("b1", "Hill", 60), toward("b2", "Dale", 120)), now.minusSeconds(30), name = "Stop A"),
+                stop("490000002B", listOf(toward("b1", "Hill", 300)), now.minusSeconds(30), name = "Stop B"),
+            ),
+            fetchedAt = now.minusSeconds(30),
+            journeys = listOf(
+                WidgetJourney("490000001A", setOf(JourneyCall("b1", "Hill", null)), "a", rank = 0, fromName = "Park", toName = "Hill"),
+                WidgetJourney(
+                    "490000002B", setOf(JourneyCall("b1", "Hill", null)), "b", rank = 1, fromName = "Dell", toName = "Hill",
+                ),
+            ),
+            nearestFirst = listOf("490000001A", "490000002B"),
+        )
+        val rows = widgetModel(snapshot, now, rideTitle = rideTitle).rows
+        // The farther ride's bus is the nearer ride's route from a farther stop: it, and its heading, go.
+        assertEquals(listOf("Park ➔ Hill"), rows.mapNotNull { it.header?.text }.filter { "➔" in it })
+        assertEquals(listOf("490000001A"), rows.filter { it.row.lineId == "b1" }.map { it.row.stopId })
+        // Boarding nearer than the first ride does, it stays: a farther stop never hides a nearer one's bus.
+        val nearer = snapshot.copy(nearestFirst = listOf("490000002B", "490000001A"))
+        assertEquals(
+            listOf("Park ➔ Hill", "Dell ➔ Hill"),
+            widgetModel(nearer, now, rideTitle = rideTitle).rows.mapNotNull { it.header?.text }.filter { "➔" in it },
+        )
     }
 
     @Test
@@ -1103,12 +1209,12 @@ class WidgetModelTest {
         val snapshot = DeparturesSnapshot(
             stops = listOf(
                 stop("490000001A", listOf(toward("b1", "Hill", 60), toward("b2", "Dale", 180)), now.minusSeconds(30), name = "Stop A"),
-                stop("490000001B", listOf(toward("b1", "Hill", 300)), now.minusSeconds(30), name = "Stop B"),
+                stop("490000001B", listOf(toward("b3", "Hill", 300)), now.minusSeconds(30), name = "Stop B"),
             ),
             fetchedAt = now.minusSeconds(30),
             journeys = listOf(
                 WidgetJourney("490000001A", setOf(JourneyCall("b1", "Hill", null)), "a", rank = 0),
-                WidgetJourney("490000001B", setOf(JourneyCall("b1", "Hill", null)), pole, rank = 0),
+                WidgetJourney("490000001B", setOf(JourneyCall("b3", "Hill", null)), pole, rank = 0),
                 WidgetJourney("490000001A", setOf(JourneyCall("b2", "Dale", null)), "b", rank = 1),
             ),
             journeyOnlyStopIds = setOf("490000001A", "490000001B"),

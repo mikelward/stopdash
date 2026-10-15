@@ -2766,6 +2766,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           the stops around its start repeated routes the ride from home showed. Now a ride leaves
           out a route a nearer ride, or its own nearer stop, draws ("Shown above" when that's all
           of it), and the near-me list leaves out a route a ride shows from a stop no farther away.
+    - [x] **A route shows once on the widget too** (maintainer, 2026-10-15). Grouped by ride, the
+          widget listed a bus once per stop the ride boards from, with no stop heading to tell the
+          rows apart, so one route read as three. It now leaves out what the app's cards leave out,
+          by the same rule, grouped by ride or by stop.
     - [ ] **Make the favorite radius a setting** (maintainer, 2026-10-15). The mile that holds a
           ride back behind "Faraway favorites" (and off the widget) is fixed. Make it a choice in
           Settings, such as 500 m, 1 mile (the default), 2 miles and never hide, and use the same

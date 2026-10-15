@@ -1347,9 +1347,10 @@ direction the app last showed, and **nearest ride first** in the order the app's
 them (maintainer, 2026-10-15; an order, never a distance). It follows **Group favorite rides** as the
 list does (maintainer, 2026-10-15). By ride, each ride is headed by its two ends, as its card is
 ("Park ➔ Hill", which a screen reader says as "Park to Hill"), its two ends shortened evenly to fit
-the widget's line as the card's are (*Long names shorten evenly*), over its own trains from every stop it boards from, soonest first; a train two rides
-board at one stop shows under the nearer ride only, as the list shows a route once, so a ride left with
-none has no heading; a suspended line's status, with no train to repeat, shows under every ride it
+the widget's line as the card's are (*Long names shorten evenly*), over its own trains from every stop it boards from, soonest first; a route shows once, from
+the nearest stop it's shown at, as on the list (*Not shown twice*), and from a stop with current times
+ahead of a nearer one it couldn't refresh (principle 1: a guessed time is the one it stands behind
+least), so a ride left with none has no heading; a suspended line's status, with no train to repeat, shows under every ride it
 holds up, as the list never leaves one out. The app saves each ride's ends, in the direction shown, with its pins, every ride's
 at once; until it has (an earlier build's pins, before the app next opens), the whole widget goes by
 stop, so no stop is headed twice (maintainer, 2026-10-15). By stop, the widget heads its rides'
@@ -1380,7 +1381,9 @@ as the row shows them: a train with no destination goes by the direction shown i
   when no direct one is due, count the same way. Rows behind "+N more" are left as they are,
   hiding nothing and left out of nothing, so "+N more" counts what the ride's own view shows. A
   ride left with nothing to draw says **Shown above** under its heading. Its own view
-  still shows every train, and the widget still pins them all.
+  still shows every train. The widget leaves the same rows out, by ride or by stop (maintainer,
+  2026-10-15: one bus listed once per pole read as the same bus three times), going by the app's
+  order of the stops around the rider, never a distance.
 - **The near-me list leaves out what a ride above shows** (maintainer, 2026-09-24, widened
   2026-10-15). That is a row the cards show in full from the same stop (every one of its
   departures, one card's or several between them), or every route of the row shown from another
