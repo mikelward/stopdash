@@ -466,6 +466,41 @@ object OnTheWay {
     }
 
     /**
+     * The stop whose board lists the train of a rider seen along [ride] arriving at stop [ahead] of its
+     * path, where every train its board lists may be theirs ([comesThroughBoarding]); null where none is.
+     * A bus's path names stop pairs ("490G…"), whose own boards come back empty, so for a bus it's the one
+     * pole of that pair its line's routes ([sequence]) reach it by the ride's way: from the boarding pair,
+     * by just the ride's pairs between. Every route calling there, but for one running back from the pair
+     * before, must come that way: one starting there, or joining from elsewhere, can't be told from theirs.
+     * Without it, a rider who boarded a bus before the trip saw it on the stop's board never had it named,
+     * nor a time to get off (maintainer, 2026-10-15).
+     */
+    @WorkerThread
+    fun boardAhead(ride: TripLeg, ahead: Int, sequence: LineSequence?): String? {
+        if (checkable(ride)) return (ride.path.getOrNull(ahead) ?: ride.toId).takeIf { comesThroughBoarding(ride, ahead, sequence) }
+        if (sequence == null || ride.path.isEmpty()) return null
+        val areas = sequence.stopAreas
+        // A route's pole as the ride's path names it: by its pair, or by itself where the path names a pole.
+        fun named(id: String, stop: String) = id == stop || areas[id] == stop
+        fun boards(id: String) = id == ride.fromId || (ride.fromArea.isNotEmpty() && areas[id] == ride.fromArea)
+        val stop = ride.path.getOrNull(ahead) ?: ride.toId
+        fun isStop(id: String) = named(id, stop) || (stop == ride.toId && ride.toArea.isNotEmpty() && areas[id] == ride.toArea)
+        fun isBefore(id: String) = ride.path.getOrNull(ahead - 1)?.let { named(id, it) } ?: boards(id)
+        val between = ride.path.take(ahead)
+        // Each pole of the stop a route calls at, but not running back from the stop before, with whether it
+        // came there the ride's way.
+        val passes = sequence.routes.flatMap { route ->
+            val ids = route.stopIds
+            ids.indices.filter { i -> isStop(ids[i]) && ids.getOrNull(i + 1)?.let(::isBefore) != true }.map { i ->
+                val start = i - between.size - 1
+                ids[i] to (start >= 0 && boards(ids[start]) && between.indices.all { k -> named(ids[start + 1 + k], between[k]) })
+            }
+        }
+        val pole = passes.filter { it.second }.mapTo(LinkedHashSet()) { it.first }.singleOrNull() ?: return null
+        return pole.takeIf { passes.none { (id, theirs) -> id == pole && !theirs } }
+    }
+
+    /**
      * The ride the rider is on their way to board: the leg they're on while it's a ride they aren't
      * yet seen on (waiting, changing onto it, or its train left with them only taken to be on it), or
      * the ride after the walk they're on. Null once seen riding, on the walk to the destination, and
