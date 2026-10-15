@@ -66,6 +66,8 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.encodeURLPathPart
 import io.ktor.serialization.kotlinx.json.json
 import java.io.IOException
+import java.net.ConnectException
+import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
@@ -75,6 +77,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
@@ -148,6 +151,8 @@ class KtorTflClient(
     // waits for the stored choice on a cold start, and reads on at once in a test, where nothing is
     // stored. A test swaps in its own.
     private val trainSpacing: suspend () -> Boolean = TrainSpacingSetting::loaded,
+    // How long a stalled request waits before its one retry ([withOneRetryOnStall]). A test swaps in its own.
+    private val stallRetryDelayMillis: Long = STALL_RETRY_DELAY_MILLIS,
 ) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, StopZoneSource, JourneyPlanner, PostcodeResolver, PlaceSearch, VehicleSource,
     LiftOutageSource, TimetableSource {
     override suspend fun journeys(
@@ -828,19 +833,27 @@ class KtorTflClient(
      * (keyless). [key] is the single per-request snapshot [tflRequest] took, the same value the
      * limiter's budget was selected from — so the two never disagree.
      */
-    /**
-     * Lets a request TfL can be slow to start answering wait [SLOW_SOCKET_TIMEOUT_MILLIS] without
-     * data instead of OkHttp's 10 s. Needs the [HttpTimeout] plugin, which the production client
-     * installs; a client without it keeps its engine's timeouts.
-     */
-    private fun HttpRequestBuilder.allowSlowAnswer() {
-        if (httpClient.pluginOrNull(HttpTimeout) != null) {
-            timeout { socketTimeoutMillis = SLOW_SOCKET_TIMEOUT_MILLIS }
-        }
-    }
-
     private fun HttpRequestBuilder.applyAppKey(key: String?) {
         if (!key.isNullOrBlank()) parameter("app_key", key)
+    }
+
+    /** One try of a [tflRequest]: what its request said about itself, read if the try fails. */
+    private inner class TflAttempt {
+        /** Whether the request was given longer to answer ([allowSlowAnswer]), so isn't retried on a stall. */
+        var slow = false
+            private set
+
+        /**
+         * Lets a request TfL can be slow to start answering wait [SLOW_SOCKET_TIMEOUT_MILLIS] without
+         * data instead of OkHttp's 10 s. Needs the [HttpTimeout] plugin, which the production client
+         * installs; a client without it keeps its engine's timeouts. Marks the try [slow] either way.
+         */
+        fun HttpRequestBuilder.allowSlowAnswer() {
+            slow = true
+            if (httpClient.pluginOrNull(HttpTimeout) != null) {
+                timeout { socketTimeoutMillis = SLOW_SOCKET_TIMEOUT_MILLIS }
+            }
+        }
     }
 
     /**
@@ -851,10 +864,10 @@ class KtorTflClient(
      * Runs inside a [requestPool] slot, taken before the rate token so a queued request holds no
      * token while it waits for a slot.
      */
-    private suspend fun <T> tflRequest(block: suspend (key: String?) -> T): T =
+    private suspend fun <T> tflRequest(block: suspend TflAttempt.(key: String?) -> T): T =
         requestPool.run { tflRequestInSlot(block) }
 
-    private suspend inline fun <T> tflRequestInSlot(crossinline block: suspend (key: String?) -> T): T {
+    private suspend inline fun <T> tflRequestInSlot(crossinline block: suspend TflAttempt.(key: String?) -> T): T {
         // The key this request sent, so a refusal can be told as the key's (see below).
         var sent: String? = null
         return try {
@@ -867,7 +880,9 @@ class KtorTflClient(
             sent = key
             rateLimiterFor(key).acquire()
             // Off the caller's thread, whoever calls: the answer is decoded and mapped there.
-            withContext(decodeDispatcher) { block(key) }.also { if (key != null) keyAnswered(key, false) }
+            withContext(decodeDispatcher) {
+                withOneRetryOnStall(retry = { rateLimiterFor(key).acquire() }) { block(this, key) }
+            }.also { if (key != null) keyAnswered(key, false) }
         } catch (e: CancellationException) {
             // Never swallow cancellation — rethrow first so structured concurrency
             // isn't broken (a canceled refresh must actually cancel).
@@ -909,8 +924,39 @@ class KtorTflClient(
         }
     }
 
+    /**
+     * Runs [attempt], and once more after [stallRetryDelayMillis] if it stalled: a connection to TfL
+     * that stops answering (seen after a network change) times the request out, or won't connect, with
+     * nothing wrong with TfL, and by a moment later OkHttp has given up on that connection and opens a
+     * fresh one. So a stop shows in seconds rather than at the next refresh, a minute on. Once only,
+     * and never for a request already given longer by [TflAttempt.allowSlowAnswer] (it says so on the
+     * try itself, as its connect can fail at 10 s like any other's, Codex), so a real outage costs one
+     * more try, not a doubled long wait. The retry takes a rate token of its own first ([retry]), as any
+     * request does.
+     */
+    private suspend fun <T> withOneRetryOnStall(retry: suspend () -> Unit, attempt: suspend TflAttempt.() -> T): T {
+        val first = TflAttempt()
+        return try {
+            first.attempt()
+        } catch (e: IOException) {
+            if (!e.isStall() || first.slow) throw e
+            // Said in the debug log, the class only (SPEC *Privacy*), so a report shows the retry.
+            warn("request stalled (${e::class.simpleName}); asking once more")
+            delay(stallRetryDelayMillis)
+            retry()
+            TflAttempt().attempt()
+        }
+    }
+
     companion object {
         const val DEFAULT_BASE_URL: String = "https://api.tfl.gov.uk"
+
+        /**
+         * How long a stalled request waits before its one retry: past the 1 s OkHttp gives a stalled
+         * HTTP/2 connection to answer a ping before it stops handing that connection out, so the retry
+         * gets a fresh one.
+         */
+        const val STALL_RETRY_DELAY_MILLIS: Long = 1_500
 
         /**
          * How long a request TfL is slow to start answering may go without data: the nearby-stops
@@ -968,6 +1014,10 @@ class KtorTflClient(
             }
     }
 }
+
+// A request that got no answer in time, or no connection: a stall worth one more try. An unknown host
+// (offline) isn't one, and nor is any answer TfL gave.
+private fun IOException.isStall(): Boolean = this is SocketTimeoutException || this is ConnectException
 
 // How far ahead a line page's *Coming up* looks ([KtorTflClient.lineWorkAhead]): a week, TfL's own weekend
 // closures being announced the week before.
