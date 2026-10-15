@@ -3455,6 +3455,10 @@ Builds on Phase 1's minimal line-status marking.
         bound. Kept as is for now: a commute day uses about 16 short runs. If bug reports show alarms
         on time but checks running late, run the check in the receiver itself (`goAsync`, ~10 s
         budget for one line-status request), keeping the job as the fallback.
+  - [x] **Only the bus alerts that reach the ride** (maintainer, 2026-10-15): a diversion at the far end of
+        a long bus route alerted a ride nowhere near it. The check now reads the line's route while an alert
+        its words could place is under way, and leaves out one whose stretch is off the ride, as On the way
+        does (`JourneyAlerts.onRide`).
   - [ ] **Only the alerts for the way traveled**, where TfL scopes an alert to a direction (bus
         diversions): needs the alert's direction looked up in the background, and which TfL direction
         the journey's line runs between its ends.

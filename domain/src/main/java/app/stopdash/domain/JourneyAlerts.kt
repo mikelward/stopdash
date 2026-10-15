@@ -378,6 +378,20 @@ object JourneyAlerts {
                 pins.groupBy { it.shownFrom }.mapValues { (_, own) -> own.flatMapTo(HashSet()) { pin -> pin.calls.map { it.lineId } } }
             }
 
+    /**
+     * Each line's mode ("bus", "tube"), as [snapshot]'s stops and departures carry them: what a line a
+     * journey pins rather than was saved on is ridden as ([results]), as a pin may be another mode's.
+     */
+    @WorkerThread
+    fun lineModes(snapshot: DeparturesSnapshot?): Map<String, String> {
+        val modes = HashMap<String, String>()
+        for (stop in snapshot?.stops.orEmpty()) {
+            for (line in stop.lines) if (line.mode.isNotBlank()) modes.putIfAbsent(line.id, line.mode)
+            for (d in stop.departures) if (d.mode.isNotBlank()) modes.putIfAbsent(d.lineId, d.mode)
+        }
+        return modes
+    }
+
     /** Each line's rider-facing name, as [snapshot]'s stops and departures carry them. */
     @WorkerThread
     fun lineNames(snapshot: DeparturesSnapshot?): Map<String, String> {
@@ -393,7 +407,9 @@ object JourneyAlerts {
      * What [statuses] (the lines TfL answered for) say of each of [journeys], with each
      * journey's [lines]. A line TfL didn't answer for isn't reported either way: the check claims
      * nothing it didn't hear (SPEC principle 1), so the journey keeps whatever it last showed.
-     * [names] gives a line's rider-facing name where known.
+     * [names] gives a line's rider-facing name where known. A bus line's alert whose stretch lies off
+     * the ride each open direction takes, on the line's route in [routes], isn't the journey's
+     * ([onRide]); a line is ridden as the journey's mode where it was saved on it, else as [modes] says.
      */
     @WorkerThread
     fun results(
@@ -408,6 +424,10 @@ object JourneyAlerts {
         // window closes ([watchedUntil]).
         directions: Map<String, Set<String>> = emptyMap(),
         until: Map<String, Instant> = emptyMap(),
+        // Each line's route, where read ([routesToRead]): what places a bus alert on the ride or off it.
+        routes: Map<String, LineSequence> = emptyMap(),
+        // Each line's mode ([lineModes]), for the lines a journey pins rather than was saved on.
+        modes: Map<String, String> = emptyMap(),
     ): List<JourneyAlertResult> = journeys.mapNotNull { journey ->
         val asked = lines[journey.key].orEmpty()
         // A journey none of whose lines was answered says nothing new.
@@ -415,8 +435,10 @@ object JourneyAlerts {
         // A line TfL didn't answer for (one it doesn't know, or a chunk of the request it refused)
         // says nothing either way; [actions] leaves alone a journey whose alert names one.
         val unanswered = asked.filterTo(LinkedHashSet()) { it !in statuses } + inconclusive[journey.key].orEmpty()
+        val ways = waysOf(journey, directions[journey.key].orEmpty())
         val alerts = asked.mapNotNull { statuses[it] }
             .filter { it.disrupted }
+            .mapNotNull { status -> onRide(status, ways.map { rideOf(it, status.lineId, modeOf(journey, status.lineId, modes)) }, routes[status.lineId]) }
             .sortedWith(compareBy<LineStatus> { it.severity }.thenBy { it.lineId })
             .map { status ->
                 val name = names[status.lineId]?.takeIf { it.isNotBlank() }
@@ -426,6 +448,69 @@ object JourneyAlerts {
             }
         JourneyAlertResult(journey.key, alerts, unanswered, directions[journey.key].orEmpty(), until[journey.key])
     }
+
+    /**
+     * The lines whose routes [results] would weigh a bus alert on ([onRide]): each journey's bus lines
+     * among [lines] ([modeOf]) whose status in [statuses] has an alert under way that a route could place
+     * ([RouteDisruption.placeable]). None other is worth a request: a tube line's delays spread along it.
+     */
+    @WorkerThread
+    fun routesToRead(
+        journeys: List<FavoriteJourney>,
+        lines: Map<String, Set<String>>,
+        statuses: Map<String, LineStatus>,
+        modes: Map<String, String> = emptyMap(),
+    ): Set<String> =
+        journeys.flatMapTo(LinkedHashSet()) { journey ->
+            lines[journey.key].orEmpty().filter { line ->
+                modeOf(journey, line, modes).equals("bus", ignoreCase = true) &&
+                    statuses[line]?.let { it.disrupted && RouteDisruption.placeable(it) } == true
+            }
+        }
+
+    // The mode [lineId] is ridden as on [journey]: the journey's own where it was saved on that line, else
+    // the line's as [modes] knows it (Codex on #866: a pin may be another mode's), blank where unknown.
+    private fun modeOf(journey: FavoriteJourney, lineId: String, modes: Map<String, String>): String =
+        if (lineId == journey.lineId) journey.mode else modes[lineId].orEmpty()
+
+    /**
+     * [status] as it bears on a favorite ride's [rides] (one per open direction), weighed as a trip weighs
+     * a bus line's alerts on its line's route ([sequence]): null where every alert under way is off every
+     * ride ([RouteDisruption.offRide]), such as a diversion at the far end of a long bus route (maintainer,
+     * 2026-10-15); the worst of those that may reach one where several are under way and the one shown
+     * doesn't ([RouteDisruption.alertsOnRide]); else [status]. Unknown is on: no route, or a ride it can't
+     * place.
+     */
+    @WorkerThread
+    fun onRide(status: LineStatus, rides: List<TripLeg>, sequence: LineSequence?): LineStatus? {
+        if (sequence == null || rides.isEmpty()) return status
+        if (rides.all { RouteDisruption.offRide(it, status, sequence) }) return null
+        val on = rides.flatMap { RouteDisruption.alertsOnRide(it, status, sequence) ?: return status }
+        if (on.any { it.description == status.description && it.fullText == status.fullText }) return status
+        return on.minByOrNull { it.severity } ?: status
+    }
+
+    // The ways [journey] is watched now: each open direction ([directionsOf], by its origin's stop), or as
+    // saved where none is named.
+    private fun waysOf(journey: FavoriteJourney, origins: Set<String>): List<FavoriteJourney> =
+        origins.map { if (it == journey.to.stopId) journey.reversed() else journey }.distinct().ifEmpty { listOf(journey) }
+
+    // [way] as a ride on [lineId] by [mode]: its ends as saved, as a trip's leg names them, for [onRide] to
+    // find on the line's route by the stop, its stop area (the way back's poles are across the road; Codex
+    // on #866), or a stand of its name ([ridesOf]).
+    private fun rideOf(way: FavoriteJourney, lineId: String, mode: String): TripLeg = TripLeg(
+        mode,
+        lineId,
+        way.lineName.takeIf { lineId == way.lineId }.orEmpty(),
+        way.from.stopId,
+        way.from.name,
+        way.to.stopId,
+        way.to.name,
+        Instant.EPOCH,
+        Instant.EPOCH,
+        fromArea = way.from.areaId,
+        toArea = way.to.areaId,
+    )
 
     /**
      * What to do with each journey's notification, given this check's [results], the journeys

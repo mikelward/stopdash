@@ -518,4 +518,108 @@ class JourneyAlertsTest {
         // Cleared for good (window closed, lines clear): forgotten, so the next swipe counts.
         assertEquals(emptyMap<String, String>(), JourneyAlerts.dismissedAfter(dismissed, clear))
     }
+
+    // A bus route north from Bank, its stops past Moorgate made up, and an alert in TfL's style placing a
+    // diversion at its south end (as in RouteDisruptionTest). Made-up words.
+    private val busRoute = LineSequence(
+        listOf(LineRoute("Bank - North End", listOf("b1", "b2", "b3", "b4", "b5", "b6"))),
+        mapOf(
+            "b1" to "Bank Station / King William Street", "b2" to "Example Street", "b3" to "Moorgate Station",
+            "b4" to "Alpha Road", "b5" to "Beta Road", "b6" to "North End",
+        ),
+    )
+    private val southEnd = "EXAMPLE, EC2 - ROUTE 99 is on diversion northbound via Example Street. Buses are not " +
+        "serving stops between 'Bank Station/King William Street' and 'Moorgate Station'. Please allow extra time."
+    private val diverted = LineStatus("99", 6, "Diversion", southEnd, soleAlert = true)
+    private fun busRide(from: String, to: String, mode: String = "bus") =
+        FavoriteJourney(JourneyEnd(from, busRoute.stopNames.getValue(from)), JourneyEnd(to, busRoute.stopNames.getValue(to)), "99", "99", mode)
+    private fun alertsFor(
+        ride: FavoriteJourney,
+        status: LineStatus,
+        routes: Map<String, LineSequence> = mapOf(status.lineId to busRoute),
+        origins: Set<String> = setOf(ride.from.stopId),
+        modes: Map<String, String> = emptyMap(),
+    ) = JourneyAlerts.results(
+        listOf(ride), mapOf(ride.key to setOf(status.lineId)), mapOf(status.lineId to status),
+        directions = mapOf(ride.key to origins), routes = routes, modes = modes,
+    ).single().alerts
+
+    @Test
+    fun `a bus diversion at the far end of the route doesn't alert a ride it doesn't reach`() {
+        // A diversion miles down the route alerted a ride nowhere near it (maintainer, 2026-10-15).
+        assertTrue(alertsFor(busRide("b4", "b6"), diverted).isEmpty())
+        // A ride out of the stretch, or through it, is alerted.
+        assertEquals(listOf("Diversion"), alertsFor(busRide("b3", "b5"), diverted).map { it.description })
+        assertEquals(listOf("Diversion"), alertsFor(busRide("b1", "b6"), diverted).map { it.description })
+        // Unknown is on: the route not read, a ride the route doesn't run (the way back, here), or a line
+        // that isn't a bus.
+        assertEquals(1, alertsFor(busRide("b4", "b6"), diverted, routes = emptyMap()).size)
+        assertEquals(1, alertsFor(busRide("b4", "b6"), diverted, origins = setOf("b4", "b6")).size)
+        assertEquals(1, alertsFor(busRide("b4", "b6", mode = "tube"), diverted).size)
+    }
+
+    @Test
+    fun `a line a ride pins is weighed as its own mode`() {
+        // A line pinned rather than saved on is ridden as the snapshot says, not as the ride's own (Codex on #866):
+        // a rail line's closure away from the stops stays on, as a bus line's alert off the ride doesn't.
+        val pinnedBus = diverted.copy(lineId = "98")
+        assertTrue(alertsFor(busRide("b4", "b6"), pinnedBus, modes = mapOf("98" to "bus")).isEmpty())
+        assertEquals(1, alertsFor(busRide("b4", "b6"), pinnedBus, modes = mapOf("98" to "overground")).size)
+        assertEquals(1, alertsFor(busRide("b4", "b6"), pinnedBus).size)
+        val lines = mapOf(busRide("b4", "b6").key to setOf("98"))
+        assertEquals(setOf("98"), JourneyAlerts.routesToRead(listOf(busRide("b4", "b6")), lines, mapOf("98" to pinnedBus), mapOf("98" to "bus")))
+        assertEquals(emptySet<String>(), JourneyAlerts.routesToRead(listOf(busRide("b4", "b6")), lines, mapOf("98" to pinnedBus), mapOf("98" to "overground")))
+        // The modes come from the snapshot's stops.
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(StopArrivals("b4", "Alpha Road", emptyList(), java.time.Instant.EPOCH, lines = listOf(LineRef("98", "98", "bus")))),
+            fetchedAt = java.time.Instant.EPOCH,
+        )
+        assertEquals(mapOf("98" to "bus"), JourneyAlerts.lineModes(snapshot))
+    }
+
+    @Test
+    fun `the way back is placed by its stop areas, its poles across the road`() {
+        // The way back boards and alights at the other poles of the same stop areas (Codex on #866).
+        val bothWays = busRoute.copy(
+            routes = busRoute.routes + LineRoute("North End - Bank", listOf("n6", "n5", "n4", "n3", "n2", "n1")),
+            // The stretch's stops named as the alert names them; the ride's ends, across the road, named otherwise.
+            stopNames = busRoute.stopNames + mapOf(
+                "n1" to "Bank Station / King William Street", "n2" to "Example Street", "n3" to "Moorgate Station",
+                "n4" to "Alpha Rd", "n5" to "Beta Road", "n6" to "North End Stand",
+            ),
+            stopAreas = mapOf("b4" to "A4", "n4" to "A4", "b6" to "A6", "n6" to "A6"),
+        )
+        val ride = FavoriteJourney(JourneyEnd("b4", "Alpha Road", areaId = "A4"), JourneyEnd("b6", "North End", areaId = "A6"), "99", "99", "bus")
+        val diversionBothWays = diverted.copy(fullText = southEnd.replace("northbound", "in both directions"))
+        // Watched both ways: the way back (n6 to n4) is found by its areas, and is off the stretch too.
+        assertTrue(alertsFor(ride, diversionBothWays, routes = mapOf("99" to bothWays), origins = setOf("b4", "b6")).isEmpty())
+        // Without them the way back can't be placed, so the alert stays on.
+        val noAreas = ride.copy(from = ride.from.copy(areaId = ""), to = ride.to.copy(areaId = ""))
+        assertEquals(1, alertsFor(noAreas, diversionBothWays, routes = mapOf("99" to bothWays), origins = setOf("b4", "b6")).size)
+    }
+
+    @Test
+    fun `a bus line's alert on the ride is the one said when the worst is off it`() {
+        val missed = "Bus stop 'Beta Road' will not be served."
+        val several = LineStatus(
+            "99", 5, "Diversion", southEnd,
+            underWay = listOf(LineAlert(5, "Diversion", southEnd), LineAlert(6, "Part Closure", missed)),
+        )
+        val said = alertsFor(busRide("b4", "b6"), several).single()
+        assertEquals("Part Closure", said.description)
+        assertEquals(missed, said.fullText)
+        // With both on the ride, the worst is said, as before.
+        assertEquals("Diversion", alertsFor(busRide("b3", "b6"), several).single().description)
+    }
+
+    @Test
+    fun `a route is read only for a bus ride's line with an alert a route could place`() {
+        val ride = busRide("b4", "b6")
+        val lines = mapOf(ride.key to setOf("99"))
+        assertEquals(setOf("99"), JourneyAlerts.routesToRead(listOf(ride), lines, mapOf("99" to diverted)))
+        // Not for a tube line, a good service, or an alert whose words couldn't place it.
+        assertEquals(emptySet<String>(), JourneyAlerts.routesToRead(listOf(busRide("b4", "b6", mode = "tube")), lines, mapOf("99" to diverted)))
+        assertEquals(emptySet<String>(), JourneyAlerts.routesToRead(listOf(ride), lines, mapOf("99" to LineStatus("99", LineStatus.GOOD_SERVICE, "Good Service"))))
+        assertEquals(emptySet<String>(), JourneyAlerts.routesToRead(listOf(ride), lines, mapOf("99" to diverted.copy(soleAlert = false))))
+    }
 }

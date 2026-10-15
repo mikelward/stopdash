@@ -28,6 +28,7 @@ import app.stopdash.data.KtorTflClient
 import app.stopdash.data.RejectedApiKey
 import app.stopdash.data.SharedTflRateLimiter
 import app.stopdash.data.SharedTflRequestPool
+import app.stopdash.data.UserApiKeySetting
 import app.stopdash.data.logNetworkWarning
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.LocationFix
@@ -38,6 +39,7 @@ import app.stopdash.domain.JourneyAlertLog
 import app.stopdash.domain.JourneyAlertResult
 import app.stopdash.domain.JourneyAlertSchedule
 import app.stopdash.domain.JourneyAlerts
+import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusBatch
 import app.stopdash.domain.LineStatusCache
@@ -593,6 +595,10 @@ internal object JourneyAlertState {
  * ([JourneyAlerts.actions]); then the next check is armed. A failed request claims nothing: what's
  * shown stays until its own timeout or the next check that answers.
  */
+// How long a check waits for the rider's key, read as the process starts, before reading a route
+// without it: the read is local, so this is ample, and a check never hangs on it.
+private const val KEY_WAIT_MILLIS = 5_000L
+
 class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result = try {
         check()
@@ -765,6 +771,9 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
         }
         val statuses = lineStatuses(context, lines.values.flatten().toSet()) ?: return Answer(emptyList(), lines)
         val current = LineStatus.asOf(statuses.associateBy { it.lineId }, now)
+        // A bus line's alert lies somewhere along its route, so the route says whether it's on the ride.
+        val modes = JourneyAlerts.lineModes(snapshot)
+        val routes = routes(context, JourneyAlerts.routesToRead(active, lines, current, modes))
         return Answer(JourneyAlerts.results(
             active,
             lines,
@@ -774,7 +783,38 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
             JourneyAlerts.directionsOf(active, schedules, at),
             // The window each is found in, so a swipe holds only for it.
             active.mapNotNull { journey -> JourneyAlerts.watchedUntil(journey, schedules, at)?.let { journey.key to it.toInstant() } }.toMap(),
+            routes,
+            modes,
         ), lines, current)
+    }
+
+    /**
+     * The routes of [lineIds], through the app's route cache ([MainActivity.routeStops]), which keeps each
+     * line's for a day and shares it with every screen: at most a request or two per bus line a day, and
+     * only while an alert it could place is under way. One that can't be read is left out, so its line's
+     * alerts stand, as they did before routes were read.
+     */
+    private suspend fun routes(context: Context, lineIds: Set<String>): Map<String, LineSequence> {
+        if (lineIds.isEmpty()) return emptyMap()
+        // The cache asks with the rider's key as the app holds it, read as the process starts: a check
+        // that a cold start runs can get here first, so it waits a moment for it rather than ask keyless,
+        // under the shared quota (Codex on #866).
+        if (withTimeoutOrNull(KEY_WAIT_MILLIS) { UserApiKeySetting.isLoaded.first { it } } == null) {
+            logJourneyAlertWarning("key not read in time, a bus line's route asked for without it")
+        }
+        val repository = MainActivity.routeStops(context)
+        val read = HashMap<String, LineSequence>()
+        for (lineId in lineIds) {
+            try {
+                read[lineId] = repository.load(lineId, "")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Its alerts stand as TfL gave them: an alert that can't be placed is never dropped.
+                logJourneyAlertWarning("a bus line's route not read, its alerts stand: ${e::class.simpleName}")
+            }
+        }
+        return read
     }
 
     // The lines' statuses with the rider's key, through the shared rate budget ([JourneyAlertChecks.answered]).
