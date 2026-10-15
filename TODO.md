@@ -3459,6 +3459,11 @@ Builds on Phase 1's minimal line-status marking.
         a long bus route alerted a ride nowhere near it. The check now reads the line's route while an alert
         its words could place is under way, and leaves out one whose stretch is off the ride, as On the way
         does (`JourneyAlerts.onRide`).
+  - [ ] **Weigh a ride's other lines on their own poles** (Codex on #866). A line the widget pins rather than
+        the one the ride was saved on is weighed at the saved ends, by their stop areas. A pin records only the
+        pole its departures were found at (`WidgetJourney.originId`), not where the line gets off, so a pinned
+        line using poles in other stop areas can't be placed on its route, and its alerts stay on, as before
+        #866. Recording each pin's boarding and alighting poles would let the check weigh those too.
   - [ ] **Only the alerts for the way traveled**, where TfL scopes an alert to a direction (bus
         diversions): needs the alert's direction looked up in the background, and which TfL direction
         the journey's line runs between its ends.
