@@ -49,7 +49,18 @@ object PlaceDirect {
 
         /** The row among a look's rows: its line and the stop it gets off at, so each is one row however many a line has. */
         val key: String = "$lineId>${offStop?.id.orEmpty()}"
+
+        /**
+         * The stop a tap asks the row's ride for to ([DirectRoute]): the one it's named by; where it's named by
+         * none, the nearest the place the soonest train sure of its way gets off at, else the first any may.
+         */
+        val rideTo: DirectTrips.End? = offStop ?: rideToOf(trainReaches, trainForks)
     }
+
+    private fun rideToOf(trainReaches: List<List<DirectTrips.End>>, trainForks: List<Boolean>): DirectTrips.End? =
+        trainReaches.indices.firstOrNull { !trainForks.getOrElse(it) { false } && trainReaches[it].isNotEmpty() }
+            ?.let { trainReaches[it].first() }
+            ?: trainReaches.firstNotNullOfOrNull { it.firstOrNull() }
 
     private fun offStopOf(trains: Int, trainReaches: List<List<DirectTrips.End>>, trainForks: List<Boolean>): DirectTrips.End? {
         if (trains == 0 || trainReaches.size != trains) return null

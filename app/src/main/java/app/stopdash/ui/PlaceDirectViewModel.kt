@@ -108,7 +108,8 @@ class PlaceDirectViewModel(
     @Immutable
     // [endIds]: the stops near the place its trains reach, by id and station, worked out with the look so a tap
     // opening its ride ([TripViewModel.openDirect]) only reads them; [endKey] the same as one string, so a row
-    // that reaches others since a failed tap isn't said to have failed ([TripViewModel.DirectOpening.endKey]).
+    // that reaches others since a failed tap isn't said to have failed ([TripViewModel.DirectOpening.endKey]);
+    // [toId] the one its ride is asked for to ([PlaceDirect.Row.rideTo]).
     data class ShownRow(
         val row: PlaceDirect.Row,
         val times: String,
@@ -121,6 +122,7 @@ class PlaceDirectViewModel(
         val parts: List<Countdown.Part> = emptyList(),
         // Whether any of them is grayed, so the row checks a flag rather than the list.
         val grayed: Boolean = false,
+        val toId: String = "",
     )
 
     private val _state = MutableStateFlow<State>(State.Checking)
@@ -432,6 +434,7 @@ class PlaceDirectViewModel(
                     ShownRow(
                         row, Countdown.mergedLabel(row.departures, now), status?.description, closureNotice(row, closures.found, now),
                         ends, ends.sorted().joinToString(","), Countdown.parts(row.departures, now), row.departures.any { it.grayed },
+                        row.rideTo?.id.orEmpty(),
                     )
                 },
                 checking = result.pending,

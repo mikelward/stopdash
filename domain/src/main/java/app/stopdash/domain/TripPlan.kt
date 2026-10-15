@@ -245,6 +245,20 @@ interface JourneyPlanner {
     ): List<TripRoute> = emptyList()
 
     /**
+     * Only the fewest-changes routes from the stop [fromStop] to the stop [toStop], for a Direct row's ride
+     * ([DirectRoute]): from a stop, the Planner offers the lines leaving it, where a trip via it is free to pass
+     * it on foot. A planner that can't plan between stops has nothing to add.
+     */
+    suspend fun fewestChangesBetween(
+        fromStop: String,
+        toStop: String,
+        speed: WalkingSpeed = WalkingSpeed.AVERAGE,
+        maxWalk: MaxWalk = MaxWalk.DEFAULT,
+        stepFree: StepFree = StepFree.DEFAULT,
+        modes: TripModes = TripModes.DEFAULT,
+    ): List<TripRoute> = emptyList()
+
+    /**
      * The quickest routes of [journeys] with the Planner modes [leaveOut] left out, for a trip whose
      * soonest route rides a line with severe delays ([AroundDelays]). A planner that can't leave a mode
      * out has nothing to add.

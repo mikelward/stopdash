@@ -519,9 +519,10 @@ class JourneyPlannerTest {
                 client.fewestChangesVia(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"), "490000002B")
                 client.quickestWithout(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"), setOf("tube"))
                 client.quickestVia(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"), "490G000002")
+                client.fewestChangesBetween("940GZZLUKSX", "940GZZLUEUS")
             }
             val priced = pricedOn.threads()
-            assertEquals("each request's routes went past the fare step", 4, priced.size)
+            assertEquals("each request's routes went past the fare step", 5, priced.size)
             assertTrue(priced.none { it == callerThread.name.substringBefore(" @") })
         } finally {
             caller.shutdown()
@@ -692,6 +693,34 @@ class JourneyPlannerTest {
             kotlinx.coroutines.runBlocking {
                 clientBy { """{ "message": "No journey found for your inputs." }""" to HttpStatusCode.NotFound }
                     .quickestVia(TripOrigin.Here(Coordinates(51.5, -0.12)), TripDestination.Stop("940GZZLUEUS"), "490G000002")
+            }
+        }
+    }
+
+    @Test
+    fun `asks for a Direct ride from one stop to the other, once, for the fewest changes and at the rider's walk`() = runTest {
+        val requests = mutableListOf<HttpRequestData>()
+        val warnings = mutableListOf<String>()
+        client(fixture, capture = { synchronized(requests) { requests += it } }, warn = { warnings += it })
+            .fewestChangesBetween("910GHGHI", "940GZZLUCYF", WalkingSpeed.FAST, MaxWalk.SIXTY, StepFree.STATION)
+        val request = requests.single()
+        // Both ends are the stops themselves: from the first, the Planner offers the lines leaving it.
+        assertEquals("/Journey/JourneyResults/910GHGHI/to/940GZZLUCYF", request.url.encodedPath)
+        assertTrue(request.fewestChanges())
+        assertTrue("via" !in request.url.parameters.names())
+        assertEquals("Fast", request.url.parameters["walkingSpeed"])
+        assertEquals("60", request.url.parameters["maxWalkingMinutes"])
+        assertEquals("StepFreeToPlatform", request.url.parameters["accessibilityPreference"])
+        // Said apart in the log, naming neither stop.
+        assertTrue(warnings.single().startsWith("journey planner (fewest changes between stops): 3 routes in "))
+        assertTrue(warnings.none { "910GHGHI" in it || "940GZZLUCYF" in it })
+    }
+
+    @Test
+    fun `asking for a Direct ride between stops fails as the one request does`() {
+        assertThrows(TflException.RateLimited::class.java) {
+            kotlinx.coroutines.runBlocking {
+                clientBy { "{}" to HttpStatusCode.TooManyRequests }.fewestChangesBetween("940GZZLUKSX", "940GZZLUEUS")
             }
         }
     }

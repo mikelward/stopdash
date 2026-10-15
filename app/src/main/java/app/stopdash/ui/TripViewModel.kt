@@ -32,6 +32,8 @@ import app.stopdash.domain.NearestStops
 import app.stopdash.domain.PlacedStand
 import app.stopdash.domain.TripClosures
 import app.stopdash.domain.TripDestination
+import app.stopdash.domain.Coordinates
+import app.stopdash.domain.DirectRoute
 import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripLeg
@@ -176,6 +178,13 @@ class TripViewModel(
 ) : ViewModel() {
     /** Where the next plan starts ([TripOrigin]); set by the screen on every composition. */
     var origin: () -> TripOrigin = origin
+
+    /**
+     * The place a Direct row's ride walks on to ([openDirect]): the one its Direct section looks near, a station
+     * placed for a trip to it as much as a favorite (SPEC *Direct to a place*). Set by the screen; null, the
+     * trip's own place.
+     */
+    var directPlace: TripDestination.Place? = null
 
     /**
      * Whether a re-locate is in flight; set by the screen. The re-pick it hands over decides whether
@@ -475,9 +484,10 @@ class TripViewModel(
      * the rider's own options, and its route riding just that line is added, openable but never a card.
      * None found says so on the row ([directOpening]) rather than open something else. Only a ride that gets
      * off at one of [ends] (the row's stops near the place, by id or station) is its ride: on a line that
-     * forks, another branch's train gets off somewhere else; empty, any is.
+     * forks, another branch's train gets off somewhere else; empty, any is. [toId], the stop the row gets off at,
+     * is what the ride is asked for to ([findDirect]).
      */
-    fun openDirect(lineId: String, fromId: String, ends: Set<String> = emptySet(), endKey: String = "", rowKey: String = "") {
+    fun openDirect(lineId: String, fromId: String, ends: Set<String> = emptySet(), endKey: String = "", rowKey: String = "", toId: String = "") {
         directJob?.cancel()
         _directOpening.value = DirectOpening(lineId, fromId, endKey = endKey, rowKey = rowKey)
         // The rider's latest choice from the moment of the tap, whether it opens or not: a row closed before,
@@ -490,6 +500,9 @@ class TripViewModel(
         }
         // The route open at the tap: another opened while it's planned (a card tapped meanwhile) stands.
         openAtTap = openRoute.value
+        // The place its section looked near at the tap, kept with the ride however it's found, the plan's own route
+        // included: a re-ask after process death can come before the screen has placed a station again.
+        val placeAtTap = directPlace
         openedSinceTap = false
         directJob = viewModelScope.launch {
             var opened = false
@@ -507,7 +520,7 @@ class TripViewModel(
                     val version = optionsVersion
                     fun current() = optionsVersion == version && context().sameAs(asked)
                     val found = try {
-                        findDirect(lineId, fromId, { ends }, asked, _state.value.routes.orEmpty(), plannedContext)
+                        findDirect(lineId, fromId, toId, { ends }, asked, _state.value.routes.orEmpty(), plannedContext, directPlace)
                     } catch (e: TflException) {
                         // The stop and line, never where the trip goes (SPEC *Privacy*).
                         warn("direct route on $lineId from $fromId not planned: ${e::class.simpleName}")
@@ -556,7 +569,7 @@ class TripViewModel(
                         }
                         if (written) {
                             // Kept, whichever gave the route, so a re-plan or the process restored asks for it again ([plan]).
-                            directRide = DirectRide(lineId, fromId, found.key, found.endsSaved)
+                            directRide = DirectRide(lineId, fromId, found.key, found.endsSaved, toId, placeAtTap)
                             directAwaitingRetry = false
                             directContext = if (ownedByPlan) plannedContext ?: found.context else found.context
                             _directOpening.value = null
@@ -652,7 +665,17 @@ class TripViewModel(
     // selection, though its values match, so a plan begun before it never speaks for it ([plan]).
     // Its stops near the place are kept as saved ([endsSaved], worked out on the worker) and read back on the
     // worker when first wanted ([ends]), so saving or restoring it walks none of them on the main thread.
-    private data class DirectRide(val lineId: String, val fromId: String, val key: String, val endsSaved: String = "") {
+    // [toId]: the stop it was asked for to ([findDirect]), blank in one saved before it was kept; [place] the place its
+    // section looked near when tapped ([directPlace]), kept whichever way the route was found, so a trip restored after
+    // process death asks the same way before the screen has placed a station again.
+    private data class DirectRide(
+        val lineId: String,
+        val fromId: String,
+        val key: String,
+        val endsSaved: String = "",
+        val toId: String = "",
+        val place: TripDestination.Place? = null,
+    ) {
         val ends: Set<String> by lazy { endsSaved.split(',').filterTo(HashSet()) { it.isNotEmpty() } }
     }
 
@@ -661,12 +684,20 @@ class TripViewModel(
     // One let go awaiting its Retry ([directAwaitingRetry]) isn't restored: its notice and Retry aren't kept either.
     private var directRide: DirectRide? =
         savedState.get<String>(KEY_DIRECT_RIDE)?.takeUnless { savedState.get<Boolean>(KEY_DIRECT_AWAITING) == true }
-            ?.split('\n', limit = 4)?.takeIf { it.size >= 3 }?.let { saved ->
-            DirectRide(saved[0], saved[1], saved[2], saved.getOrNull(3).orEmpty())
+            ?.split('\n', limit = 8)?.takeIf { it.size >= 3 }?.let { saved ->
+            // Its place last, so a name is kept whole whatever it holds; none where it wasn't kept, or doesn't read back.
+            val lat = saved.getOrNull(5)?.toDoubleOrNull()
+            val lon = saved.getOrNull(6)?.toDoubleOrNull()
+            val place = if (lat != null && lon != null) TripDestination.Place(Coordinates(lat, lon), saved.getOrNull(7).orEmpty()) else null
+            DirectRide(saved[0], saved[1], saved[2], saved.getOrNull(3).orEmpty(), saved.getOrNull(4).orEmpty(), place)
         }
         set(ride) {
             field = ride
-            savedState[KEY_DIRECT_RIDE] = ride?.let { "${it.lineId}\n${it.fromId}\n${it.key}\n${it.endsSaved}" }
+            // Kept on the device, in the activity's saved state, as the open route is.
+            savedState[KEY_DIRECT_RIDE] = ride?.let {
+                val place = it.place?.let { p -> "\n${p.coordinate.latitude}\n${p.coordinate.longitude}\n${p.name}" }.orEmpty()
+                "${it.lineId}\n${it.fromId}\n${it.key}\n${it.endsSaved}\n${it.toId}$place"
+            }
         }
 
     // A re-ask failed and its route, planned from elsewhere or under other choices, was let go: the trip
@@ -687,11 +718,22 @@ class TripViewModel(
     private data class Found(val route: TripRoute, val planned: Boolean, val key: String, val mode: String, val context: PlanContext, val endsSaved: String)
 
     // The route riding just [lineId] from [fromId] under [asked]: [plan]'s own when it has one, else the
-    // Planner's via that stop; null when none rides it alone.
+    // Planner's ride from that stop to [toId], the one it gets off at, walked to and on from ([DirectRoute]);
+    // null when none rides it alone.
     // [plan] is used only when it was planned under the same as [asked] ([planContext]): one planned from
     // somewhere else, or under other choices, would start its walk from there.
     // [ends] is read only on the worker: a row's stops near the place may be many.
-    private suspend fun findDirect(lineId: String, fromId: String, ends: () -> Set<String>, asked: PlanContext, plan: List<TripRoute>, planContext: PlanContext?): Found? {
+    // [walkTo] is the place it walks on to ([directPlace], or the one kept with the ride for a re-ask).
+    private suspend fun findDirect(
+        lineId: String,
+        fromId: String,
+        toId: String,
+        ends: () -> Set<String>,
+        asked: PlanContext,
+        plan: List<TripRoute>,
+        planContext: PlanContext?,
+        walkTo: TripDestination.Place?,
+    ): Found? {
         val hidden = hiddenModes
         val stops = _state.value.destinationStops
         if (asked.sameAs(planContext)) withContext(compute) {
@@ -700,15 +742,34 @@ class TripViewModel(
                 ?.let { Found(it, planned = true, key = routeKey(it), mode = it.rides.first().mode, context = planContext ?: asked, endsSaved = ids.joinToString(",")) }
         }?.let { return it }
         val destination = destinations.firstOrNull { it is TripDestination.Place } ?: destinations.firstOrNull() ?: return null
-        val answer = withContext(io) { planner.fewestChangesVia(asked.origin, destination, fromId, asked.speed, asked.maxWalk, asked.stepFree, asked.modes) }
-        return withContext(compute) {
-            val ids = ends()
-            answer.filter { ridesOnly(it, lineId, fromId, ids) }.minByOrNull { it.legs.lastOrNull()?.arrival ?: Instant.MAX }
-                ?.let { Found(it, planned = false, key = routeKey(it), mode = it.rides.first().mode, context = asked, endsSaved = ids.joinToString(",")) }
-        } ?: run {
-            warn("direct route on $lineId from $fromId: none of ${answer.size} planned rides it alone")
-            null
+        // The ride asked for from its own stop to the one it gets off at, the walks either side the phone's
+        // ([DirectRoute]): a trip via the stop has only to pass it, on foot too, and from beside it the Planner
+        // walked past it to whatever was quickest, never the line tapped (maintainer's report, 2026-10-15). Via
+        // the stop as before only where the phone can't time a walk: from another stop, which it can't place, or
+        // without the place or the stop to ask for (a ride saved before it was kept).
+        val place = walkTo ?: destination as? TripDestination.Place
+        val start = (asked.origin as? TripOrigin.Here)?.coordinate
+        val between = place != null && toId.isNotBlank() && (start != null || (asked.origin as? TripOrigin.Stop)?.id == fromId)
+        val answer = withContext(io) {
+            if (between) {
+                planner.fewestChangesBetween(fromId, toId, asked.speed, asked.maxWalk, asked.stepFree, asked.modes)
+            } else {
+                planner.fewestChangesVia(asked.origin, destination, fromId, asked.speed, asked.maxWalk, asked.stepFree, asked.modes)
+            }
         }
+        val (found, why) = withContext(compute) {
+            val ids = ends()
+            val ride = answer.filter { ridesOnly(it, lineId, fromId, ids) }.minByOrNull { it.legs.lastOrNull()?.arrival ?: Instant.MAX }
+                ?: return@withContext null to "none of ${answer.size} planned rides it alone"
+            // A walk either side it can't time (a stop the Planner didn't place) would offer a train the rider can't make.
+            val route = (if (between && place != null) DirectRoute.around(ride, start, place, asked.speed) else ride)
+                ?: return@withContext null to "its ride's stops unplaced"
+            // Nor a walk longer than the rider chose, as the Planner holds its own walks to ([MaxWalk]).
+            if (between && !DirectRoute.walksWithin(route, asked.maxWalk)) return@withContext null to "a walk past the max walk"
+            Found(route, planned = false, key = routeKey(route), mode = route.rides.first().mode, context = asked, endsSaved = ids.joinToString(",")) to ""
+        }
+        if (found == null) warn("direct route on $lineId from $fromId: $why")
+        return found
     }
 
     // The Direct routes no longer open, taken out of the plan. Its row is let go too, and its notice, once the
@@ -1257,7 +1318,7 @@ class TripViewModel(
         var directFailedNow = false
         var direct = ride?.let { (lineId, stopId) ->
             try {
-                findDirect(lineId, stopId, { ride.ends }, asked, routes, asked)
+                findDirect(lineId, stopId, ride.toId, { ride.ends }, asked, routes, asked, directPlace ?: ride.place)
             } catch (e: TflException) {
                 warn("direct route on $lineId from $stopId not planned again: ${e::class.simpleName}")
                 directFailedNow = true
