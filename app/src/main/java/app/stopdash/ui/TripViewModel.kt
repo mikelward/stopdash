@@ -448,10 +448,11 @@ class TripViewModel(
     fun refresh() = start(replan = false)
 
     /**
-     * A Direct row being opened ([openDirect]): its line and stop, whether no route was found, and the stops near the
-     * place it reached when tapped ([PlaceDirectViewModel.ShownRow.endKey]): a row reaching others since hasn't failed.
+     * A Direct row being opened ([openDirect]): its line and stop, which of the line's rows ([PlaceDirect.Row.key]),
+     * whether no route was found, and the stops near the place it reached when tapped
+     * ([PlaceDirectViewModel.ShownRow.endKey]): a row reaching others since hasn't failed.
      */
-    data class DirectOpening(val lineId: String, val fromId: String, val failed: Boolean = false, val endKey: String = "")
+    data class DirectOpening(val lineId: String, val fromId: String, val failed: Boolean = false, val endKey: String = "", val rowKey: String = "")
 
     private val _directOpening = MutableStateFlow<DirectOpening?>(null)
     val directOpening: StateFlow<DirectOpening?> = _directOpening.asStateFlow()
@@ -466,9 +467,9 @@ class TripViewModel(
      * off at one of [ends] (the row's stops near the place, by id or station) is its ride: on a line that
      * forks, another branch's train gets off somewhere else; empty, any is.
      */
-    fun openDirect(lineId: String, fromId: String, ends: Set<String> = emptySet(), endKey: String = "") {
+    fun openDirect(lineId: String, fromId: String, ends: Set<String> = emptySet(), endKey: String = "", rowKey: String = "") {
         directJob?.cancel()
-        _directOpening.value = DirectOpening(lineId, fromId, endKey = endKey)
+        _directOpening.value = DirectOpening(lineId, fromId, endKey = endKey, rowKey = rowKey)
         // The rider's latest choice from the moment of the tap, whether it opens or not: a row closed before,
         // waiting on its Retry, is let go with its notice, so a plan landing meanwhile neither opens it again
         // ([settleDirect]) nor asks for it ([plan]).
@@ -570,7 +571,7 @@ class TripViewModel(
                 overtaken -> _directOpening.value = null
                 else -> {
                     directFailedFrom = askedLast
-                    _directOpening.value = DirectOpening(lineId, fromId, failed = true, endKey = endKey)
+                    _directOpening.value = DirectOpening(lineId, fromId, failed = true, endKey = endKey, rowKey = rowKey)
                 }
             }
         }

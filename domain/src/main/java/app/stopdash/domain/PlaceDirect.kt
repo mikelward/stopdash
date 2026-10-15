@@ -7,14 +7,17 @@ import java.time.Instant
  * The trains and buses from the rider's stops that go straight to a place (SPEC *Direct to a place*):
  * a departure whose line's route calls at one of the stops a short walk from it ([PlaceStops]), judged
  * as a trip's leg is ([DirectTrips.filter]), so a departure whose route isn't known yet is left out and
- * flagged rather than guessed (SPEC principle 1). One row per line, from its nearest stop that meets
- * the rider's step-free level.
+ * flagged rather than guessed (SPEC principle 1). Each line from its nearest stop that meets the rider's
+ * step-free level, a row for each stop near the place its trains get the rider off at.
  */
 object PlaceDirect {
     /** How many trains a row counts down to. */
     const val TRAINS = 3
 
-    /** A line from [fromName] that reaches the place, its next [departures] soonest first. */
+    /**
+     * A line from [fromName] that reaches the place, its next [departures] soonest first: those that get the
+     * rider off at its [offStop], so a line whose trains get off at different stops is a row for each.
+     */
     data class Row(
         val lineId: String,
         val lineName: String,
@@ -28,6 +31,9 @@ object PlaceDirect {
         // Per train, whether its [trainReaches] are alternatives (a fork it may take either way, so it
         // reaches only one of them, which can't be told) rather than stops on its one known way.
         val trainForks: List<Boolean> = emptyList(),
+        // The stop they get off at as the place's stop list first names its station ([rows]), so the row is the
+        // same whichever sibling id its soonest train reaches it by; null, worked out from the trains.
+        private val off: DirectTrips.End? = null,
     ) {
         /** Every stop near the place any of these trains reaches. */
         val reaches: List<DirectTrips.End> get() = trainReaches.flatten().distinct()
@@ -39,7 +45,10 @@ object PlaceDirect {
          * known) or they get off apart: the row then says where it leaves from, never a stop a train may
          * not reach. Worked out as the row is made, on the worker.
          */
-        val offStop: DirectTrips.End? = offStopOf(departures.size, trainReaches, trainForks)
+        val offStop: DirectTrips.End? = off ?: offStopOf(departures.size, trainReaches, trainForks)
+
+        /** The row among a look's rows: its line and the stop it gets off at, so each is one row however many a line has. */
+        val key: String = "$lineId>${offStop?.id.orEmpty()}"
     }
 
     private fun offStopOf(trains: Int, trainReaches: List<List<DirectTrips.End>>, trainForks: List<Boolean>): DirectTrips.End? {
@@ -78,8 +87,8 @@ object PlaceDirect {
 
     /**
      * The lines in [stops] (their fresh arrivals) whose route reaches one of [ends] after boarding, each
-     * once from its nearest stop by [distanceMeters], with its next [TRAINS] trains not yet gone at
-     * [now]; rows nearest first, then soonest. [hidden] modes are left out unchecked, and a stop it avoids
+     * from its nearest stop by [distanceMeters] in a row per stop it gets the rider off at ([Row.offStop]),
+     * each with its next [TRAINS] trains not yet gone at [now]; rows nearest first, then soonest. [hidden] modes are left out unchecked, and a stop it avoids
      * ([AvoidedLines.stopKey], a station found closed) is neither boarded at nor got off at.
      */
     @WorkerThread
@@ -166,14 +175,16 @@ object PlaceDirect {
             kept = parts
         }
         val distance = { stopId: String -> distanceMeters[stopId] ?: Double.MAX_VALUE }
-        val byLine = LinkedHashMap<String, Row>()
+        val made = ArrayList<Row>()
+        // Each line from its nearest stop only.
+        val placed = HashSet<String>()
         for (stop in kept.sortedBy { distance(it.stopId) }) {
             stop.departures
                 .filter { !it.expectedArrival.isBefore(now) }
                 .sortedBy { it.expectedArrival }
                 .groupBy { it.lineId }
                 .forEach { (lineId, trains) ->
-                    if (lineId in byLine) return@forEach
+                    if (lineId in placed) return@forEach
                     val first = trains.first()
                     // The stop it leaves from must meet the level too; a farther stop on the line may.
                     if (level != null && !atStreet(first.mode)) {
@@ -223,14 +234,30 @@ object PlaceDirect {
                     val candidates = trains.map { it to reachesOf(it) }
                     val usable = if (level == null || atStreet(first.mode)) candidates else candidates.filter { (_, reaches) -> reaches.first.isNotEmpty() }
                     if (usable.isEmpty()) return@forEach
-                    val picked = usable.take(TRAINS)
-                    val shown = picked.map { it.first }
-                    val trainReaches = picked.map { it.second.first }
-                    val trainForks = picked.map { it.second.second }
-                    byLine[lineId] = Row(lineId, first.lineName, first.mode, stop.stopId, stop.stopName, shown, trainReaches, trainForks)
+                    placed += lineId
+                    // A row for each stop near the place its trains get the rider off at (maintainer, 2026-10-15):
+                    // a train's is the nearest the place on its one known way, a station's sibling ids one stop. A
+                    // train at a fork, or whose stops near the place aren't known, has none: those share a row
+                    // named by where it leaves from.
+                    val byOff = LinkedHashMap<DirectTrips.End?, MutableList<Pair<Departure, Pair<List<DirectTrips.End>, Boolean>>>>()
+                    for (candidate in usable) {
+                        val (reaches, fork) = candidate.second
+                        val off = reaches.firstOrNull()?.takeUnless { fork }
+                        // Its station as [ends] first names it, whichever sibling id this train reaches it by
+                        // (Codex on #861): the row stays one row, in its place, as its trains come and go.
+                        val station = off?.let { end -> ends.firstOrNull { oneStation(it, end) } ?: end }
+                        byOff.getOrPut(station) { ArrayList() } += candidate
+                    }
+                    for ((station, group) in byOff) {
+                        val picked = group.take(TRAINS)
+                        made += Row(
+                            lineId, first.lineName, first.mode, stop.stopId, stop.stopName,
+                            picked.map { it.first }, picked.map { it.second.first }, picked.map { it.second.second }, station,
+                        )
+                    }
                 }
         }
-        val rows = byLine.values.sortedWith(compareBy({ distance(it.fromId) }, { it.departures.first().expectedArrival }))
+        val rows = made.sortedWith(compareBy({ distance(it.fromId) }, { it.departures.first().expectedArrival }))
         return Result(rows, pending, unresolved || unknownAccess, misses)
     }
 }

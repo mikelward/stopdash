@@ -90,7 +90,7 @@ internal fun PlaceDirectSection(
                     // the rows in view are composed, however many lines go there.
                     if (expanded) {
                         LazyColumn(Modifier.heightIn(max = DIRECT_EXPANDED_MAX).testTag("placeDirectRows")) {
-                            items(state.rows, key = { it.row.lineId }) { DirectRow(it, onOpen, opening) }
+                            items(state.rows, key = { it.row.key }) { DirectRow(it, onOpen, opening) }
                         }
                     } else {
                         Column(Modifier.testTag("placeDirectRows")) {
@@ -117,11 +117,13 @@ internal fun PlaceDirectSection(
 }
 
 /**
- * Whether [opening] is [shown]'s: its line and stop, and, once failed, the stops near the place it reached when tapped.
- * A row that reaches others since (a branch's trains now listed) may have a route: it doesn't say it failed.
+ * Whether [opening] is [shown]'s: its line, stop and row of the line's (one per stop its trains get off at), and,
+ * once failed, the stops near the place it reached when tapped. A row that reaches others since (a branch's trains
+ * now listed) may have a route: it doesn't say it failed.
  */
 internal fun directOpeningOf(opening: TripViewModel.DirectOpening, shown: PlaceDirectViewModel.ShownRow): Boolean =
-    opening.lineId == shown.row.lineId && opening.fromId == shown.row.fromId && (!opening.failed || opening.endKey == shown.endKey)
+    opening.lineId == shown.row.lineId && opening.fromId == shown.row.fromId && opening.rowKey == shown.row.key &&
+        (!opening.failed || opening.endKey == shown.endKey)
 
 @Composable
 private fun DirectRow(shown: PlaceDirectViewModel.ShownRow, onOpen: ((PlaceDirectViewModel.ShownRow) -> Unit)?, opening: TripViewModel.DirectOpening?) {

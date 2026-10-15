@@ -64,6 +64,7 @@ class PlaceDirectViewModelTest {
         client: TflClient,
         ends: suspend (Int) -> List<DirectTrips.End> = { listOf(DirectTrips.End("BOT", "Bottom")) },
         sharedLines: LineStatusCache = LineStatusCache(),
+        routes: RouteStopsRepository = this.routes,
     ) = PlaceDirectViewModel(
         ends = ends,
         client = client,
@@ -133,12 +134,44 @@ class PlaceDirectViewModelTest {
         val model = model(client { listOf(departure("Bottom", 60)) }, ends = { listOf(DirectTrips.End("BOT", "Bottom", "HUBB")) })
         model.refresh()
         val shown = (model.state.value as PlaceDirectViewModel.State.Ready).rows.single()
-        val failed = TripViewModel.DirectOpening(shown.row.lineId, shown.row.fromId, failed = true, endKey = shown.endKey)
+        val failed = TripViewModel.DirectOpening(shown.row.lineId, shown.row.fromId, failed = true, endKey = shown.endKey, rowKey = shown.row.key)
         assertTrue(directOpeningOf(failed, shown))
         // Reaching another stop since: it may have a route now, so it doesn't say it failed; still planning, it does.
         val reachesMore = shown.copy(endKey = "BOT,HUBB,OTHER")
         assertFalse(directOpeningOf(failed, reachesMore))
         assertTrue(directOpeningOf(failed.copy(failed = false), reachesMore))
+    }
+
+    @Test
+    fun `a line whose branches get off at different stops is a row for each, a tap only its own`() = runBlocking {
+        // Both branches call at Side; only the A branch goes on to Bottom A, nearer the place.
+        val branches = LineSequence(
+            routes = listOf(
+                LineRoute("Top ↔ Bottom A", listOf("TOP", "MID", "SIDE", "BOTA")),
+                LineRoute("Top ↔ Bottom B", listOf("TOP", "MID", "SIDE", "BOTB")),
+            ),
+            stopNames = mapOf("TOP" to "Top", "MID" to "Mid", "SIDE" to "Side", "BOTA" to "Bottom A", "BOTB" to "Bottom B"),
+        )
+        val branched = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence = branches
+            },
+            clock = { now },
+        )
+        val model = model(
+            client { listOf(departure("Bottom A", 60), departure("Bottom B", 120)) },
+            ends = { listOf(DirectTrips.End("BOTA", "Bottom A"), DirectTrips.End("SIDE", "Side")) },
+            routes = branched,
+        )
+        model.refresh()
+        val rows = (model.state.value as PlaceDirectViewModel.State.Ready).rows
+        assertEquals(listOf("Bottom A", "Side"), rows.map { it.row.offStop?.name })
+        // A tap opens a ride getting off anywhere its own row's trains reach: Bottom A's call at Side too, so with
+        // Bottom A closed a ride to Side is still theirs; the B row's never reach Bottom A.
+        assertEquals(listOf(setOf("BOTA", "SIDE"), setOf("SIDE")), rows.map { it.endIds })
+        val opening = TripViewModel.DirectOpening(rows[0].row.lineId, rows[0].row.fromId, rowKey = rows[0].row.key)
+        assertTrue(directOpeningOf(opening, rows[0]))
+        assertFalse(directOpeningOf(opening, rows[1]))
     }
 
     @Test
@@ -720,7 +753,7 @@ class PlaceDirectViewModelTest {
     }
 
     @Test
-    fun `a train whose only stop near the place is closed is said, though a later one reaches an open stop`() = runBlocking {
+    fun `a row whose stop near the place is closed says so, another branch's row to an open stop doesn't`() = runBlocking {
         // The line forks after Mid: one train to Bottom A (closed), one to Bottom B (open).
         val fork = LineSequence(
             routes = listOf(LineRoute("Top ↔ Bottom A", listOf("TOP", "MID", "BOTA")), LineRoute("Top ↔ Bottom B", listOf("TOP", "MID", "BOTB"))),
@@ -740,7 +773,9 @@ class PlaceDirectViewModelTest {
             compute = Dispatchers.Unconfined,
         ).apply { setOrigin(listOf(StopRef("TOP", "Top"))) }
         model.refresh()
-        assertEquals("Bottom A: Station closed", (model.state.value as PlaceDirectViewModel.State.Ready).rows.single().notice)
+        // A row each, as they get off at different stops.
+        val rows = (model.state.value as PlaceDirectViewModel.State.Ready).rows
+        assertEquals(listOf("Bottom A" to "Bottom A: Station closed", "Bottom B" to null), rows.map { it.row.offStop?.name to it.notice })
     }
 
     @Test

@@ -1341,10 +1341,32 @@ class TripScreenScreenshotTest {
         )
         composeRule.onNodeWithTag("placeDirect-jubilee").performClick()
         assertEquals(listOf("jubilee"), tapped.map { it.row.lineId })
-        opening.value = TripViewModel.DirectOpening("jubilee", "Bond Street")
+        opening.value = TripViewModel.DirectOpening("jubilee", "Bond Street", rowKey = "jubilee>Canary Wharf")
         composeRule.onNodeWithTag("placeDirectPlanning-jubilee", useUnmergedTree = true).assertTextEquals("Planning…")
-        opening.value = TripViewModel.DirectOpening("jubilee", "Bond Street", failed = true)
+        opening.value = TripViewModel.DirectOpening("jubilee", "Bond Street", failed = true, rowKey = "jubilee>Canary Wharf")
         composeRule.onNodeWithTag("placeDirectNotPlanned-jubilee", useUnmergedTree = true).assertTextEquals("Couldn't plan")
+    }
+
+    @Test
+    fun trip_place_direct_a_line_gets_a_row_for_each_stop_it_gets_off_at() {
+        // One branch gets off at King's Cross St. Pancras, the other only at Euston: a row each, expanded too.
+        showDirect(
+            PlaceDirectViewModel.State.Ready(
+                listOf(
+                    directRow("northern", "Northern", "tube", "Camden Town", 2, 9, off = "King's Cross St. Pancras"),
+                    directRow("northern", "Northern", "tube", "Camden Town", 4, off = "Euston"),
+                    directRow("jubilee", "Jubilee", "tube", "Bond Street", 5),
+                    directRow("135", "135", "bus", "Old Street", 6),
+                ),
+                checking = false,
+                uncertain = false,
+            ),
+        )
+        composeRule.onNodeWithText("+1 more").performClick()
+        val stops = composeRule.onAllNodesWithTag("placeDirectStop-northern", useUnmergedTree = true)
+        stops.assertCountEquals(2)
+        stops[0].assertTextEquals("King's Cross St. Pancras")
+        stops[1].assertTextEquals("Euston")
     }
 
     @Test
