@@ -2072,6 +2072,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             `journeys[].fare.totalCost` at the end of a card's top row, its peak or off-peak level and the pink
             reader warning on the open route; none for a route the Planner didn't price or StopDash
             joined itself. Caps aren't counted, as the Planner doesn't count them.
+        - [ ] **Fill an unpriced bus route's fare across the whole plan** (deferred from #860, maintainer
+              2026-10-15). #860 fills it only from the answers of the one planner call it came back in. A
+              route from the trip's other calls (fewest changes via the fastest route's last stop, a
+              re-plan around a delayed line, another of a station's stops, a Direct row) stays blank even
+              where the plan priced its buses. A price given only to an identical copy from another call is
+              also lost, since the trip keeps just the new routes from those calls. The fix is one pass where
+              the trip publishes its plan; held back as more coupling than these rarer cases are worth.
         - [ ] Needs a device check: the arrival and the fare at a large font, where the fare drops below
               the arrival; and the walk row on a card whose first stop is under a minute away.
       - [x] **Shared-leg pill**: a leg several routes serve alike (buses 43 and 134 share the stops
