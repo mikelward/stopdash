@@ -204,8 +204,8 @@ that time can show an estimate of how far it is, and is then let go, or sooner w
 settings and stars, so they ride your own Android backup like the rest (above); they are never
 logged or sent anywhere. One that stopdash can't follow yet (no one line serves both ends, or an end is
 one of your favorite places) is kept the same way, an end that is a place kept as that place rather than
-its position; nothing is fetched for it. For the widget, the departures at a journey's nearer stop, and which of
-them reach the other end, are saved with the widget's other departures on the device. Showing a journey's trains fetches the departures at its nearer stop
+its position; nothing is fetched for it. For the widget, the departures at a journey's nearer stop, which of
+them reach the other end, and the stops there they get off at, are saved with the widget's other departures on the device. Showing a journey's trains fetches the departures at its nearer stop
 from TfL, like any other stop, and at the stops beside it; to find those, and the stops a short walk
 from the other end, it asks TfL for the stops around each end's public position (TfL's own, never
 yours), as opening a station does, and keeps the answer on the device for up to a day.

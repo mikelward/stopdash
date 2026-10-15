@@ -785,6 +785,7 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
             active.mapNotNull { journey -> JourneyAlerts.watchedUntil(journey, schedules, at)?.let { journey.key to it.toInstant() } }.toMap(),
             routes,
             modes,
+            JourneyAlerts.pins(snapshot),
         ), lines, current)
     }
 

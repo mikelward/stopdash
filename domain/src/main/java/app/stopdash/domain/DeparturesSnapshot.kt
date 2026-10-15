@@ -373,6 +373,10 @@ data class WidgetJourney(
     // The stop the journey was shown from (its direction) when this was worked out, so a later
     // session showing it the other way round can tell the pin is for the old direction.
     val shownFrom: String = "",
+    // The far-end stops its departures get off at, as the card found them (its own, the route's, any a
+    // departure reaches): with [originId], where each line pinned here is ridden, so a ride alert can
+    // place a disruption on that line's route ([JourneyAlerts.results]). Empty where not known yet.
+    val alightIds: Set<String> = emptySet(),
 )
 
 /**
@@ -386,6 +390,8 @@ data class WidgetJourneyCheck(
     val confirmed: Set<JourneyCall>,
     val checked: Set<JourneyCall> = emptySet(),
     val shownFrom: String = "",
+    // The far-end stops the card's departures get off at ([WidgetJourney.alightIds]).
+    val alightIds: Set<String> = emptySet(),
 )
 
 /**
@@ -479,9 +485,12 @@ object WidgetJourneys {
         val next = memory.filterKeys { it in keys }.toMutableMap()
         for (check in checks) {
             if (check.key !in keys) continue
-            val prior = next[check.key]?.takeIf { it.originId == check.originId }?.calls.orEmpty()
+            val pin = next[check.key]?.takeIf { it.originId == check.originId }
+            val prior = pin?.calls.orEmpty()
             next[check.key] = WidgetJourney(
                 check.originId, (prior - check.checked) + check.confirmed, check.key, check.shownFrom,
+                // Where its departures get off, kept through a check that couldn't place them yet.
+                alightIds = check.alightIds.ifEmpty { pin?.alightIds.orEmpty() },
             )
         }
         return next

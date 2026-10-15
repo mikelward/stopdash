@@ -1380,7 +1380,10 @@ diversion at the far end of a long route says nothing of the rider's stops (main
 while a bus line has an alert its words could place, the check reads the line's route through the app's
 route cache (a day's keep, shared with every screen: at most a request or two per line a day, the same
 kind the route page makes), and an alert whose stretch lies off the ride in every watched direction is
-left out. Unknown is on: a route not read, or a ride it can't place, keeps the alert. Each check is
+left out. Each line is ridden from the journey's ends and, for a line the widget pins beside it, from the
+pole it boards at to the far-end stops its departures get off at, as the app last found them (maintainer,
+2026-10-15). Unknown is on: a route not read, or a direction none of whose rides it can place, keeps the
+alert. Each check is
 started by **inexact alarms** at its time, run as an expedited job: Android holds an app's deferred
 jobs half an hour or more while it's off screen, even with the phone in use and the battery setting
 "Optimized" (maintainer's bug report, 2026-10-09). Neither alarm needs a permission: one with a

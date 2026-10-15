@@ -452,6 +452,9 @@ data class PersistedWidgetJourney(
     val calls: List<PersistedJourneyCall> = emptyList(),
     val key: String = "",
     val shownFrom: String = "",
+    // Where its departures get off ([WidgetJourney.alightIds]). Defaulted empty, so a snapshot written by
+    // an older build reads back with none until the app next checks the journey; no version bump needed.
+    val alightIds: List<String> = emptyList(),
 )
 
 @Serializable
@@ -499,17 +502,13 @@ data class PersistedLine(
 )
 
 fun WidgetJourney.toPersisted(): PersistedWidgetJourney =
-    PersistedWidgetJourney(originId, calls.map { PersistedJourneyCall(it.lineId, it.destination, it.branch) }, key, shownFrom)
+    PersistedWidgetJourney(originId, calls.map { PersistedJourneyCall(it.lineId, it.destination, it.branch) }, key, shownFrom, alightIds.sorted())
 
 fun DeparturesSnapshot.toPersisted(): PersistedSnapshot =
     PersistedSnapshot(
         stops = stops.map { it.toPersisted() },
         fetchedAtMillis = fetchedAt.toEpochMilli(),
-        journeys = journeys.map { j ->
-            PersistedWidgetJourney(
-                j.originId, j.calls.map { PersistedJourneyCall(it.lineId, it.destination, it.branch) }, j.key, j.shownFrom,
-            )
-        },
+        journeys = journeys.map { it.toPersisted() },
         journeyOnlyStopIds = journeyOnlyStopIds.sorted(),
         missingStopIds = missingStopIds.sorted(),
         // Dismissals are judged where the snapshot is read ([DeparturesSnapshot.withDismissals]),
@@ -533,6 +532,7 @@ fun PersistedSnapshot.toDomain(): DeparturesSnapshot? {
         journeys = journeys.map { j ->
             WidgetJourney(
                 j.originId, j.calls.mapTo(HashSet()) { JourneyCall(it.lineId, it.destination, it.branch) }, j.key, j.shownFrom,
+                j.alightIds.toSet(),
             )
         },
         journeyOnlyStopIds = journeyOnlyStopIds.toSet(),
