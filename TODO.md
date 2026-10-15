@@ -2187,6 +2187,41 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         - [x] Keep the later list's cards through a rotation (maintainer, 2026-10-15: a to-do; Codex,
               #859). A recreated screen takes the model's request when its time and choices are the same,
               the sets the same objects, so its cards show at once instead of "Planning…".
+      - [x] **Go via a stop** (maintainer, 2026-10-15: "via Finsbury Park"): *Via…* in the trip's
+            overflow picks a station or stop every route passes, named in a Via row of the From/To bar
+            with an × to go any way; a complex is asked via each of its stations (SPEC *Trips with a
+            change → Going via a stop*).
+        - [ ] Needs a device check: the Via row at a large font, where its × should stay level with the
+              field, and a trip via Finsbury Park offering the Great Northern train through it.
+        - [ ] **The later list neither shows nor changes the via** (Codex, #887). A later trip goes via the
+              trip's stop, but its screen has no From/To bar, so it names the stop only when no route passes it,
+              and changing or removing it means going back to the trip for now (*Leave now* or Back). Decide
+              whether the later list's header names the stop and its overflow offers *Via…* and its removal.
+        - [ ] **From… drops the via, and the later time** (maintainer, 2026-10-16: a to-do, not this PR;
+              Codex, #887). Opening From… shows the station search in the trip's place, which takes the
+              trip out of the composition, so Back, or another start to the same destination, comes back
+              with no via. *Change time…*'s later time is held the same way and is lost the same way, as it
+              was before the via. Hold the trip's options (via and later time) in one trip-scoped holder
+              keyed by destination, shared by the trip from here and the trip from a station, kept over a
+              recreated process and cleared when the trip closes, so no screen taking the trip's place
+              drops them.
+        - [ ] **A via that's part of the destination** (maintainer, 2026-10-16: a to-do, not this PR;
+              Codex, #887). Only the destination's own stop is ignored as a via; one of its stations, the
+              interchange it belongs to, or a pole of its bus stop area is planned via as picked. Four
+              review rounds each widened the match by one alias, so look for a way to recognize them all
+              that doesn't grow case by case, e.g. both ends resolved to one set of ids, or the search
+              marking the destination's stops, and decide whether such a pick should then be refused,
+              ignored, or kept.
+        - [ ] **Plan again on the way keeps no via.** A trip started from a route via a stop, planned
+              again from partway along (*Plan again*), is a new trip to the same destination and goes
+              any way; the rider can pick the stop again with *Via…*. Carry it (and drop it once the
+              route has passed it) if that proves a nuisance.
+        - [ ] **A ride's other lines can skip the via.** A ride passing the stop between its two stops
+              takes in other lines between those same stops (*Every line between a ride's two stops*); one
+              getting there another way still shows its trains on that ride, though it doesn't time the
+              route, so a card via a stop can offer a train that doesn't pass it. Leave such a line out of
+              a ride the via lies inside.
+        - [x] The later list's "No trips found" names the stop, as the trip for now's does (Codex, #887).
       - [x] **Shared-leg pill**: a leg several routes serve alike (buses 43 and 134 share the stops
             to Highgate station) as one diagonally cut pill carrying both routes, and a live row per
             line in the one card (maintainer, 2026-09-26).

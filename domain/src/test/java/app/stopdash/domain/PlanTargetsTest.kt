@@ -45,4 +45,40 @@ class PlanTargetsTest {
     fun `an ordinary station is one target`() {
         assertEquals(listOf("940GZZLUOXC"), PlanTargets.of(listOf(station("940GZZLUOXC", "Oxford Circus"))))
     }
+
+    @Test
+    fun `a trip via a complex goes via each of its stations, not its bus stops`() {
+        val members = listOf(
+            bus("490000002A"),
+            station("910GFNPK", "Finsbury Park"),
+            station("940GZZLUFPK", "Finsbury Park"),
+            station("HUBFPK", "Finsbury Park"),
+        )
+        assertEquals(listOf("910GFNPK", "940GZZLUFPK"), PlanTargets.via(members))
+    }
+
+    @Test
+    fun `a trip via bus stops alone goes via one of them`() {
+        assertEquals(listOf("490000002A"), PlanTargets.via(listOf(bus("490000002A"), bus("490000002B"))))
+    }
+
+    @Test
+    fun `a trip via an ordinary station goes via it alone`() {
+        assertEquals(listOf("940GZZLUOXC"), PlanTargets.via(listOf(station("940GZZLUOXC", "Oxford Circus"))))
+    }
+
+    @Test
+    fun `a trip via a complex is keyed by the stations it goes via`() {
+        val stops = PlanTargets.viaStops(listOf(station("910GFNPK", "Finsbury Park"), station("940GZZLUFPK", "Finsbury Park")))
+        assertEquals(listOf("910GFNPK", "940GZZLUFPK"), stops.ids)
+        assertEquals(" via 910GFNPK,940GZZLUFPK", stops.key)
+    }
+
+    @Test
+    fun `a complex holding a station the trip goes to is still planned via`() {
+        // Maintainer, 2026-10-16: only the destination itself is ignored, so to Finsbury Park's Underground station
+        // via the interchange it belongs to asks via each of its stations, as any other complex.
+        val members = listOf(station("910GFNPK", "Finsbury Park"), station("940GZZLUFPK", "Finsbury Park"), bus("490000002A"))
+        assertEquals(listOf("910GFNPK", "940GZZLUFPK"), PlanTargets.viaStops(members).ids)
+    }
 }

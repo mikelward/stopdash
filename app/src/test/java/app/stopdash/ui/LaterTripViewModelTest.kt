@@ -17,6 +17,7 @@ import app.stopdash.domain.TripModes
 import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripTime
+import app.stopdash.domain.ViaStops
 import app.stopdash.domain.WalkingSpeed
 import java.io.BufferedReader
 import java.io.StringReader
@@ -78,6 +79,11 @@ class LaterTripViewModelTest {
         var threads: ThreadRecorder? = null
         // Each answer waits on this while set, as a slow Planner would.
         var gate: CompletableDeferred<Unit>? = null
+        // Each request's destination and the stop it was asked via, and the answers via each stop; one in
+        // [notFoundVia] answers with the Planner's 404.
+        val vias = mutableListOf<Pair<String, String?>>()
+        var byVia: Map<String, List<TripRoute>> = emptyMap()
+        var notFoundVia: Set<String> = emptySet()
         override suspend fun journeys(
             from: TripOrigin,
             to: TripDestination,
@@ -86,15 +92,21 @@ class LaterTripViewModelTest {
             stepFree: StepFree,
             modes: TripModes,
             at: TripTime?,
+            via: String?,
         ): List<TripRoute> {
             threads?.note()
             val key = (to as TripDestination.Stop).id
             synchronized(asked) {
                 asked += key to at
                 froms += from
+                vias += key to via
             }
             gate?.await()
             if (key in failFor) throw TflException.Offline(null)
+            if (via != null) {
+                if (via in notFoundVia) throw TflException.NotFound(null)
+                return byVia[via].orEmpty()
+            }
             return byDestination[key].orEmpty()
         }
 
@@ -379,7 +391,7 @@ class LaterTripViewModelTest {
         val walk = TripLeg(TripLeg.WALKING, "", "", "C", "C", "D", "Place D", at(30), at(36))
         val route = TripRoute(listOf(leg("red", "A", "B", 5, 15), leg("blue", "B", "C", 20, 30), walk))
         val planner = object : JourneyPlanner {
-            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?) =
+            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?, via: String?) =
                 listOf(route)
 
             override suspend fun fewestChangesVia(from: TripOrigin, to: TripDestination, via: String, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?): List<TripRoute> =
@@ -599,5 +611,33 @@ class LaterTripViewModelTest {
             io.shutdown()
             workerPool.shutdown()
         }
+    }
+
+    @Test
+    fun `a later trip via a stop asks every destination via each of its stations`() = runTest(dispatcher) {
+        val throughV1 = TripRoute(listOf(leg("red", "A", "V1", 5, 12), leg("blue", "V1", "C", 15, 25)))
+        val throughV2 = TripRoute(listOf(leg("green", "A", "V2", 4, 11), leg("brown", "V2", "C", 14, 27)))
+        val planner = Planner(mapOf("C" to listOf(TripRoute(listOf(leg("pink", "A", "C", 5, 20)))))).apply {
+            byVia = mapOf("V1" to listOf(throughV1), "V2" to listOf(throughV2))
+        }
+        val later = LaterTripViewModel(
+            planner, { TripOrigin.Stop("A") }, listOf(TripDestination.Stop("C")),
+            io = dispatcher, compute = dispatcher, via = ViaStops(listOf("V1", "V2")),
+        )
+        later.show(LaterTripViewModel.Request(leave))
+        advanceUntilIdle()
+        assertEquals(setOf("C" to "V1", "C" to "V2"), planner.vias.toSet())
+        assertEquals(2, planner.vias.size)
+        assertEquals(setOf(throughV1, throughV2), later.routes.orEmpty().toSet())
+    }
+
+    @Test
+    fun `a later trip with no route through its stop lists none, not a failure`() = runTest(dispatcher) {
+        val planner = Planner(emptyMap()).apply { notFoundVia = setOf("V1") }
+        val later = LaterTripViewModel(planner, { TripOrigin.Stop("A") }, listOf(TripDestination.Stop("C")), io = dispatcher, compute = dispatcher, via = ViaStops(listOf("V1")))
+        later.show(LaterTripViewModel.Request(leave))
+        advanceUntilIdle()
+        assertEquals(emptyList<TripRoute>(), later.routes)
+        assertNull(later.state.value.error)
     }
 }

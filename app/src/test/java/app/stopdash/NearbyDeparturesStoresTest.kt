@@ -41,6 +41,25 @@ class NearbyDeparturesStoresTest {
     }
 
     @Test
+    fun `a kept key's store survives another being looked up, and goes once it isn't kept`() {
+        // Codex on #887: a stop picked to go via, looked up beside the via in place, cleared the via's lookup.
+        val holder = NearbyDeparturesStores()
+        val ownerA = holder.ownerFor("a")
+        val vmA = ViewModelProvider(ownerA, ViewModelProvider.NewInstanceFactory())[SentinelViewModel::class.java]
+
+        val ownerB = holder.ownerFor("b", keep = "a")
+        val vmB = ViewModelProvider(ownerB, ViewModelProvider.NewInstanceFactory())[SentinelViewModel::class.java]
+        assertFalse("the kept set's model survives", vmA.cleared)
+        assertSame("and its store is the one retained", ownerA.viewModelStore, holder.ownerFor("a", keep = "b").viewModelStore)
+        assertFalse("looking the kept one up again keeps the other", vmB.cleared)
+
+        // A third, keeping only the second: the first is no longer wanted and is cleared.
+        holder.ownerFor("c", keep = "b")
+        assertTrue(vmA.cleared)
+        assertFalse(vmB.cleared)
+    }
+
+    @Test
     fun `clearAll drops every store so a recovered set rebuilds its model`() {
         val holder = NearbyDeparturesStores()
         val ownerA = holder.ownerFor("a")

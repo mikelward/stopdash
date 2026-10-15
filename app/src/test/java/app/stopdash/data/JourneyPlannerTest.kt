@@ -762,6 +762,39 @@ class JourneyPlannerTest {
     }
 
     @Test
+    fun `a trip via a stop the rider picked asks all four requests via it, naming it nowhere in the log`() = runTest {
+        val requests = mutableListOf<HttpRequestData>()
+        val warnings = mutableListOf<String>()
+        client(fixture, capture = { synchronized(requests) { requests += it } }, warn = { synchronized(warnings) { warnings += it } })
+            .journeys(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"), via = "940GZZLUFPK")
+        assertEquals(4, requests.size)
+        assertTrue(requests.all { it.url.parameters["via"] == "940GZZLUFPK" })
+        // Still the quickest, the fewest changes, the least walking and buses alone, between the same ends.
+        assertEquals(1, requests.count { it.quickest() })
+        assertEquals(1, requests.count { it.fewestChanges() })
+        assertEquals(1, requests.count { it.leastWalking() })
+        assertEquals(1, requests.count { it.busOnly() })
+        requests.forEach { assertEquals("/Journey/JourneyResults/910GHGHI/to/940GZZLUCYF", it.url.encodedPath) }
+        // Each said as asked via a stop, which stop never named.
+        listOf("quickest via a stop", "fewest changes via a stop", "least walking via a stop", "bus only via a stop").forEach { request ->
+            assertTrue(warnings.toString(), warnings.any { it.startsWith("journey planner ($request): ") })
+        }
+        assertTrue(warnings.none { "940GZZLUFPK" in it })
+    }
+
+    @Test
+    fun `a trip via a stop asks around delays via it too`() = runTest {
+        val requests = mutableListOf<HttpRequestData>()
+        val warnings = mutableListOf<String>()
+        client(fixture, capture = { synchronized(requests) { requests += it } }, warn = { synchronized(warnings) { warnings += it } })
+            .quickestWithout(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"), setOf("tube"), via = "940GZZLUFPK")
+        val request = requests.single()
+        assertEquals("940GZZLUFPK", request.url.parameters["via"])
+        assertTrue(request.url.parameters["mode"].orEmpty().split(',').none { it == "tube" })
+        assertTrue(warnings.toString(), warnings.single().startsWith("journey planner (without tube, via a stop): "))
+    }
+
+    @Test
     fun `asks once for the quickest routes via a bus stop, at the rider's walk`() = runTest {
         val requests = mutableListOf<HttpRequestData>()
         val warnings = mutableListOf<String>()

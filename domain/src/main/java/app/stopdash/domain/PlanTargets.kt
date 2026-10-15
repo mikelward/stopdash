@@ -1,5 +1,7 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
+
 /**
  * Where a trip to a station complex is planned to (SPEC *Trips with a change*). The Journey Planner
  * takes one stop per end and leans toward that stop's own mode, so a trip to an interchange such
@@ -36,6 +38,29 @@ object PlanTargets {
         }
         return stations.map { it.id } + listOfNotNull(bus?.id)
     }
+
+    /**
+     * The stop ids to plan via among [members], for a trip the rider sends through a complex
+     * ([TripVia]; SPEC *Going via a stop*): each station code, as [of] gives them, since the Planner
+     * only counts a route as passing the station it was asked via (via Finsbury Park's Underground
+     * station, a Great Northern train through its National Rail station doesn't). Its bus stops only
+     * where it has no station: every stop asked via multiplies each of the plan's requests, and a rider
+     * going via a bus stop picks that stop, which the search lists on its own.
+     */
+    fun via(members: List<Member>): List<String> {
+        val targets = of(members)
+        val stations = targets.filter { id -> members.none { it.id == id && it.bus } }
+        return stations.ifEmpty { targets }
+    }
+
+    /**
+     * What a trip via the complex of [members] asks the Planner ([via]), with its key ([ViaStops]): planned via as
+     * picked, one holding a station the trip goes to included (maintainer, 2026-10-16). Walks every member, so on
+     * a worker.
+     */
+    @WorkerThread
+    fun viaStops(members: List<Member>): ViaStops =
+        ViaStops(via(members).ifEmpty { listOfNotNull(members.firstOrNull()?.id) })
 
     private const val HUB_PREFIX = "HUB"
     private const val BUS = "bus"

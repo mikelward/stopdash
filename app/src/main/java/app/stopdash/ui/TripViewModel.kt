@@ -41,6 +41,7 @@ import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.StationIndex
 import app.stopdash.domain.UsageEvent
 import app.stopdash.domain.stampOf
+import app.stopdash.domain.ViaStops
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.StepFree
@@ -142,6 +143,11 @@ class TripViewModel(
     // them has reached it. Each id maps to its stop, so a bus stop's poles and its "490G…" area
     // are one stop when one route passes it and another gets off there.
     destinationIds: Map<String, String> = stopIds(destinations).associateWith { it },
+    // The stops a trip the rider sends through a station goes via (SPEC *Going via a stop*): one per station
+    // of what they picked ([PlanTargets.viaStops]), each asked of the Planner for every destination and the
+    // answers merged, so every route passes one of them. Null for a trip that goes any way. Part of what the
+    // trip is, so another via is another trip: [TripPlans] keys its plans by its key, worked out with the stops.
+    val via: ViaStops? = null,
     // Where the Planner plans from, read at each plan: from here the rider's latest fix, so TfL walks
     // from where they are to whichever stop serves the trip best (SPEC *Trips with a change*); from a
     // *From…* station, its stop. The stop [fromId] by default. The screen replaces it ([origin]) each
@@ -278,8 +284,8 @@ class TripViewModel(
         // trip starts too, since the settings are read from storage after the model is made: it opens
         // on the plan kept for the rider's own options, not the defaults'.
         val here = origin() is TripOrigin.Here
-        val kept = plans.get(fromId, destinations, here, walkingSpeed, maxWalk, stepFree, tripModes)
-        plannedFrom = plans.origin(fromId, destinations, here, walkingSpeed, maxWalk, stepFree, tripModes)
+        val kept = plans.get(fromId, destinations, here, walkingSpeed, maxWalk, stepFree, tripModes, via)
+        plannedFrom = plans.origin(fromId, destinations, here, walkingSpeed, maxWalk, stepFree, tripModes, via)
         plannedContext = plannedFrom?.let { PlanContext(it, walkingSpeed, maxWalk, stepFree, tripModes) }
         // A Direct route open is asked for again under the new choices ([plan]): a plan kept for them is
         // planned again, not just shown, and reads as planning meanwhile, so the route isn't closed as gone.
@@ -391,7 +397,7 @@ class TripViewModel(
     }
 
     private val _state = MutableStateFlow(
-        (plans.get(fromId, destinations, origin() is TripOrigin.Here, walkingSpeed, maxWalk, stepFree, tripModes)?.let { (routes, at) -> State(routes = routes, plannedAt = at, statusUnknown = linesOf(routes), closuresUnknown = unknownClosures(routes, State())) } ?: State())
+        (plans.get(fromId, destinations, origin() is TripOrigin.Here, walkingSpeed, maxWalk, stepFree, tripModes, via)?.let { (routes, at) -> State(routes = routes, plannedAt = at, statusUnknown = linesOf(routes), closuresUnknown = unknownClosures(routes, State())) } ?: State())
             .copy(destinationStops = stopIds(destinations).associateWith { it } + destinationIds),
     )
     val state: StateFlow<State> = _state.asStateFlow()
@@ -875,7 +881,7 @@ class TripViewModel(
     private var planCounted = false
 
     // Where the plan shown was planned from; null until one is (a reused plan carries its own).
-    private var plannedFrom: TripOrigin? = plans.origin(fromId, destinations, origin() is TripOrigin.Here, walkingSpeed, maxWalk, stepFree, tripModes)
+    private var plannedFrom: TripOrigin? = plans.origin(fromId, destinations, origin() is TripOrigin.Here, walkingSpeed, maxWalk, stepFree, tripModes, via)
 
     // What the plan shown was planned under, where from included ([findDirect] reuses its routes only then).
     private var plannedContext: PlanContext? = plannedFrom?.let { PlanContext(it, walkingSpeed, maxWalk, stepFree, tripModes) }
@@ -1179,8 +1185,9 @@ class TripViewModel(
         // For the usage stats: a plan after one already counted, or over a plan kept from before.
         val planAgain = planCounted || !progressive
         val gathered = mutableListOf<TripRoute>()
-        // Each destination's own answer, for the one request around delays the plan makes ([planAroundDelays]).
-        val answers = mutableListOf<Pair<TripDestination, List<TripRoute>>>()
+        // Each destination's own answer, and the stop the rider picked it was asked via (null for none), for the
+        // one request around delays the plan makes ([planAroundDelays]), which asks via the same stop.
+        val answers = mutableListOf<Answer>()
         var answered = 0
         var failure: TflException? = null
         // An extra request (to a place via its fastest route's last stop, or around delays) failed: the
@@ -1232,13 +1239,27 @@ class TripViewModel(
         }
         try {
             coroutineScope {
-                for (destination in destinations) {
+                // Via each of the stations the rider picked to go through, where they picked one: the Planner
+                // takes one stop to route via, and counts a route as passing only the station it was asked
+                // via (SPEC *Going via a stop*).
+                val throughs: List<String?> = via?.ids ?: listOf(null)
+                for (destination in destinations) for (through in throughs) {
                     launch {
                         val routes = try {
-                            withContext(io) { planner.journeys(from, destination, speed, limit, access, modes) }
+                            withContext(io) { planner.journeys(from, destination, speed, limit, access, modes, via = through) }
+                        } catch (e: TflException.NotFound) {
+                            // No route through the stop asked via (the Planner's 404): an answer with no routes, so a
+                            // trip with none through any of its stations says it found none, not that it failed.
+                            if (through == null) {
+                                warn("trip plan failed: ${e::class.simpleName}")
+                                failure = failure ?: e
+                                return@launch
+                            }
+                            warn("trip plan via a stop: no route through it")
+                            emptyList()
                         } catch (e: TflException) {
-                            // Neither end is logged: together they're a trip the rider chose (a
-                            // destination coordinate least of all, SPEC *Privacy*).
+                            // Neither end is logged, nor the stop it goes via: together they're a trip the rider
+                            // chose (a destination coordinate least of all, SPEC *Privacy*).
                             warn("trip plan failed: ${e::class.simpleName}")
                             failure = failure ?: e
                             return@launch
@@ -1246,11 +1267,12 @@ class TripViewModel(
                         answered++
                         gathered += routes
                         showGathered()
-                        answers += destination to routes
+                        answers += Answer(destination, through, routes)
                         // To a place, asked once more for the fewest changes via where the fastest
                         // route gets off its last ride ([FinalStop]): the one bus the whole way,
-                        // which the Planner can pass over for a long walk.
-                        val finalStop = (if (destination is TripDestination.Place) FinalStop.of(routes) else null) ?: return@launch
+                        // which the Planner can pass over for a long walk. Not for a trip via a stop the
+                        // rider picked: the Planner routes via one stop, and theirs is the one asked.
+                        val finalStop = (if (destination is TripDestination.Place && through == null) FinalStop.of(routes) else null) ?: return@launch
                         val answer = try {
                             withContext(io) { planner.fewestChangesVia(from, destination, finalStop.stopId, speed, limit, access, modes) }
                         } catch (e: TflException) {
@@ -1265,21 +1287,22 @@ class TripViewModel(
                         // A route already planned (the same legs at the same times) stays once.
                         gathered += mergedRoutes(gathered.toList(), fewer).drop(gathered.size)
                         // Shown with the rest, so the soonest the delays are judged on may be one of these (Codex, #703).
-                        answers += destination to fewer
+                        answers += Answer(destination, null, fewer)
                         showGathered()
                     }
                 }
                 // Via the bus stops towards where the trip goes ([TowardStops]), alongside the plan's own
                 // requests: the stops are picked on the device, so they wait on no answer. To the first
-                // destination only, so a station complex's several stops don't multiply the requests.
-                destinations.firstOrNull()?.let { destination ->
+                // destination only, so a station complex's several stops don't multiply the requests. None for a
+                // trip via a stop the rider picked: the Planner routes via one stop, and theirs is the one asked.
+                destinations.firstOrNull()?.takeIf { via == null }?.let { destination ->
                     launch {
                         val stood = planToward(from, destination, speed, limit, access, modes) { found ->
                             // Merged whole, not appended: a route already planned takes the found one's mark.
                             val merged = mergedRoutes(gathered.toList(), found)
                             gathered.clear()
                             gathered += merged
-                            answers += destination to found
+                            answers += Answer(destination, null, found)
                             showGathered()
                         }
                         if (!stood) viaFailed = true
@@ -1296,14 +1319,14 @@ class TripViewModel(
             val soonest = withContext(compute) {
                 // As the trip shows them ([State.shownRoutes]): less the hidden and avoided, and the detours the rest
                 // beat (Codex, #703); each by the destination it was planned to.
-                val shown = State(routes = answers.flatMap { it.second }, destinationStops = destinationStops).shownRoutes(hidden).orEmpty()
-                val to = java.util.IdentityHashMap<TripRoute, TripDestination>()
-                answers.forEach { (destination, routes) -> routes.forEach { to[it] = destination } }
+                val shown = State(routes = answers.flatMap { it.routes }, destinationStops = destinationStops).shownRoutes(hidden).orEmpty()
+                val to = java.util.IdentityHashMap<TripRoute, Answer>()
+                answers.forEach { answer -> answer.routes.forEach { to[it] = answer } }
                 AroundDelays.soonest(shown)?.let { route -> to[route]?.let { it to route } }
             }
             if (soonest != null) {
-                val (destination, route) = soonest
-                if (!planAroundDelays(route, from, destination, speed, limit, access, modes, gathered) { showGathered() }) viaFailed = true
+                val (answer, route) = soonest
+                if (!planAroundDelays(route, from, answer.destination, speed, limit, access, modes, gathered, answer.via) { showGathered() }) viaFailed = true
             }
         } catch (e: CancellationException) {
             _state.update { it.copy(planning = false) }
@@ -1313,7 +1336,7 @@ class TripViewModel(
         if (optionsChangedSince()) {
             // The rider changed the walk while this ran: its routes are for the old one. A whole plan
             // is still kept for that walk; the new one is planned next ([start]'s loop).
-            if (failed == null) plans.put(fromId, destinations, gathered.toList(), clock(), from, speed, limit, access, modes)
+            if (failed == null) plans.put(fromId, destinations, gathered.toList(), clock(), from, speed, limit, access, modes, via)
             _state.update { it.copy(planning = false) }
             // Counted all the same, by the routes it would have shown: the Planner answered it, and the
             // plan for the new options is one again.
@@ -1358,7 +1381,7 @@ class TripViewModel(
         // The rider changed a choice while it was asked: this plan is for the old ones, so it isn't shown
         // (kept for reuse under them, as above); the new one is planned next.
         if (optionsChangedSince()) {
-            if (failed == null) plans.put(fromId, destinations, routes, clock(), from, speed, limit, access, modes)
+            if (failed == null) plans.put(fromId, destinations, routes, clock(), from, speed, limit, access, modes, via)
             _state.update { it.copy(planning = false) }
             countPlan(failed, answered, shownCount(routes), viaFailed || directFailedNow, from, planAgain)
             return
@@ -1380,7 +1403,7 @@ class TripViewModel(
         countPlan(failed, answered, visible.size, viaFailed || directFailedNow, from, planAgain)
         val at = clock()
         // Only a whole plan is kept for reuse: a partial one is planned again on the next open.
-        if (failed == null) plans.put(fromId, destinations, routes, at, from, speed, limit, access, modes)
+        if (failed == null) plans.put(fromId, destinations, routes, at, from, speed, limit, access, modes, via)
         // A new plan's lines are unchecked until their status arrives: none passes as running
         // normally meanwhile (its last known status, if held, stands).
         val offered = direct?.takeUnless { it.planned }
@@ -1472,6 +1495,8 @@ class TripViewModel(
         access: StepFree,
         modes: TripModes,
         gathered: MutableList<TripRoute>,
+        // The stop the rider picked that [soonest] was planned via, asked via again; null for none.
+        through: String?,
         show: suspend () -> Unit,
     ): Boolean {
         val held = _state.value.statuses
@@ -1523,7 +1548,7 @@ class TripViewModel(
         if (leaveOut.isEmpty()) return true
         plannedAround = plannedAround + setOf(leaveOut)
         val answer = try {
-            withContext(io) { planner.quickestWithout(from, destination, leaveOut, speed, limit, access, modes) }
+            withContext(io) { planner.quickestWithout(from, destination, leaveOut, speed, limit, access, modes, via = through) }
         } catch (e: TflException) {
             warn("trip plan around delays failed: ${e::class.simpleName}")
             return false
@@ -1535,6 +1560,10 @@ class TripViewModel(
         show()
         return true
     }
+
+    // One answer to a plan's request ([plan]): where it was planned to, the stop the rider picked it was asked via
+    // (null for none), and its routes.
+    private class Answer(val destination: TripDestination, val via: String?, val routes: List<TripRoute>)
 
     // What [planAroundDelays] worked out on [compute]: the modes to leave out, and the trip's statuses, their
     // times and delayed lines with what it found kept (statuses null when nothing is new).
@@ -2258,6 +2287,8 @@ class TripPlans {
     // here opens with a walk from the rider that one from the stop doesn't have.
     // [speed], [maxWalk], [stepFree] and [modes]: the walking speed the plan was timed at, and the walk
     // limit, step-free level and modes it was planned under; a plan under other options is another plan.
+    // [via]: the stops a trip the rider sent through a station was planned via, by the key worked out with them
+    // ([ViaStops.key]); a trip any way, or via another, is another plan.
     @Synchronized
     fun get(
         fromId: String,
@@ -2267,7 +2298,8 @@ class TripPlans {
         maxWalk: MaxWalk = MaxWalk.DEFAULT,
         stepFree: StepFree = StepFree.DEFAULT,
         modes: TripModes = TripModes.DEFAULT,
-    ): Pair<List<TripRoute>, Instant>? = plans[key(fromId, destinations, here, speed, maxWalk, stepFree, modes)]?.let { it.routes to it.at }
+        via: ViaStops? = null,
+    ): Pair<List<TripRoute>, Instant>? = plans[key(fromId, destinations, here, speed, maxWalk, stepFree, modes, via)]?.let { it.routes to it.at }
 
     /** Where the plan [get] returns was planned from: from here, the rider's position then. */
     @Synchronized
@@ -2279,7 +2311,8 @@ class TripPlans {
         maxWalk: MaxWalk = MaxWalk.DEFAULT,
         stepFree: StepFree = StepFree.DEFAULT,
         modes: TripModes = TripModes.DEFAULT,
-    ): TripOrigin? = plans[key(fromId, destinations, here, speed, maxWalk, stepFree, modes)]?.from
+        via: ViaStops? = null,
+    ): TripOrigin? = plans[key(fromId, destinations, here, speed, maxWalk, stepFree, modes, via)]?.from
 
     @Synchronized
     fun put(
@@ -2292,8 +2325,9 @@ class TripPlans {
         maxWalk: MaxWalk = MaxWalk.DEFAULT,
         stepFree: StepFree = StepFree.DEFAULT,
         modes: TripModes = TripModes.DEFAULT,
+        via: ViaStops? = null,
     ) {
-        val key = key(fromId, destinations, from is TripOrigin.Here, speed, maxWalk, stepFree, modes)
+        val key = key(fromId, destinations, from is TripOrigin.Here, speed, maxWalk, stepFree, modes, via)
         plans.remove(key)
         plans[key] = Held(routes, at, from)
         while (plans.size > MAX) plans.remove(plans.keys.first())
@@ -2311,7 +2345,9 @@ class TripPlans {
         maxWalk: MaxWalk,
         stepFree: StepFree,
         modes: TripModes,
-    ) = "${if (here) "here@" else ""}$fromId>${destinations.joinToString(",") { destKey(it) }}~${speed.name}~${maxWalk.name}~${stepFree.name}~${modes.key}"
+        via: ViaStops?,
+    ) = "${if (here) "here@" else ""}$fromId>${destinations.joinToString(",") { destKey(it) }}~${speed.name}~${maxWalk.name}~${stepFree.name}~${modes.key}" +
+        via?.key.orEmpty()
 
     private fun destKey(destination: TripDestination) = when (destination) {
         is TripDestination.Stop -> destination.id

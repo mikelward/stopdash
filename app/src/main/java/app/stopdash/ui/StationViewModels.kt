@@ -823,6 +823,9 @@ class StationStopsViewModel(
     // The bundled index, for the other ids TfL lists this same station under (Weybridge's two records, no
     // interchange to open instead): asked for too, so none of its stops is left out. Read on [io].
     private val loadIndex: () -> StationIndex = { StationIndex.EMPTY },
+    // How a failure names the station in [warn]: its id, a public TfL id, except where the stop is the rider's
+    // own pick the log promises not to name (a trip's via, SPEC *Going via a stop*).
+    private val logAs: String = stationId,
 ) : ViewModel() {
     sealed interface State {
         data object Loading : State
@@ -863,7 +866,7 @@ class StationStopsViewModel(
                 throw e
             } catch (e: TflException) {
                 // A station id is a public TfL id, safe to log (SPEC *Privacy*); the query that found it isn't.
-                warn("station lookup failed: ${e.message} for $stationId")
+                warn("station lookup failed: ${e.message} for $logAs")
                 State.Failed(errorKindOf(e))
             }
         }

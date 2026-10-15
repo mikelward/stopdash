@@ -1297,6 +1297,17 @@ class StationViewModelsTest {
     }
 
     @Test
+    fun `a failed lookup names the station, unless it is logged as something else`() = runTest {
+        // Codex on #887: a trip's via is the rider's pick, which the log promises never to name.
+        val finder = FakeFinder(stops = { throw TflException.RateLimited(null) })
+        val logged = mutableListOf<String>()
+        StationStopsViewModel(finder, "HUBEXA", io = dispatcher, compute = dispatcher, warn = { logged += it })
+        StationStopsViewModel(finder, "HUBEXB", io = dispatcher, compute = dispatcher, warn = { logged += it }, logAs = "a via stop")
+        advanceUntilIdle()
+        assertEquals(listOf("station lookup failed: rate limited for HUBEXA", "station lookup failed: rate limited for a via stop"), logged)
+    }
+
+    @Test
     fun `a station with no departure stops says so, and a failed lookup can retry`() = runTest {
         assertEquals(
             StationStopsViewModel.State.NoStops,

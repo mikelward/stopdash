@@ -184,6 +184,23 @@ sealed interface TripDestination {
 }
 
 /**
+ * A stop the rider picked for a trip to go through (SPEC *Going via a stop*): the stop or station by
+ * [stopId] as the search gave it (an interchange's "HUB…" id included) and its [name]. Every route the
+ * trip lists passes it, changing there or riding through, the Planner asked via each of its stations
+ * ([PlanTargets.via]). Kept with the trip while it's open, never saved.
+ */
+data class TripVia(val stopId: String, val name: String)
+
+/**
+ * The stops a trip via a [TripVia] asks the Planner via ([ids], each station of what was picked), with [key], what
+ * tells that trip from the trip any way and from one via another stop: worked out once, where the stops are, so a
+ * screen keying its trip by them only reads it.
+ */
+class ViaStops(val ids: List<String>) {
+    val key: String = " via " + ids.joinToString(",")
+}
+
+/**
  * Where a trip is planned **from** (SPEC *Trips with a change*): a known TfL [Stop] by id (a *From…*
  * station's own stop), or [Here], the rider's own position, which TfL routes from with a first walk
  * leg to whichever stop serves the trip best — a station a walk away included, not just the stop
@@ -204,7 +221,8 @@ interface JourneyPlanner {
      * Every walk in the routes is timed at [speed] ([WalkingSpeed], the rider's setting), none is
      * longer than [maxWalk] ([MaxWalk], also theirs), every route is as step-free as [stepFree]
      * ([StepFree], theirs too), and none rides a kind of transport [modes] turns off ([TripModes]).
-     * Planned for now, or for [at] when a later trip names one ([TripTime]).
+     * Planned for now, or for [at] when a later trip names one ([TripTime]). Every route passes the stop
+     * [via] where the rider picked one to go through ([TripVia]): changing there, or riding through it.
      */
     suspend fun journeys(
         from: TripOrigin,
@@ -214,6 +232,7 @@ interface JourneyPlanner {
         stepFree: StepFree = StepFree.DEFAULT,
         modes: TripModes = TripModes.DEFAULT,
         at: TripTime? = null,
+        via: String? = null,
     ): List<TripRoute>
 
     /**
@@ -265,8 +284,8 @@ interface JourneyPlanner {
 
     /**
      * The quickest routes of [journeys] with the Planner modes [leaveOut] left out, for a trip whose
-     * soonest route rides a line with severe delays ([AroundDelays]). A planner that can't leave a mode
-     * out has nothing to add.
+     * soonest route rides a line with severe delays ([AroundDelays]), each passing [via] where that route was
+     * planned via a stop the rider picked ([TripVia]). A planner that can't leave a mode out has nothing to add.
      */
     suspend fun quickestWithout(
         from: TripOrigin,
@@ -276,6 +295,7 @@ interface JourneyPlanner {
         maxWalk: MaxWalk = MaxWalk.DEFAULT,
         stepFree: StepFree = StepFree.DEFAULT,
         modes: TripModes = TripModes.DEFAULT,
+        via: String? = null,
     ): List<TripRoute> = emptyList()
 }
 

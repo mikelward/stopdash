@@ -169,6 +169,7 @@ class KtorTflClient(
         stepFree: StepFree,
         modes: TripModes,
         at: TripTime?,
+        via: String?,
     ): List<TripRoute> {
         val fromParam = from.plannerParam()
         val toParam = to.plannerParam()
@@ -178,12 +179,13 @@ class KtorTflClient(
         // walking, which finds the bus to the station in place of the walk there; and for buses alone,
         // which finds the bus the whole way, usually the cheapest (SPEC *Trips with a change*). That
         // last only while the bus rides: with it off there's none to find. Any answer alone still plans
-        // the trip; only all failing fails it.
+        // the trip; only all failing fails it. A stop the rider picked to go via goes on every one, so
+        // every route passes it (SPEC *Going via a stop*).
         val asks = PlanAsk.ALL.filter { !it.busOnly || modes.busOnlyModes != null }
         val answers = coroutineScope {
             asks.map { ask ->
                 async {
-                    attemptPlan { plan(fromParam, toParam, speed, maxWalk, stepFree, modes, preference = ask.preference, busOnly = ask.busOnly, at = at) }
+                    attemptPlan { plan(fromParam, toParam, speed, maxWalk, stepFree, modes, preference = ask.preference, via = via, busOnly = ask.busOnly, at = at) }
                 }
             }.awaitAll()
         }
@@ -193,9 +195,9 @@ class KtorTflClient(
             val failure = answer.exceptionOrNull() ?: return@forEachIndexed
             val ask = asks[index]
             val source = if (ask == PlanAsk.QUICKEST) {
-                "journey planner (quickest)${laterSuffix(at)}"
+                "journey planner (quickest${if (via != null) " via a stop" else ""})${laterSuffix(at)}"
             } else {
-                planSource(ask.preference, via = null, busOnly = ask.busOnly, at = at)
+                planSource(ask.preference, via = via, busOnly = ask.busOnly, at = at)
             }
             if (index > 0 || answers.any { it.isSuccess }) warn("$source: ${failure::class.simpleName}")
         }
@@ -255,8 +257,9 @@ class KtorTflClient(
         maxWalk: MaxWalk,
         stepFree: StepFree,
         modes: TripModes,
+        via: String?,
     ): List<TripRoute> =
-        finished(listOf(plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = null, leaveOut = leaveOut)), from, to)
+        finished(listOf(plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = null, via = via, leaveOut = leaveOut)), from, to)
 
     // The routes a plan's [answers] give, as the trip reads them: merged, each unpriced bus route the fare it
     // can be sure of ([fillFares]), and named [between] its ends. A pass over every route and leg, so on the
@@ -440,9 +443,12 @@ class KtorTflClient(
         at: TripTime? = null,
     ): String {
         val source = when {
+            busOnly && via != null -> "journey planner (bus only via a stop)"
             busOnly -> "journey planner (bus only)"
+            leaveOut.isNotEmpty() && via != null -> "journey planner (without ${leaveOut.sorted().joinToString("+")}, via a stop)"
             leaveOut.isNotEmpty() -> "journey planner (without ${leaveOut.sorted().joinToString("+")})"
             via != null && preference == LEAST_INTERCHANGE -> "journey planner (fewest changes via a stop)"
+            via != null && preference == LEAST_WALKING -> "journey planner (least walking via a stop)"
             via != null -> "journey planner (quickest via a stop)"
             between -> "journey planner (fewest changes between stops)"
             preference == LEAST_INTERCHANGE -> "journey planner (fewest changes)"

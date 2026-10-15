@@ -165,8 +165,17 @@ boards are fetched from TfL like any other stop's, along with its lines' status.
 in memory only, never saved or logged beyond coarse diagnostics (a stop id, an HTTP status), and
 nothing runs once you leave the trip.
 
+**Going via a stop** (*Via…* on a trip) sends the station or stop you pick to TfL's Journey Planner
+with each of the trip's requests, as a stop every route must pass: its stop id, or for a station
+complex such as Finsbury Park the id of each of its stations, one request each. It replaces the
+requests via the fastest route's last stop and via the bus stops near the start, which a trip via your
+stop doesn't make. A stop id says no more about you than the trip's two ends already do, so it adds no
+Play Data Safety category. The stop is kept with the trip while it's open (over a rotation, or Android
+closing the app in the background) and forgotten when you leave it or pick another destination; it is
+never saved or logged (the debug log says only that a request went via a stop, never which).
+
 **A later trip** (*Change time…* on a trip) sends the same requests to TfL's Journey Planner,
-the ones via bus stops near the start included, with the **date and time** you picked, and whether you'd leave then or arrive by then, so the Planner
+the ones via bus stops near the start (or via the stop you picked) included, with the **date and time** you picked, and whether you'd leave then or arrive by then, so the Planner
 answers from its timetable. It's planned once when you pick the time, and again only when you tap
 *Try again*, change your walking speed, walk limit, step-free level or modes, or move far enough that
 the trip starts from a different nearest stop; no stop's departures or line status are fetched for it. The time is kept with the trip

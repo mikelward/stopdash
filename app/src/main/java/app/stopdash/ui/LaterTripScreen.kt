@@ -81,6 +81,8 @@ internal fun LaterTripScreen(
     // A one-off notice: a tapped route the trip for now doesn't offer. Said once, then acknowledged.
     notice: String? = null,
     onNoticeShown: () -> Unit = {},
+    // The stop the trip goes via (SPEC *Going via a stop*), named where no route passes it, as the trip for now does.
+    viaName: String? = null,
 ) {
     BackHandler(onBack = onBack)
     val snackbarHostState = remember { SnackbarHostState() }
@@ -153,7 +155,8 @@ internal fun LaterTripScreen(
                 }
                 cards == null -> Unit
                 cards.isEmpty() -> item(key = "none") {
-                    Text(stringResource(R.string.trip_no_routes), style = MaterialTheme.typography.bodyLarge)
+                    val none = viaName?.let { stringResource(R.string.trip_no_routes_via, it) } ?: stringResource(R.string.trip_no_routes)
+                    Text(none, style = MaterialTheme.typography.bodyLarge)
                 }
                 // Each card's keys and rows worked out with the plan ([LaterTripViewModel.cardOf]): drawn, never derived, here.
                 else -> items(cards, key = { it.listKey }) { card -> LaterCard(card) { onOpen(card) } }
