@@ -602,7 +602,6 @@
     <string name="bug_report_failed">Impossible de partager le rapport de bug</string>
     <string name="on_the_way">En route</string>
     <string name="on_the_way_title">Vers %1$s</string>
-    <string name="on_the_way_cant_follow_rail">Impossible de suivre les trains National Rail pour l’instant</string>
     <string name="on_the_way_open_current">Ouvrir l’itinéraire en cours</string>
     <string name="on_the_way_start">Démarrer</string>
     <string name="on_the_way_replace_title">Remplacer l’itinéraire en cours ?</string>

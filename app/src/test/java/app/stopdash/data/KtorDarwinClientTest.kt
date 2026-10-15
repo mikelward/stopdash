@@ -1,7 +1,15 @@
 package app.stopdash.data
 
 import app.stopdash.domain.CallingPortion
+import app.stopdash.domain.Departure
+import app.stopdash.domain.LineStatus
+import app.stopdash.domain.RailAwareTflClient
+import app.stopdash.domain.RailFeed
+import app.stopdash.domain.RailStationCodes
+import app.stopdash.domain.StopDisruption
+import app.stopdash.domain.TflClient
 import app.stopdash.domain.TflException
+import app.stopdash.domain.railRideArrivals
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -87,5 +95,78 @@ class KtorDarwinClientTest {
         // No key, nothing asked.
         val keyless = KtorDarwinClient(http, apiKey = { null }, baseUrl = "https://darwin.example")
         assertEquals(null, runBlocking { keyless.boardWithDetails("WAT") })
+    }
+
+    @Test
+    fun `a followed train's board is asked toward its terminus, with each train's calls and times`() {
+        val body = checkNotNull(javaClass.getResource("/fixtures/darwin_board_details_st_pancras.json")).readText()
+        val asked = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            val params = request.url.parameters
+            asked += "${request.url.encodedPath.substringAfterLast("/api/20220120/")} ${params["numRows"]} ${params["filterCrs"]} ${params["filterType"]} ${params["timeOffset"]} ${request.headers["x-apikey"]}"
+            respond(ByteReadChannel(body), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(json) }
+        }
+        val client = KtorDarwinClient(http, apiKey = { "EXAMPLE" }, baseUrl = "https://darwin.example/api/20220120")
+        val runs = checkNotNull(runBlocking { client.runs("STP", "BTN") })
+        assertEquals(listOf("GetDepBoardWithDetails/STP 10 BTN to null EXAMPLE"), asked)
+        assertEquals(listOf("ZFD", "CTK", "BFR", "LBG", "GTW", "BTN"), runs.first().next.map { it.crs })
+        // From so many minutes on, for a train further out than the first ten (Codex, #883).
+        runBlocking { client.runs("STP", "BTN", offsetMinutes = 45) }
+        assertEquals("GetDepBoardWithDetails/STP 10 BTN to 45 EXAMPLE", asked.last())
+        // No key, nothing asked.
+        val keyless = KtorDarwinClient(http, apiKey = { " " }, baseUrl = "https://darwin.example/api/20220120")
+        assertEquals(null, runBlocking { keyless.runs("STP", "BTN") })
+        assertEquals(2, asked.size)
+    }
+
+    @Test
+    fun `a board Darwin has suppressed fails, never reads as one with no trains (Codex, #883)`() {
+        val engine = MockEngine {
+            respond(
+                ByteReadChannel("""{"generatedAt":"2026-10-15T17:00:00+01:00","crs":"STP","areServicesAvailable":false}"""),
+                HttpStatusCode.OK,
+                headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(json) }
+        }
+        val client = KtorDarwinClient(http, apiKey = { "EXAMPLE" }, baseUrl = "https://darwin.example/api/20220120")
+        assertTrue(runCatching { runBlocking { client.runs("STP", "BTN") } }.exceptionOrNull() is TflException.Unreachable)
+        assertTrue(runCatching { runBlocking { client.board("STP") } }.exceptionOrNull() is TflException.Unreachable)
+    }
+
+    @Test
+    fun `a key cleared after it was checked fails the board, never reads as one with no trains (Codex, #883)`() {
+        val asked = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            asked += request.url.encodedPath
+            respond("", HttpStatusCode.InternalServerError)
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(json) }
+        }
+        // Set when it's checked for, cleared in Settings by the time the board is asked for.
+        var reads = 0
+        val client = KtorDarwinClient(http, apiKey = { if (reads++ == 0) "EXAMPLE" else null }, baseUrl = "https://darwin.example")
+        assertTrue(client.available)
+        assertTrue(runCatching { runBlocking { client.board("STP") } }.exceptionOrNull() is TflException.Unreachable)
+        // So a trip's National Rail ride read in that gap fails its board, and the station says it has no key.
+        reads = 0
+        val tfl = object : TflClient {
+            override suspend fun arrivals(stopId: String) = emptyList<Departure>()
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
+        }
+        val trip = RailAwareTflClient(tfl, client, { RailStationCodes(mapOf("STPX" to "STP")) }, boardAtEveryStop = true)
+        assertTrue(runCatching { runBlocking { trip.railRideArrivals("910GSTPX") } }.exceptionOrNull() is TflException.Unreachable)
+        assertEquals(RailFeed.NO_KEY, trip.railFeed("910GSTPX"))
+        assertEquals(emptyList<String>(), asked)
     }
 }

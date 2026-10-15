@@ -1666,6 +1666,52 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [ ] **On the way** (maintainer, 2026-09-26; SPEC *On the way*; autopilot): Start on an open
             route follows the rider there, assuming the next train they can catch and switching
             when another is seen (this replaces the mock's "I'm on this one" tap as the way in).
+        - [x] **Follow a National Rail train** (maintainer, 2026-10-15; SPEC *On the way*): with the
+              rider's key, Start on a route with a National Rail train and Go on a National Rail line's
+              route page. The train is known by where it was picked, when it was due to leave there and
+              its terminus (`RailFollow`), and followed board to board by Darwin's
+              `GetDepBoardWithDetails` at the station it calls at next, toward its terminus
+              (`RailVehicles`); its boarding board is the station's merged departures. Built against
+              Darwin's documented shape, not yet checked on a real train.
+          - [ ] **Check it on a real train**: that a board's `previousCallingPoints` name the picked
+                station by exactly the time it was due to leave there (`RailFollow.find`; Darwin
+                documents a previous calling point's time as its departure, and one that doesn't match
+                is lost, never taken for another), that a stop it has gone from carries an actual time
+                (`at`, "No report" included) and one it hasn't, an estimate (`et`), as Darwin documents
+                (one with neither reads as not left, a failed update, never a train gone on), that a
+                joined train's first `previousCallingPoints` list runs on to the board's station and the
+                others stop where they join (`RailFollow`'s portion path; a rider picked on a joining
+                portion is followed along it, then the first one's stops after its last), and that
+                Darwin's stops map onto the Planner's leg
+                (`keepsToLeg`), so a train that calls where the Planner's leg doesn't list isn't lost.
+                Record a real fixture (a hub, no key).
+          - [ ] **Find a followed train again after a restart** (Codex, #883): the board each train was
+                last read from is held in memory only, so once it has left the station it was picked
+                at nothing names where to ask, and on board the trip says it couldn't update each
+                refresh (the ride still counted by where the rider is seen). Either keeps the trip
+                followable: keep the last board's station with the trip, or ask the boards of the
+                leg's stops still to come (as CRS codes), nearest first, which list the train before
+                it reaches them. A design choice for the maintainer.
+          - [ ] **The repeated hour when the clocks go back** (Codex, #883): a train picked in the first
+                01:xx has its time read as BST on the board it was picked from, but a board made after the
+                change reads the same clock time among the stops it called at as the nearer GMT one, an
+                hour off, so it isn't found again and the trip says it couldn't update until it's past.
+                Matching by UK local time would find it, at the cost of a train of the same line, terminus
+                and minute an hour apart being taken for it; keeping the picked board's offset with the id
+                would not. Once a year, at night, and seen as a failed update, never a wrong train.
+          - [ ] **Check a train against the boards already read** (maintainer, 2026-10-16): a check
+                whether a train is the rider's asks its own board toward its terminus, one a train, at most
+                three an update. The boarding station's board with calling points, and the stop ahead's, are
+                read for the departures anyway and usually list those trains, so finding them there first
+                would leave most updates asking none; a separate read only for a train they leave out.
+          - [ ] **Follow a train that divides** to the portion the rider's stop is on: it gets no
+                follow id today (no one terminus), so it's never picked.
+          - [ ] **Live times on the last stretch**: past the last station before its terminus no departure
+                board lists a train, and none can say it has left there (a board leaving a train out is no
+                word that it left, Codex, #883), so the trip says it couldn't update until the rider is
+                seen at the terminus. Darwin's arrival board at the terminus would time it, but that's a
+                separate Rail Data Marketplace product: check whether a rider's key covers it before
+                building on it.
         - [x] **A trip's board showing more trains than the platform has** (maintainer, 2026-10-09):
               both branches' rows on one platform showed the same minutes while the station's own
               display listed fewer trains. The debug log names a train the board lists twice, or two

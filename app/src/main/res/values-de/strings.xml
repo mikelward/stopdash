@@ -599,7 +599,6 @@
     <string name="bug_report_failed">Fehlerbericht konnte nicht geteilt werden</string>
     <string name="on_the_way">Unterwegs</string>
     <string name="on_the_way_title">Ziel: %1$s</string>
-    <string name="on_the_way_cant_follow_rail">Züge von National Rail können noch nicht verfolgt werden</string>
     <string name="on_the_way_open_current">Aktuelle Fahrt öffnen</string>
     <string name="on_the_way_start">Starten</string>
     <string name="on_the_way_replace_title">Aktuelle Fahrt ersetzen?</string>

@@ -77,6 +77,8 @@ class ActiveTripTrackerTest {
     private var routeFails = false
     private val unknownStops = mutableSetOf<String>()
     private val gone = mutableSetOf<String>()
+    // When each train's calls were read, where its source answers from an earlier read ([VehicleSource.readAt]).
+    private val readAts = mutableMapOf<String, Instant>()
     private val asked = mutableListOf<String>()
     // Each train's calls asked for, with the line TfL was asked on.
     private val askedOn = mutableListOf<String>()
@@ -181,6 +183,7 @@ class ActiveTripTrackerTest {
         remembered: () -> app.stopdash.domain.LocationFix? = { null },
         forgetting: kotlinx.coroutines.CoroutineScope = kotlinx.coroutines.CoroutineScope(dispatcher),
         preciseAllowed: () -> Boolean = { true },
+        railArrivals: (suspend (String) -> app.stopdash.domain.RideArrivals)? = null,
         load: () -> ActiveTrip? = { null },
     ) = ActiveTripTracker(
         remembered = remembered,
@@ -206,6 +209,7 @@ class ActiveTripTrackerTest {
             if (boardFails) throw TflException.Offline(null)
             if (stop in unknownStops) throw TflException.NotFound(null) else departures[stop].orEmpty()
         },
+        railArrivals = railArrivals,
         vehicles = object : VehicleSource {
             override suspend fun vehicleCalls(vehicleId: String, lineId: String): List<VehicleCall> {
                 gate?.await()
@@ -220,6 +224,8 @@ class ActiveTripTrackerTest {
                 afterRead?.let { afterRead = null; it() }
                 return calls
             }
+
+            override fun readAt(vehicleId: String): Instant? = readAts[vehicleId]
         },
         stationPlaces = { stop ->
             entranceReads++
@@ -3160,6 +3166,34 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `an update checks at most three National Rail trains, the board ahead's sharing what those gone from the board used (Codex, #883)`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        fun rail(n: Long) = "rail:AAA/$n/CCC/red"
+        departures["A"] = listOf(train(rail(9), 8))
+        trains[rail(9)] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(4)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        // Checked while they waited, in that update.
+        assertEquals(listOf(rail(9)), asked)
+        // Seen at B, 9 is due to have left A, so it's checked as one gone from the board; then C's board lists
+        // three trains ahead of them. As National Rail trains, they share the update's three checks with 9: the
+        // third isn't asked after, and the update says it couldn't tell, never naming one (maintainer, 2026-10-16).
+        departures["C"] = listOf(train(rail(2), 8), train(rail(3), 9), train(rail(4), 10), train(rail(5), 11))
+        listOf(2L to 8L, 3L to 9L, 4L to 10L).forEach { (id, at) -> trains[rail(id)] = listOf(call("C", at)) }
+        trains[rail(5)] = listOf(call("B", 8), call("C", 11))
+        now = at(8)
+        asked.clear()
+        tracker.refresh(fixAt(51.51))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(true, tracker.trip.value?.boarded)
+        // Three asked after, the pick's check in the update before not counted against this one.
+        assertEquals(listOf(rail(9), rail(2), rail(3)), asked)
+        assertTrue(tracker.failed.value)
+    }
+
+    @Test
     fun `on board by position, a train found on the board ahead keeps when they boarded, and a failed read is said`() = runTest {
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         sequences["red"] = redLine
@@ -3717,6 +3751,128 @@ class ActiveTripTrackerTest {
         moving.join()
         assertEquals(TripProgress.Riding(ride, "B", 2, at(14), false), tracker.progress.value)
         assertEquals(at(5).plusSeconds(20), tracker.updatedAt.value)
+    }
+
+    @Test
+    fun `calls answered from an earlier read are as old as it, and once too old no answer at all`() = runTest {
+        // Calls a source answers from a read before the request, as a National Rail board shared (Codex, #883).
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        now = at(5)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertEquals(at(5), tracker.updatedAt.value)
+        tracker.goTo(Step(0), Step(0, onBoard = true))
+        // Read 40 s ago: dated by that read, still current.
+        now = at(8)
+        readAts["3"] = at(8).minusSeconds(40)
+        tracker.refresh()
+        assertEquals(at(8).minusSeconds(40), tracker.updatedAt.value)
+        assertEquals(at(8).minusSeconds(40), tracker.answeredAt.value)
+        assertTrue(ActiveTripTracker.isCurrent(tracker.updatedAt.value, now))
+        // Minutes later, still that read: no answer, a failed refresh, never renewed as live.
+        now = at(10)
+        tracker.refresh()
+        assertTrue(tracker.failed.value)
+        assertNull(tracker.updatedAt.value)
+        assertTrue(tracker.progress.value is TripProgress.Riding)
+        // Read afresh, it's live again.
+        readAts["3"] = at(10)
+        tracker.refresh()
+        assertFalse(tracker.failed.value)
+        assertEquals(at(10), tracker.updatedAt.value)
+    }
+
+    @Test
+    fun `calls from an earlier read are aged by the steady clock, the clock set back since or not`() = runTest {
+        // Codex, #883: read at 08:08, the clock then set back an hour; two minutes on, the read is two minutes
+        // old, never an hour in the future and so current until the wall clock caught up.
+        var offset = Duration.ZERO
+        SteadyClock.source = object : SteadyClock.Source {
+            override val frame: SteadyClock.Frame? = null
+            override fun offset(): Duration = offset
+        }
+        try {
+            val tracker = tracker(StandardTestDispatcher(testScheduler))
+            departures["A"] = listOf(train("3", 6))
+            trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+            now = at(5)
+            tracker.start(route, "C", readyAt = now)
+            tracker.refresh()
+            tracker.goTo(Step(0), Step(0, onBoard = true))
+            readAts["3"] = SteadyClock.stamp(at(8))
+            now = at(8)
+            tracker.refresh()
+            assertFalse(tracker.failed.value)
+            offset = Duration.ofHours(1)
+            now = at(10).minus(Duration.ofHours(1))
+            tracker.refresh()
+            assertTrue(tracker.failed.value)
+        } finally {
+            SteadyClock.source = null
+        }
+    }
+
+    @Test
+    fun `calls too old to stand behind never board a rider still waiting`() = runTest {
+        // Codex, #883: a one-stop train whose boarding call is gone from calls answered from an old read
+        // would read as boarded. Too old, it's a failed refresh: still waiting, still that train.
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        now = at(5)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertTrue(tracker.progress.value is TripProgress.Waiting)
+        now = at(8)
+        trains["3"] = listOf(call("C", 14))
+        readAts["3"] = at(6)
+        tracker.refresh()
+        assertTrue(tracker.failed.value)
+        assertTrue(tracker.progress.value is TripProgress.Waiting)
+        assertEquals(false, tracker.trip.value?.boarded)
+        assertEquals("3", tracker.trip.value?.vehicleId)
+    }
+
+    @Test
+    fun `calls from a read too old to stand behind say no get off soon until read afresh`() = runTest {
+        // The alert waits for a current answer, as the screen does (Codex, #883).
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        now = at(12)
+        trains["3"] = listOf(call("C", 14))
+        readAts["3"] = at(9)
+        tracker.refresh()
+        assertTrue(warned.isEmpty())
+        readAts["3"] = at(12)
+        tracker.refresh()
+        assertEquals(1, warned.size)
+    }
+
+    @Test
+    fun `time to board waits for a current answer, and comes down when only an old read is left`() = runTest {
+        // Codex, #883: calls answered from a read too old to be current are no answer to post on.
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        now = at(6)
+        tracker.start(route, "C", readyAt = now)
+        boardAlerts.clear()
+        readAts["3"] = at(4)
+        tracker.refresh()
+        assertEquals(emptyList<String>(), boardAlerts)
+        readAts["3"] = at(6)
+        tracker.refresh()
+        assertEquals(listOf("new ${at(8)}"), boardAlerts)
+        // Dated by the read it came from.
+        assertEquals(at(6), boardAnsweredAt.last())
+        now = at(7).plusSeconds(30)
+        tracker.refresh()
+        assertEquals(listOf("new ${at(8)}", "done"), boardAlerts)
     }
 
     @Test
@@ -6182,6 +6338,54 @@ class ActiveTripTrackerTest {
         tracker.goTo(at, at.copy(onBoard = true))
         tracker.refresh()
         assertNull(tracker.nextBoard.value)
+    }
+
+    @Test
+    fun `a National Rail ride reads its station's National Rail board, whose failure is the board's`() = runTest {
+        // TfL lists none of its trains: a failed National Rail board is a failed read, never an empty one
+        // (Codex, #883). A TfL ride never asks for it, so it spends none of the rail key's quota.
+        var railFails = false
+        val railAsked = mutableListOf<String>()
+        val byRail = TripRoute(listOf(ride.copy(mode = "national-rail", lineId = "thameslink", lineName = "Thameslink")))
+        val tracker = tracker(StandardTestDispatcher(testScheduler), railArrivals = { stop ->
+            railAsked += stop
+            if (railFails) throw TflException.Unreachable("national rail board unavailable", null)
+            app.stopdash.domain.RideArrivals(listOf(train("rail:STP/1/BTN/thameslink", 6).copy(lineId = "thameslink", lineName = "Thameslink", mode = "national-rail")))
+        })
+        now = at(1)
+        tracker.start(byRail, "C", readyAt = at(3))
+        tracker.refresh()
+        assertEquals(listOf("A"), railAsked.distinct())
+        assertTrue(boardStops.isEmpty())
+        assertEquals(false, tracker.nextBoard.value?.failed)
+        railFails = true
+        now = at(2)
+        tracker.refresh()
+        assertEquals(true, tracker.nextBoard.value?.failed)
+        assertEquals(at(1), tracker.nextBoard.value?.fetchedAt)
+    }
+
+    @Test
+    fun `a National Rail ride's board kept from another screen's read is as old as that read`() = runTest {
+        // Never restamped as read now (Codex, #883): it ages into stale as the list's would (D4).
+        var keptFrom: Instant? = null
+        val byRail = TripRoute(listOf(ride.copy(mode = "national-rail", lineId = "thameslink", lineName = "Thameslink")))
+        val tracker = tracker(StandardTestDispatcher(testScheduler), railArrivals = {
+            app.stopdash.domain.RideArrivals(
+                listOf(train("rail:STP/1/BTN/thameslink", 6).copy(lineId = "thameslink", lineName = "Thameslink", mode = "national-rail")),
+                keptFrom,
+            )
+        })
+        keptFrom = at(1).minusSeconds(40)
+        now = at(1)
+        tracker.start(byRail, "C", readyAt = at(3))
+        tracker.refresh()
+        assertEquals(at(1).minusSeconds(40), tracker.nextBoard.value?.fetchedAt)
+        // Read afresh, as old as the asking.
+        keptFrom = at(2)
+        now = at(2)
+        tracker.refresh()
+        assertEquals(at(2), tracker.nextBoard.value?.fetchedAt)
     }
 
     @Test

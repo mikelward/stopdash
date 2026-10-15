@@ -6,13 +6,17 @@ import app.stopdash.domain.ToChoice
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Workers
 import app.stopdash.domain.Departure
+import app.stopdash.domain.DepartureSource
 import app.stopdash.domain.DoubledTrains
 import app.stopdash.domain.LineSequence
+import app.stopdash.domain.NATIONAL_RAIL_MODE
 import app.stopdash.domain.LocationFix
 import app.stopdash.domain.OffPlan
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.OnTheWay
+import app.stopdash.domain.RailFollow
 import app.stopdash.domain.ReplanOrigin
+import app.stopdash.domain.RideArrivals
 import app.stopdash.domain.RideLines
 import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.StationIndex
@@ -62,6 +66,11 @@ class ActiveTripTracker(
     private val save: (ActiveTrip?) -> Boolean,
     // A stop's departures, for picking a leg's train.
     private val arrivals: suspend (String) -> List<Departure>,
+    // A National Rail ride's stop's departures, its station's National Rail board's trains among them
+    // (SPEC *National Rail*): asked only for such a ride, so a TfL one spends none of the rail key's
+    // quota. With none given, [arrivals]. Comes with when a board kept from another screen's read was
+    // read, which dates the trip's board ([RideArrivals.fetchedAt]).
+    private val railArrivals: (suspend (String) -> RideArrivals)? = null,
     private val vehicles: VehicleSource,
     // Where a station can be walked into, by its stop id ([OnTheWay.seen]): its entrances as well as
     // its one published point. Asked once per station while the rider walks to it.
@@ -372,7 +381,10 @@ class ActiveTripTracker(
         movesWaiting.incrementAndGet()
         try {
             refreshing.get()?.cutShort()
-            return lock.withLock { block() }
+            return lock.withLock {
+                railChecks = 0
+                block()
+            }
         } finally {
             movesWaiting.decrementAndGet()
         }
@@ -404,16 +416,22 @@ class ActiveTripTracker(
     // the ride's lines ([RideLines.polesToRead], by each line's route, kept a day): an empty pair asks
     // nothing more. A pole that can't be read, or a pair whose poles can't be, leaves the board
     // [NextBoard.partial], said rather than passed off as whole. Throws when the ride's own stop's
-    // board can't be read.
-    private suspend fun boardOf(ride: TripLeg, fetchedAt: Instant?): NextBoard {
-        val departures = arrivals(ride.fromId)
-        val pair = pairOf(ride) ?: return NextBoard(ride, departures, fetchedAt, partial = true)
+    // board can't be read. Asked for at [askedAt], it's as old as its oldest part ([RideArrivals.fetchedAt]):
+    // a National Rail board kept from another screen's read is never passed off as read now (Codex, #883).
+    private suspend fun boardOf(ride: TripLeg, askedAt: Instant?): NextBoard {
+        val own = arrivalsFor(ride, ride.fromId)
+        val departures = own.departures
+        var oldest = own.fetchedAt
+        fun stamp() = askedAt?.let { DepartureSource.stamp(it, oldest) }
+        val pair = pairOf(ride) ?: return NextBoard(ride, departures, stamp(), partial = true)
         val hidden = hidden()
         val routes = RideLines.pairLineIds(ride, pair, hidden).associateWith { routeOf(it) }
         var partial = false
         val others = RideLines.polesToRead(ride, pair, routes, hidden).mapNotNull { pole ->
             try {
-                PoleBoard(pole, arrivals(pole.id))
+                val read = arrivalsFor(ride, pole.id)
+                read.fetchedAt?.let { at -> oldest = oldest?.let { minOf(it, at) } ?: at }
+                PoleBoard(pole, read.departures)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TflException) {
@@ -422,7 +440,48 @@ class ActiveTripTracker(
                 null
             }
         }
-        return NextBoard(ride, departures, fetchedAt, pole = pair.firstOrNull { it.id == ride.fromId }, others = others, partial = partial)
+        return NextBoard(ride, departures, stamp(), pole = pair.firstOrNull { it.id == ride.fromId }, others = others, partial = partial)
+    }
+
+    // [vehicleId]'s calls as [vehicles] answers them, only while that answer is current: calls kept from an
+    // earlier read ([VehicleSource.readAt], a National Rail board shared from a read before) too old to stand behind
+    // are no answer at all but a failed lookup, so nothing moves the trip, alerts or picks a train on them
+    // (Codex, #883). The read's time still dates a current one ([updatedAt]).
+    private suspend fun callsOf(vehicleId: String, lineId: String, now: Instant, check: Boolean = false): List<VehicleCall> {
+        val calls = if (check) checkCalls(vehicleId, lineId) else vehicles.vehicleCalls(vehicleId, lineId)
+        // Aged in the steady frame it was stamped in: the clock set back since doesn't make it new (Codex, #883).
+        val readAt = vehicles.readAt(vehicleId)
+        if (readAt != null && SteadyClock.age(readAt, now) > CURRENT_FOR) {
+            warn("on the way: train's calls on line $lineId only as last read, too long ago")
+            throw TflException.Unreachable("calls as last read, too old", null)
+        }
+        return calls
+    }
+
+    // National Rail trains checked as the rider's this update, a refresh or the rider's move ([checkCalls]).
+    // Only touched under [lock].
+    private var railChecks = 0
+
+    // [vehicleId]'s calls, asked to check whether it's the rider's train ([VehicleSource.candidateCalls]): the
+    // pick's, those gone from the board, those at the stop ahead and their twins. A National Rail one spends one
+    // of [PICK_TRIES] each update, shared by every check it makes, so an update asks after at most that many
+    // however its steps run, never [PICK_TRIES] for each (Codex, #883; maintainer, 2026-10-16). Past them, a
+    // failed lookup: not known this time, as one no board listed. TfL's lookups are as before.
+    private suspend fun checkCalls(vehicleId: String, lineId: String): List<VehicleCall> {
+        if (RailFollow.keyOf(vehicleId) != null) {
+            if (railChecks >= PICK_TRIES) {
+                warn("on the way: national rail trains already checked this update, line $lineId")
+                throw TflException.Unreachable("national rail checks used", null)
+            }
+            railChecks++
+        }
+        return vehicles.candidateCalls(vehicleId, lineId)
+    }
+
+    // [stopId]'s departures as read for [ride]: a National Rail one's with its station's board ([railArrivals]).
+    private suspend fun arrivalsFor(ride: TripLeg, stopId: String): RideArrivals {
+        val rail = railArrivals?.takeIf { ride.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) }
+        return rail?.invoke(stopId) ?: RideArrivals(arrivals(stopId))
     }
 
     // Each station's point and entrances once read ([stationPlaces]); a failed read isn't kept, so
@@ -783,7 +842,7 @@ class ActiveTripTracker(
         // Counted by where they were seen, not by a train: [OffPlan.take] has judged the fork by that.
         if (trip.vehicleId.isBlank()) return ForkCheck.Taken(trip)
         val calls = try {
-            vehicles.vehicleCalls(trip.vehicleId, OnTheWay.followedLine(trip))
+            callsOf(trip.vehicleId, OnTheWay.followedLine(trip), now)
         } catch (e: CancellationException) {
             throw e
         } catch (e: TflException) {
@@ -971,6 +1030,7 @@ class ActiveTripTracker(
 
     // [refresh]'s work, under [lock].
     private suspend fun refreshLocked(rider: LocationFix?, asked: Long) {
+        railChecks = 0
         // The fix aged while this waited behind another refresh: one no longer fresh enough is
         // no evidence the rider was left behind ([OnTheWay.sureEnough]).
         // Precise location taken away since the fix came: it isn't used, and nothing kept stays (Codex, #542).
@@ -1139,8 +1199,8 @@ class ActiveTripTracker(
     // ([RouteDisruption.changeNear], [RouteDisruption.unpredicted]), or null. Its board is this refresh's
     // read when it's the trip's next board ([boards]), else read now: one request a refresh, only while
     // such a change is near, which is while riding the ride before it. A read that fails is unknown,
-    // never a signal, and isn't asked again this refresh. A trip on the way has no National Rail ride
-    // ([OnTheWay.canFollow]), so TfL's board lists every train that may take it.
+    // never a signal, and isn't asked again this refresh. A National Rail ride's board is its station's
+    // National Rail board with TfL's ([arrivalsFor]), so it lists every train that may take it too.
     private suspend fun changeSignal(
         trip: ActiveTrip,
         progress: TripProgress,
@@ -1149,7 +1209,7 @@ class ActiveTripTracker(
         val (index, ride) = RouteDisruption.changeNear(trip, progress, clock()) ?: return null
         val read = boards[ride]
         val board = if (read != null) read.getOrNull() ?: return null else try {
-            boardOf(ride, fetchedAt = null)
+            boardOf(ride, askedAt = null)
         } catch (e: CancellationException) {
             throw e
         } catch (e: TflException) {
@@ -1515,7 +1575,7 @@ class ActiveTripTracker(
                         failed = true
                     }
                 } else {
-                    calls = vehicles.vehicleCalls(trip.vehicleId, OnTheWay.followedLine(trip))
+                    calls = callsOf(trip.vehicleId, OnTheWay.followedLine(trip), now)
                     // Picked while its calls were all on the stretch the branches share, its later calls may
                     // take the other branch to the same stop: still the ride, on that way, not lost (Codex, #728).
                     val (onWay, unknown) = rewayed(trip, calls, now)
@@ -1597,6 +1657,12 @@ class ActiveTripTracker(
         // train's call there is theirs, however late, not a loop's next lap ([OnTheWay.atBoarding]).
         val atBoarding = OnTheWay.atBoarding(trip, rider?.let { aged(it, Duration.ofMillis(elapsed() - reading)) })
         var (next, progress) = OnTheWay.advance(trip, calls, now, atBoarding)
+        // Calls a source answered from an earlier read (a National Rail board shared from a read before,
+        // [VehicleSource.readAt]) are as old as that read: the step stands on them only as long as it
+        // would have then, never renewed as live by each refresh (Codex, #883).
+        val readAt = trip.vehicleId.takeIf { calls != null && it.isNotBlank() }?.let(vehicles::readAt)
+        // The read's steady stamp as the wall clock reads it now ([SteadyClock.toWall]), as [updatedAt] is kept.
+        val answered = readAt?.let { minOf(SteadyClock.toWall(it), now) } ?: now
         // Lost on board: where its calls put the train says which forks are behind it, one it has turned off
         // at included (Codex, #586).
         val lost = progress as? TripProgress.Lost
@@ -1677,16 +1743,16 @@ class ActiveTripTracker(
         if (progress is TripProgress.Waiting) {
             val stands = OnTheWay.boardStands(next, progress)
             // Whether it's time is judged by the clock now, after this step's lookups, so a slow one
-            // doesn't hold it back a refresh; the answer's own time ([now]) still ages it.
+            // doesn't hold it back a refresh; the answer's own time ([answered]) still ages it.
             when {
-                OnTheWay.shouldBoard(next, progress, clock()) -> if (onBoardSoon(next, progress, BoardPost.NEW, now)) {
+                OnTheWay.shouldBoard(next, progress, clock()) -> if (onBoardSoon(next, progress, BoardPost.NEW, answered)) {
                     next = OnTheWay.saidBoard(next)
                     boardUp = true
                 }
                 // Gone (swiped away, timed out with the app away, or down with a failed refresh): not
                 // brought back. One this answer can't keep up (its train with no time, or past it, or
                 // the answer no longer live) is taken down now, not left counting down to its timeout.
-                stands && boardUp -> if (!onBoardSoon(next, progress, BoardPost.KEEP, now)) {
+                stands && boardUp -> if (!onBoardSoon(next, progress, BoardPost.KEEP, answered)) {
                     onBoardSoonDone()
                     boardUp = false
                 }
@@ -1703,11 +1769,11 @@ class ActiveTripTracker(
         // Counted from where they were seen, nothing shown stands on the failed lookup (no train's time,
         // no arrival: [OnTheWay.eta]), so the step is current; the failure is still said.
         _failed.value = positional
-        _updatedAt.value = now
+        _updatedAt.value = answered
         // Only for the leg answered: one the answer moved the trip on to (off a train straight onto the next
         // ride, say) has had no answer of its own (Codex, #611).
         if (looked == next.legIndex) {
-            _answeredAt.value = now
+            _answeredAt.value = answered
             answeredFor = answeredStep(next)
         } else if (answeredStep(next) != answeredFor) {
             _answeredAt.value = null
@@ -1942,7 +2008,7 @@ class ActiveTripTracker(
                 if (lookups == PICK_TRIES) break
                 lookups++
                 val calls = try {
-                    vehicles.vehicleCalls(train.vehicleId, train.lineId)
+                    callsOf(train.vehicleId, train.lineId, now, check = true)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: TflException.NotFound) {
@@ -2114,7 +2180,7 @@ class ActiveTripTracker(
         if (older.size > PICK_TRIES) return OnTheWay.Twin.UNKNOWN to false
         for (train in older) {
             val calls = try {
-                vehicles.vehicleCalls(train.vehicleId, train.lineId)
+                callsOf(train.vehicleId, train.lineId, now, check = true)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TflException.NotFound) {
@@ -2283,7 +2349,7 @@ class ActiveTripTracker(
         // when they said so, maybe due a moment before ([OnTheWay.boardableFrom]).
         val readyAt = OnTheWay.boardableFrom(trip).let { if (trip.boarded) it else maxOf(it, now) }
         // This refresh's read of the boards ([fetchBoard]); its failure thrown for [step] to report.
-        val read = board?.getOrThrow()?.takeIf { it.ride == leg } ?: boardOf(leg, fetchedAt = null)
+        val read = board?.getOrThrow()?.takeIf { it.ride == leg } ?: boardOf(leg, askedAt = null)
         val boards = read.boards
         // On board by their word, only a train at the platform when they said so can be theirs: one due
         // minutes later isn't, so none is followed rather than that one (the step says it can't find it).
@@ -2307,7 +2373,7 @@ class ActiveTripTracker(
             val ways = OnTheWay.waysOf(lines, train)
             if (ways.isEmpty()) continue
             val calls = try {
-                vehicles.vehicleCalls(train.vehicleId, train.lineId)
+                callsOf(train.vehicleId, train.lineId, now, check = true)
             } catch (e: TflException.NotFound) {
                 // Still on the board, but TfL no longer knows the train: try the next.
                 warn("on the way: train not found on line ${train.lineId}")
@@ -2340,7 +2406,7 @@ class ActiveTripTracker(
     private suspend fun aheadOf(line: TripLeg, where: OnTheWay.Along, sequence: LineSequence?): List<Departure>? {
         val stop = withContext(compute) { OnTheWay.boardAhead(line, OnTheWay.ahead(where), sequence) } ?: return emptyList()
         return try {
-            arrivals(stop).filter { it.lineId == line.lineId }
+            arrivalsFor(line, stop).departures.filter { it.lineId == line.lineId }
         } catch (e: CancellationException) {
             throw e
         } catch (e: TflException) {
@@ -2360,7 +2426,7 @@ class ActiveTripTracker(
     // line alone is offered, and the refresh is said to have failed.
     private suspend fun linesListed(ride: TripLeg): NextBoard? =
         try {
-            boardOf(ride, fetchedAt = null)
+            boardOf(ride, askedAt = null)
         } catch (e: CancellationException) {
             throw e
         } catch (e: TflException) {

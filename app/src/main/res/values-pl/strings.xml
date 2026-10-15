@@ -618,7 +618,6 @@
     <string name="bug_report_failed">Nie udało się udostępnić raportu o błędzie</string>
     <string name="on_the_way">W drodze</string>
     <string name="on_the_way_title">Cel: %1$s</string>
-    <string name="on_the_way_cant_follow_rail">Nie można jeszcze śledzić pociągów National Rail</string>
     <string name="on_the_way_open_current">Otwórz bieżącą podróż</string>
     <string name="on_the_way_start">Rozpocznij</string>
     <string name="on_the_way_replace_title">Zastąpić bieżącą podróż?</string>

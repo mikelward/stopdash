@@ -13,7 +13,8 @@ import kotlinx.coroutines.sync.withLock
 /**
  * National Rail's live departure boards (Darwin), by a station's three-letter CRS code (SPEC
  * *National Rail*). [available] is false with no key, and then nothing is asked. Throws a
- * [TflException] on failure, the same contract as [TflClient], so a caller handles both alike.
+ * [TflException] on failure, the same contract as [TflClient], so a caller handles both alike: a
+ * [board] asked for with no key (cleared since [available] was read) is one.
  */
 interface RailBoardSource {
     val available: Boolean
@@ -28,6 +29,14 @@ interface RailBoardSource {
      * tell a fast train from a stopping one. Null when this source has none to give.
      */
     suspend fun boardWithDetails(crs: String): RailBoard? = null
+
+    /**
+     * [crs]'s next trains that call at [towards] (both station codes), each with its stops before and
+     * after this one and their times ([RailRun]): what a followed train's calls are read from
+     * ([RailVehicles]). From [offsetMinutes] on (Darwin's `timeOffset`), for a train further out than a
+     * board's first few. Null when this source has none to give.
+     */
+    suspend fun runs(crs: String, towards: String, offsetMinutes: Int = 0): List<RailRun>? = null
 }
 
 /**
@@ -128,6 +137,31 @@ class RailStationCodes(private val codes: Map<String, String>) {
     companion object {
         private const val TFL_RAIL_PREFIX = "910G"
         val EMPTY = RailStationCodes(emptyMap())
+    }
+}
+
+/**
+ * A stop's [departures] as read for a trip's ride, with when their oldest part was fetched where
+ * that's before they were asked for ([TflClient.fetchedAt]): a station's National Rail board another
+ * screen read moments ago. Null when all of it was asked for then.
+ */
+data class RideArrivals(val departures: List<Departure>, val fetchedAt: Instant? = null)
+
+/**
+ * [stopId]'s arrivals for timing a National Rail ride on a trip (SPEC *On the way*). TfL lists none of
+ * its trains, so the station's National Rail board must be among them: where it failed, there's no
+ * key to ask with, or the stop has no station code to ask by, this throws, so the trip says it couldn't
+ * update rather than read the ride's trains as gone (Codex, #883). A list keeps TfL's half and says
+ * "No data" instead ([RailFeed]). A board kept from another screen's read comes with when it was read,
+ * so the trip shows it at its real age (D4).
+ */
+suspend fun TflClient.railRideArrivals(stopId: String): RideArrivals {
+    val departures = arrivals(stopId)
+    return when (railFeed(stopId)) {
+        RailFeed.LIVE -> RideArrivals(departures, fetchedAt(stopId))
+        RailFeed.UNAVAILABLE -> throw TflException.Unreachable("national rail board unavailable", null)
+        RailFeed.NO_KEY -> throw TflException.Unreachable("no national rail key", null)
+        null -> throw TflException.Unreachable("no national rail station code", null)
     }
 }
 
@@ -288,9 +322,13 @@ class RailAwareTflClient(
     }
 
     // [stopId]'s feed, board time and untimed trains once its arrivals carry [board], or would have
-    // (null: it failed).
+    // (null: it failed, or the key was cleared while it was asked for, Codex #883).
     private fun showed(stopId: String, board: ArrivalsCache.Entry?) {
-        feeds[stopId] = if (board == null) RailFeed.UNAVAILABLE else RailFeed.LIVE
+        feeds[stopId] = when {
+            board != null -> RailFeed.LIVE
+            !rail.available -> RailFeed.NO_KEY
+            else -> RailFeed.UNAVAILABLE
+        }
         board?.let {
             boardTimes[stopId] = it.fetchedAt
             untimedByStop[stopId] = it.untimed

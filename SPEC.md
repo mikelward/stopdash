@@ -1044,7 +1044,8 @@ departure tapped ("From Victoria, towards Walthamstow Central", behind the line'
 place of From and To. Go starts the trip there on the way (*On the way*) on that line from the boarding stop,
 along the route page's own stop list, no Planner asked; the trip follows the soonest of the line's trains
 the rider can catch, as a planned ride does. A trip already on the way is replaced only once the rider says
-so. National Rail, which can't be followed, offers no Go. The top bar's star saves the journey there
+so. A National Rail line offers Go only with the rider's National Rail key, which following its trains needs
+(*On the way*), and again as soon as one is added. The top bar's star saves the journey there
 (*Journeys*). Back returns to the route page. A trip's route pages leave their stations inert for now. The boarding stop is marked with a blue "you are here" dot (map-location blue, ringed to
 stand off a blue line's rail), announced to a screen reader as "Your stop"; every other stop, the terminus included, is hollow,
 so the one filled dot is the rider's (the terminus keeps a bold name). **A station step-free for the line
@@ -2672,9 +2673,10 @@ as it was.
   service it can't stand behind (D4). The walk's check costs one GPS fix
   per refresh until the rider is seen there or the walk's estimated time is up. Below the next step
   the route's legs are listed, a ride by
-  its pill and a walk by a walker in the pills' column, so every leg's stops line up. A route with a **National Rail** train offers no
-  Start but says it can't be followed yet: its times come from National Rail's boards, which name
-  no train to follow. **One trip at a time:** while one is on the way, a route offers **Open current
+  its pill and a walk by a walker in the pills' column, so every leg's stops line up. A route with a **National Rail** train offers Start
+  only with the rider's National Rail key (*Data source*), since its train is followed from National
+  Rail's own boards (*Following it*); without one it says "National Rail key needed" (maintainer,
+  2026-10-15), and offers Start as soon as one is added. **One trip at a time:** while one is on the way, a route offers **Open current
   trip** beside Start, and Start asks "Replace current trip?" before ending that one and starting
   this route in its place (maintainer, 2026-10-04): ending a trip can't be undone. A route that
   can't be followed offers only the open.
@@ -2761,6 +2763,67 @@ as it was.
   first held, since the next lap would have taken them away. A rider still there after that time may
   have missed it, however late the train has been called since, which is left to the check for one
   left behind. Only the fixes the trip already takes count: none is asked for this.
+- **A National Rail train** (maintainer, 2026-10-15) is followed from National Rail's own boards,
+  with the rider's key, since TfL has no times for it and Darwin names no train the way TfL does. It's
+  known by the station it was picked at, when it was due to leave there, where it ends and the line it
+  runs on (Codex, #883), which every later board names among the stops it has called at, by its
+  departure there. Only that time is taken,
+  never the nearest (Codex, #883): a train due there a minute either side is another train, and two that
+  fit are neither, never a guess. Its calls ahead come from the board, with calling points, at the
+  station it's due to leave next, asked toward its terminus so it's among the ten listed. Where it was
+  picked, a train due more than about 25 minutes out is asked for from a quarter hour at least ten
+  minutes before it (Darwin's `timeOffset`), since ten trains to its terminus can leave first and the
+  departures list it was picked from shows twenty (Codex, #883). A train not yet seen there is gone
+  only where that board reaches past it, listing one due after it: one that stops short of it, ten
+  listed first or its time beyond the window Darwin gives, says nothing of it, nor does its time having
+  gone by (a train held there), and the update fails rather than giving the train up (Codex, #883). It has left
+  a station only when a later station's board gives when it was there, never because its estimate has
+  gone by (a train held there) nor because a board leaves it out, as a board of ten trains can for one
+  still there (Codex, #883; maintainer, 2026-10-16). So each refresh asks the board at the first station it isn't due to have left by its
+  last estimates (the last before its terminus once it's due to have left them all), which lists it
+  wherever it is before then, and the one past it, for one that left a little early; and, one a refresh in
+  turn, a station before that it hasn't left by the last board's word, for one held where a board further
+  on leaves it out (Codex, #883). The first that lists it says where it is: one request a refresh as a rule, never more than three,
+  so a train no board lists never costs a request per station (Codex, #883). One of them failing never
+  stops the others being asked, any of which may list it; a failed board is the update's failure only
+  where none does (Codex, #883). A board with a train it can't read whole (no schedule, no terminus, a stop with no code, no
+  stops on though it runs from there, stops on that don't reach where it ends) fails the update instead (Codex, #883). Listed on none of them,
+  where it is isn't known: a failed update, never calls guessed from times gone by, and the boards are
+  asked again the next refresh. With no key to ask by, the same: a failed update with the train kept,
+  never one no longer known, since a key the app is still reading back after a restart looks no
+  different, and the train picked before it is the one to go on with (Codex, #883). A
+  board read is shared for 20 s by every train it lists, as a pick asks after several. A board names
+  a station by its code, so a call there is a call at each TfL id of it: St Pancras's three are one
+  station to the train, whichever of them names where the rider boards or gets off. Its stops on are
+  counted as far as the board gives them an estimate; a stop canceled is left out, and one with no
+  estimate ("Delayed") ends what's claimed, a time past it being unknown. With no time at the station
+  it's due to leave next, nothing is claimed (Codex, #883), since its later calls alone would say it had
+  gone on past: "Delayed" there is a failed update, the train kept, and canceled where the rider boards
+  it's a train that won't call there, so one being waited for is given up for another. Canceled at a
+  station further on, it's that one call Darwin cancels: the train's calls skip it and run on to those
+  the board gives after (Codex, #883). A board gives a train's stops on through where it ends, canceled
+  ones marked, so with an estimate at each its calls are every one it has left, the last ending its
+  run: a stop missing from them, past where it's been cut short included, is one it won't call at,
+  never one not yet predicted as with TfL's. A trip waiting for it picks another, and one on board
+  claims no time or stops left toward that stop (maintainer, 2026-10-16; Codex, #883). Its calls are **as old as the board read
+  they came from** (Codex, #883), never restamped as read now. Past the last station before its terminus
+  no departure board lists it, so none can say it has left there: each refresh fails, as when TfL goes
+  quiet on a train, so nothing moves the trip on or alerts on calls nobody stands behind, and the rider
+  has arrived when seen at the terminus or by their word, never on a guess (*TODO*). Its boarding stop's board is the station's departures as
+  the lists show them, National Rail's times beside TfL's, and as old as theirs: a board another screen
+  read moments ago is shown at that read's age, never as read now (Codex, #883). Where National Rail's
+  board failed, no key is set, or the station has no code to ask it by, the read has failed, as a failed
+  TfL one has, never an empty board.
+  A train that divides isn't followed, having no one terminus to follow it to, nor is one to a terminus
+  Darwin has no code for ("???", Codex, #883), nor one listed with no readable schedule, having nothing to
+  know it by again; the debug log says so of the last two, so a trip that picked a later train can be
+  explained (maintainer, 2026-10-16). A stop on its way Darwin has no code for is passed over, since no board
+  can be asked by it (Codex, #883), and with one there its calls never claim to be every one it has
+  left: a trip's stop could be that one, never to be read as one it won't call at (Codex, #883). One that another joins on
+  the way is followed along the portion it was picked on, never through the other's stops (Codex, #883). One the app has lost track of on a restart,
+  once gone from the station it was picked at, isn't found again: before boarding another is picked,
+  and on board the trip says it couldn't update, as with a TfL train gone quiet (*TODO*). Like a TfL
+  train, one whose calls leave the leg's planned stops is lost, not ridden.
 - **Only a recent answer is live.** A train's time, the stops left and "get off soon" show as live
   only while the last answer is under about a minute and a quarter old. Older, or after a failed
   refresh, the step stays, its stops (or a train's due time) say **Checking…**, and the time left and
@@ -3132,7 +3195,8 @@ ride is tried there, not a short working. Trains reach that stop in the order th
 walked soonest first until a train its calls show behind them marks where theirs ends, or the board
 does. A few lookups that find neither, or a train on it TfL no longer knows, gives no id for, or
 whose calls or destination don't place it (which may be theirs), name no train: only a train shown
-behind them ends theirs. Seen at a stop, one behind is still due
+behind them ends theirs. National Rail trains checked there share the update's three with those gone
+from the boarding stop's board (*Data source*), so past them it couldn't tell this time. Seen at a stop, one behind is still due
 there, so the latest past them is theirs; between stops, one behind that has left the boarding stop
 calls next where theirs does, as one ahead of them does, so only a lone train is taken for theirs. Found that way, the ride's time still runs
 from when they were first seen on board. A lookup that fails is said ("Couldn't
@@ -4110,7 +4174,21 @@ surface.)
   station a trip boards at, each refresh, carrying the same code and key. The plain board stays the one
   every screen shares; the one with details is kept beside it, and a train's stops are worked out off the
   screen as its other checks are. If it fails, the trip says so
-  in the debug log and judges every train on its routes. A board is kept with the stops' arrivals
+  in the debug log and judges every train on its routes. A trip on the way that follows a National
+  Rail train (*On the way*) asks for the same board, filtered to its terminus (`filterCrs`), at up to
+  three stations on its way, about every 30 s while it's followed: usually one, the station it's due to
+  leave next, with one past it and one it may be held at asked only while no board lists it. To check
+  which train is the rider's, before one is picked or once they're on board with theirs not yet known,
+  each train checked has one board asked toward its terminus, where it's due next, never the search a
+  followed train gets, and an update (a refresh, or the rider's move) checks at most three National Rail
+  trains however many of its paths check: the trains gone from the boarding station's board and those at
+  the station just ahead of an on-board rider share them (Codex, #883; maintainer, 2026-10-16). That
+  station ahead is also read for its plain and detailed boards. Each carries a
+  station's code, a terminus's and the key, and, for a train still a while from where it was picked,
+  how many minutes on to start the board (`timeOffset`). So an update asks at most three boards to follow
+  a train and three to check which is the rider's, besides the departures of each station it reads, a
+  plain and a detailed board each and shared as below; one or two requests as a rule (maintainer,
+  2026-10-16). A board is kept with the stops' arrivals
   (*Freshness → Shared arrivals*), so it's fetched once for every screen until it's 50 s old, and
   screens asking at the same moment share that one request. A stop's arrivals are as old as their
   oldest part, so a board read from the cache keeps its own age. A
@@ -4139,11 +4217,14 @@ surface.)
   Sleeper) is one TfL answers "not recognised" for: its route page says the stops are unavailable,
   with no retry, and its status isn't asked again that session — its rows stay unchecked, never
   clean. The optional dependency fails on its own: a failed board (down, rate-limited, a bad key,
-  a garbled answer) leaves the station's TfL departures in place, its National Rail lines' status rows saying
+  a garbled answer, or one Darwin has suppressed, its trains withheld though they may still run,
+  Codex, #883) leaves the station's TfL departures in place, its National Rail lines' status rows saying
   "No data", and is logged; it never fails the stop or blanks the list. **Cost:
-  £0**, at most one request per rail station per refresh against the user's own key's limit,
-  shared by every screen; an open trip adds one more for that station's calling points, so two at most
-  there. A failed calling-points request leaves the plain board standing.
+  £0**, against the user's own key's limit: the lists ask at most one request per rail station per
+  refresh, shared by every screen. An open trip adds one for each station it reads departures at, for
+  that station's calling points, and the boards that follow its train and check which is the rider's,
+  each toward a terminus, within the limits above (Codex, #883); one or two requests a refresh as a
+  rule. A failed calling-points request leaves the plain board standing.
   **Play Data Safety:** no new data type — a request carries only a public station code and the
   user's own key for that service, sent at their request; `docs/PRIVACY.md` names National Rail as
   a recipient, and the Data Safety form and privacy-policy link are re-checked before the release
@@ -4517,7 +4598,20 @@ on the phone.
 
 With a National Rail key set (*Data source*), a rail station's departures request also goes to
 the Rail Data Marketplace, carrying that station's CRS code and the user's own key, never a
-location; it is disclosed alongside the TfL requests. The key is a credential, handled like the
+location; it is disclosed alongside the TfL requests. Following a National Rail train on the way
+asks for the boards at up to three stations on its way from where the rider boarded, toward its
+terminus (usually one, the station it's due at next; *Following it*): those stations' codes, which can
+include where the rider boards or gets off, and the train's terminus's, which its departure already
+shows, and, for a train more than about 25 minutes out from where the rider boards, how many minutes on
+to start that station's board, in quarter hours, which says roughly when their train is due. Before a
+train is picked, each refresh asks the boarding station's board toward the terminus of each train there
+being checked as the rider's (Codex, #883): that station's code and those termini, which their departures
+already show. A rider on board whose train isn't known yet has the station just ahead of them asked the
+same way, its departures and toward its trains, up to three trains checked in all each update (Codex, #883;
+maintainer, 2026-10-16).
+Every one of these is a station on the train's way from where the rider boards, and the termini of
+trains there, so the disclosure names that, not each path that asks (maintainer, 2026-10-16). The debug log notes those codes too, for a board that failed or didn't list the train, and
+`docs/PRIVACY.md` says so (Codex, #883). The key is a credential, handled like the
 TfL `app_key`: never logged or placed in any other off-device artifact.
 
 **Crash reports and usage stats are opt-in** (maintainer, 2026-09-24, following `mikelward/simmo`).

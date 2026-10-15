@@ -3,6 +3,7 @@ package app.stopdash.data
 import app.stopdash.domain.Departure
 import app.stopdash.domain.RailBoard
 import app.stopdash.domain.RailBoardSource
+import app.stopdash.domain.RailRun
 import app.stopdash.domain.TflException
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -22,7 +23,8 @@ import kotlinx.coroutines.withContext
 /**
  * National Rail's live departure boards (Darwin) from the Rail Data Marketplace, with the user's
  * own key ([apiKey], read per request so a key pasted in Settings applies on the next refresh).
- * With no key it's unavailable and asks nothing: stopdash ships no key of its own.
+ * With no key it's unavailable and asks nothing: stopdash ships no key of its own. A board asked for
+ * with none (a key cleared since [available] was read) fails, never reading as one with no trains.
  *
  * Only the station's CRS code and the key are sent: never a location (SPEC *Privacy*). Failures map
  * to the same [TflException] kinds as TfL's client (offline, rate-limited, unreachable), sanitized to
@@ -48,7 +50,8 @@ class KtorDarwinClient(
     override suspend fun departures(crs: String): List<Departure> = board(crs).departures
 
     override suspend fun board(crs: String): RailBoard {
-        val key = key() ?: return RailBoard(emptyList())
+        // Cleared since the caller checked [available]: no answer, never a board with no trains (Codex, #883).
+        val key = key() ?: throw TflException.Unreachable("no national rail key", null)
         return fetch(key, BOARD, crs, ROWS) { it.toBoard(stopIdFor, stopIdsFor, warn) }
     }
 
@@ -62,16 +65,37 @@ class KtorDarwinClient(
         return fetch(key, DETAILS, crs, DETAIL_ROWS) { it.toBoard(stopIdFor, stopIdsFor, warn) }
     }
 
+    /**
+     * [crs]'s next trains that call at [towards] with their calling points and times
+     * (`GetDepBoardWithDetails`, filtered to [towards]), from [offsetMinutes] on (`timeOffset`), for
+     * following one: filtered, and asked from near its time, the train followed is among the [DETAIL_ROWS]
+     * it lists. Failures as [board]'s.
+     */
+    override suspend fun runs(crs: String, towards: String, offsetMinutes: Int): List<RailRun>? {
+        val key = key() ?: return null
+        val from = if (offsetMinutes == 0) emptyMap() else mapOf("timeOffset" to offsetMinutes.toString())
+        return fetch(key, DETAILS, crs, DETAIL_ROWS, mapOf("filterCrs" to towards, "filterType" to "to") + from) { it.toRuns() }
+    }
+
     private fun key(): String? = apiKey()?.trim()?.ifBlank { null }
 
-    // [crs]'s board from [operation], [rows] long, read by [read]; failures as [TflException]s.
-    private suspend fun <T> fetch(key: String, operation: String, crs: String, rows: Int, read: (DarwinBoardDto) -> T): T {
+    // [crs]'s board from [operation], [rows] long and narrowed by [filters], read by [read]; failures as
+    // [TflException]s.
+    private suspend fun <T> fetch(
+        key: String,
+        operation: String,
+        crs: String,
+        rows: Int,
+        filters: Map<String, String> = emptyMap(),
+        read: (DarwinBoardDto) -> T,
+    ): T {
         return try {
             withContext(decodeDispatcher) {
                 read(
                     httpClient.get("$baseUrl/$operation/$crs") {
                         header("x-apikey", key)
                         parameter("numRows", rows)
+                        filters.forEach { (name, value) -> parameter(name, value) }
                     }.body<DarwinBoardDto>(),
                 )
             }
