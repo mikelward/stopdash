@@ -5154,6 +5154,8 @@ class MainActivity : ComponentActivity() {
             }
         }
         val directPlace = favorite ?: stopPlaced?.takeIf { it.first == toId }?.second
+        // Where a Direct row's ride walks on to once tapped: the place its section looks near.
+        SideEffect { trip.directPlace = directPlace }
         // A place's Direct section (SPEC *Direct to a place*): only for a place the rider isn't already
         // at, by the same 200 m the place chips hide within, so a trip there looks nothing up.
         val direct = directPlace?.takeUnless { place ->
@@ -5231,7 +5233,7 @@ class MainActivity : ComponentActivity() {
                         direct::retry,
                         // Only a ride getting off at one of the stops near the place its trains reach ([ShownRow.endIds],
                         // worked out with the look: the tap only reads them).
-                        onOpen = { shown -> trip.openDirect(shown.row.lineId, shown.row.fromId, shown.endIds, shown.endKey, shown.row.key) },
+                        onOpen = { shown -> trip.openDirect(shown.row.lineId, shown.row.fromId, shown.endIds, shown.endKey, shown.row.key, shown.toId) },
                         opening = trip.directOpening.collectAsStateWithLifecycle().value,
                     )
                 }

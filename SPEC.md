@@ -2040,8 +2040,13 @@ trains that go straight somewhere.
 A Direct row tapped opens its ride as a route of the trip (maintainer, 2026-10-07), as a route card
 does: the walk to its stop, that line to the stop near the place, the walk on, timed live and startable
 *On the way*. The plan's own route riding just that line from that stop when it has one; otherwise
-TfL's Journey Planner is asked once for the trip via that stop, under the rider's own choices, and its
-route riding just that line is opened. That route is never a card of its own and is let go once closed;
+TfL's Journey Planner is asked once for the ride itself, from that stop to the one it gets the rider off
+at (the stop it's named by), under the rider's own choices, and its ride on just that line is opened, with
+the walk to its stop and the walk on to the place timed by the phone at the Planner's pace for the rider's
+speed, as the trip's own walk to a stop is. Asked for the trip *via* the stop instead, the Planner need only
+pass it, on foot too: from beside the stop it walked past it to whatever was quickest and never offered the
+line tapped (maintainer's report, 2026-10-15). Only from another stop, whose walk the phone can't place, is
+the trip still asked for via the stop. That route is never a card of its own and is let go once closed;
 while open, each re-plan asks for it again from where and under what that plan is (a rider who has
 moved, or changed a choice, never keeps a walk timed from before), as does the trip restored after the
 app was closed in the background. An answer to choices the rider has since changed is asked again. A

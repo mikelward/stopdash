@@ -40,6 +40,8 @@ import app.stopdash.domain.TripClosures
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.TripLeg
+import app.stopdash.domain.TripFare
+import app.stopdash.domain.NearestStops
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.UsageEvent
 import app.stopdash.domain.MaxWalk
@@ -187,6 +189,18 @@ class TripViewModelTest {
         var viaDelays: Map<String, Long> = emptyMap()
         // So many of the next via requests fail.
         var failViaFirst = 0
+        // Each request between two stops: where from and to, and at what pace, in order; its answer by the stop
+        // it's from. One from a stop in [failFor] fails.
+        val betweenAsked = mutableListOf<Pair<String, String>>()
+        val betweenSpeeds = mutableListOf<WalkingSpeed>()
+        var byBetween: Map<String, List<TripRoute>> = emptyMap()
+        override suspend fun fewestChangesBetween(fromStop: String, toStop: String, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes): List<TripRoute> {
+            calls++
+            betweenAsked += fromStop to toStop
+            betweenSpeeds += speed
+            if (fromStop in failFor) throw TflException.Offline(null)
+            return byBetween[fromStop].orEmpty()
+        }
         override suspend fun fewestChangesVia(from: TripOrigin, to: TripDestination, via: String, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes): List<TripRoute> {
             calls++
             viaAsked += to to via
@@ -1397,6 +1411,218 @@ class TripViewModelTest {
         usage = usage,
     )
 
+    // A Direct row's ride as the Planner routes it from its own stop G to S, the stop it gets off at: green alone,
+    // both stops placed, G 700 m west of the place (Home) and S 70 m west of it.
+    private val gAt = Coordinates(51.5, -0.13)
+    private val sAt = Coordinates(51.5, -0.121)
+    private val gToS = TripRoute(listOf(leg("green", "G", "S", 6, 26).copy(fromAt = gAt, toAt = sAt)), TripFare(175))
+
+    private fun meters(a: Coordinates, b: Coordinates) = NearestStops.distanceMeters(a.latitude, a.longitude, b.latitude, b.longitude)
+
+    @Test
+    fun `from beside its stop, a Direct row's ride is asked for from that stop, not via it, and walked to and on from`() = runTest(dispatcher) {
+        // Via G the Planner would walk past it to something else: from G to S it rides the line leaving G.
+        val planner = FakePlanner(listOf(changingToPlace)).apply {
+            byVia = mapOf("G" to listOf(changingToPlace))
+            byBetween = mapOf("G" to listOf(gToS))
+        }
+        val here = Coordinates(51.5, -0.1305)
+        val trip = placeTrip(planner, origin = { TripOrigin.Here(here) })
+        trip.walkingSpeed = WalkingSpeed.SLOW
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G", ends = setOf("S"), toId = "S")
+        advanceUntilIdle()
+        assertEquals(listOf("G" to "S"), planner.betweenAsked)
+        assertEquals(listOf(WalkingSpeed.SLOW), planner.betweenSpeeds)
+        assertTrue(planner.viaAsked.none { it.second == "G" })
+        val opened = trip.state.value.routes.orEmpty().single { routeKey(it) == trip.openRoute.value }
+        assertEquals(setOf(routeKey(opened)), trip.state.value.directKeys)
+        assertNull(trip.directOpening.value)
+        // The walk to G from the rider, green to S, and the walk on to the place, each at the rider's pace.
+        assertEquals(listOf(TripLeg.WALKING, "tube", TripLeg.WALKING), opened.legs.map { it.mode })
+        assertEquals(gToS.legs.single(), opened.legs[1])
+        assertEquals(TripTiming.accessWalk(meters(here, gAt), WalkingSpeed.SLOW), opened.legs.first().run)
+        assertEquals(TripTiming.accessWalk(meters(sAt, Coordinates(51.5, -0.12)), WalkingSpeed.SLOW), opened.legs.last().run)
+        assertEquals("Home", opened.legs.last().toName)
+        assertEquals(TripFare(175), opened.fare)
+    }
+
+    @Test
+    fun `a Direct row's ride walks on to the place its section looks near, a station's as much as a favorite's`() = runTest(dispatcher) {
+        // A trip to a stop: its Direct section's place is the stop's own position, set by the screen.
+        val planner = FakePlanner(listOf(route)).apply { byBetween = mapOf("G" to listOf(gToS)) }
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
+            clock = { now }, plans = TripPlans(), io = dispatcher, origin = { TripOrigin.Here(Coordinates(51.5, -0.1305)) },
+        )
+        val station = Coordinates(51.5, -0.1205)
+        trip.directPlace = TripDestination.Place(station, "C")
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G", ends = setOf("S"), toId = "S")
+        advanceUntilIdle()
+        val opened = trip.state.value.routes.orEmpty().single { routeKey(it) == trip.openRoute.value }
+        assertEquals("C", opened.legs.last().toName)
+        assertEquals(TripTiming.accessWalk(meters(sAt, station)), opened.legs.last().run)
+        assertTrue(planner.viaAsked.none { it.second == "G" })
+    }
+
+    @Test
+    fun `a trip from a Direct row's own stop has no walk to it`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byBetween = mapOf("G" to listOf(gToS)) }
+        val trip = placeTrip(planner, origin = { TripOrigin.Stop("G") })
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G", ends = setOf("S"), toId = "S")
+        advanceUntilIdle()
+        val opened = trip.state.value.routes.orEmpty().single { routeKey(it) == trip.openRoute.value }
+        assertEquals(listOf("tube", TripLeg.WALKING), opened.legs.map { it.mode })
+    }
+
+    @Test
+    fun `from another stop, whose walk the phone can't place, a Direct row's ride is asked for via its stop as before`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace)).apply {
+            byVia = mapOf("G" to listOf(viaG))
+            byBetween = mapOf("G" to listOf(gToS))
+        }
+        val trip = placeTrip(planner, origin = { TripOrigin.Stop("A") })
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G", ends = setOf("S"), toId = "S")
+        advanceUntilIdle()
+        assertTrue(planner.betweenAsked.isEmpty())
+        assertEquals(routeKey(viaG), trip.openRoute.value)
+    }
+
+    @Test
+    fun `a Direct row whose ride between its stops rides another line, or whose stops aren't placed, says it couldn't plan`() = runTest(dispatcher) {
+        val warnings = mutableListOf<String>()
+        val planner = FakePlanner(listOf(changingToPlace)).apply {
+            byBetween = mapOf("G" to listOf(TripRoute(listOf(leg("blue", "G", "S", 6, 26).copy(fromAt = gAt, toAt = sAt)))))
+        }
+        val trip = placeTrip(planner, warn = { warnings += it }, origin = { TripOrigin.Here(Coordinates(51.5, -0.1305)) })
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G", ends = setOf("S"), toId = "S")
+        advanceUntilIdle()
+        assertTrue(trip.directOpening.value?.failed == true)
+        assertNull(trip.openRoute.value)
+        assertTrue(warnings.any { it == "direct route on green from G: none of 1 planned rides it alone" })
+        // Green, but with S unplaced: the walk on from it can't be timed, so nothing opens either.
+        planner.byBetween = mapOf("G" to listOf(TripRoute(listOf(leg("green", "G", "S", 6, 26).copy(fromAt = gAt)))))
+        trip.openDirect("green", "G", ends = setOf("S"), toId = "S")
+        advanceUntilIdle()
+        assertTrue(trip.directOpening.value?.failed == true)
+        assertNull(trip.openRoute.value)
+        assertTrue(warnings.any { it == "direct route on green from G: its ride's stops unplaced" })
+    }
+
+    @Test
+    fun `a Direct row's ride with a walk longer than the rider's max walk says it couldn't plan`() = runTest(dispatcher) {
+        // A Direct row can leave from a stop a mile off: about 1.6 km east of G is past a 10-minute walk.
+        val warnings = mutableListOf<String>()
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byBetween = mapOf("G" to listOf(gToS)) }
+        val trip = placeTrip(planner, warn = { warnings += it }, origin = { TripOrigin.Here(Coordinates(51.5, -0.153)) })
+        trip.maxWalk = MaxWalk.TEN
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G", ends = setOf("S"), toId = "S")
+        advanceUntilIdle()
+        assertTrue(trip.directOpening.value?.failed == true)
+        assertNull(trip.openRoute.value)
+        assertTrue(warnings.any { it == "direct route on green from G: a walk past the max walk" })
+        // Within the rider's limit, the same walk is theirs to take.
+        trip.maxWalk = MaxWalk.SIXTY
+        advanceUntilIdle()
+        trip.openDirect("green", "G", ends = setOf("S"), toId = "S")
+        advanceUntilIdle()
+        assertNotNull(trip.openRoute.value)
+    }
+
+    @Test
+    fun `a Direct ride to a station restored before the screen places it again walks on to where it was placed`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route)).apply { byBetween = mapOf("G" to listOf(gToS)) }
+        val saved = androidx.lifecycle.SavedStateHandle()
+        val here = { TripOrigin.Here(Coordinates(51.5, -0.1305)) }
+        fun stationTrip(state: androidx.lifecycle.SavedStateHandle) = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
+            clock = { now }, plans = TripPlans(), io = dispatcher, origin = here, savedState = state,
+        )
+        val trip = stationTrip(saved)
+        val station = Coordinates(51.5, -0.1205)
+        trip.directPlace = TripDestination.Place(station, "C")
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G", ends = setOf("S"), toId = "S")
+        advanceUntilIdle()
+        val key = trip.openRoute.value!!
+        // Restored, as after process death, its plan running before the screen has placed the station again.
+        val restored = stationTrip(androidx.lifecycle.SavedStateHandle(saved.keys().associateWith { saved.get<Any>(it) }))
+        restored.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf("G" to "S", "G" to "S"), planner.betweenAsked)
+        assertTrue(planner.viaAsked.none { it.second == "G" })
+        assertEquals(key, restored.openRoute.value)
+        val opened = restored.state.value.routes.orEmpty().single { routeKey(it) == key }
+        assertEquals("C", opened.legs.last().toName)
+        assertEquals(TripTiming.accessWalk(meters(sAt, station)), opened.legs.last().run)
+    }
+
+    @Test
+    fun `a Direct ride found in the plan keeps its place, so a restored trip to a station asks between its stops`() = runTest(dispatcher) {
+        // Opened as the plan's own route; restored with a plan that lacks it, before the screen places the station.
+        val planner = FakePlanner(emptyList()).apply {
+            byDestination = mapOf("C" to listOf(route, viaG))
+            byBetween = mapOf("G" to listOf(gToS))
+        }
+        val saved = androidx.lifecycle.SavedStateHandle()
+        val here = { TripOrigin.Here(Coordinates(51.5, -0.1305)) }
+        fun stationTrip(state: androidx.lifecycle.SavedStateHandle) = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
+            clock = { now }, plans = TripPlans(), io = dispatcher, origin = here, savedState = state,
+        )
+        val trip = stationTrip(saved)
+        trip.directPlace = TripDestination.Place(Coordinates(51.5, -0.1205), "C")
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G", ends = setOf("S"), toId = "S")
+        advanceUntilIdle()
+        assertEquals(routeKey(viaG), trip.openRoute.value)
+        assertTrue(planner.betweenAsked.isEmpty())
+        planner.byDestination = mapOf("C" to listOf(route))
+        val restored = stationTrip(androidx.lifecycle.SavedStateHandle(saved.keys().associateWith { saved.get<Any>(it) }))
+        restored.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf("G" to "S"), planner.betweenAsked)
+        assertTrue(planner.viaAsked.none { it.second == "G" })
+        assertEquals("C", restored.state.value.routes.orEmpty().single { routeKey(it) == restored.openRoute.value }.legs.last().toName)
+    }
+
+    @Test
+    fun `a Direct row's ride is asked for between its stops again by a re-plan, and once the trip is restored`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace)).apply { byBetween = mapOf("G" to listOf(gToS)) }
+        val saved = androidx.lifecycle.SavedStateHandle()
+        val here = { TripOrigin.Here(Coordinates(51.5, -0.1305)) }
+        val trip = placeTrip(planner, savedState = saved, origin = here)
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openDirect("green", "G", ends = setOf("S"), toId = "S")
+        advanceUntilIdle()
+        val key = trip.openRoute.value!!
+        trip.retry()
+        advanceUntilIdle()
+        assertEquals(listOf("G" to "S", "G" to "S"), planner.betweenAsked)
+        assertEquals(key, trip.openRoute.value)
+        // A new model over the same saved state, as after process death: asked for to S again, never via G.
+        val restored = placeTrip(planner, savedState = androidx.lifecycle.SavedStateHandle(saved.keys().associateWith { saved.get<Any>(it) }), origin = here)
+        restored.refresh()
+        advanceUntilIdle()
+        assertEquals("G" to "S", planner.betweenAsked.last())
+        assertTrue(planner.viaAsked.none { it.second == "G" })
+        assertEquals(key, restored.openRoute.value)
+    }
+
     @Test
     fun `a Direct route asked while the rider changes a choice is asked again under the new one`() = runTest(dispatcher) {
         val planner = FakePlanner(listOf(changingToPlace)).apply { byVia = mapOf("G" to listOf(viaG)) }
@@ -1721,7 +1947,8 @@ class TripViewModelTest {
         advanceUntilIdle()
         assertEquals(routeKey(viaG), trip.openRoute.value)
         assertTrue("$read", read.isNotEmpty() && read.all { it })
-        assertEquals("green\nG\n${routeKey(viaG)}\nS", savedState.get<String>("directRide"))
+        // Its stop to ask the ride to last, blank for a tap that named none.
+        assertEquals("green\nG\n${routeKey(viaG)}\nS\n", savedState.get<String>("directRide"))
     }
 
     @Test

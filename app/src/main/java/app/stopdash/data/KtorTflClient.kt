@@ -216,6 +216,20 @@ class KtorTflClient(
     ): List<TripRoute> =
         finished(listOf(plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = null, via = via)), from, to)
 
+    // One request, for the fewest changes from one stop to another ([DirectRoute]): its failure is the caller's to handle.
+    override suspend fun fewestChangesBetween(
+        fromStop: String,
+        toStop: String,
+        speed: WalkingSpeed,
+        maxWalk: MaxWalk,
+        stepFree: StepFree,
+        modes: TripModes,
+    ): List<TripRoute> {
+        val from = TripOrigin.Stop(fromStop)
+        val to = TripDestination.Stop(toStop)
+        return finished(listOf(plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = LEAST_INTERCHANGE, between = true)), from, to)
+    }
+
     // One request, for the quickest routes with [leaveOut]'s modes left out ([AroundDelays]): its failure is
     // the caller's to handle.
     override suspend fun quickestWithout(
@@ -285,8 +299,10 @@ class KtorTflClient(
         via: String? = null,
         // Planner modes left out of [modes]' own ([AroundDelays]); none for every other request.
         leaveOut: Set<String> = emptySet(),
+        // From one stop to another, for a Direct row's ride ([DirectRoute]): said apart in the log.
+        between: Boolean = false,
     ): List<TripRoute> {
-        val source = planSource(preference, via, leaveOut)
+        val source = planSource(preference, via, leaveOut, between)
         // How long the Planner took, logged once for every request whatever its outcome (it can take
         // seconds, so a slow trip page says whether its plan or what follows held it up; a failed one
         // can be the slow one, Codex, #563), from before the request waits for a slot and the rate
@@ -383,10 +399,11 @@ class KtorTflClient(
 
     // What a Planner request is called in the log: which of a plan's requests it was. The modes left out
     // around delays are named, coarse as a line id is.
-    private fun planSource(preference: String?, via: String?, leaveOut: Set<String> = emptySet()): String = when {
+    private fun planSource(preference: String?, via: String?, leaveOut: Set<String> = emptySet(), between: Boolean = false): String = when {
         leaveOut.isNotEmpty() -> "journey planner (without ${leaveOut.sorted().joinToString("+")})"
         via != null && preference == LEAST_INTERCHANGE -> "journey planner (fewest changes via a stop)"
         via != null -> "journey planner (quickest via a stop)"
+        between -> "journey planner (fewest changes between stops)"
         preference == LEAST_INTERCHANGE -> "journey planner (fewest changes)"
         preference == LEAST_WALKING -> "journey planner (least walking)"
         else -> "journey planner"

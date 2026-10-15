@@ -110,6 +110,8 @@ class PlaceDirectViewModelTest {
         val row = (model.state.value as PlaceDirectViewModel.State.Ready).rows.single()
         assertEquals(setOf("BOT", "HUBB"), row.endIds)
         assertEquals("BOT,HUBB", row.endKey)
+        // And the one its ride is asked for to: the stop it's named by.
+        assertEquals("BOT", row.toId)
     }
 
     @Test
@@ -169,6 +171,7 @@ class PlaceDirectViewModelTest {
         // A tap opens a ride getting off anywhere its own row's trains reach: Bottom A's call at Side too, so with
         // Bottom A closed a ride to Side is still theirs; the B row's never reach Bottom A.
         assertEquals(listOf(setOf("BOTA", "SIDE"), setOf("SIDE")), rows.map { it.endIds })
+        assertEquals(listOf("BOTA", "SIDE"), rows.map { it.toId })
         val opening = TripViewModel.DirectOpening(rows[0].row.lineId, rows[0].row.fromId, rowKey = rows[0].row.key)
         assertTrue(directOpeningOf(opening, rows[0]))
         assertFalse(directOpeningOf(opening, rows[1]))

@@ -111,6 +111,18 @@ class PlaceDirectTest {
     }
 
     @Test
+    fun `a row's ride is asked for to the stop it's named by, else where its soonest sure train gets off`() {
+        assertEquals("BOTB", row(listOf(bottomA, bottomB), listOf(bottomB)).rideTo?.id)
+        // Apart: the soonest train's stop nearest the place.
+        assertEquals("BOTA", row(listOf(bottomA), listOf(bottomB)).rideTo?.id)
+        // The soonest at a fork may not get there: the next, sure of its way, does.
+        assertEquals("BOTB", row(listOf(bottomA, bottomB), listOf(bottomB, bottomA), forks = listOf(true, false)).rideTo?.id)
+        // None sure of its way: the first any may get off at.
+        assertEquals("BOTA", row(listOf(bottomA, bottomB), forks = listOf(true)).rideTo?.id)
+        assertNull(row(emptyList()).rideTo)
+    }
+
+    @Test
     fun `a row whose trains don't get off at one known stop names none`() {
         // Apart: neither stop is where every train gets the rider off.
         assertNull(row(listOf(bottomA), listOf(bottomB)).offStop)
