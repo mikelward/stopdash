@@ -3620,9 +3620,18 @@ been set, so none keeps showing what it judged before.
   connection, within the usual 10 s is tried again a moment later, on a fresh connection. A
   connection to TfL that stops answering after a network change otherwise left a stop failed until
   the next refresh, a minute on. Only once, and not for a request already allowed
-  longer (a nearby search, a route), so an outage costs one more try, not a doubled long wait. An
-  offline phone isn't retried. A request the app cancels itself (a newer refresh replacing it) is
-  logged as canceled, never as a connection failure.
+  longer (a nearby search, a route, a trip's plan), so an outage costs one more try, not a doubled
+  long wait. An offline phone isn't retried. A request the app cancels itself (a newer refresh
+  replacing it) is logged as canceled, never as a connection failure.
+- **A connection that went quiet is closed** (maintainer bug report, 2026-10-15): when a request gets
+  nothing in its whole wait, and the connection it waited on answered no other request meanwhile and
+  is part-way through answering none, that connection is closed, and every other request still
+  waiting on it, one allowed longer included, is asked once more on a fresh one rather than wait out
+  its own time: a trip's plan otherwise sat 19 s on a dead connection, still waiting after the
+  requests asked afresh had answered. That is the request's one retry, taking a rate token as any
+  request does; it is never asked a third time. An answer on the connection meanwhile says only the one request
+  was slow, so nothing else is touched; nor is any other connection. It is read from each request's
+  own progress, so it costs nothing while connections answer: no keep-alive pings to wake the radio.
 - **Shared line status** (maintainer, 2026-10-11): each line's last status answer is kept in memory
   for the process the same way, whichever surface asked — the near-me list, the widget's refresh (a
   watch's request included), the app's check of the widget's lines, a station's page, a trip and its

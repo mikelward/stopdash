@@ -357,6 +357,8 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.ktor.client.mock)
+    // A local HTTP/2 server, so the quiet-connection test runs OkHttp's own connection handling.
+    testImplementation(libs.okhttp.mockwebserver3)
     // Drives the widget staleness-redraw scheduler test on an in-memory WorkManager.
     testImplementation(libs.androidx.work.testing)
 
