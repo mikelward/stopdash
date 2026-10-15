@@ -688,9 +688,12 @@ internal fun widgetModel(
     // the app has named every ride (an earlier build's pins, before the app next reports), the whole
     // widget goes by stop, as before grouping by ride: rides are named all at once, so one with no
     // name means none have one, and no stop is headed twice (maintainer, 2026-10-15; Codex, #872).
-    val rides = rideTitle?.takeIf { snapshot.journeys.all { it.fromName.isNotBlank() && it.toName.isNotBlank() } }
-        ?.let { pinRides(ordered, snapshot, now) }
-    val journeyRows = rides?.map { it.first } ?: pinJourneys(ordered, snapshot, now)
+    // Either way a route shows once, from the nearest stop it's shown at, as on the app's cards: the
+    // rides' rows are worked out by that rule, and by stop keeps only the trains they keep.
+    val allRides = pinRides(ordered, snapshot, now, topology)
+    val rides = allRides.takeIf { rideTitle != null && snapshot.journeys.all { it.fromName.isNotBlank() && it.toName.isNotBlank() } }
+    val journeyRows = rides?.map { it.first }
+        ?: pinJourneys(ordered, snapshot, now, kept = allRides.flatMapTo(HashSet()) { (row, _) -> row.upcoming.map { row.stopId to it } })
     val rideOf = java.util.IdentityHashMap<DepartureRow, WidgetJourney>().apply { rides?.forEach { (row, ride) -> put(row, ride) } }
     // A line two nearby stops both serve shows once, from the nearer, as the in-app list does, so it
     // doesn't take two of the widget's few slots (Codex P2 on #44). Folded before a journey's
@@ -939,9 +942,15 @@ internal fun widgetColumns(
  * ([WidgetJourney.rank]; a stop whose pins have none after), and soonest first within a stop. The
  * band is grouped by stop when drawn, so a stop's place, not a row's, is what can hold (Codex, #864).
  * The widget can't load route data, so a destination the app hasn't seen yet is left out until the
- * app next works the journey out.
+ * app next works the journey out. With [kept], the trains the rides keep ([pinRides]), a route shows
+ * once here too, from the nearest stop it's shown at, as on the app's cards grouped by stop.
  */
-internal fun pinJourneys(ordered: List<DepartureRow>, snapshot: DeparturesSnapshot, now: Instant): List<DepartureRow> {
+internal fun pinJourneys(
+    ordered: List<DepartureRow>,
+    snapshot: DeparturesSnapshot,
+    now: Instant,
+    kept: Set<Pair<String, Departure>>? = null,
+): List<DepartureRow> {
     if (snapshot.journeys.isEmpty()) return emptyList()
     val calls = snapshot.journeys.groupBy({ it.originId }, { it.calls }).mapValues { (_, c) -> c.flatten().toSet() }
     // Each stop's place: its nearest ride's. The band is drawn grouped by stop, so a row ranked by its
@@ -952,7 +961,7 @@ internal fun pinJourneys(ordered: List<DepartureRow>, snapshot: DeparturesSnapsh
         // A journey line's suspension with no predicted train is the journey's news: it stays, as
         // its status alone, rather than the journey reading as having no departure.
         if (journeyStatusRow(row, at)) return@mapNotNull row
-        val calling = row.upcoming.filter { JourneyCall.of(it) in at }
+        val calling = row.upcoming.filter { JourneyCall.of(it) in at && (kept == null || (row.stopId to it) in kept) }
         if (calling.isEmpty()) null else row.copy(upcoming = calling, destination = calling.first().destination)
     }.sortedWith(
         compareBy(
@@ -980,36 +989,80 @@ internal suspend fun <A, B> loadedTogether(first: suspend () -> A, second: suspe
  * with the ride whose trains it shows, from that ride's origin and neighboring poles. Fresh rows ahead
  * of stale ones, then the rides in the order the app's list shows them ([WidgetJourney.rank]; those
  * with none after, by their soonest rows), soonest first within a ride. A train two rides board at one
- * stop shows under the first of them only, as the list shows a route once; a line's status with no
- * train shows under every ride it holds up, as the list never leaves one out (Codex, #872).
+ * stop shows under the first of them only; a line's status with no train shows under every ride it
+ * holds up, as the list never leaves one out (Codex, #872). A route shows once, as on the list: a row
+ * whose every route this ride or a nearer one already shows from a stop no farther away is left out,
+ * by the rule the app's cards keep ([DepartureRows.repeatedRows], SPEC *Not shown twice*), each
+ * ride's boarding stops nearest first, so the nearest copy is the one kept. Without distances, the
+ * widget goes by the app's nearest-first order ([DeparturesSnapshot.nearestFirst]); a stop outside it
+ * follows those in it, the ride's own stop first.
  */
-internal fun pinRides(ordered: List<DepartureRow>, snapshot: DeparturesSnapshot, now: Instant): List<Pair<DepartureRow, WidgetJourney>> {
+internal fun pinRides(
+    ordered: List<DepartureRow>,
+    snapshot: DeparturesSnapshot,
+    now: Instant,
+    // How each row draws a branching line's trains, so a route matches as drawn ([DepartureRows.routesOf]).
+    topology: RouteTopology = RouteTopology.EMPTY,
+): List<Pair<DepartureRow, WidgetJourney>> {
     if (snapshot.journeys.isEmpty()) return emptyList()
     // Each ride's pins, its own and its poles', in the app's order (stable for pins with no place).
     val rides = snapshot.journeys.groupBy { WidgetJourneys.baseKey(it.key) }.values.toList()
         .sortedBy { pins -> pins.minOf { it.rank ?: Int.MAX_VALUE } }
     val atStop = ordered.groupBy { it.stopId }
+    val nearest = snapshot.nearestFirst.withIndex().associate { (rank, id) -> id to rank }
     // What an earlier ride already shows: a train at a stop. A line's status is shown once per ride.
     val trains = HashSet<Pair<String, Departure>>()
     val statuses = HashSet<Triple<Int, String, String>>()
-    val pinned = ArrayList<Triple<DepartureRow, WidgetJourney, Int>>()
-    rides.forEachIndexed { index, pins ->
+    val heads = ArrayList<Pair<WidgetJourney, Int>>()
+    val rideRows = rides.mapIndexed { index, pins ->
         // The ride itself, for its heading: its own pin, else a pole's (all carry its names).
         val ride = pins.firstOrNull { it.key == WidgetJourneys.baseKey(it.key) } ?: pins.first()
         // Its place: the app's order; every ride the app hasn't placed shares the last, so their rows'
         // own times order them, soonest first (Codex, #872).
-        val place = if (pins.all { it.rank == null }) Int.MAX_VALUE else index
-        for (pin in pins) {
+        heads += ride to if (pins.all { it.rank == null }) Int.MAX_VALUE else index
+        // Its boarding stops nearest first (SPEC *Not shown twice*): the rule keeps a route's first
+        // copy and drops a later one only from no nearer, so a nearer pole listed after a farther own
+        // stop would keep both (Codex on #885). Stops outside the order follow, its own stop first
+        // (stable by key).
+        val boarding = pins.sortedWith(
+            compareBy({ nearest[it.originId] ?: Int.MAX_VALUE }, { if (it.key == WidgetJourneys.baseKey(it.key)) 0 else 1 }),
+        )
+        val rows = ArrayList<DepartureRow>()
+        for (pin in boarding) {
             for (row in atStop[pin.originId].orEmpty()) {
                 if (journeyStatusRow(row, pin.calls)) {
                     // A copy each: the rows are told apart by identity when grouped under their rides.
-                    if (statuses.add(Triple(index, row.stopId, row.lineId))) pinned += Triple(row.copy(), ride, place)
+                    if (statuses.add(Triple(index, row.stopId, row.lineId))) rows += row.copy()
                     continue
                 }
                 val calling = row.upcoming.filter { JourneyCall.of(it) in pin.calls && trains.add(row.stopId to it) }
-                if (calling.isNotEmpty()) pinned += Triple(row.copy(upcoming = calling, destination = calling.first().destination), ride, place)
+                if (calling.isNotEmpty()) rows += row.copy(upcoming = calling, destination = calling.first().destination)
             }
         }
+        rows
+    }
+    // Two priorities, kept apart (Codex on #885). First, a current copy of a route wins over one its
+    // stop couldn't refresh (stale by age, or carried from a failed refresh while its stamp is still
+    // young; current as the widget's empty states judge it), however near that stop is: a guessed time
+    // is the one the widget stands behind least (SPEC principle 1). Then, within the current copies
+    // and within the rest, the shared rule picks by distance. Every row is drawn as far as the widget's
+    // room goes: no "+N more" to stop at.
+    val unrefreshed = snapshot.stops.filterNot { it.arrivalsFresh }.mapTo(HashSet()) { it.stopId }
+    fun stale(row: DepartureRow) = !row.isStatusOnly && (row.stopId in unrefreshed || Staleness.isStale(row.fetchedAt, now))
+    val distances = DepartureRows.rankDistances(snapshot.nearestFirst)
+    fun shownOnce(rides: List<List<DepartureRow>>): List<List<DepartureRow>> {
+        val repeated = DepartureRows.repeatedRows(rides, rides.map { Int.MAX_VALUE }, topology = topology, stopDistanceMeters = distances)
+        return rides.mapIndexed { index, rows -> rows.filterIndexed { i, _ -> i !in repeated[index].rows } }
+    }
+    val (fresh, old) = rideRows.map { rows -> rows.partition { !stale(it) } }.unzip()
+    val current = fresh.flatten().flatMapTo(HashSet()) { DepartureRows.routesOf(it, topology) }
+    // An out-of-date row whose every route a current row runs: the current copy shows it.
+    val left = old.map { rows -> rows.filterNot { row -> DepartureRows.routesOf(row, topology).let { it.isNotEmpty() && current.containsAll(it) } } }
+    val keptFresh = shownOnce(fresh)
+    val keptOld = shownOnce(left)
+    val pinned = rideRows.indices.flatMap { index ->
+        val (ride, place) = heads[index]
+        (keptFresh[index] + keptOld[index]).map { Triple(it, ride, place) }
     }
     return pinned.sortedWith(
         compareBy(
