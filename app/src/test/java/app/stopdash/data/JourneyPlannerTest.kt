@@ -292,13 +292,26 @@ class JourneyPlannerTest {
         assertEquals(
             setOf(
                 // And what each offered, by its lines alone: what the Planner gave, told from what StopDash shows.
-                "journey planner: 3 routes in N ms (waited W ms to send): mildmay+jubilee, windrush+jubilee, windrush+elizabeth",
-                "journey planner (fewest changes): 3 routes in N ms (waited W ms to send): mildmay+jubilee, windrush+jubilee, windrush+elizabeth",
-                "journey planner (least walking): 3 routes in N ms (waited W ms to send): mildmay+jubilee, windrush+jubilee, windrush+elizabeth",
+                // This answer was recorded without fares, so each route says it came unpriced.
+                "journey planner: 3 routes in N ms (waited W ms to send): mildmay+jubilee (unpriced), windrush+jubilee (unpriced), windrush+elizabeth (unpriced)",
+                "journey planner (fewest changes): 3 routes in N ms (waited W ms to send): mildmay+jubilee (unpriced), windrush+jubilee (unpriced), windrush+elizabeth (unpriced)",
+                "journey planner (least walking): 3 routes in N ms (waited W ms to send): mildmay+jubilee (unpriced), windrush+jubilee (unpriced), windrush+elizabeth (unpriced)",
             ),
             timed.toSet(),
         )
         assertTrue(warnings.none { "910GHGHI" in it || "940GZZLUCYF" in it })
+    }
+
+    @Test
+    fun `a route the Planner priced is logged as it was, and only one it didn't says unpriced`() = runTest {
+        // A card with no price is then told apart: the Planner gave none, or StopDash lost it on the way.
+        val priced = fixture.replaceFirst("\"startDateTime\": \"2026-09-26T07:41:00\",", "\"startDateTime\": \"2026-09-26T07:41:00\", \"fare\": {\"totalCost\": 300},")
+        assertTrue("the fare went into the second journey", priced != fixture)
+        val warnings = mutableListOf<String>()
+        val routes = client(priced, warn = { warnings += it }).journeys("910GHGHI", TripDestination.Stop("940GZZLUCYF"))
+        assertEquals(listOf(null, 300, null), routes.map { it.fare?.pence })
+        val offered = warnings.filter { it.startsWith("journey planner: ") }.single().substringAfter("to send): ")
+        assertEquals("mildmay+jubilee (unpriced), windrush+jubilee, windrush+elizabeth (unpriced)", offered)
     }
 
     @Test
