@@ -162,6 +162,25 @@ class JourneysTest {
     }
 
     @Test
+    fun `a journey's far end is its station, whichever of its ids a route calls at`() {
+        // TfL codes MID and MID2 as one station; this line's route calls at MID2.
+        fun coded(vararg stops: String) = LineSequence(
+            routes = listOf(LineRoute("route", stops.toList())),
+            stopNames = mapOf("TOP" to "Top", "TOP2" to "Top Low Level", "MID" to "Mid", "MID2" to "Mid Low Level", "BOTA" to "Bottom A"),
+            stationCodes = mapOf("MID" to "1000003", "MID2" to "1000003", "TOP" to "1000004", "TOP2" to "1000004"),
+        )
+        val viaLow = coded("TOP", "MID2", "BOTA")
+        val segment = Journeys.segment(journey, viaLow)
+        assertEquals(JourneySegment("TOP", setOf("MID2")), segment)
+        val trains = Journeys.trains(segment!!, rowsAt("TOP", departure("Bottom A", 60)), mapOf("example" to viaLow))
+        assertEquals(listOf("Bottom A"), trains.rows.flatMap { it.upcoming }.map { it.destination })
+        // A route calling at the far end itself gets off there, never at another id of its station first.
+        assertEquals(JourneySegment("TOP", setOf("MID")), Journeys.segment(journey, coded("TOP", "MID2", "MID", "BOTA")))
+        // The origin is boarded at its own id: a station's code also covers platforms trains leave from apart.
+        assertNull(Journeys.segment(journey, coded("TOP2", "MID", "BOTA")))
+    }
+
+    @Test
     fun `only trains that call at the other end are kept`() {
         val segment = Journeys.segment(journey, rail)!!
         val rows = rowsAt("TOP", departure("Bottom A", 120), departure("Bottom B", 60), departure("Bottom A", 600))

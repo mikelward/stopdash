@@ -62,6 +62,34 @@ data class LineSequence(
             stationCodes + other.stationCodes,
         )
 
+    // Each station code's ids on this line ([stationCodes] inverted), for [stationIds]: built once, on the
+    // first ask, which is off the main thread ([WorkerThread]); not part of the data, so not compared.
+    private val idsByCode: Map<String, Set<String>> by lazy {
+        stationCodes.entries.filter { it.value.isNotBlank() }.groupBy({ it.value }, { it.key }).mapValues { it.value.toSet() }
+    }
+
+    /** TfL's station code for [stopId] ([stationCodes]); null for a blank one, or an id this line codes none for (every bus stop). */
+    fun stationCodeOf(stopId: String): String? = stationCodes[stopId]?.takeIf { it.isNotBlank() }
+
+    /**
+     * Whether [a] and [b] are one station: one id, or two TfL lists one station under ([stationCodes]),
+     * as St Pancras's main and low-level ids. Never two stations of one interchange (King's Cross beside
+     * St Pancras), which have codes of their own, and never two bus poles, which have none.
+     */
+    fun sameStationId(a: String, b: String): Boolean = a == b || stationCodeOf(a)?.let { it == stationCodeOf(b) } == true
+
+    /**
+     * [ids] and every other id this line lists one of their stations under ([sameStationId]): where a trip
+     * gets off is the station, whichever of its ids a route calls at (St Pancras's main id southbound, its
+     * low level northbound). An id with no code is itself alone.
+     */
+    @WorkerThread
+    fun stationIds(ids: Set<String>): Set<String> {
+        val codes = ids.mapNotNullTo(HashSet()) { stationCodeOf(it) }
+        if (codes.isEmpty()) return ids
+        return ids + codes.flatMap { idsByCode[it].orEmpty() }
+    }
+
     /**
      * This sequence with [stopId] in place of every other id of its station ([stationCodes]) on the
      * routes that don't call at [stopId] itself, or null when no such route calls at one. TfL can route
@@ -379,7 +407,9 @@ object RouteStops {
      * [candidatePaths] all agree — true when every way it may take does, false when none does,
      * null when they differ or none is known. So a train whose exact path can't be told (TfL's
      * "Check Front of Train", or two ways matching its destination) still counts when it can only
-     * reach the stop, or can't: it runs at least as far as where its possible ways part.
+     * reach the stop, or can't: it runs at least as far as where its possible ways part. A destination is
+     * its station ([LineSequence.stationIds]), but for a bus, whose poles have none, or where [byStation]
+     * is false (step-free access, which TfL gives each id of a station apart).
      */
     @WorkerThread
     fun reaches(
@@ -393,10 +423,12 @@ object RouteStops {
         direction: String = "",
         destinationId: String = "",
         via: String = "",
+        byStation: Boolean = true,
     ): Boolean? {
         val paths = candidatePaths(sequence, stopId, destination, branch, bus, bound, direction, destinationId, via)
         if (paths.isEmpty()) return null
-        val answers = paths.mapTo(HashSet()) { path -> path.drop(1).any { it in destinationIds } }
+        val ends = if (bus || !byStation) destinationIds else sequence.stationIds(destinationIds)
+        val answers = paths.mapTo(HashSet()) { path -> path.drop(1).any { it in ends } }
         return answers.singleOrNull()
     }
 
@@ -600,7 +632,14 @@ object RouteStops {
         // Where it gets off by the id the Planner names, as where it boards: a station's other id
         // in the same interchange (a sibling platform) is the same place.
         val sequence = boarding.callingAt(leg.toId)
-        fun alights(id: String) = id == leg.toId || (leg.toArea.isNotEmpty() && sequence.stopAreas[id] == leg.toArea)
+        fun exactly(id: String) = id == leg.toId || (leg.toArea.isNotEmpty() && sequence.stopAreas[id] == leg.toArea)
+        // Failing that id on every way from the boarding stop, another id of its station ([LineSequence.sameStationId]):
+        // northbound Thameslink calls at St Pancras by its low level, whichever id the Planner names. Only failing it,
+        // as a station's code also covers platforms a way calls at apart (Liverpool Street's), where one exact way
+        // would otherwise tie with another.
+        val station = !leg.mode.equals("bus", ignoreCase = true) &&
+            sequence.routes.none { route -> visits(route, leg.fromId).any { i -> (i + 1 until route.stopIds.size).any { exactly(route.stopIds[it]) } } }
+        fun alights(id: String) = exactly(id) || (station && sequence.sameStationId(id, leg.toId))
         // How much of the planned path a way calls at, in order: branches that share their first
         // stops only part where the path does.
         fun followed(stops: List<String>): Int {

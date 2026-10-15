@@ -958,6 +958,8 @@ class RouteStopsTest {
         assertFalse(RouteStops.endsAt(district, "HSD", "Hammersmith (H&C Line) Underground Station", ""))
     }
 
+    private val T0 = Instant.parse("2026-10-15T17:00:00Z")
+
     // Thameslink through St Pancras as TfL routes it: northbound at the low-level id ("LL"),
     // southbound at the main one ("STP"), both the one station by its code.
     private val thameslink = LineSequence(
@@ -1037,6 +1039,53 @@ class RouteStopsTest {
         assertTrue(RouteStops.candidatePaths(hs1, "STP", RouteStops.CHECK_FRONT_OF_TRAIN, null).isEmpty())
         assertTrue(RouteStops.resolve(hs1, "STP", RouteStops.CHECK_FRONT_OF_TRAIN, null) !is RouteStops.Resolution.Found)
         assertEquals(null, RouteStops.reaches(hs1, "STP", RouteStops.CHECK_FRONT_OF_TRAIN, null, setOf("ASI")))
+    }
+
+    @Test
+    fun `a trip gets off at the station whichever of its ids the way calls at`() {
+        // Northbound from Farringdon to St Pancras's main id: the way calls there by its low level.
+        assertEquals(true, RouteStops.reaches(thameslink, "ZFD", "Bedford", null, setOf("STP")))
+        // And southbound to its low level, by its main id.
+        assertEquals(true, RouteStops.reaches(thameslink, "KTN", "Brighton", null, setOf("LL")))
+        // Without the station's code, or for a bus, an id is only itself, as before.
+        assertEquals(false, RouteStops.reaches(thameslink.copy(stationCodes = emptyMap()), "ZFD", "Bedford", null, setOf("STP")))
+        assertEquals(false, RouteStops.reaches(thameslink, "ZFD", "Bedford", null, setOf("STP"), byStation = false))
+        // Another station is still another station: from Kentish Town to Bedford, St Pancras's ids aren't Bedford.
+        assertEquals(false, RouteStops.reaches(thameslink, "KTN", "Bedford", null, setOf("STP", "ZFD")))
+        // A planned leg to the main id, ridden northbound, gets off at the low level.
+        val leg = TripLeg(NATIONAL_RAIL_MODE, "thameslink", "Thameslink", "ZFD", "Farringdon", "STP", "London St Pancras International", T0, T0, headings = listOf("Bedford"))
+        val found = RouteStops.forLeg(thameslink.callingAt("ZFD"), leg)
+        assertEquals(listOf("ZFD", "LL", "KTN", "BDM"), (found as RouteStops.Resolution.Found).stops.map { it.id })
+    }
+
+    @Test
+    fun `a station's ids are one where a line codes them, and only those`() {
+        assertTrue(thameslink.sameStationId("LL", "STP"))
+        assertTrue(thameslink.sameStationId("KTN", "KTN"))
+        assertFalse(thameslink.sameStationId("LL", "ZFD"))
+        // An id the line codes none for, or a blank code, is itself alone.
+        assertFalse(thameslink.sameStationId("KTN", "BDM"))
+        assertFalse(thameslink.copy(stationCodes = mapOf("LL" to "", "STP" to "")).sameStationId("LL", "STP"))
+        assertEquals(setOf("STP", "LL"), thameslink.stationIds(setOf("STP")))
+        assertEquals(setOf("KTN"), thameslink.stationIds(setOf("KTN")))
+    }
+
+    @Test
+    fun `a leg to one platform of a station gets off there, never tying with another of its ids`() {
+        // Liverpool Street: a leg into the terminus by the main line reaches it by its own id, so the through
+        // platforms' way, which reaches the station by its other id, is no tie for it.
+        val elizabeth = LineSequence(
+            routes = listOf(
+                LineRoute("Shenfield ↔ Liverpool Street", listOf("SNF", "SRA", "LST")),
+                LineRoute("Shenfield ↔ Paddington", listOf("SNF", "SRA", "WCL", "LSL", "PAD")),
+            ),
+            stopNames = mapOf("LST" to "Liverpool Street", "LSL" to "Liverpool Street", "SRA" to "Stratford", "SNF" to "Shenfield", "PAD" to "Paddington", "WCL" to "Whitechapel"),
+            stationCodes = mapOf("LST" to "1000138", "LSL" to "1000138"),
+        )
+        val leg = TripLeg(NATIONAL_RAIL_MODE, "elizabeth", "Elizabeth line", "SRA", "Stratford", "LST", "Liverpool Street", T0, T0, headings = listOf("Liverpool Street"))
+        assertEquals(listOf("SRA", "LST"), (RouteStops.forLeg(elizabeth, leg) as RouteStops.Resolution.Found).stops.map { it.id })
+        // A train to Paddington still reaches Liverpool Street, by its through platforms.
+        assertEquals(true, RouteStops.reaches(elizabeth, "SRA", "Paddington", null, setOf("LST")))
     }
 
     @Test
