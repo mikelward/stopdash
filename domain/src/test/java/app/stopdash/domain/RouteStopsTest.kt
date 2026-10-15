@@ -958,4 +958,100 @@ class RouteStopsTest {
         assertFalse(RouteStops.endsAt(district, "HSD", "Hammersmith (H&C Line) Underground Station", ""))
     }
 
+    // Thameslink through St Pancras as TfL routes it: northbound at the low-level id ("LL"),
+    // southbound at the main one ("STP"), both the one station by its code.
+    private val thameslink = LineSequence(
+        routes = listOf(
+            LineRoute("Brighton ↔ Bedford", listOf("BTN", "LBG", "ZFD", "LL", "KTN", "BDM"), direction = "inbound"),
+            LineRoute("Bedford ↔ Brighton", listOf("BDM", "KTN", "STP", "ZFD", "LBG", "BTN"), direction = "outbound"),
+        ),
+        stopNames = mapOf(
+            "BTN" to "Brighton", "LBG" to "London Bridge", "ZFD" to "Farringdon", "LL" to "London St Pancras International LL",
+            "STP" to "London St Pancras International", "KTN" to "Kentish Town", "BDM" to "Bedford",
+        ),
+        stationCodes = mapOf("LL" to "1001276", "STP" to "1001276", "ZFD" to "1001048"),
+    )
+
+    @Test
+    fun `a train TfL routes the other way under the station's other id is matched through it`() {
+        // Southbound from the low level: only the main id's route goes to Brighton.
+        assertEquals(listOf("LL", "ZFD", "LBG", "BTN"), RouteStops.ahead(thameslink, "LL", "Brighton", null, "thameslink")?.map { it.id })
+        assertEquals("London St Pancras International LL", RouteStops.ahead(thameslink, "LL", "Brighton", null)?.first()?.name)
+        // And northbound from the main id, through the low level's route.
+        assertEquals(listOf("STP", "KTN", "BDM"), RouteStops.ahead(thameslink, "STP", "Bedford", null)?.map { it.id })
+        assertEquals(true, RouteStops.reaches(thameslink, "LL", "Brighton", null, setOf("LBG")))
+        assertEquals(false, RouteStops.reaches(thameslink, "LL", "Brighton", null, setOf("KTN")))
+        // Its own id's way still wins: a northbound train from the low level isn't run on the main id's.
+        assertEquals(listOf("LL", "KTN", "BDM"), RouteStops.ahead(thameslink, "LL", "Bedford", null)?.map { it.id })
+        // Without the station's code, it's left unmatched rather than guessed, as before.
+        assertEquals(RouteStops.Resolution.NoMatch, RouteStops.resolve(thameslink.copy(stationCodes = emptyMap()), "LL", "Brighton", null))
+        // A destination no way reaches is still a miss.
+        assertEquals(RouteStops.Resolution.NoMatch, RouteStops.resolve(thameslink, "LL", "Orpington", null))
+        // A board's via is read on the way through the other id too.
+        assertEquals(listOf("LL", "ZFD", "LBG", "BTN"), RouteStops.ahead(thameslink, "LL", "Brighton", null, via = "London Bridge")?.map { it.id })
+        // Its whole route, for an alert's stretch before the boarding stop, is read through the other id
+        // the same way, the low level in the main id's place (Codex, #879).
+        val southbound = checkNotNull(RouteStops.ahead(thameslink, "LL", "Brighton", null))
+        assertEquals(listOf("BDM", "KTN", "LL", "ZFD", "LBG", "BTN"), RouteStops.wholeRouteOf(thameslink, southbound).map { it.id })
+        assertEquals("Kentish Town", RouteStops.wholeRouteOf(thameslink, southbound)[1].name)
+        // A list its own id's route holds is read on that route.
+        val northbound = checkNotNull(RouteStops.ahead(thameslink, "LL", "Bedford", null))
+        assertEquals(listOf("BTN", "LBG", "ZFD", "LL", "KTN", "BDM"), RouteStops.wholeRouteOf(thameslink, northbound).map { it.id })
+    }
+
+    @Test
+    fun `a station's other platforms never stand in while its own id says where the train goes`() {
+        // Liverpool Street: the terminus ("LST") and the through platforms beneath ("LSL") share a code,
+        // but run different ways to Shenfield.
+        val elizabeth = LineSequence(
+            routes = listOf(
+                LineRoute("Liverpool Street ↔ Shenfield", listOf("LST", "SRA", "SNF")),
+                LineRoute("Paddington ↔ Shenfield", listOf("PAD", "LSL", "WCL", "SRA", "SNF")),
+            ),
+            stopNames = mapOf("LST" to "Liverpool Street", "LSL" to "Liverpool Street", "SRA" to "Stratford", "SNF" to "Shenfield", "PAD" to "Paddington", "WCL" to "Whitechapel"),
+            stationCodes = mapOf("LST" to "1000138", "LSL" to "1000138"),
+        )
+        assertEquals(listOf("LST", "SRA", "SNF"), RouteStops.ahead(elizabeth, "LST", "Shenfield", null)?.map { it.id })
+        assertEquals(listOf("LSL", "WCL", "SRA", "SNF"), RouteStops.ahead(elizabeth, "LSL", "Shenfield", null)?.map { it.id })
+        // Nor when the train's own way reaches its terminus but not by its via: the through platforms
+        // running by it are not where it leaves from (Codex, #879).
+        assertEquals(RouteStops.Resolution.ViaMatchesNoRoute, RouteStops.resolve(elizabeth, "LST", "Shenfield", null, via = "Whitechapel"))
+        assertEquals(null, RouteStops.reaches(elizabeth, "LST", "Shenfield", null, setOf("SNF"), via = "Whitechapel"))
+    }
+
+    @Test
+    fun `a train naming no destination is never routed from the station's other platforms`() {
+        // HS1 at St Pancras as TfL routes it: one route ends at the main id ("STP"), the rest leave from
+        // the domestic platforms ("DOM"), both the one station by its code.
+        val hs1 = LineSequence(
+            routes = listOf(
+                LineRoute("Faversham ↔ St Pancras", listOf("FAV", "ASI", "STP"), direction = "inbound"),
+                LineRoute("St Pancras ↔ Faversham", listOf("DOM", "ASI", "FAV"), direction = "outbound"),
+            ),
+            stopNames = mapOf("FAV" to "Faversham", "ASI" to "Ashford International", "STP" to "St Pancras", "DOM" to "St Pancras"),
+            stationCodes = mapOf("STP" to "1001276", "DOM" to "1001276"),
+        )
+        // Named, under the id its way only ends at: matched through the domestic platforms.
+        assertEquals(listOf("STP", "ASI", "FAV"), RouteStops.ahead(hs1, "STP", "Faversham", null)?.map { it.id })
+        // "Check Front of Train" under that id says it arrives here: no way is read off another platform's (Codex, #879).
+        assertTrue(RouteStops.candidatePaths(hs1, "STP", RouteStops.CHECK_FRONT_OF_TRAIN, null).isEmpty())
+        assertTrue(RouteStops.resolve(hs1, "STP", RouteStops.CHECK_FRONT_OF_TRAIN, null) !is RouteStops.Resolution.Found)
+        assertEquals(null, RouteStops.reaches(hs1, "STP", RouteStops.CHECK_FRONT_OF_TRAIN, null, setOf("ASI")))
+    }
+
+    @Test
+    fun `a bus is never matched through the pole across the road`() {
+        // Two poles of one stop share TfL's code, and each goes the other way.
+        val route = LineSequence(
+            routes = listOf(
+                LineRoute("Park ↔ Hill", listOf("P1", "S1", "HILL"), direction = "outbound"),
+                LineRoute("Hill ↔ Park", listOf("HILL", "S2", "P2"), direction = "inbound"),
+            ),
+            stopNames = mapOf("P1" to "Park", "P2" to "Park", "S1" to "Middle", "S2" to "Middle", "HILL" to "Hill"),
+            stationCodes = mapOf("P1" to "1000001", "P2" to "1000001"),
+        )
+        assertEquals(RouteStops.Resolution.NoMatch, RouteStops.resolve(route, "P2", "Hill", null, bus = true))
+        assertTrue(RouteStops.candidatePaths(route, "P2", "Hill", null, bus = true).isEmpty())
+    }
+
 }

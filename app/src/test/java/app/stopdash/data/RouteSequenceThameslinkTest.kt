@@ -2,6 +2,7 @@ package app.stopdash.data
 
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRows
+import app.stopdash.domain.DirectTrips
 import app.stopdash.domain.IndexedStation
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.JourneySegment
@@ -38,10 +39,19 @@ class RouteSequenceThameslinkTest {
     private val fetched: LineSequence =
         Json { ignoreUnknownKeys = true }.decodeFromString<TflRouteSequenceDto>(fixture).toLineSequence()
 
+    // Two of `/Line/thameslink/Route/Sequence/outbound`'s routes, trimmed the same way: southbound,
+    // TfL routes the low-level platforms under St Pancras's main id.
+    private val southbound: LineSequence =
+        Json { ignoreUnknownKeys = true }.decodeFromString<TflRouteSequenceDto>(
+            checkNotNull(javaClass.getResource("/fixtures/route_sequence_thameslink_outbound.json")).readText(),
+        ).toLineSequence()
+
     private val index: List<IndexedStation> =
         StationIndexStore.parse(File("src/main/assets/stations/station_index.json").readText()).stations
 
     private val thameslink = fetched.withStations(index.filter { it.hubId.isNotBlank() }.groupBy { it.hubId })
+
+    private val bothWays = (fetched + southbound).withStations(index.filter { it.hubId.isNotBlank() }.groupBy { it.hubId })
 
     private val now = Instant.parse("2026-09-23T08:00:00Z")
 
@@ -140,6 +150,62 @@ class RouteSequenceThameslinkTest {
     }
 
     @Test
+    fun `a train either way from either of the station's ids is matched to its route`() {
+        // Southbound from the low level, as its board lists them (maintainer's report, 2026-10-15):
+        // only the main id's routes run south.
+        val brighton = RouteStops.ahead(bothWays, ST_PANCRAS_LL, "Brighton", null, "thameslink", destinationId = BRIGHTON)!!
+        assertEquals(ST_PANCRAS_LL, brighton.first().id)
+        assertEquals("Farringdon", brighton[1].name)
+        assertEquals(BRIGHTON, brighton.last().id)
+        val sutton = RouteStops.ahead(bothWays, ST_PANCRAS_LL, "Sutton (London)", null, "thameslink", destinationId = SUTTON)!!
+        assertEquals(SUTTON, sutton.last().id)
+        // Northbound from the main id: only the low level's routes run north to Cambridge.
+        val cambridge = RouteStops.ahead(bothWays, ST_PANCRAS, "Cambridge", null, "thameslink")!!
+        assertEquals(ST_PANCRAS, cambridge.first().id)
+        assertEquals("Finsbury Park", cambridge[1].name)
+        // Either way, from the domestic id that names neither, as before.
+        assertEquals("Farringdon", RouteStops.ahead(bothWays.callingAt(ST_PANCRAS_DOMESTIC), ST_PANCRAS_DOMESTIC, "Brighton", null, destinationId = BRIGHTON)?.get(1)?.name)
+    }
+
+    @Test
+    fun `a southbound train from the low level counts as going where its route does`() {
+        val departure = Departure(
+            lineId = "thameslink",
+            lineName = "Thameslink",
+            direction = "",
+            destination = "Brighton",
+            platform = null,
+            expectedArrival = now.plusSeconds(300),
+            mode = "national-rail",
+            destinationId = BRIGHTON,
+        )
+        assertEquals(DirectTrips.Verdict.Reaches, DirectTrips.judge(departure, ST_PANCRAS_LL, bothWays, setOf(LONDON_BRIDGE)))
+        assertEquals(DirectTrips.Verdict.Misses, DirectTrips.judge(departure, ST_PANCRAS_LL, bothWays, setOf(FINSBURY_PARK)))
+    }
+
+    @Test
+    fun `the sequence carries each station's code, never a bus stop's`() {
+        assertEquals(STATION_CODE, southbound.stationCodes[ST_PANCRAS])
+        assertEquals(STATION_CODE, fetched.stationCodes[ST_PANCRAS_LL])
+        // A railway station TfL also lists buses at (Redhill, both ways) is a station all the same.
+        assertEquals("1001721", southbound.stationCodes["910GREDHILL"])
+        assertEquals("1001721", fetched.stationCodes["910GREDHILL"])
+        val stops = TflRouteSequenceDto(
+            stopPointSequences = listOf(
+                TflStopPointSequenceDto(
+                    listOf(
+                        TflMatchedStopDto(id = "910GA", name = "A Rail Station", icsId = "1000001", modes = listOf("national-rail")),
+                        TflMatchedStopDto(id = "490000002B", name = "B", icsId = "1000002", modes = listOf("bus")),
+                        TflMatchedStopDto(id = "910GC", name = "C Rail Station", icsId = "1000003", modes = listOf("bus", "national-rail")),
+                        TflMatchedStopDto(id = "490000004D", name = "D", icsId = "1000004", modes = listOf("bus", "coach")),
+                    ),
+                ),
+            ),
+        ).toLineSequence()
+        assertEquals(mapOf("910GA" to "1000001", "910GC" to "1000003"), stops.stationCodes)
+    }
+
+    @Test
     fun `the sequence carries each stop's interchange`() {
         assertEquals(HUB, fetched.stopHubs[ST_PANCRAS_LL])
         assertEquals(HUB, fetched.stopHubs[KINGS_CROSS])
@@ -152,5 +218,10 @@ class RouteSequenceThameslinkTest {
         const val KINGS_CROSS = "910GKNGX"
         const val FINSBURY_PARK = "910GFNPK"
         const val ST_ALBANS_CITY = "910GSTALBCY"
+        const val ST_PANCRAS = "910GSTPX"
+        const val BRIGHTON = "910GBRGHTN"
+        const val SUTTON = "910GSUTTON"
+        const val LONDON_BRIDGE = "910GLNDNBDC"
+        const val STATION_CODE = "1001276"
     }
 }

@@ -1096,7 +1096,17 @@ near-me list matches a terminus — by TfL's destination id against the stop and
 name only when TfL gives no id. **A station TfL lists under one id and routes
 under another** (St Pancras's Thameslink departures, whose route calls at the station's low-level
 platforms) boards at the same-named station in the same interchange — never a different station
-in it, like King's Cross beside St Pancras. A journey starred there keeps the id the departures
+in it, like King's Cross beside St Pancras. **A station TfL routes under one id one way and another
+the other** (maintainer's report, 2026-10-15: Thameslink's low-level platforms are its own id
+northbound and the main station's southbound, so every southbound train there matched no route and
+dropped out of the Direct section and a trip's times; HS1's trains leave under the domestic id, which
+one route ends at under the main id) takes a train whose own id has no way at all to its terminus,
+whatever its board says it runs via, through the other:
+the same station by TfL's own station code. Only then, so a station's separate platforms that share a
+code (Liverpool Street's terminus and the Elizabeth line beneath it) never stand in for each other
+while the train's own id says where it goes; never for a train naming no destination ("Check Front of
+Train"), whose own id only ending its routes says it arrives here; and never for a bus, whose code the
+pole across the road shares. A journey starred there keeps the id the departures
 carry, and its card places it the same way. Which interchange a stop is in comes from the bundled
 station index, so this holds however the stop reached the screen — nearby, watched, or a journey's
 end. Whenever the list is unavailable, the
