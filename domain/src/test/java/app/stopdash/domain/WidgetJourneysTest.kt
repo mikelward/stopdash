@@ -113,6 +113,31 @@ class WidgetJourneysTest {
     }
 
     @Test
+    fun `each pin takes its journey's place in the list's order, kept through a report without one`() {
+        val poleKey = WidgetJourneys.poleKey("j", "490000002B")
+        val stored = DeparturesSnapshot(
+            stops = listOf(stop("490000001A"), stop("490000002B"), stop("490000003C")),
+            fetchedAt = now,
+            journeys = listOf(
+                WidgetJourney("490000001A", setOf(hill), "j"),
+                WidgetJourney("490000002B", setOf(dale), poleKey),
+                WidgetJourney("490000003C", setOf(town), "k"),
+            ),
+        )
+        fun ranks(snapshot: DeparturesSnapshot) = snapshot.journeys.associate { it.key to it.rank }
+        // The list shows k first: a pole's pin takes its journey's place.
+        val ordered = WidgetJourneys.apply(stored, WidgetJourneysReport(setOf("j", "k"), emptyList(), order = listOf("k", "j")), emptyList())!!
+        assertEquals(mapOf("j" to 1, poleKey to 1, "k" to 0), ranks(ordered))
+        // A check without an order (Settings' Remove sends none) keeps the places stored.
+        val check = WidgetJourneyCheck("j", "490000001A", setOf(hill, dale))
+        val kept = WidgetJourneys.apply(ordered, WidgetJourneysReport(setOf("j", "k"), listOf(check)), emptyList())!!
+        assertEquals(ranks(ordered), ranks(kept))
+        // The rider moved: the new order replaces the old.
+        val moved = WidgetJourneys.apply(kept, WidgetJourneysReport(setOf("j", "k"), emptyList(), order = listOf("j", "k")), emptyList())!!
+        assertEquals(mapOf("j" to 0, poleKey to 0, "k" to 1), ranks(moved))
+    }
+
+    @Test
     fun `a journey update keeps the missing stops, less any origin it adds`() {
         val stored = DeparturesSnapshot(listOf(stop("490000001A")), now, missingStopIds = setOf("490000002B", "490000003C"))
         val report = WidgetJourneysReport(setOf("j"), listOf(WidgetJourneyCheck("j", "490000002B", setOf(hill))))

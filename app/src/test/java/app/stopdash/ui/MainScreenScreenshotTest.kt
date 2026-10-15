@@ -4848,7 +4848,7 @@ class MainScreenScreenshotTest {
                         journeys = emptyList(),
                         journeysKnown = known,
                         journeysLoading = !known,
-                        onWidgetJourneys = { keys, _, _, _ -> reports += keys },
+                        onWidgetJourneys = { keys, _, _, _, _ -> reports += keys },
                     )
                 }
             }

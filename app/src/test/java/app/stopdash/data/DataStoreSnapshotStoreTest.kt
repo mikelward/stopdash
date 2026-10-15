@@ -77,10 +77,12 @@ class DataStoreSnapshotStoreTest {
     fun `the widget's journeys and journey-only stops round-trip`() = runTest {
         val store = DataStoreSnapshotStore(FakeDataStore(null))
         val withJourneys = snapshot().copy(
+            // With where its lines get off, and its place in the list's order, so the widget leads with
+            // the nearest ride.
             journeys = listOf(
                 WidgetJourney(
                     "940GZZLUOXC", setOf(JourneyCall("victoria", "Brixton", null)), "940GZZLUOXC|940GZZLUBXN",
-                    alightIds = setOf("940GZZLUBXN"),
+                    alightIds = setOf("940GZZLUBXN"), rank = 2,
                 ),
             ),
             journeyOnlyStopIds = setOf("940GZZLUOXC"),

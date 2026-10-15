@@ -377,6 +377,11 @@ data class WidgetJourney(
     // departure reaches): with [originId], where each line pinned here is ridden, so a ride alert can
     // place a disruption on that line's route ([JourneyAlerts.results]). Empty where not known yet.
     val alightIds: Set<String> = emptySet(),
+    // The journey's place in the app's list, nearest first ([WidgetJourneysReport.order]), so the
+    // widget leads with the nearest ride as the app does. An order, never a distance (as
+    // [DeparturesSnapshot.nearestFirst]). Null when unknown (a pin an older build stored): it follows
+    // the ranked ones.
+    val rank: Int? = null,
 )
 
 /**
@@ -408,6 +413,10 @@ data class WidgetJourneysReport(
     // one [WidgetJourneys.poleKey] per pole), so a pole's pin that no longer qualifies goes. A
     // journey absent here keeps its pole pins as they are (its poles are still being looked up).
     val boarding: Map<String, Set<String>> = emptyMap(),
+    // The journeys' keys in the list's order, nearest first ([Journeys.nearestFirst]), each pin's
+    // [WidgetJourney.rank]. Empty from a report that doesn't know it (Settings' Remove), which keeps
+    // the ranks stored.
+    val order: List<String> = emptyList(),
 )
 
 object WidgetJourneys {
@@ -442,8 +451,10 @@ object WidgetJourneys {
         val stops = stored?.stops.orEmpty()
         val storedIds = stops.mapTo(HashSet()) { it.stopId }
         val supplied = origins.associateBy { it.stopId }
+        val ranks = report.order.withIndex().associate { (i, key) -> key to i }
         val journeys = merge(prior, keys, report.checks).values
             .filter { it.calls.isNotEmpty() && (it.originId in storedIds || it.originId in supplied) }
+            .map { if (report.order.isEmpty()) it else it.copy(rank = ranks[baseKey(it.key)]) }
             .sortedBy { it.key }
         val pinnedOrigins = journeys.mapTo(HashSet()) { it.originId }
         val journeyOnly = stored?.journeyOnlyStopIds.orEmpty()
@@ -491,6 +502,7 @@ object WidgetJourneys {
                 check.originId, (prior - check.checked) + check.confirmed, check.key, check.shownFrom,
                 // Where its departures get off, kept through a check that couldn't place them yet.
                 alightIds = check.alightIds.ifEmpty { pin?.alightIds.orEmpty() },
+                rank = next[check.key]?.rank,
             )
         }
         return next

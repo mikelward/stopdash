@@ -1239,7 +1239,10 @@ drops the widget's pins as Settings' Remove does. The boarding stop's details of
 favorite journeys the rider never meant to, which then pinned to the widget.
 A journey is a **segment, not a line**: the same two stops starred from another line's page (the 43
 or the 134 between two shared stops) are the same journey. Favorite journeys lead the near-me list as
-cards, each headed by the direction shown ("Highgate ➔ King's Cross St. Pancras ★", the gold star
+cards, **nearest first** (maintainer, 2026-10-15): by how far the rider is from the nearer of its two
+ends, so swapping a ride's direction doesn't move it, and as the stops below are ordered. A ride that
+can't be measured (no fix, or an end without a published position) follows the measured ones, and
+ties keep the order they were saved in; a re-sort slides the cards, as the stops' does. Each card is headed by the direction shown ("Highgate ➔ King's Cross St. Pancras ★", the gold star
 marking a favorite journey so its heading reads apart from a bus place's "Place ➔ Destination" header,
 maintainer 2026-09-24) with the trains or
 buses **on any line** from the origin that **call at the far end** (from each line's route; one whose
@@ -1324,7 +1327,11 @@ does, never "couldn't check" for a check about to be made, as the disruptions ro
 2026-10-05).
 
 **On the widget**, a journey's departures lead the list too (maintainer, 2026-09-23), in the
-direction the app last showed. The widget can't load routes, so the app saves, with the widget's
+direction the app last showed, and **nearest ride first** in the order the app's list last showed
+them (maintainer, 2026-10-15; an order, never a distance). The widget heads its rides' departures by
+the stop they board from, so it orders those stops: each in the place of the nearest ride boarding
+there, its rows together and soonest first. A stop whose rides the app hasn't placed yet (an earlier
+build's pin) follows, soonest first. The widget can't load routes, so the app saves, with the widget's
 snapshot, each origin and the departures it found to call at the far end (by line, destination and
 branch); the widget pins those and shows nothing else from an origin that isn't nearby. A
 destination the app hasn't seen yet is left out until the app next works the journey out; one a

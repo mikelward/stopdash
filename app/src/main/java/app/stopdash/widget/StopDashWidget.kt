@@ -876,13 +876,19 @@ internal fun widgetColumns(
 /**
  * The favorite journeys' departures at the top of the widget (SPEC *Journeys*): at each journey
  * origin, a row keeps only the departures the app found to call at the far end (by line,
- * destination and branch), fresh rows ahead of stale ones (as the rest of the list) and soonest
- * first within each. The widget can't load route data, so a destination the app hasn't seen yet
- * is left out until the app next works the journey out.
+ * destination and branch), fresh rows ahead of stale ones (as the rest of the list), then each stop
+ * in the place of the nearest ride boarding there, in the order the app's list shows the rides
+ * ([WidgetJourney.rank]; a stop whose pins have none after), and soonest first within a stop. The
+ * band is grouped by stop when drawn, so a stop's place, not a row's, is what can hold (Codex, #864).
+ * The widget can't load route data, so a destination the app hasn't seen yet is left out until the
+ * app next works the journey out.
  */
 internal fun pinJourneys(ordered: List<DepartureRow>, snapshot: DeparturesSnapshot, now: Instant): List<DepartureRow> {
     if (snapshot.journeys.isEmpty()) return emptyList()
     val calls = snapshot.journeys.groupBy({ it.originId }, { it.calls }).mapValues { (_, c) -> c.flatten().toSet() }
+    // Each stop's place: its nearest ride's. The band is drawn grouped by stop, so a row ranked by its
+    // own ride would be pulled back to its stop's group anyway (Codex, #864).
+    val places = snapshot.journeys.groupBy({ it.originId }, { it.rank ?: Int.MAX_VALUE }).mapValues { (_, r) -> r.min() }
     return ordered.mapNotNull { row ->
         val at = calls[row.stopId] ?: return@mapNotNull null
         // A journey line's suspension with no predicted train is the journey's news: it stays, as
@@ -894,6 +900,7 @@ internal fun pinJourneys(ordered: List<DepartureRow>, snapshot: DeparturesSnapsh
         compareBy(
             // A status-only row has no countdown to go stale (only a live check reaches it), and leads.
             { if (!it.isStatusOnly && Staleness.isStale(it.fetchedAt, now)) 1 else 0 },
+            { places[it.stopId] ?: Int.MAX_VALUE },
             { it.upcoming.firstOrNull()?.expectedArrival ?: Instant.MIN },
         ),
     )

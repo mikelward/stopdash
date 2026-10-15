@@ -311,10 +311,10 @@ fun MainScreen(
     // held back, before the screen reports again.
     onJourneyStopIds: (Map<String, Set<String>>, String?) -> Unit = { _, _ -> },
     // The favorite journeys' keys and each placed journey's latest check (the departures found to call
-    // at its far end), for the widget to pin (it can't load route data itself); reported whenever
-    // they change. The ViewModel keeps what they add up to.
-    onWidgetJourneys: (Set<String>, List<WidgetJourneyCheck>, Map<String, String>, Map<String, Set<String>>) -> Unit =
-        { _, _, _, _ -> },
+    // at its far end), for the widget to pin (it can't load route data itself), and their order in the
+    // list, nearest first; reported whenever they change. The ViewModel keeps what they add up to.
+    onWidgetJourneys: (Set<String>, List<WidgetJourneyCheck>, Map<String, String>, Map<String, Set<String>>, List<String>) -> Unit =
+        { _, _, _, _, _ -> },
     // Whether [journeys] is the saved list yet: until it is, nothing is reported for the widget, so
     // a list still loading isn't taken for "no journeys" and unpins them.
     journeysKnown: Boolean = true,
@@ -1021,7 +1021,7 @@ fun MainScreen(
     val cardsJudged = shown != null && shown.journeys === cardJourneys
     val cardReportsCurrent = listWork.cardReports.value?.key == cardReportsWanted
     ReportChanges(cardReports?.widget?.takeIf { journeysKnown && cardsJudged && cardReportsCurrent }, listWork) {
-        onWidgetJourneys(it.keys, it.checks, it.from, it.boarding)
+        onWidgetJourneys(it.keys, it.checks, it.from, it.boarding, it.order)
     }
     // The farther bus cards to show ([fartherShownOf]), decided against the rows the screen draws, on the
     // list's worker; the last ones stand in meanwhile, so the cards don't drop out and back as the rows

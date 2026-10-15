@@ -319,7 +319,7 @@ class JourneyReportsOffMainTest {
                         listKey = "victoria",
                         listWork = listWork,
                         onJourneyDestinations = { refs -> destinations += refs.map { it.id } },
-                        onWidgetJourneys = { keys, checks, from, boarding -> widget += WidgetJourneysReport(keys, checks, from, boarding) },
+                        onWidgetJourneys = { keys, checks, from, boarding, order -> widget += WidgetJourneysReport(keys, checks, from, boarding, order) },
                     )
                 }
             }
@@ -385,7 +385,7 @@ class JourneyReportsOffMainTest {
                         journeys = journeys,
                         listKey = "victoria",
                         listWork = listWork,
-                        onWidgetJourneys = { keys, checks, from, boarding -> reports += WidgetJourneysReport(keys, checks, from, boarding) },
+                        onWidgetJourneys = { keys, checks, from, boarding, order -> reports += WidgetJourneysReport(keys, checks, from, boarding, order) },
                     )
                 }
             }
