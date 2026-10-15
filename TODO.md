@@ -2595,6 +2595,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [x] **A station's own bus stops count** (maintainer, 2026-10-14): where no line serves both, the bus
             stops within 150 m of a station (the near-me list's rule) are weighed before graying the pair,
             found from the bundled stops. The card's wider reach (320 m, the rider's max walk) is still open.
+      - [x] **The station a row folded into a bus stop counts** (2026-10-15): the search's one row for a station
+            and a same-named bus stop among the rider's own can carry the bus stop's id, so a ride picked from
+            it weighed only that stop's buses and was grayed. A bus-stop end now weighs the station the search
+            folds into it (`StationIndex.foldsTogether`, the fold's own rule), and no other.
       - [ ] **Decide the station bus-stop radius** (maintainer, 2026-10-14): 150 m is the near-me list's
             "at the station" rule (`FartherBuses.AT_STATION_METERS`), picked against a small station's own
             stops (under 100 m), not against a big terminus. Measured from the bundled stops, an interchange's

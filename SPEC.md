@@ -1482,8 +1482,11 @@ as chips (maintainer, 2026-10-10), so Home, Work or a place of their own can be 
 saved on a line both stations serve (rail before bus), as a long press saves one; where none does, a
 station's **own bus stops** count too, those within 150 m of it as on the near-me list (maintainer,
 2026-10-14): TfL files a Tube or rail station's bus stops apart from it, so a bus stopping outside the
-station is direct, never a trip with a change. They're found on the device from the bundled stops (TfL is
-asked only outside them), and only once no line served both. The list says what
+station is direct, never a trip with a change. The other way round, the **station a search row folded into
+a bus stop** counts too: the search shows a station and a same-named bus stop within 250 m as one row, which
+can stand on a bus stop the rider uses, and that row's trains are the ride meant. Only that station: a bus stop
+picked for itself brings in no station that merely stands near it. Both are found on the device from the
+bundled stops (TfL is asked only outside them), and only once no line served both. The list says what
 it's doing ("Adding Euston ➔ Waterloo…") and why a pair wasn't added: the same station twice, already a
 favorite, or the lookup or the save failed. A pair StopDash **can't follow yet** — no one line serves
 both, or an end is a favorite place — is saved anyway and listed **grayed**, after the rest, with

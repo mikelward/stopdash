@@ -95,6 +95,74 @@ class JourneyPairTest {
         assertEquals(listOf(eustonPlaced), JourneyPair.stationPositions(listOf(eustonPlaced, platform, outside)))
     }
 
+    // The pole outside Euston as the search names a stop the station folds into: "Euston Station", which
+    // cleans to the station's own name (synthetic id and position, about 55 m north of it). A station 330 m
+    // south is past the fold's reach; one 120 m north, beside the pole only, is named otherwise.
+    private val eustonPole = outside.copy(name = "Euston Station")
+    private val fartherEuston = eustonPlaced.copy(id = "940GEXAMPLE2", latitude = 51.5257)
+    private val besidePole = StopLocation("940GEXAMPLE1", "Station One Underground Station", 51.5298, -0.1337, listOf(LineRef("jubilee", "Jubilee", "tube")), clusterId = "940GEXAMPLE1")
+
+    @Test
+    fun `the station a bus stop's row folded in is added, and no other`() {
+        val withStation = JourneyPair.withBusStations(listOf(eustonPole), listOf(fartherEuston, besidePole, acrossTheRoad, eustonPlaced, eustonPlaced))
+        // The bus stop across the road is no station, the farther Euston is past the fold's reach, and the
+        // station beside the pole is another place.
+        assertEquals(listOf("490EXAMPLEA", "940GZZLUEUS"), withStation.map { it.id })
+    }
+
+    @Test
+    fun `a bus stop picked for itself brings in no station that merely stands near it`() {
+        // A stop of another name beside a station: the search never folded the two, so the rider picked the stop.
+        assertEquals(listOf(outside), JourneyPair.withBusStations(listOf(outside), listOf(eustonPlaced, besidePole)))
+        val journeys = JourneyPair.resolve("Example Road", JourneyPair.withBusStations(listOf(outside), listOf(eustonPlaced)), "King's Cross St. Pancras", kingsCross)
+        assertEquals(JourneyPair.Result.NoDirectLine, journeys)
+        // A line qualifier tells two stations of one name apart, as the fold does.
+        val qualified = eustonPole.copy(name = "Paddington (H&C Line)")
+        val otherLine = eustonPlaced.copy(name = "Paddington (Circle Line) Underground Station")
+        assertEquals(listOf(qualified), JourneyPair.withBusStations(listOf(qualified), listOf(otherLine)))
+    }
+
+    @Test
+    fun `a station end looks for no station beside it, and neither does an unplaced or mixed stop`() {
+        assertEquals(emptyList<StopLocation>(), JourneyPair.busStopPositions(listOf(eustonPlaced)))
+        assertEquals(listOf(eustonPlaced), JourneyPair.withBusStations(listOf(eustonPlaced), listOf(fartherEuston)))
+        val unplaced = eustonPole.copy(latitude = 0.0, longitude = 0.0)
+        assertEquals(emptyList<StopLocation>(), JourneyPair.busStopPositions(listOf(unplaced)))
+        // A stop a tram serves as well as a bus has its rail already.
+        val tramToo = eustonPole.copy(lines = eustonPole.lines + LineRef("tram", "Tram", "tram"))
+        assertEquals(emptyList<StopLocation>(), JourneyPair.busStopPositions(listOf(tramToo)))
+        assertEquals(listOf(eustonPole), JourneyPair.busStopPositions(listOf(eustonPole, eustonPole.copy(id = "490EXAMPLEZ"))))
+    }
+
+    @Test
+    fun `an interchange's own bus poles bring in no other station`() {
+        // Euston with its pole outside, as an interchange's stops come back: another Euston record standing
+        // by the pole would fold into it, but the end has its station already.
+        val byPole = eustonPlaced.copy(id = "940GEXAMPLE3", latitude = 51.5290)
+        val interchange = listOf(eustonPlaced, eustonPole)
+        assertEquals(emptyList<StopLocation>(), JourneyPair.busStopPositions(interchange))
+        assertEquals(interchange, JourneyPair.withBusStations(interchange, listOf(byPole)))
+        // An unplaced station still makes the end a station's.
+        assertEquals(emptyList<StopLocation>(), JourneyPair.busStopPositions(listOf(eustonPlaced.copy(latitude = 0.0, longitude = 0.0), eustonPole)))
+        // The pole alone does look around, and finds it.
+        assertEquals(listOf("490EXAMPLEA", "940GEXAMPLE3"), JourneyPair.withBusStations(listOf(eustonPole), listOf(byPole)).map { it.id })
+    }
+
+    @Test
+    fun `a ride from the bus stop outside a station rides the station's trains`() {
+        // The search's one row for Euston, picked as the bus stop outside it: its bus doesn't reach King's Cross.
+        val picked = listOf(eustonPole)
+        assertEquals(JourneyPair.Result.NoDirectLine, JourneyPair.resolve("Euston", picked, "King's Cross St. Pancras", kingsCross))
+        val placed = JourneyPair.withBusStations(picked, listOf(eustonPlaced))
+        val journey = (JourneyPair.resolve("Euston", placed, "King's Cross St. Pancras", kingsCross) as JourneyPair.Result.Found).journey
+        assertEquals("northern", journey.lineId)
+        assertEquals("940GZZLUEUS", journey.from.stopId)
+        assertEquals("Euston", journey.from.name)
+        // Rail before a bus that reaches it too.
+        val busToo = listOf(kingsCross.single().copy(lines = kingsCross.single().lines + LineRef("X1", "X1", "bus")))
+        assertEquals("northern", (JourneyPair.resolve("Euston", placed, "King's Cross St. Pancras", busToo) as JourneyPair.Result.Found).journey.lineId)
+    }
+
     @Test
     fun `a bus from a stop to one outside a station makes a journey to the station`() {
         val from = listOf(pole("490EXAMPLED", 51.54, "X1"))

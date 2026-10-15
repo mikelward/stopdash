@@ -455,17 +455,13 @@ class StationIndex(
             for (match in ranked) {
                 val lat = match.latitude
                 val lon = match.longitude
-                val name = StationMatcher.normalize(matchStopName(match.name))
                 val into = if (lat == null || lon == null) {
                     -1
                 } else {
                     kept.indexOfFirst { other ->
                         val otherLat = other.latitude
                         val otherLon = other.longitude
-                        otherLat != null && otherLon != null &&
-                            StationMatcher.normalize(matchStopName(other.name)) == name &&
-                            !conflictingQualifiers(match.name, other.name) &&
-                            NearestStops.distanceMeters(lat, lon, otherLat, otherLon) <= FOLD_RADIUS_METERS
+                        otherLat != null && otherLon != null && foldsTogether(match.name, lat, lon, other.name, otherLat, otherLon)
                     }
                 }
                 if (into < 0) {
@@ -476,6 +472,19 @@ class StationIndex(
             }
             return kept
         }
+
+        /**
+         * Whether a result named [nameA] at ([latA], [lonA]) and one named [nameB] at ([latB], [lonB]) read
+         * as one place, as [foldNeighbors] folds them: the same name ([matchStopName]), no line qualifiers
+         * telling them apart ([conflictingQualifiers]), within [FOLD_RADIUS_METERS]. Asked wherever a
+         * folded row is unpicked again (adding a favorite ride from the bus stop a station folded into),
+         * so it takes back exactly what the row stood for.
+         */
+        fun foldsTogether(nameA: String, latA: Double, lonA: Double, nameB: String, latB: Double, lonB: Double): Boolean =
+            StationMatcher.normalize(matchStopName(nameA)) == StationMatcher.normalize(matchStopName(nameB)) &&
+                !conflictingQualifiers(nameA, nameB) &&
+                NearestStops.distanceMeters(latA, lonA, latB, lonB) <= FOLD_RADIUS_METERS
+
         val EMPTY = StationIndex(emptyList())
     }
 }
