@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -25,7 +26,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,6 +51,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.PlaceArt
+import app.stopdash.domain.TripVia
+import app.stopdash.domain.ViaChoice
 import app.stopdash.domain.abbreviateStationName
 
 /**
@@ -53,7 +61,9 @@ import app.stopdash.domain.abbreviateStationName
  * "Here" behind the crosshair, a place behind its own icon or what it is ([fromPlace], [fromIcon]), or
  * the From… station — and a tap opens the From… search to change it; "To" holds the search field, or on the trip page the
  * destination ([toField], given the row's remaining width). [actions] (the trip page's overflow) sit
- * at the From row's end.
+ * at the From row's end. A trip sent through a stop ([via]; SPEC *Going via a stop*) names it in a
+ * "Via" row between the two, a tap to change it and an × at the row's end, under the overflow, to go
+ * any way again.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -70,13 +80,33 @@ internal fun TripEndsBar(
     // Whether TalkBack reads the "To" label: yes beside the search field, no beside [ToField], which
     // says "To ‹place›" itself.
     readToLabel: Boolean = true,
+    // The stop the trip goes via, with its change and its ×; null shows no Via row.
+    via: TripEndsVia? = null,
     toField: @Composable (Modifier) -> Unit,
 ) {
     val fromLabel = stringResource(R.string.trip_ends_from)
+    val viaLabel = stringResource(R.string.trip_ends_via)
     val toLabel = stringResource(R.string.trip_ends_to)
     val labelStyle = MaterialTheme.typography.labelLarge
+    // Each row its own: the back arrow's slot (empty under it), the labeled field, and the actions' slot at
+    // its end where the bar has actions or a Via row (the overflow by From, Via's ×, empty by To), so a row's
+    // trailing button sits level with its own field whatever the font scale, and every field ends at one edge.
+    val trailing = actions != null || via != null
+    @Composable
+    fun BarRow(lead: (@Composable () -> Unit)?, trail: (@Composable () -> Unit)?, content: @Composable (Modifier) -> Unit) {
+        // The arrow and the actions sit level with their row, all 48dp.
+        Row(verticalAlignment = Alignment.Top) {
+            // A fixed slot, so the fields (and the chips under them) start at [tripEndsFieldStart].
+            Box(modifier = Modifier.size(ENDS_BACK_SLOT), contentAlignment = Alignment.Center) { lead?.invoke() }
+            Spacer(modifier = Modifier.width(ENDS_BACK_GAP))
+            content(Modifier.weight(1f))
+            if (trailing) {
+                Box(modifier = Modifier.size(ENDS_BACK_SLOT), contentAlignment = Alignment.Center) { trail?.invoke() }
+            }
+        }
+    }
     Surface(color = MaterialTheme.colorScheme.surface) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .windowInsetsPadding(TopAppBarDefaults.windowInsets)
@@ -84,44 +114,74 @@ internal fun TripEndsBar(
                 // actions. None below: the place chips sit close under the To field they serve
                 // (maintainer, 2026-09-28), with only the progress bar's 4dp slot and the chips' own
                 // touch target between.
-                .padding(start = ENDS_BAR_START, end = if (actions != null) ENDS_BAR_START else 16.dp, top = 8.dp)
+                .padding(start = ENDS_BAR_START, end = if (trailing) ENDS_BAR_START else 16.dp, top = 8.dp)
                 .testTag("tripEndsBar"),
-            // The arrow and the actions sit level with the From row, all 48dp.
-            verticalAlignment = Alignment.Top,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // A fixed slot, so the fields (and the chips under them) start at [tripEndsFieldStart].
-            Box(modifier = Modifier.size(ENDS_BACK_SLOT), contentAlignment = Alignment.Center) {
+            val back: @Composable () -> Unit = {
                 IconButton(onClick = onBack) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                 }
             }
-            Spacer(modifier = Modifier.width(ENDS_BACK_GAP))
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                // The From field says "From ‹start›" itself, so its label isn't read twice.
-                EndRow(fromLabel, labelWidth, labelStyle, readLabel = false) { FromField(fromStation, fromPlace, fromIcon, onChangeFrom, Modifier.weight(1f)) }
-                EndRow(toLabel, labelWidth, labelStyle, readLabel = readToLabel) { toField(Modifier.weight(1f)) }
+            // The From field says "From ‹start›" itself, so its label isn't read twice.
+            BarRow(back, actions) { modifier ->
+                EndRow(fromLabel, labelWidth, labelStyle, readLabel = false, modifier) { FromField(fromStation, fromPlace, fromIcon, onChangeFrom, Modifier.weight(1f)) }
             }
-            if (actions != null) {
-                Box(modifier = Modifier.size(ENDS_BACK_SLOT), contentAlignment = Alignment.Center) { actions() }
+            if (via != null) {
+                // The Via field says "Via ‹stop›" itself, as From's does.
+                BarRow(null, { ClearViaButton(via) }) { modifier ->
+                    EndRow(viaLabel, labelWidth, labelStyle, readLabel = false, modifier) { ViaField(via.name, via.onChange, Modifier.weight(1f)) }
+                }
+            }
+            BarRow(null, null) { modifier ->
+                EndRow(toLabel, labelWidth, labelStyle, readLabel = readToLabel, modifier) { toField(Modifier.weight(1f)) }
             }
         }
     }
 }
 
 /**
- * The width both [TripEndsBar] labels take: the wider of "From" and "To", so the two fields start at
- * the same edge whatever the font scale.
+ * The stop a trip goes via (SPEC *Going via a stop*), for [TripEndsBar]'s Via row: its [name], a tap to
+ * pick another ([onChange]), and its × to go any way again ([onClear]).
+ */
+internal class TripEndsVia(val name: String, val onChange: () -> Unit, val onClear: () -> Unit)
+
+/**
+ * Keeps a trip's [ViaChoice] over a rotation and a recreated process: each of its stops' id and name, empty for
+ * none, on the device.
+ */
+internal val ViaChoiceSaver: Saver<ViaChoice, Any> = listSaver(
+    save = { choice -> listOf(choice.via, choice.pending).flatMap { listOf(it?.stopId.orEmpty(), it?.name.orEmpty()) } },
+    restore = { saved ->
+        fun at(index: Int) = saved.getOrNull(index)?.takeIf { it.isNotEmpty() }?.let { TripVia(it, saved.getOrNull(index + 1).orEmpty()) }
+        ViaChoice(via = at(0), pending = at(2))
+    },
+)
+
+/**
+ * A trip's [ViaChoice] while the trip to [destination] is open, kept over a rotation and a recreated process
+ * ([ViaChoiceSaver]). Another destination starts without one. The trip holds it above its To… picker, which
+ * shows in the trip's place, so opening To… and coming Back keeps the via (Codex on #887).
+ */
+@Composable
+internal fun rememberViaChoice(destination: String?): MutableState<ViaChoice> =
+    rememberSaveable(destination, stateSaver = ViaChoiceSaver) { mutableStateOf(ViaChoice()) }
+
+/**
+ * The width every [TripEndsBar] label takes: the widest of "From", "Via" and "To", so the fields start at
+ * the same edge whatever the font scale, and don't move as a Via row comes and goes.
  */
 @Composable
 internal fun rememberTripEndsLabelWidth(): Dp {
     val fromLabel = stringResource(R.string.trip_ends_from)
+    val viaLabel = stringResource(R.string.trip_ends_via)
     val toLabel = stringResource(R.string.trip_ends_to)
     val labelStyle = MaterialTheme.typography.labelLarge
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
-    return remember(fromLabel, toLabel, labelStyle, density) {
+    return remember(fromLabel, viaLabel, toLabel, labelStyle, density) {
         with(density) {
-            maxOf(measurer.measure(fromLabel, labelStyle).size.width, measurer.measure(toLabel, labelStyle).size.width).toDp()
+            listOf(fromLabel, viaLabel, toLabel).maxOf { measurer.measure(it, labelStyle).size.width }.toDp()
         }
     }
 }
@@ -147,9 +207,10 @@ private fun EndRow(
     labelWidth: Dp,
     labelStyle: TextStyle,
     readLabel: Boolean,
+    modifier: Modifier = Modifier,
     field: @Composable RowScope.() -> Unit,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         Text(
             label,
             style = labelStyle,
@@ -208,6 +269,38 @@ private fun FromField(station: String?, place: PlaceArt?, icon: String?, onClick
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+/**
+ * The trip page's Via row's field: the stop every route passes by [name], as the To row names the
+ * destination; a tap reopens the Via… search to pick another.
+ */
+@Composable
+private fun ViaField(name: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val description = stringResource(R.string.trip_via, name)
+    val changeLabel = stringResource(R.string.trip_change_via)
+    EndField(
+        modifier = modifier
+            .clip(END_FIELD_SHAPE)
+            .clickable(role = Role.Button, onClickLabel = changeLabel, onClick = onClick)
+            .semantics { contentDescription = description }
+            .testTag("viaField"),
+    ) {
+        Text(
+            abbreviateStationName(name),
+            style = MaterialTheme.typography.bodyLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/** The Via row's ×, under the overflow: the trip goes any way again. */
+@Composable
+private fun ClearViaButton(via: TripEndsVia) {
+    IconButton(onClick = via.onClear, modifier = Modifier.testTag("clearVia")) {
+        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.trip_clear_via))
     }
 }
 

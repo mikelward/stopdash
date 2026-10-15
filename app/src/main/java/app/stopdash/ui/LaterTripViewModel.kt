@@ -17,6 +17,7 @@ import app.stopdash.domain.TripModes
 import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripTime
+import app.stopdash.domain.ViaStops
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.Workers
 import app.stopdash.domain.mergedRoutes
@@ -65,6 +66,9 @@ class LaterTripViewModel(
     stations: () -> StationIndex = { StationIndex.EMPTY },
     bundledStops: suspend () -> BundledStops = { BundledStops.EMPTY },
     refused: RefusedStops = RefusedStops(),
+    // The stops a trip the rider sends through a station goes via, as the trip for now's ([TripViewModel.via]):
+    // each asked for every destination. Null for a trip that goes any way.
+    private val via: ViaStops? = null,
 ) : ViewModel() {
     // A plan from a position also asks the Planner via the bus stops towards the destination, as the trip for
     // now does, at the picked time.
@@ -230,8 +234,11 @@ class LaterTripViewModel(
             // Each destination's answer, or the failure it ended in, off the main thread whole; alongside them, the
             // requests via bus stops towards the first destination, as the trip for now makes them.
             val (answers, viaStops) = coroutineScope {
-                val each = destinations.map { destination -> async(io) { planTo(from, destination, request) } }
-                val toward = async { planToward(from, request) }
+                // Via each station of a stop the rider picked to go through, as the trip for now asks.
+                val throughs: List<String?> = via?.ids ?: listOf(null)
+                val each = destinations.flatMap { destination -> throughs.map { through -> async(io) { planTo(from, destination, through, request) } } }
+                // Not for a trip via a stop the rider picked: the Planner routes via one stop, and theirs is the one asked.
+                val toward = async { if (via == null) planToward(from, request) else Answer(emptyList()) }
                 each.awaitAll() to toward.await()
             }
             val failures = answers.mapNotNull { it.exceptionOrNull() }
@@ -287,16 +294,24 @@ class LaterTripViewModel(
         return Answer(gathering.withLock { found.toList() }, viaFailed = !stood)
     }
 
-    // On [io]. One destination's routes, and to a place the fewest changes via its fastest route's last stop as a
-    // trip for now asks ([FinalStop]); a failure of that alone leaves the routes standing, as a partial answer.
-    private suspend fun planTo(from: TripOrigin, destination: TripDestination, request: Request): Result<Answer> {
+    // On [io]. One destination's routes, via [through] where the rider picked a stop to go through, and to a place
+    // the fewest changes via its fastest route's last stop as a trip for now asks ([FinalStop]); a failure of that
+    // alone leaves the routes standing, as a partial answer.
+    private suspend fun planTo(from: TripOrigin, destination: TripDestination, through: String?, request: Request): Result<Answer> {
         val routes = try {
-            planner.journeys(from, destination, request.walkingSpeed, request.maxWalk, request.stepFree, request.tripModes, request.time)
+            planner.journeys(from, destination, request.walkingSpeed, request.maxWalk, request.stepFree, request.tripModes, request.time, via = through)
         } catch (e: TflException) {
+            // No route through the stop asked via at that time (the Planner's 404): an answer with none, as the trip
+            // for now takes it, so a later trip with none through any of its stations says it found none.
+            if (through != null && e is TflException.NotFound) {
+                warn("later trip plan via a stop: no route through it")
+                return Result.success(Answer(emptyList()))
+            }
             warn("later trip plan failed: ${e::class.simpleName}")
             return Result.failure(e)
         }
-        val finalStop = (if (destination is TripDestination.Place) FinalStop.of(routes) else null) ?: return Result.success(Answer(routes))
+        // Not for a trip via a stop the rider picked: the Planner routes via one stop, and theirs is the one asked.
+        val finalStop = (if (destination is TripDestination.Place && through == null) FinalStop.of(routes) else null) ?: return Result.success(Answer(routes))
         val fewer = try {
             finalStop.fewerRides(
                 planner.fewestChangesVia(from, destination, finalStop.stopId, request.walkingSpeed, request.maxWalk, request.stepFree, request.tripModes, request.time),

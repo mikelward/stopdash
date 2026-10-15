@@ -2368,7 +2368,7 @@ price for those buses, not a guess; a route with any other part stays blank.
 The level is named only where every part of the route is charged at it; a bus part has none.
 
 **A later trip** (maintainer, 2026-10-15). *Change time…* in the trip's overflow plans the same
-trip — the same ends, walk, step-free level, modes and lines avoided — for a time the rider picks:
+trip — the same ends, stop it goes via, walk, step-free level, modes and lines avoided — for a time the rider picks:
 **Leave** at it or **Arrive by** it, today or on one of the next six days; a time already gone by
 can't be picked, nor one the clocks skip going forward, which would be planned as a time other than shown. The overflow, not a row of the From/To bar, for now (maintainer, 2026-10-15). TfL's
 Planner answers from its **timetable**, and nothing live reaches that far ahead, so a later trip is
@@ -2394,6 +2394,41 @@ closing it goes back to the later list, which says "Not planned for now" when it
 settled plan for now doesn't offer that route, never for Back. Back, or *Leave now*, returns to the trip
 for now; the time picked is kept with the trip while it's open, its list in place over a rotation, and
 forgotten when it closes.
+
+**Going via a stop** (maintainer, 2026-10-15: "so I can choose to come e.g. via Finsbury Park").
+*Via…* in the trip's overflow, over *Change time…*, opens a search of stations and stops — the To…
+search's, its places left out, since a trip goes via a stop — and the stop picked becomes one **every
+route passes**, changing there or riding through it. The From/To bar then names it in a **Via** row
+between the two, a tap to pick another and an **×** at its end, under the overflow, to go any way again;
+picking the trip's own destination changes nothing, and any other stop is planned via as picked, one of
+the destination's own stations or stops included (maintainer, 2026-10-16: telling every name a destination
+goes by from another stop costs more than a rare odd pick, which gets what it asked for). A station complex
+takes the via's place once its stations have been looked up, Back meanwhile keeping the via the trip had,
+and the trip shows the new one from the moment they are. It is the Planner's own `via`, so the Planner builds
+each whole route through the stop and StopDash joins nothing (*One ride to the fastest route's last
+stop*). The Planner counts a route as passing only the stop it was asked via — via Finsbury Park's
+Underground station, a Great Northern train through its National Rail station doesn't — so a **station
+complex** is asked via **each of its stations**, every request of the plan once per station and per
+destination, and the answers merge as a complex's destinations do; its bus stops only where it has no
+station, since each stop asked via multiplies every request, and a rider going via a bus stop picks that
+stop, which the search lists on its own. The Planner takes one stop to route via, and the rider's is the
+one asked, so a trip via a stop makes neither the request via the fastest route's last stop nor those via
+the bus stops towards the destination; a plan around severe delays asks via the stop its soonest route
+was planned via. A station of the stop with no route through it (the Planner's 404) is an answer with no
+routes, not a failure, and a trip with none through any of them says **"No trips found via ‹stop›"**,
+with the Via row's × above to go any way. A place's *Direct* section isn't shown: its trains go straight
+there, not via the stop. The stop is part of what the trip is: its plan is kept for reuse apart from the
+trip any way's, and choosing one, another, or none shows that trip's own plan, never another's. It is kept with the trip while it's open, over a rotation, a
+recreated process and a look at To… left with Back, by where the trip goes, so a new nearest stop to start from keeps it and another
+destination starts without one; never saved beyond that, and never logged (the debug log says a request
+went "via a stop", never which). **Cost:** free, and no request of its own: a trip via an ordinary stop makes the
+plan's four, and drops the up to four extra a trip from a position or to a place makes; via a complex,
+four per station (eight via Finsbury Park), and to a complex, that for each of its stations too. At about
+four plans an hour that is about sixteen calls an hour via a stop and thirty-two via Finsbury Park; via
+Finsbury Park to King's Cross (about six targets) a plan is about 48 calls at once, the heaviest a trip
+makes and at the keyless ~50 a minute: the app's shared TfL rate limit paces them, so without a key that
+plan can take a few seconds longer. Nothing new leaves the phone: a stop id says no more than the
+trip's ends (`docs/PRIVACY.md`).
 
 ### On the way
 

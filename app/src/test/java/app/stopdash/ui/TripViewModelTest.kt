@@ -49,6 +49,7 @@ import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripModes
+import app.stopdash.domain.ViaStops
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.onPoles
 import app.stopdash.domain.TripTiming
@@ -152,7 +153,12 @@ class TripViewModelTest {
         val stepFrees = mutableListOf<StepFree>()
         // The trip modes each call asked for, in order.
         val tripModes = mutableListOf<TripModes>()
-        override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?): List<TripRoute> {
+        // Each plan request's destination (a stop's id, a place's name) and the stop it was asked via, in order; a
+        // request via a stop answered [byJourneyVia], one in [notFoundVia] with the Planner's 404.
+        val journeyVias = mutableListOf<Pair<String, String?>>()
+        var byJourneyVia: Map<String, List<TripRoute>> = emptyMap()
+        var notFoundVia: Set<String> = emptySet()
+        override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?, via: String?): List<TripRoute> {
             calls++
             origins += from
             speeds += speed
@@ -164,19 +170,27 @@ class TripViewModelTest {
                 is TripDestination.Stop -> to.id
                 is TripDestination.Place -> to.name
             }
+            synchronized(journeyVias) { journeyVias += key to via }
             delays[key]?.let { delay(it) }
             failWith?.let { throw it }
             if (stepFree == failStepFree) throw TflException.Offline(null)
             if (key in failFor) throw TflException.Offline(null)
+            if (via != null) {
+                if (via in notFoundVia) throw TflException.NotFound(null)
+                byJourneyVia[via]?.let { return it }
+            }
             return byDestination[key] ?: routes
         }
         // Each request around delays: the modes it left out, in order; each answered [withoutRoutes].
         val withoutAsked = mutableListOf<Set<String>>()
         val withoutTo = mutableListOf<TripDestination>()
         var withoutRoutes: List<TripRoute> = emptyList()
-        override suspend fun quickestWithout(from: TripOrigin, to: TripDestination, leaveOut: Set<String>, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes): List<TripRoute> {
+        // The stop each request around delays was asked via, in order (null for none).
+        val withoutVias = mutableListOf<String?>()
+        override suspend fun quickestWithout(from: TripOrigin, to: TripDestination, leaveOut: Set<String>, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, via: String?): List<TripRoute> {
             withoutAsked += leaveOut
             withoutTo += to
+            withoutVias += via
             return withoutRoutes
         }
         // Each fewest-changes-via request: where it planned to and the stop it passed, in order.
@@ -3805,7 +3819,7 @@ class TripViewModelTest {
         val fromD = TripRoute(listOf(leg("green", "D", "C", 5, 15)))
         var calls = 0
         val planner = object : JourneyPlanner {
-            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?): List<TripRoute> =
+            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?, via: String?): List<TripRoute> =
                 if (calls++ == 0) listOf(route) else listOf(fromD)
         }
         val cache = ArrivalsCache()
@@ -3884,7 +3898,7 @@ class TripViewModelTest {
         // The re-plan from that fix answers when the test says, so its indicator can be seen.
         val replanned = CompletableDeferred<Unit>()
         val planner = object : JourneyPlanner {
-            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?): List<TripRoute> =
+            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?, via: String?): List<TripRoute> =
                 if (calls++ < 2) listOf(route) else listOf(fromD).also { replanned.await() }
         }
         val cache = ArrivalsCache()
@@ -6873,7 +6887,7 @@ class TripViewModelTest {
         try {
             val threads = ThreadRecorder()
             val planner = object : JourneyPlanner {
-                override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?) =
+                override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?, via: String?) =
                     listOf(longWalk)
                 override suspend fun quickestVia(from: TripOrigin, to: TripDestination, via: String, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?): List<TripRoute> {
                     threads.note()
@@ -7097,5 +7111,141 @@ class TripViewModelTest {
         val unmarked = found.copy(towardStop = false)
         assertTrue(found in TripViewModel.bestOf(sooner + found))
         assertFalse(unmarked in TripViewModel.bestOf(sooner + unmarked))
+    }
+
+    // SPEC *Going via a stop*: a route via V1 and one via V2, a station's two stations, each changing there.
+    private val viaV1 = TripRoute(listOf(leg("red", "A", "V1", 5, 12), leg("blue", "V1", "C", 15, 25)))
+    private val viaV2 = TripRoute(listOf(leg("green", "A", "V2", 4, 11), leg("brown", "V2", "C", 14, 27)))
+
+    private fun viaTrip(
+        planner: JourneyPlanner,
+        via: ViaStops,
+        toIds: List<String> = listOf("C"),
+        plans: TripPlans = TripPlans(),
+        client: TflClient = FakeClient(mutableMapOf()),
+        warn: (String) -> Unit = {},
+    ) = TripViewModel(
+        planner, client, "A", toIds.map { TripDestination.Stop(it) },
+        clock = { now }, plans = plans, io = dispatcher, warn = warn, via = via,
+    )
+
+    @Test
+    fun `a trip via a stop asks every destination via each of its stations, and lists every answer`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route)).apply { byJourneyVia = mapOf("V1" to listOf(viaV1), "V2" to listOf(viaV2)) }
+        val trip = viaTrip(planner, via = ViaStops(listOf("V1", "V2")), toIds = listOf("C", "D"))
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(setOf("C" to "V1", "C" to "V2", "D" to "V1", "D" to "V2"), planner.journeyVias.toSet())
+        assertEquals(4, planner.journeyVias.size)
+        // Never the route that goes any way: only what the Planner offered through the stop.
+        assertEquals(setOf(viaV1, viaV2), trip.state.value.routes.orEmpty().toSet())
+    }
+
+    @Test
+    fun `a trip any way asks via no stop`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route))
+        val trip = model(planner, FakeClient(mutableMapOf()))
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf<Pair<String, String?>>("C" to null), planner.journeyVias)
+    }
+
+    @Test
+    fun `a trip to a place via a stop asks nothing more via its fastest route's last stop`() = runTest(dispatcher) {
+        val planner = FakePlanner(emptyList()).apply {
+            byJourneyVia = mapOf("V1" to listOf(changingToPlace))
+            byVia = mapOf("S" to listOf(TripRoute(listOf(leg("green", "A", "S", 6, 28)))))
+        }
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Place(Coordinates(51.5, -0.12), "Home")),
+            clock = { now }, plans = TripPlans(), io = dispatcher, via = ViaStops(listOf("V1")),
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        // The Planner routes via one stop, and the rider's is the one asked.
+        assertTrue(planner.viaAsked.isEmpty())
+        assertEquals(listOf(changingToPlace), trip.state.value.routes)
+    }
+
+    @Test
+    fun `a trip from here via a stop asks no stop towards the destination`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(longWalk)).apply { byToward = mapOf("490G0A" to listOf(busToTrain)) }
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(southPlace),
+            clock = { now }, plans = TripPlans(), io = dispatcher,
+            bundledStops = { bundled }, origin = { TripOrigin.Here(Coordinates(51.5, -0.12)) }, via = ViaStops(listOf("V1")),
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue(planner.towardAsked.isEmpty())
+        assertEquals(listOf<Pair<String, String?>>("Work" to "V1"), planner.journeyVias)
+    }
+
+    @Test
+    fun `a station of the stop with no route through it leaves the other's routes, and says nothing failed`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route)).apply {
+            byJourneyVia = mapOf("V2" to listOf(viaV2))
+            notFoundVia = setOf("V1")
+        }
+        val warnings = mutableListOf<String>()
+        val trip = viaTrip(planner, via = ViaStops(listOf("V1", "V2")), warn = { warnings += it })
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf(viaV2), trip.state.value.routes)
+        assertNull(trip.state.value.planError)
+        // Said without naming the stop.
+        assertTrue(warnings.toString(), warnings.contains("trip plan via a stop: no route through it"))
+        assertTrue(warnings.none { "V1" in it })
+    }
+
+    @Test
+    fun `no route through any station of the stop is no routes, not a failure`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route)).apply { notFoundVia = setOf("V1", "V2") }
+        val trip = viaTrip(planner, via = ViaStops(listOf("V1", "V2")))
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(emptyList<TripRoute>(), trip.state.value.routes)
+        assertNull(trip.state.value.planError)
+    }
+
+    @Test
+    fun `a trip any way with no route found is still the Planner's failure`() = runTest(dispatcher) {
+        // The 404 is no route through the stop only where one was asked via: any way, it stays a failure.
+        val planner = FakePlanner(listOf(route)).apply { failWith = TflException.NotFound(null) }
+        val trip = model(planner, FakeClient(mutableMapOf()))
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue(trip.state.value.planError != null)
+    }
+
+    @Test
+    fun `a plan via a stop is a plan of its own, never reused for the trip any way, nor the other way`() = runTest(dispatcher) {
+        val plans = TripPlans()
+        val planner = FakePlanner(listOf(route)).apply { byJourneyVia = mapOf("V1" to listOf(viaV1)) }
+        val anyWay = model(planner, FakeClient(mutableMapOf()), plans = plans)
+        anyWay.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf(route), anyWay.state.value.routes)
+        val calls = planner.calls
+        val through = viaTrip(planner, via = ViaStops(listOf("V1")), plans = plans)
+        // Nothing shown until its own plan lands, then only what goes via the stop.
+        assertNull(through.state.value.routes)
+        through.refresh()
+        advanceUntilIdle()
+        assertTrue(planner.calls > calls)
+        assertEquals(listOf(viaV1), through.state.value.routes)
+        // The trip any way reopened finds its own plan.
+        assertEquals(listOf(route), model(planner, FakeClient(mutableMapOf()), plans = plans).state.value.routes)
+    }
+
+    @Test
+    fun `a trip via a stop plans around delays via the same stop`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route)).apply { byJourneyVia = mapOf("V1" to listOf(viaV1)) }
+        val client = FakeClient(mutableMapOf()).apply { disruptedLines = setOf("red") }
+        val trip = viaTrip(planner, via = ViaStops(listOf("V1")), client = client)
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf(setOf("tube")), planner.withoutAsked)
+        assertEquals(listOf<String?>("V1"), planner.withoutVias)
     }
 }

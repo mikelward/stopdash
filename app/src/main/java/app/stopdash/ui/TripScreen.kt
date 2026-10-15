@@ -1209,6 +1209,12 @@ internal class TripEnds(
     val toPlace: PlaceArt? = null,
     val fromIcon: String? = null,
     val toIcon: String? = null,
+    // The stop the trip goes via (SPEC *Going via a stop*), named in a row between From and To with its ×
+    // ([onClearVia]); null for a trip that goes any way.
+    val viaName: String? = null,
+    // "Via…" in the overflow, picking the stop every route passes (or another); null offers none.
+    val onPickVia: (() -> Unit)? = null,
+    val onClearVia: () -> Unit = {},
 )
 
 /** The lines a trip avoids, and what a long press or a chip does with them (see [TripScreen]). */
@@ -1716,7 +1722,19 @@ private fun TripContent(
             val overflow: @Composable () -> Unit = {
                 if (menu != null) {
                     AppOverflowMenu(menu.updateAvailable, menu.onOpenAppListing) { close ->
-                        // The trip's own item first, over the app's: a later trip's time.
+                        // The trip's own items first, over the app's: a stop to go via, over the routes
+                        // (one open is a route of this trip, any way or not), then a later trip's time.
+                        val pickVia = ends?.onPickVia
+                        if (pickVia != null && open == null) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.trip_via_pick)) },
+                                onClick = {
+                                    close()
+                                    pickVia()
+                                },
+                                modifier = Modifier.testTag("tripPickVia"),
+                            )
+                        }
                         if (onChangeTime != null) {
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.trip_change_time)) },
@@ -1756,6 +1774,7 @@ private fun TripContent(
                     fromIcon = ends.fromIcon,
                     actions = if (menu != null) overflow else null,
                     readToLabel = false,
+                    via = ends.viaName?.let { TripEndsVia(it, ends.onPickVia ?: {}, ends.onClearVia) },
                 ) { modifier -> ToField(ends.toName, ends.onChangeTo, modifier, place = ends.toPlace, icon = ends.toIcon) }
             } else {
                 TopAppBar(
@@ -1920,6 +1939,7 @@ private fun TripContent(
                                 pillWidths = widths?.px.orEmpty(),
                                 header = header,
                                 listState = listState,
+                                viaName = ends?.viaName,
                             )
                         }
                         // Pulled down, the routes are planned again and every stop fetched afresh, from
@@ -2247,6 +2267,8 @@ private fun RouteList(
     header: @Composable () -> Unit = {},
     // The plan's scroll position, shared with its waits ([UnderHeader]).
     listState: LazyListState = rememberLazyListState(),
+    // The stop the trip goes via, which a list with no route says it found none through; null for any way.
+    viaName: String? = null,
 ) {
     val cards = view.cards
     // Which card gets there soonest, which rides fewest and which walks least, over each, then
@@ -2289,7 +2311,10 @@ private fun RouteList(
         }
         if (cards.isNotEmpty()) item(key = "status") { DisruptionsRow(row) }
         if (cards.isEmpty()) {
-            item(key = "none") { Text(stringResource(R.string.trip_no_routes), style = MaterialTheme.typography.bodyLarge) }
+            item(key = "none") {
+                val none = viaName?.let { stringResource(R.string.trip_no_routes_via, it) } ?: stringResource(R.string.trip_no_routes)
+                Text(none, style = MaterialTheme.typography.bodyLarge)
+            }
         }
         // Routes sharing every stop but differing in their first line are one card: one header, a
         // row per ride, and the first ride's times for every line together. The card is one choice

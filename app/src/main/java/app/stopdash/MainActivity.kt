@@ -76,7 +76,10 @@ import app.stopdash.domain.TripTime
 import app.stopdash.domain.TripProgress
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripTiming
+import app.stopdash.domain.TripVia
 import app.stopdash.domain.UsageEvent
+import app.stopdash.domain.ViaChoice
+import app.stopdash.domain.ViaStops
 import app.stopdash.domain.Workers
 import app.stopdash.domain.YourStops
 import app.stopdash.domain.askedAgainWhenEnded
@@ -330,6 +333,7 @@ import app.stopdash.ui.TripScreen
 import app.stopdash.ui.TripStart
 import app.stopdash.ui.TripTimeDialog
 import app.stopdash.ui.TripViewModel
+import app.stopdash.ui.rememberViaChoice
 import app.stopdash.ui.tripTimeLabel
 import app.stopdash.ui.WatchInstallActions
 import app.stopdash.ui.WidgetUpdateActions
@@ -440,6 +444,15 @@ internal fun bugReportScreenshotUri(file: File, log: DebugLog, mint: (File) -> U
 private sealed interface ApiKeyLoad {
     data object Loading : ApiKeyLoad
     data class Loaded(val key: String?) : ApiKeyLoad
+}
+
+/**
+ * Where a stop picked to go via stands ([MainActivity.lookUpVia]; SPEC *Going via a stop*): a complex still being
+ * looked up ([Waiting], its lookup's state and Retry), or the stops to ask the Planner via ([Found]).
+ */
+private sealed interface ViaLookup {
+    class Waiting(val state: StationStopsViewModel.State, val retry: () -> Unit) : ViaLookup
+    class Found(val stops: ViaStops) : ViaLookup
 }
 
 /**
@@ -4163,6 +4176,82 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
+     * The Via… search (SPEC *Going via a stop*): stations and stops, found on the device as the To… search
+     * finds them, ranked from where the trip starts ([rankFrom]); no places, as a trip goes via a stop. A pick
+     * isn't added to the rider's recent destinations: it's a way there, not somewhere they went.
+     */
+    @Composable
+    private fun ViaSearch(rankFrom: Coordinates?, onPick: (StationMatch) -> Unit, onBack: () -> Unit) {
+        val appContext = applicationContext
+        val viaSearch: StationSearchViewModel = viewModel(
+            viewModelStoreOwner = this@MainActivity,
+            key = "via-search",
+            factory = viewModelFactory {
+                initializer {
+                    StationSearchViewModel(
+                        createSavedStateHandle(),
+                        loadIndex = { StationIndexStore.load(appContext) },
+                        loadBusStops = { BusStopIndexStore.load(appContext) },
+                        // The rider's own stops and recent destinations, read as the To… search reads them.
+                        loadYours = { loadYourStops(appContext, recentSearches(appContext).store(RecentSearches.Kind.TO)) },
+                        searchPlaces = false,
+                        warn = ::logDepartureWarning,
+                    )
+                }
+            },
+        )
+        val state by viaSearch.state.collectByIdentityWithLifecycle()
+        LaunchedEffect(Unit) { viaSearch.refreshYours() }
+        LaunchedEffect(viaSearch, rankFrom) { viaSearch.setNear(rankFrom) }
+        StationSearchScreen(
+            state = state,
+            onQueryChange = viaSearch::onQueryChange,
+            positionOf = viaSearch::positionOf,
+            onOpenStation = { match ->
+                viaSearch.clear()
+                onPick(match)
+            },
+            onBack = {
+                viaSearch.clear()
+                onBack()
+            },
+            hint = stringResource(R.string.station_search_via_hint),
+        )
+    }
+
+    /**
+     * What a trip via [picked] asks the Planner via ([ViaStops]; SPEC *Going via a stop*): an ordinary stop as
+     * picked, at once; a station complex each of its stations, once it has been looked up as a destination is and
+     * its stations worked out on the worker ([PlanTargets.viaStops]). Nothing here walks its stops.
+     */
+    @Composable
+    private fun lookUpVia(picked: TripVia, stores: NearbyDeparturesStores, other: TripVia?): ViaLookup {
+        if (!picked.stopId.startsWith(HUB_PREFIX)) return ViaLookup.Found(remember(picked.stopId) { ViaStops(listOf(picked.stopId)) })
+        // The other stop looked up beside it (the via in place, or the pick pending) keeps its store.
+        val owner = remember(picked.stopId) { stores.ownerFor(picked.stopId, this@MainActivity, keep = other?.stopId) }
+        val model: StationStopsViewModel = viewModel(
+            viewModelStoreOwner = owner,
+            factory = viewModelFactory {
+                initializer {
+                    // The log says a trip went via a stop, never which (SPEC *Going via a stop*).
+                    StationStopsViewModel(stationFinder, picked.stopId, warn = ::logDepartureWarning, logAs = "a via stop")
+                }
+            },
+        )
+        val looked by model.state.collectByIdentityWithLifecycle()
+        // By identity, as the model publishes it.
+        val targets by produceState<Pair<StationStopsViewModel.State, ViaStops>?>(null, ByIdentity(looked)) {
+            val answered = looked
+            value = (answered as? StationStopsViewModel.State.Ready)?.stops?.let { stops ->
+                answered to withContext(Workers.compute) { PlanTargets.viaStops(stops.map { PlanTargets.Member(it.id, it.lines) }) }
+            }
+        }
+        // Worked out for the lookup on show, not a last one.
+        val resolved = targets?.takeIf { it.first === looked } ?: return ViaLookup.Waiting(looked, model::retry)
+        return ViaLookup.Found(resolved.second)
+    }
+
+    /**
      * The From… search's model, held by the activity under "station-search": the one "Find a station"
      * shows, and that ending an arrived trip clears with the station's stores ([NearbyDeparturesStores]).
      */
@@ -4913,6 +5002,8 @@ class MainActivity : ComponentActivity() {
         LaunchedEffect(search, rankFrom) { search.setNear(rankFrom) }
         val stores: NearbyDeparturesStores = viewModel(key = "$keyPrefix-trip-stores")
         val toStores: NearbyDeparturesStores = viewModel(key = "$keyPrefix-to-stores")
+        // A station the trip goes via, looked up as a destination is ([PlanTargets.via]).
+        val viaStores: NearbyDeparturesStores = viewModel(key = "$keyPrefix-via-stores")
         val writeFailures = viewModel<WriteFailuresHolder>().failures
         // Where a trip with no stop in range plans from ([hereAnchor]): held in memory only, over a
         // rotation as the trip's models are, and forgotten with the trip. Never saved, as the rider's
@@ -4921,6 +5012,7 @@ class MainActivity : ComponentActivity() {
         val close = {
             stores.clearAll()
             toStores.clearAll()
+            viaStores.clearAll()
             search.clear()
             anchorHolder.anchor = null
             anchorHolder.start = null
@@ -4953,6 +5045,15 @@ class MainActivity : ComponentActivity() {
         SideEffect { anchorHolder.start = start }
         val fromId = start.stopId
         LaunchedEffect(Unit) { onShown() }
+        // A stop the rider sends the trip through (SPEC *Going via a stop*), picked with the overflow's Via…: kept
+        // with the trip while it's open, by where it goes, so a new nearest stop to start from keeps it and another
+        // destination starts without one. Never saved elsewhere. Held here, above the To… picker that shows in the
+        // trip's place, so opening To… and coming Back keeps it (Codex on #887). The via in place, and a station
+        // complex just picked that takes its place once its stations have been looked up ([ViaChoice]), so Back
+        // meanwhile leaves the via as it was.
+        var viaChoice by rememberViaChoice(
+            favorite?.let { "place:${it.coordinate.latitude},${it.coordinate.longitude}" } ?: toId,
+        )
         // The destination search: before anything is picked, and when the trip's To row reopens it.
         if (picking || (favorite == null && toId == null)) {
             val state by search.state.collectByIdentityWithLifecycle()
@@ -5070,7 +5171,67 @@ class MainActivity : ComponentActivity() {
             destKey = toStopIds.joinToString(",")
             destinationIds = ids
         }
-        val tripKey = "$fromId>$destKey"
+        var pickingVia by rememberSaveable(destKey) { mutableStateOf(false) }
+        if (pickingVia) {
+            ViaSearch(
+                rankFrom = rankFrom,
+                onPick = { match ->
+                    pickingVia = false
+                    viaChoice = viaChoice.picked(TripVia(match.id, match.name), match.id.startsWith(HUB_PREFIX), toId)
+                },
+                onBack = { pickingVia = false },
+            )
+            return
+        }
+        // The via in place and the pick pending, each looked up under its own key, so a pick that becomes the via, or
+        // a via kept when the pick is cancelled, keeps its lookup rather than starting it again.
+        val lookups = HashMap<String, ViaLookup>(2)
+        for (looked in viaChoice.looked) {
+            val other = if (looked == viaChoice.via) viaChoice.pending else viaChoice.via
+            key(looked.stopId) { lookups[looked.stopId] = lookUpVia(looked, viaStores, other) }
+        }
+        val pending = viaChoice.pending
+        val pendingLookup = pending?.let { lookups[it.stopId] }
+        if (pending != null) when (val lookup = pendingLookup) {
+            is ViaLookup.Waiting -> {
+                // Its stations still being looked up: Back keeps the via the trip had.
+                ReportScreen(UsageEvent.Screen.TRIP)
+                StationPlaceholderScreen(
+                    title = title,
+                    state = lookup.state,
+                    onRetry = lookup.retry,
+                    onBack = { viaChoice = viaChoice.cancelled() },
+                    onLocate = onLocate ?: relocate,
+                )
+                return
+            }
+            // Its stations looked up: shown from this frame ([ViaChoice.shown]), the via from the next.
+            is ViaLookup.Found -> LaunchedEffect(pending) { viaChoice = viaChoice.resolved(pending) }
+            null -> Unit
+        }
+        // The stops the trip asks the Planner via, with the trip's key for them: an ordinary stop as picked, a
+        // station complex each of its stations, looked up first as a destination is and worked out on the worker
+        // ([PlanTargets.viaStops]), so nothing here walks them.
+        val picked = viaChoice.shown(pendingFound = pendingLookup is ViaLookup.Found)
+        val viaStops: ViaStops? = picked?.let { committed ->
+            when (val lookup = checkNotNull(lookups[committed.stopId]) { "a via shown is one looked up" }) {
+                is ViaLookup.Waiting -> {
+                    // The trip, waiting on the stop it goes via (looked up again after a recreated process); Back goes
+                    // any way again.
+                    ReportScreen(UsageEvent.Screen.TRIP)
+                    StationPlaceholderScreen(
+                        title = title,
+                        state = lookup.state,
+                        onRetry = lookup.retry,
+                        onBack = { viaChoice = viaChoice.cleared() },
+                        onLocate = onLocate ?: relocate,
+                    )
+                    return
+                }
+                is ViaLookup.Found -> lookup.stops
+            }
+        }
+        val tripKey = "$fromId>$destKey" + viaStops?.key.orEmpty()
         // When the rider last pulled on this trip's routes, kept past a new nearest stop (a trip model
         // of its own) and a configuration change, so the trip a pull's fresh fix moves to plans and
         // fetches afresh too.
@@ -5100,6 +5261,7 @@ class MainActivity : ComponentActivity() {
                         bundledStops = { BundledStopsStore.load(appContext) },
                         refused = RefusedStops.SHARED,
                         origin = { latestHere?.let(TripOrigin::Here) ?: TripOrigin.Stop(fromId) },
+                        via = viaStops,
                         walkingSpeed = WalkingSpeedSetting.changes.value,
                         maxWalk = MaxWalkSetting.changes.value,
                         stepFree = StepFreeSetting.changes.value,
@@ -5192,6 +5354,7 @@ class MainActivity : ComponentActivity() {
                             stations = { StationIndexStore.load(appContext) },
                             bundledStops = { BundledStopsStore.load(appContext) },
                             refused = RefusedStops.SHARED,
+                            via = viaStops,
                         )
                     }
                 },
@@ -5224,6 +5387,7 @@ class MainActivity : ComponentActivity() {
                 },
                 notice = laterNotice,
                 onNoticeShown = { laterNotice = null },
+                viaName = picked?.name,
             )
             return
         }
@@ -5285,8 +5449,9 @@ class MainActivity : ComponentActivity() {
         // Where a Direct row's ride walks on to once tapped: the place its section looks near.
         SideEffect { trip.directPlace = directPlace }
         // A place's Direct section (SPEC *Direct to a place*): only for a place the rider isn't already
-        // at, by the same 200 m the place chips hide within, so a trip there looks nothing up.
-        val direct = directPlace?.takeUnless { place ->
+        // at, by the same 200 m the place chips hide within, so a trip there looks nothing up. None for a trip
+        // via a stop: its trains go straight there, not via it.
+        val direct = directPlace?.takeIf { viaStops == null }?.takeUnless { place ->
             here != null && NearestStops.distanceMeters(
                 here.latitude, here.longitude, place.coordinate.latitude, place.coordinate.longitude,
             ) <= FavoriteShortcuts.HIDE_WITHIN_METERS
@@ -5398,7 +5563,10 @@ class MainActivity : ComponentActivity() {
             // Where it starts and where it goes, each a tap to change (maintainer, 2026-09-28): From
             // opens the From… search, To the destination search, the other end kept.
             ends = onChangeFrom?.let { changeFrom ->
-                TripEnds(fromName, toName, changeFrom, onPlanTo, fromPlace = fromPlace?.let { fromArt }, toPlace = favorite?.art, fromIcon = fromIcon, toIcon = toIcon)
+                TripEnds(
+                    fromName, toName, changeFrom, onPlanTo, fromPlace = fromPlace?.let { fromArt }, toPlace = favorite?.art, fromIcon = fromIcon, toIcon = toIcon,
+                    viaName = picked?.name, onPickVia = { pickingVia = true }, onClearVia = { viaChoice = viaChoice.cleared() },
+                )
             },
             // A pull plans again now and fetches every stop afresh, its stations' National Rail
             // boards included, here and on the other screens, as every pull does (SPEC *Freshness →
@@ -6186,15 +6354,17 @@ internal class NearbyDeparturesStores : androidx.lifecycle.ViewModel() {
     private val stores = mutableMapOf<String, ViewModelStore>()
 
     /**
-     * The retained store for [key], clearing any other set's store first.
+     * The retained store for [key], clearing any other set's store first, but for [keep]'s: a stop picked to go
+     * via looked up while the via in place stays looked up too ([MainActivity.lookUpVia]), which clearing would
+     * restart and orphan.
      *
      * With [defaults] (the activity), the owner also carries the activity's creation extras, so a
      * model made inside it can take a [androidx.lifecycle.SavedStateHandle]: a bare store has no
      * saved-state registry, and `createSavedStateHandle()` throws — which crashed To… from a
      * searched station, whose To search lives inside that station's store.
      */
-    fun ownerFor(key: String, defaults: HasDefaultViewModelProviderFactory? = null): ViewModelStoreOwner {
-        val stale = stores.keys.filter { it != key }
+    fun ownerFor(key: String, defaults: HasDefaultViewModelProviderFactory? = null, keep: String? = null): ViewModelStoreOwner {
+        val stale = stores.keys.filter { it != key && it != keep }
         for (k in stale) stores.remove(k)?.clear()
         val store = stores.getOrPut(key) { ViewModelStore() }
         if (defaults == null) {

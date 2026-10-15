@@ -1677,6 +1677,67 @@ class TripScreenScreenshotTest {
         captureSnapshot("trip-from-to-searched-places.png")
     }
 
+    @Test
+    fun trip_from_via_to_bar() {
+        // A trip sent through a station (SPEC *Going via a stop*) names it in a row of its own between From and
+        // To, a tap to change it and an × under the overflow to go any way again. Finsbury Park: a public interchange.
+        var pickedVia = 0
+        var clearedVia = 0
+        show(
+            planned,
+            menu = AppMenuActions(updateAvailable = false, onOpenAppListing = {}, onSendBugReport = {}, onOpenLicenses = {}),
+            ends = TripEnds(
+                fromStation = null, toName = "Canary Wharf", onChangeFrom = {}, onChangeTo = {},
+                viaName = "Finsbury Park", onPickVia = { pickedVia++ }, onClearVia = { clearedVia++ },
+            ),
+        )
+        composeRule.onNodeWithTag("viaField").assertContentDescriptionEquals("Via Finsbury Park")
+        // The three fields start at one edge and end at another, the × beside Via's under the overflow.
+        val from = composeRule.onNodeWithTag("fromField").getBoundsInRoot()
+        val via = composeRule.onNodeWithTag("viaField").getBoundsInRoot()
+        val to = composeRule.onNodeWithTag("toField").getBoundsInRoot()
+        assertEquals(from.left, via.left)
+        assertEquals(from.left, to.left)
+        assertEquals(from.right, via.right)
+        assertEquals(from.right, to.right)
+        assertTrue("via at $via sits between from at $from and to at $to", via.top >= from.bottom && to.top >= via.bottom)
+        val clear = composeRule.onNodeWithTag("clearVia").getBoundsInRoot()
+        val more = composeRule.onNodeWithContentDescription(composeRule.activity.getString(R.string.menu_more)).getBoundsInRoot()
+        assertTrue("× at $clear sits after the via field at $via", clear.left >= via.right)
+        assertEquals(more.left, clear.left)
+        assertTrue("× at $clear sits level with the via field at $via", clear.top < via.bottom && clear.bottom > via.top)
+        captureSnapshot("trip-from-via-to.png")
+        composeRule.onNodeWithTag("viaField").performClick()
+        assertEquals(1, pickedVia)
+        composeRule.onNodeWithTag("clearVia").assertContentDescriptionEquals("Remove stop").performClick()
+        assertEquals(1, clearedVia)
+    }
+
+    @Test
+    fun via_in_the_overflow_picks_a_stop_to_go_through() {
+        var pickedVia = 0
+        show(
+            planned,
+            menu = AppMenuActions(updateAvailable = false, onOpenAppListing = {}, onSendBugReport = {}, onOpenLicenses = {}),
+            ends = TripEnds(fromStation = null, toName = "Canary Wharf", onChangeFrom = {}, onChangeTo = {}, onPickVia = { pickedVia++ }),
+        )
+        // Any way, there's no Via row until a stop is picked.
+        composeRule.onAllNodesWithTag("viaField").assertCountEquals(0)
+        composeRule.onNodeWithContentDescription(composeRule.activity.getString(R.string.menu_more)).performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("tripPickVia").assertTextEquals("Via…").performClick()
+        assertEquals(1, pickedVia)
+    }
+
+    @Test
+    fun a_trip_via_a_stop_with_no_route_through_it_says_so() {
+        show(
+            planned.copy(routes = emptyList()),
+            ends = TripEnds(fromStation = null, toName = "Canary Wharf", onChangeFrom = {}, onChangeTo = {}, viaName = "Finsbury Park"),
+        )
+        composeRule.onNodeWithText("No trips found via Finsbury Park").assertIsDisplayed()
+    }
+
     // [icon] leads [name] in [field]: inside it, before the name.
     private fun assertLeads(field: String, name: String, icon: String) {
         val lead = composeRule.onNode(hasTestTag(icon) and hasAnyAncestor(hasTestTag(field)), useUnmergedTree = true)
@@ -6003,11 +6064,12 @@ class TripScreenScreenshotTest {
         onRetry: () -> Unit = {},
         onChangeTime: () -> Unit = {},
         onOpen: (LaterTripViewModel.Card) -> Unit = {},
+        viaName: String? = null,
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 CompositionLocalProvider(LocalAppMenu provides menu) {
-                    LaterTripScreen("To Canary Wharf", request, state.value, now, onBack, onRetry, onChangeTime, onOpen)
+                    LaterTripScreen("To Canary Wharf", request, state.value, now, onBack, onRetry, onChangeTime, onOpen, viaName = viaName)
                 }
             }
         }
@@ -6059,6 +6121,13 @@ class TripScreenScreenshotTest {
         showLater(mutableStateOf(later(emptyList(), request)), request = request)
         composeRule.onNodeWithTag("laterWhen").assertTextEquals("Arrive by 18:30")
         composeRule.onNodeWithText("No trips found").assertIsDisplayed()
+    }
+
+    @Test
+    fun a_later_trip_via_a_stop_with_no_route_through_it_names_the_stop() {
+        // Codex on #887: the later list said only "No trips found", as if nothing went there at all.
+        showLater(mutableStateOf(later(emptyList())), viaName = "Finsbury Park")
+        composeRule.onNodeWithText("No trips found via Finsbury Park").assertIsDisplayed()
     }
 
     @Test

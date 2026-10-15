@@ -531,6 +531,18 @@
     <!-- A route leg's line isn't running. %1$s is TfL's status ("Suspended"). -->
     <string name="trip_line_not_running">%1$s: %2$s</string>
     <!-- TODO: translate -->
+    <!-- Going via a stop (SPEC *Trips with a change → Going via a stop*): the trip page's overflow item
+         that picks a station or stop for every route to pass; the label of the row the From/To bar then
+         names it in, between From and To; that row as TalkBack reads it (%1$s is the stop's name) and
+         what its tap and its × do; the search's placeholder; and a trip with no route through it. -->
+    <string name="trip_via_pick" tools:ignore="MissingTranslation">Via…</string>
+    <string name="trip_ends_via" tools:ignore="MissingTranslation">Via</string>
+    <string name="trip_via" tools:ignore="MissingTranslation">Via %1$s</string>
+    <string name="trip_change_via" tools:ignore="MissingTranslation">Change stop</string>
+    <string name="trip_clear_via" tools:ignore="MissingTranslation">Remove stop</string>
+    <string name="station_search_via_hint" tools:ignore="MissingTranslation">Station or stop</string>
+    <string name="trip_no_routes_via" tools:ignore="MissingTranslation">No trips found via %1$s</string>
+    <!-- TODO: translate -->
     <!-- A later trip (SPEC *Trips with a change → A later trip*): the trip page's overflow item that
          picks a time to leave at or arrive by, the picker's title, and the item going back to now. -->
     <string name="trip_change_time" tools:ignore="MissingTranslation">Change time…</string>
