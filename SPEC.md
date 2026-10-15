@@ -2181,6 +2181,12 @@ adult pay as you go fare at the time planned for, Hopper discounts taken off. Da
 aren't counted, as the Planner doesn't count them. A route the Planner didn't price (one leaving the
 pay as you go area) shows no fare rather than a guess, and so does a route StopDash puts together
 itself from the Planner's rides (a train through in place of a change): the Planner never priced it.
+The one exception is a London bus route the Planner left unpriced while pricing the same buses
+elsewhere in the plan (maintainer, 2026-10-15, after a one-bus card came up blank beside priced cards
+on that bus): every TfL bus costs the same and the Hopper covers every bus boarded within the hour of
+the first, so a route riding only London buses, on lines the plan priced, boarded within the hour,
+takes the plan's own bus fare, where the plan's priced bus routes all agree on it. That's the Planner's
+price for those buses, not a guess; a route with any other part stays blank.
 The level is named only where every part of the route is charged at it; a bus part has none.
 
 ### On the way

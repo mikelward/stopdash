@@ -210,4 +210,17 @@ class TripRouteTest {
         assertEquals(listOf(oneBus), mergedRoutes(emptyList(), listOf(oneBus)))
         assertEquals(listOf(quick), mergedRoutes(listOf(quick), emptyList()))
     }
+
+    @Test
+    fun `a route kept from the first answer unpriced takes the price the second gave the same route`() {
+        // The Planner can leave one answer unpriced: the same legs at the same times priced in another are the price.
+        val unpriced = TripRoute(listOf(ride("red", "A", "C", listOf("B", "C"))))
+        val priced = unpriced.copy(fare = TripFare(300))
+        assertEquals(listOf(priced), mergedRoutes(listOf(unpriced), listOf(priced)))
+        // A price the first answer gave stands.
+        assertEquals(listOf(priced), mergedRoutes(listOf(priced), listOf(unpriced.copy(fare = TripFare(310)))))
+        // Another departure's price isn't this route's.
+        val later = unpriced.legs.map { it.copy(departure = t.plusSeconds(300), arrival = t.plusSeconds(900)) }
+        assertEquals(null, mergedRoutes(listOf(unpriced), listOf(TripRoute(later, TripFare(300)))).first().fare)
+    }
 }

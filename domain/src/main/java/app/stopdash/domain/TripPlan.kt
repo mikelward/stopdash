@@ -62,9 +62,10 @@ data class TripLeg(
 }
 
 /**
- * One route the Planner offered: its [legs] in order, and its [fare] where the Planner priced it (null
- * where it didn't, as for a trip beyond the pay as you go area, or for a route StopDash put together
- * itself from the Planner's legs, which the Planner never priced).
+ * One route the Planner offered: its [legs] in order, and its [fare] where the Planner priced it, or a
+ * London bus route it left unpriced the plan's own bus fare ([BusFare]). Null where neither holds, as
+ * for a trip beyond the pay as you go area, or for a route StopDash put together itself from the
+ * Planner's legs, which the Planner never priced.
  */
 data class TripRoute(val legs: List<TripLeg>, val fare: TripFare? = null) {
     /** The legs ridden, walks left out: the line pills a route shows. */
@@ -242,13 +243,16 @@ interface JourneyPlanner {
 
 /**
  * [first]'s routes, then [second]'s that aren't among them: a route both offer (the same lines, ends
- * and times, leg by leg) is kept once, where [first] has it. The same route at another departure is
- * another route, as the Planner offers it.
+ * and times, leg by leg) is kept once, where [first] has it, with [second]'s fare where only that copy
+ * was priced (the Planner can leave one answer unpriced; Codex, #860). The same route at another
+ * departure is another route, as the Planner offers it.
  */
 fun mergedRoutes(first: List<TripRoute>, second: List<TripRoute>): List<TripRoute> {
     fun key(route: TripRoute) = route.legs.map { listOf(it.mode, it.lineId, it.fromId, it.toId, it.departure, it.arrival) }
+    val fares = second.mapNotNull { route -> route.fare?.let { key(route) to it } }.toMap()
+    val kept = if (fares.isEmpty()) first else first.map { route -> if (route.fare != null) route else fares[key(route)]?.let { route.copy(fare = it) } ?: route }
     val seen = first.mapTo(HashSet()) { key(it) }
-    return first + second.filter { seen.add(key(it)) }
+    return kept + second.filter { seen.add(key(it)) }
 }
 
 /**
