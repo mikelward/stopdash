@@ -1374,7 +1374,13 @@ start (at once when a direction is turned on, or the app starts, mid-window), th
 minutes** counted from the window's start, so one run late doesn't push back the rest and once as it closes, and none outside one. Each asks TfL for the status of
 the journey's line and the lines the app last found running directly between its ends (its widget
 pins), in **one batched line-status request** for every journey being watched: £0, about 8 requests
-per two-hour window, the same kind the list makes, so nothing new leaves the device. Each check is
+per two-hour window, the same kind the list makes, so nothing new leaves the device. A **bus line's alert
+alerts only a ride it reaches**, weighed as On the way weighs one on its route (*On the way*): a
+diversion at the far end of a long route says nothing of the rider's stops (maintainer, 2026-10-15). So
+while a bus line has an alert its words could place, the check reads the line's route through the app's
+route cache (a day's keep, shared with every screen: at most a request or two per line a day, the same
+kind the route page makes), and an alert whose stretch lies off the ride in every watched direction is
+left out. Unknown is on: a route not read, or a ride it can't place, keeps the alert. Each check is
 started by **inexact alarms** at its time, run as an expedited job: Android holds an app's deferred
 jobs half an hour or more while it's off screen, even with the phone in use and the battery setting
 "Optimized" (maintainer's bug report, 2026-10-09). Neither alarm needs a permission: one with a
