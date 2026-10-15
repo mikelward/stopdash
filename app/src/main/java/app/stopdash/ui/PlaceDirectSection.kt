@@ -43,7 +43,7 @@ private val DIRECT_EXPANDED_MAX = 200.dp
 /**
  * The *Direct* section atop a trip to a place (SPEC *Direct to a place*; maintainer, 2026-10-07): a bold
  * "Direct" header like the routes' "Fastest", then a row per line going straight there — its pill, the
- * stop it leaves from, its next trains ("3 · 8 · 13 min") — up to [DIRECT_ROWS], then "+N more". With
+ * stop it gets the rider off at, its next trains ("3 · 8 · 13 min") — up to [DIRECT_ROWS], then "+N more". With
  * none, one line says so: "Checking…", "None", or "Couldn't check" with a Retry, never a blank, and the
  * header shows from the first frame so the routes under it don't jump when the rows land.
  */
@@ -136,7 +136,15 @@ private fun DirectRow(shown: PlaceDirectViewModel.ShownRow, onOpen: ((PlaceDirec
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Box(Modifier.heightIn(min = 40.dp), contentAlignment = Alignment.CenterStart) {
-                Text(row.fromName, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // Named by the stop it gets the rider off at (maintainer, 2026-10-15); where its trains
+                // don't agree on one, by where it leaves from, said as such.
+                Text(
+                    row.offStop?.name ?: stringResource(R.string.trip_from, row.fromName),
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.testTag("placeDirectStop-${row.lineId}"),
+                )
             }
             // A line not running a good service says so under its stop, in TfL's words ("Severe
             // Delays"), so its trains never read as running normally.

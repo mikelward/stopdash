@@ -31,7 +31,28 @@ object PlaceDirect {
     ) {
         /** Every stop near the place any of these trains reaches. */
         val reaches: List<DirectTrips.End> get() = trainReaches.flatten().distinct()
+
+        /**
+         * The stop near the place its trains get the rider off at, which the row is named by (maintainer,
+         * 2026-10-15): the nearest the place that every one of them reaches on its one known way, a
+         * station's sibling ids counting as one. Null where one's way can't be told (a fork, or none
+         * known) or they get off apart: the row then says where it leaves from, never a stop a train may
+         * not reach. Worked out as the row is made, on the worker.
+         */
+        val offStop: DirectTrips.End? = offStopOf(departures.size, trainReaches, trainForks)
     }
+
+    private fun offStopOf(trains: Int, trainReaches: List<List<DirectTrips.End>>, trainForks: List<Boolean>): DirectTrips.End? {
+        if (trains == 0 || trainReaches.size != trains) return null
+        if (trainReaches.indices.any { trainForks.getOrElse(it) { false } || trainReaches[it].isEmpty() }) return null
+        return trainReaches.first().firstOrNull { end -> trainReaches.all { reaches -> reaches.any { oneStation(it, end) } } }
+    }
+
+    // One station's stops: the same id, or siblings under one interchange that name one station
+    // ([sameStation]: "St Pancras International" and its "LL"; a branch's route can list the station by
+    // another id), never two stations an interchange joins.
+    private fun oneStation(a: DirectTrips.End, b: DirectTrips.End): Boolean =
+        a.id == b.id || (a.hubId.isNotBlank() && a.hubId == b.hubId && sameStation(a.name, b.name))
 
     /**
      * The [rows], nearest stop first, and why fewer may show than reach the place: a line's route
