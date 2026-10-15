@@ -203,6 +203,19 @@ class KtorTflClient(
     ): List<TripRoute> =
         finished(listOf(plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = LEAST_INTERCHANGE, via = via)), from, to)
 
+    // One request, for the quickest routes via a bus stop towards the destination ([TowardStops]): its
+    // failure is the caller's to handle, the Planner's 404 for no route through the stop among them.
+    override suspend fun quickestVia(
+        from: TripOrigin,
+        to: TripDestination,
+        via: String,
+        speed: WalkingSpeed,
+        maxWalk: MaxWalk,
+        stepFree: StepFree,
+        modes: TripModes,
+    ): List<TripRoute> =
+        finished(listOf(plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = null, via = via)), from, to)
+
     // One request, for the quickest routes with [leaveOut]'s modes left out ([AroundDelays]): its failure is
     // the caller's to handle.
     override suspend fun quickestWithout(
@@ -268,7 +281,7 @@ class KtorTflClient(
         stepFree: StepFree,
         modes: TripModes,
         preference: String?,
-        // A stop every route passes ([FinalStop]); none for the plan's own two requests.
+        // A stop every route passes ([FinalStop], [TowardStops]); none for the plan's own requests.
         via: String? = null,
         // Planner modes left out of [modes]' own ([AroundDelays]); none for every other request.
         leaveOut: Set<String> = emptySet(),
@@ -372,7 +385,8 @@ class KtorTflClient(
     // around delays are named, coarse as a line id is.
     private fun planSource(preference: String?, via: String?, leaveOut: Set<String> = emptySet()): String = when {
         leaveOut.isNotEmpty() -> "journey planner (without ${leaveOut.sorted().joinToString("+")})"
-        via != null -> "journey planner (fewest changes via a stop)"
+        via != null && preference == LEAST_INTERCHANGE -> "journey planner (fewest changes via a stop)"
+        via != null -> "journey planner (quickest via a stop)"
         preference == LEAST_INTERCHANGE -> "journey planner (fewest changes)"
         preference == LEAST_WALKING -> "journey planner (least walking)"
         else -> "journey planner"

@@ -517,6 +517,24 @@ class TripTimingTest {
     }
 
     @Test
+    fun `a route found via a stop towards the destination is kept whatever it saves`() {
+        fun estimate(route: TripRoute, arrival: Long) = TripTiming.Estimate(route, TripTiming.Basis.LIVE, at(arrival), emptyList(), false, now)
+        val walkThere = estimate(TripRoute(listOf(walk("X", "A", 0, 12), leg("blue", "A", "C", departs = 14, arrives = 30))), 30)
+        // Four minutes less on foot, a change more and no sooner: left off as the Planner offered it...
+        val bus = TripRoute(listOf(walk("X", "Q", 0, 8), leg("43", "Q", "B", departs = 9, arrives = 14, mode = "bus"), leg("blue", "B", "C", departs = 16, arrives = 30)))
+        assertEquals(listOf(walkThere), TripTiming.withoutSlowerChanges(listOf(walkThere, estimate(bus, 30))))
+        // ...but listed in its place when asking via its stop found it.
+        val found = estimate(bus.copy(towardStop = true), 30)
+        assertEquals(listOf(walkThere, found), TripTiming.withoutSlowerChanges(listOf(walkThere, found)))
+        // It still beats as any route does: a slower route with more changes it arrives before is left off.
+        val slower = estimate(
+            TripRoute(listOf(walk("X", "Q", 0, 8), leg("43", "Q", "B", departs = 9, arrives = 14, mode = "bus"), leg("7", "B", "D", departs = 15, arrives = 20, mode = "bus"), leg("blue", "D", "C", departs = 22, arrives = 35))),
+            35,
+        )
+        assertEquals(listOf(walkThere, found), TripTiming.withoutSlowerChanges(listOf(walkThere, found, slower)))
+    }
+
+    @Test
     fun `a route with more changes is kept only when it's faster`() {
         val direct = TripRoute(listOf(leg("blue", "A", "C", departs = 5, arrives = 30)))
         fun estimate(route: TripRoute, arrival: Long?, basis: TripTiming.Basis = TripTiming.Basis.LIVE, blocked: Boolean = false, unchecked: Boolean = false) =

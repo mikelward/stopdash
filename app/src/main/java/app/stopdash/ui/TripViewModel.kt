@@ -23,8 +23,11 @@ import app.stopdash.domain.LineStatusCache
 import app.stopdash.domain.StopClosureCache
 import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.TflClient
+import app.stopdash.domain.BundledStops
 import app.stopdash.domain.FinalStop
 import app.stopdash.domain.TflException
+import app.stopdash.domain.TowardStops
+import app.stopdash.domain.RefusedStops
 import app.stopdash.domain.NearestStops
 import app.stopdash.domain.PlacedStand
 import app.stopdash.domain.TripClosures
@@ -161,6 +164,13 @@ class TripViewModel(
     // The bundled station index, for which of the routes' walks are changes on foot ([State.changesOnFoot]):
     // read on [io], as it may read the asset.
     private val stations: () -> StationIndex = { StationIndex.EMPTY },
+    // The bundled stops ([BundledStops]), for the bus stops towards the destination a plan from here asks the
+    // Planner via ([TowardStops]): searched on the device, so the rider's position goes nowhere new. None by
+    // default (a test), so a plan asks nothing more. Read on [io], as it may read the asset.
+    private val bundledStops: suspend () -> BundledStops = { BundledStops.EMPTY },
+    // The stops the Planner found no route through ([RefusedStops]), so a later plan doesn't ask one again. A
+    // trip's own by default (a test); the app passes [RefusedStops.SHARED]. Memory only.
+    private val refused: RefusedStops = RefusedStops(),
     // Usage events, categories and counts only (UsageEvent): how each plan went, never its ends.
     private val usage: (UsageEvent) -> Unit = {},
 ) : ViewModel() {
@@ -1177,6 +1187,22 @@ class TripViewModel(
                         showGathered()
                     }
                 }
+                // Via the bus stops towards where the trip goes ([TowardStops]), alongside the plan's own
+                // requests: the stops are picked on the device, so they wait on no answer. To the first
+                // destination only, so a station complex's several stops don't multiply the requests.
+                destinations.firstOrNull()?.let { destination ->
+                    launch {
+                        val stood = planToward(from, destination, speed, limit, access, modes) { found ->
+                            // Merged whole, not appended: a route already planned takes the found one's mark.
+                            val merged = mergedRoutes(gathered.toList(), found)
+                            gathered.clear()
+                            gathered += merged
+                            answers += destination to found
+                            showGathered()
+                        }
+                        if (!stood) viaFailed = true
+                    }
+                }
             }
             // The route arriving soonest of every stop's answer on a line with severe delays: the Planner is
             // asked once more, for that stop alone, without that line's mode ([AroundDelays]). Once a plan,
@@ -1334,6 +1360,107 @@ class TripViewModel(
             }
         }
         if (!published) _state.update { it.copy(planning = false) }
+    }
+
+    /**
+     * The plan's requests via bus stops near the rider towards [destination] ([TowardStops]; maintainer,
+     * 2026-10-15), each in parallel: the routes riding a bus from there, the soonest of each marked to be
+     * listed whatever ([TripRoute.towardStop]), handed to [add] as each lands. Asked from here only, where
+     * there's a walk to choose; a stop the Planner finds no route through gives way, once, to the next for its
+     * lines. False when a request failed: the plan stands without it. No stop, end or position is logged, only
+     * how many were asked and what came back.
+     */
+    private suspend fun planToward(
+        from: TripOrigin,
+        destination: TripDestination,
+        speed: WalkingSpeed,
+        limit: MaxWalk,
+        access: StepFree,
+        modes: TripModes,
+        add: suspend (List<TripRoute>) -> Unit,
+    ): Boolean {
+        val here = (from as? TripOrigin.Here)?.coordinate ?: return true
+        // A bus line hidden or avoided picks no stop: its routes wouldn't show.
+        val hidden = hiddenModes
+        val stops = try {
+            // Buses turned off for the trip: the Planner would offer none from any stop. Worked out with the
+            // read, off the main thread (AGENTS.md *Main thread*; Codex, #870).
+            withContext(io) { if (BUS_MODE in modes.plannerModes.split(',')) bundledStops() else null }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Static public data: naming the failure carries nothing about the rider. The plan stands as asked.
+            warn("trip plan via stops towards the destination: bundled stops unavailable: ${e::class.simpleName}")
+            return true
+        } ?: return true
+        if (stops.size == 0) return true
+        val to = when (destination) {
+            is TripDestination.Place -> destination.coordinate
+            // A station from the station index (a hub's place worked out over its stations, so off the main thread),
+            // else a bus stop from the bundled stops.
+            is TripDestination.Stop -> withContext(io) { stations().placeOf(destination.id) } ?: withContext(compute) { stops.positionOf(destination.id) }
+        } ?: return true
+        val asks = withContext(compute) {
+            val near = stops.nearby(here.latitude, here.longitude, TowardStops.REACH_METERS, listOf(BUS_STOP_TYPE))
+            TowardStops.of(here, to, HiddenModes.stops(near, hidden))
+        }
+        if (asks.isEmpty()) return true
+        warn("trip plan via stops towards the destination: ${asks.size} asked")
+        val choices = RefusedStops.Asked(speed, limit, access, modes)
+        var stood = true
+        coroutineScope {
+            for (ask in asks) {
+                launch {
+                    suspend fun via(stop: String) = withContext(io) { planner.quickestVia(from, destination, stop, speed, limit, access, modes) }
+                    // A stop refused before, for this destination under these choices: its next straight away,
+                    // unless refused too.
+                    val next = ask.fallback?.takeIf { !refused.has(it, destination, choices) }
+                    val first = if (refused.has(ask.via, destination, choices)) {
+                        next ?: run {
+                            warn("trip plan via a stop towards the destination: no route through it before, nor the next stop")
+                            return@launch
+                        }
+                    } else {
+                        ask.via
+                    }
+                    // The stop the answer came via, the next one after a refusal.
+                    var viaStop = first
+                    val answer = try {
+                        try {
+                            via(first)
+                        } catch (e: TflException.NotFound) {
+                            // The Planner found no route through it, though it may plan from it readily: remembered, and the
+                            // next stop for its lines asked, once.
+                            refused.add(first, destination, choices)
+                            val then = next?.takeIf { it != first } ?: run {
+                                warn("trip plan via a stop towards the destination: no route through it")
+                                return@launch
+                            }
+                            warn("trip plan via a stop towards the destination: no route through it; asking the next stop")
+                            viaStop = then
+                            via(then)
+                        }
+                    } catch (e: TflException.NotFound) {
+                        next?.let { refused.add(it, destination, choices) }
+                        warn("trip plan via a stop towards the destination: no route through the next stop either")
+                        return@launch
+                    } catch (e: TflException) {
+                        warn("trip plan via a stop towards the destination failed: ${e::class.simpleName}")
+                        stood = false
+                        return@launch
+                    }
+                    val found = withContext(compute) {
+                        val rides = TowardStops.ridesFrom(answer, viaStop)
+                        // The soonest by the Planner's times, its every departure: the card it gets is the one asked for.
+                        val soonest = rides.minByOrNull { it.legs.last().arrival }?.let(::routeKey)
+                        rides.map { if (routeKey(it) == soonest) it.copy(towardStop = true) else it }
+                    }
+                    warn("trip plan via a stop towards the destination: ${found.size} of ${answer.size} routes ride a bus from there")
+                    if (found.isNotEmpty()) add(found)
+                }
+            }
+        }
+        return stood
     }
 
     /**
@@ -2059,7 +2186,9 @@ class TripViewModel(
          * to the station that spares the walk there arrives later, and would otherwise be cut before
          * its *Least walking* card could show (maintainer, 2026-10-03). The header goes on whichever
          * cards walk least on the live ranking ([routeLabels]), with no threshold, so it's kept
-         * whatever it saves. One route more at most, so the cap still bounds the requests.
+         * whatever it saves. One route more at most for it, and one for each bus stop towards the
+         * destination the plan asked via ([TripRoute.towardStop], at most [TowardStops.MAX_ASKS]), which
+         * is listed whatever, so the cap still bounds the requests.
          */
         internal fun bestOf(
             routes: List<TripRoute>,
@@ -2082,7 +2211,8 @@ class TripViewModel(
             }
             // Of routes walking as little, the soonest: so a plan with no walks adds none past the cap.
             val leastWalking = soonest.minByOrNull { it.walking }
-            val keys = soonest.map(::routeKey).distinct().take(MAX_ROUTES).toSet() + keep + listOfNotNull(leastWalking?.let(::routeKey))
+            val toward = candidates.filter { it.towardStop }.map(::routeKey)
+            val keys = soonest.map(::routeKey).distinct().take(MAX_ROUTES).toSet() + keep + listOfNotNull(leastWalking?.let(::routeKey)) + toward
             return routes.filter { routeKey(it) in keys }
         }
 
@@ -2092,6 +2222,12 @@ class TripViewModel(
 
         /** How many distinct routes a trip times at most. */
         const val MAX_ROUTES = 6
+
+        // The NaPTAN stop type of a bus stop, as the bundled stops are searched by ([planToward]).
+        private const val BUS_STOP_TYPE = "NaptanPublicBusCoachTram"
+
+        // The Planner's mode for a bus, in [TripModes.plannerModes].
+        private const val BUS_MODE = "bus"
 
         /** How long a plan is reused before the Planner is asked again. */
         val PLAN_REUSE: Duration = Duration.ofMinutes(15)

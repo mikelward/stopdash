@@ -49,6 +49,7 @@ import app.stopdash.domain.PlaceStopsFinder
 import app.stopdash.domain.PlanTargets
 import app.stopdash.domain.RailAwareTflClient
 import app.stopdash.domain.RecentPositions
+import app.stopdash.domain.RefusedStops
 import app.stopdash.domain.ReplanOrigin
 import app.stopdash.domain.RouteRide
 import app.stopdash.domain.RouteStopsRepository
@@ -5054,6 +5055,9 @@ class MainActivity : ComponentActivity() {
                         destinationIds = destinationIds,
                         // Which walks are changes on foot, as a trip started on a route decides them.
                         stations = { StationIndexStore.load(appContext) },
+                        // The bus stops towards the destination a plan from here asks via, found on the device.
+                        bundledStops = { BundledStopsStore.load(appContext) },
+                        refused = RefusedStops.SHARED,
                         origin = { latestHere?.let(TripOrigin::Here) ?: TripOrigin.Stop(fromId) },
                         walkingSpeed = WalkingSpeedSetting.changes.value,
                         maxWalk = MaxWalkSetting.changes.value,

@@ -12,6 +12,7 @@ import app.stopdash.domain.RouteMiss
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.TripLeg
+import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripTiming
 import java.time.Duration
 import java.time.Instant
@@ -142,7 +143,11 @@ internal fun tripFrame(
         .mapTo(HashSet(), ::routeKey)
     // Nor one kept only as the one open, its train through a change not predicted: closed, it's off the
     // list as it would be (Codex, #529).
-    val cards = estimates?.let { all -> tripCards(TripTiming.withoutSlowerChanges(all.filter { routeKey(it.route) in listed && it in vouched })) }
+    // A route found via a stop towards the destination is listed whatever, by its key ([towardKeys]).
+    val toward = towardKeys(state.routes.orEmpty())
+    val cards = estimates?.let { all ->
+        tripCards(TripTiming.withoutSlowerChanges(all.filter { routeKey(it.route) in listed && it in vouched }) { routeKey(it.route) in toward })
+    }
     val open = estimates?.firstOrNull { routeKey(it.route) == openKey }
     val hubOf: (String) -> String? = { routeStops?.hubOf(it) }
     // The list even with a route open: closed again, the list shows at once from the frame in hand.
@@ -150,6 +155,15 @@ internal fun tripFrame(
     val openView = open?.let { openView(it, state, now, sequences, rideLines, dismissed, loading, originUnconfirmed, hubOf, topology) }
     return TripFrame(tripKey, state, now, access, sequences, rideLines, estimates, cards, open, openKey, shownStops, list, openView)
 }
+
+/**
+ * The keys of the routes the plan found via a bus stop towards the destination ([TripRoute.towardStop]),
+ * listed whatever another route beats them by ([TripTiming.withoutSlowerChanges]). By key, not by the
+ * mark alone: one timetable variant stands for all a key's in [tripEstimates], and the one standing in
+ * can be a copy the Planner's own requests offered at another departure, unmarked (Codex, #870).
+ */
+@WorkerThread
+internal fun towardKeys(routes: List<TripRoute>): Set<String> = routes.filter { it.towardStop }.mapTo(HashSet(), ::routeKey)
 
 private fun listView(
     cards: List<List<TripTiming.Estimate>>,

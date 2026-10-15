@@ -1596,7 +1596,8 @@ beats or ties, without walking that much more, while StopDash stands behind that
 not running; then live, estimated, withheld — stricter than the list's order, which ranks an
 unchecked route a live train times among the checked, so a route checked open is never left off for
 one that couldn't be checked), is left off the list, and of two arriving together the one with fewer changes comes first.
-An arrival that is withheld is never compared, and a route already open stays open.
+An arrival that is withheld is never compared, and a route already open stays open, as does the bus
+found asking via a stop towards the destination (*Buses towards the destination*, below).
 Tapping the card opens its best route. **Every route looks alike** — no
 route is expanded — as a card whose top row is its **duration · arrival** ("22 min · 08:24"); the
 duration is from now to that arrival, so it takes in the same walks, waits and legs. Where waiting
@@ -2132,6 +2133,38 @@ predictions stand for little, so a route clear of the delays arriving about as s
 one much sooner still leads. Minor delays change nothing. Failing, it leaves the plan as it was and says
 so in the debug log, which names only the modes left out.
 
+**Buses towards the destination** (maintainer, 2026-10-15). The Planner ranks on timetable times and
+offers three routes a request, so a bus a few minutes behind another on paper can make none of its
+answers: a bus to a station further down the line was passed over for another bus to the station at
+the end of a long walk, which live was 25 minutes away, so the trip offered that bus and the long walk
+and never the one that ran (maintainer's report, 2026-10-15). So a trip **from a position** (the rider's,
+or a *From…* place's) also asks the Planner for the quickest routes **via** the bus stops near them that lie **towards the
+destination**: each bus line's nearest stop within **800 m** (about a ten-minute walk) and within 90°
+either side of the way there, so one stop asks for every line it is the nearest stop of, and a line's
+farther stops, a stop behind the rider, a night bus and a train add none; a stop within 50 m counts
+whichever way it lies, as the fix is that uncertain. At most **three** stops, nearest first, so a
+street with many lines can't fan the plan out, and none when the destination is itself within 800 m.
+The stops are found on the device from the bundled stops, so they wait on no answer: the requests go
+out alongside the plan's own three, in parallel. The plan's own three still decide whether the plan
+stands: with all of them failed it has failed, and a re-plan keeps the last plan with its error and
+Retry rather than a list of only these routes. Asking via the station instead finds nothing new, as
+a train passing through it counts. The Planner builds the whole route, the walk to the stop timed at
+the rider's pace, so StopDash joins nothing (*One ride to the fastest route's last stop*). Of its
+answer, the routes whose first ride is a bus boarding at the stop or calling at it on the way join the
+plan (the Planner can meet the via by boarding a stop earlier and passing it; one walking through the
+stop, to a station or to a bus elsewhere, is only a longer walk), and the soonest of them is **always listed**, in its place by arrival, and timed
+past the cap on routes timed: the walking bar a route with more changes must clear (above) doesn't
+apply to it, so the bus the Planner's own requests passed over always has its card (maintainer,
+2026-10-15). The Planner can find no route through a stop it plans from readily (it answers 404, "No
+journey found"); then the next stop on the destination's side serving one of its lines is asked
+instead, once, so that request lands a round trip later. The refusal is remembered for that
+destination, under the same walk, step-free and mode choices, while the app runs (in memory only, never
+saved, as plans are), so a later plan asks the next stop straight away and never that one again; a
+different choice may route through the stop, so it asks again. Failing, or with no route through either
+stop, it leaves the plan as it was and says so in the debug log, which names no stop, only how many
+were asked and what came back. A trip from a station, which has no walk to choose, never asks, nor
+one with buses turned off; a bus line hidden or avoided picks no stop of its own.
+
 **One stop per end, every station of a complex.** The Planner takes a single stop or station id for
 each end, not an interchange's or a folded search result's several stands, and it leans toward the
 end's own mode: aimed at King's Cross St. Pancras's Underground station it offered a change onto the
@@ -2160,7 +2193,9 @@ lookup has just sent TfL, though when a recent lookup of the same spot was reuse
 the trip is what sends it; the destination goes as a stop id, or — routing to a saved favorite place (D9) — as
 its stored **coordinate**. To any place at a coordinate (a favorite, or a place or postcode picked in
 *To…*), the id of the stop the fastest route there gets off at goes too, as a stop to route via
-(*One ride to the fastest route's last stop*), which says no more than the coordinate already does. All of it is the **Location** type already declared, sent only to TfL, no
+(*One ride to the fastest route's last stop*), which says no more than the coordinate already does.
+A trip from a position also sends the id of a bus stop near it as a stop to route via (*Buses
+towards the destination*), picked on the device, which says no more than the position already does. All of it is the **Location** type already declared, sent only to TfL, no
 new Data Safety type. An earlier design sent the nearest stop's id in place of the position; that
 narrowing cost the routes the rider most wanted (the walk to a station rather than a bus to it) and
 protected nothing TfL didn't already have, so it is not to be reinstated as a privacy measure. It is free and keyless
@@ -2170,7 +2205,9 @@ every 15 minutes while the screen stays visible, on a re-locate to a new nearest
 per tap of Retry or pull on the routes: about four plans an hour for a trip left open, plus one per re-locate, Retry or pull the
 rider makes, each **three** Planner calls (quickest, fewest changes and least walking, above), so about
 twelve calls an hour; a trip to a place whose fastest route changes adds a **fourth** each time (above),
-about sixteen. To a station complex each plan is those three per station plus three for its bus stops
+about sixteen; a trip from a position adds one per bus stop towards the destination, at most **three**
+a plan, and one more for each stop with no route through it (*Buses towards the destination*): about
+twenty-eight an hour, forty at the very most, all within the keyless ~50 a minute. To a station complex each plan is those three per station plus three for its bus stops
 (about six targets at King's Cross, two or three at a typical interchange): about 72 calls an hour at
 King's Cross, within the keyless ~50 a minute. Ranking needs every listed route's live trains, so each refresh fetches arrivals
 at every stop where any listed route boards a ride (its first stop and each change), once per

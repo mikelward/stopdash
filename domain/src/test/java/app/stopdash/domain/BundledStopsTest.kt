@@ -49,6 +49,27 @@ class BundledStopsTest {
     }
 
     @Test
+    fun `places a stop by its id and a stop pair by the middle of its stops`() {
+        // 490000001B has no area of its own: its cluster is its name, which places nothing.
+        val pair = read()
+        assertEquals(Coordinates(51.501, -0.12), pair.positionOf("490000001A"))
+        assertEquals(Coordinates(51.53, -0.12), pair.positionOf("490G000002"))
+        assertEquals(Coordinates(51.5005, -0.12), pair.positionOf("940GZZLUEXA"))
+        assertEquals(null, pair.positionOf("Example Road"))
+        assertEquals(null, pair.positionOf("490000009X"))
+    }
+
+    @Test
+    fun `a stop pair is placed between its poles`() {
+        val poles = file + "\nS\t490000002Y\tB\tFar Lane\t51.532000\t-0.122000\t490G000002\t\t\t\t\t1"
+        val at = read(poles).positionOf("490G000002")!!
+        assertEquals(51.531, at.latitude, 1e-9)
+        assertEquals(-0.121, at.longitude, 1e-9)
+        // Each pole still by its own position.
+        assertEquals(Coordinates(51.532, -0.122), read(poles).positionOf("490000002Y"))
+    }
+
+    @Test
     fun `the bus stops are the served ones placed inside the bounds`() {
         // A zeroed position is the file's own mistake: never listed, so it can't be saved as a favorite.
         val zeroed = "S\t490000003Z\tB\tZeta Road\t0.000000\t0.000000\t\t\t\t\t\t1"
