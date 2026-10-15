@@ -289,8 +289,11 @@ class KtorTflClient(
             }.also { routes ->
                 if (outcome == null) outcome = "${routes.size} routes"
                 // Each route by its lines alone ([TripRoute.linesLabel]): a bug report then says what the
-                // Planner offered, so a route it didn't is told from one StopDash left out.
-                offered = routes.takeIf { it.isNotEmpty() }?.joinToString(", ", prefix = ": ") { it.linesLabel }.orEmpty()
+                // Planner offered, so a route it didn't is told from one StopDash left out. One it gave no
+                // fare is marked, so a card without a price is told apart from one that lost it on the way.
+                offered = routes.takeIf { it.isNotEmpty() }
+                    ?.joinToString(", ", prefix = ": ") { if (it.fare == null) "${it.linesLabel} (unpriced)" else it.linesLabel }
+                    .orEmpty()
             }
         } catch (e: CancellationException) {
             outcome = "canceled"

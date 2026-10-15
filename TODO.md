@@ -2081,6 +2081,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               the trip publishes its plan; held back as more coupling than these rarer cases are worth.
         - [ ] Needs a device check: the arrival and the fare at a large font, where the fare drops below
               the arrival; and the walk row on a card whose first stop is under a minute away.
+        - [ ] **A one-bus card came up unpriced** (report, 2026-10-15): the only card from the fewest
+              changes request, while the other requests' cards were priced, and TfL priced the same route
+              every time it was asked again. Every app path keeps a Planner route's fare, so it was likely
+              TfL's answer, but the log couldn't say. It now marks each route the Planner sent unpriced;
+              the next such report tells which side dropped it.
       - [x] **Shared-leg pill**: a leg several routes serve alike (buses 43 and 134 share the stops
             to Highgate station) as one diagonally cut pill carrying both routes, and a live row per
             line in the one card (maintainer, 2026-09-26).
