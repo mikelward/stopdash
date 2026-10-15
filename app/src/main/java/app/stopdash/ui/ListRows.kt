@@ -248,7 +248,7 @@ internal fun shownRowsOf(
     topology: RouteTopology = RouteTopology.EMPTY,
 ): ShownRows {
     val rows = DepartureRows.pinStarred(
-        DepartureRows.withoutShownAbove(nearbyRows, journeyRowsShown),
+        DepartureRows.withoutShownAbove(nearbyRows, journeyRowsShown, stopDistanceMeters, topology),
         starred,
         warningsLead = stopDistanceMeters.isEmpty(),
     )

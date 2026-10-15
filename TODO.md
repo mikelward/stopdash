@@ -2686,6 +2686,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
     - [ ] **The widget follows Group favorite rides** (maintainer, 2026-10-15). The widget
           always groups its rides' rows by stop, whatever the setting. Grouped by ride, it should
           head each ride and keep the app's ride order, as the list does.
+    - [x] **A route shows once on the main list** (maintainer, 2026-10-15). A farther ride left out
+          a bus a nearer ride already showed only when it was the same stop; a ride boarding from
+          the stops around its start repeated routes the ride from home showed. Now a ride leaves
+          out a route a nearer ride, or its own nearer stop, draws ("Shown above" when that's all
+          of it), and the near-me list leaves out a route a ride shows from a stop no farther away.
     - [ ] **Make the favorite radius a setting** (maintainer, 2026-10-15). The mile that holds a
           ride back behind "Faraway favorites" (and off the widget) is fixed. Make it a choice in
           Settings, such as 500 m, 1 mile (the default), 2 miles and never hide, and use the same

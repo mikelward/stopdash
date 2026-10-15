@@ -1344,11 +1344,28 @@ pin starts from it. With live refresh on, each saved origin that isn't nearby
 adds one arrivals request per refresh (free; well within TfL's keyless budget for a few journeys),
 the same kind of request the app already makes for it — no new data leaves the device.
 
-**Not shown twice.** A near-me row that a journey card above already shows in full — the same stop
-and line, every one of its departures on the card — is left out of the list below (maintainer,
-2026-09-24); a stop left with nothing loses its heading. A row the card shows only in part (some
-trains don't reach the far end) stays, as do status-only rows, closures, and a stop's own platform
-view.
+**Not shown twice.** A route shows once on the main list, from the nearest stop it's shown at
+(maintainer, 2026-10-15; a route here is a line to a destination, by branch where it has one,
+as the row shows them: a train with no destination goes by the direction shown in its place):
+- **A ride leaves out what a nearer one shows.** Rides go nearest first, and each ride's boarding
+  stops nearest first. A row whose every route a ride above, or a nearer stop of the same ride,
+  already draws from a stop no farther away (within the 50 m that counts as equally near) is left
+  out, and the next row moves up into its place. So a ride turned round to board at its far end
+  never hides a nearer stop's bus. Its trains to change from,
+  when no direct one is due, count the same way. Rows behind "+N more" are left as they are,
+  hiding nothing and left out of nothing, so "+N more" counts what the ride's own view shows. A
+  ride left with nothing to draw says **Shown above** under its heading. Its own view
+  still shows every train, and the widget still pins them all.
+- **The near-me list leaves out what a ride above shows** (maintainer, 2026-09-24, widened
+  2026-10-15). That is a row the cards show in full from the same stop (every one of its
+  departures, one card's or several between them), or every route of the row shown from another
+  stop **no farther away**, within the
+  50 m that counts as equally near. A ride boarding farther off never hides the nearer stop's bus,
+  and a stop of unknown distance hides only its own rows. A stop left with nothing loses its
+  heading.
+
+A row with a route the card doesn't show stays: some trains don't reach the far end, or go
+elsewhere. So do status-only rows, closures, and a stop's own platform view.
 
 **Alerts for the journey shown.** A journey card already carries its lines' status (a delay marks
 the train, a suspension shows even with none predicted) and its boarding stops' closures; it also

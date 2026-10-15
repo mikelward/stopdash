@@ -967,6 +967,10 @@
     <string name="journey_checking_bus">Checking buses…</string>
     <string name="journey_none_bus">No buses to %1$s soon</string>
     <string name="journey_not_checked_bus">Couldn\'t check buses</string>
+    <!-- TODO: translate -->
+    <!-- A favorite ride card whose every train or bus a nearer ride above already shows: in their
+         place, under its heading, so the route shows once (SPEC Journeys, Not shown twice). -->
+    <string name="journey_shown_above" tools:ignore="MissingTranslation">Shown above</string>
     <string name="journey_route_failed">Couldn\'t load the route</string>
     <!-- Beneath a journey card's trains when some route or train couldn't be checked. -->
     <!-- A journey's far end whose closure check failed: it may be closed. %1$s is the stop's name. -->
