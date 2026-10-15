@@ -110,13 +110,6 @@ object Journeys {
     /** How far a way-back stop may be from the end it stands in for, when nothing else matches. */
     const val WAY_BACK_RADIUS_METERS = 400.0
 
-    /**
-     * How far apart two stops whose names start the same may be and still count as one place — a
-     * station's bus stops that TfL files under different stop areas and names ("Hill Station",
-     * "Hill Station / High Road"), about 100 m apart.
-     */
-    const val SAME_PLACE_RADIUS_METERS = 150.0
-
     /** Flip [journey] in or out of [starred], matched by [FavoriteJourney.key]. */
     fun toggle(starred: List<FavoriteJourney>, journey: FavoriteJourney): List<FavoriteJourney> =
         if (starred.any { it.key == journey.key }) starred.filterNot { it.key == journey.key } else starred + journey
@@ -664,10 +657,12 @@ object Journeys {
     /**
      * The stops on [sequence]'s routes after [originId] that stand for [end], matched the way
      * [segment] matches (id, stop area, name, nearest within [WAY_BACK_RADIUS_METERS] up to
-     * [maxTier]), the first way that finds any — plus, on every route, any stop at the same place
-     * ([samePlace]): a route variant can reach the destination's other stop even where another variant
-     * reaches its own. The far end only, so another line reaching the destination's other stops
-     * counts, while the origin stays the exact stop the departures are fetched for.
+     * [maxTier]), the first way that finds any — plus, on every route, any stop named alike close by
+     * ([StopPlace.sameNamed]): a route variant can reach the destination's other stop even where another
+     * variant reaches its own. By name only: a route's [LineSequence.stopLines] count an interchange's
+     * lines at each of its stops, so they can't say which of two stops in one is the station. The far end
+     * only, so another line reaching the destination's other stops counts, while the origin stays the
+     * exact stop the departures are fetched for.
      */
     private fun destinationsOn(end: JourneyEnd, originId: String, sequence: LineSequence, maxTier: Int): Set<String> {
         val matched = (0..maxTier).asSequence()
@@ -675,10 +670,12 @@ object Journeys {
             .firstOrNull { it.isNotEmpty() }
             .orEmpty()
         val position = end.latitude?.let { la -> end.longitude?.let { la to it } } ?: sequence.stopPositions[end.stopId]
+        val place = StopPlace.Stop(end.name, position?.first, position?.second)
         return matched + after(originId, sequence) { route, i ->
             (i + 1 until route.stopIds.size).filter { j ->
                 val id = route.stopIds[j]
-                samePlace(end.name, position, sequence.stopNames[id], sequence.stopPositions[id])
+                val at = sequence.stopPositions[id]
+                StopPlace.sameNamed(place, StopPlace.Stop(sequence.stopNames[id].orEmpty(), at?.first, at?.second))
             }
         }
     }
@@ -689,32 +686,6 @@ object Journeys {
             val i = route.stopIds.indexOf(originId)
             if (i < 0) emptyList() else pick(route, i).map { route.stopIds[it] }
         }
-
-    /**
-     * Whether two stops are one place though TfL groups them apart: their names start the same (the
-     * part before any " / ", cleaned — "Hill Station" and "Hill Station / High Road") and
-     * they stand within [SAME_PLACE_RADIUS_METERS]. Both are needed: a name alone joins same-named
-     * stops across town, a distance alone a road that merely passes by.
-     */
-    fun samePlace(
-        nameA: String?,
-        positionA: Pair<Double, Double>?,
-        nameB: String?,
-        positionB: Pair<Double, Double>?,
-    ): Boolean {
-        val rootA = nameA?.let(::placeRoot)?.takeIf { it.isNotEmpty() } ?: return false
-        if (rootA != nameB?.let(::placeRoot)) return false
-        // One name, but two stations its line qualifiers tell apart ([conflictingQualifiers]).
-        if (conflictingQualifiers(nameA.substringBefore("/"), nameB.substringBefore("/"))) return false
-        val (latA, lonA) = positionA ?: return false
-        val (latB, lonB) = positionB ?: return false
-        return NearestStops.distanceMeters(latA, lonA, latB, lonB) <= SAME_PLACE_RADIUS_METERS
-    }
-
-    private val WHITESPACE = Regex("\\s+")
-
-    private fun placeRoot(name: String): String =
-        matchStopName(name.substringBefore("/")).lowercase().split(WHITESPACE).filter { it.isNotEmpty() }.joinToString(" ")
 }
 
 /**

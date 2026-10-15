@@ -435,35 +435,18 @@ class StationIndex(
         private const val METRO_STATION = "940G"
 
         /**
-         * How near two same-named results must be to read as one place: a station and the bus stop
-         * areas around it ("Archway", once per stand) are a street or two apart, well inside this;
-         * two "Church Street"s in different boroughs are miles apart and both stay.
-         */
-        const val FOLD_RADIUS_METERS = 250.0
-
-        /**
-         * [ranked] with each result dropped when a better-ranked one of the same name ([matchStopName]) lies
-         * within [FOLD_RADIUS_METERS] of it — TfL lists a place's bus stop areas one by one, so
-         * "Archway" came back once per stand. The kept result opens the whole place: a From… page
-         * lists the stops around it.
-         * A result without a position is never folded, since nothing says it's the same place. The
-         * kept result takes on the folded ones' modes, so a station with buses at its door reads
-         * "Tube · Bus" rather than "Tube".
+         * [ranked] with each result dropped into a better-ranked one that is the same place by name
+         * ([StopPlace.sameNamed]: TfL lists a place's bus stop areas one by one, so "Archway" came back
+         * once per stand) — the same name, or a bus stop named for the station up to its cross street. The
+         * kept result opens the whole place: a From… page lists the stops around it.
+         * A result without a position is never folded, since nothing says it's the same place. The kept
+         * result takes on the folded ones' modes, so a station with buses at its door reads "Tube · Bus"
+         * rather than "Tube".
          */
         fun foldNeighbors(ranked: List<StationMatch>): List<StationMatch> {
             val kept = ArrayList<StationMatch>(ranked.size)
             for (match in ranked) {
-                val lat = match.latitude
-                val lon = match.longitude
-                val into = if (lat == null || lon == null) {
-                    -1
-                } else {
-                    kept.indexOfFirst { other ->
-                        val otherLat = other.latitude
-                        val otherLon = other.longitude
-                        otherLat != null && otherLon != null && foldsTogether(match.name, lat, lon, other.name, otherLat, otherLon)
-                    }
-                }
+                val into = kept.indexOfFirst { other -> folds(match, other) }
                 if (into < 0) {
                     kept += match
                 } else {
@@ -474,16 +457,22 @@ class StationIndex(
         }
 
         /**
-         * Whether a result named [nameA] at ([latA], [lonA]) and one named [nameB] at ([latB], [lonB]) read
-         * as one place, as [foldNeighbors] folds them: the same name ([matchStopName]), no line qualifiers
-         * telling them apart ([conflictingQualifiers]), within [FOLD_RADIUS_METERS]. Asked wherever a
-         * folded row is unpicked again (adding a favorite ride from the bus stop a station folded into),
-         * so it takes back exactly what the row stood for.
+         * Whether [match] folds into the better-ranked [into]: the same place by name ([StopPlace.sameNamed]),
+         * and either the same name, or [match] a bus stop named for [into], a station, up to its cross street.
+         * Never a station into a bus stop's row of another name, which would read as the station while
+         * carrying the bus stop's id, and never two bus stops named apart, which a rider picks one by one.
          */
-        fun foldsTogether(nameA: String, latA: Double, lonA: Double, nameB: String, latB: Double, lonB: Double): Boolean =
-            StationMatcher.normalize(matchStopName(nameA)) == StationMatcher.normalize(matchStopName(nameB)) &&
-                !conflictingQualifiers(nameA, nameB) &&
-                NearestStops.distanceMeters(latA, lonA, latB, lonB) <= FOLD_RADIUS_METERS
+        private fun folds(match: StationMatch, into: StationMatch): Boolean {
+            if (match.latitude == null || match.longitude == null) return false
+            val a = StopPlace.Stop(match.name, match.latitude, match.longitude)
+            val b = StopPlace.Stop(into.name, into.latitude, into.longitude)
+            if (!StopPlace.sameNamed(a, b)) return false
+            return wholeName(match.name) == wholeName(into.name) || (busOnly(match) && !busOnly(into))
+        }
+
+        private fun wholeName(name: String): String = StationMatcher.normalize(matchStopName(name)).lowercase()
+
+        private fun busOnly(match: StationMatch): Boolean = match.modes.isNotEmpty() && match.modes.all { it == "bus" }
 
         val EMPTY = StationIndex(emptyList())
     }

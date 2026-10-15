@@ -39,10 +39,17 @@ class AddFavoriteJourneyPairTest {
 
     private fun tube(id: String, vararg lines: String) = StopLocation(id, "Station $id", 51.5, -0.12, lines.map { LineRef(it, it, "tube") }, clusterId = id)
 
-    private class Finder(val stops: Map<String, List<StopLocation>>, val fail: TflException? = null) : StationFinder {
+    private class Finder(
+        val stops: Map<String, List<StopLocation>>,
+        val fail: TflException? = null,
+        val failOn: Set<String> = emptySet(),
+    ) : StationFinder {
+        val asked = mutableListOf<String>()
         override suspend fun searchStations(query: String): List<StationMatch> = emptyList()
         override suspend fun stationStops(id: String): List<StopLocation> {
+            asked += id
             fail?.let { throw it }
+            if (id in failOn) throw TflException.Offline(null)
             return stops[id].orEmpty()
         }
     }
@@ -372,6 +379,90 @@ class AddFavoriteJourneyPairTest {
         assertEquals(
             JourneyAddNote.LookupFailed("Example Road", "Euston", DeparturesUiState.Error.Kind.OFFLINE),
             addFavoriteJourneyPair(busStop, euston, busFinder, Buses(emptyList(), TflException.Offline(null)), journeys, worker = StandardTestDispatcher(testScheduler)),
+        )
+        assertTrue(journeys.state.value!!.isEmpty())
+        assertEquals(emptyList<PendingJourney>(), journeys.pending.value)
+    }
+
+    // King's Cross St Pancras's interchange as TfL lists it (its public ids): a bus stop by a name no name
+    // match joins to the station, the Underground, and the rail station.
+    private val kxTube = tube("940GZZLUKSX", "northern", "victoria").copy(hubId = "HUBKGX")
+    private val kxRail = StopLocation("910GKNGX", "London King's Cross Rail Station", 51.531, -0.123, listOf(LineRef("great-northern", "Great Northern", "national-rail")), hubId = "HUBKGX")
+    private val kxPole = StopLocation("490012553B", "St Pancras Intern'l & King's X Stns", 51.533, -0.12, listOf(LineRef("214", "214", "bus")), hubId = "HUBKGX")
+    private val kxFinder = Finder(
+        mapOf(
+            "490012553B" to listOf(kxPole),
+            "910GKNGX" to listOf(kxRail),
+            "HUBKGX" to listOf(kxTube, kxRail, kxPole),
+            "940GZZLUWLO" to listOf(tube("940GZZLUWLO", "northern", "jubilee")),
+            "940GZZLUCWR" to listOf(tube("940GZZLUCWR", "jubilee")),
+        ),
+    )
+
+    @Test
+    fun `an interchange's bus stop is saved on its station's line, whatever it's called`() = runTest {
+        val journeys = Journeys(emptyList())
+        val picked = StationMatch("490012553B", "St Pancras Intern'l & King's X Stns")
+        assertNull(addFavoriteJourneyPair(picked, waterloo, kxFinder, noBuses, journeys, worker = StandardTestDispatcher(testScheduler)))
+        val saved = journeys.state.value!!.single()
+        assertEquals("northern", saved.lineId)
+        assertEquals("940GZZLUKSX", saved.from.stopId)
+        assertEquals(listOf("490012553B", "940GZZLUWLO", "HUBKGX"), kxFinder.asked)
+    }
+
+    @Test
+    fun `an interchange's bus stop and its station are the same station`() = runTest {
+        val journeys = Journeys(emptyList())
+        val finder = Finder(kxFinder.stops + ("940GZZLUKSX" to listOf(kxTube)))
+        assertEquals(
+            JourneyAddNote.SameStation("St Pancras", "King's Cross St. Pancras"),
+            addFavoriteJourneyPair(StationMatch("490012553B", "St Pancras"), StationMatch("940GZZLUKSX", "King's Cross St. Pancras"), finder, noBuses, journeys, worker = StandardTestDispatcher(testScheduler)),
+        )
+        assertTrue(journeys.state.value!!.isEmpty())
+        assertEquals(emptyList<PendingJourney>(), journeys.pending.value)
+        // Said before looking any wider.
+        assertEquals(listOf("490012553B", "940GZZLUKSX"), finder.asked)
+    }
+
+    @Test
+    fun `a station picked by its own id counts its interchange's others`() = runTest {
+        val journeys = Journeys(emptyList())
+        assertNull(addFavoriteJourneyPair(StationMatch("910GKNGX", "King's Cross"), waterloo, kxFinder, noBuses, journeys, worker = StandardTestDispatcher(testScheduler)))
+        assertEquals("northern", journeys.state.value!!.single().lineId)
+    }
+
+    @Test
+    fun `a bus stop beside an interchange's other station counts for a ride picked at one`() = runTest {
+        // A synthetic pole about 65 m from the rail station, named for neither station, on a bus to a stop
+        // nowhere near (Codex on #867).
+        val railPole = StopLocation("490EXAMPLED", "Example Road", 51.5315, -0.1235, listOf(LineRef("X5", "X5", "bus")))
+        val farStop = StopLocation("490EXAMPLEF", "Example Street", 51.52, -0.1, listOf(LineRef("X5", "X5", "bus")))
+        val finder = Finder(kxFinder.stops + ("940GZZLUKSX" to listOf(kxTube)) + ("490EXAMPLEF" to listOf(farStop)))
+        val buses = Buses(listOf(railPole))
+        val journeys = Journeys(emptyList())
+        assertNull(addFavoriteJourneyPair(StationMatch("940GZZLUKSX", "King's Cross"), StationMatch("490EXAMPLEF", "Example Street"), finder, buses, journeys, worker = StandardTestDispatcher(testScheduler)))
+        val saved = journeys.state.value!!.single()
+        assertEquals("X5", saved.lineId)
+        assertEquals("490EXAMPLED", saved.from.stopId)
+        // Looked for around the rail station too, not only the Underground picked.
+        assertEquals(listOf(51.5 to -0.12, 51.531 to -0.123), buses.asked)
+    }
+
+    @Test
+    fun `a pick that is the interchange doesn't ask for it again`() = runTest {
+        val journeys = Journeys(emptyList())
+        assertNull(addFavoriteJourneyPair(kingsCross, canadaWater, kxFinder, noBuses, journeys, worker = StandardTestDispatcher(testScheduler)))
+        assertEquals(1, journeys.pending.value!!.size)
+        assertEquals(listOf("HUBKGX", "940GZZLUCWR"), kxFinder.asked)
+    }
+
+    @Test
+    fun `a failed look for an end's interchange is said, not saved grayed`() = runTest {
+        val journeys = Journeys(emptyList())
+        val failing = Finder(kxFinder.stops, failOn = setOf("HUBKGX"))
+        assertEquals(
+            JourneyAddNote.LookupFailed("St Pancras", "Waterloo", DeparturesUiState.Error.Kind.OFFLINE),
+            addFavoriteJourneyPair(StationMatch("490012553B", "St Pancras"), waterloo, failing, noBuses, journeys, worker = StandardTestDispatcher(testScheduler)),
         )
         assertTrue(journeys.state.value!!.isEmpty())
         assertEquals(emptyList<PendingJourney>(), journeys.pending.value)

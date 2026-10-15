@@ -48,6 +48,18 @@ class FileNearbyStopsStoreTest {
     }
 
     @Test
+    fun `a file from another format is dropped, and says so`() {
+        // Written before formats were numbered: its stops may hold a latitude beside a missing longitude's 0.0.
+        val file = File(tmp.root, "nearby-stops.json")
+        FileNearbyStopsStore(file).save(listOf(entry))
+        file.writeText(file.readText().replace("\"version\":1,", ""))
+        val warnings = mutableListOf<String>()
+        assertTrue(FileNearbyStopsStore(file, warn = { warnings += it }).load().isEmpty())
+        assertFalse(file.exists())
+        assertEquals(listOf("nearby stops cache from another build (format 0), deleted"), warnings)
+    }
+
+    @Test
     fun `a missing file loads as empty`() {
         assertTrue(FileNearbyStopsStore(File(tmp.root, "none.json")).load().isEmpty())
     }

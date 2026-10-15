@@ -31,7 +31,9 @@ internal class FileNearbyStopsStore(
         if (tmp.exists() && !tmp.delete()) warn("nearby stops cache: stale temp file not deleted")
         if (!file.exists()) return emptyList()
         return try {
-            json.decodeFromString<PersistedNearbyStops>(file.readText()).entries.map { it.toEntry() }
+            val stored = json.decodeFromString<PersistedNearbyStops>(file.readText())
+            if (stored.version != FORMAT) return discard("from another build (format ${stored.version})")
+            stored.entries.map { it.toEntry() }
         } catch (e: IOException) {
             discard("unreadable", e)
         } catch (e: SerializationException) {
@@ -44,9 +46,11 @@ internal class FileNearbyStopsStore(
 
     // A file that can't be read is deleted, not left behind: it may hold lookup positions, and with
     // nothing loaded from it the normal day-old expiry would never reach them (docs/PRIVACY.md).
-    private fun discard(why: String, e: Exception): List<NearbyStopsCache.Entry> {
+    private fun discard(why: String, e: Exception): List<NearbyStopsCache.Entry> = discard("$why (${e::class.simpleName})")
+
+    private fun discard(why: String): List<NearbyStopsCache.Entry> {
         val deleted = file.delete()
-        warn("nearby stops cache $why (${e::class.simpleName}), ${if (deleted) "deleted" else "not deleted"}")
+        warn("nearby stops cache $why, ${if (deleted) "deleted" else "not deleted"}")
         return emptyList()
     }
 
@@ -54,7 +58,7 @@ internal class FileNearbyStopsStore(
         try {
             // Its directory is named, not checked, when the store is built ([AppDirs]), so made here.
             tmp.parentFile?.mkdirs()
-            tmp.writeText(json.encodeToString(PersistedNearbyStops(entries.map { it.toPersisted() })))
+            tmp.writeText(json.encodeToString(PersistedNearbyStops(FORMAT, entries.map { it.toPersisted() })))
             // Replace in one step, so a reader never sees a half-written file.
             if (!tmp.renameTo(file)) warn("nearby stops cache not saved: rename failed")
         } catch (e: IOException) {
@@ -67,11 +71,17 @@ internal class FileNearbyStopsStore(
 
     private companion object {
         val json = Json { ignoreUnknownKeys = true }
+
+        // The file's format; one written in another is a cache, so dropped rather than read. 1: a stop TfL
+        // left either axis out of is stored 0.0 on both, where an older file can hold its latitude beside a
+        // 0.0 that reads as the prime meridian (StopPlace.placed, Codex on #867).
+        const val FORMAT = 1
     }
 }
 
+// [version] is absent, so 0, in a file written before formats were numbered.
 @Serializable
-private data class PersistedNearbyStops(val entries: List<PersistedNearbyEntry> = emptyList())
+private data class PersistedNearbyStops(val version: Int = 0, val entries: List<PersistedNearbyEntry> = emptyList())
 
 @Serializable
 private data class PersistedNearbyEntry(

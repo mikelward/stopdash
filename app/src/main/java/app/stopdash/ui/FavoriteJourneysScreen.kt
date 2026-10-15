@@ -54,10 +54,10 @@ import app.stopdash.domain.NearbyStopsCache
 import app.stopdash.domain.PendingEnd
 import app.stopdash.domain.PendingJourney
 import app.stopdash.domain.StationFinder
-import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StopFinder
 import app.stopdash.domain.StopLocation
+import app.stopdash.domain.StopPlace
 import app.stopdash.domain.TflException
 import app.stopdash.domain.WidgetJourneysReport
 import kotlinx.coroutines.CancellationException
@@ -159,11 +159,11 @@ internal suspend fun removeFavoriteJourney(
  * Adds the journey between two stations the rider picked, [from] then [to] ([FavoriteJourneyPicker]):
  * the stops under each looked up ([StationFinder.stationStops]), a line both serve picked
  * ([JourneyPair]), and the journey saved unless it already is. Where none serves both, the rest of each
- * end's place counts too, found by [stationBuses]: a station's own bus stops
- * ([JourneyPair.withStationBuses]), as TfL files them apart from it, and the station a search row folded
- * into a bus stop ([JourneyPair.withBusStations]), as the row can carry the bus stop's id. Null
- * once saved; else why it wasn't, said on the list. Off the main thread, the hop first (AGENTS.md *Main
- * thread*).
+ * end's place counts too ([JourneyPair.withPlace], [StopPlace]'s rule): the stops of its interchange,
+ * looked up by [finder], and those around it found by [stationBuses]: a station's own bus stops, as TfL
+ * files them apart from it, and the station a bus stop belongs to, as a search row can carry the bus
+ * stop's id. Null once saved; else why it wasn't, said on the list. Off the main thread, the hop first
+ * (AGENTS.md *Main thread*).
  */
 internal suspend fun addFavoriteJourneyPair(
     from: StationMatch,
@@ -184,7 +184,7 @@ internal suspend fun addFavoriteJourneyPair(
     var result = JourneyPair.resolve(from.name, fromStops, to.name, toStops)
     if (result == JourneyPair.Result.NoDirectLine) {
         val (fromAll, toAll) = try {
-            withPlaceStops(fromStops, stationBuses) to withPlaceStops(toStops, stationBuses)
+            withPlaceStops(from.id, fromStops, finder, stationBuses) to withPlaceStops(to.id, toStops, finder, stationBuses)
         } catch (e: TflException) {
             warn("favorite journey add stops around the ends lookup failed: ${e::class.simpleName}")
             return@withContext JourneyAddNote.LookupFailed(from.name, to.name, errorKindOf(e))
@@ -241,36 +241,33 @@ internal suspend fun addFavoriteJourneyPair(
     }
 }
 
-// [stops] with the rest of their place among them: the bus stops around each station
-// ([JourneyPair.withStationBuses]), then the station folded into each bus stop ([JourneyPair.withBusStations]),
-// both from [stops] as picked, so a station's bus stop never brings in the next station along. One lookup
-// per position, which the bundled stops answer on the device in London. Throws a [TflException] where
-// TfL was asked and failed.
-private suspend fun withPlaceStops(stops: List<StopLocation>, finder: StopFinder): List<StopLocation> {
-    val buses = JourneyPair.stationPositions(stops).flatMap { station ->
-        finder.nearbyStops(station.latitude, station.longitude, STATION_BUS_LOOKUP_METERS, BUS_STOP_TYPES)
+// [stops], picked as [pickedId], with the rest of their place among them ([JourneyPair.withPlace]): the stops
+// of each interchange they're in, unless the pick was that interchange and has them already, then the bus
+// stops around each of the place's stations (its interchange's others too, [JourneyPair.placeStations]) and
+// the stations around each bus stop. One lookup per position, which the bundled stops answer on the device in
+// London, and one per interchange, which TfL does. Throws a [TflException] where TfL was asked and failed.
+private suspend fun withPlaceStops(pickedId: String, stops: List<StopLocation>, stations: StationFinder, finder: StopFinder): List<StopLocation> {
+    val interchange = JourneyPair.interchanges(stops).filterNot { it.equals(pickedId, ignoreCase = true) }.flatMap { stations.stationStops(it) }
+    val buses = JourneyPair.stationPositions(JourneyPair.placeStations(stops, interchange)).flatMap { station ->
+        finder.nearbyStops(station.latitude, station.longitude, PLACE_LOOKUP_METERS, BUS_STOP_TYPES)
     }
-    val stations = JourneyPair.busStopPositions(stops).flatMap { pole ->
-        finder.nearbyStops(pole.latitude, pole.longitude, FOLDED_STATION_LOOKUP_METERS, FOLDED_STOP_TYPES)
+    val belongsTo = JourneyPair.busStopPositions(stops).flatMap { pole ->
+        finder.nearbyStops(pole.latitude, pole.longitude, PLACE_LOOKUP_METERS, STATION_STOP_TYPES)
     }
-    return (JourneyPair.withStationBuses(stops, buses) + JourneyPair.withBusStations(stops, stations)).distinctBy { it.id }
+    return JourneyPair.withPlace(stops, interchange + buses + belongsTo)
 }
 
 // The reach plus how far off a cached lookup may be centered and still be reused (Codex on #852): an
 // interchange's stations stand closer than that, so the second's lookup can be answered by the first's,
-// and only a radius this wide still covers its own reach. [JourneyPair.withStationBuses] keeps the reach.
-private val STATION_BUS_LOOKUP_METERS =
-    ceil(JourneyPair.STATION_BUS_METERS + NearbyStopsCache.REUSE_WITHIN_METERS).toInt()
+// and only a radius this wide still covers its own reach. [JourneyPair.withPlace] keeps the reach.
+private val PLACE_LOOKUP_METERS =
+    ceil(StopPlace.NAME_REACH_METERS + NearbyStopsCache.REUSE_WITHIN_METERS).toInt()
 
 private val BUS_STOP_TYPES = listOf("NaptanPublicBusCoachTram")
 
-// Every kind the search folds into a bus stop's row (a tram stop and a pier too, not just stations): the
-// search's own types, whose bus stops [JourneyPair.withBusStations] then leaves out (Codex on #863).
-private val FOLDED_STOP_TYPES = StopFinder.DEFAULT_NEARBY_STOP_TYPES
-
-// The same allowance around a bus stop for the station the search folds into it, out to the fold's reach.
-private val FOLDED_STATION_LOOKUP_METERS =
-    ceil(StationIndex.FOLD_RADIUS_METERS + NearbyStopsCache.REUSE_WITHIN_METERS).toInt()
+// Every kind a bus stop can belong to (a tram stop and a pier too, not just stations): the search's own
+// types, whose bus stops [JourneyPair.withPlace] then leaves out (Codex on #863).
+private val STATION_STOP_TYPES = StopFinder.DEFAULT_NEARBY_STOP_TYPES
 
 /**
  * Adds a journey with a favorite place at one end or both ([FavoriteJourneyPicker]): saved grayed, since
