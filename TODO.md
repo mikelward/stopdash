@@ -1068,6 +1068,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       as it did before #729 (when those trains read as going nowhere). A train with no vehicle id
       can't be asked after at all. To weigh: accept a turnback at the boarding stop by the line's route
       out of it until its own calls show the outbound run, then follow those.
+- [ ] **A route's walks don't follow its bus to the pole it really uses** (Codex, #869). Placing a
+      bus leg on the pole or stand its line uses ([onPoles]) moves the ride's ends but leaves the walks
+      either side as they were: still to and from the stop the Planner named, timed from there. True of
+      the Planner's own routes as much as of a Direct row's ride (whose boarding pole is the row's own,
+      so only its walk on can start a road's width off). The difference is a road's width, seconds of
+      walk, but the walk shown can name the wrong side. To weigh: move a walk's end with the ride it
+      meets, and retime it where the move is more than a crossing.
 
 ## Phase 2 — Watched stops and settings
 
