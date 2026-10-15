@@ -15,18 +15,10 @@ object FartherBuses {
     const val MODE = "bus"
 
     /**
-     * How near a station on the list a bus place's pole must be to count as at that station
-     * (maintainer, 2026-09-26): the rider is walking to the station anyway, so its bus stops beat a
-     * place that's a little nearer as the crow flies but a longer walk. Wide enough for a station's
-     * own stops (Highgate's are 60–90 m from its position), narrow enough to leave the next road's.
-     */
-    const val AT_STATION_METERS = 150.0
-
-    /**
      * A farther bus place: its [key] (the interchange and name its poles share, else the junction),
      * its poles nearest first, how far its nearest pole is, its bus routes, in the order its poles
-     * list them, and the ids of the station stops a pole is within [AT_STATION_METERS] of
-     * ([stationIds]). Whether one of those stations is on the list is decided against the rows the
+     * list them, and the ids of the station stops one of its poles is an own stop of
+     * ([StopPlace.ownStop], [stationIds]). Whether one of those stations is on the list is decided against the rows the
      * screen draws ([CollapsedPlaces.withBusesPicked]).
      */
     data class Farther(
@@ -57,8 +49,10 @@ object FartherBuses {
      * The candidate bus places in [more] (the *more* tier, nearest first), nearest first, each with
      * every bus route its poles serve. A route-less stop is no candidate, it has no departures;
      * hidden buses ([hidden]) give none. Clusters sharing an interchange and a name are one place. A
-     * place records which of [stations] ([stationStops]) a pole is within [AT_STATION_METERS] of
-     * ([Farther.stationIds]). Which of them become cards, and which routes each names, is decided
+     * place records which of [stations] ([stationStops]) one of its poles is an own stop of
+     * ([StopPlace.ownStop]: close by whatever its name, named for it a little farther, or in its
+     * interchange), so the rider walking to the station anyway gets its bus stops first (maintainer,
+     * 2026-09-26) ([Farther.stationIds]). Which of them become cards, and which routes each names, is decided
      * against the rows the screen actually shows ([CollapsedPlaces.withBusesPicked]), so this never
      * has to guess what the list shows.
      */
@@ -91,11 +85,10 @@ object FartherBuses {
                 }
             }
             if (lines.isEmpty()) return@mapNotNull null
+            val poles = stops.map(StopPlace::of)
             val stationIds = stations.filterTo(mutableListOf()) { station ->
-                stops.any { pole ->
-                    NearestStops.distanceMeters(pole.latitude, pole.longitude, station.latitude, station.longitude) <=
-                        AT_STATION_METERS
-                }
+                val at = StopPlace.of(station)
+                poles.any { pole -> StopPlace.ownStop(at, pole) }
             }.mapTo(HashSet()) { it.id }
             Farther(key, stops, clusters.minOf { it.distanceMeters }, lines.values.toList(), stationIds)
         }

@@ -28,6 +28,21 @@ class TflStopPointDtoTest {
     }
 
     @Test
+    fun `a stop missing either axis has no position, and a real zero longitude stays`() {
+        // StopPlace.placed reads a 0.0 latitude as no position, so a lone missing axis must not leave
+        // the other one standing (Codex on #867). On the prime meridian a 0.0 longitude is real.
+        val stop = TflStopPointDto(id = "940GZZLUKSX", commonName = "King's Cross St. Pancras", modes = listOf("tube"))
+        for (dto in listOf(stop.copy(lat = 51.53), stop.copy(lon = -0.12), stop)) {
+            val location = dto.toStopLocationOrNull()
+            assertEquals(0.0, location?.latitude)
+            assertEquals(0.0, location?.longitude)
+        }
+        val meridian = stop.copy(lat = 51.53, lon = 0.0).toStopLocationOrNull()
+        assertEquals(51.53, meridian?.latitude)
+        assertEquals(0.0, meridian?.longitude)
+    }
+
+    @Test
     fun `clusterId falls back to the cleaned name when stationNaptan is blank`() {
         // Many bus poles carry no StopArea; same-named poles still merge by name so a junction
         // isn't split into duplicate headers.

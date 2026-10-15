@@ -85,15 +85,28 @@ class FartherBusesTest {
     @Test
     fun `a place records the stations a pole is within 150 m of, and not one farther`() {
         // 0.001° of latitude is about 111 m; 0.0015° about 167 m.
-        val station = StopLocation("940GEX", "Example", 0.0, 0.0, listOf(LineRef("northern", "Northern", "tube")))
+        val station = StopLocation("940GEX", "Example", 51.5, -0.12, listOf(LineRef("northern", "Northern", "tube")))
         fun at(key: String, lat: Double) =
-            cluster(key, 700.0, StopLocation("${key}A", "Stop $key", lat, 0.0, listOf(bus("234")), clusterId = key))
+            cluster(key, 700.0, StopLocation("${key}A", "Stop $key", 51.5 + lat, -0.12, listOf(bus("234")), clusterId = key))
         val candidates = FartherBuses.candidates(listOf(at("NEAR", 0.001), at("FAR", 0.0015)), stations = listOf(station))
         assertEquals(listOf(setOf("940GEX"), emptySet<String>()), candidates.map { it.stationIds })
         assertEquals(
             listOf(emptySet<String>(), emptySet<String>()),
             FartherBuses.candidates(listOf(at("NEAR", 0.001), at("FAR", 0.0015))).map { it.stationIds },
         )
+    }
+
+    @Test
+    fun `a pole named for a station or in its interchange is at it a little farther`() {
+        // About 200 m north: past the 150 m any pole counts within (StopPlace's rule).
+        val station = StopLocation("940GEX", "Example Underground Station", 51.5, -0.12, listOf(LineRef("northern", "Northern", "tube")), hubId = "HUBEXA")
+        fun at(key: String, name: String, hub: String = "") =
+            cluster(key, 700.0, StopLocation("${key}A", name, 51.5018, -0.12, listOf(bus("234")), clusterId = key, hubId = hub))
+        val candidates = FartherBuses.candidates(
+            listOf(at("NAMED", "Example Station / High Road"), at("HUB", "High Road", hub = "HUBEXA"), at("OTHER", "High Road")),
+            stations = listOf(station),
+        )
+        assertEquals(listOf(setOf("940GEX"), setOf("940GEX"), emptySet<String>()), candidates.map { it.stationIds })
     }
 
     @Test

@@ -377,9 +377,12 @@ The app finds stops two ways:
   Waterloo stay one row; a station named for two others (the tube's "King's Cross St. Pancras")
   joins the first. Each name row opens the interchange under that name with that name's stations
   first: its modes in order, Underground first, and within a mode the stations of that name, so
-  "St Pancras International" leads with St Pancras's trains and "King's Cross" with the Underground. A place's bus stops are listed one by one, so results **of
-  the same name within 250 m of a better-ranked one fold into it** (maintainer, 2026-09-25):
-  "Archway" is listed once, not once per stand, and its page takes in the stops around it. A
+  "St Pancras International" leads with St Pancras's trains and "King's Cross" with the Underground. A place's bus stops are listed one by one, so a result that is **one place by name
+  with a better-ranked one folds into it** (maintainer, 2026-09-25), by the rule *Journeys* gives: the
+  same name within 250 m, or a bus stop named for the station up to its cross street (maintainer,
+  2026-10-15). "Archway" is listed once, not once per stand, and its page takes in the stops around it.
+  A station never folds into a bus stop's row of another name, which would read as the station while
+  opening the stop, and two bus stops named apart stay two rows, each picked for itself. A
   station TfL lists under **two ids with no interchange** to stand for both (Weybridge; Reading,
   whose second record has only some of its modes) is one search row, with both's modes, found and
   ranked by either id's code, and opens both: its page asks for each id's stops, and fails with a retry if either lookup does rather than
@@ -547,7 +550,8 @@ The app finds stops two ways:
   already offers it. The card names **every route a tap would show** — each one the list doesn't
   already show, even one a nearer card names too (maintainer, 2026-09-26): naming only the routes
   no nearer card offered read "N20" on a card that opened to a 234. A place **next to a station the
-  list shows** (a pole within 150 m of it) claims its routes before the others (maintainer,
+  list shows** (a pole that is one of its own stops, as *Journeys* counts them: within 150 m, named for
+  it within 250 m, or in its interchange) claims its routes before the others (maintainer,
   2026-09-26): the rider walks to the station anyway, so its bus stops beat a place a little
   nearer as the crow flies but a longer walk — the lookup gives straight-line distances only, and
   walking ones would cost a journey-planner request a place. **At most four** bus cards, nearest first.
@@ -1290,9 +1294,11 @@ same name, else — for a stop served one way only — the route's nearest stop 
 (400 m). When the route can't place the origin as one stop, the card says it couldn't check rather
 than guess one. Another line counts as reaching the far end when it stops at the **same place**
 there, even where TfL files that stop under another stop area and name (maintainer, 2026-09-24): a
-stop whose name starts the same ("Hill Station", "Hill Station / High Road") within
-150 m. Both are needed — a name alone would join same-named stops across town, a distance alone a
-road that merely passes by — and it applies to the far end only. At the near end a bus journey
+stop named alike up to its cross street ("Hill Station", "Hill Station / High Road") within
+250 m, the place rule *adding a favorite ride* gives (maintainer, 2026-10-15). Both are needed — a name
+alone would join same-named stops across town, a distance alone a road that merely passes by — and it
+applies to the far end only. By name only here: a route's data credits an interchange's lines to each of
+its stops, so it can't say which of two stops in one is the station. At the near end a bus journey
 also boards from the **poles beside its origin** (maintainer, 2026-09-24): a pole in the same TfL
 stop area whose line — one the origin itself doesn't serve — reaches the far end on its route (a bus
 from stop K beside the starred bus's stop L). Its buses join the card under their pole's letter
@@ -1515,15 +1521,23 @@ found and dropped without riding past its card; Remove only ever removes the fav
 where it starts, then, with that standing in its From row, where it ends; the From row changes the
 start, and Back from the end drops back to it. Both searches lead with the rider's **favorite places**
 as chips (maintainer, 2026-10-10), so Home, Work or a place of their own can be either end. The pair is
-saved on a line both stations serve (rail before bus), as a long press saves one; where none does, a
-station's **own bus stops** count too, those within 150 m of it as on the near-me list (maintainer,
-2026-10-14): TfL files a Tube or rail station's bus stops apart from it, so a bus stopping outside the
-station is direct, never a trip with a change. The other way round, the **station a search row folded into
-a bus stop** counts too: the search shows a station and a same-named bus stop within 250 m as one row, which
-can stand on a bus stop the rider uses, and that row's trains are the ride meant. Only that station: a bus stop
-picked for itself brings in no station that merely stands near it. Both are found on the device from the
-bundled stops (TfL is asked only outside them), and only once no line served both. The list says what
-it's doing ("Adding Euston ➔ Waterloo…") and why a pair wasn't added: the same station twice, already a
+saved on a line both stations serve (rail before bus), as a long press saves one; where none does, the
+rest of each end's **place** counts too (maintainer, 2026-10-14 and 2026-10-15). Two stops are one place
+when TfL files them under **one interchange** and one of them is a station (the bus stops it lists under
+King's Cross St Pancras are that station's, whatever they're called, and King's Cross's rail station is
+one place with its Underground), or when their **names agree up to any cross street** and they stand
+within 250 m ("Hill Station / High Road" is Hill Station's). A station's **own bus stops** also take in
+any within 150 m of it, as on the near-me list: TfL files a Tube or rail station's bus stops apart from
+it, so a bus stopping outside the station is direct, never a trip with a change; a station picked at an
+interchange takes in the bus stops outside its other stations too (St Pancras's, for a pick at King's
+Cross). A station of another
+name that merely stands near a bus stop isn't that stop's. One rule decides which station a stop belongs
+to, here and wherever else StopDash asks, not a copy per screen; it says nothing of two bus stops, which
+the route map still keeps apart where an interchange names them apart (*Map*). The stops around an end
+are found on the device from the bundled stops (TfL is asked only outside them) and its interchange's
+from TfL, and only once no line served both.
+The list says what
+it's doing ("Adding Euston ➔ Waterloo…") and why a pair wasn't added: one place at both ends (the same station twice, or two stops of one place), already a
 favorite, or the lookup or the save failed. A pair StopDash **can't follow yet** — no one line serves
 both, or an end is a favorite place — is saved anyway and listed **grayed**, after the rest, with
 "Support for multi-leg journeys coming soon" under it and its own Remove (maintainer, 2026-10-10). Only

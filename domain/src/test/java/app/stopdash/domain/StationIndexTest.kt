@@ -423,15 +423,33 @@ class StationIndexTest {
             StationMatch("940GZZLUEXA", "Example", listOf("tube"), 51.5, -0.12),
             StationMatch("490G00000001", "Example", listOf("bus"), 51.5010, -0.12),
             StationMatch("490G00000002", "Example", listOf("bus"), 51.4990, -0.1205),
-            // A differently named stop nearby stays its own result.
+            // A stop named for the station up to its cross street folds in too (maintainer, 2026-10-15).
             StationMatch("490G00000003", "Example / High Road", listOf("bus"), 51.5005, -0.12),
             // A same-named stop miles away is a different place, and stays.
             StationMatch("490G00000004", "Example", listOf("bus"), 51.6, -0.12),
+            // A differently named stop nearby stays its own result.
+            StationMatch("490G00000005", "High Road / Example Street", listOf("bus"), 51.5005, -0.12),
         )
         val ranked = index.rank("example", local, remote)
-        assertEquals(listOf("940GZZLUEXA", "490G00000004", "490G00000003"), ranked.map { it.id })
+        assertEquals(listOf("940GZZLUEXA", "490G00000004", "490G00000005"), ranked.map { it.id })
         // The kept station takes on the folded stops' modes.
         assertEquals(listOf("tube", "bus"), ranked.first().modes)
+    }
+
+    @Test
+    fun `a bus stop named for a station folds into its row, never the station into the stop's`() {
+        val station = StationMatch("940GEXAMPLE", "Example", listOf("tube"), 51.5, -0.12)
+        val stop = StationMatch("490GEXAMPLE1", "Example / High Road", listOf("bus"), 51.5009, -0.12)
+        assertEquals(listOf("940GEXAMPLE"), StationIndex.foldNeighbors(listOf(station, stop)).map { it.id })
+        // The stop ranked first (one of the rider's own) keeps its row, and so does the station: folded in,
+        // the station would read as the stop's row while opening the stop.
+        assertEquals(listOf("490GEXAMPLE1", "940GEXAMPLE"), StationIndex.foldNeighbors(listOf(stop, station)).map { it.id })
+        // Two bus stops named apart stay two rows, each picked for itself.
+        val other = stop.copy(id = "490GEXAMPLE2", name = "Example / Church Street")
+        assertEquals(listOf("490GEXAMPLE1", "490GEXAMPLE2"), StationIndex.foldNeighbors(listOf(stop, other)).map { it.id })
+        // Past the reach, or a stop named for another station, stays too.
+        assertEquals(2, StationIndex.foldNeighbors(listOf(station, stop.copy(latitude = 51.5027))).size)
+        assertEquals(2, StationIndex.foldNeighbors(listOf(station, stop.copy(name = "Elsewhere / High Road"))).size)
     }
 
     @Test

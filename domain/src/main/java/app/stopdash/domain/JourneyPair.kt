@@ -5,8 +5,7 @@ import androidx.annotation.WorkerThread
 /**
  * A favorite journey from two stations the rider picked, From then To (SPEC *Journeys*): each by its
  * cleaned name and the stops under it that carry departures ([StationFinder.stationStops]), and where
- * none serves both, the rest of its place too: a station's own bus stops ([withStationBuses]), the
- * station a search row folded into a bus stop ([withBusStations]). Direct only, as every favorite journey
+ * none serves both, the rest of its place too ([withPlace], by [StopPlace]'s rule). Direct only, as every favorite journey
  * is: it rides a line both stations serve, rail before bus, the card then showing every line from one
  * end that calls at the other.
  */
@@ -14,7 +13,7 @@ object JourneyPair {
     sealed interface Result {
         data class Found(val journey: FavoriteJourney) : Result
 
-        /** The same station picked for both ends. */
+        /** The same station picked for both ends, or two stops of one place ([StopPlace.samePlace]). */
         data object SameStation : Result
 
         /** No line serves both: a journey with a change waits on *Trips with a change*. */
@@ -25,6 +24,12 @@ object JourneyPair {
     fun resolve(fromName: String, fromStops: List<StopLocation>, toName: String, toStops: List<StopLocation>): Result {
         val toIds = toStops.mapTo(HashSet()) { it.id }
         if (fromStops.any { it.id in toIds }) return Result.SameStation
+        // Two picks of one place (a station's bus stop and the station, an interchange's two stations) share
+        // no stop and often no line, so they'd be saved grayed as a ride needing a change (Codex on #867).
+        val toPlaces = toStops.map(StopPlace::of)
+        if (fromStops.any { from -> StopPlace.of(from).let { at -> toPlaces.any { StopPlace.samePlace(at, it) } } }) {
+            return Result.SameStation
+        }
         // Each line at the far end, and the first of its stops there.
         val atTo = LinkedHashMap<String, StopLocation>()
         toStops.forEach { stop -> stop.lines.forEach { if (it.id.isNotBlank()) atTo.putIfAbsent(it.id, stop) } }
@@ -37,63 +42,80 @@ object JourneyPair {
     }
 
     /**
-     * How near one of a station's own stops a bus stop must be to count as the station's (maintainer,
-     * 2026-10-14): TfL files a Tube or rail station's bus stops apart from it, so a bus that stops
-     * outside isn't listed under the station at all. The near-me list's rule for the same question.
-     */
-    const val STATION_BUS_METERS: Double = FartherBuses.AT_STATION_METERS
-
-    /**
-     * The stops of [stops] to look around for the station's own bus stops: each placed one serving a
+     * The stops of [stops] to look around for the rest of a station's place: each placed one serving a
      * mode other than bus, its position once. A bus stop picked as an end has its poles already.
      */
     @WorkerThread
     fun stationPositions(stops: List<StopLocation>): List<StopLocation> =
-        stops.filter { stop ->
-            stop.latitude != 0.0 && stop.longitude != 0.0 &&
-                stop.lines.any { it.mode.isNotBlank() && !it.mode.equals(FartherBuses.MODE, ignoreCase = true) }
-        }.distinctBy { it.latitude to it.longitude }
+        stops.filter { stop -> placed(stop) && StopPlace.isStation(stop) }.distinctBy { it.latitude to it.longitude }
 
     /**
-     * [stops] and then the bus stops among [around] within [STATION_BUS_METERS] of one of their
-     * [stationPositions], nearest first, none twice: an end as [resolve] should weigh it when no line
-     * serves both ends' own stops. Grows with [around], so off the main thread.
-     */
-    @WorkerThread
-    fun withStationBuses(stops: List<StopLocation>, around: List<StopLocation>): List<StopLocation> =
-        stops + beside(stationPositions(stops), stops, around) { station, stop ->
-            stop.lines.any(::isBus) && meters(station, stop) <= STATION_BUS_METERS
-        }
-
-    /**
-     * The stops of [stops] to look around for the station a search row folded into them: each placed
-     * one only buses serve, by position and name once, and none at all for an end with a station among
-     * its stops. That end has its trains already, and an interchange's own bus poles would otherwise
-     * bring in another station beside one of them, one the rider didn't pick (Codex on #863).
+     * The stops of [stops] to look around for the station a bus stop belongs to: each placed one only
+     * buses serve, by position and name once, and none at all for an end with a station among its stops.
+     * That end has its trains already, and an interchange's own bus poles would otherwise bring in another
+     * station beside one of them, one the rider didn't pick (Codex on #863).
      */
     @WorkerThread
     fun busStopPositions(stops: List<StopLocation>): List<StopLocation> {
-        if (stops.any { stop -> stop.lines.any { it.mode.isNotBlank() && !isBus(it) } }) return emptyList()
-        return stops.filter { stop ->
-            stop.latitude != 0.0 && stop.longitude != 0.0 && stop.lines.isNotEmpty() && stop.lines.all(::isBus)
-        }.distinctBy { Triple(it.latitude, it.longitude, it.name) }
+        if (stops.any(StopPlace::isStation)) return emptyList()
+        return stops.filter { stop -> placed(stop) && StopPlace.isBusStop(stop) }
+            .distinctBy { Triple(it.latitude, it.longitude, it.name) }
     }
 
     /**
-     * [stops] and then the stations among [around] (a stop serving a mode other than bus) that the
-     * station search folds into one of their [busStopPositions] ([StationIndex.foldsTogether]: the same
-     * name, close by), nearest first, none twice. The search shows a station and a same-named bus stop
-     * among the rider's own as one row, which can carry the bus stop's id, and the station's trains would
-     * never be weighed; this takes back exactly the station that row stood for, and never a station that
-     * merely stands near a bus stop picked for itself (Codex on #863). Grows with [around], so off the
-     * main thread.
+     * The interchanges whose stops may be part of [stops]' place ([StopPlace.sameInterchange]): those of
+     * its stations, or for a bus-stop end, of its bus stops. Each once, TfL's spelling of the first.
      */
     @WorkerThread
-    fun withBusStations(stops: List<StopLocation>, around: List<StopLocation>): List<StopLocation> =
-        stops + beside(busStopPositions(stops), stops, around) { pole, stop ->
-            stop.lines.any { it.mode.isNotBlank() && !isBus(it) } &&
-                StationIndex.foldsTogether(pole.name, pole.latitude, pole.longitude, stop.name, stop.latitude, stop.longitude)
+    fun interchanges(stops: List<StopLocation>): List<String> =
+        stops.filter(StopPlace::isStation).ifEmpty { stops.filter(StopPlace::isBusStop) }
+            .map { it.hubId }.filter { it.isNotBlank() }.distinctBy { it.uppercase() }
+
+    /**
+     * The stations a station end's bus stops are measured from: its own among [stops], then those among
+     * [around] one place with one of them ([StopPlace.samePlace]), as an interchange's other stations are,
+     * so a bus stop beside St Pancras counts for a ride picked at King's Cross (Codex on #867). None for a
+     * bus-stop end, whose place is the stations it belongs to and never their bus stops: two of an
+     * interchange's poles named apart stay two. Grows with [around], so off the main thread.
+     */
+    @WorkerThread
+    fun placeStations(stops: List<StopLocation>, around: List<StopLocation>): List<StopLocation> {
+        val own = stops.filter(StopPlace::isStation)
+        if (own.isEmpty()) return emptyList()
+        val ids = own.mapTo(HashSet()) { it.id }
+        return own + around.filter { stop ->
+            stop.id !in ids && StopPlace.isStation(stop) && own.any { StopPlace.samePlace(StopPlace.of(it), StopPlace.of(stop)) }
+        }.distinctBy { it.id }
+    }
+
+    /**
+     * [stops] and then the rest of their place among [around], nearest first, none twice: an end as
+     * [resolve] should weigh it when no line serves both ends' own stops ([StopPlace]). A station end
+     * takes the stations one place with one of its stations ([StopPlace.samePlace]: named alike close
+     * by, or in its interchange) and the bus stops of any of those ([StopPlace.ownStop]: those too, and
+     * any close by, [placeStations]), as TfL files a station's bus stops apart from it. A bus-stop end
+     * takes only the stations it belongs to ([StopPlace.samePlace]), never one that merely stands near a
+     * stop picked for itself (Codex on #863). Stations are measured only from [stops] as picked, and bus
+     * stops never from another bus stop, so a station's bus stop never brings in the next station along.
+     * Grows with [around], so off the main thread.
+     */
+    @WorkerThread
+    fun withPlace(stops: List<StopLocation>, around: List<StopLocation>): List<StopLocation> {
+        val own = stops.filter(StopPlace::isStation)
+        if (own.isNotEmpty()) {
+            val ownIds = own.mapTo(HashSet()) { it.id }
+            return stops + beside(placeStations(stops, around), stops, around) { station, stop ->
+                when {
+                    StopPlace.isStation(stop) -> station.id in ownIds && StopPlace.samePlace(StopPlace.of(station), StopPlace.of(stop))
+                    stop.lines.any(::isBus) -> StopPlace.ownStop(StopPlace.of(station), StopPlace.of(stop))
+                    else -> false
+                }
+            }
         }
+        return stops + beside(stops.filter(StopPlace::isBusStop), stops, around) { pole, stop ->
+            StopPlace.isStation(stop) && StopPlace.samePlace(StopPlace.of(pole), StopPlace.of(stop))
+        }
+    }
 
     // The stops among [around] that [fit] one of [centers], nearest first, none twice and none of [stops].
     private fun beside(
@@ -115,7 +137,12 @@ object JourneyPair {
             .toList()
     }
 
-    private fun meters(a: StopLocation, b: StopLocation): Double = NearestStops.distanceMeters(a.latitude, a.longitude, b.latitude, b.longitude)
+    // How far apart [a] and [b] stand; past everything for one without a position, which an interchange
+    // can still join, so it sorts after the measured ones.
+    private fun meters(a: StopLocation, b: StopLocation): Double =
+        if (placed(a) && placed(b)) NearestStops.distanceMeters(a.latitude, a.longitude, b.latitude, b.longitude) else Double.MAX_VALUE
+
+    private fun placed(stop: StopLocation): Boolean = StopPlace.placed(stop)
 
     private fun isBus(line: LineRef): Boolean = line.mode.equals(FartherBuses.MODE, ignoreCase = true)
 

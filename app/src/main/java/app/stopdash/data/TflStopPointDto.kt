@@ -201,11 +201,14 @@ fun TflStopPointDto.toStopLocationOrNull(): StopLocation? {
         }
     }
     val primaryMode = modes.firstOrNull().orEmpty()
+    // A stop TfL leaves either axis out of has no position: both read 0.0, so a lone 0.0 longitude is
+    // only ever the prime meridian's (StopPlace.placed, Codex on #867).
+    val position = position()
     return StopLocation(
         id = stopId,
         name = stopName,
-        latitude = lat ?: 0.0,
-        longitude = lon ?: 0.0,
+        latitude = position?.latitude ?: 0.0,
+        longitude = position?.longitude ?: 0.0,
         lines = lines
             .filter { it.id.isNotBlank() }
             .map {

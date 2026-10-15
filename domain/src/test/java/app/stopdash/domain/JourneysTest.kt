@@ -339,7 +339,9 @@ class JourneysTest {
             setOf("HIGHN"),
             Journeys.trains(segment, rows, mapOf("b1" to bus(), "b2" to b2(51.5109 to -0.12)), parkToHill).reachedIds,
         )
-        // The same name further off is another place; a stop as close by another name is too.
+        // Named alike 200 m off is still the place (StopPlace's 250 m); further off it's another place, and
+        // a stop as close by another name is too.
+        assertEquals(listOf("b2"), shown(b2(51.5118 to -0.12)).map { it.lineId })
         assertTrue(shown(b2(51.5125 to -0.12)).isEmpty())
         assertTrue(shown(b2(51.5109 to -0.12, "Ridge")).isEmpty())
     }
@@ -513,17 +515,6 @@ class JourneysTest {
         val trains = Journeys.trains(segment, rows, mapOf("b1" to bus(), "b2" to b2), parkToHill)
         assertEquals(listOf("b2"), trains.rows.map { it.lineId })
         assertTrue("HILLN2" in trains.reachedIds)
-    }
-
-    @Test
-    fun `same place needs the same name start and nearness`() {
-        val here = 51.5 to -0.12
-        val near = 51.5009 to -0.12
-        assertTrue(Journeys.samePlace("Hill", here, "Hill Station  / High Road", near))
-        assertTrue(Journeys.samePlace("Hill Station", here, "hill station", near))
-        assertFalse(Journeys.samePlace("Hill", here, "Hill Road", near))
-        assertFalse(Journeys.samePlace("Hill", here, "Hill", 51.502 to -0.12))
-        assertFalse(Journeys.samePlace("Hill", null, "Hill", near))
     }
 
     @Test

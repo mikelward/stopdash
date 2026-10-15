@@ -916,7 +916,18 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           LL Rail Station", and ~8 more). The same place-identity question underlies the near-me
           "group by station and direction" grouping (`StopGrouping`, `dedupeKeyOf`) — worth a single
           shared notion of "which place, which direction" rather than parallel heuristics per
-          surface. Design-level; not scoped here.
+          surface. Design-level; not scoped here. Started 2026-10-15: `StopPlace` now answers which
+          station a stop belongs to for Add, the search fold, a ride's far end and the farther bus
+          cards. Still their own: the near-me headers (`StopGrouping`), the disruption fold, the route
+          map's pole pairing (two of an interchange's poles named apart stay two, *Map*), same-station
+          name checks across ids (`sameStation` in RouteStops and StopLinks, `PlaceDirect`, `OffPlan`),
+          and `OnTheWay`'s stop areas — each a different question, or one to move onto it next.
+    - [ ] **Give a stop no position, not 0.0** (Codex on #867, three times): `StopLocation` stores a
+          position TfL left out as 0.0, so every reader guesses which zero means "none". #867 settled it at
+          the source (an axis left out zeroes both, and the nearby-stops cache dropped files written before
+          that; `StopPlace.placed` reads a 0.0 latitude as none, since a 0.0 longitude is real on the prime
+          meridian), but older readers still test either axis. Nullable coordinates would delete the guess;
+          it touches every reader and stored file, so it's the maintainer's call.
     - [ ] **Merge the interchange's departures to the hub?** SPEC keeps King's Cross and St
           Pancras as separate departure headers (they are different buildings). Clustering on
           `hubNaptanCode` would merge them into one place; the next grain down is
@@ -2661,8 +2672,19 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             and a same-named bus stop among the rider's own can carry the bus stop's id, so a ride picked from
             it weighed only that stop's buses and was grayed. A bus-stop end now weighs the station the search
             folds into it (`StationIndex.foldsTogether`, the fold's own rule), and no other.
+      - [x] **One rule decides which station a stop belongs to** (maintainer, 2026-10-15): `StopPlace`. Two
+            stops are one place when TfL files them under one interchange and one is a station, or when their
+            names agree up to any cross street within 250 m; a station's own bus stops also take in any within
+            150 m. Add looks up an end's interchange (St Pancras's bus stops reach the Underground) and weighs
+            a bus stop's namesake station; the search folds a bus stop named for a station into its row; a
+            ride's far end and the farther bus cards' "at the station" ask it too.
+      - [ ] **A favorite ride stores one line; derive them all** (maintainer, 2026-10-15): Settings' row shows
+            only the line it was saved on, not another route that runs it too, and alerts watch that line
+            plus whichever the card last saw. Store no line and derive every line between the two places from
+            the static route sequences, once, cached, for the card, alerts and the Settings label alike. Next,
+            on `StopPlace`.
       - [ ] **Decide the station bus-stop radius** (maintainer, 2026-10-14): 150 m is the near-me list's
-            "at the station" rule (`FartherBuses.AT_STATION_METERS`), picked against a small station's own
+            "at the station" rule (`StopPlace.OWN_STOP_METERS`), picked against a small station's own
             stops (under 100 m), not against a big terminus. Measured from the bundled stops, an interchange's
             own member bus stops always counting: at **King's Cross St. Pancras** 150 m loses nothing — its
             members carry 14 routes, 150 m adds the 1, and no radius out to 400 m adds another (two of St
