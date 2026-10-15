@@ -39,6 +39,7 @@ import app.stopdash.domain.TflException
 import app.stopdash.domain.TripClosures
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripOrigin
+import app.stopdash.domain.TripTime
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripFare
 import app.stopdash.domain.NearestStops
@@ -151,7 +152,7 @@ class TripViewModelTest {
         val stepFrees = mutableListOf<StepFree>()
         // The trip modes each call asked for, in order.
         val tripModes = mutableListOf<TripModes>()
-        override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes): List<TripRoute> {
+        override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?): List<TripRoute> {
             calls++
             origins += from
             speeds += speed
@@ -201,7 +202,7 @@ class TripViewModelTest {
             if (fromStop in failFor) throw TflException.Offline(null)
             return byBetween[fromStop].orEmpty()
         }
-        override suspend fun fewestChangesVia(from: TripOrigin, to: TripDestination, via: String, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes): List<TripRoute> {
+        override suspend fun fewestChangesVia(from: TripOrigin, to: TripDestination, via: String, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?): List<TripRoute> {
             calls++
             viaAsked += to to via
             viaOrigins += from
@@ -3781,7 +3782,7 @@ class TripViewModelTest {
         val fromD = TripRoute(listOf(leg("green", "D", "C", 5, 15)))
         var calls = 0
         val planner = object : JourneyPlanner {
-            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes): List<TripRoute> =
+            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?): List<TripRoute> =
                 if (calls++ == 0) listOf(route) else listOf(fromD)
         }
         val cache = ArrivalsCache()
@@ -3800,6 +3801,57 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `a route opened from a later trip over an expired plan reads as planning until the fresh plan lands`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route))
+        val trip = model(planner, FakeClient(mutableMapOf()))
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(1, planner.calls)
+        // The later list shown past the plan's reuse: nothing refreshed it meanwhile.
+        now = now.plus(TripViewModel.PLAN_REUSE).plusSeconds(1)
+        trip.openPlanned(routeKey(route))
+        // At once, before any refresh has run: the screen never judges the route gone against the old plan.
+        assertTrue(trip.state.value.planning)
+        assertEquals(routeKey(route), trip.openRoute.value)
+        advanceUntilIdle()
+        assertEquals(2, planner.calls)
+        assertFalse(trip.state.value.planning)
+        assertEquals(routeKey(route), trip.openRoute.value)
+    }
+
+    @Test
+    fun `a route opened from a later trip after the plan for now failed plans again, as Retry does`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route))
+        planner.failWith = TflException.Offline(null)
+        val trip = model(planner, FakeClient(mutableMapOf()))
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(1, planner.calls)
+        assertNotNull(trip.state.value.planError)
+        planner.failWith = null
+        trip.openPlanned(routeKey(route))
+        // At once: the failed plan isn't what the route is judged against.
+        assertTrue(trip.state.value.planning)
+        advanceUntilIdle()
+        assertEquals(2, planner.calls)
+        assertNull(trip.state.value.planError)
+        assertEquals(routeKey(route), trip.openRoute.value)
+    }
+
+    @Test
+    fun `a route opened from a later trip over a current plan opens on it without planning again`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route))
+        val trip = model(planner, FakeClient(mutableMapOf()))
+        trip.refresh()
+        advanceUntilIdle()
+        trip.openPlanned(routeKey(route))
+        assertFalse(trip.state.value.planning)
+        advanceUntilIdle()
+        assertEquals(1, planner.calls)
+        assertEquals(routeKey(route), trip.openRoute.value)
+    }
+
+    @Test
     fun `a re-plan from the fresh fix a pull takes fetches its new stop, however recent, under the pull's indicator`() = runTest(dispatcher) {
         // Synthetic positions (SPEC *Privacy*): the fix the pull takes lands ~220 m on, where the
         // plan boards at D, which another screen fetched 20 s before the pull.
@@ -3809,7 +3861,7 @@ class TripViewModelTest {
         // The re-plan from that fix answers when the test says, so its indicator can be seen.
         val replanned = CompletableDeferred<Unit>()
         val planner = object : JourneyPlanner {
-            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes): List<TripRoute> =
+            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?): List<TripRoute> =
                 if (calls++ < 2) listOf(route) else listOf(fromD).also { replanned.await() }
         }
         val cache = ArrivalsCache()
@@ -6798,7 +6850,7 @@ class TripViewModelTest {
         try {
             val threads = ThreadRecorder()
             val planner = object : JourneyPlanner {
-                override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes) =
+                override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?) =
                     listOf(longWalk)
                 override suspend fun quickestVia(from: TripOrigin, to: TripDestination, via: String, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes): List<TripRoute> {
                     threads.note()

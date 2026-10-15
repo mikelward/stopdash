@@ -2114,6 +2114,46 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               every time it was asked again. Every app path keeps a Planner route's fare, so it was likely
               TfL's answer, but the log couldn't say. It now marks each route the Planner sent unpriced;
               the next such report tells which side dropped it.
+      - [x] **Plan a trip for a later time** (maintainer, 2026-10-15): *Change time…* in the trip's
+            overflow picks Leave at / Arrive by, a day and a time; the Planner's timetable routes list in
+            place of the trip for now, and a card opens that route live, saying its times are for now
+            (SPEC *Trips with a change → A later trip*).
+        - [ ] Needs a device check: the time picker at a large font and on a narrow phone, and Back from a
+              route opened off the later list landing on that list.
+        - [ ] A row of its own in the From/To bar, if the overflow proves too hidden (maintainer chose the
+              overflow for now, 2026-10-15).
+        - [ ] **Read the repeated autumn hour from TfL's durations?** Open question (maintainer,
+              2026-10-15: a separate PR if at all, a corner case; not to be built yet). A Planner time
+              is a bare London clock time, so in 01:00–01:59 the night the clocks go back the decoder
+              guesses which reading, and an arrive-by journey over an hour long across it can read an
+              hour short (Codex, #859). The trip for now's ride times (`TripLeg.run`) come from the same
+              subtraction, so they can be off that night too. The candidate: use each leg's `duration`
+              (whole minutes, ignored today) only to pick the reading whose ride matches it to within a
+              minute, keeping the clock times otherwise. Ruled out: TfL's journey `duration` as another
+              input to the live ETA (a max), which would add back waits the live trains remove and
+              round every leg to the minute.
+              A picked time in that hour is ambiguous too (maintainer, 2026-10-15: deferred here; Codex,
+              #859): at 01:45 the first time round, a picked 01:30 passes the past check against its second
+              reading, while the answer is read, and kept, against its first, so an already-departed 01:30
+              can be listed; the Planner is sent a bare `0130` either way. The candidate: refuse a picked
+              time in the repeated hour, as the skipped spring hour is ("That time happens twice").
+        - [ ] Say "Not planned for now" from why the route closed, not from the plan read afterwards
+              (maintainer, 2026-10-15: a follow-up PR; Codex, #859). Today the later list checks the trip
+              for now's plan after the route closes, on a worker, so a plan that settles between Back and
+              that read can make a route the rider merely closed read as not offered. Have the trip screen
+              report why it closed the open route — Back, or a settled plan dropping it — and show the
+              notice only for the second, retiring `notPlannedForNow` and its worker hop.
+        - [ ] Ask via the bus stops towards the destination for a later trip too (maintainer,
+              2026-10-15: a follow-up PR; Codex, #859). From a position, the trip for now also asks the
+              Planner via up to three nearby bus stops (*Buses towards the destination*), since its three
+              answers can pass over the bus that serves the rider; the later list doesn't yet. Run the same
+              requests from `LaterTripViewModel`, passing the picked time through `quickestVia`, and drop
+              the "except" from SPEC *A later trip* and `docs/PRIVACY.md`.
+        - [ ] Keep the later list's cards through a rotation (maintainer, 2026-10-15: a to-do; Codex,
+              #859). The screen shows cards only for the very `Request` the model answers, and a recreated
+              composition builds a new one, so "Planning…" can show until the model takes it, then the same
+              cards return. Reuse the model's retained request on recreation when its time and scalars are
+              equal and its sets are the same objects (constant-time), so nothing moves.
       - [x] **Shared-leg pill**: a leg several routes serve alike (buses 43 and 134 share the stops
             to Highgate station) as one diagonally cut pill carrying both routes, and a live row per
             line in the one card (maintainer, 2026-09-26).

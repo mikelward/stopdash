@@ -1079,6 +1079,12 @@ internal fun TripScreen(
     // The rider's starred stops and journeys' ends ([HomeLines.riderStops]), kept on a line's map on the
     // trip's lines page as the home screen's keeps them.
     starredStops: Set<String> = emptySet(),
+    // "Change time…" in the overflow, picking a later trip's time (SPEC *Trips with a change → A later
+    // trip*); null offers none.
+    onChangeTime: (() -> Unit)? = null,
+    // Over a route opened from a later trip's list ([LaterTripScreen]): its live times are for now, not
+    // the time picked, and it says so for as long as it's open. Null says nothing.
+    openNotice: String? = null,
 ) {
     val asOf = rememberStatusesAndDelaysAsOf(state.statuses, state.statusesSortedOn, now)
     // With the delays as of today, so every cap on the page counts the same ones (Codex, #703).
@@ -1125,6 +1131,8 @@ internal fun TripScreen(
             tripKey = journey,
             onListShown = onListShown,
             aboveRoutes = aboveRoutes,
+            onChangeTime = onChangeTime,
+            openNotice = openNotice,
         )
     }
 }
@@ -1261,6 +1269,8 @@ private fun TripContent(
     tripKey: Any? = null,
     onListShown: (String) -> Unit = {},
     aboveRoutes: (@Composable () -> Unit)? = null,
+    onChangeTime: (() -> Unit)? = null,
+    openNotice: String? = null,
 ) {
     // What the routes leave out: the hidden modes and lines, and the lines avoided ([AvoidedLines]).
     // Only the hidden ones are the "hidden" banner's: an avoided line is said by its own chip.
@@ -1683,6 +1693,17 @@ private fun TripContent(
             val overflow: @Composable () -> Unit = {
                 if (menu != null) {
                     AppOverflowMenu(menu.updateAvailable, menu.onOpenAppListing) { close ->
+                        // The trip's own item first, over the app's: a later trip's time.
+                        if (onChangeTime != null) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.trip_change_time)) },
+                                onClick = {
+                                    close()
+                                    onChangeTime()
+                                },
+                                modifier = Modifier.testTag("tripChangeTime"),
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.menu_send_bug_report)) },
                             onClick = {
@@ -1844,6 +1865,8 @@ private fun TripContent(
                         // A place's direct trains, under every choice: they don't depend on them.
                         aboveRoutes?.invoke()
                     }
+                    // A route opened from a later trip's list: live, for now, not the time picked.
+                    if (openRef != null && openNotice != null) OpenRouteNotice(openNotice)
                     TripBanners(framing?.failed.orEmpty(), locationBanner, onRelocate, hiddenModes, onShowAllModes)
                 }
             }
@@ -1904,6 +1927,17 @@ internal fun failedStops(estimates: List<TripTiming.Estimate>, state: TripViewMo
         .filter { state.live[it.fromId]?.failed == true }
         .map { it.fromName }
         .distinct()
+
+/** Over a route opened from a later trip's list ([TripScreen]'s `openNotice`): its times are for now. */
+@Composable
+private fun OpenRouteNotice(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyMedium,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).testTag("openRouteNotice"),
+    )
+}
 
 @Composable
 private fun TripBanners(
@@ -2800,7 +2834,7 @@ private fun CardHeader(card: List<TripTiming.Estimate>, rideLines: Map<TripLeg, 
  * whole width, wrapping if even that won't hold it. Placed relative to the layout direction, so a
  * right-to-left screen mirrors it.
  */
-private fun MeasureScope.cardHeaderLayout(measurables: List<Measurable>, constraints: Constraints, fareGap: Int, lineGap: Int): MeasureResult {
+internal fun MeasureScope.cardHeaderLayout(measurables: List<Measurable>, constraints: Constraints, fareGap: Int, lineGap: Int): MeasureResult {
     val width = constraints.maxWidth
     val arrival = measurables[0]
     val farePlaced = measurables.getOrNull(1)?.measure(Constraints(maxWidth = width))
@@ -4585,7 +4619,7 @@ internal fun TripLinesContent(
  * size, unbolded and muted, so the arrival still reads first.
  */
 @Composable
-private fun CardFare(fare: TripFare, modifier: Modifier = Modifier) {
+internal fun CardFare(fare: TripFare, modifier: Modifier = Modifier) {
     Text(
         text = fare.label,
         style = MaterialTheme.typography.titleMedium,

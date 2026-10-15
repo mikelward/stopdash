@@ -467,6 +467,24 @@ class TripViewModel(
     fun refresh() = start(replan = false)
 
     /**
+     * Opens the route [key] names from outside the list (a later trip's card, [LaterTripScreen]), then refreshes.
+     * A plan past [PLAN_REUSE], or none, reads as planning from this moment: the trip shows again with its
+     * refresh only about to start, and the open route is judged gone only on a settled plan, never against
+     * the old one before the fresh one lands. After a failed plan the tap plans again, as Retry does: the rider
+     * asked for a route live, and a refresh alone never re-plans a failure.
+     */
+    fun openPlanned(key: String) {
+        val held = _state.value
+        val at = held.plannedAt
+        val failed = held.planError != null
+        if (failed || at == null || Duration.between(at, clock()) >= PLAN_REUSE) {
+            _state.update { it.copy(planning = true) }
+        }
+        openRoute.value = key
+        start(replan = failed)
+    }
+
+    /**
      * A Direct row being opened ([openDirect]): its line and stop, which of the line's rows ([PlaceDirect.Row.key]),
      * whether no route was found, and the stops near the place it reached when tapped
      * ([PlaceDirectViewModel.ShownRow.endKey]): a row reaching others since hasn't failed.

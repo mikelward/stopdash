@@ -516,6 +516,34 @@
     <string name="trip_walk_first_now">Walk to %1$s</string>
     <!-- A route leg's line isn't running. %1$s is TfL's status ("Suspended"). -->
     <string name="trip_line_not_running">%1$s: %2$s</string>
+    <!-- TODO: translate -->
+    <!-- A later trip (SPEC *Trips with a change → A later trip*): the trip page's overflow item that
+         picks a time to leave at or arrive by, the picker's title, and the item going back to now. -->
+    <string name="trip_change_time" tools:ignore="MissingTranslation">Change time…</string>
+    <string name="trip_time_title" tools:ignore="MissingTranslation">Change time</string>
+    <string name="trip_leave_now" tools:ignore="MissingTranslation">Leave now</string>
+    <!-- The picker's two choices: the time is when the trip leaves, or when it gets there. -->
+    <string name="trip_time_leave" tools:ignore="MissingTranslation">Leave</string>
+    <string name="trip_time_arrive" tools:ignore="MissingTranslation">Arrive by</string>
+    <!-- The picker's first two days; the rest are named by date ("Sat 18"). -->
+    <string name="trip_time_today" tools:ignore="MissingTranslation">Today</string>
+    <string name="trip_time_tomorrow" tools:ignore="MissingTranslation">Tomorrow</string>
+    <!-- A time picked that has already gone by: nothing can be planned for it. -->
+    <string name="trip_time_past" tools:ignore="MissingTranslation">That time has passed</string>
+    <!-- A time picked in the hour the clocks skip when they go forward: it never happens. -->
+    <string name="trip_time_skipped" tools:ignore="MissingTranslation">The clocks skip that time</string>
+    <!-- A day and a time: "Sat 18 10:00", "Tomorrow 09:30". -->
+    <string name="trip_time_on" tools:ignore="MissingTranslation">%1$s %2$s</string>
+    <!-- Over a later trip's routes: when it's planned for, then that its times are the timetable's. -->
+    <string name="trip_later_leave" tools:ignore="MissingTranslation">Leave %1$s</string>
+    <string name="trip_later_arrive" tools:ignore="MissingTranslation">Arrive by %1$s</string>
+    <string name="trip_later_timetable" tools:ignore="MissingTranslation">Timetable, not live</string>
+    <!-- A later trip's card: when it leaves and gets there, and how long that takes. -->
+    <string name="trip_later_times" tools:ignore="MissingTranslation">%1$s–%2$s · %3$d min</string>
+    <!-- A later trip's route opened: it shows live times for now, not the time picked (%1$s). -->
+    <string name="trip_later_live_notice" tools:ignore="MissingTranslation">Times for now, not %1$s</string>
+    <!-- A later trip's route tapped that the trip for now doesn't offer, so it can't open live. -->
+    <string name="trip_later_not_now" tools:ignore="MissingTranslation">Not planned for now</string>
     <!-- Placeholder in the station search field. -->
     <string name="station_search_hint">Station or stop name</string>
     <!-- Shown under the empty search field. -->

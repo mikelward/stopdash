@@ -36,6 +36,7 @@ import app.stopdash.domain.TflRequestPool
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripModes
 import app.stopdash.domain.TripOrigin
+import app.stopdash.domain.TripTime
 import app.stopdash.domain.Turnback
 import androidx.annotation.WorkerThread
 import app.stopdash.domain.PlatformDirection
@@ -166,6 +167,7 @@ class KtorTflClient(
         maxWalk: MaxWalk,
         stepFree: StepFree,
         modes: TripModes,
+        at: TripTime?,
     ): List<TripRoute> {
         val fromParam = from.plannerParam()
         val toParam = to.plannerParam()
@@ -176,14 +178,14 @@ class KtorTflClient(
         // change*). Any answer alone still plans the trip; only all failing fails it.
         val answers = coroutineScope {
             PREFERENCES.map { preference ->
-                async { attemptPlan { plan(fromParam, toParam, speed, maxWalk, stepFree, modes, preference = preference) } }
+                async { attemptPlan { plan(fromParam, toParam, speed, maxWalk, stepFree, modes, preference = preference, at = at) } }
             }.awaitAll()
         }
         // Each failure is logged by which request it was, as they can differ (offline and rate-limited,
         // say); with every one failed, the quickest's fails the plan (the trip logs it).
         answers.forEachIndexed { index, answer ->
             val failure = answer.exceptionOrNull() ?: return@forEachIndexed
-            val source = PREFERENCES[index]?.let { planSource(it, via = null) } ?: "journey planner (quickest)"
+            val source = PREFERENCES[index]?.let { planSource(it, via = null, at = at) } ?: "journey planner (quickest)${laterSuffix(at)}"
             if (index > 0 || answers.any { it.isSuccess }) warn("$source: ${failure::class.simpleName}")
         }
         if (answers.none { it.isSuccess }) throw checkNotNull(answers.first().exceptionOrNull())
@@ -200,8 +202,9 @@ class KtorTflClient(
         maxWalk: MaxWalk,
         stepFree: StepFree,
         modes: TripModes,
+        at: TripTime?,
     ): List<TripRoute> =
-        finished(listOf(plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = LEAST_INTERCHANGE, via = via)), from, to)
+        finished(listOf(plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = LEAST_INTERCHANGE, via = via, at = at)), from, to)
 
     // One request, for the quickest routes via a bus stop towards the destination ([TowardStops]): its
     // failure is the caller's to handle, the Planner's 404 for no route through the stop among them.
@@ -301,8 +304,10 @@ class KtorTflClient(
         leaveOut: Set<String> = emptySet(),
         // From one stop to another, for a Direct row's ride ([DirectRoute]): said apart in the log.
         between: Boolean = false,
+        // A later trip's time ([TripTime]); none plans for now.
+        at: TripTime? = null,
     ): List<TripRoute> {
-        val source = planSource(preference, via, leaveOut, between)
+        val source = planSource(preference, via, leaveOut, between, at)
         // How long the Planner took, logged once for every request whatever its outcome (it can take
         // seconds, so a slow trip page says whether its plan or what follows held it up; a failed one
         // can be the slow one, Codex, #563), from before the request waits for a slot and the rate
@@ -312,7 +317,7 @@ class KtorTflClient(
         var outcome: String? = null
         var offered = ""
         try {
-            return planRequest(source, fromParam, toParam, speed, maxWalk, stepFree, plannerModes(modes, leaveOut), preference, via) { status ->
+            return planRequest(source, fromParam, toParam, speed, maxWalk, stepFree, plannerModes(modes, leaveOut), preference, via, at) { status ->
                 if (waited == null) waited = asked.elapsedNow().inWholeMilliseconds
                 status?.let { outcome = it }
             }.also { routes ->
@@ -350,6 +355,7 @@ class KtorTflClient(
         modeList: String,
         preference: String?,
         via: String?,
+        at: TripTime?,
         progress: (String?) -> Unit,
     ): List<TripRoute> =
         tflRequest { key ->
@@ -369,6 +375,15 @@ class KtorTflClient(
                     via?.let { parameter("via", it) }
                     // Only routes as step-free as the rider chose ([StepFree]); none sent for any.
                     stepFree.plannerValue?.let { parameter("accessibilityPreference", it) }
+                    // A later trip, from the Planner's timetable: none sent plans for now, as TfL's default.
+                    // One way only: by default the Planner also offers routes leaving before a leave-at
+                    // time, or arriving after an arrive-by one.
+                    at?.let { time ->
+                        parameter("date", time.plannerDate)
+                        parameter("time", time.plannerTime)
+                        parameter("timeIs", time.plannerTimeIs)
+                        parameter("calcOneDirection", "true")
+                    }
                     applyAppKey(key)
                     // The Planner can take several seconds to answer a trip it hasn't cached.
                     allowSlowAnswer()
@@ -381,7 +396,8 @@ class KtorTflClient(
                 progress("HTTP ${e.response.status.value}")
                 return@tflRequest emptyList()
             }
-            val routes = dto.toRoutes(stationOf = stationOf)
+            // A later trip's times read about its own time, not now ([TripTime.readFrom]), for the hour the clocks go back.
+            val routes = dto.toRoutes(now = at?.readFrom ?: Instant.now(), stationOf = stationOf)
             // Journeys offered but none readable: a decode failure, not "no routes" (which would be
             // reused as a real answer for the plan's lifetime).
             if (routes.isEmpty() && dto.journeys.isNotEmpty()) {
@@ -398,16 +414,28 @@ class KtorTflClient(
         if (leaveOut.isEmpty()) modes.plannerModes else modes.plannerModes.split(',').filterNot { it in leaveOut }.joinToString(",")
 
     // What a Planner request is called in the log: which of a plan's requests it was. The modes left out
-    // around delays are named, coarse as a line id is.
-    private fun planSource(preference: String?, via: String?, leaveOut: Set<String> = emptySet(), between: Boolean = false): String = when {
-        leaveOut.isNotEmpty() -> "journey planner (without ${leaveOut.sorted().joinToString("+")})"
-        via != null && preference == LEAST_INTERCHANGE -> "journey planner (fewest changes via a stop)"
-        via != null -> "journey planner (quickest via a stop)"
-        between -> "journey planner (fewest changes between stops)"
-        preference == LEAST_INTERCHANGE -> "journey planner (fewest changes)"
-        preference == LEAST_WALKING -> "journey planner (least walking)"
-        else -> "journey planner"
+    // around delays are named, coarse as a line id is. A later trip's says so, never its time, which is
+    // the rider's.
+    private fun planSource(
+        preference: String?,
+        via: String?,
+        leaveOut: Set<String> = emptySet(),
+        between: Boolean = false,
+        at: TripTime? = null,
+    ): String {
+        val source = when {
+            leaveOut.isNotEmpty() -> "journey planner (without ${leaveOut.sorted().joinToString("+")})"
+            via != null && preference == LEAST_INTERCHANGE -> "journey planner (fewest changes via a stop)"
+            via != null -> "journey planner (quickest via a stop)"
+            between -> "journey planner (fewest changes between stops)"
+            preference == LEAST_INTERCHANGE -> "journey planner (fewest changes)"
+            preference == LEAST_WALKING -> "journey planner (least walking)"
+            else -> "journey planner"
+        }
+        return source + laterSuffix(at)
     }
+
+    private fun laterSuffix(at: TripTime?): String = if (at == null) "" else ", later"
 
     // The route with its first leg's start unnamed when it starts at the rider's coordinate (no stop
     // id): TfL names that point by whatever sits there, often the coordinate itself, which is neither

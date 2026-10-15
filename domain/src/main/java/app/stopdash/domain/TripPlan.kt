@@ -204,6 +204,7 @@ interface JourneyPlanner {
      * Every walk in the routes is timed at [speed] ([WalkingSpeed], the rider's setting), none is
      * longer than [maxWalk] ([MaxWalk], also theirs), every route is as step-free as [stepFree]
      * ([StepFree], theirs too), and none rides a kind of transport [modes] turns off ([TripModes]).
+     * Planned for now, or for [at] when a later trip names one ([TripTime]).
      */
     suspend fun journeys(
         from: TripOrigin,
@@ -212,11 +213,13 @@ interface JourneyPlanner {
         maxWalk: MaxWalk = MaxWalk.DEFAULT,
         stepFree: StepFree = StepFree.DEFAULT,
         modes: TripModes = TripModes.DEFAULT,
+        at: TripTime? = null,
     ): List<TripRoute>
 
     /**
      * Only the fewest-changes routes of [journeys], each passing the stop [via], for a trip asked
-     * about once more ([FinalStop]). A planner that can't route via a stop has nothing to add.
+     * about once more ([FinalStop]), for the same time as [journeys]. A planner that can't route via a
+     * stop has nothing to add.
      */
     suspend fun fewestChangesVia(
         from: TripOrigin,
@@ -226,6 +229,7 @@ interface JourneyPlanner {
         maxWalk: MaxWalk = MaxWalk.DEFAULT,
         stepFree: StepFree = StepFree.DEFAULT,
         modes: TripModes = TripModes.DEFAULT,
+        at: TripTime? = null,
     ): List<TripRoute> = emptyList()
 
     /**

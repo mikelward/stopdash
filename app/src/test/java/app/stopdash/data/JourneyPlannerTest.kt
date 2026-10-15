@@ -10,6 +10,7 @@ import app.stopdash.domain.TflException
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripFare
 import app.stopdash.domain.TripOrigin
+import app.stopdash.domain.TripTime
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.journeys
 import io.ktor.client.HttpClient
@@ -25,6 +26,7 @@ import io.ktor.utils.io.ByteReadChannel
 import java.io.File
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDateTime
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -312,6 +314,70 @@ class JourneyPlannerTest {
         assertEquals(listOf(null, 300, null), routes.map { it.fare?.pence })
         val offered = warnings.filter { it.startsWith("journey planner: ") }.single().substringAfter("to send): ")
         assertEquals("mildmay+jubilee (unpriced), windrush+jubilee, windrush+elizabeth (unpriced)", offered)
+    }
+
+    @Test
+    fun `a later trip asks every request for its date and time, leaving or arriving`() = runTest {
+        val requests = mutableListOf<HttpRequestData>()
+        val leave = TripTime(TripTime.Kind.LEAVE, LocalDateTime.of(2026, 10, 17, 9, 5))
+        client(fixture, capture = { synchronized(requests) { requests += it } })
+            .journeys(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"), at = leave)
+        assertEquals(3, requests.size)
+        requests.forEach { request ->
+            assertEquals("20261017", request.url.parameters["date"])
+            assertEquals("0905", request.url.parameters["time"])
+            assertEquals("Departing", request.url.parameters["timeIs"])
+            // One way only: TfL otherwise also offers routes leaving before the time.
+            assertEquals("true", request.url.parameters["calcOneDirection"])
+        }
+        var arriving: HttpRequestData? = null
+        client(fixture, capture = { arriving = it })
+            .journeys(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"), at = TripTime(TripTime.Kind.ARRIVE, LocalDateTime.of(2026, 10, 17, 18, 30)))
+        assertEquals("1830", checkNotNull(arriving).url.parameters["time"])
+        assertEquals("Arriving", checkNotNull(arriving).url.parameters["timeIs"])
+    }
+
+    @Test
+    fun `a later trip across the clocks going back reads its times about its own time, not now`() = runTest {
+        // The recorded journeys moved to 01:37-02:12 on 25 October 2026, where 01:xx happens twice: arriving by
+        // 02:15, each leaves in the second 01:xx, so each takes as long as it did.
+        val moved = fixture.replace("2026-09-26T07:", "2026-10-25T01:").replace("2026-09-26T08:", "2026-10-25T02:")
+        fun minutes(routes: List<TripRoute>) = routes.map { Duration.between(it.legs.first().departure, it.legs.last().arrival).toMinutes() }
+        val asRecorded = client(fixture).journeys(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"))
+        val arriveBy = TripTime(TripTime.Kind.ARRIVE, LocalDateTime.of(2026, 10, 25, 2, 15))
+        val later = client(moved).journeys(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"), at = arriveBy)
+        assertTrue("the moved fixture still plans", later.isNotEmpty())
+        assertEquals(minutes(asRecorded), minutes(later))
+        assertTrue(later.all { !it.legs.first().departure.isBefore(Instant.parse("2026-10-25T01:00:00Z")) })
+    }
+
+    @Test
+    fun `a trip for now sends no time, so the Planner plans from now`() = runTest {
+        val requests = mutableListOf<HttpRequestData>()
+        client(fixture, capture = { synchronized(requests) { requests += it } })
+            .journeys(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"))
+        assertEquals(3, requests.size)
+        assertTrue(requests.none { request -> listOf("date", "time", "timeIs", "calcOneDirection").any { it in request.url.parameters.names() } })
+    }
+
+    @Test
+    fun `a later trip's request via a stop asks for the same time`() = runTest {
+        var captured: HttpRequestData? = null
+        val at = TripTime(TripTime.Kind.LEAVE, LocalDateTime.of(2026, 10, 17, 9, 5))
+        client(fixture, capture = { captured = it })
+            .fewestChangesVia(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"), "940GZZLUCWR", at = at)
+        assertEquals("20261017", checkNotNull(captured).url.parameters["date"])
+        assertEquals("0905", checkNotNull(captured).url.parameters["time"])
+    }
+
+    @Test
+    fun `a later trip's requests say they're later in the log, never when`() = runTest {
+        val warnings = mutableListOf<String>()
+        client(fixture, warn = { warnings += it })
+            .journeys(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"), at = TripTime(TripTime.Kind.LEAVE, LocalDateTime.of(2026, 10, 17, 9, 5)))
+        assertEquals(3, warnings.size)
+        assertTrue(warnings.all { it.startsWith("journey planner") && it.substringBefore(":").endsWith(", later") })
+        assertTrue(warnings.none { "0905" in it || "09:05" in it || "20261017" in it || "2026-10-17" in it })
     }
 
     @Test

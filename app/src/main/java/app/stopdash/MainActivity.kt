@@ -72,6 +72,7 @@ import app.stopdash.domain.ToChoice
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripFixes
 import app.stopdash.domain.TripOrigin
+import app.stopdash.domain.TripTime
 import app.stopdash.domain.TripProgress
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripTiming
@@ -236,6 +237,7 @@ import app.stopdash.ui.ActiveTripTracker
 import app.stopdash.ui.AlertsBehindRecorder
 import app.stopdash.ui.AppMenuActions
 import app.stopdash.ui.BugReportConsentDialog
+import app.stopdash.ui.ByIdentity
 import app.stopdash.ui.DISRUPTION_REUSE
 import app.stopdash.ui.collectByIdentityWithLifecycle
 import app.stopdash.ui.DeparturesUiState
@@ -318,10 +320,16 @@ import app.stopdash.ui.StopRef
 import app.stopdash.ui.PlaceDirectSection
 import app.stopdash.ui.PlaceDirectViewModel
 import app.stopdash.ui.tripStopPlace
+import app.stopdash.ui.LaterTripNav
+import app.stopdash.ui.LaterTripScreen
+import app.stopdash.ui.LaterTripViewModel
 import app.stopdash.ui.TripEnds
 import app.stopdash.ui.TripScreen
 import app.stopdash.ui.TripStart
+import app.stopdash.ui.TripTimeDialog
 import app.stopdash.ui.TripViewModel
+import app.stopdash.ui.notPlannedForNow
+import app.stopdash.ui.tripTimeLabel
 import app.stopdash.ui.WatchInstallActions
 import app.stopdash.ui.WidgetUpdateActions
 import app.stopdash.ui.WriteFailures
@@ -5107,6 +5115,92 @@ class MainActivity : ComponentActivity() {
         // that's in, and its list isn't first shown till then (Codex, #695).
         val avoidedSaving = AvoidedLinesSetting.editsPending.collectAsStateWithLifecycle().value > 0
         SideEffect { trip.optionsLoaded = planOptionsLoaded && !avoidedSaving }
+        // A later trip (SPEC *Trips with a change → A later trip*): the time picked from the overflow, kept
+        // over a rotation and a recreated process; none plans for now, live. By where the trip goes, so a
+        // new nearest stop to start from keeps it (and plans it afresh from there). A route opened off its
+        // list is live, says its times are for now, and closing it goes back there.
+        var laterNav by rememberSaveable(destKey, stateSaver = LaterTripNav.Saver) { mutableStateOf(LaterTripNav()) }
+        val later = laterNav.later
+        val openedFrom = laterNav.openedFrom
+        var pickingTime by rememberSaveable(destKey) { mutableStateOf(false) }
+        // Said once on the later list: a tapped route the trip for now didn't offer.
+        var laterNotice by remember { mutableStateOf<String?>(null) }
+        val now = tickingNow()
+        if (pickingTime) {
+            TripTimeDialog(
+                initial = later ?: openedFrom ?: TripTime.suggested(now),
+                now = now,
+                onDismiss = { pickingTime = false },
+                onDone = { picked ->
+                    pickingTime = false
+                    // The later list replaces the trip for now, a route open on it included.
+                    laterNav = laterNav.picked(picked)
+                    trip.openRoute.value = null
+                },
+            )
+        }
+        if (later != null) {
+            ReportScreen(UsageEvent.Screen.TRIP)
+            // One model for the trip's later times: it plans a new time or new choices, and lists the routes
+            // again for lines hidden or avoided, all on its worker. Nothing live, so the trip for now's
+            // refresh and fetches below don't run while it shows.
+            val laterModel: LaterTripViewModel = viewModel(
+                viewModelStoreOwner = owner,
+                key = "later",
+                factory = viewModelFactory {
+                    initializer {
+                        LaterTripViewModel(
+                            journeyPlanner(appContext),
+                            origin = { latestHere?.let(TripOrigin::Here) ?: TripOrigin.Stop(fromId) },
+                            destinations = destinations,
+                            destinationIds = destinationIds,
+                            warn = ::logDepartureWarning,
+                        )
+                    }
+                },
+            )
+            // As for the trip for now: this composition's fix, not the one the model was made in.
+            SideEffect { laterModel.origin = { latestHere?.let(TripOrigin::Here) ?: TripOrigin.Stop(fromId) } }
+            // The time and the rider's choices as they stand, one object while none changes: the sets are keyed by
+            // identity (they come by identity), so nothing here walks them, and the screen tells this request from
+            // the model's answer by reference. Handed on as they are: what they leave out is worked out by the
+            // model, never here.
+            val laterRequest = remember(later, walkingSpeed, maxWalk, stepFree, ByIdentity(tripModes), ByIdentity(hiddenModes), ByIdentity(avoidedLines)) {
+                LaterTripViewModel.Request(later, walkingSpeed, maxWalk, stepFree, tripModes, hiddenModes, avoidedLines)
+            }
+            // Not before the rider's own choices are read, as a trip for now waits for them.
+            if (planOptionsLoaded && !avoidedSaving) {
+                SideEffect { laterModel.show(laterRequest) }
+            }
+            LaterTripScreen(
+                title = title,
+                request = laterRequest,
+                state = laterModel.state.collectByIdentityWithLifecycle().value,
+                now = now,
+                onBack = { laterNav = laterNav.leftLater() },
+                onRetry = laterModel::retry,
+                onChangeTime = { pickingTime = true },
+                // Opened in the trip for now, live (maintainer, 2026-10-15): its page says the times are for now.
+                onOpen = { card ->
+                    laterNav = laterNav.opened(card.routeKey)
+                    trip.openPlanned(card.routeKey)
+                },
+                notice = laterNotice,
+                onNoticeShown = { laterNotice = null },
+            )
+            return
+        }
+        // A route opened from the later list, closed (Back, or the trip for now doesn't offer it): back to
+        // that list, saying so when a settled plan for now doesn't offer it.
+        val openNow = trip.openRoute.value
+        val notPlanned = stringResource(R.string.trip_later_not_now)
+        LaunchedEffect(openNow == null, laterNav) {
+            if (openNow != null || openedFrom == null) return@LaunchedEffect
+            val key = laterNav.openedKey
+            // Over every route: on the worker (AGENTS.md *Main thread*).
+            if (withContext(Workers.compute) { notPlannedForNow(trip.state.value, key) }) laterNotice = notPlanned
+            laterNav = laterNav.routeClosed()
+        }
         // A re-pick of the nearby set (a fresh fix, a retried location) that kept the same nearest
         // stop keeps this trip, but its walk and live times follow the new fix at once rather than
         // wait for the next tick.
@@ -5189,7 +5283,7 @@ class MainActivity : ComponentActivity() {
             title = title,
             journey = tripKey,
             state = tripState,
-            now = tickingNow(),
+            now = now,
             access = access,
             // The same route data as the list checks its trains against (SPEC *Trips with a change*).
             routeStops = routeStops(appContext),
@@ -5289,6 +5383,8 @@ class MainActivity : ComponentActivity() {
                 direct?.pullRefresh()
                 if (here != null) relocate()
             },
+            onChangeTime = { pickingTime = true },
+            openNotice = openedFrom?.let { stringResource(R.string.trip_later_live_notice, tripTimeLabel(it, now)) },
         )
     }
 
