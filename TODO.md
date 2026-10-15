@@ -2064,6 +2064,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               each such result (Codex on #882). Give the app one clock-change signal (the monotonic
               offset `SteadyClock` already reads, moving back) that these key on, so a new result is
               covered by construction, and delete the per-result checks it replaces.
+        - [ ] **A walk shows its newest fix, whatever order fixes arrive in** (Codex on #881): a
+              refresh's fix that waited on the lock behind a newer one still replaces the walk's
+              distance, and a sure one its way, with its own older reading. The way held for a vague
+              fix already takes only a surer fix taken before it; what's shown should go the same way,
+              keeping the walk as it is when the fix coming in was taken before the one shown.
         - [ ] **No line wrapping for the next action at all** (maintainer, 2026-10-03): the trip card's
               step ("Walk to …", "Board 43 at …") now takes its places' common abbreviations to stay on one
               line and wraps to a second only if those don't fit. Consider never wrapping it: one line,
