@@ -2583,6 +2583,21 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [x] **A station's own bus stops count** (maintainer, 2026-10-14): where no line serves both, the bus
             stops within 150 m of a station (the near-me list's rule) are weighed before graying the pair,
             found from the bundled stops. The card's wider reach (320 m, the rider's max walk) is still open.
+      - [ ] **Decide the station bus-stop radius** (maintainer, 2026-10-14): 150 m is the near-me list's
+            "at the station" rule (`FartherBuses.AT_STATION_METERS`), picked against a small station's own
+            stops (under 100 m), not against a big terminus. Measured from the bundled stops, an interchange's
+            own member bus stops always counting: at **King's Cross St. Pancras** 150 m loses nothing — its
+            members carry 14 routes, 150 m adds the 1, and no radius out to 400 m adds another (two of St
+            Pancras International's own bus stops just past it, at 152 m and 183 m, carry routes already
+            counted). At **Paddington** 150 m adds the 46 to its members' 8 routes but misses the 18 (and the
+            N18, N118), whose stop is 172 m from the nearest of its stations, so a pair on the 18 is still
+            saved grayed. **200 m** would take in the 18 there and change
+            nothing at King's Cross, at no extra lookup (Add already looks 300 m around each station, for the
+            cache's reuse); its cost is that at a small station a stop on the next road can count as the
+            station's. It would be Add's own value, leaving the near-me list at 150 m. Not the card's reach:
+            the rider's max walk (about 20 min) around a station takes in the other end's own stops, so a pair
+            a short ride apart would overlap. Weigh other termini (Euston, Waterloo, Liverpool Street) before
+            choosing.
   - [ ] **Rename a starred journey** — needs a label in the stored file (a schema version bump, so
         an older build can't drop it on its next write).
   - [ ] **Converge "journey" and "trip"** (maintainer, 2026-10-05: "longer term we'll need to
