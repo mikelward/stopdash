@@ -116,6 +116,13 @@ exercises the whole spine the widget later renders from.
       `emptyStateUncertain` ages its stops on the worker each tick; the route page's saved journeys here,
       lift check and step-free levels are worked out on the worker; so are `MainActivity`'s saved
       journeys oriented and measured, `rememberShownJourneys`.)
+- [ ] **Shortened names measured off the main thread** (Codex on #862): each shortened name picks the form
+      that fits by measuring its text as it composes, the first time and when its width, style or font
+      scale changes: `ShortenedText` (a departure's destination), `ShortenedLines` (a trip step's title),
+      `RideTitle` (a favorite ride's heading) and `ShortenedLine` (a favorite ride's alert line and its cut
+      name). Each is a fixed handful of measurements, not a pass over a list, so they stay as they are
+      (maintainer, 2026-10-15) until one design moves them all: measure on a worker at the width the row
+      reports, without a first frame that swaps one form for another (SPEC *hold still*).
 - [x] **The trip's other flows taken in by identity**: `MainActivity` collects the tracker's
       `nextBoard`, `routeDisruptions` and `stationNotes` with `collectByIdentityWithLifecycle`, as it does
       `lineChecks` (Codex, #627): the `StateFlow` has already compared each value where it was written, so a
