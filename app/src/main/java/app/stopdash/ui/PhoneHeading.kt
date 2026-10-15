@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -21,9 +22,12 @@ import androidx.lifecycle.repeatOnLifecycle
 import app.stopdash.StopdashDebugLog
 import app.stopdash.domain.Compass
 import app.stopdash.domain.HeadingFilter
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.CoroutineContext
 import kotlin.math.roundToInt
 
 /**
@@ -52,18 +56,48 @@ internal object PhoneHeading {
         // Read only: the display's turn, so a phone on its side still points the right way.
         val rotation = LocalView.current.display?.rotation ?: Surface.ROTATION_0
         val heading = remember { MutableStateFlow<Float?>(null) }
+        // Read as the compass is let go, to say why ([stopReason]): by then it holds the value that let it go.
+        val wanted = rememberUpdatedState(enabled)
         LaunchedEffect(enabled, lifecycle, worker, rotation) {
             heading.value = null
             if (!enabled) return@LaunchedEffect
             lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 try {
-                    withContext(worker) { readings(context, rotation) { heading.value = it } }
+                    watch(worker, context, rotation, reason = { stopReason(wanted.value, lifecycle.currentState) }) { heading.value = it }
                 } finally {
                     heading.value = null
                 }
             }
         }
         return heading.collectAsState().value
+    }
+
+    /**
+     * [readings] on [worker], and once they logged anything ([log]), the compass being let go, with why
+     * ([reason]), so an arrow gone without a word from the sensor is said too (bug report, 2026-10-15).
+     * [reason] runs back on the caller's thread, the main one on the trip screen: it reads the
+     * lifecycle's state, which is the main thread's to read (Codex, #881); no line is logged on that thread.
+     */
+    suspend fun watch(
+        worker: CoroutineContext,
+        context: Context,
+        rotation: Int,
+        reason: () -> String,
+        log: (String) -> Unit = { StopdashDebugLog.info("compass: %s", it) },
+        emit: (Float?) -> Unit,
+    ) {
+        // Set on the sensor's thread, read here once it's let go.
+        val spoken = AtomicBoolean(false)
+        try {
+            withContext(worker) { readings(context, rotation, { spoken.set(true); log(it) }, emit) }
+        } finally {
+            if (spoken.get()) {
+                // The reason read here, on the caller's thread; the line written on the worker, as a log line
+                // is I/O, never the main thread's (AGENTS.md *Main thread*; Codex, #881).
+                val why = reason()
+                withContext(NonCancellable + worker) { log("stopped, $why") }
+            }
+        }
     }
 
     /**
@@ -119,6 +153,18 @@ internal object PhoneHeading {
             manager.unregisterListener(listener)
             thread.quitSafely()
         }
+    }
+
+    /**
+     * Why the trip screen let the compass go, as the log says it: no longer [wanted] (the walk's way
+     * withheld or over, or a route page opened over the trip), the screen no longer shown (its
+     * [state] below started: off, or another app in front), or else the trip's card off the screen
+     * (the trip closed, or its card scrolled away).
+     */
+    internal fun stopReason(wanted: Boolean, state: Lifecycle.State): String = when {
+        !wanted -> "no way to point"
+        !state.isAtLeast(Lifecycle.State.STARTED) -> "screen not shown"
+        else -> "trip card off screen"
     }
 
     /**

@@ -1981,9 +1981,28 @@ object OnTheWay {
     /**
      * How far the end of a walk is ([meters]) and which way ([bearing], degrees from true north, null
      * nearer than [POINT_WITHIN_METERS] or from a fix too vague for it, [POINT_ACCURACY_SHARE]),
-     * straight from where the rider was seen.
+     * straight from where the rider was seen; where no way is named, why ([withheld]).
      */
-    data class WalkLeft(val meters: Double, val bearing: Double?)
+    data class WalkLeft(val meters: Double, val bearing: Double?, val withheld: WayWithheld? = null)
+
+    /**
+     * Why a walk names no way ([WalkLeft.bearing] null), by kind, as the log says it: never how far
+     * or which way (docs/PRIVACY.md).
+     */
+    enum class WayWithheld(val reason: String) {
+        // Within [POINT_WITHIN_METERS] of its end.
+        NEAR("near its end"),
+
+        // From a fix less sure than [POINT_ACCURACY_SHARE] of the distance left, or one that doesn't say.
+        VAGUE("fix too vague for the distance left"),
+    }
+
+    /**
+     * What the log says of whether [left] names the walk's way: shown, or withheld and why. The trip
+     * screen's arrow and the compass point go with it, so a report says why a walk showed neither
+     * (bug report, 2026-10-15).
+     */
+    fun wayNote(left: WalkLeft): String = left.withheld?.let { "walk direction withheld, ${it.reason}" } ?: "walk direction shown"
 
     /**
      * Nearer than this, no way to the walk's end is named: a fix's own uncertainty (often 10–20 m in
@@ -2016,8 +2035,13 @@ object OnTheWay {
         val lon = fix.coordinates.longitude
         val (end, meters) = ends.map { it to NearestStops.distanceMeters(lat, lon, it.latitude, it.longitude) }.minByOrNull { it.second } ?: return null
         val sure = fix.accuracyMeters?.let { it <= meters * POINT_ACCURACY_SHARE } ?: false
-        val bearing = if (meters < POINT_WITHIN_METERS || !sure) null else Compass.bearingDegrees(lat, lon, end.latitude, end.longitude)
-        return WalkLeft(meters, bearing)
+        val withheld = when {
+            meters < POINT_WITHIN_METERS -> WayWithheld.NEAR
+            !sure -> WayWithheld.VAGUE
+            else -> null
+        }
+        val bearing = if (withheld != null) null else Compass.bearingDegrees(lat, lon, end.latitude, end.longitude)
+        return WalkLeft(meters, bearing, withheld)
     }
 
     /**

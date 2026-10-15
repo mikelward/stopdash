@@ -399,6 +399,9 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
   distances would pin down where you were),
 - on a trip on the way, **what a location fix saw you at** when it moved the trip on — the stop's
   placed point or one of the station's entrances — never which stop, how far, or where,
+- on a walk, **whether its direction could be shown**, each time that changes, and when it couldn't,
+  why: the fix too vague for the distance left, or you near the walk's end — never how far,
+  which way, or where,
 - on a ride followed by where you're seen (no train matched), **how far along it each fix placed
   you**, as a stop count ("stop 5 of 9", or not placed) with the fix's accuracy radius; and when a
   "get off soon" alert is shown, the stops left and whether they were counted from the train

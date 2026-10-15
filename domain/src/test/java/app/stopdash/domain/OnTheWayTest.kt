@@ -756,13 +756,23 @@ class OnTheWayTest {
         val near = OnTheWay.walkLeft(walkingHome, fix(Coordinates(51.5001, -0.12)))!!
         assertTrue(near.meters < OnTheWay.POINT_WITHIN_METERS)
         assertNull(near.bearing)
+        assertEquals(OnTheWay.WayWithheld.NEAR, near.withheld)
         // A fix too vague for the distance left: how far, but no way named (Codex, #775). Half the
         // distance is the most; one that doesn't say how sure it is names none either.
-        assertNull(OnTheWay.walkLeft(walkingHome, fix(Coordinates(51.501, -0.12), accuracyMeters = 80f))!!.bearing)
-        assertEquals(180.0, OnTheWay.walkLeft(walkingHome, fix(Coordinates(51.501, -0.12), accuracyMeters = 50f))!!.bearing!!, 0.5)
+        val vague = OnTheWay.walkLeft(walkingHome, fix(Coordinates(51.501, -0.12), accuracyMeters = 80f))!!
+        assertNull(vague.bearing)
+        assertEquals(OnTheWay.WayWithheld.VAGUE, vague.withheld)
+        val sure = OnTheWay.walkLeft(walkingHome, fix(Coordinates(51.501, -0.12), accuracyMeters = 50f))!!
+        assertEquals(180.0, sure.bearing!!, 0.5)
+        assertNull(sure.withheld)
         val unsaid = LocationFix(Coordinates(51.504, -0.12), isFallback = false, accuracyMeters = null, ageMillis = 1_000L)
         assertEquals(445.0, OnTheWay.walkLeft(walkingHome, unsaid)!!.meters, 5.0)
         assertNull(OnTheWay.walkLeft(walkingHome, unsaid)!!.bearing)
+        assertEquals(OnTheWay.WayWithheld.VAGUE, OnTheWay.walkLeft(walkingHome, unsaid)!!.withheld)
+        // Said in the log by kind alone, never how far or which way (bug report, 2026-10-15).
+        assertEquals("walk direction shown", OnTheWay.wayNote(sure))
+        assertEquals("walk direction withheld, fix too vague for the distance left", OnTheWay.wayNote(vague))
+        assertEquals("walk direction withheld, near its end", OnTheWay.wayNote(near))
         // A fix that doesn't place the rider: neither.
         assertNull(OnTheWay.walkLeft(walkingHome, fix(destination).copy(isFallback = true)))
         // Off a walk: neither.
