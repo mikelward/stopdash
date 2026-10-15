@@ -646,6 +646,25 @@ class JourneysTest {
     }
 
     @Test
+    fun `journeys go nearest first by their nearer end, the unmeasured last in saved order`() {
+        // Synthetic ends on one meridian; the rider's position is synthetic too.
+        val south = FavoriteJourney(JourneyEnd("S1", "South 1", 51.45, -0.12), JourneyEnd("S2", "South 2", 51.44, -0.12), "example")
+        val unplaced = journey.copy(to = JourneyEnd("MID", "Mid"))
+        val saved = listOf(journey, unplaced, south)
+        // Near the south end: the south journey leads, the unmeasured one last.
+        assertEquals(listOf(south, journey, unplaced), Journeys.nearestFirst(saved, 51.46, -0.12))
+        // Near the north end: the saved order, the unmeasured one still last.
+        assertEquals(listOf(journey, south, unplaced), Journeys.nearestFirst(saved, 51.52, -0.12))
+        // Turned the other way round, a journey keeps its place: its nearer end is the same.
+        assertEquals(
+            listOf(south.reversed(), journey, unplaced),
+            Journeys.nearestFirst(listOf(journey, unplaced, south.reversed()), 51.46, -0.12),
+        )
+        // Without a position, the saved order stands.
+        assertEquals(saved, Journeys.nearestFirst(saved, null, null))
+    }
+
+    @Test
     fun `only a confirmed fix holds a far journey back`() {
         val far = Journeys.farJourneys(listOf(journey), 51.47, -0.12, fixConfirmed = true)
         assertEquals(setOf(journey.key), far.keys)

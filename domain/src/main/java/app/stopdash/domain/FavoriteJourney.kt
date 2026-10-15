@@ -180,6 +180,23 @@ object Journeys {
     }
 
     /**
+     * [journeys] nearest first, by the distance from ([latitude], [longitude]) to each one's nearer
+     * end, as the near-me list orders its stops (maintainer, 2026-10-15). The nearer end, not the
+     * origin, so swapping a ride's direction doesn't move it. One that can't be measured (no
+     * position, or an end without coordinates, as [oriented]) follows the measured ones; ties and the
+     * unmeasured keep the saved order.
+     */
+    @WorkerThread
+    fun nearestFirst(journeys: List<FavoriteJourney>, latitude: Double?, longitude: Double?): List<FavoriteJourney> {
+        if (latitude == null || longitude == null) return journeys
+        return journeys.sortedBy { journey ->
+            val fromMeters = distanceTo(journey.from, latitude, longitude)
+            val toMeters = distanceTo(journey.to, latitude, longitude)
+            if (fromMeters == null || toMeters == null) Double.MAX_VALUE else minOf(fromMeters, toMeters)
+        }
+    }
+
+    /**
      * The stops to stop fetching for the [held] journeys, given each journey's fetched stops
      * ([stopIdsByJourney], key → its origin and neighboring poles): theirs, less any another
      * journey still needs.

@@ -9,16 +9,17 @@ import app.stopdash.domain.Journeys
 import app.stopdash.domain.FavoriteJourney
 
 /**
- * The saved journeys as the list shows them ([shownJourneysOf]): each turned so its origin is the end
- * nearer the rider, or the other way if they flipped it ([journeys]), and those held back behind the
- * Faraway favorites button with each one's meters to its nearer end ([farMeters], SPEC *Journeys*).
+ * The saved journeys as the list shows them ([shownJourneysOf]): nearest first, each turned so its
+ * origin is the end nearer the rider, or the other way if they flipped it ([journeys]), and those held
+ * back behind the Faraway favorites button with each one's meters to its nearer end ([farMeters], SPEC
+ * *Journeys*).
  */
 internal class ShownJourneys(val journeys: List<FavoriteJourney>, val farMeters: Map<String, Double>)
 
 /**
- * [ShownJourneys] for [saved] at [at]: each oriented, the [flipped] ones reversed, and the far ones
- * measured, only on a [fixConfirmed] fix. Walks every saved journey, so on the worker, never in
- * composition (AGENTS.md *Main thread*).
+ * [ShownJourneys] for [saved] at [at]: nearest first ([Journeys.nearestFirst]), each oriented, the
+ * [flipped] ones reversed, and the far ones measured, only on a [fixConfirmed] fix. Walks every saved
+ * journey, so on the worker, never in composition (AGENTS.md *Main thread*).
  */
 @WorkerThread
 internal fun shownJourneysOf(
@@ -27,7 +28,7 @@ internal fun shownJourneysOf(
     flipped: List<String>,
     fixConfirmed: Boolean,
 ): ShownJourneys {
-    val shown = saved.map { journey ->
+    val shown = Journeys.nearestFirst(saved, at.latitude, at.longitude).map { journey ->
         val oriented = Journeys.oriented(journey, at.latitude, at.longitude)
         if (journey.key in flipped) oriented.reversed() else oriented
     }

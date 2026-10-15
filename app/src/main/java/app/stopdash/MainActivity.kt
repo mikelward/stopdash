@@ -3703,7 +3703,7 @@ class MainActivity : ComponentActivity() {
                 .collectAsStateWithLifecycle(initialValue = null)
             val savedJourneys = journeysRead?.journeys
             var flippedJourneys by rememberSaveable { mutableStateOf(emptyList<String>()) }
-            // Each turned so its origin is the end nearer this fix, or flipped by a tap on its card;
+            // Nearest first, each turned so its origin is the end nearer this fix, or flipped by a tap on its card;
             // journeys more than a mile from both ends wait behind the Faraway favorites button,
             // unfetched (SPEC *Journeys*). Only a confirmed fix holds one back: without a fix, or on
             // an approximate or unrefreshed one (a banner is up), every journey shows in full. Worked

@@ -851,6 +851,50 @@ class WidgetModelTest {
     }
 
     @Test
+    fun `the nearest journey leads, in the app's order, ahead of a sooner train on a farther one`() {
+        fun snapshot(firstRank: Int?, secondRank: Int?) = DeparturesSnapshot(
+            stops = listOf(
+                stop("490000001A", listOf(toward("b1", "Hill", 60)), now.minusSeconds(30), name = "Stop A"),
+                stop("490000002B", listOf(toward("b2", "Hill", 300)), now.minusSeconds(30), name = "Stop B"),
+            ),
+            fetchedAt = now.minusSeconds(30),
+            journeys = listOf(
+                WidgetJourney("490000001A", setOf(JourneyCall("b1", "Hill", null)), "a", rank = firstRank),
+                WidgetJourney("490000002B", setOf(JourneyCall("b2", "Hill", null)), "b", rank = secondRank),
+            ),
+            journeyOnlyStopIds = setOf("490000001A", "490000002B"),
+        )
+        // The app lists Stop B's journey first: it leads though Stop A's bus is sooner.
+        assertEquals(listOf("b2", "b1"), widgetModel(snapshot(1, 0), now).rows.map { it.row.lineId })
+        // A pin with no place in the order (an older build's) follows the ranked one.
+        assertEquals(listOf("b2", "b1"), widgetModel(snapshot(null, 0), now).rows.map { it.row.lineId })
+        // With no order known, soonest first, as before.
+        assertEquals(listOf("b1", "b2"), widgetModel(snapshot(null, null), now).rows.map { it.row.lineId })
+    }
+
+    @Test
+    fun `each stop takes its nearest journey's place, its rows together and soonest first`() {
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(
+                stop("490000001A", listOf(toward("b1", "Hill", 300), toward("b3", "Dale", 60)), now.minusSeconds(30), name = "Stop A"),
+                stop("490000002B", listOf(toward("b2", "Town", 30)), now.minusSeconds(30), name = "Stop B"),
+            ),
+            fetchedAt = now.minusSeconds(30),
+            journeys = listOf(
+                WidgetJourney("490000001A", setOf(JourneyCall("b1", "Hill", null)), "a", rank = 0),
+                WidgetJourney("490000002B", setOf(JourneyCall("b2", "Town", null)), "b", rank = 1),
+                WidgetJourney("490000001A", setOf(JourneyCall("b3", "Dale", null)), "c", rank = 2),
+            ),
+            journeyOnlyStopIds = setOf("490000001A", "490000002B"),
+        )
+        val rows = widgetModel(snapshot, now).rows
+        // Stop A boards the nearest journey, so it leads, Stop B's sooner bus after it; at Stop A the
+        // third journey's sooner bus goes first, as rows at one stop do.
+        assertEquals(listOf("b3", "b1", "b2"), rows.map { it.row.lineId })
+        assertEquals(listOf("490000001A", "490000001A", "490000002B"), rows.map { it.row.stopId })
+    }
+
+    @Test
     fun `a fresh journey row leads a sooner stale one`() {
         val snapshot = DeparturesSnapshot(
             stops = listOf(

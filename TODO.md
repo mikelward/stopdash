@@ -2679,6 +2679,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
     - [x] **Hold back faraway journeys** (maintainer, 2026-09-24). A journey more than a mile
           from both ends of a confirmed fix waits behind a "Faraway favorites" button at the foot
           of the list, unfetched until tapped for that nearby set; the widget never pins one.
+    - [x] **Nearest ride first** (maintainer, 2026-10-15). The near-me list's ride cards go by the
+          rider's distance to each ride's nearer end, as its stops do, instead of the order they
+          were saved in; the widget, which heads its rides' rows by stop, orders those stops by
+          the app's ride order (each pin keeps its ride's place), instead of soonest first.
+    - [ ] **The widget follows Group favorite rides** (maintainer, 2026-10-15). The widget
+          always groups its rides' rows by stop, whatever the setting. Grouped by ride, it should
+          head each ride and keep the app's ride order, as the list does.
     - [x] **A relocate that flips a journey's direction refetches once.** A same-set relocate
           refreshed with the journey stops the screen last reported, so when the fresh fix turned a
           journey round (its origin now the other end) the refresh started on the old origin and

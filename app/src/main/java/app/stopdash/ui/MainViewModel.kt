@@ -376,9 +376,11 @@ class MainViewModel(
         shownFrom: Map<String, String> = emptyMap(),
         // Each settled journey's boarding keys, its own and its neighboring poles' ([WidgetJourneysReport.boarding]).
         boarding: Map<String, Set<String>> = emptyMap(),
+        // The journeys in the list's order, nearest first ([WidgetJourneysReport.order]).
+        order: List<String> = emptyList(),
     ) {
         // Compared with what was written last on the worker, as it walks every journey ([writeWidgetJourneys]).
-        widgetJourneysReport = WidgetJourneysReport(keys, checks, shownFrom, boarding)
+        widgetJourneysReport = WidgetJourneysReport(keys, checks, shownFrom, boarding, order)
         writeWidgetJourneys()
     }
 
