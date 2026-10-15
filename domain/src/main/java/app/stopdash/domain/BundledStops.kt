@@ -62,6 +62,31 @@ class BundledStops private constructor(
     }
 
     /**
+     * Where the stop [id] is, or for a stop area ("490G…", a road's two poles) the middle of its
+     * stops: a trip's destination stop placed on the device ([TowardStops]). Null for one the bundle
+     * doesn't hold. The map is built at the first call, over every stop, so off the main thread.
+     */
+    @WorkerThread
+    fun positionOf(id: String): Coordinates? = positions[id]
+
+    private val positions: Map<String, Coordinates> by lazy {
+        val found = HashMap<String, Coordinates>(stops.size * 2)
+        val areas = HashMap<String, MutableList<StopLocation>>()
+        for (stop in stops) {
+            if (stop.latitude == 0.0 && stop.longitude == 0.0) continue
+            found[stop.id] = Coordinates(stop.latitude, stop.longitude)
+            // A cluster that is only the stop's name (no area) places nothing.
+            if (stop.clusterId.isNotBlank() && stop.clusterId != stop.name && ' ' !in stop.clusterId) {
+                areas.getOrPut(stop.clusterId) { ArrayList() } += stop
+            }
+        }
+        areas.forEach { (area, members) ->
+            found.putIfAbsent(area, Coordinates(members.map { it.latitude }.average(), members.map { it.longitude }.average()))
+        }
+        found
+    }
+
+    /**
      * The bus stops among them: the single stops a bus route serves, for the stop search
      * ([BusStopIndex.of]). Only those placed inside [bounds], so a stop the file mis-places (a
      * zeroed position, say) can't be saved as a favorite far outside London; it isn't listed at all.

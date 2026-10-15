@@ -152,7 +152,10 @@ its bus stops, each request carrying the same start. A trip **to a saved favorit
 **coordinate** as the destination — the Planner walks the last leg to it — while the favorite's name
 and id stay on your device. To a favorite, or a place or postcode picked in *To…*, when the fastest
 route there changes, the Planner is asked once more between the same ends, via the stop that route
-gets off at, to find one ride the whole way. A trip to a place (a favorite, or a place or postcode
+gets off at, to find one ride the whole way. For a trip from your location (or a *From…* place) the
+Planner is also asked again between the same ends via up to three bus stops near the start on the
+destination's side (picked on your device from the stops the app carries; one it finds no route through
+gives way to the next), to find a bus it passed over. A trip to a place (a favorite, or a place or postcode
 picked in *To…*) also asks TfL once for the **stops near that place's coordinate**, to list the trains
 from your stops that go straight there; it isn't asked when you're already within 200 m of the place.
 Your location and a favorite's coordinate are the same **Location** data

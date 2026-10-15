@@ -223,4 +223,19 @@ class TripRouteTest {
         val later = unpriced.legs.map { it.copy(departure = t.plusSeconds(300), arrival = t.plusSeconds(900)) }
         assertEquals(null, mergedRoutes(listOf(unpriced), listOf(TripRoute(later, TripFare(300)))).first().fare)
     }
+
+    @Test
+    fun `a route found via a stop towards the destination stays marked whichever answer came first`() {
+        val planned = TripRoute(listOf(ride("bus", "A", "B"), ride("red", "B", "C")))
+        val found = planned.copy(towardStop = true)
+        // The Planner's own answer first: the mark is carried onto its copy.
+        assertEquals(listOf(found), mergedRoutes(listOf(planned), listOf(found)))
+        // The via answer first: its marked copy stands.
+        assertEquals(listOf(found), mergedRoutes(listOf(found), listOf(planned)))
+        // Another departure isn't the same route: unmarked, as it came.
+        val later = TripRoute(planned.legs.map { it.copy(departure = t.plusSeconds(300), arrival = t.plusSeconds(900)) })
+        assertEquals(listOf(planned, later), mergedRoutes(listOf(planned), listOf(later)))
+        // A price from the other copy is taken as before.
+        assertEquals(listOf(found.copy(fare = TripFare(300))), mergedRoutes(listOf(planned), listOf(found.copy(fare = TripFare(300)))))
+    }
 }

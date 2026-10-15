@@ -1602,6 +1602,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   route just hidden or avoided can show (tap ignored) for that run. Closing it means
                   telling the cards' routes alike without per-card work in composition: a route-set
                   stamp built with the cards on the worker, once the card work moves there.
+      - [x] **Buses towards the destination** (maintainer, 2026-10-15): a trip from a position also asks
+            the Planner for the quickest routes via each bus line's nearest stop within 800 m on the
+            destination's side (90° either way), at most three, picked on the device from the bundled
+            stops (`TowardStops`), in parallel with the plan's own three; a 404 ("No journey found")
+            gives way once to the next stop for its lines, and is remembered per destination and plan
+            choices for the process (`RefusedStops`). The soonest bus-first route of each answer is
+            always listed and timed past the cap (`TripRoute.towardStop`). Needs a device check that the
+            bus the Planner passed over now has its card, and that the list doesn't settle noticeably later.
       - [ ] **Step-free trips** (maintainer, 2026-09-30; after the intermediate work): a dropdown
             atop a trip, **Step-free: Any / Station / Fully** (Station: step-free from the street to
             the platform; Fully: to the train as well; the maintainer's names, 2026-09-30), planning

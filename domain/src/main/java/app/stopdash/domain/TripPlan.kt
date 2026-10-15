@@ -65,9 +65,12 @@ data class TripLeg(
  * One route the Planner offered: its [legs] in order, and its [fare] where the Planner priced it, or a
  * London bus route it left unpriced the plan's own bus fare ([BusFare]). Null where neither holds, as
  * for a trip beyond the pay as you go area, or for a route StopDash put together itself from the
- * Planner's legs, which the Planner never priced.
+ * Planner's legs, which the Planner never priced. [towardStop] where it is the soonest the Planner
+ * offered when asked via a bus stop towards the destination ([TowardStops]): listed whatever another
+ * route beats it by, and timed past the cap on routes timed (maintainer, 2026-10-15), so the bus the
+ * Planner's own requests passed over always has its card.
  */
-data class TripRoute(val legs: List<TripLeg>, val fare: TripFare? = null) {
+data class TripRoute(val legs: List<TripLeg>, val fare: TripFare? = null, val towardStop: Boolean = false) {
     /** The legs ridden, walks left out: the line pills a route shows. */
     val rides: List<TripLeg> get() = legs.filterNot { it.isWalk }
 
@@ -226,6 +229,22 @@ interface JourneyPlanner {
     ): List<TripRoute> = emptyList()
 
     /**
+     * The quickest routes of [journeys], each passing the stop [via], for a trip from where the rider is
+     * asked about once more via a bus stop towards its destination ([TowardStops]). Throws
+     * [TflException.NotFound] where the Planner finds no route through [via]. A planner that can't route
+     * via a stop has nothing to add.
+     */
+    suspend fun quickestVia(
+        from: TripOrigin,
+        to: TripDestination,
+        via: String,
+        speed: WalkingSpeed = WalkingSpeed.AVERAGE,
+        maxWalk: MaxWalk = MaxWalk.DEFAULT,
+        stepFree: StepFree = StepFree.DEFAULT,
+        modes: TripModes = TripModes.DEFAULT,
+    ): List<TripRoute> = emptyList()
+
+    /**
      * The quickest routes of [journeys] with the Planner modes [leaveOut] left out, for a trip whose
      * soonest route rides a line with severe delays ([AroundDelays]). A planner that can't leave a mode
      * out has nothing to add.
@@ -244,13 +263,18 @@ interface JourneyPlanner {
 /**
  * [first]'s routes, then [second]'s that aren't among them: a route both offer (the same lines, ends
  * and times, leg by leg) is kept once, where [first] has it, with [second]'s fare where only that copy
- * was priced (the Planner can leave one answer unpriced; Codex, #860). The same route at another
+ * was priced (the Planner can leave one answer unpriced; Codex, #860), and marked [TripRoute.towardStop]
+ * where either copy is, so which request answered first doesn't decide it. The same route at another
  * departure is another route, as the Planner offers it.
  */
 fun mergedRoutes(first: List<TripRoute>, second: List<TripRoute>): List<TripRoute> {
     fun key(route: TripRoute) = route.legs.map { listOf(it.mode, it.lineId, it.fromId, it.toId, it.departure, it.arrival) }
     val fares = second.mapNotNull { route -> route.fare?.let { key(route) to it } }.toMap()
-    val kept = if (fares.isEmpty()) first else first.map { route -> if (route.fare != null) route else fares[key(route)]?.let { route.copy(fare = it) } ?: route }
+    val toward = second.filter { it.towardStop }.mapTo(HashSet(), ::key)
+    val kept = if (fares.isEmpty() && toward.isEmpty()) first else first.map { route ->
+        val priced = if (route.fare != null) route else fares[key(route)]?.let { route.copy(fare = it) } ?: route
+        if (!priced.towardStop && key(route) in toward) priced.copy(towardStop = true) else priced
+    }
     val seen = first.mapTo(HashSet()) { key(it) }
     return kept + second.filter { seen.add(key(it)) }
 }

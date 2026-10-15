@@ -518,9 +518,10 @@ class JourneyPlannerTest {
                 client.journeys(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"))
                 client.fewestChangesVia(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"), "490000002B")
                 client.quickestWithout(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"), setOf("tube"))
+                client.quickestVia(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"), "490G000002")
             }
             val priced = pricedOn.threads()
-            assertEquals("each request's routes went past the fare step", 3, priced.size)
+            assertEquals("each request's routes went past the fare step", 4, priced.size)
             assertTrue(priced.none { it == callerThread.name.substringBefore(" @") })
         } finally {
             caller.shutdown()
@@ -661,6 +662,38 @@ class JourneyPlannerTest {
             .journeys(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"))
         assertEquals(3, requests.size)
         assertTrue(requests.none { "via" in it.url.parameters.names() })
+    }
+
+    @Test
+    fun `asks once for the quickest routes via a bus stop, at the rider's walk`() = runTest {
+        val requests = mutableListOf<HttpRequestData>()
+        val warnings = mutableListOf<String>()
+        val client = clientBy(warn = { synchronized(warnings) { warnings += it } }) { request ->
+            synchronized(requests) { requests += request }
+            busAnswer("10") to HttpStatusCode.OK
+        }
+        val routes = client.quickestVia(
+            TripOrigin.Here(Coordinates(51.5, -0.12)), TripDestination.Stop("940GZZLUEUS"), "490G000002", WalkingSpeed.FAST, MaxWalk.SIXTY,
+        )
+        assertEquals(listOf("10"), routes.map { it.rides.single().lineId })
+        val request = requests.single()
+        assertEquals("490G000002", request.url.parameters["via"])
+        // The quickest: the Planner's default, so no preference is named.
+        assertEquals(null, request.url.parameters["journeyPreference"])
+        assertEquals("60", request.url.parameters["maxWalkingMinutes"])
+        assertEquals("Fast", request.url.parameters["walkingSpeed"])
+        // Said apart from the via the fastest route's last stop asks, by which request it was.
+        assertTrue(warnings.toString(), warnings.any { it.startsWith("journey planner (quickest via a stop): 1 routes in ") })
+    }
+
+    @Test
+    fun `no route through the stop asked via is the Planner's 404`() {
+        assertThrows(TflException.NotFound::class.java) {
+            kotlinx.coroutines.runBlocking {
+                clientBy { """{ "message": "No journey found for your inputs." }""" to HttpStatusCode.NotFound }
+                    .quickestVia(TripOrigin.Here(Coordinates(51.5, -0.12)), TripDestination.Stop("940GZZLUEUS"), "490G000002")
+            }
+        }
     }
 
     @Test

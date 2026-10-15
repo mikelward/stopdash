@@ -372,16 +372,20 @@ object TripTiming {
      * faster or walks clearly less. A withheld arrival can't be compared, so it neither beats nor is
      * beaten. The route walking least is always kept when it walks clearly less than the first
      * ([walksLess]): a chain of routes each walking a little less than the last would otherwise drop
-     * it, though it's the one the *Least walking* header is for. Arrivals compare as [rank] orders them,
-     * a severely delayed route's [DELAYED_BY] later, so one clear of the delays isn't left off for it
-     * (Codex, #703). In [estimates]' order.
+     * it, though it's the one the *Least walking* header is for. So is a route found via a bus stop
+     * towards the destination ([TripRoute.towardStop]; maintainer, 2026-10-15): the bus the Planner's own
+     * requests passed over is offered whatever it saves, in its place by arrival. [found] says which those
+     * are: the route's own mark by default, but a caller standing one timetable variant in for a route's
+     * others asks by the route's identity, as the one standing in may be the Planner's own unmarked copy
+     * (Codex, #870). Arrivals compare as [rank] orders them, a severely delayed route's [DELAYED_BY] later,
+     * so one clear of the delays isn't left off for it (Codex, #703). In [estimates]' order.
      */
-    fun withoutSlowerChanges(estimates: List<Estimate>): List<Estimate> {
+    fun withoutSlowerChanges(estimates: List<Estimate>, found: (Estimate) -> Boolean = { it.route.towardStop }): List<Estimate> {
         // Of routes walking as little, the first: the one ranked best.
         val leastWalking = estimates.minByOrNull { it.route.walking }
             ?.takeIf { walksLess(it.route, estimates.first().route) }
         return estimates.filter { route ->
-            if (route === leastWalking) return@filter true
+            if (route === leastWalking || found(route)) return@filter true
             val arrival = rankedArrival(route) ?: return@filter true
             estimates.none { other ->
                 other !== route &&
