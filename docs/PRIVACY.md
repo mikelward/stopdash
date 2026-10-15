@@ -209,7 +209,9 @@ already there. With the app open, it follows your position as you move instead, 
 for the same purposes and only while one of them applies. Each is compared on the device with the public positions of the ride's stops (and a
 station's entrances), and with where a walk ends to show how far is left, and then dropped: never
 logged, kept, or sent anywhere. The newest is held in memory for 2 minutes, so a walk that begins in
-that time can show an estimate of how far it is, and is then let go, or sooner when the trip ends.
+that time can show an estimate of how far it is, and is then let go, or sooner when the trip ends. The
+last fix on a walk sure enough to show which way its end lies (where it placed you, and how sure it
+was) is held in memory for at most as long, so a vaguer fix after it doesn't take the walk's arrow away.
 
 **Starred journeys** (two stops you travel between) are kept on the device with your other
 settings and stars, so they ride your own Android backup like the rest (above); they are never
@@ -399,9 +401,9 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
   distances would pin down where you were),
 - on a trip on the way, **what a location fix saw you at** when it moved the trip on — the stop's
   placed point or one of the station's entrances — never which stop, how far, or where,
-- on a walk, **whether its direction could be shown**, each time that changes, and when it couldn't,
-  why: the fix too vague for the distance left, or you near the walk's end — never how far,
-  which way, or where,
+- on a walk, **whether its direction could be shown**, each time that changes: from the latest fix,
+  held from a surer one, or not at all, and then why (the fix too vague for the distance left, or
+  you near the walk's end) — never how far, which way, or where,
 - on a ride followed by where you're seen (no train matched), **how far along it each fix placed
   you**, as a stop count ("stop 5 of 9", or not placed) with the fix's accuracy radius; and when a
   "get off soon" alert is shown, the stops left and whether they were counted from the train

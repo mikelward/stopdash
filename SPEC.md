@@ -2421,8 +2421,14 @@ as it was.
   trip's screen, an arrow before it that turns with the phone to point there. Both point at the place
   the distance is measured to, an entrance of a station where one is nearest, straight rather than along
   the streets. Within 25 m, inside a fix's own wobble, or from a fix less sure than half the distance left (it
-  could put the arrow down the wrong street), neither is shown, only the distance. The phone's
-  compass is followed only while the trip's screen is shown on a walk with a way to point (not on the
+  could put the arrow down the wrong street), neither is shown, only the distance. A fix too vague for it
+  doesn't take away a way a surer one just named (maintainer, 2026-10-15): GPS comes and goes among tall
+  buildings, and the arrow vanished for a moment at a time on the last stretch to a station (bug report,
+  2026-10-15). The way holds from the surer fix, pointing from where it placed the rider to the place the
+  distance is now measured to (an entrance read since, say), while that fix would still name it with its
+  uncertainty grown by as far as a brisk walker (2 m/s) could have gone since, and for at most 2 minutes;
+  past that, or once a fix since puts the rider within 25 m, it goes as before.
+  The phone's compass is followed only while the trip's screen is shown on a walk with a way to point (not on the
   banner atop another screen, nor with the screen off): a low-power sensor, no request and no extra fix;
   where it's missing or unreliable, the arrow is left off and the compass point stays. A screen reader
   hears the direction spelled out ("450 m north-east"). The status-bar chip names the way the same way,

@@ -137,6 +137,8 @@ class ActiveTripTrackerTest {
     private val routesReadAtPost = mutableListOf<List<String>>()
     // How long a train's calls take to read, on the monotonic clock.
     private var vehicleTakes = 0L
+    // How long a stop's board takes to read, on the monotonic clock.
+    private var boardTicks = 0L
     // Each stop area's poles, and how often they were asked for (a TfL request each).
     private val polesAt = mutableMapOf<String, List<app.stopdash.domain.StopLocation>>()
     private var poleReads = 0
@@ -200,6 +202,7 @@ class ActiveTripTrackerTest {
             boardStops += stop
             // TfL (or the request pool) taking its time: the clock moves on during the read.
             now = now.plus(boardTakes)
+            ticks += boardTicks
             if (boardFails) throw TflException.Offline(null)
             if (stop in unknownStops) throw TflException.NotFound(null) else departures[stop].orEmpty()
         },
@@ -4495,8 +4498,8 @@ class ActiveTripTrackerTest {
     }
 
     @Test
-    fun `a walk's direction withheld or shown again is logged once per change, by kind alone`() = runTest {
-        // A synthetic destination point; the rider seen about 445 m short of it, then about 222 m.
+    fun `a walk's direction withheld, held or shown again is logged once per change, by kind alone`() = runTest {
+        // A synthetic destination point; the rider seen about 445 m short of it, then about 333 m and 222 m.
         val end = app.stopdash.domain.Coordinates(51.5, -0.12)
         val home = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "", "Destination", at(0), at(5))
         val tracker = tracker(StandardTestDispatcher(testScheduler))
@@ -4504,22 +4507,197 @@ class ActiveTripTrackerTest {
         now = at(2)
         tracker.refresh(fixAt(51.504))
         tracker.onFix(fixAt(51.503))
-        // Sure to 150 m with about 222 m left: too vague to point the way (bug report, 2026-10-15).
+        // Sure to 150 m with about 222 m left: too vague to name the way itself, so the way the fix a moment
+        // ago named holds, due south, its distance the new fix's (maintainer, 2026-10-15).
+        tracker.onFix(fixAt(51.502).copy(accuracyMeters = 150f))
+        val held = tracker.progress.value as TripProgress.Walking
+        assertEquals(180.0, checkNotNull(held.bearing), 0.5)
+        assertEquals(222.0, checkNotNull(held.metersLeft), 5.0)
+        tracker.onFix(fixAt(51.502).copy(accuracyMeters = 140f))
+        // Long enough since that fix that the rider could have walked well off where it named the way from: let go.
+        ticks += 80_000
         tracker.onFix(fixAt(51.502).copy(accuracyMeters = 150f))
         assertNull((tracker.progress.value as TripProgress.Walking).bearing)
-        tracker.onFix(fixAt(51.502).copy(accuracyMeters = 140f))
         tracker.onFix(fixAt(51.502))
         // Within a fix's own wobble of its end.
         tracker.onFix(fixAt(51.5001))
         assertEquals(
             listOf(
                 "on the way: walk direction shown",
+                "on the way: walk direction held from a surer fix",
                 "on the way: walk direction withheld, fix too vague for the distance left",
                 "on the way: walk direction shown",
                 "on the way: walk direction withheld, near its end",
             ),
             logged.filter { it.startsWith("on the way: walk direction") },
         )
+    }
+
+    @Test
+    fun `a held way goes once past its hold though no fix comes after it`() = runTest {
+        val end = app.stopdash.domain.Coordinates(51.5, -0.12)
+        val home = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "", "Destination", at(0), at(5))
+        val tracker = tracker(StandardTestDispatcher(testScheduler), forgetting = backgroundScope)
+        tracker.start(TripRoute(listOf(home)), "Destination", readyAt = now, destinations = listOf(app.stopdash.domain.TripDestination.Place(end, "Destination")))
+        now = at(2)
+        // About 333 m short, sure to 20 m and a second old; then a fix too vague to name the way: held.
+        tracker.onFix(fixAt(51.503))
+        tracker.onFix(fixAt(51.502).copy(accuracyMeters = 150f))
+        assertNotNull((tracker.progress.value as TripProgress.Walking).bearing)
+        // A refresh with no fix keeps the walk as last seen, the held way with it.
+        tracker.refresh()
+        assertNotNull((tracker.progress.value as TripProgress.Walking).bearing)
+        // No fix after it (GPS gone again): once 20 m + 2 m/s × 72.25 s reaches half of 333 m, the way is taken
+        // back all the same, the vague fix's distance kept (Codex, #881).
+        ticks += 72_000
+        advanceTimeBy(72_000)
+        assertNotNull((tracker.progress.value as TripProgress.Walking).bearing)
+        ticks += 1_000
+        advanceTimeBy(1_000)
+        val walking = tracker.progress.value as TripProgress.Walking
+        assertNull(walking.bearing)
+        assertEquals(222.0, checkNotNull(walking.metersLeft), 5.0)
+        assertEquals(
+            "on the way: walk direction withheld, fix too vague for the distance left",
+            logged.last { it.startsWith("on the way: walk direction") },
+        )
+        // And the next refresh doesn't bring it back.
+        tracker.refresh()
+        assertNull((tracker.progress.value as TripProgress.Walking).bearing)
+    }
+
+    @Test
+    fun `a fix near the end ends the way a surer one named, so a vaguer one after it holds none`() = runTest {
+        val end = app.stopdash.domain.Coordinates(51.5, -0.12)
+        val home = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "", "Destination", at(0), at(5))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(TripRoute(listOf(home)), "Destination", readyAt = now, destinations = listOf(app.stopdash.domain.TripDestination.Place(end, "Destination")))
+        now = at(2)
+        // About 333 m short, sure to 20 m: the way named. Then seen within 25 m of the end, and then a fix too
+        // vague to name the way, about 222 m out, well inside the first one's hold.
+        tracker.onFix(fixAt(51.503))
+        tracker.onFix(fixAt(51.5001))
+        tracker.onFix(fixAt(51.502).copy(accuracyMeters = 150f))
+        // The near fix is newer than the one that named the way, so the vague one holds none (Codex, #881).
+        val walking = tracker.progress.value as TripProgress.Walking
+        assertNull(walking.bearing)
+        assertEquals(222.0, checkNotNull(walking.metersLeft), 5.0)
+        assertEquals(
+            "on the way: walk direction withheld, fix too vague for the distance left",
+            logged.last { it.startsWith("on the way: walk direction") },
+        )
+    }
+
+    @Test
+    fun `a vague fix taken before the one that named the way holds none of it`() = runTest {
+        val end = app.stopdash.domain.Coordinates(51.5, -0.12)
+        val home = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "", "Destination", at(0), at(5))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(TripRoute(listOf(home)), "Destination", readyAt = now, destinations = listOf(app.stopdash.domain.TripDestination.Place(end, "Destination")))
+        now = at(2)
+        // About 333 m short, sure to 20 m and a second old: the way named. Then a refresh's fix too vague to
+        // name the way, taken 5 s ago, before that one: a refresh's fix that waited on the lock behind it.
+        tracker.onFix(fixAt(51.503))
+        tracker.refresh(fixAt(51.502).copy(accuracyMeters = 150f, ageMillis = 5_000L))
+        // The way the newer fix named isn't the older one's to hold (Codex, #881).
+        val walking = tracker.progress.value as TripProgress.Walking
+        assertEquals(222.0, checkNotNull(walking.metersLeft), 5.0)
+        assertNull(walking.bearing)
+        assertEquals(
+            "on the way: walk direction withheld, fix too vague for the distance left",
+            logged.last { it.startsWith("on the way: walk direction") },
+        )
+    }
+
+    @Test
+    fun `a way held after the walk's station is read points at the entrance its distance is to`() = runTest {
+        // A walk to A, placed by the Planner due south. A's entrance, read only on the refresh, lies to the
+        // east of where the rider is seen.
+        val planned = app.stopdash.domain.Coordinates(51.5, -0.12)
+        val entrance = app.stopdash.domain.Coordinates(51.5025, -0.1175)
+        val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(10), toAt = planned)
+        entrancesAt["A"] = app.stopdash.domain.StationPlaces(entrances = listOf(entrance))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(TripRoute(listOf(toA, ride)), "C", readyAt = now)
+        now = at(1)
+        // About 333 m short of the planned point, sure to 20 m, before A is read: due south, to that point.
+        tracker.onFix(fixAt(51.503))
+        assertEquals(180.0, checkNotNull((tracker.progress.value as TripProgress.Walking).bearing), 0.5)
+        // A refresh's fix too vague to name the way, measured to the entrance now read: the way is held
+        // from the surer fix to that entrance, not to the point the distance is no longer measured to
+        // (Codex, #881).
+        tracker.refresh(fixAt(51.502).copy(accuracyMeters = 150f))
+        val walking = tracker.progress.value as TripProgress.Walking
+        val toEntrance = app.stopdash.domain.Compass.bearingDegrees(51.503, -0.12, entrance.latitude, entrance.longitude)
+        assertEquals(toEntrance, checkNotNull(walking.bearing), 0.5)
+        assertEquals(
+            app.stopdash.domain.NearestStops.distanceMeters(51.502, -0.12, entrance.latitude, entrance.longitude),
+            checkNotNull(walking.metersLeft),
+            1.0,
+        )
+    }
+
+    @Test
+    fun `a surer fix is aged by a refresh's reads after it was seen`() = runTest {
+        // A walk to A, read for its point: the rider seen about 333 m out, sure to 20 m and a second old.
+        val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(10))
+        entrancesAt["A"] = app.stopdash.domain.StationPlaces(point = app.stopdash.domain.Coordinates(51.5, -0.12))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(TripRoute(listOf(toA, ride)), "C", readyAt = now)
+        now = at(1)
+        // The refresh's read of A's board, after the fix was seen, takes 80 s.
+        boardTicks = 80_000
+        val before = ticks
+        tracker.refresh(fixAt(51.503))
+        boardTicks = 0
+        assertEquals(80_000L, ticks - before)
+        assertNotNull((tracker.progress.value as TripProgress.Walking).bearing)
+        // A vague fix just after: the sure one is 81 s old by now, not 1 s, and 20 m + 2 m/s × 81 s is past
+        // half of 333 m, so it holds no way (Codex, #881).
+        tracker.onFix(fixAt(51.502).copy(accuracyMeters = 150f))
+        assertNull((tracker.progress.value as TripProgress.Walking).bearing)
+    }
+
+    @Test
+    fun `no timer keeps a sure fix once precise location is taken away`() = runTest {
+        val end = app.stopdash.domain.Coordinates(51.5, -0.12)
+        val home = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "", "Destination", at(0), at(5))
+        var precise = true
+        val forgetting = kotlinx.coroutines.CoroutineScope(StandardTestDispatcher(testScheduler) + kotlinx.coroutines.SupervisorJob())
+        val tracker = tracker(StandardTestDispatcher(testScheduler), forgetting = forgetting, preciseAllowed = { precise })
+        tracker.start(TripRoute(listOf(home)), "Destination", readyAt = now, destinations = listOf(app.stopdash.domain.TripDestination.Place(end, "Destination")))
+        now = at(2)
+        // A sure fix, kept to estimate from and to hold the way from, each let go by a timer of its own.
+        tracker.onFix(fixAt(51.503))
+        val timers = forgetting.coroutineContext[kotlinx.coroutines.Job]!!
+        assertTrue(timers.children.any { it.isActive })
+        // Taken away: the fixes go now, and no timer still holds one (where it placed the rider) for the rest
+        // of its window (docs/PRIVACY.md; Codex, #881).
+        precise = false
+        tracker.onFix(fixAt(51.502))
+        assertNull(tracker.heldFix())
+        assertTrue(timers.children.none { it.isActive })
+        forgetting.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
+    }
+
+    @Test
+    fun `a way held for a vaguer fix goes with the trip's fixes once precise location is taken away`() = runTest {
+        val end = app.stopdash.domain.Coordinates(51.5, -0.12)
+        val home = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "", "Destination", at(0), at(5))
+        var precise = true
+        val tracker = tracker(StandardTestDispatcher(testScheduler), preciseAllowed = { precise })
+        tracker.start(TripRoute(listOf(home)), "Destination", readyAt = now, destinations = listOf(app.stopdash.domain.TripDestination.Place(end, "Destination")))
+        now = at(2)
+        tracker.onFix(fixAt(51.503))
+        // Taken away, then given back: a fix that came meanwhile isn't used, and the way named before goes
+        // with the fix it came from (docs/PRIVACY.md), so a vaguer one now names none.
+        precise = false
+        tracker.onFix(fixAt(51.502))
+        precise = true
+        tracker.onFix(fixAt(51.502).copy(accuracyMeters = 150f))
+        val walking = tracker.progress.value as TripProgress.Walking
+        assertEquals(222.0, checkNotNull(walking.metersLeft), 5.0)
+        assertNull(walking.bearing)
     }
 
     @Test
