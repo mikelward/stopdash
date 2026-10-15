@@ -63,9 +63,9 @@ internal class SlowRequestListener(
 
     override fun callEnd(call: Call) = finish(call, null)
 
-    override fun callFailed(call: Call, ioe: IOException) = finish(call, ioe::class.simpleName)
+    override fun callFailed(call: Call, ioe: IOException) = finish(call, ioe::class.simpleName, canceled = call.isCanceled())
 
-    private fun finish(call: Call, failure: String?) {
+    private fun finish(call: Call, failure: String?, canceled: Boolean = false) {
         val endedAt = nanos()
         val sent = sentAt
         val answer = answerAt
@@ -79,6 +79,7 @@ internal class SlowRequestListener(
             answerMillis = if (sent != null && answer != null) millis(answer - sent) else null,
             readMillis = answer?.let { millis(endedAt - it) },
             failure = failure,
+            canceled = canceled,
         )
         SlowRequest.describe(timings)?.let(warn)
     }

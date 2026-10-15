@@ -66,6 +66,29 @@ class SlowRequestListenerTest {
     }
 
     @Test
+    fun `a call the app canceled mid-connect logs nothing, where the same failure uncanceled is logged`() {
+        val address = InetSocketAddress(InetAddress.getByName("127.0.0.1"), 443)
+        fun failMidConnect(on: okhttp3.Call) {
+            at(0); listener.callStart(on)
+            listener.connectStart(on, address, Proxy.NO_PROXY)
+            at(25); listener.connectFailed(on, address, Proxy.NO_PROXY, null, java.net.SocketException("Socket closed"))
+            listener.callFailed(on, java.io.IOException("Canceled"))
+        }
+        val canceled = OkHttpClient().newCall(Request.Builder().url("https://api.tfl.gov.uk/StopPoint/490000000A/Arrivals").build())
+        canceled.cancel()
+        failMidConnect(canceled)
+        assertEquals(emptyList<String>(), logged)
+
+        SlowRequestListener(warn = { logged += it }, nanos = { now }).let { fresh ->
+            at(0); fresh.callStart(call)
+            fresh.connectStart(call, address, Proxy.NO_PROXY)
+            at(25); fresh.connectFailed(call, address, Proxy.NO_PROXY, null, java.net.SocketException("Socket closed"))
+            fresh.callFailed(call, java.io.IOException("Canceled"))
+        }
+        assertEquals(listOf("TfL StopPoint/…/Disruption took 25 ms: no connection (1 failed: IPv4 SocketException), failed: IOException"), logged)
+    }
+
+    @Test
     fun `a call that timed out waiting for its answer is logged as failed`() {
         at(0); listener.callStart(call)
         at(2); listener.connectionAcquired(call, connection)
