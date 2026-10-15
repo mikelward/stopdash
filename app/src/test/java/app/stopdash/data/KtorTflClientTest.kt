@@ -1375,7 +1375,7 @@ class KtorTflClientTest {
      * A client whose requests fail with each of [failures] in turn, then answer with an empty board;
      * [calls] counts the requests that reached the engine, [acquires] the rate tokens taken.
      */
-    private class ScriptedClient(failures: List<IOException>) {
+    private class ScriptedClient(failures: List<IOException>, answer: String = "[]") {
         private val remaining = ArrayDeque(failures)
         var calls = 0
         var acquires = 0
@@ -1383,7 +1383,7 @@ class KtorTflClientTest {
         private val engine = MockEngine {
             calls++
             remaining.removeFirstOrNull()?.let { throw it }
-            respond(ByteReadChannel("[]"), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+            respond(ByteReadChannel(answer), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
         }
         private val http = HttpClient(engine) {
             expectSuccess = true
@@ -1435,6 +1435,25 @@ class KtorTflClientTest {
         }
         assertEquals(1, scripted.calls)
         assertEquals(0, scripted.warnings.count { it.startsWith("request stalled") })
+    }
+
+    @Test
+    fun `a request allowed longer is asked once more when its connection went quiet under it, with a token`() = runTest {
+        // Not its own wait: the connection failed it ([QuietConnections]), so however long it was allowed.
+        val scripted = ScriptedClient(listOf(ConnectionWentQuiet(java.io.IOException("canceled"))), answer = """{ "stopPoints": [] }""")
+        scripted.client.nearbyStops(51.5, -0.12, 500, listOf("NaptanMetroStation"))
+        assertEquals(2, scripted.calls)
+        assertEquals(2, scripted.acquires)
+        assertEquals(1, scripted.warnings.count { it == "request was waiting on a connection that went quiet; asking once more" })
+    }
+
+    @Test
+    fun `a request whose connection went quiet twice fails after one retry, never a third`() {
+        val scripted = ScriptedClient(List(3) { ConnectionWentQuiet(java.io.IOException("canceled")) })
+        assertThrows(TflException.Network::class.java) {
+            runTest { scripted.client.nearbyStops(51.5, -0.12, 500, listOf("NaptanMetroStation")) }
+        }
+        assertEquals(2, scripted.calls)
     }
 
     @Test

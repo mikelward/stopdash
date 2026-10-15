@@ -84,6 +84,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import okhttp3.Dispatcher
+import okhttp3.OkHttpClient
 
 /**
  * The production [TflClient]: Ktor over the OkHttp engine, decoding TfL's JSON
@@ -1002,18 +1003,25 @@ class KtorTflClient(
      * fresh one. So a stop shows in seconds rather than at the next refresh, a minute on. Once only,
      * and never for a request already given longer by [TflAttempt.allowSlowAnswer] (it says so on the
      * try itself, as its connect can fail at 10 s like any other's, Codex), so a real outage costs one
-     * more try, not a doubled long wait. The retry takes a rate token of its own first ([retry]), as any
-     * request does.
+     * more try, not a doubled long wait. A request failed by its connection going quiet ([ConnectionWentQuiet])
+     * is asked once more whatever it was allowed. The retry takes a rate token of its own first ([retry]),
+     * as any request does.
      */
     private suspend fun <T> withOneRetryOnStall(retry: suspend () -> Unit, attempt: suspend TflAttempt.() -> T): T {
         val first = TflAttempt()
         return try {
             first.attempt()
         } catch (e: IOException) {
-            if (!e.isStall() || first.slow) throw e
-            // Said in the debug log, the class only (SPEC *Privacy*), so a report shows the retry.
-            warn("request stalled (${e::class.simpleName}); asking once more")
-            delay(stallRetryDelayMillis)
+            if (e is ConnectionWentQuiet) {
+                // Its connection went quiet and was closed under it ([QuietConnections]): not its own wait,
+                // so asked again however long it was allowed, and at once, the pool having dropped it.
+                warn("request was waiting on a connection that went quiet; asking once more")
+            } else {
+                if (!e.isStall() || first.slow) throw e
+                // Said in the debug log, the class only (SPEC *Privacy*), so a report shows the retry.
+                warn("request stalled (${e::class.simpleName}); asking once more")
+                delay(stallRetryDelayMillis)
+            }
             retry()
             TflAttempt().attempt()
         }
@@ -1058,21 +1066,21 @@ class KtorTflClient(
 
         /**
          * The production HTTP client: OkHttp engine + lenient JSON, failing on non-2xx. Each slow
-         * call, or one whose connect had to be retried, is told to [warn] ([SlowRequestListener]).
+         * call, or one whose connect had to be retried, is told to [warn] ([SlowRequestListener]),
+         * and a connection that went quiet is closed ([QuietConnections]).
          */
-        fun defaultHttpClient(warn: (String) -> Unit = {}): HttpClient =
-            HttpClient(OkHttp) {
+        fun defaultHttpClient(warn: (String) -> Unit = {}): HttpClient = defaultHttpClient(warn) {}
+
+        /** [defaultHttpClient], its OkHttp side changed by [tweak] after: a test's local server, its own timeouts. */
+        internal fun defaultHttpClient(warn: (String) -> Unit, tweak: OkHttpClient.Builder.() -> Unit): HttpClient {
+            // One for the whole client: Ktor builds an OkHttp client per timeout a request asks for, each
+            // running [config] afresh, all on one connection pool.
+            val quiet = QuietConnections()
+            return HttpClient(OkHttp) {
                 engine {
                     config {
-                        // OkHttp's own per-host cap defaults to 5, below the request pool's; raise it
-                        // to match so the pool is the one limit that decides concurrency, not a
-                        // hidden second queue inside the engine.
-                        dispatcher(
-                            Dispatcher().apply {
-                                maxRequestsPerHost = SharedTflRequestPool.MAX_CONCURRENT
-                            },
-                        )
-                        eventListenerFactory(SlowRequestListener.factory(warn))
+                        tflDefaults(warn, quiet)
+                        tweak()
                     }
                 }
                 expectSuccess = true
@@ -1083,7 +1091,23 @@ class KtorTflClient(
                     json(Json { ignoreUnknownKeys = true })
                 }
             }
+        }
     }
+}
+
+/**
+ * The OkHttp side of [KtorTflClient.defaultHttpClient], apart so a test can build a client on it. OkHttp's
+ * own per-host cap defaults to 5, below the request pool's; it's raised to match so the pool is the one
+ * limit that decides concurrency, not a hidden second queue inside the engine. Each request's events go to
+ * [SlowRequestListener] and to [quiet], which fails a request that was waiting on a connection it closed
+ * as [ConnectionWentQuiet], for [KtorTflClient] to ask again. [quiet] is shared by every OkHttp client on
+ * one connection pool: one that saw only its own requests would miss another's answer on a connection
+ * they share, and close it while it was answering.
+ */
+internal fun OkHttpClient.Builder.tflDefaults(warn: (String) -> Unit, quiet: QuietConnections): OkHttpClient.Builder = apply {
+    dispatcher(Dispatcher().apply { maxRequestsPerHost = SharedTflRequestPool.MAX_CONCURRENT })
+    eventListenerFactory { SlowRequestListener(warn) + quiet.listener(warn) }
+    addInterceptor(quiet.interceptor())
 }
 
 // A request that got no answer in time, or no connection: a stall worth one more try. An unknown host

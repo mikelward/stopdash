@@ -20,6 +20,8 @@ kotlinxSerialization = "1.11.0"
 # Already in the app through Compose; declared for the trip page's loading set (persistent, no copy per change).
 kotlinxCollectionsImmutable = "0.5.2"
 ktor = "3.6.0"
+# The OkHttp Ktor's engine brings; named only for its test server (mockwebserver3), which matches it.
+okhttp = "5.5.0"
 lifecycle = "2.11.0"
 playAppUpdate = "2.1.0"
 playServicesWearable = "20.0.1"
@@ -88,6 +90,7 @@ ktor-client-okhttp = { group = "io.ktor", name = "ktor-client-okhttp", version.r
 ktor-client-content-negotiation = { group = "io.ktor", name = "ktor-client-content-negotiation", version.ref = "ktor" }
 ktor-serialization-kotlinx-json = { group = "io.ktor", name = "ktor-serialization-kotlinx-json", version.ref = "ktor" }
 ktor-client-mock = { group = "io.ktor", name = "ktor-client-mock", version.ref = "ktor" }
+okhttp-mockwebserver3 = { group = "com.squareup.okhttp3", name = "mockwebserver3", version.ref = "okhttp" }
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 androidx-test-core = { group = "androidx.test", name = "core", version.ref = "testCore" }

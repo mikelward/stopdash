@@ -16,7 +16,7 @@ import okhttp3.Response
  * Times each HTTP call through OkHttp's own events and hands a slow one, or one whose connect had to
  * be retried, to [warn] as one [SlowRequest] line: a refresh's total alone can't say which request
  * held it up, nor whether the time went on a stalled connection or a slow answer. One listener per
- * call ([factory]); its callbacks run on OkHttp's threads, never the main one.
+ * call ([tflDefaults]); its callbacks run on OkHttp's threads, never the main one.
  */
 internal class SlowRequestListener(
     private val warn: (String) -> Unit,
@@ -85,10 +85,6 @@ internal class SlowRequestListener(
     }
 
     private fun millis(nanos: Long) = nanos / 1_000_000
-
-    companion object {
-        fun factory(warn: (String) -> Unit): Factory = Factory { SlowRequestListener(warn) }
-    }
 }
 
 /** The debug log's network lines: a slow request, a wait for a request slot. Coarse timing only. */
