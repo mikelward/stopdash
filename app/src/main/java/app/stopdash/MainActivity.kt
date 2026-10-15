@@ -5226,7 +5226,7 @@ class MainActivity : ComponentActivity() {
                         direct::retry,
                         // Only a ride getting off at one of the stops near the place its trains reach ([ShownRow.endIds],
                         // worked out with the look: the tap only reads them).
-                        onOpen = { shown -> trip.openDirect(shown.row.lineId, shown.row.fromId, shown.endIds, shown.endKey) },
+                        onOpen = { shown -> trip.openDirect(shown.row.lineId, shown.row.fromId, shown.endIds, shown.endKey, shown.row.key) },
                         opening = trip.directOpening.collectAsStateWithLifecycle().value,
                     )
                 }

@@ -362,7 +362,8 @@ class PlaceDirectViewModel(
         // Each cache judged at the time it's read, not when the look began: arrivals and route loads may
         // have taken a while, and an answer at the edge of its reuse mustn't vouch past it. Those asked for
         // above are fresh, so this asks TfL again only for one that wasn't answered then.
-        val held = statusesFor(rowLines.map { it.lineId }, askedAfter = pullCutoff)
+        // Each line once, however many rows it has (one per stop its trains get off at).
+        val held = statusesFor(rowLines.map { it.lineId }.distinct(), askedAfter = pullCutoff)
         // And their stops' closures: where each boards, and the stops near the place it gets off at.
         val closureIds = rowLines.flatMap { row -> listOf(row.fromId) + row.reaches.map { it.id } }.distinct()
         val closuresAt = clock()
@@ -397,18 +398,19 @@ class PlaceDirectViewModel(
                 row.lineId !in statuses || row.fromId in unchecked || unverifiedEnds(row, closures.found, unchecked, now)
             }
             val rowsUnvouched = unvouched.isNotEmpty()
-            val unvouchedIds = unvouched.mapTo(HashSet()) { it.lineId }
-            // The rows on show keep their places; a line newly found goes under them, never above. Held apart
+            val unvouchedKeys = unvouched.mapTo(HashSet()) { it.key }
+            // The rows on show keep their places; a row newly found goes under them, never above. Held apart
             // from the state, so a stand-down to Checking (back after a while, a failure, a Retry) keeps it.
-            val ordered = heldOrder(result.rows, heldLines?.takeIf { it.first.sameChoice(chosen) }?.second.orEmpty()) { it.lineId }
-            heldNext = ordered.map { it.lineId }
+            // By row, so a line's rows to different stops each keep their own place.
+            val ordered = heldOrder(result.rows, heldLines?.takeIf { it.first.sameChoice(chosen) }?.second.orEmpty()) { it.key }
+            heldNext = ordered.map { it.key }
             // What the section says, and why it says it couldn't check, to the debug log when either changes:
             // a row come or gone, or a caveat, is then traceable to the line and the reason. Ids only.
             val missing = open.map { it.id } - fresh.mapTo(HashSet()) { it.stopId }
             val why = listOfNotNull(
                 "train unplaced (${result.misses.map { it.lineId }.distinct().sorted().joinToString(",")})".takeIf { result.unresolved },
                 "no arrivals (${missing.sorted().joinToString(",")})".takeIf { missing.isNotEmpty() },
-                "unvouched (${ordered.filter { it.lineId in unvouchedIds }.joinToString(",") { it.lineId }})".takeIf { rowsUnvouched },
+                "unvouched (${ordered.filter { it.key in unvouchedKeys }.joinToString(",") { it.lineId }})".takeIf { rowsUnvouched },
                 "a route failed".takeIf { routesFailed },
             )
             val verdict = "rows ${ordered.joinToString(",") { "${it.lineId}@${it.fromId}" }.ifEmpty { "none" }}" +
@@ -424,6 +426,8 @@ class PlaceDirectViewModel(
                         row.departures.map { it.direction }.distinct().map(line::forDirection).filter { it.disrupted }
                             .minWithOrNull(compareBy({ it.isFallback }, { it.severity }))
                     }
+                    // Every stop near the place this row's trains reach, not only the one it's named by: with that one
+                    // closed, a ride getting off at a later one is still this row's (Codex on #861).
                     val ends = row.reaches.flatMapTo(HashSet()) { listOf(it.id, it.hubId) }.apply { remove("") }
                     ShownRow(
                         row, Countdown.mergedLabel(row.departures, now), status?.description, closureNotice(row, closures.found, now),

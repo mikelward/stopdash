@@ -70,6 +70,47 @@ class PlaceDirectTest {
     }
 
     @Test
+    fun `a line whose branches get off at different stops is a row for each`() {
+        // Both branches call at Side; only the A branch goes on to Bottom A, nearer the place.
+        val branches = LineSequence(
+            routes = listOf(
+                LineRoute("Top ↔ Bottom A", listOf("TOP", "MID", "SIDE", "BOTA")),
+                LineRoute("Top ↔ Bottom B", listOf("TOP", "MID", "SIDE", "BOTB")),
+            ),
+            stopNames = mapOf("TOP" to "Top", "MID" to "Mid", "SIDE" to "Side", "BOTA" to "Bottom A", "BOTB" to "Bottom B"),
+        )
+        val near = listOf(DirectTrips.End("BOTA", "Bottom A"), DirectTrips.End("SIDE", "Side"))
+        val top = stop("TOP", "Top", departure("Bottom A", 60), departure("Bottom B", 120), departure("Bottom A", 300))
+        val rows = PlaceDirect.rows(listOf(top), near, mapOf("rail" to branches), emptyMap(), now).rows
+        // Each train in the row of the stop nearest the place it gets to: A trains at Bottom A, though they
+        // call at Side too; B trains at Side.
+        assertEquals(listOf("BOTA", "SIDE"), rows.map { it.offStop?.id })
+        assertEquals(listOf(listOf(60L, 300L), listOf(120L)), rows.map { row -> row.departures.map { it.expectedArrival.epochSecond - now.epochSecond } })
+        assertEquals(listOf("TOP", "TOP"), rows.map { it.fromId })
+        assertEquals(2, rows.map { it.key }.distinct().size)
+    }
+
+    @Test
+    fun `a row is the same whichever of its station's ids its soonest train gets off at`() {
+        // One route lists the station as Bottom, the other as Bottom Low: one station under one interchange.
+        val twoIds = LineSequence(
+            routes = listOf(
+                LineRoute("Top ↔ Bottom", listOf("TOP", "MID", "BOT")),
+                LineRoute("Top ↔ Bottom Low", listOf("TOP", "MID", "BOTX")),
+            ),
+            stopNames = mapOf("TOP" to "Top", "MID" to "Mid", "BOT" to "Bottom", "BOTX" to "Bottom Low"),
+            stopHubs = mapOf("BOT" to "HUBB", "BOTX" to "HUBB"),
+        )
+        val near = listOf(DirectTrips.End("BOTX", "Bottom Low", "HUBB"), DirectTrips.End("BOT", "Bottom", "HUBB"))
+        fun rowWith(soonest: String, next: String) =
+            PlaceDirect.rows(listOf(stop("TOP", "Top", departure(soonest, 60), departure(next, 120))), near, mapOf("rail" to twoIds), emptyMap(), now)
+                .rows.single()
+        // Named and keyed by the station as the place's stops first list it, whichever train leaves first.
+        assertEquals("BOTX", rowWith("Bottom", "Bottom Low").offStop?.id)
+        assertEquals(rowWith("Bottom", "Bottom Low").key, rowWith("Bottom Low", "Bottom").key)
+    }
+
+    @Test
     fun `a row whose trains don't get off at one known stop names none`() {
         // Apart: neither stop is where every train gets the rider off.
         assertNull(row(listOf(bottomA), listOf(bottomB)).offStop)
