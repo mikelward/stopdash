@@ -3518,6 +3518,19 @@ taken for this one's), and the watch keeps its own clock's reading with each upd
 in the same write, so a stop fetched before the clock was set back reads at its real age on every
 surface, however long it's held and whether or not anything is written in between.
 
+**Countdowns follow the phone's clock, and that's a trade-off kept on purpose** (maintainer,
+2026-10-15). A departure's time is TfL's, and where one is shown as a clock time (a trip's arrival,
+a step's "16 min · 09:25", a stale line's "21:14?", a later trip's times) it's TfL's time in London.
+Its minutes are counted from the phone's clock, so the two always agree with the phone the rider is
+holding. Counting them from TfL's own clock instead would make the minutes right in real terms but
+disagree with that phone by however wrong it is. What comes with the choice, and stays: a phone
+clock that's wrong makes every countdown wrong by as much; setting the clock moves every countdown
+with it; and anything worked out ahead against the wall clock (which trains are still to come, from
+when) has to be worked out again once the clock goes back. What doesn't come with it, and is owed
+(`TODO.md`): how long something the rider is doing has lasted, a walk or a change, is the phone's
+own measure and belongs on the monotonic clock, as a fetch's age is; and the clock going back is
+one signal every result worked out ahead follows, rather than a check each keeps for itself.
+
 Across a reboot the monotonic clock starts again, but whatever was fetched before a reboot was
 fetched before the boot began: a stamp from an earlier boot that's later than the boot's start
 can only be from before the clock was set back, so it counts as stale from the first read. For
