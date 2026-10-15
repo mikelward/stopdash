@@ -1,5 +1,6 @@
 package app.stopdash.data
 
+import app.stopdash.domain.Departure
 import app.stopdash.domain.PlatformDirection
 import app.stopdash.domain.PostcodeResolution
 import app.stopdash.domain.SpacedTrains
@@ -1367,7 +1368,80 @@ class KtorTflClientTest {
             expectSuccess = true
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
-        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode)
+        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, stallRetryDelayMillis = 0)
+    }
+
+    /**
+     * A client whose requests fail with each of [failures] in turn, then answer with an empty board;
+     * [calls] counts the requests that reached the engine, [acquires] the rate tokens taken.
+     */
+    private class ScriptedClient(failures: List<IOException>) {
+        private val remaining = ArrayDeque(failures)
+        var calls = 0
+        var acquires = 0
+        val warnings = mutableListOf<String>()
+        private val engine = MockEngine {
+            calls++
+            remaining.removeFirstOrNull()?.let { throw it }
+            respond(ByteReadChannel("[]"), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        private val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        private val limiter = object : TflRateLimiter {
+            override suspend fun acquire() {
+                acquires++
+            }
+        }
+        val client = KtorTflClient(
+            httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode,
+            rateLimiterFor = { limiter }, warn = { warnings += it },
+            stallRetryDelayMillis = 0,
+        )
+    }
+
+    @Test
+    fun `a request that stalls is asked once more, and its answer is the stop's`() = runTest {
+        val scripted = ScriptedClient(listOf(SocketTimeoutException("read timed out")))
+        assertEquals(emptyList<Departure>(), scripted.client.arrivals("940GZZLUVIC"))
+        assertEquals(2, scripted.calls)
+        // The retry takes a token of its own, and says so in the log by class only.
+        assertEquals(2, scripted.acquires)
+        assertEquals(1, scripted.warnings.count { it.startsWith("request stalled (SocketTimeoutException") })
+    }
+
+    @Test
+    fun `a connection that can't be made is asked once more too`() = runTest {
+        val scripted = ScriptedClient(listOf(java.net.ConnectException("connection refused")))
+        assertEquals(emptyList<Departure>(), scripted.client.arrivals("940GZZLUVIC"))
+        assertEquals(2, scripted.calls)
+    }
+
+    @Test
+    fun `a request that stalls twice fails as a network failure, after one retry only`() {
+        val scripted = ScriptedClient(List(3) { SocketTimeoutException("read timed out") })
+        assertThrows(TflException.Network::class.java) { runTest { scripted.client.arrivals("940GZZLUVIC") } }
+        assertEquals(2, scripted.calls)
+    }
+
+    @Test
+    fun `a request already allowed longer to answer isn't asked twice, even when it can't connect`() {
+        // A nearby search may wait 30 s for its answer: a retry after its connect failed at 10 s could
+        // wait that 30 s again (Codex). Its own request says it was given longer, however soon it failed.
+        val scripted = ScriptedClient(listOf(java.net.ConnectException("connect timed out")))
+        assertThrows(TflException.Network::class.java) {
+            runTest { scripted.client.nearbyStops(51.5, -0.12, 500, listOf("NaptanMetroStation")) }
+        }
+        assertEquals(1, scripted.calls)
+        assertEquals(0, scripted.warnings.count { it.startsWith("request stalled") })
+    }
+
+    @Test
+    fun `being offline isn't retried`() {
+        val scripted = ScriptedClient(listOf(UnknownHostException("api.tfl.example")))
+        assertThrows(TflException.Offline::class.java) { runTest { scripted.client.arrivals("940GZZLUVIC") } }
+        assertEquals(1, scripted.calls)
     }
 
     // A trimmed /StopPoint/Search response: public station names only. The second match repeats the

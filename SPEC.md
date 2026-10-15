@@ -3460,6 +3460,13 @@ been set, so none keeps showing what it judged before.
   added or removed forgets them too. A station whose National Rail board a screen places under one
   of its twin stop ids isn't shared by stop, since another screen may place it under the other; the
   board itself is kept once for the station, and read by every screen. Nothing is saved to storage.
+- **A stalled request is asked once more** (maintainer, 2026-10-15): one that got no answer, or no
+  connection, within the usual 10 s is tried again a moment later, on a fresh connection. A
+  connection to TfL that stops answering after a network change otherwise left a stop failed until
+  the next refresh, a minute on. Only once, and not for a request already allowed
+  longer (a nearby search, a route), so an outage costs one more try, not a doubled long wait. An
+  offline phone isn't retried. A request the app cancels itself (a newer refresh replacing it) is
+  logged as canceled, never as a connection failure.
 - **Shared line status** (maintainer, 2026-10-11): each line's last status answer is kept in memory
   for the process the same way, whichever surface asked — the near-me list, the widget's refresh (a
   watch's request included), the app's check of the widget's lines, a station's page, a trip and its
