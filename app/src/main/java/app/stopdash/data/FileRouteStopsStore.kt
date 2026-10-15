@@ -82,8 +82,9 @@ internal class FileRouteStopsStore(
     }
 
     private companion object {
-        // Bumped when the shape changes, so a newer build never half-reads an older file.
-        const val VERSION = 2
+        // Bumped when the shape changes, so a newer build never half-reads an older file; 3 when sequences
+        // began keeping station codes, so none cached without them is reused (Codex, #879).
+        const val VERSION = 3
         val json = Json { ignoreUnknownKeys = true }
     }
 }
@@ -111,6 +112,7 @@ private data class RouteCacheSequence(
     val stopPositions: Map<String, RouteCachePosition> = emptyMap(),
     val stopAreas: Map<String, String> = emptyMap(),
     val stopHubs: Map<String, String> = emptyMap(),
+    val stationCodes: Map<String, String> = emptyMap(),
 )
 
 @Serializable
@@ -154,6 +156,7 @@ private fun LineSequence.toPersisted(key: String, at: Instant) = RouteCacheSeque
     stopPositions.mapValues { (_, p) -> RouteCachePosition(p.first, p.second) },
     stopAreas,
     stopHubs,
+    stationCodes,
 )
 
 private fun RouteCacheSequence.toSequence() = LineSequence(
@@ -163,6 +166,7 @@ private fun RouteCacheSequence.toSequence() = LineSequence(
     stopPositions.mapValues { (_, p) -> p.latitude to p.longitude },
     stopAreas,
     stopHubs,
+    stationCodes,
 )
 
 private fun StopLocation.toPersisted() = RouteCacheStop(

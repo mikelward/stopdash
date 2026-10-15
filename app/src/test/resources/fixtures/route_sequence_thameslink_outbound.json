@@ -1,0 +1,2078 @@
+{
+ "lineId": "thameslink",
+ "direction": "outbound",
+ "orderedLineRoutes": [
+  {
+   "name": "Bedford  &harr;  Sutton (London) ",
+   "naptanIds": [
+    "910GBEDFDM",
+    "910GFLITWCK",
+    "910GHRLG",
+    "910GLEAGRVE",
+    "910GLUTON",
+    "910GLUTOAPY",
+    "910GHRPNDN",
+    "910GSTALBCY",
+    "910GRADLETT",
+    "910GELTR",
+    "910GMLHB",
+    "910GHDON",
+    "910GBRENTX",
+    "910GCRKLWD",
+    "910GWHMPSTM",
+    "910GKNTSHTN",
+    "910GSTPX",
+    "910GFRNDNLT",
+    "910GCTMSLNK",
+    "910GBLFR",
+    "910GELPHNAC",
+    "910GLBGHJN",
+    "910GHERNEH",
+    "910GTULSEH",
+    "910GSTRETHM",
+    "910GTOOTING",
+    "910GHYDNSRD",
+    "910GWIMBLDN",
+    "910GWIMLCHS",
+    "910GSMERTON",
+    "910GMORDENS",
+    "910GSHLIER",
+    "910GSUTTONC",
+    "910GWSUTTON",
+    "910GSUTTON"
+   ]
+  },
+  {
+   "name": "Bedford  &harr;  Brighton ",
+   "naptanIds": [
+    "910GBEDFDM",
+    "910GFLITWCK",
+    "910GHRLG",
+    "910GLEAGRVE",
+    "910GLUTON",
+    "910GLUTOAPY",
+    "910GHRPNDN",
+    "910GSTALBCY",
+    "910GRADLETT",
+    "910GELTR",
+    "910GMLHB",
+    "910GHDON",
+    "910GBRENTX",
+    "910GCRKLWD",
+    "910GWHMPSTM",
+    "910GKNTSHTN",
+    "910GSTPX",
+    "910GFRNDNLT",
+    "910GCTMSLNK",
+    "910GBLFR",
+    "910GLNDNBDC",
+    "910GNORWDJ",
+    "910GECROYDN",
+    "910GSCROYDN",
+    "910GPURLEY",
+    "910GCOLSDNS",
+    "910GMERSTHM",
+    "910GREDHILL",
+    "910GEARLSWD",
+    "910GSALFDS",
+    "910GHORLEY",
+    "910GGTWK",
+    "910GTHBDGS",
+    "910GBALCOMB",
+    "910GHYWRDSH",
+    "910GWVLSFLD",
+    "910GBURGESH",
+    "910GHASOCKS",
+    "910GPRSP",
+    "910GBRGHTN"
+   ]
+  }
+ ],
+ "stopPointSequences": [
+  {
+   "stopPoint": [
+    {
+     "id": "910GBEDFDM",
+     "name": "Bedford Rail Station",
+     "topMostParentId": "910GBEDFDM",
+     "stationId": "910GBEDFDM",
+     "icsId": "90000519",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "east-midlands-railway",
+       "name": "East Midlands Railway"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      },
+      {
+       "id": "west-midlands-trains",
+       "name": "West Midlands Trains"
+      }
+     ]
+    },
+    {
+     "id": "910GFLITWCK",
+     "name": "Flitwick Rail Station",
+     "topMostParentId": "910GFLITWCK",
+     "stationId": "910GFLITWCK",
+     "icsId": "90002748",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GHRLG",
+     "name": "Harlington (Beds) Rail Station",
+     "topMostParentId": "910GHRLG",
+     "stationId": "910GHRLG",
+     "icsId": "90003658",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GLEAGRVE",
+     "name": "Leagrave Rail Station",
+     "topMostParentId": "910GLEAGRVE",
+     "stationId": "910GLEAGRVE",
+     "icsId": "90004300",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GLUTON",
+     "name": "Luton Rail Station",
+     "topMostParentId": "910GLUTON",
+     "stationId": "910GLUTON",
+     "icsId": "1001187",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "east-midlands-railway",
+       "name": "East Midlands Railway"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GLUTOAPY",
+     "name": "Luton Airport Parkway Rail Station",
+     "topMostParentId": "910GLUTOAPY",
+     "stationId": "910GLUTOAPY",
+     "icsId": "1001678",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "east-midlands-railway",
+       "name": "East Midlands Railway"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GHRPNDN",
+     "name": "Harpenden Rail Station",
+     "topMostParentId": "910GHRPNDN",
+     "stationId": "910GHRPNDN",
+     "icsId": "1000480",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GSTALBCY",
+     "name": "St Albans City Rail Station",
+     "topMostParentId": "910GSTALBCY",
+     "stationId": "910GSTALBCY",
+     "icsId": "1000482",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GRADLETT",
+     "name": "Radlett Rail Station",
+     "topMostParentId": "910GRADLETT",
+     "stationId": "910GRADLETT",
+     "icsId": "1000486",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GELTR",
+     "name": "Elstree & Borehamwood Rail Station",
+     "topMostParentId": "910GELTR",
+     "stationId": "910GELTR",
+     "icsId": "1001096",
+     "modes": [
+      "bus",
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "107",
+       "name": "107"
+      },
+      {
+       "id": "292",
+       "name": "292"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GMLHB",
+     "name": "Mill Hill Broadway Rail Station",
+     "topMostParentId": "910GMLHB",
+     "stationId": "910GMLHB",
+     "icsId": "1001193",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GHDON",
+     "name": "Hendon Rail Station",
+     "topMostParentId": "910GHDON",
+     "stationId": "910GHDON",
+     "icsId": "1001148",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GBRENTX",
+     "name": "Brent Cross West Station",
+     "topMostParentId": "910GBRENTX",
+     "stationId": "910GBRENTX",
+     "icsId": "1002310",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GCRKLWD",
+     "name": "Cricklewood Rail Station",
+     "topMostParentId": "910GCRKLWD",
+     "stationId": "910GCRKLWD",
+     "icsId": "1001075",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GWHMPSTM",
+     "name": "West Hampstead Thameslink Rail Station",
+     "topMostParentId": "HUBWHD",
+     "stationId": "910GWHMPSTM",
+     "icsId": "1001330",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GKNTSHTN",
+     "name": "Kentish Town Rail Station",
+     "topMostParentId": "HUBKTN",
+     "stationId": "910GKNTSHTN",
+     "icsId": "1000123",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "east-midlands-railway",
+       "name": "East Midlands Railway"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GSTPX",
+     "name": "London St Pancras International Rail Station",
+     "topMostParentId": "HUBKGX",
+     "stationId": "910GSTPX",
+     "icsId": "1001276",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "east-midlands-railway",
+       "name": "East Midlands Railway"
+      },
+      {
+       "id": "hull-trains",
+       "name": "Hull Trains"
+      },
+      {
+       "id": "southeastern",
+       "name": "Southeastern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GFRNDNLT",
+     "name": "Farringdon Rail Station",
+     "topMostParentId": "HUBZFD",
+     "stationId": "910GFRNDNLT",
+     "icsId": "1000080",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GCTMSLNK",
+     "name": "City Thameslink Rail Station",
+     "topMostParentId": "910GCTMSLNK",
+     "stationId": "910GCTMSLNK",
+     "icsId": "1001067",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GBLFR",
+     "name": "London Blackfriars Rail Station",
+     "topMostParentId": "HUBBFR",
+     "stationId": "910GBLFR",
+     "icsId": "1000023",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "southeastern",
+       "name": "Southeastern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GELPHNAC",
+     "name": "Elephant & Castle Rail Station",
+     "topMostParentId": "HUBEPH",
+     "stationId": "910GELPHNAC",
+     "icsId": "1000326",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "southeastern",
+       "name": "Southeastern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GLBGHJN",
+     "name": "Loughborough Junction Rail Station",
+     "topMostParentId": "910GLBGHJN",
+     "stationId": "910GLBGHJN",
+     "icsId": "1001184",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "southeastern",
+       "name": "Southeastern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GHERNEH",
+     "name": "Herne Hill Rail Station",
+     "topMostParentId": "910GHERNEH",
+     "stationId": "910GHERNEH",
+     "icsId": "1001149",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "southeastern",
+       "name": "Southeastern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GTULSEH",
+     "name": "Tulse Hill Rail Station",
+     "topMostParentId": "910GTULSEH",
+     "stationId": "910GTULSEH",
+     "icsId": "1001298",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "southern",
+       "name": "Southern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GSTRETHM",
+     "name": "Streatham Rail Station",
+     "topMostParentId": "910GSTRETHM",
+     "stationId": "910GSTRETHM",
+     "icsId": "1001279",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "southern",
+       "name": "Southern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GTOOTING",
+     "name": "Tooting Rail Station",
+     "topMostParentId": "910GTOOTING",
+     "stationId": "910GTOOTING",
+     "icsId": "1001296",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GHYDNSRD",
+     "name": "Haydons Road Rail Station",
+     "topMostParentId": "910GHYDNSRD",
+     "stationId": "910GHYDNSRD",
+     "icsId": "1001143",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GWIMBLDN",
+     "name": "Wimbledon Rail Station",
+     "topMostParentId": "HUBWIM",
+     "stationId": "910GWIMBLDN",
+     "icsId": "1000272",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GWIMLCHS",
+     "name": "Wimbledon Chase Rail Station",
+     "topMostParentId": "910GWIMLCHS",
+     "stationId": "910GWIMLCHS",
+     "icsId": "1001339",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GSMERTON",
+     "name": "South Merton Rail Station",
+     "topMostParentId": "910GSMERTON",
+     "stationId": "910GSMERTON",
+     "icsId": "1001262",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GMORDENS",
+     "name": "Morden South Rail Station",
+     "topMostParentId": "910GMORDENS",
+     "stationId": "910GMORDENS",
+     "icsId": "1001197",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GSHLIER",
+     "name": "St Helier (London) Rail Station",
+     "topMostParentId": "910GSHLIER",
+     "stationId": "910GSHLIER",
+     "icsId": "1001267",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GSUTTONC",
+     "name": "Sutton Common Rail Station",
+     "topMostParentId": "910GSUTTONC",
+     "stationId": "910GSUTTONC",
+     "icsId": "1019461",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GWSUTTON",
+     "name": "West Sutton Rail Station",
+     "topMostParentId": "910GWSUTTON",
+     "stationId": "910GWSUTTON",
+     "icsId": "1001333",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GSUTTON",
+     "name": "Sutton (London) Rail Station",
+     "topMostParentId": "910GSUTTON",
+     "stationId": "910GSUTTON",
+     "icsId": "1001286",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "southern",
+       "name": "Southern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GLNDNBDC",
+     "name": "London Bridge Rail Station",
+     "topMostParentId": "HUBLBG",
+     "stationId": "910GLNDNBDC",
+     "icsId": "1000139",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "southeastern",
+       "name": "Southeastern"
+      },
+      {
+       "id": "southern",
+       "name": "Southern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GNORWDJ",
+     "name": "Norwood Junction Rail Station",
+     "topMostParentId": "HUBNWD",
+     "stationId": "910GNORWDJ",
+     "icsId": "1001216",
+     "modes": [
+      "national-rail",
+      "overground"
+     ],
+     "lines": [
+      {
+       "id": "southeastern",
+       "name": "Southeastern"
+      },
+      {
+       "id": "southern",
+       "name": "Southern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      },
+      {
+       "id": "windrush",
+       "name": "Windrush"
+      }
+     ]
+    },
+    {
+     "id": "910GECROYDN",
+     "name": "East Croydon Rail Station",
+     "topMostParentId": "HUBECY",
+     "stationId": "910GECROYDN",
+     "icsId": "1001089",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "gatwick-express",
+       "name": "Gatwick Express"
+      },
+      {
+       "id": "southeastern",
+       "name": "Southeastern"
+      },
+      {
+       "id": "southern",
+       "name": "Southern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GSCROYDN",
+     "name": "South Croydon Rail Station",
+     "topMostParentId": "910GSCROYDN",
+     "stationId": "910GSCROYDN",
+     "icsId": "1001258",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "gatwick-express",
+       "name": "Gatwick Express"
+      },
+      {
+       "id": "southern",
+       "name": "Southern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GPURLEY",
+     "name": "Purley Rail Station",
+     "topMostParentId": "910GPURLEY",
+     "stationId": "910GPURLEY",
+     "icsId": "1001229",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "southern",
+       "name": "Southern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GCOLSDNS",
+     "name": "Coulsdon South Rail Station",
+     "topMostParentId": "910GCOLSDNS",
+     "stationId": "910GCOLSDNS",
+     "icsId": "1001072",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "southern",
+       "name": "Southern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GMERSTHM",
+     "name": "Merstham Rail Station",
+     "topMostParentId": "910GMERSTHM",
+     "stationId": "910GMERSTHM",
+     "icsId": "1001527",
+     "modes": [
+      "bus",
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "405",
+       "name": "405"
+      },
+      {
+       "id": "southern",
+       "name": "Southern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GREDHILL",
+     "name": "Redhill Rail Station",
+     "topMostParentId": "910GREDHILL",
+     "stationId": "910GREDHILL",
+     "icsId": "1001721",
+     "modes": [
+      "bus",
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "405",
+       "name": "405"
+      },
+      {
+       "id": "gatwick-express",
+       "name": "Gatwick Express"
+      },
+      {
+       "id": "great-western-railway",
+       "name": "Great Western Railway"
+      },
+      {
+       "id": "southeastern",
+       "name": "Southeastern"
+      },
+      {
+       "id": "southern",
+       "name": "Southern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GEARLSWD",
+     "name": "Earlswood (Surrey) Rail Station",
+     "topMostParentId": "910GEARLSWD",
+     "stationId": "910GEARLSWD",
+     "icsId": "90002418",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "southern",
+       "name": "Southern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GSALFDS",
+     "name": "Salfords (Surrey) Rail Station",
+     "topMostParentId": "910GSALFDS",
+     "stationId": "910GSALFDS",
+     "icsId": "90006250",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "southern",
+       "name": "Southern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GHORLEY",
+     "name": "Horley Rail Station",
+     "topMostParentId": "910GHORLEY",
+     "stationId": "910GHORLEY",
+     "icsId": "1001637",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "gatwick-express",
+       "name": "Gatwick Express"
+      },
+      {
+       "id": "southern",
+       "name": "Southern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GGTWK",
+     "name": "Gatwick Airport Rail Station",
+     "topMostParentId": "920GLGW0",
+     "stationId": "910GGTWK",
+     "icsId": "1000901",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "gatwick-express",
+       "name": "Gatwick Express"
+      },
+      {
+       "id": "great-western-railway",
+       "name": "Great Western Railway"
+      },
+      {
+       "id": "southern",
+       "name": "Southern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GTHBDGS",
+     "name": "Three Bridges Rail Station",
+     "topMostParentId": "910GTHBDGS",
+     "stationId": "910GTHBDGS",
+     "icsId": "1001817",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "gatwick-express",
+       "name": "Gatwick Express"
+      },
+      {
+       "id": "southern",
+       "name": "Southern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GBALCOMB",
+     "name": "Balcombe Rail Station",
+     "topMostParentId": "910GBALCOMB",
+     "stationId": "910GBALCOMB",
+     "icsId": "90000379",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "southern",
+       "name": "Southern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GHYWRDSH",
+     "name": "Haywards Heath Rail Station",
+     "topMostParentId": "910GHYWRDSH",
+     "stationId": "910GHYWRDSH",
+     "icsId": "1001418",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "gatwick-express",
+       "name": "Gatwick Express"
+      },
+      {
+       "id": "southern",
+       "name": "Southern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GWVLSFLD",
+     "name": "Wivelsfield Rail Station",
+     "topMostParentId": "910GWVLSFLD",
+     "stationId": "910GWVLSFLD",
+     "icsId": "90008130",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "southern",
+       "name": "Southern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GBURGESH",
+     "name": "Burgess Hill Rail Station",
+     "topMostParentId": "910GBURGESH",
+     "stationId": "910GBURGESH",
+     "icsId": "1001895",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "gatwick-express",
+       "name": "Gatwick Express"
+      },
+      {
+       "id": "southern",
+       "name": "Southern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GHASOCKS",
+     "name": "Hassocks Rail Station",
+     "topMostParentId": "910GHASOCKS",
+     "stationId": "910GHASOCKS",
+     "icsId": "1001633",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "gatwick-express",
+       "name": "Gatwick Express"
+      },
+      {
+       "id": "southern",
+       "name": "Southern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GPRSP",
+     "name": "Preston Park Rail Station",
+     "topMostParentId": "910GPRSP",
+     "stationId": "910GPRSP",
+     "icsId": "90005811",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "gatwick-express",
+       "name": "Gatwick Express"
+      },
+      {
+       "id": "southern",
+       "name": "Southern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    },
+    {
+     "id": "910GBRGHTN",
+     "name": "Brighton Rail Station",
+     "topMostParentId": "910GBRGHTN",
+     "stationId": "910GBRGHTN",
+     "icsId": "90000899",
+     "modes": [
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "gatwick-express",
+       "name": "Gatwick Express"
+      },
+      {
+       "id": "southern",
+       "name": "Southern"
+      },
+      {
+       "id": "thameslink",
+       "name": "Thameslink"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "stations": [
+  {
+   "id": "910GBALCOMB",
+   "name": "Balcombe Rail Station",
+   "topMostParentId": "910GBALCOMB",
+   "stationId": "910GBALCOMB",
+   "icsId": "90000379",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "southern",
+     "name": "Southern"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GBEDFDM",
+   "name": "Bedford Rail Station",
+   "topMostParentId": "910GBEDFDM",
+   "stationId": "910GBEDFDM",
+   "icsId": "90000519",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "east-midlands-railway",
+     "name": "East Midlands Railway"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    },
+    {
+     "id": "west-midlands-trains",
+     "name": "West Midlands Trains"
+    }
+   ]
+  },
+  {
+   "id": "910GBRENTX",
+   "name": "Brent Cross West Station",
+   "topMostParentId": "910GBRENTX",
+   "stationId": "910GBRENTX",
+   "icsId": "1002310",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GBRGHTN",
+   "name": "Brighton Rail Station",
+   "topMostParentId": "910GBRGHTN",
+   "stationId": "910GBRGHTN",
+   "icsId": "90000899",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "gatwick-express",
+     "name": "Gatwick Express"
+    },
+    {
+     "id": "southern",
+     "name": "Southern"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GBURGESH",
+   "name": "Burgess Hill Rail Station",
+   "topMostParentId": "910GBURGESH",
+   "stationId": "910GBURGESH",
+   "icsId": "1001895",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "gatwick-express",
+     "name": "Gatwick Express"
+    },
+    {
+     "id": "southern",
+     "name": "Southern"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GCTMSLNK",
+   "name": "City Thameslink Rail Station",
+   "topMostParentId": "910GCTMSLNK",
+   "stationId": "910GCTMSLNK",
+   "icsId": "1001067",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GCOLSDNS",
+   "name": "Coulsdon South Rail Station",
+   "topMostParentId": "910GCOLSDNS",
+   "stationId": "910GCOLSDNS",
+   "icsId": "1001072",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "southern",
+     "name": "Southern"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GCRKLWD",
+   "name": "Cricklewood Rail Station",
+   "topMostParentId": "910GCRKLWD",
+   "stationId": "910GCRKLWD",
+   "icsId": "1001075",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GEARLSWD",
+   "name": "Earlswood (Surrey) Rail Station",
+   "topMostParentId": "910GEARLSWD",
+   "stationId": "910GEARLSWD",
+   "icsId": "90002418",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "southern",
+     "name": "Southern"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GELTR",
+   "name": "Elstree & Borehamwood Rail Station",
+   "topMostParentId": "910GELTR",
+   "stationId": "910GELTR",
+   "icsId": "1001096",
+   "modes": [
+    "bus",
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "107",
+     "name": "107"
+    },
+    {
+     "id": "292",
+     "name": "292"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GFLITWCK",
+   "name": "Flitwick Rail Station",
+   "topMostParentId": "910GFLITWCK",
+   "stationId": "910GFLITWCK",
+   "icsId": "90002748",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GHRLG",
+   "name": "Harlington (Beds) Rail Station",
+   "topMostParentId": "910GHRLG",
+   "stationId": "910GHRLG",
+   "icsId": "90003658",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GHRPNDN",
+   "name": "Harpenden Rail Station",
+   "topMostParentId": "910GHRPNDN",
+   "stationId": "910GHRPNDN",
+   "icsId": "1000480",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GHASOCKS",
+   "name": "Hassocks Rail Station",
+   "topMostParentId": "910GHASOCKS",
+   "stationId": "910GHASOCKS",
+   "icsId": "1001633",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "gatwick-express",
+     "name": "Gatwick Express"
+    },
+    {
+     "id": "southern",
+     "name": "Southern"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GHYDNSRD",
+   "name": "Haydons Road Rail Station",
+   "topMostParentId": "910GHYDNSRD",
+   "stationId": "910GHYDNSRD",
+   "icsId": "1001143",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GHYWRDSH",
+   "name": "Haywards Heath Rail Station",
+   "topMostParentId": "910GHYWRDSH",
+   "stationId": "910GHYWRDSH",
+   "icsId": "1001418",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "gatwick-express",
+     "name": "Gatwick Express"
+    },
+    {
+     "id": "southern",
+     "name": "Southern"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GHDON",
+   "name": "Hendon Rail Station",
+   "topMostParentId": "910GHDON",
+   "stationId": "910GHDON",
+   "icsId": "1001148",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GHERNEH",
+   "name": "Herne Hill Rail Station",
+   "topMostParentId": "910GHERNEH",
+   "stationId": "910GHERNEH",
+   "icsId": "1001149",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "southeastern",
+     "name": "Southeastern"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GHORLEY",
+   "name": "Horley Rail Station",
+   "topMostParentId": "910GHORLEY",
+   "stationId": "910GHORLEY",
+   "icsId": "1001637",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "gatwick-express",
+     "name": "Gatwick Express"
+    },
+    {
+     "id": "southern",
+     "name": "Southern"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GLEAGRVE",
+   "name": "Leagrave Rail Station",
+   "topMostParentId": "910GLEAGRVE",
+   "stationId": "910GLEAGRVE",
+   "icsId": "90004300",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GLBGHJN",
+   "name": "Loughborough Junction Rail Station",
+   "topMostParentId": "910GLBGHJN",
+   "stationId": "910GLBGHJN",
+   "icsId": "1001184",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "southeastern",
+     "name": "Southeastern"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GLUTOAPY",
+   "name": "Luton Airport Parkway Rail Station",
+   "topMostParentId": "910GLUTOAPY",
+   "stationId": "910GLUTOAPY",
+   "icsId": "1001678",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "east-midlands-railway",
+     "name": "East Midlands Railway"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GLUTON",
+   "name": "Luton Rail Station",
+   "topMostParentId": "910GLUTON",
+   "stationId": "910GLUTON",
+   "icsId": "1001187",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "east-midlands-railway",
+     "name": "East Midlands Railway"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GMERSTHM",
+   "name": "Merstham Rail Station",
+   "topMostParentId": "910GMERSTHM",
+   "stationId": "910GMERSTHM",
+   "icsId": "1001527",
+   "modes": [
+    "bus",
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "405",
+     "name": "405"
+    },
+    {
+     "id": "southern",
+     "name": "Southern"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GMLHB",
+   "name": "Mill Hill Broadway Rail Station",
+   "topMostParentId": "910GMLHB",
+   "stationId": "910GMLHB",
+   "icsId": "1001193",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GMORDENS",
+   "name": "Morden South Rail Station",
+   "topMostParentId": "910GMORDENS",
+   "stationId": "910GMORDENS",
+   "icsId": "1001197",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GPRSP",
+   "name": "Preston Park Rail Station",
+   "topMostParentId": "910GPRSP",
+   "stationId": "910GPRSP",
+   "icsId": "90005811",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "gatwick-express",
+     "name": "Gatwick Express"
+    },
+    {
+     "id": "southern",
+     "name": "Southern"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GPURLEY",
+   "name": "Purley Rail Station",
+   "topMostParentId": "910GPURLEY",
+   "stationId": "910GPURLEY",
+   "icsId": "1001229",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "southern",
+     "name": "Southern"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GRADLETT",
+   "name": "Radlett Rail Station",
+   "topMostParentId": "910GRADLETT",
+   "stationId": "910GRADLETT",
+   "icsId": "1000486",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GREDHILL",
+   "name": "Redhill Rail Station",
+   "topMostParentId": "910GREDHILL",
+   "stationId": "910GREDHILL",
+   "icsId": "1001721",
+   "modes": [
+    "bus",
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "405",
+     "name": "405"
+    },
+    {
+     "id": "gatwick-express",
+     "name": "Gatwick Express"
+    },
+    {
+     "id": "great-western-railway",
+     "name": "Great Western Railway"
+    },
+    {
+     "id": "southeastern",
+     "name": "Southeastern"
+    },
+    {
+     "id": "southern",
+     "name": "Southern"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GSALFDS",
+   "name": "Salfords (Surrey) Rail Station",
+   "topMostParentId": "910GSALFDS",
+   "stationId": "910GSALFDS",
+   "icsId": "90006250",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "southern",
+     "name": "Southern"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GSCROYDN",
+   "name": "South Croydon Rail Station",
+   "topMostParentId": "910GSCROYDN",
+   "stationId": "910GSCROYDN",
+   "icsId": "1001258",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "gatwick-express",
+     "name": "Gatwick Express"
+    },
+    {
+     "id": "southern",
+     "name": "Southern"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GSMERTON",
+   "name": "South Merton Rail Station",
+   "topMostParentId": "910GSMERTON",
+   "stationId": "910GSMERTON",
+   "icsId": "1001262",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GSTALBCY",
+   "name": "St Albans City Rail Station",
+   "topMostParentId": "910GSTALBCY",
+   "stationId": "910GSTALBCY",
+   "icsId": "1000482",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GSHLIER",
+   "name": "St Helier (London) Rail Station",
+   "topMostParentId": "910GSHLIER",
+   "stationId": "910GSHLIER",
+   "icsId": "1001267",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GSTRETHM",
+   "name": "Streatham Rail Station",
+   "topMostParentId": "910GSTRETHM",
+   "stationId": "910GSTRETHM",
+   "icsId": "1001279",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "southern",
+     "name": "Southern"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GSUTTON",
+   "name": "Sutton (London) Rail Station",
+   "topMostParentId": "910GSUTTON",
+   "stationId": "910GSUTTON",
+   "icsId": "1001286",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "southern",
+     "name": "Southern"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GSUTTONC",
+   "name": "Sutton Common Rail Station",
+   "topMostParentId": "910GSUTTONC",
+   "stationId": "910GSUTTONC",
+   "icsId": "1019461",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GTHBDGS",
+   "name": "Three Bridges Rail Station",
+   "topMostParentId": "910GTHBDGS",
+   "stationId": "910GTHBDGS",
+   "icsId": "1001817",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "gatwick-express",
+     "name": "Gatwick Express"
+    },
+    {
+     "id": "southern",
+     "name": "Southern"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GTOOTING",
+   "name": "Tooting Rail Station",
+   "topMostParentId": "910GTOOTING",
+   "stationId": "910GTOOTING",
+   "icsId": "1001296",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GTULSEH",
+   "name": "Tulse Hill Rail Station",
+   "topMostParentId": "910GTULSEH",
+   "stationId": "910GTULSEH",
+   "icsId": "1001298",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "southern",
+     "name": "Southern"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GWSUTTON",
+   "name": "West Sutton Rail Station",
+   "topMostParentId": "910GWSUTTON",
+   "stationId": "910GWSUTTON",
+   "icsId": "1001333",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GWIMLCHS",
+   "name": "Wimbledon Chase Rail Station",
+   "topMostParentId": "910GWIMLCHS",
+   "stationId": "910GWIMLCHS",
+   "icsId": "1001339",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  },
+  {
+   "id": "910GWVLSFLD",
+   "name": "Wivelsfield Rail Station",
+   "topMostParentId": "910GWVLSFLD",
+   "stationId": "910GWVLSFLD",
+   "icsId": "90008130",
+   "modes": [
+    "national-rail"
+   ],
+   "lines": [
+    {
+     "id": "southern",
+     "name": "Southern"
+    },
+    {
+     "id": "thameslink",
+     "name": "Thameslink"
+    }
+   ]
+  }
+ ]
+}

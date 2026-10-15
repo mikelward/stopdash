@@ -135,6 +135,7 @@
      "name": "Brighton Rail Station",
      "topMostParentId": "910GBRGHTN",
      "stationId": "910GBRGHTN",
+     "icsId": "90000899",
      "modes": [
       "national-rail"
      ],
@@ -150,6 +151,7 @@
      "name": "Preston Park Rail Station",
      "topMostParentId": "910GPRSP",
      "stationId": "910GPRSP",
+     "icsId": "90005811",
      "modes": [
       "national-rail"
      ],
@@ -165,6 +167,7 @@
      "name": "Hassocks Rail Station",
      "topMostParentId": "910GHASOCKS",
      "stationId": "910GHASOCKS",
+     "icsId": "1001633",
      "modes": [
       "national-rail"
      ],
@@ -180,6 +183,7 @@
      "name": "Burgess Hill Rail Station",
      "topMostParentId": "910GBURGESH",
      "stationId": "910GBURGESH",
+     "icsId": "1001895",
      "modes": [
       "national-rail"
      ],
@@ -195,6 +199,7 @@
      "name": "Wivelsfield Rail Station",
      "topMostParentId": "910GWVLSFLD",
      "stationId": "910GWVLSFLD",
+     "icsId": "90008130",
      "modes": [
       "national-rail"
      ],
@@ -210,6 +215,7 @@
      "name": "Haywards Heath Rail Station",
      "topMostParentId": "910GHYWRDSH",
      "stationId": "910GHYWRDSH",
+     "icsId": "1001418",
      "modes": [
       "national-rail"
      ],
@@ -225,6 +231,7 @@
      "name": "Balcombe Rail Station",
      "topMostParentId": "910GBALCOMB",
      "stationId": "910GBALCOMB",
+     "icsId": "90000379",
      "modes": [
       "national-rail"
      ],
@@ -240,6 +247,7 @@
      "name": "Three Bridges Rail Station",
      "topMostParentId": "910GTHBDGS",
      "stationId": "910GTHBDGS",
+     "icsId": "1001817",
      "modes": [
       "national-rail"
      ],
@@ -255,6 +263,7 @@
      "name": "Gatwick Airport Rail Station",
      "topMostParentId": "920GLGW0",
      "stationId": "910GGTWK",
+     "icsId": "1000901",
      "modes": [
       "national-rail"
      ],
@@ -270,6 +279,7 @@
      "name": "Horley Rail Station",
      "topMostParentId": "910GHORLEY",
      "stationId": "910GHORLEY",
+     "icsId": "1001637",
      "modes": [
       "national-rail"
      ],
@@ -285,6 +295,7 @@
      "name": "Purley Rail Station",
      "topMostParentId": "910GPURLEY",
      "stationId": "910GPURLEY",
+     "icsId": "1001229",
      "modes": [
       "national-rail"
      ],
@@ -300,6 +311,7 @@
      "name": "South Croydon Rail Station",
      "topMostParentId": "910GSCROYDN",
      "stationId": "910GSCROYDN",
+     "icsId": "1001258",
      "modes": [
       "national-rail"
      ],
@@ -315,6 +327,7 @@
      "name": "East Croydon Rail Station",
      "topMostParentId": "HUBECY",
      "stationId": "910GECROYDN",
+     "icsId": "1001089",
      "modes": [
       "national-rail"
      ],
@@ -330,6 +343,7 @@
      "name": "Norwood Junction Rail Station",
      "topMostParentId": "HUBNWD",
      "stationId": "910GNORWDJ",
+     "icsId": "1001216",
      "modes": [
       "national-rail",
       "overground"
@@ -346,6 +360,7 @@
      "name": "London Bridge Rail Station",
      "topMostParentId": "HUBLBG",
      "stationId": "910GLNDNBDC",
+     "icsId": "1000139",
      "modes": [
       "national-rail"
      ],
@@ -361,6 +376,7 @@
      "name": "London Blackfriars Rail Station",
      "topMostParentId": "HUBBFR",
      "stationId": "910GBLFR",
+     "icsId": "1000023",
      "modes": [
       "national-rail"
      ],
@@ -376,6 +392,7 @@
      "name": "City Thameslink Rail Station",
      "topMostParentId": "910GCTMSLNK",
      "stationId": "910GCTMSLNK",
+     "icsId": "1001067",
      "modes": [
       "national-rail"
      ],
@@ -391,6 +408,7 @@
      "name": "Farringdon Rail Station",
      "topMostParentId": "HUBZFD",
      "stationId": "910GFRNDNLT",
+     "icsId": "1000080",
      "modes": [
       "national-rail"
      ],
@@ -406,6 +424,7 @@
      "name": "London St Pancras International LL Rail Station",
      "topMostParentId": "HUBKGX",
      "stationId": "910GSTPXBOX",
+     "icsId": "1001276",
      "modes": [
       "national-rail"
      ],
@@ -421,6 +440,7 @@
      "name": "Kentish Town Rail Station",
      "topMostParentId": "HUBKTN",
      "stationId": "910GKNTSHTN",
+     "icsId": "1000123",
      "modes": [
       "national-rail"
      ],
@@ -436,6 +456,7 @@
      "name": "West Hampstead Thameslink Rail Station",
      "topMostParentId": "HUBWHD",
      "stationId": "910GWHMPSTM",
+     "icsId": "1001330",
      "modes": [
       "national-rail"
      ],
@@ -451,6 +472,7 @@
      "name": "Cricklewood Rail Station",
      "topMostParentId": "910GCRKLWD",
      "stationId": "910GCRKLWD",
+     "icsId": "1001075",
      "modes": [
       "national-rail"
      ],
@@ -466,6 +488,7 @@
      "name": "Brent Cross West Station",
      "topMostParentId": "910GBRENTX",
      "stationId": "910GBRENTX",
+     "icsId": "1002310",
      "modes": [
       "national-rail"
      ],
@@ -481,6 +504,7 @@
      "name": "Hendon Rail Station",
      "topMostParentId": "910GHDON",
      "stationId": "910GHDON",
+     "icsId": "1001148",
      "modes": [
       "national-rail"
      ],
@@ -496,6 +520,7 @@
      "name": "Mill Hill Broadway Rail Station",
      "topMostParentId": "910GMLHB",
      "stationId": "910GMLHB",
+     "icsId": "1001193",
      "modes": [
       "national-rail"
      ],
@@ -511,6 +536,7 @@
      "name": "Elstree & Borehamwood Rail Station",
      "topMostParentId": "910GELTR",
      "stationId": "910GELTR",
+     "icsId": "1001096",
      "modes": [
       "national-rail",
       "bus"
@@ -527,6 +553,7 @@
      "name": "Radlett Rail Station",
      "topMostParentId": "910GRADLETT",
      "stationId": "910GRADLETT",
+     "icsId": "1000486",
      "modes": [
       "national-rail"
      ],
@@ -542,6 +569,7 @@
      "name": "St Albans City Rail Station",
      "topMostParentId": "910GSTALBCY",
      "stationId": "910GSTALBCY",
+     "icsId": "1000482",
      "modes": [
       "national-rail"
      ],
@@ -557,6 +585,7 @@
      "name": "Harpenden Rail Station",
      "topMostParentId": "910GHRPNDN",
      "stationId": "910GHRPNDN",
+     "icsId": "1000480",
      "modes": [
       "national-rail"
      ],
@@ -572,6 +601,7 @@
      "name": "Luton Airport Parkway Rail Station",
      "topMostParentId": "910GLUTOAPY",
      "stationId": "910GLUTOAPY",
+     "icsId": "1001678",
      "modes": [
       "national-rail"
      ],
@@ -587,6 +617,7 @@
      "name": "Luton Rail Station",
      "topMostParentId": "910GLUTON",
      "stationId": "910GLUTON",
+     "icsId": "1001187",
      "modes": [
       "national-rail"
      ],
@@ -602,6 +633,7 @@
      "name": "Leagrave Rail Station",
      "topMostParentId": "910GLEAGRVE",
      "stationId": "910GLEAGRVE",
+     "icsId": "90004300",
      "modes": [
       "national-rail"
      ],
@@ -617,6 +649,7 @@
      "name": "Harlington (Beds) Rail Station",
      "topMostParentId": "910GHRLG",
      "stationId": "910GHRLG",
+     "icsId": "90003658",
      "modes": [
       "national-rail"
      ],
@@ -632,6 +665,7 @@
      "name": "Flitwick Rail Station",
      "topMostParentId": "910GFLITWCK",
      "stationId": "910GFLITWCK",
+     "icsId": "90002748",
      "modes": [
       "national-rail"
      ],
@@ -647,6 +681,7 @@
      "name": "Bedford Rail Station",
      "topMostParentId": "910GBEDFDM",
      "stationId": "910GBEDFDM",
+     "icsId": "90000519",
      "modes": [
       "national-rail"
      ],
@@ -662,6 +697,7 @@
      "name": "Salfords (Surrey) Rail Station",
      "topMostParentId": "910GSALFDS",
      "stationId": "910GSALFDS",
+     "icsId": "90006250",
      "modes": [
       "national-rail"
      ],
@@ -677,6 +713,7 @@
      "name": "Earlswood (Surrey) Rail Station",
      "topMostParentId": "910GEARLSWD",
      "stationId": "910GEARLSWD",
+     "icsId": "90002418",
      "modes": [
       "national-rail"
      ],
@@ -692,6 +729,7 @@
      "name": "Redhill Rail Station",
      "topMostParentId": "910GREDHILL",
      "stationId": "910GREDHILL",
+     "icsId": "1001721",
      "modes": [
       "national-rail",
       "bus"
@@ -708,6 +746,7 @@
      "name": "Merstham Rail Station",
      "topMostParentId": "910GMERSTHM",
      "stationId": "910GMERSTHM",
+     "icsId": "1001527",
      "modes": [
       "national-rail",
       "bus"
@@ -724,6 +763,7 @@
      "name": "Coulsdon South Rail Station",
      "topMostParentId": "910GCOLSDNS",
      "stationId": "910GCOLSDNS",
+     "icsId": "1001072",
      "modes": [
       "national-rail"
      ],
@@ -739,6 +779,7 @@
      "name": "Finsbury Park Rail Station",
      "topMostParentId": "HUBFPK",
      "stationId": "910GFNPK",
+     "icsId": "1000334",
      "modes": [
       "national-rail"
      ],
@@ -758,6 +799,7 @@
      "name": "Harringay Rail Station",
      "topMostParentId": "910GHRGY",
      "stationId": "910GHRGY",
+     "icsId": "1001138",
      "modes": [
       "national-rail"
      ],
@@ -777,6 +819,7 @@
      "name": "Alexandra Palace Rail Station",
      "topMostParentId": "910GALEXNDP",
      "stationId": "910GALEXNDP",
+     "icsId": "1001005",
      "modes": [
       "national-rail"
      ],
@@ -796,6 +839,7 @@
      "name": "New Southgate Rail Station",
      "topMostParentId": "910GNEWSGAT",
      "stationId": "910GNEWSGAT",
+     "icsId": "1001207",
      "modes": [
       "national-rail"
      ],
@@ -815,6 +859,7 @@
      "name": "Oakleigh Park Rail Station",
      "topMostParentId": "910GOKLGHPK",
      "stationId": "910GOKLGHPK",
+     "icsId": "1001218",
      "modes": [
       "national-rail"
      ],
@@ -834,6 +879,7 @@
      "name": "New Barnet Rail Station",
      "topMostParentId": "910GNBARNET",
      "stationId": "910GNBARNET",
+     "icsId": "1001201",
      "modes": [
       "national-rail"
      ],
@@ -853,6 +899,7 @@
      "name": "Hadley Wood Rail Station",
      "topMostParentId": "910GHADLYWD",
      "stationId": "910GHADLYWD",
+     "icsId": "1001130",
      "modes": [
       "national-rail"
      ],
@@ -872,6 +919,7 @@
      "name": "Potters Bar Rail Station",
      "topMostParentId": "910GPOTRSBR",
      "stationId": "910GPOTRSBR",
+     "icsId": "1011145",
      "modes": [
       "national-rail"
      ],
@@ -891,6 +939,7 @@
      "name": "Hatfield (Herts) Rail Station",
      "topMostParentId": "910GHATFILD",
      "stationId": "910GHATFILD",
+     "icsId": "1026129",
      "modes": [
       "national-rail"
      ],
@@ -910,6 +959,7 @@
      "name": "Welwyn Garden City Rail Station",
      "topMostParentId": "910GWLWYNGC",
      "stationId": "910GWLWYNGC",
+     "icsId": "1000455",
      "modes": [
       "national-rail"
      ],
@@ -929,6 +979,7 @@
      "name": "Welwyn North Rail Station",
      "topMostParentId": "910GWLWYNN",
      "stationId": "910GWLWYNN",
+     "icsId": "1000470",
      "modes": [
       "national-rail"
      ],
@@ -948,6 +999,7 @@
      "name": "Knebworth Rail Station",
      "topMostParentId": "910GKNEBWTH",
      "stationId": "910GKNEBWTH",
+     "icsId": "1000468",
      "modes": [
       "national-rail"
      ],
@@ -967,6 +1019,7 @@
      "name": "Stevenage Rail Station",
      "topMostParentId": "910GSTEVNGE",
      "stationId": "910GSTEVNGE",
+     "icsId": "1023126",
      "modes": [
       "national-rail"
      ],
@@ -986,6 +1039,7 @@
      "name": "Hitchin Rail Station",
      "topMostParentId": "910GHITCHIN",
      "stationId": "910GHITCHIN",
+     "icsId": "1000465",
      "modes": [
       "national-rail"
      ],
@@ -1005,6 +1059,7 @@
      "name": "Letchworth Garden City Rail Station",
      "topMostParentId": "910GLTCE",
      "stationId": "910GLTCE",
+     "icsId": "1000460",
      "modes": [
       "national-rail"
      ],
@@ -1024,6 +1079,7 @@
      "name": "Baldock Rail Station",
      "topMostParentId": "910GBALDOCK",
      "stationId": "910GBALDOCK",
+     "icsId": "1000721",
      "modes": [
       "national-rail"
      ],
@@ -1043,6 +1099,7 @@
      "name": "Ashwell & Morden Rail Station",
      "topMostParentId": "910GASHWELC",
      "stationId": "910GASHWELC",
+     "icsId": "1000563",
      "modes": [
       "national-rail"
      ],
@@ -1062,6 +1119,7 @@
      "name": "Royston Rail Station",
      "topMostParentId": "910GROYSTON",
      "stationId": "910GROYSTON",
+     "icsId": "1000459",
      "modes": [
       "national-rail"
      ],
@@ -1081,6 +1139,7 @@
      "name": "Meldreth Rail Station",
      "topMostParentId": "910GMELDRTH",
      "stationId": "910GMELDRTH",
+     "icsId": "90004797",
      "modes": [
       "national-rail"
      ],
@@ -1100,6 +1159,7 @@
      "name": "Shepreth Rail Station",
      "topMostParentId": "910GSHPRTH",
      "stationId": "910GSHPRTH",
+     "icsId": "1001953",
      "modes": [
       "national-rail"
      ],
@@ -1119,6 +1179,7 @@
      "name": "Foxton Rail Station",
      "topMostParentId": "910GFOXTON",
      "stationId": "910GFOXTON",
+     "icsId": "1001908",
      "modes": [
       "national-rail"
      ],
@@ -1138,6 +1199,7 @@
      "name": "Cambridge Rail Station",
      "topMostParentId": "910GCAMBDGE",
      "stationId": "910GCAMBDGE",
+     "icsId": "1001899",
      "modes": [
       "national-rail"
      ],
@@ -1157,6 +1219,7 @@
      "name": "London King's Cross Rail Station",
      "topMostParentId": "HUBKGX",
      "stationId": "910GKNGX",
+     "icsId": "1001171",
      "modes": [
       "national-rail"
      ],
@@ -1180,6 +1243,7 @@
    "name": "Alexandra Palace Rail Station",
    "topMostParentId": "910GALEXNDP",
    "stationId": "910GALEXNDP",
+   "icsId": "1001005",
    "modes": [
     "national-rail"
    ],
@@ -1199,6 +1263,7 @@
    "name": "Ashwell & Morden Rail Station",
    "topMostParentId": "910GASHWELC",
    "stationId": "910GASHWELC",
+   "icsId": "1000563",
    "modes": [
     "national-rail"
    ],
@@ -1218,6 +1283,7 @@
    "name": "Balcombe Rail Station",
    "topMostParentId": "910GBALCOMB",
    "stationId": "910GBALCOMB",
+   "icsId": "90000379",
    "modes": [
     "national-rail"
    ],
@@ -1233,6 +1299,7 @@
    "name": "Baldock Rail Station",
    "topMostParentId": "910GBALDOCK",
    "stationId": "910GBALDOCK",
+   "icsId": "1000721",
    "modes": [
     "national-rail"
    ],
@@ -1252,6 +1319,7 @@
    "name": "Bedford Rail Station",
    "topMostParentId": "910GBEDFDM",
    "stationId": "910GBEDFDM",
+   "icsId": "90000519",
    "modes": [
     "national-rail"
    ],
@@ -1267,6 +1335,7 @@
    "name": "Brent Cross West Station",
    "topMostParentId": "910GBRENTX",
    "stationId": "910GBRENTX",
+   "icsId": "1002310",
    "modes": [
     "national-rail"
    ],
@@ -1282,6 +1351,7 @@
    "name": "Brighton Rail Station",
    "topMostParentId": "910GBRGHTN",
    "stationId": "910GBRGHTN",
+   "icsId": "90000899",
    "modes": [
     "national-rail"
    ],
@@ -1297,6 +1367,7 @@
    "name": "Burgess Hill Rail Station",
    "topMostParentId": "910GBURGESH",
    "stationId": "910GBURGESH",
+   "icsId": "1001895",
    "modes": [
     "national-rail"
    ],
@@ -1312,6 +1383,7 @@
    "name": "Cambridge Rail Station",
    "topMostParentId": "910GCAMBDGE",
    "stationId": "910GCAMBDGE",
+   "icsId": "1001899",
    "modes": [
     "national-rail"
    ],
@@ -1331,6 +1403,7 @@
    "name": "Coulsdon South Rail Station",
    "topMostParentId": "910GCOLSDNS",
    "stationId": "910GCOLSDNS",
+   "icsId": "1001072",
    "modes": [
     "national-rail"
    ],
@@ -1346,6 +1419,7 @@
    "name": "Cricklewood Rail Station",
    "topMostParentId": "910GCRKLWD",
    "stationId": "910GCRKLWD",
+   "icsId": "1001075",
    "modes": [
     "national-rail"
    ],
@@ -1361,6 +1435,7 @@
    "name": "City Thameslink Rail Station",
    "topMostParentId": "910GCTMSLNK",
    "stationId": "910GCTMSLNK",
+   "icsId": "1001067",
    "modes": [
     "national-rail"
    ],
@@ -1376,6 +1451,7 @@
    "name": "Earlswood (Surrey) Rail Station",
    "topMostParentId": "910GEARLSWD",
    "stationId": "910GEARLSWD",
+   "icsId": "90002418",
    "modes": [
     "national-rail"
    ],
@@ -1391,6 +1467,7 @@
    "name": "Elstree & Borehamwood Rail Station",
    "topMostParentId": "910GELTR",
    "stationId": "910GELTR",
+   "icsId": "1001096",
    "modes": [
     "national-rail",
     "bus"
@@ -1407,6 +1484,7 @@
    "name": "Flitwick Rail Station",
    "topMostParentId": "910GFLITWCK",
    "stationId": "910GFLITWCK",
+   "icsId": "90002748",
    "modes": [
     "national-rail"
    ],
@@ -1422,6 +1500,7 @@
    "name": "Foxton Rail Station",
    "topMostParentId": "910GFOXTON",
    "stationId": "910GFOXTON",
+   "icsId": "1001908",
    "modes": [
     "national-rail"
    ],
@@ -1441,6 +1520,7 @@
    "name": "Hadley Wood Rail Station",
    "topMostParentId": "910GHADLYWD",
    "stationId": "910GHADLYWD",
+   "icsId": "1001130",
    "modes": [
     "national-rail"
    ],
@@ -1460,6 +1540,7 @@
    "name": "Hassocks Rail Station",
    "topMostParentId": "910GHASOCKS",
    "stationId": "910GHASOCKS",
+   "icsId": "1001633",
    "modes": [
     "national-rail"
    ],
@@ -1475,6 +1556,7 @@
    "name": "Hatfield (Herts) Rail Station",
    "topMostParentId": "910GHATFILD",
    "stationId": "910GHATFILD",
+   "icsId": "1026129",
    "modes": [
     "national-rail"
    ],
@@ -1494,6 +1576,7 @@
    "name": "Hendon Rail Station",
    "topMostParentId": "910GHDON",
    "stationId": "910GHDON",
+   "icsId": "1001148",
    "modes": [
     "national-rail"
    ],
@@ -1509,6 +1592,7 @@
    "name": "Hitchin Rail Station",
    "topMostParentId": "910GHITCHIN",
    "stationId": "910GHITCHIN",
+   "icsId": "1000465",
    "modes": [
     "national-rail"
    ],
@@ -1528,6 +1612,7 @@
    "name": "Horley Rail Station",
    "topMostParentId": "910GHORLEY",
    "stationId": "910GHORLEY",
+   "icsId": "1001637",
    "modes": [
     "national-rail"
    ],
@@ -1543,6 +1628,7 @@
    "name": "Harringay Rail Station",
    "topMostParentId": "910GHRGY",
    "stationId": "910GHRGY",
+   "icsId": "1001138",
    "modes": [
     "national-rail"
    ],
@@ -1562,6 +1648,7 @@
    "name": "Harlington (Beds) Rail Station",
    "topMostParentId": "910GHRLG",
    "stationId": "910GHRLG",
+   "icsId": "90003658",
    "modes": [
     "national-rail"
    ],
@@ -1577,6 +1664,7 @@
    "name": "Harpenden Rail Station",
    "topMostParentId": "910GHRPNDN",
    "stationId": "910GHRPNDN",
+   "icsId": "1000480",
    "modes": [
     "national-rail"
    ],
@@ -1592,6 +1680,7 @@
    "name": "Haywards Heath Rail Station",
    "topMostParentId": "910GHYWRDSH",
    "stationId": "910GHYWRDSH",
+   "icsId": "1001418",
    "modes": [
     "national-rail"
    ],
@@ -1607,6 +1696,7 @@
    "name": "Knebworth Rail Station",
    "topMostParentId": "910GKNEBWTH",
    "stationId": "910GKNEBWTH",
+   "icsId": "1000468",
    "modes": [
     "national-rail"
    ],
@@ -1626,6 +1716,7 @@
    "name": "Leagrave Rail Station",
    "topMostParentId": "910GLEAGRVE",
    "stationId": "910GLEAGRVE",
+   "icsId": "90004300",
    "modes": [
     "national-rail"
    ],
@@ -1641,6 +1732,7 @@
    "name": "Letchworth Garden City Rail Station",
    "topMostParentId": "910GLTCE",
    "stationId": "910GLTCE",
+   "icsId": "1000460",
    "modes": [
     "national-rail"
    ],
@@ -1660,6 +1752,7 @@
    "name": "Luton Airport Parkway Rail Station",
    "topMostParentId": "910GLUTOAPY",
    "stationId": "910GLUTOAPY",
+   "icsId": "1001678",
    "modes": [
     "national-rail"
    ],
@@ -1675,6 +1768,7 @@
    "name": "Luton Rail Station",
    "topMostParentId": "910GLUTON",
    "stationId": "910GLUTON",
+   "icsId": "1001187",
    "modes": [
     "national-rail"
    ],
@@ -1690,6 +1784,7 @@
    "name": "Meldreth Rail Station",
    "topMostParentId": "910GMELDRTH",
    "stationId": "910GMELDRTH",
+   "icsId": "90004797",
    "modes": [
     "national-rail"
    ],
@@ -1709,6 +1804,7 @@
    "name": "Merstham Rail Station",
    "topMostParentId": "910GMERSTHM",
    "stationId": "910GMERSTHM",
+   "icsId": "1001527",
    "modes": [
     "national-rail",
     "bus"
@@ -1725,6 +1821,7 @@
    "name": "Mill Hill Broadway Rail Station",
    "topMostParentId": "910GMLHB",
    "stationId": "910GMLHB",
+   "icsId": "1001193",
    "modes": [
     "national-rail"
    ],
@@ -1740,6 +1837,7 @@
    "name": "New Barnet Rail Station",
    "topMostParentId": "910GNBARNET",
    "stationId": "910GNBARNET",
+   "icsId": "1001201",
    "modes": [
     "national-rail"
    ],
@@ -1759,6 +1857,7 @@
    "name": "New Southgate Rail Station",
    "topMostParentId": "910GNEWSGAT",
    "stationId": "910GNEWSGAT",
+   "icsId": "1001207",
    "modes": [
     "national-rail"
    ],
@@ -1778,6 +1877,7 @@
    "name": "Oakleigh Park Rail Station",
    "topMostParentId": "910GOKLGHPK",
    "stationId": "910GOKLGHPK",
+   "icsId": "1001218",
    "modes": [
     "national-rail"
    ],
@@ -1797,6 +1897,7 @@
    "name": "Potters Bar Rail Station",
    "topMostParentId": "910GPOTRSBR",
    "stationId": "910GPOTRSBR",
+   "icsId": "1011145",
    "modes": [
     "national-rail"
    ],
@@ -1816,6 +1917,7 @@
    "name": "Preston Park Rail Station",
    "topMostParentId": "910GPRSP",
    "stationId": "910GPRSP",
+   "icsId": "90005811",
    "modes": [
     "national-rail"
    ],
@@ -1831,6 +1933,7 @@
    "name": "Purley Rail Station",
    "topMostParentId": "910GPURLEY",
    "stationId": "910GPURLEY",
+   "icsId": "1001229",
    "modes": [
     "national-rail"
    ],
@@ -1846,6 +1949,7 @@
    "name": "Radlett Rail Station",
    "topMostParentId": "910GRADLETT",
    "stationId": "910GRADLETT",
+   "icsId": "1000486",
    "modes": [
     "national-rail"
    ],
@@ -1861,6 +1965,7 @@
    "name": "Redhill Rail Station",
    "topMostParentId": "910GREDHILL",
    "stationId": "910GREDHILL",
+   "icsId": "1001721",
    "modes": [
     "national-rail",
     "bus"
@@ -1877,6 +1982,7 @@
    "name": "Royston Rail Station",
    "topMostParentId": "910GROYSTON",
    "stationId": "910GROYSTON",
+   "icsId": "1000459",
    "modes": [
     "national-rail"
    ],
@@ -1896,6 +2002,7 @@
    "name": "Salfords (Surrey) Rail Station",
    "topMostParentId": "910GSALFDS",
    "stationId": "910GSALFDS",
+   "icsId": "90006250",
    "modes": [
     "national-rail"
    ],
@@ -1911,6 +2018,7 @@
    "name": "South Croydon Rail Station",
    "topMostParentId": "910GSCROYDN",
    "stationId": "910GSCROYDN",
+   "icsId": "1001258",
    "modes": [
     "national-rail"
    ],
@@ -1926,6 +2034,7 @@
    "name": "Shepreth Rail Station",
    "topMostParentId": "910GSHPRTH",
    "stationId": "910GSHPRTH",
+   "icsId": "1001953",
    "modes": [
     "national-rail"
    ],
@@ -1945,6 +2054,7 @@
    "name": "St Albans City Rail Station",
    "topMostParentId": "910GSTALBCY",
    "stationId": "910GSTALBCY",
+   "icsId": "1000482",
    "modes": [
     "national-rail"
    ],
@@ -1960,6 +2070,7 @@
    "name": "Stevenage Rail Station",
    "topMostParentId": "910GSTEVNGE",
    "stationId": "910GSTEVNGE",
+   "icsId": "1023126",
    "modes": [
     "national-rail"
    ],
@@ -1979,6 +2090,7 @@
    "name": "Three Bridges Rail Station",
    "topMostParentId": "910GTHBDGS",
    "stationId": "910GTHBDGS",
+   "icsId": "1001817",
    "modes": [
     "national-rail"
    ],
@@ -1994,6 +2106,7 @@
    "name": "Welwyn Garden City Rail Station",
    "topMostParentId": "910GWLWYNGC",
    "stationId": "910GWLWYNGC",
+   "icsId": "1000455",
    "modes": [
     "national-rail"
    ],
@@ -2013,6 +2126,7 @@
    "name": "Welwyn North Rail Station",
    "topMostParentId": "910GWLWYNN",
    "stationId": "910GWLWYNN",
+   "icsId": "1000470",
    "modes": [
     "national-rail"
    ],
@@ -2032,6 +2146,7 @@
    "name": "Wivelsfield Rail Station",
    "topMostParentId": "910GWVLSFLD",
    "stationId": "910GWVLSFLD",
+   "icsId": "90008130",
    "modes": [
     "national-rail"
    ],
@@ -2047,6 +2162,7 @@
    "name": "London Gatwick Airport",
    "topMostParentId": "920GLGW0",
    "stationId": "920GLGW0",
+   "icsId": "1000932",
    "modes": [
     "national-rail"
    ],

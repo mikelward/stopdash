@@ -47,6 +47,9 @@ data class LineSequence(
     // itself: how a departure listed under one of a station's stop ids finds the sibling id the
     // route calls at (see [callingAt]).
     val stopHubs: Map<String, String> = emptyMap(),
+    // Each station's TfL code (`icsId`), the same for every id TfL lists it under; never a bus
+    // stop's, which it shares with the pole across the road (see [throughStation]).
+    val stationCodes: Map<String, String> = emptyMap(),
 ) {
     operator fun plus(other: LineSequence) =
         LineSequence(
@@ -56,7 +59,27 @@ data class LineSequence(
             stopPositions + other.stopPositions,
             stopAreas + other.stopAreas,
             stopHubs + other.stopHubs,
+            stationCodes + other.stationCodes,
         )
+
+    /**
+     * This sequence with [stopId] in place of every other id of its station ([stationCodes]) on the
+     * routes that don't call at [stopId] itself, or null when no such route calls at one. TfL can route
+     * one station's platforms under one id one way and another id the other: Thameslink's low-level
+     * platforms are St Pancras's `LL` id northbound and its main id southbound, and HS1's trains leave
+     * from its domestic id, which one route ends at under the main id. Only a fallback for a train its
+     * own id matches no way for ([RouteStops.candidatePaths]): a station's code also covers platforms
+     * that aren't the same ones (Liverpool Street's terminus and the Elizabeth line's through
+     * platforms beneath it), which would part a path its own id already gives.
+     */
+    @WorkerThread
+    fun throughStation(stopId: String): LineSequence? {
+        val code = stationCodes[stopId]?.takeIf { it.isNotBlank() } ?: return null
+        val elsewhere = routes.filter { stopId !in it.stopIds }
+        val siblings = elsewhere.flatMapTo(HashSet()) { route -> route.stopIds.filter { it != stopId && stationCodes[it] == code } }
+        if (siblings.isEmpty()) return null
+        return copy(routes = routes.map { route -> if (stopId in route.stopIds) route else route.copy(stopIds = route.stopIds.map { if (it in siblings) stopId else it }) })
+    }
 
     /**
      * This sequence as seen from [stopId], a stop departures or a journey end are listed under. TfL
@@ -194,15 +217,19 @@ object RouteStops {
      * The whole of the route in [sequence] that [stops] (a stop list from where the rider boards on, as
      * [resolve] gives it) is part of, from its first stop: where a line's alert can name the stretch it
      * touches before the boarding stop, which the list leaves off (maintainer, 2026-10-02). The longest
-     * where several routes run it; empty where none does.
+     * where several routes run it; empty where none does. A list that runs on a route only through its
+     * first stop's station's other id ([candidatePaths], [LineSequence.throughStation]) is read on that
+     * route the same way (Codex, #879).
      */
     @WorkerThread
     fun wholeRouteOf(sequence: LineSequence, stops: List<RouteStop>): List<RouteStop> {
         if (stops.isEmpty()) return emptyList()
         val ids = stops.map(RouteStop::id)
-        val route = sequence.routes.filter { java.util.Collections.indexOfSubList(it.stopIds, ids) >= 0 }
-            .maxByOrNull { it.stopIds.size } ?: return emptyList()
-        return route.stopIds.map { RouteStop(it, sequence.stopNames[it].orEmpty()) }
+        fun holding(on: LineSequence) =
+            on.routes.filter { java.util.Collections.indexOfSubList(it.stopIds, ids) >= 0 }.maxByOrNull { it.stopIds.size }
+        val within = sequence.takeIf { holding(it) != null } ?: sequence.throughStation(ids.first()) ?: return emptyList()
+        val route = holding(within) ?: return emptyList()
+        return route.stopIds.map { RouteStop(it, within.stopNames[it].orEmpty()) }
     }
 
     /** The TfL directions to fetch for a row: its own when TfL gave one, else both. */
@@ -384,7 +411,10 @@ object RouteStops {
      * that does by name isn't run on to its route's end. What a National Rail board says it runs [via]
      * keeps the ways calling there after boarding (the two ways round a loop to one terminus): those
      * whose stops its words, split at its "&"s and "and"s where a way's stops say so, can be read as
-     * ([viaSpans]). A via no way fits leaves none: a working the routes don't model.
+     * ([viaSpans]). A via no way fits leaves none: a working the routes don't model. A train (not a
+     * bus) that names where it's going and has no way there from [stopId] itself, via or not, is tried
+     * once more on the ways TfL routes through the station under another of its ids
+     * ([LineSequence.throughStation]); no other empty answer is.
      */
     @WorkerThread
     fun candidatePaths(
@@ -397,6 +427,35 @@ object RouteStops {
         direction: String = "",
         destinationId: String = "",
         via: String = "",
+    ): List<List<String>> {
+        val paths = pathsOn(sequence, stopId, destination, branch, bus, bound, direction, destinationId, via)
+        if (paths.isNotEmpty()) return paths
+        // Retried only for a train that names where it's going and has no way there from its own id at
+        // all; every other empty answer stands (Codex, #879). Not a bus, whose code the pole across the
+        // road shares. Not one naming no destination ("Check Front of Train"): its own id only ending its
+        // routes says it arrives here, not that it leaves from another platform. Nor one whose own way
+        // reaches its terminus but not by its via: the station's other platforms running by that via
+        // aren't where it leaves from. Its own id saying it ends here ([endsAt]) reads the same through
+        // the other ids, and a branch, a bound or a direction never empties the ways, so neither needs a rule.
+        if (bus || isUnknownDestination(destination)) return paths
+        if (via.isNotBlank() && pathsOn(sequence, stopId, destination, branch, bus, bound, direction, destinationId, "").isNotEmpty()) return paths
+        // No way from its own id: one TfL routes through the station under its other id
+        // ([LineSequence.throughStation]), as St Pancras's southbound Thameslink trains.
+        val through = sequence.throughStation(stopId) ?: return paths
+        return pathsOn(through, stopId, destination, branch, bus, bound, direction, destinationId, via)
+    }
+
+    @WorkerThread
+    private fun pathsOn(
+        sequence: LineSequence,
+        stopId: String,
+        destination: String,
+        branch: String?,
+        bus: Boolean,
+        bound: Bound?,
+        direction: String,
+        destinationId: String,
+        via: String,
     ): List<List<String>> {
         if (sequence.routes.none { visits(it, stopId).isNotEmpty() }) return emptyList()
         // TfL's id saying it ends here outranks any way its name would match ([resolve]).

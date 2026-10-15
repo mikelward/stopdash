@@ -32,6 +32,7 @@ class FileRouteStopsStoreTest {
                     stopPositions = mapOf("490000001A" to (51.5 to -0.12)),
                     stopAreas = mapOf("490000001A" to "490G00000001"),
                     stopHubs = mapOf("490000001A" to "HUBEXA"),
+                    stationCodes = mapOf("490000002B" to "1000002"),
                 ),
             ),
         ),
@@ -74,6 +75,16 @@ class FileRouteStopsStoreTest {
     @Test
     fun `a file from another version loads as empty and is deleted`() {
         val file = File(tmp.root, "route-stops.json").apply { writeText("""{"version":99,"sequences":[]}""") }
+        assertEquals(RouteStopsStore.Contents(), FileRouteStopsStore(file).load())
+        assertFalse(file.exists())
+    }
+
+    @Test
+    fun `a file from before station codes were kept loads as empty`() {
+        // Its sequences would match St Pancras's trains as before for up to a day (Codex, #879).
+        val file = File(tmp.root, "route-stops.json").apply {
+            writeText("""{"version":2,"sequences":[{"key":"thameslink/outbound","at":"2026-09-24T08:00:00Z","routes":[{"name":"A ↔ B","stopIds":["910GA","910GB"]}]}]}""")
+        }
         assertEquals(RouteStopsStore.Contents(), FileRouteStopsStore(file).load())
         assertFalse(file.exists())
     }
