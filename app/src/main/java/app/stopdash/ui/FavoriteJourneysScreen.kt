@@ -53,6 +53,7 @@ import app.stopdash.domain.NearbyStopsCache
 import app.stopdash.domain.PendingEnd
 import app.stopdash.domain.PendingJourney
 import app.stopdash.domain.StationFinder
+import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StopFinder
 import app.stopdash.domain.StopLocation
@@ -156,10 +157,12 @@ internal suspend fun removeFavoriteJourney(
 /**
  * Adds the journey between two stations the rider picked, [from] then [to] ([FavoriteJourneyPicker]):
  * the stops under each looked up ([StationFinder.stationStops]), a line both serve picked
- * ([JourneyPair]), and the journey saved unless it already is. Where none serves both, a station's own
- * bus stops count too ([JourneyPair.withStationBuses], found by [stationBuses]), as TfL files them apart
- * from it. Null once saved; else why it wasn't, said on the list. Off the main thread, the hop first
- * (AGENTS.md *Main thread*).
+ * ([JourneyPair]), and the journey saved unless it already is. Where none serves both, the rest of each
+ * end's place counts too, found by [stationBuses]: a station's own bus stops
+ * ([JourneyPair.withStationBuses]), as TfL files them apart from it, and the station a search row folded
+ * into a bus stop ([JourneyPair.withBusStations]), as the row can carry the bus stop's id. Null
+ * once saved; else why it wasn't, said on the list. Off the main thread, the hop first (AGENTS.md *Main
+ * thread*).
  */
 internal suspend fun addFavoriteJourneyPair(
     from: StationMatch,
@@ -180,15 +183,15 @@ internal suspend fun addFavoriteJourneyPair(
     var result = JourneyPair.resolve(from.name, fromStops, to.name, toStops)
     if (result == JourneyPair.Result.NoDirectLine) {
         val (fromAll, toAll) = try {
-            withStationBuses(fromStops, stationBuses) to withStationBuses(toStops, stationBuses)
+            withPlaceStops(fromStops, stationBuses) to withPlaceStops(toStops, stationBuses)
         } catch (e: TflException) {
-            warn("favorite journey add station bus stops lookup failed: ${e::class.simpleName}")
+            warn("favorite journey add stops around the ends lookup failed: ${e::class.simpleName}")
             return@withContext JourneyAddNote.LookupFailed(from.name, to.name, errorKindOf(e))
         }
-        // A bus stop both stations count as their own is neither end's: a ride from it to itself is no
-        // journey, so it leaves both lists and the rest of each still weighs (Codex on #852). Their own
-        // stops never overlap here, or the first resolve would have found the same station, so this one
-        // finds a line or none.
+        // A stop both ends count as their own (a bus stop outside two stations, a station beside two bus
+        // stops) is neither end's: a ride from it to itself is no journey, so it leaves both lists and the
+        // rest of each still weighs (Codex on #852). Their own stops never overlap here, or the first
+        // resolve would have found the same station, so this one finds a line or none.
         val shared = fromAll.mapTo(HashSet()) { it.id }.apply { retainAll(toAll.mapTo(HashSet()) { it.id }) }
         fromStops = fromAll.filterNot { it.id in shared }
         toStops = toAll.filterNot { it.id in shared }
@@ -237,16 +240,19 @@ internal suspend fun addFavoriteJourneyPair(
     }
 }
 
-// [stops] with the bus stops around each station among them ([JourneyPair.withStationBuses]): one
-// lookup per station position, which the bundled stops answer on the device in London. Throws a
-// [TflException] where TfL was asked and failed.
-private suspend fun withStationBuses(stops: List<StopLocation>, finder: StopFinder): List<StopLocation> {
-    val stations = JourneyPair.stationPositions(stops)
-    if (stations.isEmpty()) return stops
-    val around = stations.flatMap { station ->
+// [stops] with the rest of their place among them: the bus stops around each station
+// ([JourneyPair.withStationBuses]), then the station folded into each bus stop ([JourneyPair.withBusStations]),
+// both from [stops] as picked, so a station's bus stop never brings in the next station along. One lookup
+// per position, which the bundled stops answer on the device in London. Throws a [TflException] where
+// TfL was asked and failed.
+private suspend fun withPlaceStops(stops: List<StopLocation>, finder: StopFinder): List<StopLocation> {
+    val buses = JourneyPair.stationPositions(stops).flatMap { station ->
         finder.nearbyStops(station.latitude, station.longitude, STATION_BUS_LOOKUP_METERS, BUS_STOP_TYPES)
     }
-    return JourneyPair.withStationBuses(stops, around)
+    val stations = JourneyPair.busStopPositions(stops).flatMap { pole ->
+        finder.nearbyStops(pole.latitude, pole.longitude, FOLDED_STATION_LOOKUP_METERS, FOLDED_STOP_TYPES)
+    }
+    return (JourneyPair.withStationBuses(stops, buses) + JourneyPair.withBusStations(stops, stations)).distinctBy { it.id }
 }
 
 // The reach plus how far off a cached lookup may be centered and still be reused (Codex on #852): an
@@ -256,6 +262,14 @@ private val STATION_BUS_LOOKUP_METERS =
     ceil(JourneyPair.STATION_BUS_METERS + NearbyStopsCache.REUSE_WITHIN_METERS).toInt()
 
 private val BUS_STOP_TYPES = listOf("NaptanPublicBusCoachTram")
+
+// Every kind the search folds into a bus stop's row (a tram stop and a pier too, not just stations): the
+// search's own types, whose bus stops [JourneyPair.withBusStations] then leaves out (Codex on #863).
+private val FOLDED_STOP_TYPES = StopFinder.DEFAULT_NEARBY_STOP_TYPES
+
+// The same allowance around a bus stop for the station the search folds into it, out to the fold's reach.
+private val FOLDED_STATION_LOOKUP_METERS =
+    ceil(StationIndex.FOLD_RADIUS_METERS + NearbyStopsCache.REUSE_WITHIN_METERS).toInt()
 
 /**
  * Adds a journey with a favorite place at one end or both ([FavoriteJourneyPicker]): saved grayed, since

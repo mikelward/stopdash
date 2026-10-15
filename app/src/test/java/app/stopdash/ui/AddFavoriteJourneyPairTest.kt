@@ -47,13 +47,22 @@ class AddFavoriteJourneyPairTest {
         }
     }
 
-    // The stops around a station, by its position: none unless a test places some.
-    private class Buses(val stops: List<StopLocation>, val fail: TflException? = null) : StopFinder {
+    // The stops around an end, by its position: [stops] when asked for bus stops, [stations] when asked
+    // for stations, none unless a test places some.
+    private class Buses(val stops: List<StopLocation>, val fail: TflException? = null, val stations: List<StopLocation> = emptyList()) : StopFinder {
         val asked = mutableListOf<Pair<Double, Double>>()
+        val askedStations = mutableListOf<Pair<Double, Double>>()
+        val stationTypes = mutableListOf<List<String>>()
         override suspend fun nearbyStops(latitude: Double, longitude: Double, radiusMeters: Int, stopTypes: List<String>): List<StopLocation> {
-            asked += latitude to longitude
+            val forStations = "NaptanMetroStation" in stopTypes
+            if (forStations) {
+                askedStations += latitude to longitude
+                stationTypes += stopTypes
+            } else {
+                asked += latitude to longitude
+            }
             fail?.let { throw it }
-            return stops
+            return if (forStations) stations else stops
         }
     }
 
@@ -188,8 +197,10 @@ class AddFavoriteJourneyPairTest {
         assertEquals("490EXAMPLEA", saved.to.stopId)
         assertEquals("Euston", saved.to.name)
         assertEquals(emptyList<PendingJourney>(), journeys.pending.value)
-        // Looked around the station only: a bus stop end has its poles already.
+        // Bus stops looked for around the station only: a bus stop end has its poles already. The bus stop
+        // end is looked around for a station beside it instead, and there's none.
         assertEquals(listOf(51.5282 to -0.1337), buses.asked)
+        assertEquals(listOf(51.54 to -0.1337), buses.askedStations)
         // Either way round, it's the same one.
         assertEquals(JourneyAddNote.AlreadySaved("Euston", "Example Road"), addFavoriteJourneyPair(euston, busStop, busFinder, buses, journeys, worker = worker))
     }
@@ -242,6 +253,117 @@ class AddFavoriteJourneyPairTest {
         val buses = Buses(emptyList())
         assertNull(addFavoriteJourneyPair(kingsCross, waterloo, finder, buses, Journeys(emptyList()), worker = StandardTestDispatcher(testScheduler)))
         assertEquals(emptyList<Pair<Double, Double>>(), buses.asked)
+        assertEquals(emptyList<Pair<Double, Double>>(), buses.askedStations)
+    }
+
+    // The search's one row for a station whose bus stop outside is among the rider's own carries that bus
+    // stop's id (StationIndex.foldNeighbors): Euston's row here stands on a synthetic pole about 55 m north
+    // of Euston's published position, served by a bus that doesn't reach King's Cross (SPEC *Privacy*).
+    private val eustonRow = StationMatch("490EXAMPLEA", "Euston")
+    private val eustonStation = StopLocation("940GZZLUEUS", "Euston Underground Station", 51.5282, -0.1337, listOf(LineRef("northern", "Northern", "tube")), clusterId = "940GZZLUEUS")
+    private val rowFinder = Finder(
+        mapOf(
+            // TfL names the pole for the station it stands outside, as the search folds them.
+            "490EXAMPLEA" to listOf(pole("490EXAMPLEA", 51.5287, "X2").copy(name = "Euston Station")),
+            "HUBKGX" to listOf(tube("940GZZLUKSX", "northern", "victoria")),
+            "940GZZLUCWR" to listOf(tube("940GZZLUCWR", "jubilee")),
+        ),
+    )
+
+    @Test
+    fun `a station picked as the bus stop outside it is saved on the station's line`() = runTest {
+        val worker = StandardTestDispatcher(testScheduler)
+        val journeys = Journeys(emptyList())
+        val beside = Buses(emptyList(), stations = listOf(eustonStation))
+        assertNull(addFavoriteJourneyPair(eustonRow, kingsCross, rowFinder, beside, journeys, worker = worker))
+        val saved = journeys.state.value!!.single()
+        assertEquals("northern", saved.lineId)
+        assertEquals(JourneyEnd("940GZZLUEUS", "Euston", 51.5282, -0.1337, "940GZZLUEUS"), saved.from)
+        assertEquals("940GZZLUKSX", saved.to.stopId)
+        assertEquals(emptyList<PendingJourney>(), journeys.pending.value)
+        // Either way round, and from the far end too: the same one.
+        assertEquals(JourneyAddNote.AlreadySaved("King's Cross St. Pancras", "Euston"), addFavoriteJourneyPair(kingsCross, eustonRow, rowFinder, beside, journeys, worker = worker))
+    }
+
+    @Test
+    fun `a station beside the bus stop picked still has to reach the far end`() = runTest {
+        val journeys = Journeys(emptyList())
+        val beside = Buses(emptyList(), stations = listOf(eustonStation))
+        assertNull(addFavoriteJourneyPair(eustonRow, canadaWater, rowFinder, beside, journeys, worker = StandardTestDispatcher(testScheduler)))
+        assertTrue(journeys.state.value!!.isEmpty())
+        assertEquals(listOf(PendingJourney(PendingEnd.Station("490EXAMPLEA", "Euston"), PendingEnd.Station("940GZZLUCWR", "Canada Water"))), journeys.pending.value)
+    }
+
+    @Test
+    fun `a tram stop folded into a bus stop's row is weighed too`() = runTest {
+        // A tram stop and the bus stop beside it share a name, so the search shows one row on the bus stop
+        // (synthetic ids and positions by Euston): the tram is the direct ride, and the lookup asks for its kind.
+        val tramStop = StopLocation("940GEXAMPLET", "Euston", 51.5283, -0.1337, listOf(LineRef("tram", "Tram", "tram")))
+        val far = StationMatch("940GEXAMPLEU", "Tram Terminus")
+        val finder = Finder(
+            mapOf(
+                "490EXAMPLEA" to listOf(pole("490EXAMPLEA", 51.5287, "X2").copy(name = "Euston Station")),
+                "940GEXAMPLEU" to listOf(StopLocation("940GEXAMPLEU", "Tram Terminus", 51.5, -0.12, listOf(LineRef("tram", "Tram", "tram")))),
+            ),
+        )
+        val beside = Buses(emptyList(), stations = listOf(tramStop))
+        val journeys = Journeys(emptyList())
+        assertNull(addFavoriteJourneyPair(eustonRow, far, finder, beside, journeys, worker = StandardTestDispatcher(testScheduler)))
+        assertEquals("tram", journeys.state.value!!.single().lineId)
+        assertEquals("940GEXAMPLET", journeys.state.value!!.single().from.stopId)
+        assertTrue(beside.stationTypes.single().containsAll(listOf("NaptanPublicBusCoachTram", "NaptanFerryPort")))
+    }
+
+    @Test
+    fun `a bus stop picked for itself brings in no station that merely stands near it`() = runTest {
+        // A stop of another name about 55 m from Euston: the search never folded them, so it was picked as the stop.
+        val ownStop = StationMatch("490EXAMPLEB", "Example Road")
+        val finder = Finder(mapOf("490EXAMPLEB" to listOf(pole("490EXAMPLEB", 51.5287, "X2")), "HUBKGX" to listOf(tube("940GZZLUKSX", "northern"))))
+        val journeys = Journeys(emptyList())
+        assertNull(addFavoriteJourneyPair(ownStop, kingsCross, finder, Buses(emptyList(), stations = listOf(eustonStation)), journeys, worker = StandardTestDispatcher(testScheduler)))
+        assertTrue(journeys.state.value!!.isEmpty())
+        assertEquals(1, journeys.pending.value!!.size)
+    }
+
+    @Test
+    fun `a station farther from the bus stop than its own doesn't count`() = runTest {
+        val journeys = Journeys(emptyList())
+        // About 330 m from the pole: past the search's fold, so not the station it stands outside.
+        val beside = Buses(emptyList(), stations = listOf(eustonStation.copy(latitude = 51.5257)))
+        assertNull(addFavoriteJourneyPair(eustonRow, kingsCross, rowFinder, beside, journeys, worker = StandardTestDispatcher(testScheduler)))
+        assertTrue(journeys.state.value!!.isEmpty())
+        assertEquals(1, journeys.pending.value!!.size)
+    }
+
+    @Test
+    fun `an interchange's own bus pole looks for no other station`() = runTest {
+        // An interchange's stops come back with its own pole among them; another station beside that pole
+        // would reach Canada Water, but the rider picked the interchange (synthetic ids and positions).
+        val interchange = StationMatch("HUBEXAMPLE", "Euston")
+        val finder = Finder(
+            mapOf(
+                "HUBEXAMPLE" to listOf(eustonStation, pole("490EXAMPLEA", 51.5287, "X2")),
+                "940GZZLUCWR" to listOf(tube("940GZZLUCWR", "jubilee")),
+            ),
+        )
+        val other = StopLocation("940GEXAMPLE1", "Station One", 51.5290, -0.1337, listOf(LineRef("jubilee", "Jubilee", "tube")))
+        val beside = Buses(emptyList(), stations = listOf(other))
+        val journeys = Journeys(emptyList())
+        assertNull(addFavoriteJourneyPair(interchange, canadaWater, finder, beside, journeys, worker = StandardTestDispatcher(testScheduler)))
+        assertTrue(journeys.state.value!!.isEmpty())
+        assertEquals(1, journeys.pending.value!!.size)
+        assertEquals(emptyList<Pair<Double, Double>>(), beside.askedStations)
+    }
+
+    @Test
+    fun `a failed look for the station beside a bus stop is said, not saved grayed`() = runTest {
+        val journeys = Journeys(emptyList())
+        assertEquals(
+            JourneyAddNote.LookupFailed("Euston", "King's Cross St. Pancras", DeparturesUiState.Error.Kind.OFFLINE),
+            addFavoriteJourneyPair(eustonRow, kingsCross, rowFinder, Buses(emptyList(), TflException.Offline(null)), journeys, worker = StandardTestDispatcher(testScheduler)),
+        )
+        assertTrue(journeys.state.value!!.isEmpty())
+        assertEquals(emptyList<PendingJourney>(), journeys.pending.value)
     }
 
     @Test
