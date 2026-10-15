@@ -308,6 +308,81 @@ class PlaceDirectTest {
     }
 
     @Test
+    fun `a train gets off at the stop near the place by another id of its station, but not step-free there`() {
+        // TfL codes Bottom and Bottom-X as one station; the route calls only at Bottom, which has a step.
+        val coded = LineSequence(
+            routes = listOf(LineRoute("Top ↔ Bottom", listOf("TOP", "MID", "BOT"))),
+            stopNames = mapOf("TOP" to "Top", "MID" to "Mid", "BOT" to "Bottom", "BOTX" to "Bottom X"),
+            stationCodes = mapOf("BOT" to "1000001", "BOTX" to "1000001"),
+        )
+        val nearX = listOf(DirectTrips.End("BOTX", "Bottom X"))
+        val top = stop("TOP", "Top", departure("Bottom", 60))
+        val row = PlaceDirect.rows(listOf(top), nearX, mapOf("rail" to coded), emptyMap(), now).rows.single()
+        assertEquals(listOf(listOf("BOTX")), row.trainReaches.map { reaches -> reaches.map { it.id } })
+        // Bottom-X's step-free level is its own, not the platform the train calls at.
+        val table = StepFreeAccess(
+            mapOf(
+                "TOP" to mapOf("rail" to listOf(StepFreePlatform(StepFreeLevel.LEVEL))),
+                "BOT" to mapOf("rail" to listOf(StepFreePlatform(StepFreeLevel.NONE))),
+                "BOTX" to mapOf("rail" to listOf(StepFreePlatform(StepFreeLevel.LEVEL))),
+            ),
+        )
+        assertTrue(PlaceDirect.rows(listOf(top), nearX, mapOf("rail" to coded), emptyMap(), now, stepFree = StepFree.STATION, access = table).rows.isEmpty())
+    }
+
+    @Test
+    fun `step-free is judged at the stop a train calls at, not a sibling near the place it's listed beside`() {
+        // Only step-free Bottom-X is near the place; the route calls at its sibling Bottom (a step), one
+        // station by interchange and name, which the route would otherwise list as Bottom-X (Codex, #886).
+        val hubbed = LineSequence(
+            routes = listOf(LineRoute("Top ↔ Bottom", listOf("TOP", "MID", "BOT"))),
+            stopNames = mapOf("TOP" to "Top", "MID" to "Mid", "BOT" to "Bottom", "BOTX" to "Bottom"),
+            stopHubs = mapOf("BOT" to "HUBB", "BOTX" to "HUBB"),
+        )
+        val table = StepFreeAccess(
+            mapOf(
+                "TOP" to mapOf("rail" to listOf(StepFreePlatform(StepFreeLevel.LEVEL))),
+                "BOT" to mapOf("rail" to listOf(StepFreePlatform(StepFreeLevel.NONE))),
+                "BOTX" to mapOf("rail" to listOf(StepFreePlatform(StepFreeLevel.LEVEL))),
+            ),
+        )
+        val nearX = listOf(DirectTrips.End("BOTX", "Bottom", "HUBB"))
+        val top = stop("TOP", "Top", departure("Bottom", 60))
+        val result = PlaceDirect.rows(listOf(top), nearX, mapOf("rail" to hubbed), emptyMap(), now, stepFree = StepFree.STATION, access = table)
+        assertTrue(result.rows.isEmpty())
+        // With no step-free need, it gets off there.
+        assertEquals(listOf(listOf("BOTX")), PlaceDirect.rows(listOf(top), nearX, mapOf("rail" to hubbed), emptyMap(), now).rows.single().trainReaches.map { r -> r.map { it.id } })
+    }
+
+    @Test
+    fun `step-free is judged at the stop a train calls at, not by its station-wide calling points`() {
+        // A National Rail train's calling points name Bottom's station, so every id of it (Codex, #886):
+        // they can't say it calls at step-free Bottom-X rather than stepped Bottom, which its route can.
+        val coded = LineSequence(
+            routes = listOf(LineRoute("Top ↔ Bottom", listOf("TOP", "MID", "BOT"))),
+            stopNames = mapOf("TOP" to "Top", "MID" to "Mid", "BOT" to "Bottom", "BOTX" to "Bottom X"),
+        )
+        val table = StepFreeAccess(
+            mapOf(
+                "TOP" to mapOf("rail" to listOf(StepFreePlatform(StepFreeLevel.LEVEL))),
+                "BOT" to mapOf("rail" to listOf(StepFreePlatform(StepFreeLevel.NONE))),
+                "BOTX" to mapOf("rail" to listOf(StepFreePlatform(StepFreeLevel.LEVEL))),
+            ),
+        )
+        val nearX = listOf(DirectTrips.End("BOTX", "Bottom X"))
+        val train = departure("Bottom", 60, mode = "national-rail").copy(callingAt = listOf(CallingPortion(setOf("MID", "BOT", "BOTX"), complete = true)))
+        val top = stop("TOP", "Top", train)
+        val result = PlaceDirect.rows(listOf(top), nearX, mapOf("rail" to coded), emptyMap(), now, stepFree = StepFree.STATION, access = table)
+        assertTrue(result.rows.isEmpty())
+        // Its calling points still settle it with no step-free need, and a "no" settles it either way.
+        assertEquals(listOf("rail"), PlaceDirect.rows(listOf(top), nearX, mapOf("rail" to coded), emptyMap(), now).rows.map { it.lineId })
+        val elsewhere = stop("TOP", "Top", train.copy(callingAt = listOf(CallingPortion(setOf("MID"), complete = true))))
+        val missed = PlaceDirect.rows(listOf(elsewhere), nearX, mapOf("rail" to null), emptyMap(), now, stepFree = StepFree.STATION, access = table)
+        assertTrue(missed.rows.isEmpty())
+        assertFalse("settled with no route, never left unchecked", missed.unresolved)
+    }
+
+    @Test
     fun `a replacement bus needs no step-free data`() {
         val near = stop("NEAR", "Near", departure("Bottom", 300, lineId = "rb", mode = "replacement-bus"))
         val rb = LineSequence(listOf(LineRoute("Near ↔ Bottom", listOf("NEAR", "BOT"))), mapOf("NEAR" to "Near", "BOT" to "Bottom"))

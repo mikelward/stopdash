@@ -167,7 +167,8 @@ object PlaceDirect {
                     // went unchecked, never a definite miss.
                     val unknown = levels.filterValues { it == null }.keys.toList()
                     if (unknown.isNotEmpty()) {
-                        val probe = DirectTrips.filter(lineStops, unknown, sequences, hubs, hidden)
+                        // Each stop on its own level: another id of its station may not meet it.
+                        val probe = DirectTrips.filter(lineStops, unknown, sequences, hubs, hidden, byStation = false)
                         if (probe.stops.any { it.departures.isNotEmpty() }) unknownAccess = true
                         // A route still loading, or one that failed, leaves those trains unchecked too.
                         pending = pending || probe.pending
@@ -177,7 +178,7 @@ object PlaceDirect {
                     levels.filter { (_, at) -> at != null && at >= level }.keys.toList()
                 }
                 if (lineEnds.isEmpty()) continue
-                val result = DirectTrips.filter(lineStops, lineEnds, sequences, hubs, hidden)
+                val result = DirectTrips.filter(lineStops, lineEnds, sequences, hubs, hidden, byStation = false)
                 parts += result.stops
                 pending = pending || result.pending
                 unresolved = unresolved || result.unresolved
@@ -214,7 +215,9 @@ object PlaceDirect {
                     // The stops near the place [train] reaches, and whether they're alternatives (a fork).
                     fun reachesOf(train: Departure): Pair<List<DirectTrips.End>, Boolean> {
                         val one = listOf(stop.copy(departures = listOf(train), lines = emptyList()))
-                        val reached = ends.filter { end -> DirectTrips.filter(one, listOf(end), sequences, hubs, hidden).stops.any { it.departures.isNotEmpty() } }
+                        val reached = ends.filter { end ->
+                            DirectTrips.filter(one, listOf(end), sequences, hubs, hidden, byStation = level == null).stops.any { it.departures.isNotEmpty() }
+                        }
                         if (reached.isEmpty()) {
                             // Kept against the stops together but none alone: its route can't be told (a fork it
                             // may take either way), so it may reach any of them on a way it may take, never a
@@ -226,12 +229,17 @@ object PlaceDirect {
                             // route lists under a sibling id still counts.
                             val ways = sequences[lineId]?.let { sequence ->
                                 RouteStops.candidatePaths(
-                                    DirectTrips.routeAt(sequence, stop.stopId, stop.hubId, stop.stopName, ends), stop.stopId, train.destination, train.branch,
+                                    // With a step-free level, never a sibling renamed to a stop near the place.
+                                    DirectTrips.routeAt(sequence, stop.stopId, stop.hubId, stop.stopName, if (level == null) ends else emptyList()),
+                                    stop.stopId, train.destination, train.branch,
                                     train.mode.equals("bus", ignoreCase = true), RouteStops.boundOf(train.platform),
                                     train.direction, train.destinationId, train.via,
                                 )
                             }.orEmpty().flatMapTo(HashSet()) { it.drop(1) }
-                            val possible = ends.filter { it.id in ways }
+                            // A stop near the place by its station ([LineSequence.stationIds]), but by its own id with
+                            // a step-free level, which TfL gives each id of a station apart.
+                            val calls = if (level == null) sequences[lineId]?.stationIds(ways) ?: ways else ways
+                            val possible = ends.filter { it.id in calls }
                             if (possible.isNotEmpty() && possible.all(::meets)) return possible to (possible.size > 1)
                             unknownAccess = true
                             return emptyList<DirectTrips.End>() to false

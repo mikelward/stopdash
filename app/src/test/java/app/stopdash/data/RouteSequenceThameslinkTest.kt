@@ -22,6 +22,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -184,6 +185,26 @@ class RouteSequenceThameslinkTest {
     }
 
     @Test
+    fun `a northbound train gets a trip to St Pancras's main id off there, by its low level`() {
+        val bedford = Departure(
+            lineId = "thameslink",
+            lineName = "Thameslink",
+            direction = "",
+            destination = "Bedford",
+            platform = null,
+            expectedArrival = now.plusSeconds(300),
+            mode = "national-rail",
+        )
+        val toStPancras = DirectTrips.routeAt(bothWays, FARRINGDON, "", "Farringdon", listOf(DirectTrips.End(ST_PANCRAS, "London St Pancras International", HUB)))
+        assertEquals(DirectTrips.Verdict.Reaches, DirectTrips.judge(bedford, FARRINGDON, toStPancras, setOf(ST_PANCRAS)))
+        // King's Cross is the interchange's other station, never St Pancras's.
+        assertFalse(bothWays.sameStationId(KINGS_CROSS, ST_PANCRAS))
+        assertTrue(bothWays.sameStationId(ST_PANCRAS_LL, ST_PANCRAS))
+        val toKingsCross = DirectTrips.routeAt(bothWays, FARRINGDON, "", "Farringdon", listOf(DirectTrips.End(KINGS_CROSS, "London King's Cross", HUB)))
+        assertEquals(DirectTrips.Verdict.Misses, DirectTrips.judge(bedford, FARRINGDON, toKingsCross, setOf(KINGS_CROSS)))
+    }
+
+    @Test
     fun `the sequence carries each station's code, never a bus stop's`() {
         assertEquals(STATION_CODE, southbound.stationCodes[ST_PANCRAS])
         assertEquals(STATION_CODE, fetched.stationCodes[ST_PANCRAS_LL])
@@ -222,6 +243,7 @@ class RouteSequenceThameslinkTest {
         const val BRIGHTON = "910GBRGHTN"
         const val SUTTON = "910GSUTTON"
         const val LONDON_BRIDGE = "910GLNDNBDC"
+        const val FARRINGDON = "910GFRNDNLT"
         const val STATION_CODE = "1001276"
     }
 }

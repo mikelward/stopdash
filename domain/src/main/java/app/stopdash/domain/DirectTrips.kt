@@ -33,7 +33,10 @@ object DirectTrips {
      * [hubs] gives each origin stop's interchange, and [destination]'s stops carry theirs, so a
      * station listed under one id and routed through a sibling is matched ([LineSequence.callingAt]).
      * A stop's lines are kept only where their route reaches the destination, so a status row
-     * (a suspension) shows for the lines that matter and not for the rest.
+     * (a suspension) shows for the lines that matter and not for the rest. A destination stop is its
+     * station ([LineSequence.stationIds]) unless [byStation] is false: where the rider's own stop
+     * matters, as for step-free access, which TfL gives each id of a station apart, a destination is only
+     * itself, never a sibling the route lists in its place ([routeAt]).
      */
     @WorkerThread
     fun filter(
@@ -44,14 +47,18 @@ object DirectTrips {
         // Modes the rider has hidden: their services are left out without being checked, so a
         // hidden bus's route loading or failing never holds up or caveats a shown tube trip.
         hidden: Set<String> = emptySet(),
+        byStation: Boolean = true,
     ): Result {
         val destinationIds = destination.mapTo(HashSet()) { it.id }
         var pending = false
         var unresolved = false
         val misses = LinkedHashSet<RouteMiss>()
-        // A line's route as seen from [stop] and the destination's stops, once per stop and line.
+        // A line's route as seen from [stop] and the destination's stops, once per stop and line. Not by
+        // station, the destination's own ids only: a sibling the route calls at is never renamed to one of
+        // them, as its step-free access is its own (Codex, #886).
+        val seenFrom = if (byStation) destination else emptyList()
         fun sequenceAt(stop: StopArrivals, lineId: String): LineSequence? =
-            sequences[lineId]?.let { routeAt(it, stop.stopId, hubs[stop.stopId] ?: stop.hubId, stop.stopName, destination) }
+            sequences[lineId]?.let { routeAt(it, stop.stopId, hubs[stop.stopId] ?: stop.hubId, stop.stopName, seenFrom) }
         val kept = stops.map { stop ->
             // The origin itself is no destination: From and To the same station is no trip.
             if (stop.stopId in destinationIds) {
@@ -60,7 +67,7 @@ object DirectTrips {
             val routes = HashMap<String, LineSequence?>()
             fun routeOf(lineId: String): LineSequence? = routes.getOrPut(lineId) { sequenceAt(stop, lineId) }
             val departures = stop.departures.filter { departure ->
-                val judged = judgeDeparture(departure, stop.stopId, destinationIds, sequences, hidden, ::routeOf)
+                val judged = judgeDeparture(departure, stop.stopId, destinationIds, sequences, hidden, byStation, ::routeOf)
                 if (judged.pending) pending = true
                 if (judged.unresolved) unresolved = true
                 judged.miss?.let { misses += it }
@@ -77,7 +84,7 @@ object DirectTrips {
                     unresolved = true
                     return@filter false
                 }
-                reaches(sequence, stop.stopId, destinationIds)
+                reaches(sequence, stop.stopId, destinationIds, byStation)
             }
             stop.copy(departures = departures, lines = lines)
         }.filter { it.departures.isNotEmpty() || it.lines.isNotEmpty() || it.disruptions.isNotEmpty() }
@@ -103,6 +110,7 @@ object DirectTrips {
         sequences: Map<String, LineSequence?>,
         hubs: Map<String, String> = emptyMap(),
         hidden: Set<String> = emptySet(),
+        byStation: Boolean = true,
     ): List<Judged> {
         val destinationIds = destination.mapTo(HashSet()) { it.id }
         // The origin itself is no destination: From and To the same station is no trip.
@@ -111,7 +119,7 @@ object DirectTrips {
         fun routeOf(lineId: String): LineSequence? = routes.getOrPut(lineId) {
             sequences[lineId]?.let { routeAt(it, stop.stopId, hubs[stop.stopId] ?: stop.hubId, stop.stopName, destination) }
         }
-        return stop.departures.map { judgeDeparture(it, stop.stopId, destinationIds, sequences, hidden, ::routeOf) }
+        return stop.departures.map { judgeDeparture(it, stop.stopId, destinationIds, sequences, hidden, byStation, ::routeOf) }
     }
 
     /** [departure] from [stopId] judged as [filter] judges it, its line's route from [routeOf]. */
@@ -121,17 +129,18 @@ object DirectTrips {
         destinationIds: Set<String>,
         sequences: Map<String, LineSequence?>,
         hidden: Set<String>,
+        byStation: Boolean,
         routeOf: (String) -> LineSequence?,
     ): Judged {
         val lineId = departure.lineId
+        if (HiddenModes.isHidden(departure.mode, lineId, hidden)) return Judged(kept = false)
+        // Its own calling points settle it with no route needed, loading or failed (Codex, #650).
+        settledByStops(departure, destinationIds, byStation)?.let { return Judged(kept = it) }
         return when {
-            HiddenModes.isHidden(departure.mode, lineId, hidden) -> Judged(kept = false)
-            // Its own calling points settle it with no route needed, loading or failed (Codex, #650).
-            settledByStops(departure, destinationIds) != null -> Judged(kept = settledByStops(departure, destinationIds) == true)
             // No line to follow: it may well call there, so never a silent "no".
             lineId.isBlank() -> Judged(kept = false, unresolved = true, miss = RouteMiss(lineId, stopId, RouteStops.Resolution.NoLine, departure.destination))
             lineId !in sequences -> Judged(kept = false, pending = true)
-            else -> when (val verdict = judge(departure, stopId, routeOf(lineId), destinationIds)) {
+            else -> when (val verdict = judge(departure, stopId, routeOf(lineId), destinationIds, byStation)) {
                 Verdict.Reaches -> Judged(kept = true)
                 Verdict.Misses -> Judged(kept = false)
                 is Verdict.Unknown -> Judged(kept = false, unresolved = true, miss = verdict.miss)
@@ -147,6 +156,15 @@ object DirectTrips {
     @WorkerThread
     fun settledByStops(departure: Departure, destinationIds: Set<String>): Boolean? =
         departure.callingAt?.let { calling(it, destinationIds) }
+
+    /**
+     * [settledByStops], but where [byStation] is false (the rider's own stop matters, as for step-free
+     * access) only a "no": a calling point names a station, and every id of it ([CallingPortion]), never
+     * which of its platforms the train calls at, so only its line's route can say that (Codex, #886).
+     */
+    @WorkerThread
+    private fun settledByStops(departure: Departure, destinationIds: Set<String>, byStation: Boolean): Boolean? =
+        settledByStops(departure, destinationIds)?.takeIf { byStation || !it }
 
     /**
      * Whether a train stopping at [portions] after boarding calls at one of [destinationIds]: true
@@ -197,13 +215,15 @@ object DirectTrips {
     /**
      * Whether [departure], boarding at [stopId], calls at one of [destinationIds] on its line's [route]
      * ([routeAt]; null when the route failed). Depends on where the departure is going, not when, so a
-     * verdict holds for every later prediction of the same service.
+     * verdict holds for every later prediction of the same service. A destination is its station
+     * ([LineSequence.stationIds]): a northbound Thameslink calls at St Pancras's main id by its low
+     * level. Not for a bus, whose poles have no station, nor where [byStation] is false.
      */
     @WorkerThread
-    fun judge(departure: Departure, stopId: String, route: LineSequence?, destinationIds: Set<String>): Verdict {
+    fun judge(departure: Departure, stopId: String, route: LineSequence?, destinationIds: Set<String>, byStation: Boolean = true): Verdict {
         // Where the train itself says it stops ([Departure.callingAt]) outranks its line's routes,
         // which can't tell a fast train from a stopping one.
-        settledByStops(departure, destinationIds)?.let { return if (it) Verdict.Reaches else Verdict.Misses }
+        settledByStops(departure, destinationIds, byStation)?.let { return if (it) Verdict.Reaches else Verdict.Misses }
         val lineId = departure.lineId
         val bus = departure.mode.equals("bus", ignoreCase = true)
         val bound = RouteStops.boundOf(departure.platform)
@@ -220,12 +240,13 @@ object DirectTrips {
         } else {
             RouteStops.reaches(
                 route!!, stopId, departure.destination, departure.branch, destinationIds, bus, bound,
-                departure.direction, departure.destinationId, departure.via,
+                departure.direction, departure.destinationId, departure.via, byStation,
             )
         }
+        val ends = if (bus || !byStation || route == null) destinationIds else route.stationIds(destinationIds)
         return when {
             resolution is RouteStops.Resolution.Found ->
-                if (resolution.stops.drop(1).any { it.id in destinationIds }) Verdict.Reaches else Verdict.Misses
+                if (resolution.stops.drop(1).any { it.id in ends }) Verdict.Reaches else Verdict.Misses
             // Ending here, it goes nowhere: a sure "no", not a gap in the check.
             resolution == RouteStops.Resolution.EndsHere -> Verdict.Misses
             agreed != null -> if (agreed) Verdict.Reaches else Verdict.Misses
@@ -267,10 +288,15 @@ object DirectTrips {
             )
         }
 
-    /** Whether some route of [sequence] calls at [originId] and later at one of [destinationIds]. */
-    private fun reaches(sequence: LineSequence, originId: String, destinationIds: Set<String>): Boolean =
-        sequence.routes.any { route ->
+    /**
+     * Whether some route of [sequence] calls at [originId] and later at one of [destinationIds], each its
+     * station ([LineSequence.stationIds]) where [byStation].
+     */
+    private fun reaches(sequence: LineSequence, originId: String, destinationIds: Set<String>, byStation: Boolean): Boolean {
+        val ends = if (byStation) sequence.stationIds(destinationIds) else destinationIds
+        return sequence.routes.any { route ->
             val i = route.stopIds.indexOf(originId)
-            i >= 0 && route.stopIds.drop(i + 1).any { it in destinationIds }
+            i >= 0 && route.stopIds.drop(i + 1).any { it in ends }
         }
+    }
 }

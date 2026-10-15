@@ -264,9 +264,12 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
             // Each boarding stop as the route sees it, and the getting-off stop too: TfL can list a
             // station's departures under one id and route the line through a sibling
             // ([LineSequence.callingAt]), which is still the same stop.
-            val found = boarding.flatMap { stop ->
+            // Failing that id on every run, another id of its station ([LineSequence.sameStationId]): only
+            // failing it, since a station's code also covers platforms runs call at apart (Liverpool Street's).
+            fun runs(station: Boolean) = boarding.flatMap { stop ->
                 val seen = sequence.callingAt(stop).callingAt(end.toId)
-                fun alights(id: String) = id == end.toId || (end.toArea.isNotEmpty() && seen.stopAreas[id] == end.toArea)
+                fun alights(id: String) = id == end.toId || (end.toArea.isNotEmpty() && seen.stopAreas[id] == end.toArea) ||
+                    (station && seen.sameStationId(id, end.toId))
                 seen.routes.flatMap { route ->
                     val ids = route.stopIds
                     ids.indices.filter { ids[it] == stop }.mapNotNull { i ->
@@ -275,6 +278,7 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
                     }
                 }
             }.distinct()
+            val found = runs(station = false).ifEmpty { runs(station = true) }
             val (board, on) = found.singleOrNull() ?: return null
             val off = on.last()
             return ride.copy(

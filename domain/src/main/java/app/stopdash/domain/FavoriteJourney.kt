@@ -283,7 +283,7 @@ object Journeys {
         for (tier in 0..maxTier(journey, lineId)) {
             val pairs = sequence.routes.flatMap { route ->
                 val origins = matches(route, journey.from, sequence, tier)
-                val destinations = matches(route, journey.to, sequence, tier)
+                val destinations = matches(route, journey.to, sequence, tier, station = true)
                 origins.flatMap { i -> destinations.filter { it > i }.map { j -> route.stopIds[i] to route.stopIds[j] } }
             }
             if (pairs.isEmpty()) continue
@@ -296,11 +296,15 @@ object Journeys {
     /**
      * The indices on [route] that stand for [end] at this matching [tier] or looser (see [segment]):
      * each end finds its best match on its own, so a bus origin found by stop area can pair with a
-     * one-way destination found by distance.
+     * one-way destination found by distance. The far end ([station]) is its station where [route] calls
+     * at none of it by its id ([LineSequence.sameStationId]): a northbound Thameslink route calls at St
+     * Pancras by its low level, whichever id the journey was starred from. The origin keeps its own id,
+     * as a station's code also covers platforms trains leave from apart (Liverpool Street's).
      */
-    private fun matches(route: LineRoute, end: JourneyEnd, sequence: LineSequence, tier: Int): List<Int> {
+    private fun matches(route: LineRoute, end: JourneyEnd, sequence: LineSequence, tier: Int, station: Boolean = false): List<Int> {
         val ids = route.stopIds
         val byId = ids.indices.filter { ids[it] == end.stopId }
+            .ifEmpty { if (station) ids.indices.filter { sequence.sameStationId(ids[it], end.stopId) } else emptyList() }
         if (byId.isNotEmpty() || tier == 0) return byId
         val area = sequence.stopAreas[end.stopId]?.takeIf { it.isNotBlank() }
         val byArea = if (area == null) emptyList() else ids.indices.filter { sequence.stopAreas[ids[it]] == area }
@@ -384,8 +388,11 @@ object Journeys {
                     }
                     return@mapNotNull null
                 }
-                val destinations = segment.destinationIds + farEnd?.ids.orEmpty() +
-                    (journey?.let { destinationsOn(it.to, segment.originId, sequence, maxTier(it, row.lineId)) }.orEmpty())
+                // Each its station ([LineSequence.stationIds]): a train calls at St Pancras by whichever id its way does.
+                val destinations = sequence.stationIds(
+                    segment.destinationIds + farEnd?.ids.orEmpty() +
+                        (journey?.let { destinationsOn(it.to, segment.originId, sequence, maxTier(it, row.lineId)) }.orEmpty()),
+                )
                 if (row.upcoming.isEmpty()) {
                     val served = servedDestinations(sequence, segment.originId, destinations)
                     if (row.status == null || served.isEmpty()) return@mapNotNull null
@@ -666,7 +673,7 @@ object Journeys {
      */
     private fun destinationsOn(end: JourneyEnd, originId: String, sequence: LineSequence, maxTier: Int): Set<String> {
         val matched = (0..maxTier).asSequence()
-            .map { tier -> after(originId, sequence) { route, i -> matches(route, end, sequence, tier).filter { it > i } } }
+            .map { tier -> after(originId, sequence) { route, i -> matches(route, end, sequence, tier, station = true).filter { it > i } } }
             .firstOrNull { it.isNotEmpty() }
             .orEmpty()
         val position = end.latitude?.let { la -> end.longitude?.let { la to it } } ?: sequence.stopPositions[end.stopId]

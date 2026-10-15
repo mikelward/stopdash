@@ -1106,7 +1106,12 @@ the same station by TfL's own station code. Only then, so a station's separate p
 code (Liverpool Street's terminus and the Elizabeth line beneath it) never stand in for each other
 while the train's own id says where it goes; never for a train naming no destination ("Check Front of
 Train"), whose own id only ending its routes says it arrives here; and never for a bus, whose code the
-pole across the road shares. A journey starred there keeps the id the departures
+pole across the road shares. **Where a train gets the rider off is a station, by TfL's code** (maintainer,
+2026-10-15): a trip, a journey or a place reached at one id of it is reached by a train calling at
+any, so a northbound Thameslink, which calls at St Pancras's low level only, gets off at St Pancras
+whichever of its ids was asked for. Never another station of the interchange (King's Cross beside
+it), never a bus pole, and the named id first: a train whose way calls at that id itself gets off
+there, never at another id of its station before it. A journey starred there keeps the id the departures
 carry, and its card places it the same way. Which interchange a stop is in comes from the bundled
 station index, so this holds however the stop reached the screen — nearby, watched, or a journey's
 end. Whenever the list is unavailable, the
@@ -1307,7 +1312,8 @@ there, even where TfL files that stop under another stop area and name (maintain
 stop named alike up to its cross street ("Hill Station", "Hill Station / High Road") within
 250 m, the place rule *adding a favorite ride* gives (maintainer, 2026-10-15). Both are needed — a name
 alone would join same-named stops across town, a distance alone a road that merely passes by — and it
-applies to the far end only. By name only here: a route's data credits an interchange's lines to each of
+applies to the far end only. The far end is also its station by TfL's code, as a trip's is (*Departures*):
+a route calling at another id of it reaches it. By name only here: a route's data credits an interchange's lines to each of
 its stops, so it can't say which of two stops in one is the station. At the near end a bus journey
 also boards from the **poles beside its origin** (maintainer, 2026-09-24): a pole in the same TfL
 stop area whose line — one the origin itself doesn't serve — reaches the far end on its route (a bus
@@ -2077,7 +2083,8 @@ not running a good service says so under its row ("Jubilee: Minor Delays"), as d
 stop it boards at, or at every stop near the place it gets off at; a line whose status, or a stop whose
 closures, couldn't be had counts as unchecked. With a
 step-free level chosen (*Step-free*), a line shows only where the stop it leaves from and a stop near
-the place both meet it, by the bundled step-free table (a bus always does); a station the table
+the place both meet it, by the bundled step-free table (a bus always does), each
+at the id the train calls at, which the table describes apart from its station's others; a station the table
 doesn't describe is left out and the section says it couldn't check every line. An avoided or
 hidden line, or a mode the trip's chips turned off, never shows; a change to any of them, a new
 nearby set, or a pull looks again at once. Three

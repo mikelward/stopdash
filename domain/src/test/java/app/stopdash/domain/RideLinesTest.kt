@@ -193,6 +193,23 @@ class RideLinesTest {
         assertEquals(listOf("red", "green"), lines.timed.map { it.lineId })
     }
 
+    @Test
+    fun `a line calling at another id of the getting-off stop's station is an equal, getting off there`() {
+        // TfL codes B and B2 as one station, with no interchange or name in common; green calls at B2.
+        fun green(vararg stops: String, codes: Map<String, String> = mapOf("B" to "1000002", "B2" to "1000002")) = LineSequence(
+            routes = listOf(LineRoute("route", stops.toList())),
+            stopNames = mapOf("A" to "A", "B" to "Beta", "B2" to "Beta Low Level", "End" to "End"),
+            stationCodes = codes,
+        )
+        val lines = linesOf(mapOf("green" to green("A", "B2", "End")))
+        assertEquals(listOf("red", "green"), lines.legs.map { it.lineId })
+        assertEquals("A" to "B2", lines.legs[1].let { it.fromId to it.toId })
+        // Not one station without TfL's code.
+        assertEquals(listOf("red"), linesOf(mapOf("green" to green("A", "B2", "End", codes = emptyMap()))).legs.map { it.lineId })
+        // Calling at the stop itself, it gets off there, never at another id of its station first.
+        assertEquals("B", linesOf(mapOf("green" to green("A", "B2", "B", "End"))).legs[1].toId)
+    }
+
     // Two rides with a change at B: red A → B, then blue B → C.
     private val redToB = leg("red", "A", "B").copy(departure = at, arrival = at.plusSeconds(120), changeAfter = java.time.Duration.ofMinutes(4))
     private val blueToC = leg("blue", "B", "C", path = listOf("X", "C")).copy(
