@@ -1,7 +1,7 @@
 ---
 trigger: always_on
 alwaysApply: true
-last_modified: 2026-10-14
+last_modified: 2026-10-15
 ---
 
 # AGENTS.md
@@ -320,9 +320,10 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   nothing, so it waits for a yes or goes in a follow-up PR. A necessary change goes ahead
   unasked — a rebase for a `dirty` branch, or a `behind` one where the ruleset requires it up
   to date, a fix for red CI — and so does drive or autopilot, where in effect.
-- **Report each review in chat** — the commit it read, the finding count, one bullet per
-  finding, most blocking first (what it claims, where, what you did). Refresh the PR
-  title/body with each push (body first, then push) to describe the branch's latest state.
+- **Report each review in the next message you send** (*Talking to the user*) — the commit it
+  read, the finding count, one bullet per finding, most blocking first (what it claims, where,
+  what you did). Refresh the PR title/body with each push (body first, then push) to describe
+  the branch's latest state.
 - **Link every open PR in the stack, one URL per line** (the "View PR" chip shows only the
   first link).
 - **Report the versionCode after every merge to `main`** (`git rev-list --count
@@ -350,11 +351,14 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   ask about either. Check a question's premise in the code before asking it.
 - **Answer a mid-turn message first**, before any further tool call (a merge cue is the
   exception — its hygiene runs first).
-- **Say at once when you change direction**, and why.
-- **Keep replies short**; lead with the single most important point. **Don't narrate
-  routine machinery** (a check flipping, a re-run, a webhook echo) and **don't report
-  your own caught-and-fixed mistakes** — only one that reached the repo or changes what
-  the user should do.
+- **Message only when the user needs to see it** (maintainer, 2026-10-15): each one notifies
+  their phone. Work and listen in silence; speak up for a question or blocker, something to
+  merge or act on, a merge, an autopilot decision (to review when seen, never waited on), or a
+  change from the plan, `SPEC.md` or their instructions, a review-prompted one included. Never
+  for progress (a client's nudge doesn't count), a review alone (its report rides the next
+  message), routine machinery, or a mistake caught and fixed before it reached the repo. The
+  session-start `AGENTS.md` line still opens every session.
+- **Keep replies short**; lead with the single most important point.
 - **End the turn by restating any pending decision** — the last line is the question you
   are waiting on, written out, every turn until it's answered. Nothing pending, no line.
 
