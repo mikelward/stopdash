@@ -1981,9 +1981,16 @@ object OnTheWay {
     /**
      * How far the end of a walk is ([meters]) and which way ([bearing], degrees from true north, null
      * nearer than [POINT_WITHIN_METERS] or from a fix too vague for it, [POINT_ACCURACY_SHARE]),
-     * straight from where the rider was seen; where no way is named, why ([withheld]).
+     * straight from where the rider was seen; where no way is named, why ([withheld]). [end] is the
+     * place both are measured to, so a way held for a vaguer fix points at it too ([holdWay]).
      */
-    data class WalkLeft(val meters: Double, val bearing: Double?, val withheld: WayWithheld? = null)
+    data class WalkLeft(
+        val meters: Double,
+        val bearing: Double?,
+        val withheld: WayWithheld? = null,
+        val held: Boolean = false,
+        val end: Coordinates? = null,
+    )
 
     /**
      * Why a walk names no way ([WalkLeft.bearing] null), by kind, as the log says it: never how far
@@ -2002,7 +2009,67 @@ object OnTheWay {
      * screen's arrow and the compass point go with it, so a report says why a walk showed neither
      * (bug report, 2026-10-15).
      */
-    fun wayNote(left: WalkLeft): String = left.withheld?.let { "walk direction withheld, ${it.reason}" } ?: "walk direction shown"
+    fun wayNote(left: WalkLeft): String = when {
+        left.withheld != null -> "walk direction withheld, ${left.withheld.reason}"
+        left.held -> "walk direction held from a surer fix"
+        else -> "walk direction shown"
+    }
+
+    /**
+     * The last fix on a walk sure enough to name its way ([walkLeft]): where it placed the rider
+     * ([coordinates]), how sure it was ([accuracyMeters]), and when it was taken ([takenAtMillis], on the
+     * caller's monotonic clock), so a vaguer fix after it can hold the way from it ([holdWay]). The fix
+     * is kept rather than the way it named, so a held way is measured afresh to wherever the walk now
+     * ends: the station's entrances read since, say, and never at a place the distance isn't (Codex, #881).
+     */
+    data class SureFix(val coordinates: Coordinates, val accuracyMeters: Float, val takenAtMillis: Long)
+
+    /**
+     * [left], from a fix too vague to name the way ([WayWithheld.VAGUE]), naming it from [sure] instead
+     * while that surer fix would still name it: from where it placed the rider to [WalkLeft.end], its
+     * uncertainty grown at [HOLD_PACE_METERS_PER_SECOND] for each second since it was taken, as far as
+     * the rider could have walked, is still within [POINT_ACCURACY_SHARE] of that distance, and it's no
+     * older than [HOLD_WITHIN] (maintainer, 2026-10-15). A fix vaguer for a moment, as GPS comes and goes
+     * among tall buildings, then doesn't take the arrow away the moment a sure one gave it (bug report,
+     * 2026-10-15), while the same bound keeps it from pointing down the wrong street. Unchanged otherwise:
+     * a way named, the end in sight ([WayWithheld.NEAR]), or no surer fix to hold from.
+     */
+    fun holdWay(left: WalkLeft, sure: SureFix?, nowMillis: Long): WalkLeft {
+        val end = left.end
+        if (left.withheld != WayWithheld.VAGUE || sure == null || end == null) return left
+        if (nowMillis < sure.takenAtMillis || nowMillis > holdUntilMillis(sure, end)) return left
+        val from = sure.coordinates
+        val bearing = Compass.bearingDegrees(from.latitude, from.longitude, end.latitude, end.longitude)
+        return left.copy(bearing = bearing, withheld = null, held = true)
+    }
+
+    /**
+     * The last moment (on [SureFix.takenAtMillis]'s clock) [holdWay] holds the way from [sure] to [end]:
+     * when its uncertainty, grown at [HOLD_PACE_METERS_PER_SECOND], reaches [POINT_ACCURACY_SHARE] of the
+     * distance it puts [end], or [HOLD_WITHIN] after it was taken, whichever is sooner; before it was
+     * taken where it puts [end] within [POINT_WITHIN_METERS], as it would name none itself. A way held and
+     * shown is taken back then, whether or not another fix comes (Codex, #881).
+     */
+    fun holdUntilMillis(sure: SureFix, end: Coordinates): Long {
+        val from = sure.coordinates
+        val meters = NearestStops.distanceMeters(from.latitude, from.longitude, end.latitude, end.longitude)
+        if (meters < POINT_WITHIN_METERS) return sure.takenAtMillis - 1
+        val room = meters * POINT_ACCURACY_SHARE - sure.accuracyMeters
+        val grows = (room / HOLD_PACE_METERS_PER_SECOND * 1000.0).toLong().coerceAtLeast(-1)
+        return sure.takenAtMillis + minOf(grows, HOLD_WITHIN.toMillis())
+    }
+
+    /**
+     * How fast a rider is taken to have walked since a fix that named the way ([holdWay]): a brisk
+     * walk, faster than a planner's fast pace, so the bound errs toward letting the way go.
+     */
+    const val HOLD_PACE_METERS_PER_SECOND = 2.0
+
+    /**
+     * The longest a way is held from one surer fix ([holdWay]): as long as a fix is kept to estimate
+     * from (`ActiveTripTracker.ESTIMATE_WITHIN`; docs/PRIVACY.md), whatever the distance.
+     */
+    val HOLD_WITHIN: Duration = Duration.ofMinutes(2)
 
     /**
      * Nearer than this, no way to the walk's end is named: a fix's own uncertainty (often 10–20 m in
@@ -2041,7 +2108,7 @@ object OnTheWay {
             else -> null
         }
         val bearing = if (withheld != null) null else Compass.bearingDegrees(lat, lon, end.latitude, end.longitude)
-        return WalkLeft(meters, bearing, withheld)
+        return WalkLeft(meters, bearing, withheld, end = end)
     }
 
     /**

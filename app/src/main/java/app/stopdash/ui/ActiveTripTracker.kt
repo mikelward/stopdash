@@ -148,7 +148,28 @@ class ActiveTripTracker(
     private val heldFixRef = AtomicReference<Pair<LocationFix, Long>?>(null)
     private var lastFix: Pair<LocationFix, Long>?
         get() = heldFixRef.get()
-        set(value) = heldFixRef.set(value)
+        set(value) {
+            heldFixRef.set(value)
+            // The surer fix a way is held from goes when the fixes do: precise location taken away, or the
+            // trip over. Its timer too, which holds it until it fires (Codex, #881).
+            if (value == null) {
+                sureFixRef.set(null)
+                forgetSure?.cancel()
+                forgetSure = null
+            }
+        }
+
+    // The last fix on the walk on now sure enough to name its way, by its walk (the trip's start and the
+    // leg), so a vaguer fix after it holds the way from it ([OnTheWay.holdWay]). In memory only, let go with
+    // the trip's fixes or once past [OnTheWay.HOLD_WITHIN], as a fix is (docs/PRIVACY.md).
+    private val sureFixRef = AtomicReference<Pair<Pair<Instant, Int>, OnTheWay.SureFix>?>(null)
+
+    // Lets go of [sureFixRef] once past its use: replaced with each sure fix kept.
+    private var forgetSure: Job? = null
+
+    // Takes a held way back off the walk once past its hold ([OnTheWay.holdUntilMillis]), whether or not
+    // another fix comes: replaced with each way held, cancelled by any other. Under [lock].
+    private var dropHeld: Job? = null
 
     // Lets go of [lastFix] once it's past [ESTIMATE_WITHIN]: replaced with each fix kept.
     private var forgetFix: Job? = null
@@ -158,8 +179,8 @@ class ActiveTripTracker(
     @Volatile private var walkPlaces: Pair<Int, StationPlaces>? = null
 
     // The walk whose direction the log last spoke of (its trip's start and leg) and what it said
-    // ([OnTheWay.WayWithheld], null for shown), so each change is said once ([noteWay]). Under [lock].
-    private var wayNoted: Triple<Instant, Int, OnTheWay.WayWithheld?>? = null
+    // ([OnTheWay.wayNote]), so each change is said once ([noteWay]). Under [lock].
+    private var wayNoted: Triple<Instant, Int, String>? = null
 
     // Whether the last refresh couldn't reach TfL: the screen says the trip isn't current.
     private val _failed = MutableStateFlow(false)
@@ -1241,7 +1262,8 @@ class ActiveTripTracker(
                     return@withLock
                 }
                 // Aged by the wait, so its time taken holds whatever it waited behind.
-                val aged = aged(fix, Duration.ofMillis(elapsed() - received)) ?: return@withLock
+                val agedAt = elapsed()
+                val aged = aged(fix, Duration.ofMillis(agedAt - received)) ?: return@withLock
                 val now = clock()
                 val arrived = now.minusMillis(elapsed() - received + arrivedAgoMillis)
                 // One that came before this trip began isn't this trip's to keep, even for a later walk's
@@ -1258,21 +1280,81 @@ class ActiveTripTracker(
                 val before = now.minusMillis(aged.ageMillis ?: 0).isBefore(trip.legStartedAt)
                 if (before && walking.metersLeft != null && !walking.estimated) return@withLock
                 val places = walkPlaces?.takeIf { it.first == trip.legIndex }?.second ?: StationPlaces()
-                val left = OnTheWay.walkLeft(trip, aged, places) ?: return@withLock
-                noteWay(trip, left)
+                val left = pointWay(trip, OnTheWay.walkLeft(trip, aged, places) ?: return@withLock, aged, agedAt)
                 _progress.value = walking.copy(metersLeft = left.meters, estimated = before, bearing = left.bearing)
             }
         }
     }
 
-    // Says whether [left] names the way on [trip]'s walk, and why not where it doesn't, once per change
-    // on a walk: the trip screen's arrow and compass point are drawn only where it does, so a report says
-    // why a walk showed neither (bug report, 2026-10-15). A kind only, never how far or which way.
+    // [left], measured on [trip]'s walk from [fix], with [fix] kept for a vaguer one after it where it names
+    // the way, or where it's too vague to name one, the way held from a surer fix instead ([OnTheWay.holdWay];
+    // maintainer, 2026-10-15). Logged as it changes ([noteWay]). [fix]'s age is as of [ageAt] (on [elapsed]'s
+    // clock), as [sawFix]'s is: reads since then would make it seem newer than it is, and a held way outlast
+    // its bound (Codex, #881).
+    private fun pointWay(trip: ActiveTrip, left: OnTheWay.WalkLeft, fix: LocationFix, ageAt: Long): OnTheWay.WalkLeft {
+        val walk = trip.startedAt to trip.legIndex
+        val now = elapsed()
+        val sureRef = sureFixRef.get()?.takeIf { it.first == walk }
+        val sure = sureRef?.second
+        val accuracy = fix.accuracyMeters
+        val takenAt = ageAt - (fix.ageMillis ?: 0)
+        val way = if (left.bearing != null && accuracy != null) {
+            // The newest kept: a refresh's fix taken before one that came between refreshes doesn't replace it.
+            if (sure == null || takenAt >= sure.takenAtMillis) {
+                val kept = walk to OnTheWay.SureFix(fix.coordinates, accuracy, takenAt)
+                sureFixRef.set(kept)
+                forgetSure?.cancel()
+                forgetSure = forgetting.launch {
+                    delay((takenAt + OnTheWay.HOLD_WITHIN.toMillis() - elapsed()).coerceAtLeast(0) + 1)
+                    sureFixRef.compareAndSet(kept, null)
+                }
+            }
+            left
+        } else if (left.withheld == OnTheWay.WayWithheld.NEAR) {
+            // A fix since it that put the rider near the end ends what a surer one could hold: a vaguer one
+            // after it farther out doesn't bring the way back (Codex, #881).
+            if (sure != null && takenAt >= sure.takenAtMillis) sureFixRef.compareAndSet(sureRef, null)
+            left
+        } else {
+            // Only a fix taken before this one holds the way for it: a refresh's fix that waited on the lock
+            // behind a newer one isn't given the way from that one (Codex, #881).
+            OnTheWay.holdWay(left, sure?.takeIf { takenAt >= it.takenAtMillis }, now)
+        }
+        dropHeld?.cancel()
+        dropHeld = null
+        val end = way.end
+        if (way.held && sure != null && end != null) {
+            // Its time up with no fix after it (GPS gone again, say), the held way still goes then: the
+            // refreshes in between keep the walk as last seen, held way and all (Codex, #881).
+            val until = OnTheWay.holdUntilMillis(sure, end)
+            dropHeld = forgetting.launch {
+                delay((until - elapsed()).coerceAtLeast(0) + 1)
+                lock.withLock { dropHeldWay(walk, way) }
+            }
+        }
+        noteWay(trip, way)
+        return way
+    }
+
+    // [held] taken back off the walk [walk] names, if the walk shown is still that one with that way:
+    // the vague fix's distance stays, its way withheld as it would have been with no surer fix before it.
+    private fun dropHeldWay(walk: Pair<Instant, Int>, held: OnTheWay.WalkLeft) {
+        val trip = _trip.value ?: return
+        val walking = _progress.value as? TripProgress.Walking ?: return
+        if (trip.startedAt to trip.legIndex != walk || walking.bearing != held.bearing) return
+        _progress.value = walking.copy(bearing = null)
+        noteWay(trip, held.copy(bearing = null, withheld = OnTheWay.WayWithheld.VAGUE, held = false))
+    }
+
+    // Says whether [left] names the way on [trip]'s walk, held or not, and why not where it doesn't, once
+    // per change on a walk: the trip screen's arrow and compass point are drawn only where it does, so a
+    // report says why a walk showed neither (bug report, 2026-10-15). A kind only, never how far or which way.
     private fun noteWay(trip: ActiveTrip, left: OnTheWay.WalkLeft) {
-        val noted = Triple(trip.startedAt, trip.legIndex, left.withheld)
+        val note = OnTheWay.wayNote(left)
+        val noted = Triple(trip.startedAt, trip.legIndex, note)
         if (noted == wayNoted) return
         wayNoted = noted
-        warn("on the way: ${OnTheWay.wayNote(left)}")
+        warn("on the way: $note")
     }
 
     // Keeps [fix], aged as of [at] (on [elapsed]'s clock), as the newest seen, when precise: whether it
@@ -1295,6 +1377,10 @@ class ActiveTripTracker(
     private fun forgetFixes() {
         forgetFix?.cancel()
         forgetFix = null
+        forgetSure?.cancel()
+        forgetSure = null
+        dropHeld?.cancel()
+        dropHeld = null
         lastFix = null
         walkPlaces = null
     }
@@ -1547,14 +1633,15 @@ class ActiveTripTracker(
             // rider likely is, not where they're seen on it: an estimate, as in [onFix] (Codex, #542).
             val seenBefore = seenRider != null && now.minusMillis(seenRider.ageMillis ?: 0).isBefore(next.legStartedAt)
             progress = when {
-                seen != null && !(seenBefore && held != null && !held.estimated) -> {
-                    noteWay(next, seen)
-                    walking.copy(metersLeft = seen.meters, estimated = seenBefore, bearing = seen.bearing)
+                seen != null && measurable != null && !(seenBefore && held != null && !held.estimated) -> {
+                    val way = pointWay(next, seen, measurable, ageAt = if (station == null) reading else seenAt)
+                    walking.copy(metersLeft = way.meters, estimated = seenBefore, bearing = way.bearing)
                 }
                 held != null -> walking.copy(metersLeft = held.metersLeft, estimated = held.estimated, bearing = held.bearing)
                 else -> {
-                    val guessed = recentFix()?.let { fix -> withContext(compute) { OnTheWay.walkLeft(next, fix, walkedTo) } }
-                    guessed?.let { noteWay(next, it) }
+                    // Aged as it's read, just after this.
+                    val recentAt = elapsed()
+                    val guessed = recentFix()?.let { fix -> withContext(compute) { OnTheWay.walkLeft(next, fix, walkedTo) }?.let { pointWay(next, it, fix, recentAt) } }
                     walking.copy(metersLeft = guessed?.meters, estimated = guessed != null, bearing = guessed?.bearing)
                 }
             }

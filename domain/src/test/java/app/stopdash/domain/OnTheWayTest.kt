@@ -779,6 +779,66 @@ class OnTheWayTest {
         assertNull(OnTheWay.walkLeft(walkingHome.copy(legIndex = 0), short))
     }
 
+    @Test
+    fun `a vaguer fix holds the way a surer one named, while that one could still name it`() {
+        // A fix sure to 20 m put the rider about 200 m due north of the end (maintainer, 2026-10-15).
+        val end = Coordinates(51.5, -0.12)
+        val sure = OnTheWay.SureFix(Coordinates(51.5018, -0.12), accuracyMeters = 20f, takenAtMillis = 0L)
+        val vague = OnTheWay.WalkLeft(150.0, null, OnTheWay.WayWithheld.VAGUE, end = end)
+        // Ten seconds on: 20 m + 2 m/s × 10 s = 40 m, within half of 200 m: held, from where it placed the rider.
+        val held = OnTheWay.holdWay(vague, sure, nowMillis = 10_000L)
+        assertEquals(180.0, held.bearing!!, 0.5)
+        assertNull(held.withheld)
+        assertTrue(held.held)
+        assertEquals(150.0, held.meters, 0.0)
+        assertEquals("walk direction held from a surer fix", OnTheWay.wayNote(held))
+        // Forty seconds on: 20 m + 80 m = 100 m, still within half; a second more and it isn't.
+        assertTrue(OnTheWay.holdWay(vague, sure, nowMillis = 40_000L).held)
+        assertEquals(vague, OnTheWay.holdWay(vague, sure, nowMillis = 41_000L))
+        // When it ends, for a way held and shown to be taken back then, fix or no fix (Codex, #881).
+        assertEquals(40_000.0, OnTheWay.holdUntilMillis(sure, end).toDouble(), 100.0)
+        // Never past two minutes, however far the end was.
+        val far = Coordinates(51.482, -0.12)
+        assertEquals(OnTheWay.HOLD_WITHIN.toMillis(), OnTheWay.holdUntilMillis(sure, far))
+        assertTrue(OnTheWay.holdWay(vague.copy(end = far), sure, nowMillis = OnTheWay.HOLD_WITHIN.toMillis()).held)
+        assertFalse(OnTheWay.holdWay(vague.copy(end = far), sure, nowMillis = OnTheWay.HOLD_WITHIN.toMillis() + 1).held)
+        // A fix said to be taken after now isn't held from.
+        assertEquals(vague, OnTheWay.holdWay(vague, sure.copy(takenAtMillis = 20_000L), nowMillis = 10_000L))
+        // The end in sight is no way to point, held or not; a way named, or none to hold, stands as it is.
+        val near = OnTheWay.WalkLeft(10.0, null, OnTheWay.WayWithheld.NEAR, end = end)
+        assertEquals(near, OnTheWay.holdWay(near, sure, nowMillis = 1_000L))
+        val shown = OnTheWay.WalkLeft(150.0, 90.0, end = end)
+        assertEquals(shown, OnTheWay.holdWay(shown, sure, nowMillis = 1_000L))
+        assertEquals(vague, OnTheWay.holdWay(vague, null, nowMillis = 1_000L))
+        assertEquals(vague.copy(end = null), OnTheWay.holdWay(vague.copy(end = null), sure, nowMillis = 1_000L))
+    }
+
+    @Test
+    fun `a held way points where the distance is measured to, however that end has changed`() {
+        // The surer fix was measured to the walk's end due south; the vaguer one, after the station's
+        // entrances were read, to an entrance due east of where the surer fix placed the rider. The way
+        // held points at that entrance, the place the distance shown is to (Codex, #881).
+        val sure = OnTheWay.SureFix(Coordinates(51.5018, -0.12), accuracyMeters = 20f, takenAtMillis = 0L)
+        val entrance = Coordinates(51.5018, -0.117)
+        val vague = OnTheWay.WalkLeft(220.0, null, OnTheWay.WayWithheld.VAGUE, end = entrance)
+        val held = OnTheWay.holdWay(vague, sure, nowMillis = 10_000L)
+        assertEquals(90.0, held.bearing!!, 0.5)
+        assertTrue(held.held)
+        // An end the surer fix put within 25 m names no way from it, as it wouldn't have itself.
+        val beside = Coordinates(51.5019, -0.12)
+        assertTrue(OnTheWay.holdUntilMillis(sure, beside) < sure.takenAtMillis)
+        assertEquals(vague.copy(end = beside), OnTheWay.holdWay(vague.copy(end = beside), sure, nowMillis = 0L))
+    }
+
+    @Test
+    fun `a walk says where it measured to, for a way held to point there too`() {
+        val short = fix(Coordinates(51.504, -0.12))
+        assertEquals(destination, OnTheWay.walkLeft(walkingHome, short)!!.end)
+        val toStation = walkingHome.copy(route = TripRoute(listOf(lastWalk, ride.copy(fromAt = destination))), legIndex = 0, destinations = emptyList())
+        val east = Coordinates(51.504, -0.115)
+        assertEquals(east, OnTheWay.walkLeft(toStation, short, StationPlaces(entrances = listOf(east)))!!.end)
+    }
+
     private val stillThere = fix(Coordinates(51.5005, -0.12))
     private val downTheLine = fix(Coordinates(51.509, -0.12))
     private val placed = trip.copy(route = TripRoute(listOf(ride.copy(fromAt = platform), walk, second)))
