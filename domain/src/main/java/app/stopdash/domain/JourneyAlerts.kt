@@ -341,12 +341,13 @@ object JourneyAlerts {
      * worked out for this direction ([JourneyEnd.stopId] of its origin) when there are any; else
      * those for the other way, since the widget keeps only the direction last shown and a line
      * between two stops almost always runs both ways — asking about one too many costs an alert
-     * worth a glance, one too few a disruption missed.
+     * worth a glance, one too few a disruption missed. A line the rider hid from the ride
+     * ([FavoriteJourney.hides]) isn't asked about, though a pin from before the hide still names it.
      */
     @WorkerThread
     fun lines(journey: FavoriteJourney, pinnedByOrigin: Map<String, Set<String>>): Set<String> {
         val pinned = pinnedByOrigin[journey.from.stopId] ?: pinnedByOrigin.values.flatten()
-        return (setOf(journey.lineId) + pinned).filterTo(LinkedHashSet()) { it.isNotBlank() }
+        return (setOf(journey.lineId) + pinned).filterTo(LinkedHashSet()) { it.isNotBlank() && !journey.hides(it) }
     }
 
     /**
@@ -360,11 +361,14 @@ object JourneyAlerts {
 
     /**
      * The lines each of [journeys] last showed an alert for ([shown]) that this check isn't asking about
-     * ([lines]): left unanswered rather than cleared by going unasked.
+     * ([lines]): left unanswered rather than cleared by going unasked. Not a line the rider has since hidden
+     * from the ride ([FavoriteJourney.hides]): it goes unasked on purpose, so its alert is cleared.
      */
     @WorkerThread
     fun unasked(journeys: List<FavoriteJourney>, lines: Map<String, Set<String>>, shown: Map<String, String>): Map<String, Set<String>> =
-        journeys.associate { journey -> journey.key to JourneyAlertResult.linesIn(shown[journey.key]) - lines[journey.key].orEmpty() }
+        journeys.associate { journey ->
+            journey.key to (JourneyAlertResult.linesIn(shown[journey.key]) - lines[journey.key].orEmpty()).filterTo(HashSet()) { !journey.hides(it) }
+        }
 
     /**
      * The lines each journey key's pins in [snapshot] run, by the stop the journey was shown from

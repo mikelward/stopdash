@@ -2786,6 +2786,32 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           pins, would make both rank by distance. Is that worth a new saved field? Related: the
           app's cards list a ride's own stop before its poles even where a pole is measured nearer,
           so a card can keep both copies of a route; the widget lists them nearest first.
+    - [x] **Hide a line from one ride** (maintainer, 2026-10-15). A ride counts any line that stops
+          within the max walk of its far end, which offered a bus that leaves the rider a long walk
+          short of a station another line reaches; no one cutoff for every ride could drop it and keep
+          another ride's long walk that the rider wants. A long press on a ride's row offers "Hide
+          ‹line› on this ride" (with Undo), and the ride's own view lists its hidden lines with a Show.
+          Never the line it was saved on.
+    - [ ] **Consider a reach of each ride's own** (open question, maintainer, 2026-10-15: "needs more
+          thought"). A ride counts a line that stops within the rider's max walk of its far end, the
+          same walk for every ride. A radius of each ride's own, set on the ride, would drop the bus
+          that stops short on one ride and keep the long walk the rider wants on another, and would
+          cover lines found later, which a hide can't. Against it: one more number on every ride, and
+          a line just inside it still takes a hide. It would sit beside the ride's hidden lines and
+          apply where the far end's walk is checked.
+    - [ ] **Choose a ride's lines when adding it** (maintainer, 2026-10-15: either this or the long
+          press is fine; the long press came first). Favoriting a ride could list every line found
+          between its ends, each with a checkbox, saving the unticked as hidden (so a line found later
+          shows), and the ride's own view could open the same list. Finding them means the ride's far
+          end and lines' routes before the ride is on the list, so it waits on those lookups.
+    - [ ] **Hide a line from a trip's Direct section, per place** (maintainer, 2026-10-15). The same
+          choice for *Direct to a place*, which shares a ride's max-walk reach: a line hidden there for
+          one place, shown elsewhere.
+    - [ ] **Show a ride's hidden lines on its Settings page** (2026-10-15). Settings → Favorite rides
+          opens a ride's Alerts; its hidden lines are listed only in the ride's own view.
+    - [ ] **Star a journey on the application scope** (2026-10-15). A station's journey star saves on
+          the main screen's composition scope, so a rotation right after the tap can cancel the save
+          with nothing said. A ride's line hide moved off it for the same reason (#874).
     - [ ] **Make the favorite radius a setting** (maintainer, 2026-10-15). The mile that holds a
           ride back behind "Faraway favorites" (and off the widget) is fixed. Make it a choice in
           Settings, such as 500 m, 1 mile (the default), 2 miles and never hide, and use the same

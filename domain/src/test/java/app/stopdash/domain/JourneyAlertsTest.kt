@@ -172,6 +172,9 @@ class JourneyAlertsTest {
         assertEquals(setOf("victoria", "bus-2"), JourneyAlerts.lines(journey.reversed(), both))
         assertEquals(setOf("victoria"), JourneyAlerts.lines(journey, emptyMap()))
         assertEquals(emptyMap<String, Map<String, Set<String>>>(), JourneyAlerts.pinnedLines(null))
+        // A line hidden from the ride isn't asked about, though a pin from before still names it; its own line always is.
+        val hiding = journey.copy(hiddenLines = setOf(HiddenModes.lineKey("bus-1", "1"), HiddenModes.lineKey("victoria", "Victoria")))
+        assertEquals(setOf("victoria"), JourneyAlerts.lines(hiding, pinned.getValue(journey.key)))
     }
 
     private val suspended = LineStatus("victoria", 6, "Severe Delays", fullText = "Victoria line: severe delays.")
@@ -410,6 +413,9 @@ class JourneyAlertsTest {
         // So a line only the alert up names is left unanswered, not cleared by going unasked.
         val asked = mapOf(journey.key to setOf("victoria"))
         assertEquals(mapOf(journey.key to setOf("northern")), JourneyAlerts.unasked(listOf(journey), asked, JourneyAlerts.shown(emptyMap(), mapOf(journey.key to said))))
+        // Unless the rider has hidden that line from the ride since: it goes unasked on purpose.
+        val hiding = journey.copy(hiddenLines = setOf(HiddenModes.lineKey("northern", "Northern line")))
+        assertEquals(mapOf(journey.key to emptySet<String>()), JourneyAlerts.unasked(listOf(hiding), asked, JourneyAlerts.shown(emptyMap(), mapOf(journey.key to said))))
         // And a partial answer leaves that alert as it is.
         val partial = JourneyAlertResult(journey.key, emptyList(), unanswered = setOf("northern"), directions = setOf("A"), until = null)
         assertEquals(emptyList<JourneyAlertAction>(), JourneyAlerts.actions(listOf(partial), setOf(journey.key), JourneyAlerts.shown(emptyMap(), mapOf(journey.key to said)), setOf(journey.key)))

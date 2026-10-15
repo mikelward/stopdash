@@ -14,6 +14,7 @@ import app.stopdash.domain.TimeWindow
 import app.stopdash.domain.Journeys
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.FavoriteJourneysStore
+import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.PendingEnd
 import app.stopdash.domain.PendingJourney
 import app.stopdash.domain.PendingJourneys
@@ -98,6 +99,9 @@ class DataStoreFavoriteJourneysStore internal constructor(
     override suspend fun remove(journey: FavoriteJourney) = edit { Journeys.remove(it, journey) }
 
     override suspend fun add(journey: FavoriteJourney) = edit { Journeys.add(it, journey) }
+
+    override suspend fun setLineHidden(journey: FavoriteJourney, entry: String, hidden: Boolean) =
+        edit { Journeys.withLineHidden(it, journey, entry, hidden) }
 
     override fun pendingJourneys(): Flow<List<PendingJourney>?> =
         dataStore.data
@@ -232,6 +236,10 @@ internal data class PersistedFavoriteJourney(
     val lineId: String,
     val lineName: String = "",
     val mode: String = "",
+    // The lines hidden from the ride, as HiddenModes.lineKey entries, in the order hidden. Added
+    // without a version bump, as alerts were: an older build reads past it and its next write drops
+    // them, which shows those lines again rather than misreading them.
+    val hiddenLines: List<String> = emptyList(),
 )
 
 @Serializable
@@ -325,13 +333,19 @@ private fun JourneyEnd.toPersisted() = PersistedJourneyEnd(stopId, name, latitud
 private fun PersistedJourneyEnd.toDomain() = JourneyEnd(stopId, name, latitude, longitude, areaId)
 
 internal fun List<FavoriteJourney>.toPersisted(alerts: Map<String, JourneyAlertSchedule> = emptyMap()): PersistedFavoriteJourneys =
-    PersistedFavoriteJourneys(alerts = alerts.mapValues { it.value.toPersisted() }, journeys = map { PersistedFavoriteJourney(it.from.toPersisted(), it.to.toPersisted(), it.lineId, it.lineName, it.mode) })
+    PersistedFavoriteJourneys(alerts = alerts.mapValues { it.value.toPersisted() }, journeys = map { PersistedFavoriteJourney(it.from.toPersisted(), it.to.toPersisted(), it.lineId, it.lineName, it.mode, it.hiddenLines.toList()) })
 
 internal fun PersistedFavoriteJourneys.toDomain(): List<FavoriteJourney>? {
     if (version != PersistedFavoriteJourneys.CURRENT_VERSION) return null
     // One journey per segment: a file from before journeys were line-free may hold the same two
     // stations starred on two lines; the first stands for both.
-    return journeys.map { FavoriteJourney(it.from.toDomain(), it.to.toDomain(), it.lineId, riderLineName(it.lineName, it.mode), it.mode) }
+    // A hidden line is kept only as this build reads one: an entry of another kind, from a later build, is dropped.
+    return journeys.map {
+        FavoriteJourney(
+            it.from.toDomain(), it.to.toDomain(), it.lineId, riderLineName(it.lineName, it.mode), it.mode,
+            it.hiddenLines.filterTo(LinkedHashSet(), HiddenModes::isLineKey),
+        )
+    }
         .distinctBy { it.key }
 }
 

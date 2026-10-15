@@ -305,6 +305,7 @@ import app.stopdash.ui.JourneyAdds
 import app.stopdash.ui.addFavoriteJourneyPair
 import app.stopdash.ui.addPendingJourneyPair
 import app.stopdash.ui.removeFavoriteJourney
+import app.stopdash.ui.setRideLineHidden
 import app.stopdash.ui.LocalOpenRouteStop
 import app.stopdash.ui.LocalPlaceIcons
 import app.stopdash.ui.RouteStopOpen
@@ -3726,6 +3727,7 @@ class MainActivity : ComponentActivity() {
             val farJourneyMeters = journeysShown?.farMeters.orEmpty()
             val journeyScope = rememberCoroutineScope()
             var journeyWriteFailed by rememberSaveable { mutableStateOf(false) }
+            val rideLineWriteFailed by RideLineWrites.failed.collectAsStateWithLifecycle()
             // The route page's journey tip: hidden (true) until the setting is read, so it never
             // flashes up for someone who already dismissed it.
             val tipSettings = remember { DataStoreAppSettings.from(appContext, warn = ::logAppSettingsWarning) }
@@ -4032,6 +4034,27 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     },
+                    // Null while the saved journeys are unreadable, as starring is: the file is preserved untouched.
+                    onSetRideLineHidden = if (savedJourneys == null) {
+                        null
+                    } else {
+                        { journey, entry, hidden ->
+                            // On the application scope: a rotation disposes this composition's scope,
+                            // which would cancel the write with nothing said (Codex on #874).
+                            RideLineWrites.attempt(
+                                ((application as? StopdashApp)?.applicationScope ?: journeyScope),
+                                // The ride and the line, whatever the line's label: a Show supersedes its hide.
+                                key = "${journey.key}|${entry.substringBefore('=').lowercase()}",
+                                hidden = hidden,
+                                warn = ::logStarWarning,
+                            ) {
+                                // A hide drops the line's widget pins too, as a removal does.
+                                setRideLineHidden(journey, entry, hidden, journeyStore, WidgetSnapshotStore(applicationContext), warn = ::logStarWarning)
+                            }
+                        }
+                    },
+                    rideLineWriteFailed = rideLineWriteFailed,
+                    onRideLineWriteFailureShown = RideLineWrites::shown,
                     journeyWriteFailed = journeyWriteFailed,
                     onJourneyWriteFailureShown = { journeyWriteFailed = false },
                     onDismissJourneyTip = if (journeyTipDismissed) {
@@ -7252,6 +7275,65 @@ internal object JourneyAlertWrites {
 
     fun dismiss() {
         failed.value = false
+    }
+}
+
+/**
+ * A ride's line hides and Shows (SPEC *Hiding a line from a ride*), launched on a scope that outlives
+ * the screen, so a rotation can't cancel one silently, as [JourneyRemovals] does for Settings'
+ * removals. [failed] is process-wide, so whichever main screen is up says a write didn't land. A
+ * failure stands until a later write for the same ride and line saves, or the screen has said so
+ * ([shown]): a failed hide undone by a Show that saved says nothing, but a hide on another ride or
+ * line saving doesn't hide the failure (Codex on #874).
+ */
+internal object RideLineWrites {
+    private val _failed = MutableStateFlow(false)
+    val failed: StateFlow<Boolean> = _failed
+    private var counter = 0L
+    private val latest = HashMap<String, Long>()
+    private val failing = HashSet<String>()
+    private var tail: Job? = null
+
+    /**
+     * Runs [write] for ride-and-line [key] on [scope] once every earlier attempt has finished, so
+     * writes land in tap order: an Undo tapped while its hide is still saving can't land first and
+     * leave the line hidden (Codex on #874). An [IOException] is logged without the ride or the line,
+     * and surfaced.
+     */
+    @Synchronized
+    fun attempt(scope: CoroutineScope, key: String, hidden: Boolean, warn: (String) -> Unit = {}, write: suspend () -> Unit): Job {
+        val mine = ++counter
+        latest[key] = mine
+        // This write is for that ride's line now: an earlier one's failure is superseded.
+        failing.remove(key)
+        _failed.value = failing.isNotEmpty()
+        val before = tail
+        return scope.launch {
+            // Joins whatever way the earlier one ended, a failure or a cancellation included.
+            before?.join()
+            val ok = try {
+                write()
+                true
+            } catch (e: IOException) {
+                warn("ride line ${if (hidden) "hide" else "show"} not saved: ${e::class.simpleName}")
+                false
+            }
+            settle(key, mine, ok)
+        }.also { tail = it }
+    }
+
+    @Synchronized
+    private fun settle(key: String, attempt: Long, ok: Boolean) {
+        if (latest[key] != attempt) return
+        if (ok) failing.remove(key) else failing.add(key)
+        _failed.value = failing.isNotEmpty()
+    }
+
+    /** The screen has said the failed writes didn't land. */
+    @Synchronized
+    fun shown() {
+        failing.clear()
+        _failed.value = false
     }
 }
 

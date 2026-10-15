@@ -85,6 +85,8 @@ import app.stopdash.domain.RouteSequenceSource
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.HiddenModes
+import app.stopdash.domain.Journeys
 import app.stopdash.domain.SpacedTrains
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopAreaSource
@@ -3153,6 +3155,88 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithText("Manor House", substring = true).assertExists()
     }
 
+    @Test
+    fun `a line hidden from a ride by its row's long press leaves its card, and its own view shows it again`() {
+        // Another line at the ride's origin reaching the far end (a synthetic bus at a public station's id):
+        // the ride's rows offer hiding it from this ride, never the line the ride was saved on.
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String) = victoriaLine
+            },
+        )
+        val victoria = StopArrivals(
+            "940GZZLUVIC",
+            "Victoria",
+            listOf(
+                dep("victoria", "Victoria", "northbound", "Walthamstow Central", 180, "Northbound - Platform 5"),
+                dep("bus-x", "X1", "outbound", "Warren Street", 240, "", mode = "bus"),
+            ),
+            fetchedAt = now.minusSeconds(60),
+        )
+        var saved by mutableStateOf(listOf(victoriaToWarrenStreet))
+        val writes = mutableListOf<Pair<String, Boolean>>()
+        var toggled: DepartureRow? = null
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalRouteStops provides repository) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(listOf(manorHouse(), victoria), now.minusSeconds(60)),
+                            now,
+                            {},
+                            // The ride's origin isn't a near-me stop, so a hidden line's row leaves the screen.
+                            stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
+                            journeys = saved,
+                            journeysKnown = true,
+                            onToggleJourney = {},
+                            onToggleStar = { toggled = it },
+                            onSetRideLineHidden = { journey, entry, hidden ->
+                                writes += entry to hidden
+                                saved = Journeys.withLineHidden(saved, journey, entry, hidden)
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Warren Street").assertExists()
+
+        // The line it was saved on pins at once, as a ride's row always did: there's nothing else to offer.
+        composeRule.onNodeWithText("Walthamstow Central").performTouchInput { longClick() }
+        assertEquals("victoria", toggled?.lineId)
+        composeRule.onAllNodesWithText("on this ride", substring = true).assertCountEquals(0)
+
+        // Another line's row opens a menu: pin it, or hide it from this ride.
+        toggled = null
+        composeRule.onNodeWithText("Warren Street").performTouchInput { longClick() }
+        composeRule.onNodeWithText("Pin to top").assertExists()
+        composeRule.onNodeWithText("Hide X1 on this ride").performClick()
+        composeRule.waitForIdle()
+        val x1 = HiddenModes.lineKey("bus-x", "X1")
+        assertEquals(listOf(x1 to true), writes)
+        assertEquals(null, toggled)
+        composeRule.onAllNodesWithText("Warren Street").assertCountEquals(0)
+        composeRule.onNodeWithText("X1 hidden on this ride").assertExists()
+        // Undo shows it again.
+        composeRule.onNodeWithText("Undo").performClick()
+        composeRule.waitForIdle()
+        assertEquals(listOf(x1 to true, x1 to false), writes)
+        composeRule.onNodeWithText("Warren Street").assertExists()
+
+        // Hidden again, the ride's own view lists it with a Show.
+        composeRule.onNodeWithText("Warren Street").performTouchInput { longClick() }
+        composeRule.onNodeWithText("Hide X1 on this ride").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Victoria ➔ Warren Street").performClick()
+        composeRule.onNodeWithText("Hidden on this ride").assertExists()
+        captureSnapshot("main-journey-view-hidden-line.png")
+        composeRule.onNodeWithContentDescription("Show X1").performClick()
+        composeRule.waitForIdle()
+        assertEquals(x1 to false, writes.last())
+        composeRule.onAllNodesWithText("Hidden on this ride").assertCountEquals(0)
+    }
+
     private val victoriaLine = LineSequence(
         routes = listOf(LineRoute("Brixton ↔ Walthamstow Central", listOf("940GZZLUVIC", "940GZZLUWRR", "940GZZLUWWL"))),
         stopNames = mapOf("940GZZLUVIC" to "Victoria", "940GZZLUWRR" to "Warren Street", "940GZZLUWWL" to "Walthamstow Central"),
@@ -3444,6 +3528,45 @@ class MainScreenScreenshotTest {
         composeRule.onAllNodesWithText("West End", substring = true).assertCountEquals(2)
         composeRule.onAllNodesWithText("North End", substring = true).assertCountEquals(1)
         composeRule.onAllNodesWithText("North Park ★", substring = true).assertCountEquals(1)
+    }
+
+    @Test
+    fun `a train to change from on another line can be hidden from the ride too`() {
+        // A second line (synthetic) running the same fork's West End branch: no direct train, one to
+        // change from, and its row offers hiding it from this ride, as a direct row does.
+        val origin = StopArrivals(
+            "KING", "King",
+            listOf(Departure("branch", "Branch", "outbound", "West End", null, now.plusSeconds(60), "tube")),
+            fetchedAt = now.minusSeconds(60),
+        )
+        val writes = mutableListOf<Pair<String, Boolean>>()
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalRouteStops provides RouteStopsRepository(forkedSource)) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(listOf(manorHouse(), origin), now.minusSeconds(60)),
+                            now,
+                            {},
+                            stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
+                            journeys = listOf(kingToNorthEnd),
+                            journeysKnown = true,
+                            onToggleJourney = {},
+                            onSetRideLineHidden = { _, entry, hidden -> writes += entry to hidden },
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("King ➔ Fork (for North Park)").assertExists()
+        composeRule.onNodeWithText("West End").performTouchInput { longClick() }
+        composeRule.onNodeWithText("Pin to top").assertExists()
+        composeRule.onNodeWithText("on this ride", substring = true).performClick()
+        composeRule.waitForIdle()
+        assertEquals(1, writes.size)
+        assertTrue(writes.single().first.startsWith("line:branch="))
+        assertTrue(writes.single().second)
     }
 
     @Test
@@ -4946,7 +5069,7 @@ class MainScreenScreenshotTest {
                         journeys = emptyList(),
                         journeysKnown = known,
                         journeysLoading = !known,
-                        onWidgetJourneys = { keys, _, _, _, _, _ -> reports += keys },
+                        onWidgetJourneys = { report -> reports += report.keys },
                     )
                 }
             }

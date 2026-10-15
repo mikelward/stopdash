@@ -44,13 +44,14 @@ internal fun journeyOriginsOf(
         // would spend the request budget on routes that don't serve this stop.
         // A journey saved with no mode (TfL left it off) takes its line's known one.
         val mode = j.mode.ifBlank { Connections.knownMode(j.lineId).orEmpty() }
+        // Never a line the rider hid from the ride (SPEC *Hiding a line from a ride*): nothing judges it.
         val served = starSequences[j.lineId]?.stopLines?.get(id).orEmpty()
-            .filter { it.mode.isNotBlank() && it.mode.equals(mode, ignoreCase = true) }
+            .filter { it.mode.isNotBlank() && it.mode.equals(mode, ignoreCase = true) && !j.hides(it.id) }
         // Its pole letter and area, once looked up, so the card heads it like its neighbors.
         val pole = poles[j.key]?.firstOrNull { it.id == id }
         // And any line the origin's own lookup lists that serves a stop at the far end, of whatever mode,
         // so its route and status are checked too (Codex, #691).
-        val toward = farEnds[j.key]?.let { far -> pole?.lines.orEmpty().filter { it.id in far.lineIds } }.orEmpty()
+        val toward = farEnds[j.key]?.let { far -> pole?.lines.orEmpty().filter { it.id in far.lineIds && !j.hides(it.id) } }.orEmpty()
         StopRef(
             id, j.from.name, lines = (listOf(j.line) + served + toward).distinctBy { it.id },
             clusterId = pole?.clusterId.orEmpty(), stopLetter = pole?.stopLetter.orEmpty(),
@@ -63,7 +64,8 @@ internal fun journeyOriginsOf(
 
 /**
  * The lines whose routes the journey cards need: each journey's starred line ([starLines]), every line
- * the list has at its origin ([origins], from [stops]), and the lines boarding beside the origin that
+ * the list has at its origin ([origins], from [stops]) that some ride boarding there doesn't hide, and
+ * the lines boarding beside the origin that
  * may reach the far end ([Journeys.boardsTowards], by [farEnds]), so their routes can
  * say whether they do ([Journeys.siblingPoles]).
  */
@@ -78,8 +80,16 @@ internal fun journeyLineIdsOf(
     farEnds: Map<String, Journeys.FarEnd> = emptyMap(),
 ): List<String> {
     val originIds = origins.mapTo(HashSet()) { it.id }
+    // The rides boarding at each origin: a line every one of them hid from itself has no card to judge
+    // it for, so its route isn't loaded there (SPEC *Hiding a line from a ride*). A line one of them still
+    // shows is loaded, and a stop no ride boards at keeps every line.
+    val ridesAt = journeys.groupBy { j -> segments[j.key]?.originId ?: j.from.stopId }
     val originLines = stops.filter { it.stopId in originIds }
-        .flatMap { stop -> stop.departures.map { it.lineId } + stop.lines.map { it.id } } +
+        .flatMap { stop ->
+            val rides = ridesAt[stop.stopId].orEmpty()
+            (stop.departures.map { it.lineId } + stop.lines.map { it.id })
+                .filterNot { line -> rides.isNotEmpty() && rides.all { it.hides(line) } }
+        } +
         origins.flatMap { origin -> origin.lines.map { it.id } }
     val siblingLines = journeys.flatMap { j ->
         val originId = segments[j.key]?.originId ?: return@flatMap emptyList()
@@ -177,10 +187,12 @@ internal fun cardReportsOf(
     val order = journeys.filter { it.key in keys }.map { it.key }
     // Each one's ends as the list names them, in the direction shown, for the widget's ride headings.
     val names = journeys.filter { it.key in keys }.associate { it.key to (it.from.name to it.to.name) }
+    // The lines each ride hides, so a pin of one goes though no check sees it now.
+    val hidden = journeys.filter { it.key in keys && it.hiddenLines.isNotEmpty() }.associate { it.key to Journeys.hiddenLineIds(it) }
     // The far ends to check for a closure.
     val destinations = cards.flatMap { card -> card.destinationIds.map { id -> StopRef(id, card.journey.to.name) } }.distinctBy { it.id }
     return CardReports(
-        Reported.of(WidgetJourneysReport(keys, checks, shownFrom, boarding, order, names), last?.widget),
+        Reported.of(WidgetJourneysReport(keys, checks, shownFrom, boarding, order, names, hidden), last?.widget),
         Reported.of(destinations, last?.destinations),
         Reported.of(cards.flatMapTo(LinkedHashSet()) { it.misses }, last?.misses),
         Reported.of(cards.mapNotNullTo(LinkedHashSet()) { (it.state as? JourneyCardState.Checking)?.waitingOn }, last?.checking),

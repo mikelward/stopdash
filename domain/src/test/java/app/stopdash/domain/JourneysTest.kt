@@ -302,6 +302,45 @@ class JourneysTest {
     }
 
     @Test
+    fun `a line hidden from the ride is left off it, both ways, while the others stay`() {
+        val segment = Journeys.segment(parkToHill, bus())!!
+        val otherRoute = bus().copy(routes = listOf(LineRoute("Park ↔ Hill", listOf("PARKN", "HILLN"))))
+        val rows = rowsAt("PARKN", departure("Hill", 120, "b1", "bus"), departure("Hill", 60, "b2", "bus"))
+        val sequences = mapOf("b1" to bus(), "b2" to otherRoute)
+        val hiding = Journeys.withLineHidden(listOf(parkToHill), parkToHill, HiddenModes.lineKey("b2", "B2"), hidden = true).single()
+        assertEquals(listOf("b1"), Journeys.trains(segment, rows, sequences, hiding).rows.map { it.lineId })
+        // The way back hides it too: one ride, both directions.
+        assertTrue(hiding.reversed().hides("B2"))
+        // Without the ride, or on a ride hiding nothing, both lines are kept.
+        assertEquals(setOf("b1", "b2"), Journeys.trains(segment, rows, sequences, parkToHill).rows.mapTo(HashSet()) { it.lineId })
+        // A pole beside the origin boarding only the hidden line doesn't board the ride.
+        assertFalse(Journeys.boardsTowards(LineRef("b2", "B2", "bus"), hiding, null))
+        assertTrue(Journeys.boardsTowards(LineRef("b3", "B3", "bus"), hiding, null))
+    }
+
+    @Test
+    fun `hiding and showing a ride's line keeps its other hides and never the line it was saved on`() {
+        val other = journey.copy(to = JourneyEnd("BOTA", "Bottom A"))
+        val saved = listOf(parkToHill, other)
+        val b2 = HiddenModes.lineKey("b2", "B2")
+        val b3 = HiddenModes.lineKey("b3", "B3")
+        val hidden = Journeys.withLineHidden(Journeys.withLineHidden(saved, parkToHill.reversed(), b2, true), parkToHill, b3, true)
+        assertEquals(setOf(b2, b3), hidden[0].hiddenLines)
+        // Another ride is untouched.
+        assertEquals(other, hidden[1])
+        assertEquals(listOf(b2 to "B2", b3 to "B3"), Journeys.hiddenLines(hidden[0]))
+        // Shown again by its line, whatever label it was hidden under.
+        val shown = Journeys.withLineHidden(hidden, parkToHill, HiddenModes.lineKey("B2", "Renamed"), false)
+        assertEquals(setOf(b3), shown[0].hiddenLines)
+        // The line it was saved on stays: its route places the ride's stops.
+        assertEquals(hidden, Journeys.withLineHidden(hidden, parkToHill, HiddenModes.lineKey("b1", "B1"), true))
+        assertFalse(parkToHill.copy(hiddenLines = setOf(HiddenModes.lineKey("b1", "B1"))).hides("b1"))
+        // A ride not saved, or an entry that's no line's, changes nothing.
+        assertEquals(saved, Journeys.withLineHidden(saved, journey.copy(to = JourneyEnd("SIDE", "Side")), b2, true))
+        assertEquals(saved, Journeys.withLineHidden(saved, parkToHill, "bus", true))
+    }
+
+    @Test
     fun `a bus whose soonest prediction has no mode still uses the bus route-end rule`() {
         val segment = Journeys.segment(parkToHill, bus())!!
         // "Town" names no stop: only the bus rule (run to the route's end) places it.

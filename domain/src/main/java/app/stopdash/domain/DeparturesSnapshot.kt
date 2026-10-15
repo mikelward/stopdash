@@ -425,6 +425,9 @@ data class WidgetJourneysReport(
     // Each journey's two ends as the list names them, in the direction shown, by key: its pins'
     // [WidgetJourney.fromName] and [WidgetJourney.toName]. A journey absent here keeps the names stored.
     val names: Map<String, Pair<String, String>> = emptyMap(),
+    // The lines each journey hides from itself, by key ([Journeys.hiddenLineIds]): a pin of one goes at
+    // once, whether or not a check now sees its departures (SPEC *Hiding a line from a ride*).
+    val hidden: Map<String, Set<String>> = emptyMap(),
 )
 
 object WidgetJourneys {
@@ -453,6 +456,8 @@ object WidgetJourneys {
             .filterNot { j -> report.from[baseKey(j.key)]?.let { j.shownFrom.isNotEmpty() && it != j.shownFrom } == true }
             // A neighboring pole's pin its journey no longer boards from.
             .filterNot { j -> report.boarding[baseKey(j.key)]?.let { j.key !in it } == true }
+            // A line its journey now hides, though no check sees it to unpin it (none due just now).
+            .map { j -> report.hidden[baseKey(j.key)]?.let { lines -> j.copy(calls = j.calls.filterNotTo(HashSet()) { it.lineId.lowercase() in lines }) } ?: j }
             .associateBy { it.key }
         // A journey's pole pins are starred while the journey is.
         val keys = (prior.keys + report.checks.map { it.key }).filterTo(HashSet()) { baseKey(it) in report.keys }

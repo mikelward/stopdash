@@ -1,11 +1,15 @@
 package app.stopdash.ui
 
+import app.stopdash.domain.Departure
 import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.Journeys
 import app.stopdash.domain.SiblingPoles
 import app.stopdash.domain.LineRef
+import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopLocation
+import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -83,6 +87,20 @@ class JourneyBoardingTest {
         assertEquals(listOf("example", "b7"), refs.single().lines.map { it.id })
         val lines = journeyLineIdsOf(emptyList(), refs, emptyList(), listOf(journey), emptyMap(), emptyMap())
         assertTrue("b7" in lines)
+    }
+
+    @Test
+    fun `a line hidden from every ride boarding at an origin isn't declared or loaded there`() {
+        val origin = StopLocation("TOP", "Top", 51.51, -0.12, listOf(LineRef("b7", "7", "bus")))
+        val hiding = journey.copy(hiddenLines = setOf(HiddenModes.lineKey("b7", "7")))
+        val farEnds = mapOf(hiding.key to Journeys.FarEnd(setOf("MIDB"), setOf("b7")))
+        val refs = journeyOriginsOf(listOf(hiding), emptyMap(), emptyMap(), mapOf(hiding.key to listOf(origin)), farEnds)
+        assertEquals(listOf("example"), refs.single().lines.map { it.id })
+        val departures = listOf(StopArrivals("TOP", "Top", listOf(Departure("b7", "7", "outbound", "Mid", null, Instant.EPOCH, "bus")), Instant.EPOCH))
+        assertEquals(listOf("example"), journeyLineIdsOf(emptyList(), refs, departures, listOf(hiding), emptyMap(), emptyMap()))
+        // Another ride boarding there that still shows it keeps its route loaded.
+        val other = FavoriteJourney(top, JourneyEnd("LOW", "Low", 51.48, -0.12), "example")
+        assertTrue("b7" in journeyLineIdsOf(emptyList(), refs, departures, listOf(hiding, other), emptyMap(), emptyMap()))
     }
 
     @Test

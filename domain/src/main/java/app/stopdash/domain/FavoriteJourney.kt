@@ -36,12 +36,25 @@ data class FavoriteJourney(
     val lineId: String,
     val lineName: String = "",
     val mode: String = "",
+    // The lines the rider hid from this ride, both ways (SPEC *Hiding a line from a ride*): each a
+    // [HiddenModes.lineKey], carrying its label so the ride's view can name it without line data.
+    // Never the line it was saved on ([hides]).
+    val hiddenLines: Set<String> = emptySet(),
 ) {
     /**
      * Direction- and line-free identity: the same segment starred from either end, or from another
      * line's page, is one journey.
      */
     val key: String get() = listOf(from.stopId, to.stopId).sorted().joinToString("|")
+
+    /**
+     * Whether the rider hid line [lineId] from this ride. The line it was saved on is never hidden: its
+     * route places the ride's stops, and its alerts and status are the ride's own. Worker-only: it scans
+     * the ride's hidden lines, and its callers run it once per row or line (Codex on #874).
+     */
+    @WorkerThread
+    fun hides(lineId: String): Boolean =
+        hiddenLines.isNotEmpty() && !lineId.equals(this.lineId, ignoreCase = true) && HiddenModes.isLineHidden(lineId, hiddenLines)
 
     fun reversed(): FavoriteJourney = copy(from = to, to = from)
 
@@ -121,6 +134,45 @@ object Journeys {
     /** [starred] without [journey] (by [FavoriteJourney.key]); one not there leaves it as it is. */
     fun remove(starred: List<FavoriteJourney>, journey: FavoriteJourney): List<FavoriteJourney> =
         starred.filterNot { it.key == journey.key }
+
+    /**
+     * [starred] with line [entry] (a [HiddenModes.lineKey]) hidden from [journey] (by [FavoriteJourney.key]),
+     * or shown again: a ride's long-press "Hide ‹line› on this ride", or its view's Show. Applied to the
+     * stored copy, so a hide never brings back another one undone since. One not saved, or the line it
+     * was saved on, leaves [starred] as it is. Worker-only, as the ride hides it checks are: the hide
+     * hops to a worker before the store's edit runs it.
+     */
+    @WorkerThread
+    fun withLineHidden(starred: List<FavoriteJourney>, journey: FavoriteJourney, entry: String, hidden: Boolean): List<FavoriteJourney> {
+        if (!HiddenModes.isLineKey(entry)) return starred
+        val lineId = lineIdOf(entry)
+        return starred.map { saved ->
+            when {
+                saved.key != journey.key -> saved
+                hidden && lineId.equals(saved.lineId, ignoreCase = true) -> saved
+                hidden && saved.hides(lineId) -> saved
+                hidden -> saved.copy(hiddenLines = saved.hiddenLines + entry)
+                else -> saved.copy(hiddenLines = saved.hiddenLines.filterTo(LinkedHashSet()) { !lineIdOf(it).equals(lineId, ignoreCase = true) })
+            }
+        }
+    }
+
+    /**
+     * Each line hidden from [journey], as its entry and the label it's named by, in the order hidden: a
+     * line renamed on the way back in, as a hidden line is ([HiddenModes.hiddenLineLabels]).
+     */
+    @WorkerThread
+    fun hiddenLines(journey: FavoriteJourney): List<Pair<String, String>> =
+        journey.hiddenLines
+            .filter { HiddenModes.isLineKey(it) && journey.hides(lineIdOf(it)) }
+            .map { it to riderLineName(it.substringAfter('=', it.removePrefix(HiddenModes.LINE_PREFIX)), mode = "") }
+
+    /** The ids, lowercased, of the lines [journey] hides from itself ([FavoriteJourney.hides]). */
+    @WorkerThread
+    fun hiddenLineIds(journey: FavoriteJourney): Set<String> =
+        journey.hiddenLines.map { lineIdOf(it).lowercase() }.filterTo(HashSet()) { journey.hides(it) }
+
+    private fun lineIdOf(entry: String): String = entry.substringBefore('=').removePrefix(HiddenModes.LINE_PREFIX)
 
     /**
      * [journey] with the end nearer ([latitude], [longitude]) as its origin, so the list shows the
@@ -359,7 +411,11 @@ object Journeys {
         var routeFailed = false
         val reached = HashSet<String>()
         val changes = ArrayList<JourneyChange>()
-        val atOrigin = rows.filter { it.stopId == segment.originId && it.stopDisruption == null && (lines == null || it.lineId.isBlank() || it.lineId in lines) }
+        // A line the rider hid from the ride is no train of it, at any stop it boards from.
+        val atOrigin = rows.filter {
+            it.stopId == segment.originId && it.stopDisruption == null && (lines == null || it.lineId.isBlank() || it.lineId in lines) &&
+                journey?.hides(it.lineId) != true
+        }
         // A departure TfL gave no line id can't be checked against any route: it may well call there.
         val misses = LinkedHashSet<RouteMiss>()
         atOrigin.filter { it.lineId.isBlank() && it.upcoming.isNotEmpty() }.forEach { row ->
@@ -568,10 +624,12 @@ object Journeys {
     /**
      * Whether [line], boarding beside a journey's origin, may reach its far end: with the far end's
      * stops known ([farEnd]), one of them serves it, whatever its mode (a bus between two stations,
-     * maintainer, 2026-10-08); without, it's of the journey's own mode ([ofMode]).
+     * maintainer, 2026-10-08); without, it's of the journey's own mode ([ofMode]). A line the rider
+     * hid from the ride never boards it ([FavoriteJourney.hides]).
      */
+    @WorkerThread
     fun boardsTowards(line: LineRef, journey: FavoriteJourney, farEnd: FarEnd?): Boolean =
-        if (farEnd != null) line.id in farEnd.lineIds else ofMode(line, journey.mode)
+        !journey.hides(line.id) && if (farEnd != null) line.id in farEnd.lineIds else ofMode(line, journey.mode)
 
     /** How far from a journey's origin another stop still boards it: as far as To… from the near-me list starts. */
     const val BOARDING_RADIUS_METERS = DirectTrips.ORIGIN_RADIUS_METERS
@@ -721,6 +779,13 @@ interface FavoriteJourneysStore {
      * #631). Off the main thread.
      */
     suspend fun add(journey: FavoriteJourney)
+
+    /**
+     * Hides line [entry] (a [HiddenModes.lineKey]) from saved [journey], or shows it again
+     * ([Journeys.withLineHidden]), applied to the latest stored copy. Ignored for a journey that isn't
+     * saved. Off the main thread.
+     */
+    suspend fun setLineHidden(journey: FavoriteJourney, entry: String, hidden: Boolean) {}
 
     /**
      * Each watched direction's alert schedule, by [JourneyAlerts.directionKey] (SPEC *Journeys →

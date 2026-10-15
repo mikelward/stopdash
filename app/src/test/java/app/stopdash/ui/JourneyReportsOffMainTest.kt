@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import app.stopdash.domain.CollapsedPlaces
 import app.stopdash.domain.Departure
+import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineRoute
@@ -319,7 +320,7 @@ class JourneyReportsOffMainTest {
                         listKey = "victoria",
                         listWork = listWork,
                         onJourneyDestinations = { refs -> destinations += refs.map { it.id } },
-                        onWidgetJourneys = { keys, checks, from, boarding, order, names -> widget += WidgetJourneysReport(keys, checks, from, boarding, order, names) },
+                        onWidgetJourneys = { widget += it },
                     )
                 }
             }
@@ -343,6 +344,32 @@ class JourneyReportsOffMainTest {
         assertSame(before?.value?.destinations, listWork.cardReports.value?.value?.destinations)
         assertEquals(1, destinations.size)
         assertEquals(widgetReports, widget.size)
+    }
+
+    @Test
+    fun a_ride_s_hidden_lines_reach_the_widget_report() {
+        // So the widget unpins a hidden line though no departure of it is due to be judged (Codex on #874).
+        val scheduler = TestCoroutineScheduler()
+        val held = StandardTestDispatcher(scheduler)
+        val hiding = victoriaToWarrenStreet.copy(hiddenLines = setOf(HiddenModes.lineKey("bus-x", "X1")))
+        val widget = mutableListOf<WidgetJourneysReport>()
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides held, LocalRouteStops provides routes) {
+                    MainScreen(
+                        state = DeparturesUiState.Loaded(stops = listOf(victoria), fetchedAt = now),
+                        now = now,
+                        onRefresh = {},
+                        journeys = listOf(hiding),
+                        listKey = "victoria",
+                        listWork = ListWork(),
+                        onWidgetJourneys = { widget += it },
+                    )
+                }
+            }
+        }
+        settle(scheduler)
+        assertEquals(mapOf(hiding.key to setOf("bus-x")), widget.last().hidden)
     }
 
     @Test
@@ -390,7 +417,7 @@ class JourneyReportsOffMainTest {
                         journeys = journeys,
                         listKey = "victoria",
                         listWork = listWork,
-                        onWidgetJourneys = { keys, checks, from, boarding, order, names -> reports += WidgetJourneysReport(keys, checks, from, boarding, order, names) },
+                        onWidgetJourneys = { reports += it },
                     )
                 }
             }

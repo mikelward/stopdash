@@ -69,6 +69,22 @@ class WidgetJourneysTest {
     }
 
     @Test
+    fun `apply unpins a line its ride now hides, though no check sees it`() {
+        val stored = DeparturesSnapshot(
+            stops = listOf(stop("490000001A")),
+            fetchedAt = now,
+            journeys = listOf(WidgetJourney("490000001A", setOf(hill, town), "j"), WidgetJourney("490000002B", setOf(town), WidgetJourneys.poleKey("j", "490000002B"))),
+        )
+        val origins = listOf(stop("490000002B"))
+        val after = WidgetJourneys.apply(stored, WidgetJourneysReport(setOf("j"), emptyList(), hidden = mapOf("j" to setOf("b2"))), origins)!!
+        // The ride's own pin keeps its other line; a pole's pin of only the hidden line goes.
+        assertEquals(listOf(WidgetJourney("490000001A", setOf(hill), "j")), after.journeys)
+        val ride = FavoriteJourney(JourneyEnd("490000001A", "Park"), JourneyEnd("490000009Z", "Hill"), "b1", hiddenLines = setOf(HiddenModes.lineKey("B2", "2"), HiddenModes.lineKey("b1", "1")))
+        // Lowercased, and never the line it was saved on.
+        assertEquals(setOf("b2"), Journeys.hiddenLineIds(ride))
+    }
+
+    @Test
     fun `apply drops a pin for the other direction before any check of the new one`() {
         val stored = DeparturesSnapshot(
             stops = listOf(stop("490000001A")),
