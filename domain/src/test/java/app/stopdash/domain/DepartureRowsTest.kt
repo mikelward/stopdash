@@ -2201,6 +2201,28 @@ class DepartureRowsTest {
         ),
     )
 
+    @Test
+    fun `routes match as drawn, joined branches as one, a branch still ahead as its own`() {
+        fun barnet(branch: String) = rowAt(HGT, departure("northern", "Northern", "northbound", "High Barnet", 60, branch = branch))
+        fun morden(branch: String) = rowAt(CTN, departure("northern", "Northern", "southbound", "Morden", 60, branch = branch))
+        // North of Camden Town the trunks have joined, and both draw as plain "High Barnet": one
+        // route, so the farther ride's goes.
+        assertEquals(
+            listOf(DepartureRows.Repeated(emptySet()), DepartureRows.Repeated(setOf(0))),
+            DepartureRows.repeatedRows(listOf(listOf(barnet("Bank")), listOf(barnet("Charing X"))), listOf(3, 3), topology = northernTopology),
+        )
+        // By the raw labels they would read as two.
+        assertEquals(
+            listOf(DepartureRows.Repeated(emptySet()), DepartureRows.Repeated(emptySet())),
+            DepartureRows.repeatedRows(listOf(listOf(barnet("Bank")), listOf(barnet("Charing X"))), listOf(3, 3)),
+        )
+        // Where the trunks are still a choice ahead, each is drawn with its branch: two routes.
+        assertEquals(
+            listOf(DepartureRows.Repeated(emptySet()), DepartureRows.Repeated(emptySet())),
+            DepartureRows.repeatedRows(listOf(listOf(morden("Bank")), listOf(morden("Charing X"))), listOf(3, 3), topology = northernTopology),
+        )
+    }
+
     private fun rowAt(stopId: String, vararg upcoming: Departure): DepartureRow {
         val soonest = upcoming.first()
         return DepartureRow(
@@ -2613,6 +2635,120 @@ class DepartureRowsTest {
         assertEquals(nearby, DepartureRows.withoutShownAbove(nearby, listOf(rowWith(bank))))
         // Another stop's card changes nothing.
         assertEquals(nearby, DepartureRows.withoutShownAbove(nearby, listOf(rowWith(bank, bank2).copy(stopId = "940GZZLUKSX"))))
+    }
+
+    @Test
+    fun `two cards at one stop together cover its row, and leave it while a train is on neither`() {
+        val bank = departure("northern", "Northern", "outbound", "Morden", 60, branch = "Bank")
+        val charingX = departure("northern", "Northern", "outbound", "Morden", 120, branch = "Charing Cross")
+        val charingX2 = departure("northern", "Northern", "outbound", "Morden", 420, branch = "Charing Cross")
+        val nearby = listOf(rowWith(bank, charingX, charingX2))
+        // One ride shows the Bank train, another every Charing Cross one: between them, all of the row.
+        assertEquals(emptyList<DepartureRow>(), DepartureRows.withoutShownAbove(nearby, listOf(rowWith(bank), rowWith(charingX, charingX2))))
+        // The second shows one Charing Cross train of two: the row stays.
+        assertEquals(nearby, DepartureRows.withoutShownAbove(nearby, listOf(rowWith(bank), rowWith(charingX))))
+    }
+
+    // A bus of the synthetic route b1 toward Hill, at [stopId] (synthetic pole ids).
+    private fun busAt(stopId: String, vararg offsets: Long, destination: String = "Hill") =
+        rowWith(*offsets.map { departure("b1", "B1", "outbound", destination, it, mode = "bus") }.toTypedArray()).copy(stopId = stopId, stopName = "Stop $stopId")
+
+    @Test
+    fun `a ride hides only what a ride above shows from a stop no farther away`() {
+        fun two(firstStop: String, secondStop: String, meters: Map<String, Double>) =
+            DepartureRows.repeatedRows(listOf(listOf(busAt(firstStop, 60)), listOf(busAt(secondStop, 120))), listOf(3, 3), stopDistanceMeters = meters)
+        val kept = listOf(DepartureRows.Repeated(emptySet()), DepartureRows.Repeated(emptySet()))
+        val hidden = listOf(DepartureRows.Repeated(emptySet()), DepartureRows.Repeated(setOf(0)))
+        // The ride above boards nearer: the farther stop's copy goes.
+        assertEquals(hidden, two("490000001A", "490000002B", mapOf("490000001A" to 100.0, "490000002B" to 400.0)))
+        // As near, give or take the slack: it goes too.
+        assertEquals(hidden, two("490000001A", "490000002B", mapOf("490000001A" to 130.0, "490000002B" to 100.0)))
+        // The ride above was turned round to board far off: the nearer stop's bus stays.
+        assertEquals(kept, two("490000001A", "490000002B", mapOf("490000001A" to 400.0, "490000002B" to 100.0)))
+        assertEquals(kept, two("490000001A", "490000002B", mapOf("490000002B" to 100.0)))
+        // A row whose own stop's distance isn't known goes by the list's order, as before.
+        assertEquals(hidden, two("490000001A", "490000002B", emptyMap()))
+    }
+
+    @Test
+    fun `a bus with no destination is told apart by the direction its row draws`() {
+        fun blank(stopId: String, direction: String, vararg offsets: Long) =
+            rowWith(*offsets.map { departure("b1", "B1", direction, "", it, mode = "bus") }.toTypedArray()).copy(stopId = stopId, stopName = "Stop $stopId")
+        // Drawn "Outbound" and "Inbound": two routes, so the farther ride keeps its row.
+        assertEquals(
+            listOf(DepartureRows.Repeated(emptySet()), DepartureRows.Repeated(emptySet())),
+            DepartureRows.repeatedRows(listOf(listOf(blank("490000001A", "outbound", 60)), listOf(blank("490000002B", "inbound", 120))), listOf(3, 3)),
+        )
+        // Both drawn "Outbound": one route, so it goes.
+        assertEquals(
+            listOf(DepartureRows.Repeated(emptySet()), DepartureRows.Repeated(setOf(0))),
+            DepartureRows.repeatedRows(listOf(listOf(blank("490000001A", "outbound", 60)), listOf(blank("490000002B", "outbound", 120))), listOf(3, 3)),
+        )
+        // The near-me list likewise keeps the other direction's row at a stop as near.
+        val near = mapOf("490000001A" to 100.0, "490000002B" to 100.0)
+        val inbound = listOf(blank("490000002B", "inbound", 120))
+        assertEquals(inbound, DepartureRows.withoutShownAbove(inbound, listOf(blank("490000001A", "outbound", 60)), near))
+        assertEquals(emptyList<DepartureRow>(), DepartureRows.withoutShownAbove(inbound, listOf(blank("490000001A", "inbound", 60)), near))
+        // With no direction either, the row reads "unknown destination": never another stop's route.
+        val unknown = listOf(blank("490000002B", "", 120))
+        assertEquals(unknown, DepartureRows.withoutShownAbove(unknown, listOf(blank("490000001A", "", 60)), near))
+    }
+
+    @Test
+    fun `a route a card shows from another stop no farther away is hidden below it, not from a farther one`() {
+        val nearby = listOf(busAt("490000002B", 120, 600))
+        val card = listOf(busAt("490000001A", 60, 540))
+        // Its stop as near, give or take the slack: the route already shows, so the row goes.
+        assertEquals(emptyList<DepartureRow>(), DepartureRows.withoutShownAbove(nearby, card, mapOf("490000001A" to 120.0, "490000002B" to 100.0)))
+        // The card's stop farther off: the nearer stop's bus stays.
+        assertEquals(nearby, DepartureRows.withoutShownAbove(nearby, card, mapOf("490000001A" to 300.0, "490000002B" to 100.0)))
+        // The card's stop of unknown distance hides only its own rows.
+        assertEquals(nearby, DepartureRows.withoutShownAbove(nearby, card, mapOf("490000002B" to 100.0)))
+        // A row whose trains all have no time (canceled, or delayed with none given) is hidden the same way.
+        val untimed = busAt("490000002B", 120).let { it.copy(upcoming = emptyList(), untimed = listOf(UntimedTrain(it.upcoming.single(), canceled = true))) }
+        assertEquals(emptyList<DepartureRow>(), DepartureRows.withoutShownAbove(listOf(untimed), card, mapOf("490000001A" to 120.0, "490000002B" to 100.0)))
+        // A destination the card doesn't show keeps the row.
+        val both = listOf(busAt("490000002B", 120).let { it.copy(upcoming = it.upcoming + busAt("490000002B", 700, destination = "Dale").upcoming) })
+        assertEquals(both, DepartureRows.withoutShownAbove(both, card, mapOf("490000001A" to 100.0, "490000002B" to 100.0)))
+    }
+
+    @Test
+    fun `a ride leaves out a route a nearer ride or a nearer boarding stop already shows`() {
+        val home = listOf(busAt("490000001A", 60))
+        val work = listOf(busAt("490000002B", 120), busAt("490000003C", 180, destination = "Dale"), busAt("490000004D", 240))
+        fun repeated(vararg sets: Set<Int>) = sets.map { DepartureRows.Repeated(it) }
+        // The nearer ride's bus to Hill: the farther ride drops its copy (index 0) and a farther
+        // boarding stop's (index 2), keeping the bus to Dale.
+        assertEquals(repeated(emptySet(), setOf(0, 2)), DepartureRows.repeatedRows(listOf(home, work), listOf(3, 3)))
+        // A row behind "+N more" isn't shown, so it hides nothing after it: the farther ride's own
+        // nearer stop shows the bus to Hill instead, and only its farther stop's copy goes.
+        assertEquals(repeated(emptySet(), setOf(2)), DepartureRows.repeatedRows(listOf(home, work), listOf(0, 3)))
+        // A line's status alone is never left out.
+        val status = busAt("490000002B", 120).copy(upcoming = emptyList())
+        assertEquals(repeated(emptySet(), emptySet()), DepartureRows.repeatedRows(listOf(home, listOf(status)), listOf(3, 3)))
+        // Once a card is full, its rows behind "+N more" stay there, repeats or not: its own view
+        // shows them all, so "+N more" counts them.
+        assertEquals(repeated(emptySet(), emptySet()), DepartureRows.repeatedRows(listOf(listOf(work[1]), work), listOf(3, 1)))
+        // With room for two, both repeats go: the bus to Dale the nearer ride shows, and the farther
+        // stop's bus to Hill this ride's nearer stop shows.
+        assertEquals(repeated(emptySet(), setOf(1, 2)), DepartureRows.repeatedRows(listOf(listOf(work[1]), work), listOf(3, 2)))
+    }
+
+    @Test
+    fun `a ride's trains to change from count as shown, and are left out where a nearer ride shows them`() {
+        val hill = busAt("490000001A", 60)
+        val dale = busAt("490000002B", 120, destination = "Dale")
+        // The nearer ride shows the bus to Dale only as one to change from: the farther ride's direct
+        // copy goes.
+        assertEquals(
+            listOf(DepartureRows.Repeated(emptySet()), DepartureRows.Repeated(setOf(0))),
+            DepartureRows.repeatedRows(listOf(listOf(hill), listOf(dale)), listOf(3, 3), listOf(listOf(dale), emptyList())),
+        )
+        // And a farther ride's trains to change from that a nearer one shows directly go too.
+        assertEquals(
+            listOf(DepartureRows.Repeated(emptySet()), DepartureRows.Repeated(emptySet(), setOf(0))),
+            DepartureRows.repeatedRows(listOf(listOf(hill, dale), emptyList()), listOf(3, 3), listOf(emptyList(), listOf(dale))),
+        )
     }
 
     @Test

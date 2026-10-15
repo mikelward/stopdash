@@ -874,19 +874,149 @@ object DepartureRows {
     }
 
     /**
-     * [rows] without any timed row [shown] above them already covers in full: the same stop and line,
-     * with every one of its trains, timed or not, among the shown row's ([covers]) — a journey card's
-     * row repeated in the near-me list below it. A row the card shows only in part (some of its trains don't reach the
-     * journey's far end) stays, as does a status-only row or a closure, so nothing is lost.
+     * [rows] without any timed row [shown] above them already covers — a journey card's row repeated
+     * in the near-me list below it (SPEC *Journeys → Not shown twice*). At the same stop that is the
+     * same line with every one of its trains, timed or not, among the shown rows' there, one card's or
+     * several between them ([coveredTogether]). From
+     * another stop it is every route the row runs ([routesOf], as drawn: line, destination and branch) shown
+     * from a stop no farther away than the row's, give or take [TOGETHER_SLACK_METERS], by
+     * [stopDistanceMeters] (maintainer, 2026-10-15: a route shows once, from the nearest stop) — so a
+     * card boarding farther off never hides a nearer stop's bus, and a stop of unknown distance only
+     * hides its own. A row the card shows only in part (some of its trains don't reach the journey's
+     * far end, or another destination's) stays, as does a status-only row or a closure, so nothing is
+     * lost.
      */
-    fun withoutShownAbove(rows: List<DepartureRow>, shown: List<DepartureRow>): List<DepartureRow> {
+    @WorkerThread
+    fun withoutShownAbove(
+        rows: List<DepartureRow>,
+        shown: List<DepartureRow>,
+        stopDistanceMeters: Map<String, Double> = emptyMap(),
+        // How each row draws a branching line's trains ([routesOf]).
+        topology: RouteTopology = RouteTopology.EMPTY,
+    ): List<DepartureRow> {
         if (shown.isEmpty()) return rows
         val byStopLine = shown.groupBy { it.stopId to it.lineId }
+        // A row of trains with no time (canceled, or delayed with none given) counts too; a line's
+        // status alone never does (Codex, #865).
         return rows.filterNot { row ->
-            row.upcoming.isNotEmpty() && row.stopDisruption == null &&
-                byStopLine[row.stopId to row.lineId].orEmpty().any { it.covers(row) }
+            row.hasTrains && row.stopDisruption == null && (
+                byStopLine[row.stopId to row.lineId]?.let { coveredTogether(it, row) } == true ||
+                    shownNoFarther(row, shown, stopDistanceMeters, topology)
+                )
         }
     }
+
+    /**
+     * Whether [atStop], the rows shown at [row]'s stop and line, hold every one of its trains between
+     * them, timed and with no time ([covers], across cards): two rides there each showing one
+     * destination cover the stop's row of both (Codex, #865).
+     */
+    @WorkerThread
+    private fun coveredTogether(atStop: List<DepartureRow>, row: DepartureRow): Boolean =
+        atStop.flatMapTo(HashSet()) { it.upcoming }.containsAll(row.upcoming) &&
+            atStop.flatMapTo(HashSet()) { it.untimed }.containsAll(row.untimed)
+
+    /** Whether every route of [row] is among [shown]'s from another stop no farther away ([withoutShownAbove]). */
+    @WorkerThread
+    private fun shownNoFarther(
+        row: DepartureRow,
+        shown: List<DepartureRow>,
+        stopDistanceMeters: Map<String, Double>,
+        topology: RouteTopology,
+    ): Boolean {
+        val meters = stopDistanceMeters[row.stopId] ?: return false
+        val routes = routesOf(row, topology)
+        val nearer = shown.filter { other ->
+            other.stopId != row.stopId && other.lineId == row.lineId &&
+                stopDistanceMeters[other.stopId]?.let { it <= meters + TOGETHER_SLACK_METERS } == true
+        }
+        return nearer.isNotEmpty() && nearer.flatMapTo(HashSet()) { routesOf(it, topology) }.containsAll(routes)
+    }
+
+    /**
+     * Every route [row]'s trains run, timed or not, as the row draws them ([DrawnRoute]): two
+     * departures are one route exactly when the rider sees one, so whatever tells routes apart on
+     * screen tells them apart here, and nothing else does (Codex, #865).
+     */
+    @WorkerThread
+    fun routesOf(row: DepartureRow, topology: RouteTopology = RouteTopology.EMPTY): Set<DrawnRoute> =
+        (row.upcoming + row.untimed.map { it.train }).mapTo(HashSet()) { departure ->
+            val label = DepartureLabels.destinationLabel(departure.destination, row.directionKey)
+            DrawnRoute(
+                lineId = departure.lineId,
+                label = label,
+                branch = topology.grouping(row.lineId, row.stopId, departure.destination, departure.branch).label,
+                // With no label at all the row reads "unknown destination": the same route only as itself.
+                unlabeledAt = if (label == null) "${row.stopId}|${row.directionKey}|${row.platform}" else null,
+            )
+        }
+
+    /**
+     * A route as a row draws it: its line, the label heading its trains ([DepartureLabels.destinationLabel]:
+     * the destination, else the direction cue a blank one gets) and its branch as [destinationLines]
+     * labels it by the stop's [RouteTopology] (none where the trunks have already met). A train with no
+     * label at all is only ever its own row's ([unlabeledAt]).
+     */
+    data class DrawnRoute(val lineId: String, val label: String?, val branch: String?, val unlabeledAt: String? = null)
+
+    /**
+     * The rows each favorite ride leaves out as a nearer one's (SPEC *Journeys → Not shown twice*), as
+     * indexes. [rides] are the rides' rows in the list's order — the nearest ride first, each one's
+     * nearest boarding stop first — and [limits] how many each draws before "+N more"; [extras] are
+     * the rows each draws after those, every one of them (its trains to change from). A row whose
+     * every route ([routesOf]) a row drawn before it already shows, on this ride or a nearer one, from
+     * a stop no farther away than its own (give or take [TOGETHER_SLACK_METERS], by
+     * [stopDistanceMeters]), is left out, and the next moves up into its place (maintainer,
+     * 2026-10-15: any departure shown for one ride is left out of farther ones). The rides keep the
+     * list's order, so a ride above can only hide a row it boards no farther from: one turned round to
+     * board at its far end never hides a nearer stop's bus (Codex, #865). Where the row's own stop is
+     * of unknown distance, any row before it hides it, as the list's order goes. Once a ride's card is full, its rows behind "+N more"
+     * are neither left out nor counted as shown: they aren't drawn, and its own view, which "+N more"
+     * opens, shows every one (Codex, #865). A row with no trains (a line's status alone) is never
+     * left out.
+     */
+    @WorkerThread
+    fun repeatedRows(
+        rides: List<List<DepartureRow>>,
+        limits: List<Int>,
+        extras: List<List<DepartureRow>> = emptyList(),
+        // How each row draws a branching line's trains ([routesOf]).
+        topology: RouteTopology = RouteTopology.EMPTY,
+        // How far each stop is from the rider: a route is left out only where it's shown from no farther.
+        stopDistanceMeters: Map<String, Double> = emptyMap(),
+    ): List<Repeated> {
+        // Each route shown so far, with the nearest stop it's shown from (null: only from stops of
+        // unknown distance).
+        val shown = HashMap<DrawnRoute, Double?>()
+        // Whether [row] repeats what's shown; if not, and it's drawn, what it shows counts from now on.
+        fun repeats(row: DepartureRow, drawn: Boolean): Boolean {
+            val routes = routesOf(row, topology)
+            val meters = stopDistanceMeters[row.stopId]
+            val repeat = routes.isNotEmpty() && routes.all { route ->
+                route in shown && (meters == null || shown[route]?.let { it <= meters + TOGETHER_SLACK_METERS } == true)
+            }
+            if (repeat) return true
+            if (drawn) {
+                for (route in routes) {
+                    val before = shown[route]
+                    shown[route] = if (before == null || meters == null) before ?: meters else minOf(before, meters)
+                }
+            }
+            return false
+        }
+        return rides.mapIndexed { ride, rows ->
+            val limit = limits.getOrElse(ride) { Int.MAX_VALUE }
+            var drawn = 0
+            val repeated = rows.indices.filterTo(HashSet()) { i ->
+                drawn < limit && repeats(rows[i], drawn = true).also { if (!it) drawn++ }
+            }
+            val after = extras.getOrElse(ride) { emptyList() }
+            Repeated(repeated, after.indices.filterTo(HashSet()) { i -> repeats(after[i], drawn = true) })
+        }
+    }
+
+    /** A ride's rows ([rows]) and the rows it draws after them ([extras]) that repeat a nearer one's ([repeatedRows]). */
+    data class Repeated(val rows: Set<Int>, val extras: Set<Int> = emptySet())
 
     /**
      * [parts] of one row (the same stop, line, direction and platform), split apart as a journey card's

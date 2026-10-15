@@ -38,6 +38,72 @@ class JourneyCardStateTest {
     }
 
     @Test
+    fun `a farther ride leaves out what a nearer one shows, says so when that's all, and its own view keeps it`() {
+        fun rowsAt(stop: String, vararg to: String) = DepartureRows.across(
+            listOf(StopArrivals(stop, stop, to.mapIndexed { i, dest -> departure(dest, 60L + i * 60) }, fetchedAt = now)),
+            now,
+        )
+        fun ride(from: String, to: String, rows: List<app.stopdash.domain.DepartureRow>) = JourneyCard(
+            app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd(from, from), app.stopdash.domain.JourneyEnd(to, to), "example"),
+            JourneyCardState.Trains(rows, limit = JOURNEY_ROWS),
+        )
+        val near = ride("KING", "NORTH", rowsAt("KING", "North End"))
+        val far = ride("QUEEN", "NORTH", rowsAt("QUEEN", "North End"))
+        val other = ride("QUEEN", "WEST", rowsAt("QUEEN", "North End", "West End"))
+        val cards = withoutRepeatedRoutes(listOf(near, far, other), viewKey = null)
+        val (kept, shownAbove, part) = cards.map { it.state as JourneyCardState.Trains }
+        assertEquals(near, cards[0])
+        // Its only route is the nearer ride's: none drawn, and the card says why.
+        assertTrue(shownAbove.shownAbove)
+        assertTrue(shownAbove.drawnRows.isEmpty())
+        // Its rows stay whole, for the widget's pins.
+        assertEquals(far.state, shownAbove.copy(repeated = emptySet()))
+        // A row with a route the nearer ride doesn't show stays.
+        assertTrue(!part.shownAbove)
+        assertTrue(part.drawnRows.any { row -> row.upcoming.any { it.destination == "West End" } })
+        assertTrue(kept.repeated.isEmpty())
+        // Open in its own view, the farther ride shows everything.
+        assertEquals(far, withoutRepeatedRoutes(listOf(near, far), viewKey = far.journey.key)[1])
+        // A ride whose only trains are to change from, all shown above: none drawn, and it says so.
+        val changing = JourneyCard(
+            far.journey.copy(to = app.stopdash.domain.JourneyEnd("WEST", "WEST")),
+            JourneyCardState.Trains(emptyList(), changes = listOf(JourneyChange("FORK", "Fork", rowsAt("QUEEN", "North End").single())), limit = JOURNEY_ROWS),
+        )
+        val changes = withoutRepeatedRoutes(listOf(near, changing), viewKey = null)[1].state as JourneyCardState.Trains
+        assertTrue(changes.changesShownAbove)
+        assertTrue(changes.changeStops.isEmpty())
+        assertTrue(changes.shownRows.isEmpty())
+    }
+
+    @Test
+    fun `a ride whose direct trains are shown above says so only when no train to change from of its own follows`() {
+        fun rowsAt(stop: String, vararg to: String) = DepartureRows.across(
+            listOf(StopArrivals(stop, stop, to.mapIndexed { i, dest -> departure(dest, 60L + i * 60) }, fetchedAt = now)),
+            now,
+        )
+        fun ride(from: String, to: String, state: JourneyCardState.Trains) = JourneyCard(
+            app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd(from, from), app.stopdash.domain.JourneyEnd(to, to), "example"),
+            state,
+        )
+        val near = ride("KING", "NORTH", JourneyCardState.Trains(rowsAt("KING", "North End"), limit = JOURNEY_ROWS))
+        // Its direct train is the nearer ride's, its train to change from isn't: that one is drawn, unannounced.
+        val unique = ride(
+            "QUEEN", "EAST",
+            JourneyCardState.Trains(rowsAt("QUEEN", "North End"), changes = listOf(JourneyChange("FORK", "Fork", rowsAt("QUEEN", "West End").single())), limit = JOURNEY_ROWS),
+        )
+        val drawn = withoutRepeatedRoutes(listOf(near, unique), viewKey = null)[1].state as JourneyCardState.Trains
+        assertTrue(drawn.shownAbove)
+        assertTrue(!drawn.saysShownAbove)
+        assertEquals(1, drawn.visibleChanges.size)
+        // Its train to change from is the nearer ride's too: nothing of its own is left, and it says so.
+        val repeat = ride(
+            "QUEEN", "EAST",
+            JourneyCardState.Trains(rowsAt("QUEEN", "North End"), changes = listOf(JourneyChange("FORK", "Fork", rowsAt("QUEEN", "North End").single())), limit = JOURNEY_ROWS),
+        )
+        assertTrue((withoutRepeatedRoutes(listOf(near, repeat), viewKey = null)[1].state as JourneyCardState.Trains).saysShownAbove)
+    }
+
+    @Test
     fun `the list's rows come with their stop cards, grouped as the list draws them`() {
         val rows = DepartureRows.across(
             listOf(

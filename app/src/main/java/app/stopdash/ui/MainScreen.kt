@@ -937,8 +937,9 @@ fun MainScreen(
         keep = ListInputs.sameList,
     ) {
         listRows?.let { from ->
-            val cards = judgeCards(from)
-            // What the journey cards above already show: a near-me row they cover in full isn't repeated.
+            // A route shows once: a ride leaves out what a nearer one shows ([withoutRepeatedRoutes]).
+            val cards = withoutRepeatedRoutes(judgeCards(from), journeyViewKey, topology, stopDistanceMeters)
+            // What the journey cards above already show: a near-me row they cover isn't repeated.
             val cardRows = cards.flatMap { (it.state as? JourneyCardState.Trains)?.shownRows.orEmpty() }
             shownRowsOf(from, quietPending?.rows() ?: nearbyRows, cardRows, starred, stopDistanceMeters, cards, cardJourneys, topology)
         }
@@ -2775,7 +2776,7 @@ private fun DepartureList(
                 // group. Until then (checking, couldn't check, none due) its heading stays, so the note
                 // under it says which ride.
                 val byStop = !journeyView && rideGrouping == RideGrouping.STOP &&
-                    (card.state as? JourneyCardState.Trains)?.rows?.isNotEmpty() == true
+                    (card.state as? JourneyCardState.Trains)?.visibleRows?.isNotEmpty() == true
                 if (journeyView) {
                     item(key = "journey-actions|${card.journey.key}") {
                         JourneyActions(
@@ -2834,6 +2835,30 @@ private fun DepartureList(
                                         card.journey.to.name,
                                     ),
                                 )
+                            }
+                        }
+                        // Its trains to change from, every one shown above by a nearer ride: said in their place.
+                        if (state.changesShownAbove) {
+                            item(key = "journey-shown-above|${card.journey.key}") {
+                                JourneyNote(stringResource(R.string.journey_shown_above))
+                            }
+                        }
+                        journeyMore(card, state)
+                        journeyChanges(card, state, now, starred, onToggleStar, starringAvailable, onOpenChangeDetail, onOpenSettings)
+                        if (state.incomplete) {
+                            item(key = "journey-note|${card.journey.key}") {
+                                JourneyNote(
+                                    stringResource(R.string.journey_incomplete),
+                                    onRetry = onRetryJourneyRoutes.takeIf { state.retry },
+                                )
+                            }
+                        }
+                    } else if (state.shownAbove) {
+                        // Every direct train it has, a nearer ride shows already: said under its heading, in
+                        // their place, unless trains to change from of its own follow ([saysShownAbove]).
+                        if (state.saysShownAbove) {
+                            item(key = "journey-shown-above|${card.journey.key}") {
+                                JourneyNote(stringResource(R.string.journey_shown_above))
                             }
                         }
                         journeyMore(card, state)
@@ -4189,6 +4214,41 @@ internal val CHECKING_LOGGED_AFTER: java.time.Duration = java.time.Duration.ofSe
 /** How many rows a journey card draws on the near-me list before "+N more", as a trip's Direct section does. */
 internal const val JOURNEY_ROWS = DIRECT_ROWS
 
+/**
+ * [cards], in the list's order (nearest ride first), each leaving out the rows a nearer ride or a
+ * nearer boarding stop of its own already shows ([DepartureRows.repeatedRows], SPEC *Journeys → Not
+ * shown twice*). The ride open in its own view ([viewKey]) keeps every row, and is counted as the
+ * list would draw it, so the cards behind it stay as they were.
+ */
+@WorkerThread
+internal fun withoutRepeatedRoutes(
+    cards: List<JourneyCard>,
+    viewKey: String?,
+    // How the cards draw a branching line's trains, so a route matches as drawn ([DepartureRows.routesOf]).
+    topology: RouteTopology = RouteTopology.EMPTY,
+    // How far each stop is: a ride hides only what a ride above shows from no farther away.
+    stopDistanceMeters: Map<String, Double> = emptyMap(),
+): List<JourneyCard> {
+    val trains = cards.map { it.state as? JourneyCardState.Trains }
+    val repeated = DepartureRows.repeatedRows(
+        trains.map { it?.rows.orEmpty() },
+        cards.zip(trains).map { (card, state) -> if (card.journey.key == viewKey) JOURNEY_ROWS else state?.limit ?: 0 },
+        // Its trains to change from, drawn after its direct ones, every one of them.
+        trains.map { state -> state?.changes.orEmpty().map { it.row } },
+        topology,
+        stopDistanceMeters,
+    )
+    return cards.mapIndexed { i, card ->
+        val state = trains[i]
+        val (rows, changes) = repeated[i]
+        if (state == null || card.journey.key == viewKey || rows == state.repeated && changes == state.repeatedChanges) {
+            card
+        } else {
+            card.copy(state = state.copy(repeated = rows, repeatedChanges = changes))
+        }
+    }
+}
+
 internal sealed interface JourneyCardState {
     /**
      * The origin's departures or the line's route aren't in yet: [waitingOn] says which, for the debug
@@ -4227,12 +4287,37 @@ internal sealed interface JourneyCardState {
         // More stops board it than the card fetched ([Journeys.MAX_BOARDING_STOPS]): "More" opens the
         // journey's own view, which fetches them all.
         val capped: Boolean = false,
+        // Indexes of [rows] a nearer ride, or a nearer boarding stop of this one, already shows
+        // ([DepartureRows.repeatedRows]): left out of the list's card, never its own view. [rows] keep
+        // them, for the widget's pins and the ride's lines.
+        val repeated: Set<Int> = emptySet(),
+        // Indexes of [changes] a nearer ride already shows, as [repeated] is for [rows].
+        val repeatedChanges: Set<Int> = emptySet(),
     ) : JourneyCardState {
+        /** [rows] less those [repeated]: what the card may draw. */
+        val visibleRows: List<DepartureRow> = if (repeated.isEmpty()) rows else rows.filterIndexed { i, _ -> i !in repeated }
+
+        /** [changes] less those [repeatedChanges]: the trains to change from the card draws. */
+        val visibleChanges: List<JourneyChange> =
+            if (repeatedChanges.isEmpty()) changes else changes.filterIndexed { i, _ -> i !in repeatedChanges }
+
+        /** Every direct train it has is shown above, by a nearer ride. */
+        val shownAbove: Boolean get() = rows.isNotEmpty() && visibleRows.isEmpty()
+
+        /**
+         * The card says "Shown above" in its direct trains' place: they're all shown above, and no train
+         * to change from of its own follows, which the note would read as covering too (Codex, #865).
+         */
+        val saysShownAbove: Boolean get() = shownAbove && visibleChanges.isEmpty()
+
+        /** Its only trains are to change from, and a nearer ride shows every one of them. */
+        val changesShownAbove: Boolean get() = changes.isNotEmpty() && visibleChanges.isEmpty()
+
         /** The rows the card draws: the nearest boarding stops' first, as judged. */
-        val drawnRows: List<DepartureRow> = rows.take(limit)
+        val drawnRows: List<DepartureRow> = visibleRows.take(limit)
 
         /** How many rows wait behind "+N more". */
-        val hiddenRows: Int get() = rows.size - drawnRows.size
+        val hiddenRows: Int get() = visibleRows.size - drawnRows.size
 
         /**
          * Every row the card draws, the direct trains and those to change from, with the two parts of
@@ -4240,7 +4325,7 @@ internal sealed interface JourneyCardState {
          * no-repeat check and a tapped train's route page each look for the whole row.
          */
         val shownRows: List<DepartureRow>
-            get() = (drawnRows + changes.map { it.row })
+            get() = (drawnRows + visibleChanges.map { it.row })
                 .groupBy { listOf(it.stopId, it.lineId, it.directionKey, it.platform) }
                 .values
                 .map { parts -> parts.singleOrNull() ?: DepartureRows.joined(parts) }
@@ -4270,7 +4355,7 @@ internal sealed interface JourneyCardState {
         )
 
         /** [changes] by change stop, in order, each stop's rows by boarding stop as [groups] are. */
-        val changeStops: List<ChangeStop> = changes.groupBy { it.stopId }.map { (stopId, atStop) ->
+        val changeStops: List<ChangeStop> = visibleChanges.groupBy { it.stopId }.map { (stopId, atStop) ->
             val groups = StopGrouping.groupByStop(atStop.map { it.row }, warningsLead = false)
             ChangeStop(stopId, atStop.first().stopName, groups, groups.map { stopCard(it, topology) })
         }
