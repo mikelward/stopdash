@@ -544,6 +544,9 @@
     <string name="trip_later_live_notice" tools:ignore="MissingTranslation">Times for now, not %1$s</string>
     <!-- A later trip's route tapped that the trip for now doesn't offer, so it can't open live. -->
     <string name="trip_later_not_now" tools:ignore="MissingTranslation">Not planned for now</string>
+    <!-- TODO: translate -->
+    <!-- A later trip planned to every station, but a request for more routes failed: some may be missing. -->
+    <string name="trip_later_routes_missed" tools:ignore="MissingTranslation">Couldn\'t plan every route</string>
     <!-- Placeholder in the station search field. -->
     <string name="station_search_hint">Station or stop name</string>
     <!-- Shown under the empty search field. -->

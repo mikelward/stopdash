@@ -371,6 +371,20 @@ class JourneyPlannerTest {
     }
 
     @Test
+    fun `a later trip's request via a bus stop towards the destination asks for the same time`() = runTest {
+        var captured: HttpRequestData? = null
+        val at = TripTime(TripTime.Kind.ARRIVE, LocalDateTime.of(2026, 10, 17, 18, 30))
+        clientBy { request -> captured = request; busAnswer("10") to HttpStatusCode.OK }
+            .quickestVia(TripOrigin.Here(Coordinates(51.5, -0.12)), TripDestination.Stop("940GZZLUEUS"), "490G000002", at = at)
+        val request = checkNotNull(captured)
+        assertEquals("490G000002", request.url.parameters["via"])
+        assertEquals("20261017", request.url.parameters["date"])
+        assertEquals("1830", request.url.parameters["time"])
+        assertEquals("Arriving", request.url.parameters["timeIs"])
+        assertEquals("true", request.url.parameters["calcOneDirection"])
+    }
+
+    @Test
     fun `a later trip's requests say they're later in the log, never when`() = runTest {
         val warnings = mutableListOf<String>()
         client(fixture, warn = { warnings += it })

@@ -4,9 +4,12 @@ import androidx.annotation.WorkerThread
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.stopdash.domain.AvoidedLines
+import app.stopdash.domain.BundledStops
 import app.stopdash.domain.FinalStop
 import app.stopdash.domain.JourneyPlanner
 import app.stopdash.domain.MaxWalk
+import app.stopdash.domain.RefusedStops
+import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripDestination
@@ -56,7 +59,17 @@ class LaterTripViewModel(
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val compute: CoroutineDispatcher = Workers.compute,
     private val warn: (String) -> Unit = {},
+    // As the trip for now's, for the requests via bus stops towards the destination ([TowardRequests]): the
+    // station index and the bundled stops, read on [io], and the stops the Planner found no route through.
+    // None by default (a test), so a plan asks nothing more.
+    stations: () -> StationIndex = { StationIndex.EMPTY },
+    bundledStops: suspend () -> BundledStops = { BundledStops.EMPTY },
+    refused: RefusedStops = RefusedStops(),
 ) : ViewModel() {
+    // A plan from a position also asks the Planner via the bus stops towards the destination, as the trip for
+    // now does, at the picked time.
+    private val toward = TowardRequests(planner, stations, bundledStops, refused, io, compute, warn, label = "later trip plan")
+
     /**
      * What the rider asked for: the time, and their own choices as the trip for now reads them. Equal only to
      * itself, so the screen tells its own request from the one [State] answers by reference, never by walking
@@ -102,7 +115,7 @@ class LaterTripViewModel(
     )
 
     data class State(
-        // The request [cards], [error] and [incomplete] answer, every choice in it: a screen asking for another
+        // The request [cards], [error], [incomplete] and [routesMissed] answer, every choice in it: a screen asking for another
         // shows planning rather than any of them, so a plan under other choices never shows under these.
         val request: Request? = null,
         // The routes as listed; null until the plan for [time] has answered.
@@ -112,6 +125,9 @@ class LaterTripViewModel(
         val error: DeparturesUiState.Error.Kind? = null,
         // Some of a complex's stops didn't answer: the routes stand, and the screen says so.
         val incomplete: Boolean = false,
+        // Every stop answered, but a request for more routes didn't (via the last stop, or via a bus stop towards
+        // the destination): the routes stand, and the screen says some may be missing, not that a station was.
+        val routesMissed: Boolean = false,
     )
 
     /**
@@ -192,26 +208,33 @@ class LaterTripViewModel(
         _state.value = if (keepCards && held.request == shown) held.copy(planning = true) else State(request = shown, planning = true)
         job = viewModelScope.launch(compute) {
             val from = origin()
-            // Each destination's answer, or the failure it ended in, off the main thread whole.
-            val answers = coroutineScope {
-                destinations.map { destination -> async(io) { planTo(from, destination, request) } }.awaitAll()
+            // Each destination's answer, or the failure it ended in, off the main thread whole; alongside them, the
+            // requests via bus stops towards the first destination, as the trip for now makes them.
+            val (answers, viaStops) = coroutineScope {
+                val each = destinations.map { destination -> async(io) { planTo(from, destination, request) } }
+                val toward = async { planToward(from, request) }
+                each.awaitAll() to toward.await()
             }
             val failures = answers.mapNotNull { it.exceptionOrNull() }
             val answered = answers.mapNotNull { it.getOrNull() }
-            // A stop that answered without its request via the last stop: its routes stand, the plan is partial.
-            val partial = failures.isNotEmpty() || answered.any { it.viaFailed }
+            // A stop that didn't answer; or one that answered without its request via the last stop, or a request
+            // via a stop towards the destination that failed: the routes in hand stand, said apart (Codex, #875).
+            val stationsMissed = failures.isNotEmpty()
+            val routesMissed = answered.any { it.viaFailed } || viaStops.viaFailed
             publishing.withLock {
                 if (planned !== request) return@withLock
                 if (answered.isEmpty()) {
                     _state.value = _state.value.copy(planning = false, error = errorKindOf(failures.firstOrNull()))
                     return@withLock
                 }
-                val routes = answered.map { it.routes }.reduce(::mergedRoutes)
+                // The plan's own requests decide whether there's a plan; the stops towards the destination add to it.
+                val routes = mergedRoutes(answered.map { it.routes }.reduce(::mergedRoutes), viaStops.routes)
                 raw = routes
                 _state.value = State(
                     request = latest ?: request,
                     cards = listed(routes, request.time, excluded.orEmpty()),
-                    incomplete = partial,
+                    incomplete = stationsMissed,
+                    routesMissed = routesMissed,
                 )
             }
         }
@@ -229,6 +252,21 @@ class LaterTripViewModel(
 
     // One destination's routes, and whether its request via the last stop failed (they stand, in part).
     private class Answer(val routes: List<TripRoute>, val viaFailed: Boolean = false)
+
+    // The routes riding a bus from the stops towards the first destination ([TowardRequests]), and whether a
+    // request for them failed.
+    private suspend fun planToward(from: TripOrigin, request: Request): Answer {
+        val destination = destinations.firstOrNull() ?: return Answer(emptyList())
+        val found = mutableListOf<TripRoute>()
+        // Each stop's requests land on their own coroutine: gathered under one lock.
+        val gathering = Mutex()
+        // Every bus line picks its stop, hidden or not: what's left out only lists the plan again here, so a stop
+        // skipped for a line hidden now would stay unasked once the line is shown, with nothing to say so.
+        val stood = toward.plan(
+            from, destination, request.walkingSpeed, request.maxWalk, request.stepFree, request.tripModes, hidden = emptySet(), at = request.time,
+        ) { routes -> gathering.withLock { found += routes } }
+        return Answer(gathering.withLock { found.toList() }, viaFailed = !stood)
+    }
 
     // On [io]. One destination's routes, and to a place the fewest changes via its fastest route's last stop as a
     // trip for now asks ([FinalStop]); a failure of that alone leaves the routes standing, as a partial answer.
