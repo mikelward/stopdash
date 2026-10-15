@@ -5167,10 +5167,10 @@ class MainActivity : ComponentActivity() {
             SideEffect { laterModel.origin = { latestHere?.let(TripOrigin::Here) ?: TripOrigin.Stop(fromId) } }
             // The time and the rider's choices as they stand, one object while none changes: the sets are keyed by
             // identity (they come by identity), so nothing here walks them, and the screen tells this request from
-            // the model's answer by reference. Handed on as they are: what they leave out is worked out by the
-            // model, never here.
+            // the model's answer by reference. The model's own where every part is the same, so a rotation shows
+            // its cards at once. Handed on as they are: what they leave out is worked out by the model, never here.
             val laterRequest = remember(later, walkingSpeed, maxWalk, stepFree, ByIdentity(tripModes), ByIdentity(hiddenModes), ByIdentity(avoidedLines)) {
-                LaterTripViewModel.Request(later, walkingSpeed, maxWalk, stepFree, tripModes, hiddenModes, avoidedLines)
+                laterModel.request(later, walkingSpeed, maxWalk, stepFree, tripModes, hiddenModes, avoidedLines)
             }
             // Not before the rider's own choices are read, as a trip for now waits for them.
             if (planOptionsLoaded && !avoidedSaving) {

@@ -2297,7 +2297,7 @@ now's labels, ranking, live boards or Start apply. **A card tapped opens that ro
 now** (maintainer, 2026-10-15), live, under a line saying "Times for now, not ‹the time picked›";
 closing it goes back to the later list, which says "Not planned for now" when the trip for now
 doesn't offer that route. Back, or *Leave now*, returns to the trip for now; the time picked is kept
-with the trip while it's open and forgotten when it closes.
+with the trip while it's open, its list in place over a rotation, and forgotten when it closes.
 
 ### On the way
 

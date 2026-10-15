@@ -43,6 +43,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -515,6 +516,36 @@ class LaterTripViewModelTest {
         advanceUntilIdle()
         assertTrue(planner.towardAsked.isEmpty())
         assertEquals(listOf(own), later.routes)
+    }
+
+    @Test
+    fun `a recreated screen asking with what it held gets the request the state answers, so its cards show at once`() = runTest(dispatcher) {
+        val route = TripRoute(listOf(leg("red", "A", "C", 5, 30)))
+        val later = model(Planner(mapOf("C" to listOf(route))))
+        val hidden = setOf("bus")
+        val avoided = setOf(AvoidedLines.key("73", "73"))
+        val modes = TripModes.DEFAULT
+        fun asked(time: TripTime = leave, speed: WalkingSpeed = WalkingSpeed.AVERAGE, hiddenModes: Set<String> = hidden) =
+            later.request(time, speed, MaxWalk.DEFAULT, StepFree.DEFAULT, modes, hiddenModes, avoided)
+        val first = asked()
+        later.show(first)
+        advanceUntilIdle()
+        assertEquals(listOf(route), later.routes)
+        // The same parts, the sets the same objects (as a rotation finds them): the request the cards answer.
+        assertSame(later.state.value.request, asked())
+        // Anything else is a request of its own: another time or walk, or a set that's equal but another object,
+        // told apart without comparing its contents.
+        assertNotSame(first, asked(time = leave.copy(at = leave.at.plusHours(1))))
+        assertNotSame(first, asked(speed = WalkingSpeed.FAST))
+        assertNotSame(first, asked(hiddenModes = hashSetOf("bus")))
+    }
+
+    @Test
+    fun `before any plan a request is new`() = runTest(dispatcher) {
+        val later = model(Planner(emptyMap()))
+        val request = later.request(leave, WalkingSpeed.AVERAGE, MaxWalk.DEFAULT, StepFree.DEFAULT, TripModes.DEFAULT, emptySet(), emptySet())
+        assertEquals(leave, request.time)
+        assertNull(later.state.value.request)
     }
 
     @Test
