@@ -102,11 +102,15 @@ class OnTheWayService : Service() {
                 // Shown again on each change, and on each tick, so its minutes count down and an answer
                 // grown old turns to Checking… (or Updating…) though nothing else changed.
                 val shown = launch {
+                    // The next ride's board as routed, kept from one tick to the next ([OnTheWayLiveUpdate.Placements]).
+                    val placements = OnTheWayLiveUpdate.Placements()
                     // The trip's alerts too ([TripAlerts]): said in this notification, shown again as they change.
                     val answers = combine(tracker.updatedAt, tracker.answeredAt, tracker.nextBoard, TripAlerts.alerts) { updatedAt, answeredAt, board, _ -> Triple(updatedAt, answeredAt, board) }
                     combine(tracker.trip, tracker.progress, tracker.failed, answers, ticks(NOTIFICATION_TICK)) { trip, progress, failed, (updatedAt, answeredAt, board), _ ->
                         if (trip != null) {
-                            val boarding = OnTheWayLiveUpdate.boarding(trip, progress, board, Instant.now())
+                            // Routes as the trip's board loaded them: held only, so a tick never fetches one.
+                            val routes = MainActivity.routeStops(this@OnTheWayService)
+                            val boarding = OnTheWayLiveUpdate.boarding(trip, progress, board, Instant.now(), placements) { routes.cached(it, "") }
                             OnTheWayNotification.show(this@OnTheWayService, trip, progress, failed, updatedAt, answeredAt, boarding, gate)
                         }
                     }.flowOn(Dispatchers.Default).collect()

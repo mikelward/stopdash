@@ -1031,6 +1031,7 @@ private class DueKey(val board: ActiveTripTracker.NextBoard, val readyAt: Instan
 private class HeldDue(val key: DueKey, val due: Instant?)
 
 /** [rememberNextDue]'s work, off the main thread: [board]'s poles' trains as the board keeps them. */
+@WorkerThread
 internal fun nextDueOf(board: ActiveTripTracker.NextBoard, sequences: Map<String, LineSequence?>, readyAt: Instant?, now: Instant): Instant? {
     val fetchedAt = board.fetchedAt ?: return null
     val trains = OnTheWay.boardTrains(board.ride, board.departures, fetchedAt, sequences, now).trains +

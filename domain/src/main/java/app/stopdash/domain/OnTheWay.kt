@@ -315,8 +315,18 @@ object OnTheWay {
      * one they're on. A [Departure.doubtful] train, which TfL may be tracking twice, is picked only
      * when no other is listed.
      */
+    @WorkerThread
     fun pickTrain(trains: List<Departure>, readyAt: Instant): Departure? =
-        trains.filter { it.vehicleId.isNotBlank() && !it.expectedArrival.isBefore(readyAt) }
+        nextTrain(trains.filter { it.vehicleId.isNotBlank() }, readyAt)
+
+    /**
+     * The train of [trains] the rider takes, as far as anyone can say before one is followed: the soonest
+     * due at or after [readyAt], a [Departure.doubtful] one only when no other is listed. The one rule for
+     * which train is next, whether it's followed ([pickTrain]), timed ([nextDue]) or named ahead of boarding.
+     */
+    @WorkerThread
+    fun nextTrain(trains: List<Departure>, readyAt: Instant): Departure? =
+        trains.filter { !it.expectedArrival.isBefore(readyAt) }
             .minWithOrNull(compareBy<Departure> { it.doubtful }.thenBy { it.expectedArrival })
 
     /**
@@ -1051,11 +1061,9 @@ object OnTheWay {
      * [now]. Null with none. For [eta], once the train followed has gone by or isn't known. A
      * [Departure.doubtful] train counts only when no other is listed.
      */
-    fun nextDue(trains: List<Departure>, readyAt: Instant?, now: Instant): Instant? {
-        val from = if (readyAt != null && readyAt.isAfter(now)) readyAt else now
-        val catchable = trains.filter { !it.expectedArrival.isBefore(from) }
-        return (catchable.filter { !it.doubtful }.ifEmpty { catchable }).minOfOrNull { it.expectedArrival }
-    }
+    @WorkerThread
+    fun nextDue(trains: List<Departure>, readyAt: Instant?, now: Instant): Instant? =
+        nextTrain(trains, if (readyAt != null && readyAt.isAfter(now)) readyAt else now)?.expectedArrival
 
     /**
      * Whether a fix is asked for [trip] at [now] to follow a rider on board by where they were seen
