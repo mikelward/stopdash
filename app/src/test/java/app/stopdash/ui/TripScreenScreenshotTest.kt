@@ -31,6 +31,7 @@ import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
@@ -101,6 +102,7 @@ import app.stopdash.domain.TripLeg
 import app.stopdash.domain.Workers
 import app.stopdash.domain.TripFare
 import app.stopdash.domain.TripRoute
+import app.stopdash.domain.TripTime
 import app.stopdash.domain.UsageEvent
 import app.stopdash.telemetry.UsageEvents
 import app.stopdash.domain.WalkingSpeed
@@ -109,6 +111,7 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import kotlinx.coroutines.CoroutineDispatcher
@@ -5851,6 +5854,257 @@ class TripScreenScreenshotTest {
         composeRule.runOnIdle { lastPull!!.value = TripViewModel.Pull(now, now.minusSeconds(1)) }
         restoration.emulateSavedInstanceStateRestore()
         composeRule.runOnIdle { assertEquals(TripViewModel.Pull(now, now.minusSeconds(1)), lastPull!!.value) }
+    }
+
+    @Test
+    fun a_trip_offers_change_time_first_in_its_overflow() {
+        var changed = 0
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf", state = planned, now = now, access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {},
+                    menu = AppMenuActions(updateAvailable = false, onOpenAppListing = {}, onSendBugReport = {}, onOpenLicenses = {}),
+                    onChangeTime = { changed++ },
+                )
+            }
+        }
+        composeRule.onNodeWithContentDescription(composeRule.activity.getString(R.string.menu_more)).performClick()
+        val change = composeRule.onNodeWithText("Change time…").getUnclippedBoundsInRoot()
+        val report = composeRule.onNodeWithText(composeRule.activity.getString(R.string.menu_send_bug_report)).getUnclippedBoundsInRoot()
+        // The trip's own item first, over the app's.
+        assertTrue(change.top < report.top)
+        composeRule.onNodeWithText("Change time…").performClick()
+        assertEquals(1, changed)
+    }
+
+    @Test
+    fun a_trip_without_a_time_picker_offers_no_change_time() {
+        show(planned, menu = AppMenuActions(updateAvailable = false, onOpenAppListing = {}, onSendBugReport = {}, onOpenLicenses = {}))
+        composeRule.onNodeWithContentDescription(composeRule.activity.getString(R.string.menu_more)).performClick()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.menu_send_bug_report)).assertExists()
+        composeRule.onAllNodesWithText("Change time…").assertCountEquals(0)
+    }
+
+    @Test
+    fun a_route_opened_from_a_later_trip_says_its_times_are_for_now() {
+        val openRoute = mutableStateOf<String?>(null)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf", state = planned, now = now, access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {}, openRoute = openRoute,
+                    openNotice = "Times for now, not Sun 27 09:00",
+                )
+            }
+        }
+        // Over the list, nothing: it's the trip for now, as it says.
+        composeRule.onAllNodesWithTag("openRouteNotice").assertCountEquals(0)
+        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("6 stops to Whitechapel").assertIsDisplayed()
+        composeRule.onNodeWithTag("openRouteNotice").assertTextEquals("Times for now, not Sun 27 09:00")
+        captureSnapshot("trip-later-open.png")
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("openRouteNotice").assertCountEquals(0)
+    }
+
+    // A later trip (SPEC *Trips with a change → A later trip*): tomorrow at 09:00, the routes a day and an
+    // hour on from the trip's own, as the Planner's timetable would have them.
+    private val sunday = TripTime(TripTime.Kind.LEAVE, LocalDateTime.of(2026, 9, 27, 9, 0))
+
+    // The screen's request and the one its state answers are the very same object, as the model hands back.
+    private val sundayRequest = LaterTripViewModel.Request(sunday)
+
+    private fun dayOn(route: TripRoute) = TripRoute(
+        route.legs.map { it.copy(departure = it.departure.plus(Duration.ofHours(25)), arrival = it.arrival.plus(Duration.ofHours(25))) },
+        route.fare,
+    )
+
+    // A later trip's state for [request]: [routes] as its model lists them ([LaterTripViewModel.cardOf]).
+    private fun later(routes: List<TripRoute>?, request: LaterTripViewModel.Request = sundayRequest, incomplete: Boolean = false) =
+        LaterTripViewModel.State(request = request, cards = routes?.map(LaterTripViewModel::cardOf), incomplete = incomplete)
+
+    private fun showLater(
+        state: MutableState<LaterTripViewModel.State>,
+        request: LaterTripViewModel.Request = sundayRequest,
+        menu: AppMenuActions? = null,
+        onBack: () -> Unit = {},
+        onRetry: () -> Unit = {},
+        onChangeTime: () -> Unit = {},
+        onOpen: (LaterTripViewModel.Card) -> Unit = {},
+    ) {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalAppMenu provides menu) {
+                    LaterTripScreen("To Canary Wharf", request, state.value, now, onBack, onRetry, onChangeTime, onOpen)
+                }
+            }
+        }
+        composeRule.waitForIdle()
+    }
+
+    @Test
+    fun a_later_trip_lists_its_timetable_routes_and_opens_one_live() {
+        val routes = listOf(dayOn(viaWhitechapel), dayOn(viaCanadaWater), dayOn(viaStratford.copy(fare = TripFare(310))))
+        var opened: TripRoute? = null
+        showLater(mutableStateOf(later(routes)), onOpen = { opened = it.route })
+        // When, then that nothing on it is live.
+        composeRule.onNodeWithTag("laterWhen").assertTextEquals("Leave Sun 27 09:00")
+        composeRule.onNodeWithText("Timetable, not live").assertIsDisplayed()
+        // Each card its times as planned, then a row per ride: when it leaves, its line, where it gets off.
+        composeRule.onNodeWithText("09:05–09:25 · 20 min").assertIsDisplayed()
+        composeRule.onNodeWithText("09:07–09:39 · 32 min").assertIsDisplayed()
+        composeRule.onNodeWithText("£3.10").assertIsDisplayed()
+        composeRule.onAllNodesWithText("09:21").assertCountEquals(1)
+        captureSnapshot("trip-later.png")
+        composeRule.onNodeWithText("09:05–09:25 · 20 min").performClick()
+        assertEquals(routes[0], opened)
+    }
+
+    @Test
+    fun a_later_card_keeps_its_fare_beside_its_times() {
+        showLater(mutableStateOf(later(listOf(dayOn(viaStratford.copy(fare = TripFare(310)))))))
+        val times = composeRule.onNodeWithTag("laterTimes", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val fare = composeRule.onNodeWithTag("tripFare", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertEquals(times.center.y, fare.center.y, 1f)
+        assertTrue("fare at $fare starts after times at $times", fare.left >= times.right)
+    }
+
+    @Test
+    @Config(qualifiers = "en-rGB-w200dp-h914dp-420dpi")
+    fun on_a_narrow_later_card_the_fare_drops_below_its_times() {
+        // Too narrow for "09:05–09:25 · 20 min" and "£3.10" side by side: the fare takes a line of its
+        // own, as on the trip for now's cards, and the times aren't wrapped beside it.
+        showLater(mutableStateOf(later(listOf(dayOn(viaStratford.copy(fare = TripFare(310)))))))
+        val times = composeRule.onNodeWithTag("laterTimes", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val fare = composeRule.onNodeWithTag("tripFare", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertTrue("fare at $fare sits below times at $times", fare.top >= times.bottom)
+    }
+
+    @Test
+    fun a_later_trip_today_names_its_time_alone() {
+        val today = TripTime(TripTime.Kind.ARRIVE, LocalDateTime.of(2026, 9, 26, 18, 30))
+        val request = LaterTripViewModel.Request(today)
+        showLater(mutableStateOf(later(emptyList(), request)), request = request)
+        composeRule.onNodeWithTag("laterWhen").assertTextEquals("Arrive by 18:30")
+        composeRule.onNodeWithText("No trips found").assertIsDisplayed()
+    }
+
+    @Test
+    fun a_later_trip_says_it_is_planning_and_why_a_plan_failed() {
+        val state = mutableStateOf(LaterTripViewModel.State(request = sundayRequest, planning = true))
+        var retried = 0
+        showLater(state, onRetry = { retried++ })
+        composeRule.onNodeWithText("Planning…").assertIsDisplayed()
+        state.value = LaterTripViewModel.State(request = sundayRequest, error = DeparturesUiState.Error.Kind.OFFLINE)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Couldn't plan the trip: You're offline").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Planning…").assertCountEquals(0)
+        composeRule.onNodeWithText("Try again").performClick()
+        assertEquals(1, retried)
+        // Some of a complex's stations unanswered: the routes stand, said with a retry.
+        state.value = later(listOf(dayOn(viaWhitechapel)), incomplete = true)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Couldn't plan to every station").assertIsDisplayed()
+        composeRule.onNodeWithText("09:05–09:25 · 20 min").assertIsDisplayed()
+        // Another time's cards, as a new time is handed on: planning, never them under this time's header.
+        val anotherTime = LaterTripViewModel.Request(sunday.copy(at = sunday.at.plusHours(1)))
+        state.value = later(listOf(dayOn(viaWhitechapel)), anotherTime, incomplete = true)
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithText("09:05–09:25 · 20 min").assertCountEquals(0)
+        composeRule.onAllNodesWithText("Couldn't plan to every station").assertCountEquals(0)
+        composeRule.onNodeWithText("Planning…").assertIsDisplayed()
+        // Nor another time's failure.
+        state.value = LaterTripViewModel.State(request = anotherTime, error = DeparturesUiState.Error.Kind.OFFLINE)
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithText("Couldn't plan the trip: You're offline").assertCountEquals(0)
+        composeRule.onNodeWithText("Planning…").assertIsDisplayed()
+        // Nor the same time's cards planned under other choices (stairs, where the rider now wants none), nor even
+        // under the same choices asked for again: only the request the screen holds is the one it shows.
+        state.value = later(listOf(dayOn(viaWhitechapel)), LaterTripViewModel.Request(sunday, stepFree = StepFree.entries.last()))
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithText("09:05–09:25 · 20 min").assertCountEquals(0)
+        state.value = later(listOf(dayOn(viaWhitechapel)), LaterTripViewModel.Request(sunday))
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithText("09:05–09:25 · 20 min").assertCountEquals(0)
+        composeRule.onNodeWithText("Planning…").assertIsDisplayed()
+    }
+
+    @Test
+    fun a_later_trip_changes_its_time_or_leaves_now_from_its_overflow() {
+        var changed = 0
+        var left = 0
+        val menu = AppMenuActions(updateAvailable = false, onOpenAppListing = {}, onSendBugReport = {}, onOpenLicenses = {})
+        showLater(mutableStateOf(later(emptyList())), menu = menu, onBack = { left++ }, onChangeTime = { changed++ })
+        val more = composeRule.activity.getString(R.string.menu_more)
+        composeRule.onNodeWithContentDescription(more).performClick()
+        composeRule.onNodeWithText("Change time…").performClick()
+        assertEquals(1, changed)
+        composeRule.onNodeWithContentDescription(more).performClick()
+        composeRule.onNodeWithText("Leave now").performClick()
+        assertEquals(1, left)
+        // Back is the trip for now too.
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertEquals(2, left)
+    }
+
+    @Test
+    fun the_time_picker_picks_leaving_or_arriving_on_a_day_and_refuses_a_time_gone_by() {
+        var picked: TripTime? = null
+        // Closed on Done, as the trip closes it, so its window doesn't outlive the test.
+        val open = mutableStateOf(true)
+        // 07:00 today, an hour gone at the screen's 08:02.
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                if (open.value) {
+                    TripTimeDialog(
+                        TripTime(TripTime.Kind.LEAVE, LocalDateTime.of(2026, 9, 26, 7, 0)), now, onDismiss = {},
+                        onDone = {
+                            picked = it
+                            open.value = false
+                        },
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("That time has passed").assertIsDisplayed()
+        composeRule.onNodeWithText("Done").assertIsNotEnabled()
+        composeRule.onNodeWithText("Tomorrow").performClick()
+        composeRule.onNodeWithTag("tripTime-ARRIVE").performClick()
+        composeRule.onAllNodesWithText("That time has passed").assertCountEquals(0)
+        composeRule.onNodeWithText("Done").assertIsEnabled().performClick()
+        assertEquals(TripTime(TripTime.Kind.ARRIVE, LocalDateTime.of(2026, 9, 27, 7, 0)), picked)
+        composeRule.onAllNodesWithText("Done").assertCountEquals(0)
+    }
+
+    @Test
+    fun the_time_picker_refuses_a_time_the_clocks_skip() {
+        var picked: TripTime? = null
+        val open = mutableStateOf(true)
+        // Noon the day before the clocks go forward: 01:30 tomorrow never shows on a clock.
+        val springEve = Instant.parse("2026-03-28T12:00:00Z")
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                if (open.value) {
+                    TripTimeDialog(
+                        TripTime(TripTime.Kind.LEAVE, LocalDateTime.of(2026, 3, 29, 1, 30)), springEve, onDismiss = {},
+                        onDone = {
+                            picked = it
+                            open.value = false
+                        },
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("The clocks skip that time").assertIsDisplayed()
+        composeRule.onNodeWithText("Done").assertIsNotEnabled()
+        // The day after, 01:30 is on the clock again, and Done picks exactly what's shown.
+        composeRule.onNodeWithTag("tripDay-2").performClick()
+        composeRule.onAllNodesWithText("The clocks skip that time").assertCountEquals(0)
+        composeRule.onNodeWithText("Done").assertIsEnabled().performClick()
+        assertEquals(TripTime(TripTime.Kind.LEAVE, LocalDateTime.of(2026, 3, 30, 1, 30)), picked)
     }
 
     @Test

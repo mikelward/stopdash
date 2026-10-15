@@ -165,6 +165,14 @@ boards are fetched from TfL like any other stop's, along with its lines' status.
 in memory only, never saved or logged beyond coarse diagnostics (a stop id, an HTTP status), and
 nothing runs once you leave the trip.
 
+**A later trip** (*Change time…* on a trip) sends the same requests to TfL's Journey Planner, except
+the ones via bus stops near the start (not made for a later trip yet), with the **date and time** you picked, and whether you'd leave then or arrive by then, so the Planner
+answers from its timetable. It's planned once when you pick the time, and again only when you tap
+*Try again*, change your walking speed, walk limit, step-free level or modes, or move far enough that
+the trip starts from a different nearest stop; no stop's departures or line status are fetched for it. The time is kept with the trip
+while it's open (over a rotation, or Android closing the app in the background) and forgotten when
+you leave it; the debug log says only that a planner request was for a later time, never the time.
+
 **A trip on the way** (after you tap *Start* on a route) is kept on the device until you arrive or
 end it: the route's stops and lines, the leg you're on and the train followed, and where you chose to
 go (the destination's stops, or the position of the place you picked: a favorite, a place or a
@@ -408,9 +416,9 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
   index, the place index, the bus stops, your saved stops or your favorite places) takes longer
   than a quarter of a second, which one and how many milliseconds — never what was typed or read,
 - **trip timing**: how long each journey planner request took and how many routes it returned,
-  and how long a trip's routes took to show, with what the page last waited for, by kind (a
-  refresh, the line checks, line routes and how many) — counts and milliseconds only, never
-  either end of the trip,
+  whether it was for a later time (never which), and how long a trip's routes took to show, with
+  what the page last waited for, by kind (a refresh, the line checks, line routes and how many) —
+  counts and milliseconds only, never either end of the trip,
 - **a slow or retried network request**: who it went to (TfL or National Rail), the
   endpoint's kind with every identifier and anything typed left out (e.g. `StopPoint/…/Disruption`), how long it
   took to get a connection, to start answering and to finish, whether the connection was new,

@@ -2272,6 +2272,28 @@ takes the plan's own bus fare, where the plan's priced bus routes all agree on i
 price for those buses, not a guess; a route with any other part stays blank.
 The level is named only where every part of the route is charged at it; a bus part has none.
 
+**A later trip** (maintainer, 2026-10-15). *Change time…* in the trip's overflow plans the same
+trip — the same ends, walk, step-free level, modes and lines avoided — for a time the rider picks:
+**Leave** at it or **Arrive by** it, today or on one of the next six days; a time already gone by
+can't be picked, nor one the clocks skip going forward, which would be planned as a time other than shown. The overflow, not a row of the From/To bar, for now (maintainer, 2026-10-15). TfL's
+Planner answers from its **timetable**, and nothing live reaches that far ahead, so a later trip is
+**timetable-only** (maintainer, 2026-10-15): its own list in place of the trip for now, headed with
+when ("Leave Sun 27 09:00", the date dropped for today) and "Timetable, not live", each card the
+Planner's departure and arrival and its minutes, then a row per ride — when it leaves, its line,
+where it gets off — and its walks. The Planner is asked for routes one way only — leaving no sooner
+than a leave-at time, arriving no later than an arrive-by one — and a route that breaks the time isn't
+listed. Leaving at a time lists the soonest there first; arriving by one, the latest to leave first. It asks the Planner what the trip for now does except via the bus stops towards the destination
+(*Buses towards the destination*), which a later trip doesn't ask yet (a follow-up, maintainer, 2026-10-15). It plans once, and again only on *Try again* or when the rider's walk, step-free level or modes change
+(a mode hidden or a line avoided only lists the plan again): no stop's departures, line status or
+closures are fetched, and it doesn't re-plan as the rider moves, except that a move far enough to change
+the trip's nearest stop makes the trip afresh, and its later list is planned again from there. Whatever it shows answers the time and
+choices as they stand, never a plan made under others. None of the trip for
+now's labels, ranking, live boards or Start apply. **A card tapped opens that route in the trip for
+now** (maintainer, 2026-10-15), live, under a line saying "Times for now, not ‹the time picked›";
+closing it goes back to the later list, which says "Not planned for now" when the trip for now
+doesn't offer that route. Back, or *Leave now*, returns to the trip for now; the time picked is kept
+with the trip while it's open and forgotten when it closes.
+
 ### On the way
 
 *In progress* (maintainer, 2026-09-26; mocked the same day). An open trip route has a **Start**
