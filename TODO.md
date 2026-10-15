@@ -1952,6 +1952,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   for a line whose stops are known by id and whose routes bring every train there
                   the ride's way from the boarding stop, soonest first until a train behind them bounds theirs: the latest past them when seen at a stop, only a lone one between
                   stops (*Two trains between the same two stops*).
+              - [x] **A bus the board never listed** (maintainer bug report, 2026-10-15: a trip started
+                    on board a bus showed only the next stop, no time to get off). The board ahead was
+                    read only for a line whose stops are known by id, and a bus ride's are stop pairs,
+                    whose own board is empty, so the bus was never named. Done: for a bus it's the one
+                    pole its route reaches the pair ahead by, the ride's way, where every route calling
+                    there came that way (`OnTheWay.boardAhead`).
             - [x] **A bus on the other pole of the boarding pair**: the board read is the pole the
                   Planner named, alone, for picking a train too, so another of the ride's bus routes
                   that stops only at the pair's other pole is never followed, picked or seen boarded

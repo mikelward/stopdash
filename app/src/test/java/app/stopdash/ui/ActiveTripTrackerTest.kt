@@ -2822,6 +2822,50 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `a bus the boarding stop's board never listed is named from the pole ahead, with a time to get off`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        // Bus 1 south from pole Ps of pair PG, through pairs QG and RG to SG, as the Planner gives the ride: by pairs.
+        val bus = TripLeg(
+            "bus", "1", "1", "Ps", "P", "Ss", "S", at(5), at(15),
+            path = listOf("490GQ", "490GR", "490GS"), pathNames = listOf("Q", "R", "S"), fromArea = "490GP", toArea = "490GS",
+        )
+        val poles = mapOf(
+            "Ps" to ("490GP" to 51.50), "Pn" to ("490GP" to 51.50), "Qs" to ("490GQ" to 51.51), "Qn" to ("490GQ" to 51.51),
+            "Rs" to ("490GR" to 51.52), "Rn" to ("490GR" to 51.52), "Ss" to ("490GS" to 51.53), "Sn" to ("490GS" to 51.53),
+        )
+        sequences["1"] = app.stopdash.domain.LineSequence(
+            listOf(app.stopdash.domain.LineRoute("south", listOf("Ps", "Qs", "Rs", "Ss")), app.stopdash.domain.LineRoute("north", listOf("Sn", "Rn", "Qn", "Pn"))),
+            poles.keys.associateWith { it.take(1) },
+            stopPositions = poles.mapValues { (_, at) -> at.second to -0.12 },
+            stopAreas = poles.mapValues { (_, at) -> at.first },
+        )
+        fun busAt(vehicle: String, minutes: Long) = Departure("1", "1", "outbound", "S", null, at(minutes), "bus", vehicleId = vehicle)
+        // The rider caught 5 before the trip was started: the stop's board lists only 9, the one after.
+        departures["Ps"] = listOf(busAt("9", 14))
+        trains["1/9"] = listOf(call("Ps", 14), call("Qs", 16), call("Rs", 18), call("Ss", 21))
+        now = at(6)
+        tracker.start(TripRoute(listOf(bus)), "S", readyAt = now)
+        tracker.refresh()
+        assertEquals("9", tracker.trip.value?.vehicleId)
+        // Seen at Q on 5. The pair's own board is empty; R's pole southbound lists 5 arriving, then 9.
+        departures["Rs"] = listOf(busAt("5", 8), busAt("9", 18))
+        trains["1/5"] = listOf(call("Rs", 8), call("Ss", 11))
+        now = at(7)
+        boardStops.clear()
+        tracker.refresh(fixAt(51.51))
+        // Read once, R's pole and not the pair, and 5 is theirs: 9, still to call at P, is behind them.
+        assertEquals(listOf("Rs"), boardStops.filter { it != "Ps" })
+        assertEquals("5", tracker.trip.value?.vehicleId)
+        assertEquals(true, tracker.trip.value?.onBoardSeen)
+        assertFalse(tracker.failed.value)
+        // So the ride has its stops left and a time to get off, not only the next stop by where they were seen.
+        val riding = tracker.progress.value as TripProgress.Riding
+        assertEquals(2, riding.stopsLeft)
+        assertEquals(at(11), riding.getOffAt)
+        assertFalse(riding.byPosition)
+    }
+
+    @Test
     fun `a train named from the board ahead doesn't take that stop's time for when it was at theirs`() = runTest {
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         sequences["red"] = redLine

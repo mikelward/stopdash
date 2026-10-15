@@ -2226,15 +2226,14 @@ class ActiveTripTracker(
 
     // The trains of [line] the board at the stop ahead of a rider seen at [where] on it lists, arriving
     // there: the train they're on among them, for [boardedAlong] to tell by its calls (TODO, *A train the
-    // board never listed*). One request a fix, only while their train is unknown, and only for a line
-    // whose stops are known by id ([OnTheWay.checkable]): a bus's are stop areas, no stop to read. Nor
+    // board never listed*). One request a fix, only while their train is unknown: for a bus, at the pole
+    // its line's route reaches that stop pair by, the ride's way, as a pair's own board is empty. Not
     // where the line's routes ([sequence]) bring trains to that stop other than through the boarding
-    // stop ([OnTheWay.comesThroughBoarding]): starting there, or joining from another branch, one there
-    // can't be theirs, and its calls wouldn't say so. Empty when there's nothing to read; null when the
-    // read failed, which is said.
+    // stop ([OnTheWay.boardAhead]): starting there, or joining from another branch, one there can't be
+    // theirs, and its calls wouldn't say so. Empty when there's nothing to read; null when the read
+    // failed, which is said.
     private suspend fun aheadOf(line: TripLeg, where: OnTheWay.Along, sequence: LineSequence?): List<Departure>? {
-        if (!OnTheWay.checkable(line) || !OnTheWay.comesThroughBoarding(line, OnTheWay.ahead(where), sequence)) return emptyList()
-        val stop = line.path.getOrNull(OnTheWay.ahead(where)) ?: line.toId
+        val stop = withContext(compute) { OnTheWay.boardAhead(line, OnTheWay.ahead(where), sequence) } ?: return emptyList()
         return try {
             arrivals(stop).filter { it.lineId == line.lineId }
         } catch (e: CancellationException) {

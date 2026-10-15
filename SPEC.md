@@ -2827,8 +2827,10 @@ a fix behind that keeps where they are and matches nothing. It looks first among
 boarding stop's board listed that have left it (one of those with no calls or destination to place
 it may be theirs, so then none is named); with none of them theirs, or none known (after a restart, or a train
 that came and went between refreshes), on the board at the stop ahead of them,
-which lists theirs arriving: one request a fix, only while their train is unknown, and only on a line
-whose stops are known by id (a bus's aren't). Not where the line's routes bring trains to that stop
+which lists theirs arriving: one request a fix, only while their train is unknown. A bus ride's stops
+are stop pairs, whose own board is empty, so for a bus it's the pole its route reaches that pair by, the
+ride's way (maintainer, 2026-10-15: a bus boarded before the trip was started was never named, and the
+ride had no time to get off). Not where the line's routes bring trains to that stop
 other than the ride's way, from the boarding stop by just its stops: one starting there, joining from
 another branch, or coming by another way can't be theirs, and nothing it says of the stops ahead
 tells it apart. Only a train that takes the

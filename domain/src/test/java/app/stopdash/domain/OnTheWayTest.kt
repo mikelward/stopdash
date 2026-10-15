@@ -1204,6 +1204,49 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `the board ahead is the stop itself on a train's ride, and the pole the bus reaches its pair by on a bus's`() {
+        val trunk = LineSequence(listOf(LineRoute("A-C", listOf("A", "B", "C")), LineRoute("C-A", listOf("C", "B", "A"))), emptyMap())
+        assertEquals("B", OnTheWay.boardAhead(ride, 0, trunk))
+        assertEquals("C", OnTheWay.boardAhead(ride, 1, trunk))
+        assertNull(OnTheWay.boardAhead(ride, 0, trunk.copy(routes = trunk.routes + LineRoute("B-C", listOf("B", "C")))))
+        // A bus from pole Ps of pair PG, its path the pairs QG, RG and SG, as the Planner gives them: each pair's own
+        // board is empty, so the pole the route reaches it by the ride's way is read. Its way back, by the other
+        // poles, never is.
+        val bus = TripLeg(
+            "bus", "1", "1", "Ps", "P", "Ss", "S", at(5), at(15),
+            path = listOf("490GQ", "490GR", "490GS"), fromArea = "490GP", toArea = "490GS",
+        )
+        val areas = mapOf(
+            "Ps" to "490GP", "Pn" to "490GP", "Qs" to "490GQ", "Qn" to "490GQ",
+            "Rs" to "490GR", "Rn" to "490GR", "Ss" to "490GS", "Sn" to "490GS",
+        )
+        val line = LineSequence(
+            listOf(LineRoute("south", listOf("Ps", "Qs", "Rs", "Ss")), LineRoute("north", listOf("Sn", "Rn", "Qn", "Pn"))),
+            emptyMap(),
+            stopAreas = areas,
+        )
+        assertEquals("Qs", OnTheWay.boardAhead(bus, 0, line))
+        assertEquals("Rs", OnTheWay.boardAhead(bus, 1, line))
+        assertEquals("Ss", OnTheWay.boardAhead(bus, 2, line))
+        // Boarded at the pair's other pole, by the Planner's pair: the same way.
+        assertEquals("Rs", OnTheWay.boardAhead(bus, 1, line.copy(routes = listOf(LineRoute("south", listOf("Pn", "Qs", "Rs", "Ss"))))))
+        // Buses starting at R's pole, or joining there from elsewhere, can't be told from theirs on its board.
+        assertNull(OnTheWay.boardAhead(bus, 1, line.copy(routes = line.routes + LineRoute("short", listOf("Rs", "Ss")))))
+        assertNull(OnTheWay.boardAhead(bus, 1, line.copy(routes = line.routes + LineRoute("joins", listOf("Xs", "Rs", "Ss")))))
+        // Nor one reaching R's pair the ride's way by two poles: which lists theirs isn't known.
+        val twoPoles = line.copy(
+            routes = line.routes + LineRoute("other", listOf("Ps", "Qs", "Rw", "Ss")),
+            stopAreas = areas + ("Rw" to "490GR"),
+        )
+        assertNull(OnTheWay.boardAhead(bus, 1, twoPoles))
+        // A route by a pair the ride doesn't call at between can't be theirs either.
+        assertNull(OnTheWay.boardAhead(bus, 1, line.copy(routes = line.routes + LineRoute("by X", listOf("Ps", "Xs", "Rs", "Ss")))))
+        // No route known, or a ride with no stops planned: nothing to go on.
+        assertNull(OnTheWay.boardAhead(bus, 1, null))
+        assertNull(OnTheWay.boardAhead(bus.copy(path = emptyList()), 0, line))
+    }
+
+    @Test
     fun `a train can be the rider's from when they can be at the stop, or a minute before once on board`() {
         val waiting = trip.copy(legStartedAt = at(6))
         assertEquals(at(6), OnTheWay.boardableFrom(waiting))
