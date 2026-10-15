@@ -2686,6 +2686,16 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
     - [ ] **The widget follows Group favorite rides** (maintainer, 2026-10-15). The widget
           always groups its rides' rows by stop, whatever the setting. Grouped by ride, it should
           head each ride and keep the app's ride order, as the list does.
+    - [ ] **Make the favorite radius a setting** (maintainer, 2026-10-15). The mile that holds a
+          ride back behind "Faraway favorites" (and off the widget) is fixed. Make it a choice in
+          Settings, such as 500 m, 1 mile (the default), 2 miles and never hide, and use the same
+          radius for ride alerts: a ride's alert fires only while the phone is within it of one of
+          the ride's ends. Open questions for then:
+          - How it sits with *Only in London*. The radius is the narrower line, so it would replace
+            the 120 km test wherever both apply. "Never hide" would keep today's London-wide alerts.
+          - What a check does with no position. Today an alert fires anyway rather than go quiet.
+            That needs background location (*Allow all the time*), as *Only in London* already does.
+          - How the setting names the two uses in one label.
     - [x] **A relocate that flips a journey's direction refetches once.** A same-set relocate
           refreshed with the journey stops the screen last reported, so when the fresh fix turned a
           journey round (its origin now the other end) the refresh started on the old origin and
