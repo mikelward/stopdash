@@ -382,6 +382,11 @@ data class WidgetJourney(
     // [DeparturesSnapshot.nearestFirst]). Null when unknown (a pin an older build stored): it follows
     // the ranked ones.
     val rank: Int? = null,
+    // The journey's two ends as the app names it, in the direction shown ([shownFrom]), so the widget
+    // can head its rides as the app does when they're grouped by ride ([WidgetJourneysReport.names]).
+    // Blank where not known yet (a pin an older build stored): headed by its stop instead.
+    val fromName: String = "",
+    val toName: String = "",
 )
 
 /**
@@ -417,6 +422,9 @@ data class WidgetJourneysReport(
     // [WidgetJourney.rank]. Empty from a report that doesn't know it (Settings' Remove), which keeps
     // the ranks stored.
     val order: List<String> = emptyList(),
+    // Each journey's two ends as the list names them, in the direction shown, by key: its pins'
+    // [WidgetJourney.fromName] and [WidgetJourney.toName]. A journey absent here keeps the names stored.
+    val names: Map<String, Pair<String, String>> = emptyMap(),
 )
 
 object WidgetJourneys {
@@ -455,6 +463,7 @@ object WidgetJourneys {
         val journeys = merge(prior, keys, report.checks).values
             .filter { it.calls.isNotEmpty() && (it.originId in storedIds || it.originId in supplied) }
             .map { if (report.order.isEmpty()) it else it.copy(rank = ranks[baseKey(it.key)]) }
+            .map { pin -> report.names[baseKey(pin.key)]?.let { (from, to) -> pin.copy(fromName = from, toName = to) } ?: pin }
             .sortedBy { it.key }
         val pinnedOrigins = journeys.mapTo(HashSet()) { it.originId }
         val journeyOnly = stored?.journeyOnlyStopIds.orEmpty()
@@ -503,6 +512,8 @@ object WidgetJourneys {
                 // Where its departures get off, kept through a check that couldn't place them yet.
                 alightIds = check.alightIds.ifEmpty { pin?.alightIds.orEmpty() },
                 rank = next[check.key]?.rank,
+                fromName = next[check.key]?.fromName.orEmpty(),
+                toName = next[check.key]?.toName.orEmpty(),
             )
         }
         return next

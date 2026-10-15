@@ -16,6 +16,8 @@ import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.WidgetJourney
+import app.stopdash.domain.WidgetJourneys
+import app.stopdash.ui.GroupHeader
 import app.stopdash.domain.lineAlertFingerprint
 import java.time.Instant
 import java.time.LocalDate
@@ -932,6 +934,199 @@ class WidgetModelTest {
         )
         val rows = widgetModel(snapshot, now).rows.map { it.row }
         assertEquals(listOf(listOf("Hill"), listOf("Dale")), rows.map { r -> r.upcoming.map { it.destination } })
+    }
+
+    private val rideTitle = { from: String, to: String -> GroupHeader(text = "$from ➔ $to", spoken = "$from to $to") }
+
+    @Test
+    fun `the widget's settings are waited for together, not in turn`() = kotlinx.coroutines.test.runTest {
+        // Two settings each held by a stalled store for their whole bounded wait: one wait, not two.
+        val read = loadedTogether(
+            { kotlinx.coroutines.delay(2_000); "hidden" },
+            { kotlinx.coroutines.delay(2_000); "grouping" },
+        )
+        assertEquals("hidden" to "grouping", read)
+        assertEquals(2_000L, testScheduler.currentTime)
+    }
+
+    @Test
+    fun `grouped by ride, each ride is headed by its ends, in the app's order, over its own boarding stops`() {
+        val pole = WidgetJourneys.poleKey("a", "490000001B")
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(
+                stop("490000001A", listOf(toward("b1", "Hill", 300)), now.minusSeconds(30), name = "Stop A"),
+                stop("490000001B", listOf(toward("b1", "Hill", 60)), now.minusSeconds(30), name = "Stop B"),
+                stop("490000002C", listOf(toward("b2", "Town", 30)), now.minusSeconds(30), name = "Stop C"),
+            ),
+            fetchedAt = now.minusSeconds(30),
+            journeys = listOf(
+                WidgetJourney("490000001A", setOf(JourneyCall("b1", "Hill", null)), "a", rank = 1, fromName = "Park", toName = "Hill"),
+                WidgetJourney("490000001B", setOf(JourneyCall("b1", "Hill", null)), pole, rank = 1, fromName = "Park", toName = "Hill"),
+                WidgetJourney("490000002C", setOf(JourneyCall("b2", "Town", null)), "b", rank = 0, fromName = "Park", toName = "Town"),
+            ),
+            journeyOnlyStopIds = setOf("490000001A", "490000001B", "490000002C"),
+        )
+        val byRide = widgetModel(snapshot, now, rideTitle = rideTitle).rows
+        // The nearer ride first; the other's two stops under its one heading, soonest first.
+        assertEquals(listOf("b2", "b1", "b1"), byRide.map { it.row.lineId })
+        assertEquals(listOf("490000002C", "490000001B", "490000001A"), byRide.map { it.row.stopId })
+        assertEquals(listOf("Park ➔ Town", "Park ➔ Hill", null), byRide.map { it.header?.text })
+        // A screen reader hears the ride as the app's heading says it, not the arrow.
+        assertEquals(listOf("Park to Town", "Park to Hill", null), byRide.map { it.header?.spoken })
+        // By stop, the same rows go under the stops they board from.
+        val byStop = widgetModel(snapshot, now).rows
+        assertEquals(listOf("Stop C", "Stop B", "Stop A"), byStop.map { it.header?.text })
+        // The compact widget names neither.
+        val bare = widgetModel(snapshot, now, geometry = WidgetGeometry(250.dp, 400.dp, bare = true), rideTitle = rideTitle).rows
+        assertEquals(byRide.map { it.row.lineId }, bare.map { it.row.lineId })
+        assertTrue(bare.all { it.header == null })
+    }
+
+    @Test
+    fun `a ride heading's two ends shorten evenly, never one in full while the other is cut`() {
+        val from = "North Example Junction"
+        val to = "Great Sample Park"
+        val fromForms = app.stopdash.domain.DestinationAbbreviations.forms(from)
+        val toForms = app.stopdash.domain.DestinationAbbreviations.forms(to)
+        // Room for both: in full.
+        assertEquals(from to to, widgetRideEnds(from, to, 400.dp))
+        var shortened = false
+        for (width in 400 downTo 60 step 4) {
+            val (a, b) = widgetRideEnds(from, to, width.dp)
+            // Both at one step of the forms, or past the last both at their last, each in its even share of
+            // the line (the shorter keeping all it needs): one never keeps more while the other is cut.
+            val level = fromForms.indices.any { level -> a == fromForms[level] && b == toForms.getOrElse(level) { toForms.last() } }
+            fun last(part: String, forms: List<String>) = part == forms.last() || (part.endsWith("…") && forms.last().startsWith(part.dropLast(1)))
+            assertTrue("$width dp: $a | $b", level || (last(a, fromForms) && last(b, toForms)))
+            if (a != from) shortened = true
+            // Neither end is lost.
+            assertTrue("$width dp: $a | $b", a.trimEnd('…').isNotEmpty() && b.trimEnd('…').isNotEmpty())
+        }
+        assertTrue(shortened)
+        // A tight cell cuts both.
+        val (a, b) = widgetRideEnds(from, to, 60.dp)
+        assertTrue("$a | $b", a.endsWith("…") && b.endsWith("…"))
+    }
+
+    @Test
+    fun `grouped by ride, a long ride heading is drawn shortened and said in full`() {
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(stop("490000001A", listOf(toward("b1", "Hill", 60)), now.minusSeconds(30), name = "Stop A")),
+            fetchedAt = now.minusSeconds(30),
+            journeys = listOf(
+                WidgetJourney(
+                    "490000001A", setOf(JourneyCall("b1", "Hill", null)), "a",
+                    fromName = "North Example Junction", toName = "Great Sample Park",
+                ),
+            ),
+            journeyOnlyStopIds = setOf("490000001A"),
+        )
+        val header = widgetModel(snapshot, now, geometry = WidgetGeometry(180.dp, 400.dp), rideTitle = rideTitle).rows.single().header!!
+        val (from, to) = widgetRideEnds("North Example Junction", "Great Sample Park", 180.dp)
+        assertEquals("$from ➔ $to", header.text)
+        assertTrue(header.text, header.text != "North Example Junction ➔ Great Sample Park")
+        assertEquals("North Example Junction to Great Sample Park", header.spoken)
+    }
+
+    @Test
+    fun `grouped by ride, a train two rides board at one stop shows under the first only`() {
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(
+                stop("490000001A", listOf(toward("b1", "Hill", 60), toward("b2", "Dale", 120)), now.minusSeconds(30), name = "Stop A"),
+            ),
+            fetchedAt = now.minusSeconds(30),
+            journeys = listOf(
+                WidgetJourney("490000001A", setOf(JourneyCall("b1", "Hill", null)), "a", rank = 0, fromName = "Park", toName = "Hill"),
+                WidgetJourney(
+                    "490000001A", setOf(JourneyCall("b1", "Hill", null), JourneyCall("b2", "Dale", null)), "b",
+                    rank = 1, fromName = "Park", toName = "Dale",
+                ),
+            ),
+            journeyOnlyStopIds = setOf("490000001A"),
+        )
+        val rows = widgetModel(snapshot, now, rideTitle = rideTitle).rows
+        assertEquals(listOf("b1", "b2"), rows.map { it.row.lineId })
+        assertEquals(listOf("Park ➔ Hill", "Park ➔ Dale"), rows.map { it.header?.text })
+        // A ride whose every train an earlier ride shows has nothing under it, and no heading.
+        val same = snapshot.copy(journeys = snapshot.journeys.map { it.copy(calls = setOf(JourneyCall("b1", "Hill", null))) })
+        assertEquals(listOf("Park ➔ Hill"), widgetModel(same, now, rideTitle = rideTitle).rows.map { it.header?.text })
+    }
+
+    @Test
+    fun `grouped by ride, a suspended line two rides board at one stop shows under both`() {
+        val suspended = LineStatus("waterloo-city", 5, "Suspended")
+        val stop = stop("490A", listOf(departure("victoria", 120)), now, name = "Stop A")
+            .copy(lines = listOf(LineRef("victoria", "Victoria", "tube"), LineRef("waterloo-city", "Waterloo & City", "tube")))
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(stop),
+            fetchedAt = now,
+            lineStatuses = mapOf("waterloo-city" to LineStatusCheck(suspended, now)),
+            journeys = listOf(
+                WidgetJourney("490A", setOf(JourneyCall("waterloo-city", "Hill", null)), "a", rank = 0, fromName = "Park", toName = "Hill"),
+                WidgetJourney("490A", setOf(JourneyCall("waterloo-city", "Dale", null)), "b", rank = 1, fromName = "Park", toName = "Dale"),
+            ),
+            journeyOnlyStopIds = setOf("490A"),
+        )
+        val rows = widgetModel(snapshot, now, rideTitle = rideTitle).rows
+        // No train to show twice: each ride the suspension holds up says so under its own heading.
+        assertEquals(listOf("waterloo-city", "waterloo-city"), rows.map { it.row.lineId })
+        assertEquals(listOf("Park ➔ Hill", "Park ➔ Dale"), rows.map { it.header?.text })
+        assertTrue(rows.all { it.row.status == suspended && it.groups.isEmpty() })
+    }
+
+    @Test
+    fun `grouped by ride, rides the app hasn't placed follow its placed ones, soonest first`() {
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(
+                stop("490000001A", listOf(toward("b1", "Hill", 600)), now.minusSeconds(30), name = "Stop A"),
+                stop("490000001B", listOf(toward("b2", "Dale", 60)), now.minusSeconds(30), name = "Stop B"),
+                stop("490000002C", listOf(toward("b3", "Town", 900)), now.minusSeconds(30), name = "Stop C"),
+            ),
+            fetchedAt = now.minusSeconds(30),
+            // An older snapshot's rides carry no place: listed later-leaving first.
+            journeys = listOf(
+                WidgetJourney("490000001A", setOf(JourneyCall("b1", "Hill", null)), "a", fromName = "Park", toName = "Hill"),
+                WidgetJourney("490000001B", setOf(JourneyCall("b2", "Dale", null)), "b", fromName = "Park", toName = "Dale"),
+                WidgetJourney("490000002C", setOf(JourneyCall("b3", "Town", null)), "c", rank = 0, fromName = "Park", toName = "Town"),
+            ),
+            journeyOnlyStopIds = setOf("490000001A", "490000001B", "490000002C"),
+        )
+        val rows = widgetModel(snapshot, now, rideTitle = rideTitle).rows
+        assertEquals(listOf("Park ➔ Town", "Park ➔ Dale", "Park ➔ Hill"), rows.map { it.header?.text })
+    }
+
+    @Test
+    fun `until the app names its rides, the widget goes by stop, each stop headed once`() {
+        // An earlier build's pins, with no names to head the rides by: one ride from two stops, and
+        // another sharing the first stop (Codex, #872).
+        val pole = WidgetJourneys.poleKey("a", "490000001B")
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(
+                stop("490000001A", listOf(toward("b1", "Hill", 60), toward("b2", "Dale", 180)), now.minusSeconds(30), name = "Stop A"),
+                stop("490000001B", listOf(toward("b1", "Hill", 300)), now.minusSeconds(30), name = "Stop B"),
+            ),
+            fetchedAt = now.minusSeconds(30),
+            journeys = listOf(
+                WidgetJourney("490000001A", setOf(JourneyCall("b1", "Hill", null)), "a", rank = 0),
+                WidgetJourney("490000001B", setOf(JourneyCall("b1", "Hill", null)), pole, rank = 0),
+                WidgetJourney("490000001A", setOf(JourneyCall("b2", "Dale", null)), "b", rank = 1),
+            ),
+            journeyOnlyStopIds = setOf("490000001A", "490000001B"),
+        )
+        val rows = widgetModel(snapshot, now, rideTitle = rideTitle).rows
+        // Each stop's departures together under its own heading, Stop A's once.
+        assertEquals(listOf("490000001A", "490000001A", "490000001B"), rows.map { it.row.stopId })
+        assertEquals(listOf("Stop A", null, "Stop B"), rows.map { it.header?.text })
+        assertEquals(listOf("Stop A", null, "Stop B"), rows.map { it.header?.spoken })
+        // Just as the widget draws them grouped by stop.
+        assertEquals(widgetModel(snapshot, now).rows, rows)
+        // Once the app names its rides, each is headed by its ends.
+        val named = snapshot.copy(
+            journeys = snapshot.journeys.map {
+                it.copy(fromName = "Park", toName = if (WidgetJourneys.baseKey(it.key) == "a") "Hill" else "Dale")
+            },
+        )
+        assertEquals(listOf("Park ➔ Hill", null, "Park ➔ Dale"), widgetModel(named, now, rideTitle = rideTitle).rows.map { it.header?.text })
     }
 
     @Test

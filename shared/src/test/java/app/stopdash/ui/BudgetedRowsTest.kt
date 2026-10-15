@@ -63,6 +63,12 @@ class BudgetedRowsTest {
             listOf(group("k1", a), group(secondKey, b)).map { g -> g.copy(rows = g.rows.filter { it in rows }) }.filter { it.rows.isNotEmpty() }
         }).map { it.header?.text }
         assertEquals(listOf("Example Stop", null), headers("k1"))
+        // A group with a spoken form of its own is said that way; one without, by its name.
+        val spoken = BudgetedRows.select(listOf(a, b), budget = 4, maxTimes = 3, topology = RouteTopology.EMPTY, grouped = { rows ->
+            listOf(group("k1", a).copy(stopName = "Park ➔ Hill", spokenName = "Park to Hill"), group("k2", b))
+                .map { g -> g.copy(rows = g.rows.filter { it in rows }) }.filter { it.rows.isNotEmpty() }
+        }).map { it.header?.text to it.header?.spoken }
+        assertEquals(listOf("Park ➔ Hill" to "Park to Hill", "Example Stop" to "Example Stop"), spoken)
         assertEquals(listOf("Example Stop", "Example Stop"), headers("k2"))
     }
 

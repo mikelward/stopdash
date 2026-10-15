@@ -371,6 +371,21 @@ open class StopdashApp : Application() {
                     }
                 }
         }
+        // Likewise when Group favorite rides changes, which the widget follows too.
+        applicationScope.launch {
+            RideGroupingSetting.changes
+                .drop(1)
+                .collect {
+                    try {
+                        redrawWidgets(this@StopdashApp)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // The next snapshot save redraws it anyway; only the prompt redraw is lost.
+                        logAppSettingsWarning("widget redraw after grouping failed: ${e::class.simpleName}")
+                    }
+                }
+        }
     }
 
     /**

@@ -138,6 +138,30 @@ class WidgetJourneysTest {
     }
 
     @Test
+    fun `each pin takes its journey's ends as the list names them, kept through a report without them`() {
+        val poleKey = WidgetJourneys.poleKey("j", "490000002B")
+        val stored = DeparturesSnapshot(
+            stops = listOf(stop("490000001A"), stop("490000002B")),
+            fetchedAt = now,
+            journeys = listOf(
+                WidgetJourney("490000001A", setOf(hill), "j"),
+                WidgetJourney("490000002B", setOf(dale), poleKey),
+            ),
+        )
+        fun names(snapshot: DeparturesSnapshot) = snapshot.journeys.associate { it.key to (it.fromName to it.toName) }
+        // A pole's pin is headed as its journey is.
+        val named = WidgetJourneys.apply(stored, WidgetJourneysReport(setOf("j"), emptyList(), names = mapOf("j" to ("Park" to "Hill"))), emptyList())!!
+        assertEquals(mapOf("j" to ("Park" to "Hill"), poleKey to ("Park" to "Hill")), names(named))
+        // A check without names (Settings' Remove sends none) keeps those stored.
+        val check = WidgetJourneyCheck("j", "490000001A", setOf(hill, dale))
+        val kept = WidgetJourneys.apply(named, WidgetJourneysReport(setOf("j"), listOf(check)), emptyList())!!
+        assertEquals(names(named), names(kept))
+        // Shown the other way round: the new ends replace the old.
+        val flipped = WidgetJourneys.apply(kept, WidgetJourneysReport(setOf("j"), emptyList(), names = mapOf("j" to ("Hill" to "Park"))), emptyList())!!
+        assertEquals(mapOf("j" to ("Hill" to "Park"), poleKey to ("Hill" to "Park")), names(flipped))
+    }
+
+    @Test
     fun `a journey update keeps the missing stops, less any origin it adds`() {
         val stored = DeparturesSnapshot(listOf(stop("490000001A")), now, missingStopIds = setOf("490000002B", "490000003C"))
         val report = WidgetJourneysReport(setOf("j"), listOf(WidgetJourneyCheck("j", "490000002B", setOf(hill))))
