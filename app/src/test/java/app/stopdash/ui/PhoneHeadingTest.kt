@@ -4,6 +4,7 @@ import android.app.Application
 import android.hardware.Sensor
 import android.hardware.SensorManager
 import android.view.Surface
+import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ApplicationProvider
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.math.cos
@@ -14,6 +15,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -85,6 +87,48 @@ class PhoneHeadingTest {
         job.cancel()
         job.join()
         assertTrue(shadowOf(manager).listeners.isEmpty())
+    }
+
+    @Test
+    fun `letting the compass go is logged with why, once anything was, the why read on the caller's thread`() = runBlocking {
+        shadowOf(manager).addSensor(sensor)
+        val logged = CopyOnWriteArrayList<String>()
+        val caller = Thread.currentThread()
+        val askedOn = CopyOnWriteArrayList<Thread>()
+        val stoppedOn = CopyOnWriteArrayList<Thread>()
+        val reason = { askedOn += Thread.currentThread(); "no way to point" }
+        val log = { line: String ->
+            logged += line
+            if (line.startsWith("stopped")) stoppedOn += Thread.currentThread()
+        }
+        // Let go before any reading: nothing was said, so nothing is said of its going.
+        val quiet = launch { PhoneHeading.watch(Dispatchers.Default, app, Surface.ROTATION_0, reason, log) {} }
+        while (shadowOf(manager).listeners.isEmpty()) yield()
+        quiet.cancel()
+        quiet.join()
+        assertTrue(logged.isEmpty())
+        // An arrow shown, then the compass let go: its going said, with the caller's reason (bug report, 2026-10-15).
+        val job = launch { PhoneHeading.watch(Dispatchers.Default, app, Surface.ROTATION_0, reason, log) {} }
+        while (shadowOf(manager).listeners.isEmpty()) yield()
+        shadowOf(manager).sendSensorEventToListeners(facing(90.0))
+        job.cancel()
+        job.join()
+        assertEquals(listOf("arrow shown", "stopped, no way to point"), logged.toList())
+        // Asked back on the caller's thread, not the worker the sensor was read on: the trip screen's
+        // reason reads the lifecycle's state, which is the main thread's to read (Codex, #881). The line
+        // itself is written on the worker: a log line is I/O, never the main thread's (Codex, #881).
+        assertEquals(listOf(caller), askedOn.toList())
+        assertEquals(1, stoppedOn.size)
+        assertNotEquals(caller, stoppedOn.single())
+    }
+
+    @Test
+    fun `why the compass was let go is the trip screen's own`() {
+        assertEquals("no way to point", PhoneHeading.stopReason(wanted = false, Lifecycle.State.RESUMED))
+        // Not wanted outranks the screen: a walk's way withheld as the phone locks is still why.
+        assertEquals("no way to point", PhoneHeading.stopReason(wanted = false, Lifecycle.State.CREATED))
+        assertEquals("screen not shown", PhoneHeading.stopReason(wanted = true, Lifecycle.State.CREATED))
+        assertEquals("trip card off screen", PhoneHeading.stopReason(wanted = true, Lifecycle.State.STARTED))
     }
 
     @Test

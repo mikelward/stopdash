@@ -157,6 +157,10 @@ class ActiveTripTracker(
     // between refreshes measures to its entrances without a read of its own.
     @Volatile private var walkPlaces: Pair<Int, StationPlaces>? = null
 
+    // The walk whose direction the log last spoke of (its trip's start and leg) and what it said
+    // ([OnTheWay.WayWithheld], null for shown), so each change is said once ([noteWay]). Under [lock].
+    private var wayNoted: Triple<Instant, Int, OnTheWay.WayWithheld?>? = null
+
     // Whether the last refresh couldn't reach TfL: the screen says the trip isn't current.
     private val _failed = MutableStateFlow(false)
     val failed: StateFlow<Boolean> = _failed.asStateFlow()
@@ -1255,9 +1259,20 @@ class ActiveTripTracker(
                 if (before && walking.metersLeft != null && !walking.estimated) return@withLock
                 val places = walkPlaces?.takeIf { it.first == trip.legIndex }?.second ?: StationPlaces()
                 val left = OnTheWay.walkLeft(trip, aged, places) ?: return@withLock
+                noteWay(trip, left)
                 _progress.value = walking.copy(metersLeft = left.meters, estimated = before, bearing = left.bearing)
             }
         }
+    }
+
+    // Says whether [left] names the way on [trip]'s walk, and why not where it doesn't, once per change
+    // on a walk: the trip screen's arrow and compass point are drawn only where it does, so a report says
+    // why a walk showed neither (bug report, 2026-10-15). A kind only, never how far or which way.
+    private fun noteWay(trip: ActiveTrip, left: OnTheWay.WalkLeft) {
+        val noted = Triple(trip.startedAt, trip.legIndex, left.withheld)
+        if (noted == wayNoted) return
+        wayNoted = noted
+        warn("on the way: ${OnTheWay.wayNote(left)}")
     }
 
     // Keeps [fix], aged as of [at] (on [elapsed]'s clock), as the newest seen, when precise: whether it
@@ -1532,11 +1547,14 @@ class ActiveTripTracker(
             // rider likely is, not where they're seen on it: an estimate, as in [onFix] (Codex, #542).
             val seenBefore = seenRider != null && now.minusMillis(seenRider.ageMillis ?: 0).isBefore(next.legStartedAt)
             progress = when {
-                seen != null && !(seenBefore && held != null && !held.estimated) ->
+                seen != null && !(seenBefore && held != null && !held.estimated) -> {
+                    noteWay(next, seen)
                     walking.copy(metersLeft = seen.meters, estimated = seenBefore, bearing = seen.bearing)
+                }
                 held != null -> walking.copy(metersLeft = held.metersLeft, estimated = held.estimated, bearing = held.bearing)
                 else -> {
                     val guessed = recentFix()?.let { fix -> withContext(compute) { OnTheWay.walkLeft(next, fix, walkedTo) } }
+                    guessed?.let { noteWay(next, it) }
                     walking.copy(metersLeft = guessed?.meters, estimated = guessed != null, bearing = guessed?.bearing)
                 }
             }

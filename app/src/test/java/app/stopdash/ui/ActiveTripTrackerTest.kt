@@ -4495,6 +4495,34 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `a walk's direction withheld or shown again is logged once per change, by kind alone`() = runTest {
+        // A synthetic destination point; the rider seen about 445 m short of it, then about 222 m.
+        val end = app.stopdash.domain.Coordinates(51.5, -0.12)
+        val home = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "", "Destination", at(0), at(5))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(TripRoute(listOf(home)), "Destination", readyAt = now, destinations = listOf(app.stopdash.domain.TripDestination.Place(end, "Destination")))
+        now = at(2)
+        tracker.refresh(fixAt(51.504))
+        tracker.onFix(fixAt(51.503))
+        // Sure to 150 m with about 222 m left: too vague to point the way (bug report, 2026-10-15).
+        tracker.onFix(fixAt(51.502).copy(accuracyMeters = 150f))
+        assertNull((tracker.progress.value as TripProgress.Walking).bearing)
+        tracker.onFix(fixAt(51.502).copy(accuracyMeters = 140f))
+        tracker.onFix(fixAt(51.502))
+        // Within a fix's own wobble of its end.
+        tracker.onFix(fixAt(51.5001))
+        assertEquals(
+            listOf(
+                "on the way: walk direction shown",
+                "on the way: walk direction withheld, fix too vague for the distance left",
+                "on the way: walk direction shown",
+                "on the way: walk direction withheld, near its end",
+            ),
+            logged.filter { it.startsWith("on the way: walk direction") },
+        )
+    }
+
+    @Test
     fun `a walk begins with a distance estimated from a fix taken lately`() = runTest {
         val end = app.stopdash.domain.Coordinates(51.5, -0.12)
         val home = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "", "Destination", at(0), at(5))
