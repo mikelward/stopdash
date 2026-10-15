@@ -2770,6 +2770,16 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           widget listed a bus once per stop the ride boards from, with no stop heading to tell the
           rows apart, so one route read as three. It now leaves out what the app's cards leave out,
           by the same rule, grouped by ride or by stop.
+    - [ ] **Consider measuring every boarding stop for "a route shows once"** (open question,
+          maintainer, 2026-10-15; Codex on #885). Where a ride boards from a stop with no known
+          distance, the rule falls back to list order: the ride's own stop first, then its poles.
+          A farther own stop can then keep a route over a nearer pole. The app's cards measure only
+          the nearby stops (both tiers), and the widget's saved order covers only the nearer tier,
+          so ride-only stops go by order on both, and a farther-tier pole on the widget alone.
+          Measuring every boarding stop on both surfaces, and saving that order with the widget's
+          pins, would make both rank by distance. Is that worth a new saved field? Related: the
+          app's cards list a ride's own stop before its poles even where a pole is measured nearer,
+          so a card can keep both copies of a route; the widget lists them nearest first.
     - [ ] **Make the favorite radius a setting** (maintainer, 2026-10-15). The mile that holds a
           ride back behind "Faraway favorites" (and off the widget) is fixed. Make it a choice in
           Settings, such as 500 m, 1 mile (the default), 2 miles and never hide, and use the same
