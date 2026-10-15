@@ -1,6 +1,5 @@
 package app.stopdash.ui
 
-import androidx.annotation.WorkerThread
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
 import app.stopdash.StopdashDebugLog
@@ -40,16 +39,4 @@ internal data class LaterTripNav(
             restore = { LaterTripNav(TripTime.parse(it[0], warn), TripTime.parse(it[1], warn), it[2]) },
         )
     }
-}
-
-/**
- * Whether the trip for now's plan, in [state], says the route [key] isn't on offer now: only a settled plan
- * says so. One still landing, or one that failed, may yet offer it, so a route closed then (Back while it
- * plans) just goes back, saying nothing. A pass over every route: on a worker.
- */
-@WorkerThread
-internal fun notPlannedForNow(state: TripViewModel.State, key: String?): Boolean {
-    if (state.planning || state.planError != null) return false
-    val routes = state.routes ?: return false
-    return routes.none { routeKey(it) == key }
 }

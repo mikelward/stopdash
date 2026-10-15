@@ -906,6 +906,18 @@ internal fun openRouteGone(state: TripViewModel.State, hidden: Set<String>, open
     return AvoidedLines.drops(route, hidden)
 }
 
+/**
+ * Whether the [open] route is gone because a settled plan doesn't offer it, as planned or through a change
+ * ([OpenRoute.routeIn]), hidden or not: not because a mode is hidden or a line avoided, and never on a
+ * plan still landing or one that failed, which may yet offer it. A pass over every route: on a worker.
+ */
+@WorkerThread
+internal fun openRouteNotPlanned(state: TripViewModel.State, open: OpenRoute): Boolean {
+    if (state.planning || state.planError != null) return false
+    val routes = state.routes ?: return false
+    return open.routeIn(routes) == null
+}
+
 /** A route's identity across refreshes and re-ranking: its lines and stops in order. */
 internal fun routeKey(route: TripRoute): String =
     // A bus leg by its stop pairs, or by the stop the Planner named, so its key holds once its poles
@@ -1085,6 +1097,9 @@ internal fun TripScreen(
     // Over a route opened from a later trip's list ([LaterTripScreen]): its live times are for now, not
     // the time picked, and it says so for as long as it's open. Null says nothing.
     openNotice: String? = null,
+    // The open route closed because a settled plan doesn't offer it ([openRouteNotPlanned]), just before it
+    // closes: not on Back, nor for a mode hidden or a line avoided. A later trip's list says so on return.
+    onOpenNotPlanned: () -> Unit = {},
 ) {
     val asOf = rememberStatusesAndDelaysAsOf(state.statuses, state.statusesSortedOn, now)
     // With the delays as of today, so every cap on the page counts the same ones (Codex, #703).
@@ -1133,6 +1148,7 @@ internal fun TripScreen(
             aboveRoutes = aboveRoutes,
             onChangeTime = onChangeTime,
             openNotice = openNotice,
+            onOpenNotPlanned = onOpenNotPlanned,
         )
     }
 }
@@ -1271,6 +1287,7 @@ private fun TripContent(
     aboveRoutes: (@Composable () -> Unit)? = null,
     onChangeTime: (() -> Unit)? = null,
     openNotice: String? = null,
+    onOpenNotPlanned: () -> Unit = {},
 ) {
     // What the routes leave out: the hidden modes and lines, and the lines avoided ([AvoidedLines]).
     // Only the hidden ones are the "hidden" banner's: an avoided line is said by its own chip.
@@ -1415,8 +1432,14 @@ private fun TripContent(
     // speed, a re-plan), or its mode hidden — it's closed for good, so it never reopens unbidden
     // should it come back. A plan still landing ([TripViewModel.State.planning],
     // or no routes yet) keeps it, since the route may be in the part still to come.
+    val notPlannedNow by rememberUpdatedState(onOpenNotPlanned)
     LaunchedEffect(openRef, poled.routes, poled.planning, excluded) {
-        if (openRef != null && poled.routes != null && !poled.planning && openRouteGone(poled, excluded, openRef)) setOpen(null)
+        if (openRef != null && poled.routes != null && !poled.planning && openRouteGone(poled, excluded, openRef)) {
+            // Why, said before it closes, as closing ends this effect: the plan dropping it, not what's hidden.
+            // A pass over the plan, so off the main thread.
+            if (withContext(worker) { openRouteNotPlanned(poled, openRef) }) notPlannedNow()
+            setOpen(null)
+        }
     }
     // A route asked for closes on Back even before its frame is in, never leaving the trip (Codex, #529).
     // The on-screen arrow too.

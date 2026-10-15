@@ -48,19 +48,24 @@ class LaterTripNavTest {
     }
 
     @Test
-    fun `a route is said to be not planned for now only by a settled plan`() {
-        fun leg(line: String, from: String, to: String) = TripLeg(
-            "tube", line, line, from, from, to, to, Instant.parse("2026-10-15T08:05:00Z"), Instant.parse("2026-10-15T08:25:00Z"),
+    fun `a route is said to be not planned for now only by a settled plan that drops it`() {
+        fun leg(line: String, from: String, to: String, mode: String = "tube") = TripLeg(
+            mode, line, line, from, from, to, to, Instant.parse("2026-10-15T08:05:00Z"), Instant.parse("2026-10-15T08:25:00Z"),
         )
         val offered = TripRoute(listOf(leg("red", "A", "C")))
         val other = TripRoute(listOf(leg("blue", "A", "C")))
-        val key = routeKey(other)
-        assertTrue(notPlannedForNow(TripViewModel.State(routes = listOf(offered)), key))
-        assertFalse(notPlannedForNow(TripViewModel.State(routes = listOf(offered, other)), key))
+        val open = OpenRoute(routeKey(other))
+        assertTrue(openRouteNotPlanned(TripViewModel.State(routes = listOf(offered)), open))
+        assertFalse(openRouteNotPlanned(TripViewModel.State(routes = listOf(offered, other)), open))
         // Still planning (Back before the fresh plan lands), failed, or nothing yet: it may yet be offered.
-        assertFalse(notPlannedForNow(TripViewModel.State(routes = listOf(offered), planning = true), key))
-        assertFalse(notPlannedForNow(TripViewModel.State(routes = listOf(offered), planError = DeparturesUiState.Error.Kind.OFFLINE), key))
-        assertFalse(notPlannedForNow(TripViewModel.State(), key))
+        assertFalse(openRouteNotPlanned(TripViewModel.State(routes = listOf(offered), planning = true), open))
+        assertFalse(openRouteNotPlanned(TripViewModel.State(routes = listOf(offered), planError = DeparturesUiState.Error.Kind.OFFLINE), open))
+        assertFalse(openRouteNotPlanned(TripViewModel.State(), open))
+        // Closed because its mode is hidden: gone, but the plan still offers it, so nothing to say.
+        val bus = TripRoute(listOf(leg("73", "A", "C", mode = "bus")))
+        val planned = TripViewModel.State(routes = listOf(offered, bus))
+        assertTrue(openRouteGone(planned, setOf("bus"), OpenRoute(routeKey(bus))))
+        assertFalse(openRouteNotPlanned(planned, OpenRoute(routeKey(bus))))
     }
 
     @Test

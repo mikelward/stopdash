@@ -180,6 +180,9 @@ class TripThroughRoutesTest {
         val open = openThrough(state(throughIn = 5))
         val replanned = state(throughIn = 5).copy(routes = listOf(TripRoute(listOf(changing.legs.first()))))
         assertTrue(openRouteGone(replanned, emptySet(), open))
+        // The plan dropped it: a later list it came from says so. One still offering the change doesn't.
+        assertTrue(openRouteNotPlanned(replanned, open))
+        assertFalse(openRouteNotPlanned(state(throughIn = 5), open))
         // A route no plan's change makes keeps nothing past the cap: blue from Beck is a leg of the
         // change, not a route made by joining its rides.
         val elsewhere = TripRoute(listOf(changing.legs.last()))

@@ -328,7 +328,6 @@ import app.stopdash.ui.TripScreen
 import app.stopdash.ui.TripStart
 import app.stopdash.ui.TripTimeDialog
 import app.stopdash.ui.TripViewModel
-import app.stopdash.ui.notPlannedForNow
 import app.stopdash.ui.tripTimeLabel
 import app.stopdash.ui.WatchInstallActions
 import app.stopdash.ui.WidgetUpdateActions
@@ -5195,15 +5194,12 @@ class MainActivity : ComponentActivity() {
             return
         }
         // A route opened from the later list, closed (Back, or the trip for now doesn't offer it): back to
-        // that list, saying so when a settled plan for now doesn't offer it.
+        // that list. The trip screen says which, just before it closes the route ([onOpenNotPlanned]), so the
+        // list says "Not planned for now" only for a settled plan that dropped it, never for a plain Back.
         val openNow = trip.openRoute.value
         val notPlanned = stringResource(R.string.trip_later_not_now)
         LaunchedEffect(openNow == null, laterNav) {
-            if (openNow != null || openedFrom == null) return@LaunchedEffect
-            val key = laterNav.openedKey
-            // Over every route: on the worker (AGENTS.md *Main thread*).
-            if (withContext(Workers.compute) { notPlannedForNow(trip.state.value, key) }) laterNotice = notPlanned
-            laterNav = laterNav.routeClosed()
+            if (openNow == null && openedFrom != null) laterNav = laterNav.routeClosed()
         }
         // A re-pick of the nearby set (a fresh fix, a retried location) that kept the same nearest
         // stop keeps this trip, but its walk and live times follow the new fix at once rather than
@@ -5389,6 +5385,7 @@ class MainActivity : ComponentActivity() {
             },
             onChangeTime = { pickingTime = true },
             openNotice = openedFrom?.let { stringResource(R.string.trip_later_live_notice, tripTimeLabel(it, now)) },
+            onOpenNotPlanned = { if (laterNav.openedFrom != null) laterNotice = notPlanned },
         )
     }
 
