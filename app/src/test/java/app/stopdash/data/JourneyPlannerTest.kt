@@ -8,6 +8,7 @@ import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripModes
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripDestination
+import app.stopdash.domain.TripFare
 import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.journeys
@@ -448,6 +449,69 @@ class JourneyPlannerTest {
           "arrivalPoint": { "naptanId": "940GZZLUEUS", "commonName": "Euston" }
         } ] }
         """.trimIndent()
+    }
+
+    // Constructed: an answer of one route by bus between two hubs, on [lines] in turn, priced at [pence]
+    // or left unpriced. Synthetic London stop ids, no real trip.
+    private fun busAnswer(vararg lines: String, pence: Int? = null): String {
+        val stops = listOf("490000001A", "490000002B", "490000003C")
+        val legs = lines.mapIndexed { index, line ->
+            """
+            { "departureTime": "2026-09-27T09:${"%02d".format(index * 20)}:00", "arrivalTime": "2026-09-27T09:${"%02d".format(index * 20 + 15)}:00",
+              "mode": { "id": "bus", "name": "bus" },
+              "routeOptions": [ { "lineIdentifier": { "id": "$line", "name": "$line" } } ],
+              "departurePoint": { "naptanId": "${stops[index]}", "commonName": "King's Cross" },
+              "arrivalPoint": { "naptanId": "${stops[index + 1]}", "commonName": "Euston" } }
+            """.trimIndent()
+        }
+        val fare = pence?.let { """, "fare": { "totalCost": $it }""" }.orEmpty()
+        return """{ "journeys": [ { "legs": [ ${legs.joinToString(", ")} ]$fare } ] }"""
+    }
+
+    @Test
+    fun `a bus route one request left unpriced takes the bus fare another request priced on its line`() = runTest {
+        val routes = clientBy { request ->
+            (if (request.fewestChanges()) busAnswer("10") else busAnswer("10", "30", pence = 175)) to HttpStatusCode.OK
+        }.journeys(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"))
+        assertEquals("both routes were read", 2, routes.size)
+        assertEquals(listOf(listOf("10", "30"), listOf("10")), routes.map { route -> route.rides.map { it.lineId } })
+        assertEquals(listOf(TripFare(175), TripFare(175)), routes.map { it.fare })
+    }
+
+    @Test
+    fun `a route the quickest answer left unpriced keeps the price another answer gave the same route`() = runTest {
+        // The kept copy is the quickest's: the price comes over from the other's, whatever the route rides.
+        val routes = clientBy { request ->
+            (if (request.fewestChanges()) busAnswer("10", "30", pence = 175) else busAnswer("10", "30")) to HttpStatusCode.OK
+        }.journeys(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"))
+        assertEquals(listOf(TripFare(175)), routes.map { it.fare })
+    }
+
+    @Test
+    fun `a plan's routes are priced off the caller's thread`() {
+        // Every route and leg goes past the fare step: on the decode dispatcher, never a screen's main thread.
+        val pricedOn = app.stopdash.ThreadRecorder()
+        val engine = MockEngine { respond(ByteReadChannel(busAnswer("10", pence = 175)), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json")) }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val client = KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", fillFares = { pricedOn.note(); it })
+        // The caller's own single thread, as a screen's main thread is.
+        val caller = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            val callerThread = caller.submit<Thread> { Thread.currentThread() }.get()
+            kotlinx.coroutines.runBlocking(caller.asCoroutineDispatcher()) {
+                client.journeys(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"))
+                client.fewestChangesVia(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"), "490000002B")
+                client.quickestWithout(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"), setOf("tube"))
+            }
+            val priced = pricedOn.threads()
+            assertEquals("each request's routes went past the fare step", 3, priced.size)
+            assertTrue(priced.none { it == callerThread.name.substringBefore(" @") })
+        } finally {
+            caller.shutdown()
+        }
     }
 
     private fun HttpRequestData.fewestChanges() = url.parameters["journeyPreference"] == "leastinterchange"

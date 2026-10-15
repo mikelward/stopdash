@@ -1,6 +1,7 @@
 package app.stopdash.data
 
 import app.stopdash.StopdashDebugLog
+import app.stopdash.domain.BusFare
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.HubInfo
@@ -153,6 +154,9 @@ class KtorTflClient(
     private val trainSpacing: suspend () -> Boolean = TrainSpacingSetting::loaded,
     // How long a stalled request waits before its one retry ([withOneRetryOnStall]). A test swaps in its own.
     private val stallRetryDelayMillis: Long = STALL_RETRY_DELAY_MILLIS,
+    // The bus fare a route the Planner left unpriced can be sure of ([BusFare]). A test swaps in its own to see
+    // where it ran.
+    private val fillFares: (List<TripRoute>) -> List<TripRoute> = BusFare::filled,
 ) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, StopZoneSource, JourneyPlanner, PostcodeResolver, PlaceSearch, VehicleSource,
     LiftOutageSource, TimetableSource {
     override suspend fun journeys(
@@ -183,8 +187,8 @@ class KtorTflClient(
             if (index > 0 || answers.any { it.isSuccess }) warn("$source: ${failure::class.simpleName}")
         }
         if (answers.none { it.isSuccess }) throw checkNotNull(answers.first().exceptionOrNull())
-        val routes = answers.mapNotNull { it.getOrNull() }.reduce(::mergedRoutes)
-        return routes.between(from, to)
+        // A bus route one request left unpriced takes the bus fare another priced ([BusFare]).
+        return finished(answers.mapNotNull { it.getOrNull() }, from, to)
     }
 
     // One request, for the fewest changes via one stop ([FinalStop]): its failure is the caller's to handle.
@@ -197,8 +201,7 @@ class KtorTflClient(
         stepFree: StepFree,
         modes: TripModes,
     ): List<TripRoute> =
-        plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = LEAST_INTERCHANGE, via = via)
-            .between(from, to)
+        finished(listOf(plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = LEAST_INTERCHANGE, via = via)), from, to)
 
     // One request, for the quickest routes with [leaveOut]'s modes left out ([AroundDelays]): its failure is
     // the caller's to handle.
@@ -211,8 +214,13 @@ class KtorTflClient(
         stepFree: StepFree,
         modes: TripModes,
     ): List<TripRoute> =
-        plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = null, leaveOut = leaveOut)
-            .between(from, to)
+        finished(listOf(plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = null, leaveOut = leaveOut)), from, to)
+
+    // The routes a plan's [answers] give, as the trip reads them: merged, each unpriced bus route the fare it
+    // can be sure of ([fillFares]), and named [between] its ends. A pass over every route and leg, so on the
+    // decode dispatcher rather than the caller's thread (AGENTS.md *Main thread*; Codex, #860).
+    private suspend fun finished(answers: List<List<TripRoute>>, from: TripOrigin, to: TripDestination): List<TripRoute> =
+        withContext(decodeDispatcher) { fillFares(answers.reduce(::mergedRoutes)).between(from, to) }
 
     // From here, the rider's own coordinate ("lat,lon"): TfL walks from it to the stop that serves the
     // trip best, the same position the nearby lookup already sends (SPEC *Trips with a change*). Never
