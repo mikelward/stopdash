@@ -1129,6 +1129,55 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun an_open_route_a_settled_plan_drops_is_said_not_planned_and_one_closed_on_back_is_not() {
+        // A later trip's list says "Not planned for now" from this, never from reading the plan afterwards.
+        var notPlanned = 0
+        var state by mutableStateOf(planned)
+        val opened = openRouteOf(planned.routes!!.first(), planned, emptyMap()).encode()
+        val openRoute = mutableStateOf<String?>(opened)
+        // The screen's worker, a thread of its own the test can hold (AGENTS.md *Main thread*; Codex, #878).
+        val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        val worker = threads.asCoroutineDispatcher()
+        val gate = CountDownLatch(1)
+        try {
+            composeRule.setContent {
+                StopDashTheme(dynamicColor = false) {
+                    CompositionLocalProvider(LocalWorker provides worker) {
+                        TripScreen(
+                            title = "To Canary Wharf", state = state, now = now, access = Duration.ZERO,
+                            routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {}, openRoute = openRoute,
+                            onOpenNotPlanned = { notPlanned++ },
+                        )
+                    }
+                }
+            }
+            composeRule.waitForIdle()
+            assertEquals(0, notPlanned)
+            // A re-plan without it, the worker held: the pass over the plan that says why waits on the worker, so the
+            // route stays open and nothing is said, rather than the caller's thread working it out.
+            threads.execute { gate.await() }
+            state = planned.copy(routes = planned.routes!!.drop(1))
+            composeRule.waitForIdle()
+            assertEquals(opened, openRoute.value)
+            assertEquals(0, notPlanned)
+            // The worker let go: closed, and said just before.
+            gate.countDown()
+            composeRule.waitUntil(timeoutMillis = 5_000) { openRoute.value == null }
+            assertEquals(1, notPlanned)
+            // Another opened, then closed on Back: nothing said.
+            openRoute.value = openRouteOf(state.routes!!.first(), state, emptyMap()).encode()
+            composeRule.waitForIdle()
+            composeRule.runOnUiThread { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
+            composeRule.waitUntil(timeoutMillis = 5_000) { openRoute.value == null }
+            composeRule.waitForIdle()
+            assertEquals(1, notPlanned)
+        } finally {
+            gate.countDown()
+            worker.close()
+        }
+    }
+
+    @Test
     fun the_first_route_is_headed_fastest_and_the_rest_other() {
         // Every route here rides twice, so the first card is fastest, none is simplest, and the
         // other two share one "Other" header.

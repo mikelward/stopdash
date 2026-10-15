@@ -2137,12 +2137,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               reading, while the answer is read, and kept, against its first, so an already-departed 01:30
               can be listed; the Planner is sent a bare `0130` either way. The candidate: refuse a picked
               time in the repeated hour, as the skipped spring hour is ("That time happens twice").
-        - [ ] Say "Not planned for now" from why the route closed, not from the plan read afterwards
-              (maintainer, 2026-10-15: a follow-up PR; Codex, #859). Today the later list checks the trip
-              for now's plan after the route closes, on a worker, so a plan that settles between Back and
-              that read can make a route the rider merely closed read as not offered. Have the trip screen
-              report why it closed the open route — Back, or a settled plan dropping it — and show the
-              notice only for the second, retiring `notPlannedForNow` and its worker hop.
+        - [x] Say "Not planned for now" from why the route closed, not from the plan read afterwards
+              (maintainer, 2026-10-15: a follow-up PR; Codex, #859). The trip screen now says, just
+              before it closes the open route, when a settled plan dropped it, and only then does the
+              later list show the notice; a route closed on Back says nothing, however the plan settles.
         - [x] Ask via the bus stops towards the destination for a later trip too (maintainer,
               2026-10-15: a follow-up PR; Codex, #859). The later list now runs the trip for now's
               requests via up to three nearby bus stops (*Buses towards the destination*), for the time

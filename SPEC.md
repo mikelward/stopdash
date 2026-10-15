@@ -2295,9 +2295,10 @@ the trip's nearest stop makes the trip afresh, and its later list is planned aga
 choices as they stand, never a plan made under others. None of the trip for
 now's labels, ranking, live boards or Start apply. **A card tapped opens that route in the trip for
 now** (maintainer, 2026-10-15), live, under a line saying "Times for now, not ‹the time picked›";
-closing it goes back to the later list, which says "Not planned for now" when the trip for now
-doesn't offer that route. Back, or *Leave now*, returns to the trip for now; the time picked is kept
-with the trip while it's open, its list in place over a rotation, and forgotten when it closes.
+closing it goes back to the later list, which says "Not planned for now" when it closed because a
+settled plan for now doesn't offer that route, never for Back. Back, or *Leave now*, returns to the trip
+for now; the time picked is kept with the trip while it's open, its list in place over a rotation, and
+forgotten when it closes.
 
 ### On the way
 
