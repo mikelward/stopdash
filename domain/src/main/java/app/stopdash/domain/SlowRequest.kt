@@ -28,10 +28,18 @@ object SlowRequest {
         val answerMillis: Long? = null,
         val readMillis: Long? = null,
         val failure: String? = null,
+        // The app canceled it (a newer refresh replacing the one it belonged to).
+        val canceled: Boolean = false,
     )
 
     /** The log line for [timings], or null when the request was quick and every connect worked. */
     fun describe(timings: Timings): String? {
+        // A canceled request's socket was closed by the app, so its connect "failing" says nothing about
+        // the network: read as one, it once passed for a connection refused. Told only if it was slow.
+        if (timings.canceled) {
+            if (timings.totalMillis < SLOW_MILLIS) return null
+            return "${source(timings.host)} ${endpoint(timings.path)} took ${timings.totalMillis} ms: canceled"
+        }
         if (timings.totalMillis < SLOW_MILLIS && timings.failedConnects.isEmpty()) return null
         val parts = buildList {
             timings.connectionMillis?.let { ms ->

@@ -13,6 +13,7 @@ class SlowRequestTest {
         answerMillis: Long? = 100,
         readMillis: Long? = 10,
         failure: String? = null,
+        canceled: Boolean = false,
     ) = SlowRequest.Timings(
         host = "api.tfl.gov.uk",
         path = "/StopPoint/490000000A,490000000B/Disruption",
@@ -23,6 +24,7 @@ class SlowRequestTest {
         answerMillis = answerMillis,
         readMillis = readMillis,
         failure = failure,
+        canceled = canceled,
     )
 
     @Test
@@ -83,6 +85,31 @@ class SlowRequestTest {
                     failure = "SocketTimeoutException",
                 ),
             ),
+        )
+    }
+
+    @Test
+    fun `a request the app canceled is not a connection failure`() {
+        // Canceling closes the socket mid-connect, so its connect "fails"; a quick one isn't news at all.
+        val canceled = timings(
+            totalMillis = 25,
+            connectionMillis = null,
+            failedConnects = listOf("IPv4 SocketException"),
+            answerMillis = null,
+            readMillis = null,
+            failure = "IOException",
+            canceled = true,
+        )
+        assertNull(SlowRequest.describe(canceled))
+        // A slow one is told, as canceled, with nothing said of its connects.
+        assertEquals(
+            "TfL StopPoint/…/Disruption took 4000 ms: canceled",
+            SlowRequest.describe(canceled.copy(totalMillis = 4_000)),
+        )
+        // The same events not canceled are a connection that failed, as before.
+        assertEquals(
+            "TfL StopPoint/…/Disruption took 25 ms: no connection (1 failed: IPv4 SocketException), failed: IOException",
+            SlowRequest.describe(canceled.copy(canceled = false)),
         )
     }
 
