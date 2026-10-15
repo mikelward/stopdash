@@ -1093,8 +1093,10 @@
     <!-- On the way (SPEC *On the way*): a started trip, followed by its train. -->
     <string name="on_the_way">On the way</string>
     <string name="on_the_way_title">To %1$s</string>
-    <!-- In place of Start, on a route with a National Rail train: its boards name no train to follow. -->
-    <string name="on_the_way_cant_follow_rail">Can\'t follow National Rail trains yet</string>
+    <!-- In place of Start, on a route with a National Rail train while no National Rail key is set:
+         its train is followed from National Rail's boards, which need the rider's own key. -->
+    <!-- TODO: translate -->
+    <string name="on_the_way_cant_follow_rail" tools:ignore="MissingTranslation">National Rail key needed</string>
     <!-- In place of Start while another trip is on the way: opens that one. -->
     <string name="on_the_way_open_current">Open current trip</string>
     <string name="on_the_way_start">Start</string>

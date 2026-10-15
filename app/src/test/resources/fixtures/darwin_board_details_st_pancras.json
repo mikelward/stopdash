@@ -1,0 +1,168 @@
+{
+ "_note": "Hand-written in the documented shape of Darwin's GetDepBoardWithDetails (Live Departure Board, Rail Data Marketplace) for a public hub station, filtered to trains calling at Brighton; times synthetic.",
+ "generatedAt": "2026-10-15T17:00:00.0000000+01:00",
+ "locationName": "London St Pancras International",
+ "crs": "STP",
+ "filterLocationName": "Brighton",
+ "filtercrs": "BTN",
+ "platformAvailable": true,
+ "trainServices": [
+  {
+   "std": "17:12",
+   "etd": "17:14",
+   "platform": "B",
+   "operator": "Thameslink",
+   "operatorCode": "TL",
+   "isCancelled": false,
+   "serviceType": "train",
+   "destination": [
+    {
+     "locationName": "Brighton",
+     "crs": "BTN"
+    }
+   ],
+   "serviceID": "10",
+   "previousCallingPoints": [
+    {
+     "callingPoint": [
+      {
+       "locationName": "Bedford",
+       "crs": "BDM",
+       "st": "16:20",
+       "at": "On time"
+      },
+      {
+       "locationName": "Luton",
+       "crs": "LUT",
+       "st": "16:38",
+       "at": "16:40"
+      },
+      {
+       "locationName": "St Albans City",
+       "crs": "SAC",
+       "st": "16:52",
+       "at": "16:54"
+      }
+     ]
+    }
+   ],
+   "subsequentCallingPoints": [
+    {
+     "callingPoint": [
+      {
+       "locationName": "Farringdon",
+       "crs": "ZFD",
+       "st": "17:15",
+       "et": "17:17"
+      },
+      {
+       "locationName": "City Thameslink",
+       "crs": "CTK",
+       "st": "17:17",
+       "et": "17:19"
+      },
+      {
+       "locationName": "London Blackfriars",
+       "crs": "BFR",
+       "st": "17:19",
+       "et": "On time"
+      },
+      {
+       "locationName": "London Bridge",
+       "crs": "LBG",
+       "st": "17:23",
+       "et": "17:25"
+      },
+      {
+       "locationName": "East Croydon",
+       "crs": "ECR",
+       "st": "17:38",
+       "et": "17:40",
+       "isCancelled": true
+      },
+      {
+       "locationName": "Gatwick Airport",
+       "crs": "GTW",
+       "st": "17:55",
+       "et": "Delayed"
+      },
+      {
+       "locationName": "Brighton",
+       "crs": "BTN",
+       "st": "18:30",
+       "et": "18:32"
+      }
+     ],
+     "serviceChangeRequired": false,
+     "assocIsCancelled": false
+    }
+   ]
+  },
+  {
+   "std": "17:27",
+   "etd": "Delayed",
+   "platform": "A",
+   "operator": "Thameslink",
+   "operatorCode": "TL",
+   "isCancelled": false,
+   "serviceType": "train",
+   "destination": [
+    {
+     "locationName": "Brighton",
+     "crs": "BTN"
+    }
+   ],
+   "serviceID": "11",
+   "subsequentCallingPoints": [
+    {
+     "callingPoint": [
+      {
+       "locationName": "Farringdon",
+       "crs": "ZFD",
+       "st": "17:30",
+       "et": "Delayed"
+      },
+      {
+       "locationName": "Brighton",
+       "crs": "BTN",
+       "st": "18:45",
+       "et": "Delayed"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "std": "17:30",
+   "etd": "On time",
+   "platform": "B",
+   "operator": "Thameslink",
+   "operatorCode": "TL",
+   "isCancelled": false,
+   "serviceType": "train",
+   "destination": [
+    {
+     "locationName": "Brighton",
+     "crs": "BTN"
+    },
+    {
+     "locationName": "Horsham",
+     "crs": "HRH"
+    }
+   ],
+   "serviceID": "12",
+   "subsequentCallingPoints": [
+    {
+     "callingPoint": [
+      {
+       "locationName": "Brighton",
+       "crs": "BTN",
+       "st": "18:40",
+       "et": "On time"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

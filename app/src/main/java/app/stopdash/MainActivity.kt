@@ -49,6 +49,7 @@ import app.stopdash.domain.PlaceStops
 import app.stopdash.domain.PlaceStopsFinder
 import app.stopdash.domain.PlanTargets
 import app.stopdash.domain.RailAwareTflClient
+import app.stopdash.domain.RailVehicles
 import app.stopdash.domain.RecentPositions
 import app.stopdash.domain.RefusedStops
 import app.stopdash.domain.ReplanOrigin
@@ -86,6 +87,7 @@ import app.stopdash.domain.YourStops
 import app.stopdash.domain.askedAgainWhenEnded
 import app.stopdash.domain.currentPatterns
 import app.stopdash.domain.linksOf
+import app.stopdash.domain.railRideArrivals
 import app.stopdash.domain.stopPlace
 import app.stopdash.domain.widgetQuestionsSettled
 import app.stopdash.domain.widgetUpdateCardGone
@@ -5749,10 +5751,11 @@ class MainActivity : ComponentActivity() {
             value = id to links
         }
         // The ride Go takes, from the route page's stop list, worked out on the worker as the details open. National
-        // Rail can't be followed (SPEC *National Rail*), so it's offered no Go, decided by the line's mode from the
-        // first frame.
+        // Rail is followed only with the rider's key (SPEC *National Rail*), so without one it's offered no Go,
+        // decided by the line's mode and the key from the first frame, and again as the key's added or cleared.
         // Nor the boarding stop itself, which there's no riding to.
-        val followable = !line.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) && !open.boarding
+        val railKey by RailApiKeySetting.changes.collectAsStateWithLifecycle()
+        val followable = (!line.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) || !railKey.isNullOrBlank()) && !open.boarding
         // What Go rides isn't saved with the tap, so a rotation would lose it: it's kept by the activity's
         // retained holder for the tap it came with, and given back here. Only after the process is gone is it lost.
         val goHolder = viewModel<RouteGoHolder>()
@@ -5998,13 +6001,7 @@ class MainActivity : ComponentActivity() {
                 alertDirectionScope = (context.applicationContext as? StopdashApp)?.applicationScope,
                 stationIndex = { StationIndexStore.load(context.applicationContext) },
             ),
-            rail = KtorDarwinClient(
-                httpClient,
-                apiKey = { RailApiKeySetting.current },
-                warn = ::logDepartureWarning,
-                stopIdFor = { RailStationCodesStore.load(context.applicationContext).stopIdFor(it) },
-                stopIdsFor = { RailStationCodesStore.load(context.applicationContext).stopIdsFor(it) },
-            ),
+            rail = railBoards(context),
             codes = { RailStationCodesStore.load(context.applicationContext) },
             warn = ::logDepartureWarning,
             boardAtEveryStop = boardAtEveryStop,
@@ -6012,6 +6009,15 @@ class MainActivity : ComponentActivity() {
             // A trip's boards carry each train's stopping pattern: which it calls at decides its legs.
             callingPoints = boardAtEveryStop,
         ))
+
+        // National Rail's boards with the rider's own key, read per request (SPEC *National Rail*).
+        private fun railBoards(context: Context): KtorDarwinClient = KtorDarwinClient(
+            httpClient,
+            apiKey = { RailApiKeySetting.current },
+            warn = ::logDepartureWarning,
+            stopIdFor = { RailStationCodesStore.load(context.applicationContext).stopIdFor(it) },
+            stopIdsFor = { RailStationCodesStore.load(context.applicationContext).stopIdsFor(it) },
+        )
 
         // "Find a station": the name search and a station's stop lookup, both on demand from the
         // search screen, never on the refresh path. The typed query goes to TfL only (SPEC *Privacy*).
@@ -6140,9 +6146,21 @@ class MainActivity : ComponentActivity() {
                     },
                     load = store::load,
                     save = store::save,
-                    // TfL alone: a followed leg is never National Rail, so a Darwin board would only spend the rail key's quota.
+                    // TfL alone for a TfL ride, so a Darwin board spends none of the rail key's quota there; a
+                    // National Rail ride's with its station's board, as the trip's cards read it, calling points
+                    // and all.
                     arrivals = planner::arrivals,
-                    vehicles = planner,
+                    railArrivals = departuresClient(context.applicationContext, boardAtEveryStop = true).let { rail ->
+                        { stopId: String -> rail.railRideArrivals(stopId) }
+                    },
+                    // A TfL train by TfL's id; a National Rail one by the boards of the stations it's due at
+                    // next, with the rider's key (SPEC *On the way*).
+                    vehicles = RailVehicles(
+                        tfl = planner,
+                        runs = railBoards(context.applicationContext)::runs,
+                        stopIdsFor = { RailStationCodesStore.load(context.applicationContext).stopIdsFor(it) },
+                        warn = ::logDepartureWarning,
+                    ),
                     stationPlaces = planner::stationPlaces,
                     // A bus ride's boarding stop pair, for its pole's letter on the trip's board and the
                     // other poles another of its lines may board at: one request per stop.

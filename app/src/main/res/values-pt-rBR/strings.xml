@@ -180,7 +180,6 @@
     <string name="farther_loading">Carregando</string>
     <string name="bug_report_consent_body">Para ajudar a corrigir um problema, este relatório compartilha:\n\n• um registro de diagnóstico (paradas, linhas e erros que o app viu)\n• uma captura desta tela\n• sua localização exata nos últimos 15 minutos\n• a que distância você está das paradas mais próximas\n\nAo tocar em Continuar, o relatório é copiado para a área de transferência e oferecido a um app de sua escolha.</string>
     <string name="bug_report_failed">Não foi possível compartilhar o relatório de erro</string>
-    <string name="on_the_way_cant_follow_rail">Ainda não é possível acompanhar trens da National Rail</string>
     <string name="on_the_way_plan_again">Planejar de novo a partir de %1$s</string>
     <string name="on_the_way_off_plan_change">Baldeação em %1$s</string>
     <string name="on_the_way_take_this">Pegar este</string>

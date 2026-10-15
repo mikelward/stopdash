@@ -602,7 +602,6 @@
     <string name="bug_report_failed">Nu s-a putut trimite raportul de eroare</string>
     <string name="on_the_way">Pe drum</string>
     <string name="on_the_way_title">Spre %1$s</string>
-    <string name="on_the_way_cant_follow_rail">Trenurile National Rail nu pot fi urmărite încă</string>
     <string name="on_the_way_open_current">Deschideți călătoria curentă</string>
     <string name="on_the_way_start">Începeți</string>
     <string name="on_the_way_replace_title">Înlocuiți călătoria curentă?</string>

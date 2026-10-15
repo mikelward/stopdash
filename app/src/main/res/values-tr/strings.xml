@@ -599,7 +599,6 @@
     <string name="bug_report_failed">Hata raporu paylaşılamadı</string>
     <string name="on_the_way">Yolda</string>
     <string name="on_the_way_title">Hedef: %1$s</string>
-    <string name="on_the_way_cant_follow_rail">National Rail trenleri henüz takip edilemiyor</string>
     <string name="on_the_way_open_current">Mevcut yolculuğu aç</string>
     <string name="on_the_way_start">Başlat</string>
     <string name="on_the_way_replace_title">Mevcut yolculuk değiştirilsin mi?</string>

@@ -154,6 +154,21 @@ class DarwinBoardDtoTest {
     }
 
     @Test
+    fun `a train with a time but no readable schedule is listed, unfollowable, and said to be`() {
+        // Reading's 23:48, expected 23:52, with its schedule missing: shown at its estimate, but with no
+        // schedule to know it by, no trip can follow it, which the log says (maintainer, 2026-10-16).
+        val odd = board().trainServices!![1].copy(std = null)
+        val warnings = mutableListOf<String>()
+        val departures = board().copy(trainServices = listOf(odd)).toDepartures { warnings += it }
+        assertEquals("", departures.single().vehicleId)
+        assertEquals(listOf("national rail board: 1 train(s) with no readable schedule can't be followed"), warnings)
+        // A board whose trains can all be followed, or that divide, says nothing of it.
+        val none = mutableListOf<String>()
+        board().toDepartures { none += it }
+        assertTrue(none.none { "can't be followed" in it })
+    }
+
+    @Test
     fun `a board's West Midlands Trains line comes in as London Northwestern`() {
         // The board's "LNR & WMR" names both brands, and TfL's parent-company name neither; every
         // train it runs from London is branded London Northwestern Railway, as its LNR pill reads.
@@ -208,6 +223,39 @@ class DarwinBoardDtoTest {
         // Before it (01:20 BST, the first 01:20), 01:30 is ten minutes away in BST.
         val beforeRollback = Instant.parse("2026-10-25T00:20:00Z").atZone(uk)
         assertEquals(Instant.parse("2026-10-25T00:30:00Z"), instantNear(beforeRollback, java.time.LocalTime.of(1, 30)))
+    }
+
+    @Test
+    fun `a stop before another is read at or before it, in the repeated hour too`() {
+        // 01:30 before the second 01:40 (GMT): the GMT reading, the later of the two at or before it.
+        assertEquals(Instant.parse("2026-10-25T01:30:00Z"), instantAtOrBefore(Instant.parse("2026-10-25T01:40:00Z"), java.time.LocalTime.of(1, 30)))
+        // Before the first 01:40 (BST), only the BST one is.
+        assertEquals(Instant.parse("2026-10-25T00:30:00Z"), instantAtOrBefore(Instant.parse("2026-10-25T00:40:00Z"), java.time.LocalTime.of(1, 30)))
+        // A clock time later in the day than the stop after it is the day before's, however long ago.
+        assertEquals(Instant.parse("2026-10-14T21:10:00Z"), instantAtOrBefore(Instant.parse("2026-10-15T16:00:00Z"), java.time.LocalTime.of(22, 10)))
+        assertEquals(Instant.parse("2026-10-15T07:20:00Z"), instantAtOrBefore(Instant.parse("2026-10-15T16:00:00Z"), java.time.LocalTime.of(8, 20)))
+    }
+
+    @Test
+    fun `a schedule is read up to 18 hours back and less than six on, and a stop after on or after the one before`() {
+        val uk = java.time.ZoneId.of("Europe/London")
+        val board = Instant.parse("2026-10-15T16:00:00Z").atZone(uk)
+        // A train due at 10:30 that morning, held past six hours, is that morning's, never tomorrow's (Codex, #883)...
+        assertEquals(Instant.parse("2026-10-15T09:30:00Z"), scheduleNear(board, java.time.LocalTime.of(10, 30)))
+        // ...as an estimate at that time is read on, as it always was.
+        assertEquals(Instant.parse("2026-10-16T09:30:00Z"), instantNear(board, java.time.LocalTime.of(10, 30)))
+        // Past midnight both ways: a schedule just after it is the next day, one just before it the day before.
+        assertEquals(Instant.parse("2026-10-15T23:10:00Z"), scheduleNear(Instant.parse("2026-10-15T22:40:00Z").atZone(uk), java.time.LocalTime.of(0, 10)))
+        assertEquals(Instant.parse("2026-10-15T22:55:00Z"), scheduleNear(Instant.parse("2026-10-15T23:05:00Z").atZone(uk), java.time.LocalTime.of(23, 55)))
+        // In the repeated hour, the reading nearest the board, as for an estimate.
+        assertEquals(Instant.parse("2026-10-25T00:30:00Z"), scheduleNear(Instant.parse("2026-10-25T00:20:00Z").atZone(uk), java.time.LocalTime.of(1, 30)))
+        assertEquals(Instant.parse("2026-10-25T01:30:00Z"), scheduleNear(Instant.parse("2026-10-25T01:20:00Z").atZone(uk), java.time.LocalTime.of(1, 30)))
+        // A stop after: the first reading no earlier than the one before, the next day's across midnight.
+        assertEquals(Instant.parse("2026-10-15T09:33:00Z"), instantAtOrAfter(Instant.parse("2026-10-15T09:30:00Z"), java.time.LocalTime.of(10, 33)))
+        assertEquals(Instant.parse("2026-10-15T23:05:00Z"), instantAtOrAfter(Instant.parse("2026-10-15T22:55:00Z"), java.time.LocalTime.of(0, 5)))
+        // After the first 01:20 (BST), 01:30 is the BST one; after the second (GMT), the GMT one.
+        assertEquals(Instant.parse("2026-10-25T00:30:00Z"), instantAtOrAfter(Instant.parse("2026-10-25T00:20:00Z"), java.time.LocalTime.of(1, 30)))
+        assertEquals(Instant.parse("2026-10-25T01:30:00Z"), instantAtOrAfter(Instant.parse("2026-10-25T01:20:00Z"), java.time.LocalTime.of(1, 30)))
     }
 
     @Test

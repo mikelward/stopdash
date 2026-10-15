@@ -3199,8 +3199,9 @@ class TripScreenScreenshotTest {
     }
 
     @Test
-    fun a_route_with_a_national_rail_train_says_it_cant_be_followed() {
-        // The same route, its first train a National Rail one: its departures name no train to follow.
+    fun a_route_with_a_national_rail_train_says_following_it_needs_a_key() {
+        // The same route, its first train a National Rail one, with no National Rail key set: its train is
+        // followed from National Rail's boards, which need one.
         val byRail = TripRoute(listOf(viaCanadaWater.legs[0].copy(mode = "national-rail"), viaCanadaWater.legs[1]))
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -3214,10 +3215,10 @@ class TripScreenScreenshotTest {
         composeRule.onNodeWithText("27 min · 08:29").performClick()
         // Worked out off the main thread ([rememberStartCheck]): Start holds its place until then.
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            composeRule.onAllNodesWithText("Can't follow National Rail trains yet").fetchSemanticsNodes().isNotEmpty()
+            composeRule.onAllNodesWithText("National Rail key needed").fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText("Start").assertDoesNotExist()
-        composeRule.onNodeWithText("Can't follow National Rail trains yet").assertIsDisplayed()
+        composeRule.onNodeWithText("National Rail key needed").assertIsDisplayed()
     }
 
     @Test

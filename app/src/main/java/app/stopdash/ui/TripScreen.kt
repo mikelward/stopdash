@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import app.stopdash.data.RailApiKeySetting
 import kotlinx.coroutines.delay
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
@@ -359,6 +360,7 @@ private class CheckedStart(
     val route: TripRoute,
     val sequences: Map<String, LineSequence?>,
     val originUnconfirmed: Boolean,
+    val railTimes: Boolean,
     val check: StartCheck,
 )
 
@@ -374,21 +376,28 @@ internal fun rememberStartCheck(
     route: TripRoute?,
     sequences: Map<String, LineSequence?>,
     originUnconfirmed: Boolean,
-    follow: (TripRoute) -> Boolean = OnTheWay::canFollow,
+    // Whether the rider has a National Rail key, which following a National Rail ride needs ([OnTheWay.canFollow]):
+    // checked again as it's added or cleared.
+    railTimes: Boolean = !RailApiKeySetting.changes.collectAsStateWithLifecycle().value.isNullOrBlank(),
+    follow: (TripRoute) -> Boolean = { OnTheWay.canFollow(it, railTimes) },
     start: (TripRoute, Map<String, LineSequence?>, Boolean) -> Boolean = ::canStart,
 ): StartCheck? {
     val worker = LocalWorker.current
     // Keyed by identity, as the guard below reads: a route rebuilt equal on a refresh is checked again,
     // never left waiting on an answer the guard won't read.
-    val checked by produceState<CheckedStart?>(null, ByIdentity(route), ByIdentity(sequences), originUnconfirmed, worker) {
+    val checked by produceState<CheckedStart?>(null, ByIdentity(route), ByIdentity(sequences), originUnconfirmed, railTimes, worker) {
         if (route == null) return@produceState
         val check = withContext(worker) {
             val canFollow = follow(route)
             StartCheck(canFollow, canFollow && start(route, sequences, originUnconfirmed))
         }
-        value = CheckedStart(route, sequences, originUnconfirmed, check)
+        value = CheckedStart(route, sequences, originUnconfirmed, railTimes, check)
     }
-    return checked?.takeIf { it.route === route && it.sequences === sequences && it.originUnconfirmed == originUnconfirmed }?.check
+    // A key cleared or added is an input like the rest: the last answer, worked out with or without it, never
+    // stands in while the new one is worked out (Codex, #883).
+    return checked?.takeIf {
+        it.route === route && it.sequences === sequences && it.originUnconfirmed == originUnconfirmed && it.railTimes == railTimes
+    }?.check
 }
 
 /**

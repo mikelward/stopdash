@@ -128,6 +128,53 @@ class StartCheckOffMainTest {
     }
 
     @Test
+    fun aNationalRailRoute_isFollowed_onceTheRidersKeyIsAdded() {
+        // Its train is followed from National Rail's boards, which need the rider's own key.
+        val byRail = TripRoute(listOf(route.legs[0].copy(mode = "national-rail")))
+        var railTimes by mutableStateOf(false)
+        var check: StartCheck? = null
+        composeRule.setContent {
+            CompositionLocalProvider(LocalWorker provides worker) {
+                check = rememberStartCheck(byRail, emptyMap(), originUnconfirmed = false, railTimes = railTimes)
+            }
+        }
+        composeRule.waitUntil(timeoutMillis = 5_000) { check != null }
+        assertEquals(StartCheck(canFollow = false, canStart = false), check)
+        // Added while the route's open: checked again, with no new route to prompt it.
+        railTimes = true
+        composeRule.waitForIdle()
+        composeRule.waitUntil(timeoutMillis = 5_000) { check?.canFollow == true }
+        assertEquals(StartCheck(canFollow = true, canStart = true), check)
+    }
+
+    @Test
+    fun aNationalRailRoute_cantStart_onTheOldYes_onceTheKeyIsCleared() {
+        // Codex, #883: the yes worked out with the key is never read while the check without it is worked out.
+        val byRail = TripRoute(listOf(route.legs[0].copy(mode = "national-rail")))
+        val release = CountDownLatch(1)
+        var railTimes by mutableStateOf(true)
+        var check: StartCheck? = null
+        composeRule.setContent {
+            CompositionLocalProvider(LocalWorker provides worker) {
+                check = rememberStartCheck(
+                    byRail, emptyMap(), originUnconfirmed = false, railTimes = railTimes,
+                    follow = { route ->
+                        if (!railTimes) release.await()
+                        app.stopdash.domain.OnTheWay.canFollow(route, railTimes)
+                    },
+                )
+            }
+        }
+        composeRule.waitUntil(timeoutMillis = 5_000) { check?.canStart == true }
+        railTimes = false
+        composeRule.waitForIdle()
+        assertNull(check)
+        release.countDown()
+        composeRule.waitUntil(timeoutMillis = 5_000) { check != null }
+        assertEquals(StartCheck(canFollow = false, canStart = false), check)
+    }
+
+    @Test
     fun noRoute_isNotChecked() {
         var checked = false
         var check: StartCheck? = StartCheck(canFollow = true, canStart = true)

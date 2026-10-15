@@ -34,6 +34,22 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `a National Rail train's call at a station is at each of its ids, whichever the ride names`() {
+        // St Pancras's three ids are one station to a train: its board names the station, never one id.
+        val stPancras = setOf("910GSTPX", "910GSTPXBOX", "910GSTPADOM")
+        fun atStPancras(minutes: Long) = VehicleCall("", "London St Pancras International", "Platform A", at(minutes), stPancras)
+        val from = TripLeg(
+            NATIONAL_RAIL_MODE, "thameslink", "Thameslink", "910GSTPXBOX", "London St Pancras International LL",
+            "910GBLFR", "London Blackfriars", at(5), at(15), path = listOf("910GFRNDNLT", "910GBLFR"),
+        )
+        // Still to leave where the ride boards: not past it.
+        assertEquals(0, OnTheWay.aheadOnLeg(from, listOf(atStPancras(5), call("910GFRNDNLT", 8))))
+        val to = from.copy(fromId = "910GFRNDNLT", fromName = "Farringdon", toId = "910GSTPXBOX", toName = "London St Pancras International LL", path = listOf("910GSTPXBOX"))
+        // Still to reach where it gets off.
+        assertEquals(0, OnTheWay.aheadOnLeg(to, listOf(atStPancras(9))))
+    }
+
+    @Test
     fun `Start follows the next train the rider can catch`() {
         val trains = listOf(train("7", 2), train("", 4), train("9", 6), train("8", 5))
         // Ready at 4 min: the 2-minute train is gone, the 4-minute one has no id to follow.
@@ -351,6 +367,28 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `a train whose calls end its run short of the stop won't call there, never taken, waited for or counted down (Codex, #883)`() {
+        fun ends(call: VehicleCall) = call.copy(endsRun = true)
+        // A National Rail train cut short at C: its board gives every call it has left, and F isn't one.
+        val cutShort = listOf(call("A", 5), call("B", 9), ends(call("C", 12)))
+        assertFalse(OnTheWay.runsAlong(long, cutShort))
+        // Waited for: another is to be picked.
+        val waiting = ActiveTrip(TripRoute(listOf(long)), "F", startedAt = t0, vehicleId = "8")
+        assertEquals(TripProgress.Lost(long), OnTheWay.advance(waiting, cutShort, at(3)).second)
+        // On board: no stops counted down to one it won't reach, and not got off either.
+        val (next, progress) = OnTheWay.advance(waiting.copy(boarded = true), cutShort.drop(1), at(6))
+        assertEquals(TripProgress.Lost(long), progress)
+        assertEquals(0, next.legIndex)
+        // Ending its run at F, it's ridden there, timed.
+        val riding = OnTheWay.advance(waiting.copy(boarded = true), listOf(call("B", 9), call("C", 12), ends(call("F", 30))), at(6)).second as TripProgress.Riding
+        assertEquals(3, riding.stopsLeft)
+        assertEquals(at(30), riding.getOffAt)
+        // Past where the rider gets off once they were seen due there: they got off, as from any calls.
+        val seenDue = OnTheWay.follow(trip, train("8", 5)).copy(boarded = true, dueOffAt = at(14))
+        assertEquals(1, OnTheWay.advance(seenDue, listOf(ends(call("X", 16))), at(15)).first.legIndex)
+    }
+
+    @Test
     fun `an empty prediction list ends a ride only once the rider was due off`() {
         val onBoard = OnTheWay.follow(trip, train("8", 5)).copy(boarded = true)
         // Never seen due off: an empty list may be TfL's gap, not the end of the ride.
@@ -664,10 +702,12 @@ class OnTheWayTest {
     }
 
     @Test
-    fun `a route with a National Rail train can't be followed, having no train to name`() {
-        assertTrue(OnTheWay.canFollow(trip.route))
+    fun `a route with a National Rail train is followed only with the rider's key`() {
+        assertTrue(OnTheWay.canFollow(trip.route, railTimes = false))
         val byRail = TripRoute(listOf(ride.copy(mode = NATIONAL_RAIL_MODE), walk, second))
-        assertFalse(OnTheWay.canFollow(byRail))
+        // Its boards are what follow it, and they need the key.
+        assertFalse(OnTheWay.canFollow(byRail, railTimes = false))
+        assertTrue(OnTheWay.canFollow(byRail, railTimes = true))
     }
 
     // Synthetic positions: the boarding stop, a rider still on its platform, and one 1 km down the line.

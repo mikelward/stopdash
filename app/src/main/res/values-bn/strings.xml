@@ -599,7 +599,6 @@
     <string name="bug_report_failed">বাগ রিপোর্ট শেয়ার করা যায়নি</string>
     <string name="on_the_way">যাত্রাপথে</string>
     <string name="on_the_way_title">গন্তব্য: %1$s</string>
-    <string name="on_the_way_cant_follow_rail">এখনো National Rail ট্রেন অনুসরণ করা যায় না</string>
     <string name="on_the_way_open_current">চলতি ট্রিপ খুলুন</string>
     <string name="on_the_way_start">শুরু করুন</string>
     <string name="on_the_way_replace_title">চলতি ট্রিপ বদলাবেন?</string>

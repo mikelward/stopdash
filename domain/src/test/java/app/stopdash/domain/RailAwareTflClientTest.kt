@@ -371,6 +371,63 @@ class RailAwareTflClientTest {
     }
 
     @Test
+    fun `a key cleared while the board is asked for says no key, never no trains (Codex, #883)`() = runTest {
+        // As the Darwin client does: set when checked, gone by the time the board is asked for.
+        var key = true
+        val board = object : RailBoardSource {
+            override val available get() = key
+            override suspend fun departures(crs: String): List<Departure> {
+                key = false
+                throw TflException.Unreachable("no national rail key", null)
+            }
+        }
+        val client = RailAwareTflClient(tfl, board, { codes })
+        assertEquals(listOf("overground-example"), client.arrivals("910GEXAMPLE").map { it.lineId })
+        assertEquals(RailFeed.NO_KEY, client.railFeed("910GEXAMPLE"))
+        key = true
+        val trip = RailAwareTflClient(tfl, board, { codes }, boardAtEveryStop = true)
+        assertThrows(TflException.Unreachable::class.java) { runBlocking { trip.railRideArrivals("910GEXAMPLE") } }
+        assertEquals(RailFeed.NO_KEY, trip.railFeed("910GEXAMPLE"))
+    }
+
+    @Test
+    fun `a trip's National Rail ride fails its board where the National Rail half did, never reading it as empty`() = runTest {
+        val board = Board()
+        val client = RailAwareTflClient(tfl, board, { codes }, boardAtEveryStop = true)
+        assertEquals(listOf("overground-example", "great-example"), client.railRideArrivals("910GEXAMPLE").departures.map { it.lineId })
+        // Its trains only on National Rail's board: one that failed, or no key, is no answer.
+        board.fail = true
+        assertThrows(TflException.Unreachable::class.java) { runBlocking { client.railRideArrivals("910GEXAMPLE") } }
+        board.fail = false
+        board.key = false
+        assertThrows(TflException.Unreachable::class.java) { runBlocking { client.railRideArrivals("910GEXAMPLE") } }
+        // So is a stop with no station code to ask its board by: TfL's half alone has none of the ride's trains.
+        board.key = true
+        assertThrows(TflException.Unreachable::class.java) { runBlocking { client.railRideArrivals("910GUNKNOWN") } }
+    }
+
+    @Test
+    fun `a trip's National Rail ride's board kept from a list's read comes with when it was read`() = runTest {
+        // Never passed off as read now (Codex, #883): the trip dates its board by it.
+        val board = Board()
+        val cache = ArrivalsCache()
+        var at = now
+        val list = RailAwareTflClient(tfl, board, { codes }, boards = cache, clock = { at })
+        val trip = RailAwareTflClient(tfl, board, { codes }, boardAtEveryStop = true, boards = cache, clock = { at })
+        val listAsked = at
+        list.arrivals("910GEXAMPLE")
+        at = at.plusSeconds(20)
+        val read = trip.railRideArrivals("910GEXAMPLE")
+        assertEquals(listOf("EXA"), board.asked)
+        assertEquals(listOf("overground-example", "great-example"), read.departures.map { it.lineId })
+        assertEquals(listAsked, read.fetchedAt)
+        // Read afresh: as old as the asking, no older.
+        cache.clear()
+        assertEquals(at, trip.railRideArrivals("910GEXAMPLE").fetchedAt)
+        assertEquals(listOf("EXA", "EXA"), board.asked)
+    }
+
+    @Test
     fun `an operator's name makes TfL's line id`() {
         assertEquals("great-northern", railLineId("Great Northern"))
         assertEquals("c2c", railLineId("c2c"))

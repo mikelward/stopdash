@@ -231,11 +231,12 @@ object OnTheWay {
     val ON_BOARD_GRACE: Duration = Duration.ofMinutes(1)
 
     /**
-     * Whether [route] can be followed: each of its rides by a train its departures name. National
-     * Rail's come from its own boards (SPEC *National Rail*), which name none.
+     * Whether [route] can be followed: each of its rides by a train its departures name. A National
+     * Rail train is followed by its stations' boards ([RailFollow]), which need the rider's own key
+     * ([railTimes]): without one, a route riding National Rail can't be.
      */
-    fun canFollow(route: TripRoute): Boolean =
-        route.legs.none { !it.isWalk && it.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) }
+    fun canFollow(route: TripRoute, railTimes: Boolean): Boolean =
+        railTimes || route.legs.none { !it.isWalk && it.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) }
 
     /**
      * With live location: a rider still this close to the boarding stop this long after their train
@@ -407,7 +408,8 @@ object OnTheWay {
      * Whether a train with [calls] ahead of it takes [leg]: it calls at the boarding stop, and later
      * where the rider gets off — not a train the other way, or to another branch. TfL predicts only
      * so far ahead ([VehicleSource]), so a train whose predictions end first takes the leg when every
-     * stop predicted after boarding is on the leg's path.
+     * stop predicted after boarding is on the leg's path; one whose calls end its run there doesn't
+     * ([VehicleCall.endsRun]).
      */
     fun runsAlong(leg: TripLeg, calls: List<VehicleCall>, heading: String? = null): Boolean {
         val on = calls.indexOfFirst { callsFrom(it, leg) }
@@ -423,7 +425,8 @@ object OnTheWay {
     fun runsOn(leg: TripLeg, calls: List<VehicleCall>, heading: String? = null): Boolean {
         val off = calls.indexOfFirst { callsTo(it, leg) }
         if (off >= 0) return keepsToLeg(leg, calls.take(off))
-        if (calls.isEmpty()) return false
+        // Every call it has left, none where the rider gets off: it won't call there ([allCalls]).
+        if (calls.isEmpty() || allCalls(calls)) return false
         // A leg whose stops can't be checked (a bus) looks the same as a short working or another
         // branch until its calls reach the stop: meanwhile only the terminus it shows ([heading],
         // its departure's) against the Planner's tells them apart.
@@ -715,8 +718,9 @@ object OnTheWay {
      * the rider has got off, or a walk has had its time — and where it stands. Moves at most as far
      * as the calls show; a leg reached here waits for its own train to be picked. The calls are a
      * prediction window ([VehicleSource]): the stop missing from them is not yet predicted, not
-     * passed, while the train's next stop is still on the leg; and an empty list ends a ride only once
-     * the rider was seen due off.
+     * passed, while the train's next stop is still on the leg, unless their last ends its run
+     * ([VehicleCall.endsRun]), when it's a stop the train won't call at; and an empty list ends a ride
+     * only once the rider was seen due off.
      */
     fun advance(trip: ActiveTrip, calls: List<VehicleCall>?, now: Instant, atBoarding: Boolean = false): Pair<ActiveTrip, TripProgress> {
         // Checked against the ride as the followed train's line runs it ([ridden]).
@@ -796,6 +800,8 @@ object OnTheWay {
                 // not a train the rider can take.
                 val ahead = calls.drop(boarding + 1)
                 val off = ahead.indexOfFirst { arrivesAt(trip, on, it) }
+                // Every call it has left, none where the rider gets off: cut short of it, or not calling there.
+                if (off < 0 && allCalls(calls)) return trip to TripProgress.Lost(leg)
                 if (!keepsToLeg(on, if (off >= 0) ahead.take(off) else ahead)) return trip to TripProgress.Lost(leg)
                 return trip.copy(boardsAt = due, heldFrom = heldFrom) to TripProgress.Waiting(leg, due, followedLineName(trip))
             }
@@ -808,6 +814,9 @@ object OnTheWay {
             return nextLeg(trip, now)
         }
         if (off < 0) {
+            // Every call it has left, none where the rider gets off: past it once they were seen due there,
+            // else cut short of it or not calling there, never a stop beyond the predictions to count down to.
+            if (allCalls(calls)) return if (seenPast(trip, now)) nextLeg(trip, now) else trip to TripProgress.Lost(leg)
             val next = calls.firstOrNull()
             if (next != null && !checkable(on) && !seenPast(trip, now)) {
                 // A bus with its stop beyond the predictions: on it, but its stops left can't be counted.
@@ -1582,7 +1591,7 @@ object OnTheWay {
             val at = way.path.getOrNull(along.from)
             // Only once the train's own calls put it there: one whose next call is where they get off may be on either.
             val elsewhere = calls.takeWhile { !callsTo(it, way) }.any { onPath(way, it) < 0 }
-            if (way != followed && !onFollowed && elsewhere && along.atStop && at != null && at !in followed.path && calls.none { it.stopId == at }) return way to along
+            if (way != followed && !onFollowed && elsewhere && along.atStop && at != null && at !in followed.path && calls.none { it.stopId == at || at in it.stationIds }) return way to along
         }
         return null
     }
@@ -2693,6 +2702,11 @@ object OnTheWay {
     // How early a train can pass the stop it was last seen due at, and still count as having called.
     private val EARLY: Duration = Duration.ofMinutes(1)
 
+    // Whether [calls] are every call the train has left, its last ending its run ([VehicleCall.endsRun]): a
+    // National Rail train's, through where it now ends, so a stop missing from them is one it won't call at,
+    // never one past a prediction window ([VehicleSource]) (maintainer, 2026-10-16; Codex, #883).
+    private fun allCalls(calls: List<VehicleCall>): Boolean = calls.lastOrNull()?.endsRun == true
+
     // Whether [calls] (between boarding and getting off) are each one of [leg]'s own stops, in the
     // leg's order: a train running via another branch, or a loop's long way round, doesn't take it.
     // A leg with no path to check against can't be told apart, so is taken on the calls' ends alone.
@@ -2706,7 +2720,7 @@ object OnTheWay {
     // By id, or (as for the leg's ends) by name when TfL names a station by another id — never for two
     // different bus poles.
     private fun onPath(leg: TripLeg, call: VehicleCall): Int {
-        val byId = leg.path.indexOf(call.stopId)
+        val byId = leg.path.indexOf(call.stopId).takeIf { it >= 0 } ?: leg.path.indexOfFirst { it in call.stationIds }
         if (byId >= 0 || StopDisruptionBatch.isPole(call.stopId)) return byId
         return leg.pathNames.indexOfFirst { it.isNotBlank() && namesStop(call, it, leg) }
     }
@@ -2732,11 +2746,12 @@ object OnTheWay {
     private fun callsTo(call: VehicleCall, leg: TripLeg): Boolean = calls(call, leg, leg.toId, leg.toName)
 
     // Whether [call] is at the stop [id] (or, by name, the same place: TfL's arrivals can name a
-    // station by another of its ids).
+    // station by another of its ids). A National Rail call is at each id of its station
+    // ([VehicleCall.stationIds]).
     // A bus pole is never matched by name to another pole, or to a stop area the Planner gave for want
     // of a pole: a route can call at two "High Street"s, and a pole's id is authoritative ([Terminating]).
     private fun calls(call: VehicleCall, leg: TripLeg, id: String, name: String): Boolean {
-        if (call.stopId == id) return true
+        if (call.stopId == id || id in call.stationIds) return true
         if (StopDisruptionBatch.isPole(call.stopId) && id.startsWith(BUS_STOP_PREFIX)) return false
         return name.isNotBlank() && namesStop(call, name, leg)
     }

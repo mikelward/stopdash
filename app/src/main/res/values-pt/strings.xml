@@ -602,7 +602,6 @@
     <string name="bug_report_failed">Não foi possível partilhar o relatório de erro</string>
     <string name="on_the_way">A caminho</string>
     <string name="on_the_way_title">Para %1$s</string>
-    <string name="on_the_way_cant_follow_rail">Ainda não é possível seguir comboios da National Rail</string>
     <string name="on_the_way_open_current">Abrir viagem atual</string>
     <string name="on_the_way_start">Iniciar</string>
     <string name="on_the_way_replace_title">Substituir a viagem atual?</string>
