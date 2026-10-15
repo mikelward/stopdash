@@ -6,6 +6,8 @@ import androidx.test.core.app.ApplicationProvider
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DistanceSystem
+import app.stopdash.domain.LineRoute
+import app.stopdash.domain.LineSequence
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripProgress
@@ -17,7 +19,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -59,11 +63,12 @@ class OnTheWayLiveUpdateTest {
     }
 
     @Test
-    fun `waiting with the train not on the board, the plan's heading, no platform`() {
-        assertEquals(OnTheWayLiveUpdate.Boarding("Brixton"), OnTheWayLiveUpdate.boarding(trip, waiting, null, now))
+    fun `waiting with the train not on the board, where the rider gets off, no platform`() {
+        // Not the plan's heading ("Brixton"): that names the route's last stop, not always a blind.
+        assertEquals(OnTheWayLiveUpdate.Boarding("Victoria"), OnTheWayLiveUpdate.boarding(trip, waiting, null, now))
         // Another line's train with the same id is not the one followed.
         val other = board(train("EXAMPLE1", "Edgware Underground Station", "Platform 1", line = "northern"))
-        assertEquals(OnTheWayLiveUpdate.Boarding("Brixton"), OnTheWayLiveUpdate.boarding(trip, waiting, other, now))
+        assertEquals(OnTheWayLiveUpdate.Boarding("Victoria"), OnTheWayLiveUpdate.boarding(trip, waiting, other, now))
     }
 
     @Test
@@ -108,11 +113,69 @@ class OnTheWayLiveUpdateTest {
             Departure("victoria", "Victoria", "outbound", "Brixton Underground Station", "Southbound - Platform 5", at(4), "tube"),
         )
         assertEquals(OnTheWayLiveUpdate.Boarding("Brixton", "Platform 5"), OnTheWayLiveUpdate.boarding(trip, changing, trains, now))
-        // A tick past that train, before the next refresh: not its platform any more.
-        assertEquals(OnTheWayLiveUpdate.Boarding("Brixton"), OnTheWayLiveUpdate.boarding(trip, changing, trains, at(5)))
+        // A tick past that train, before the next refresh: not its platform any more, nor its destination.
+        assertEquals(OnTheWayLiveUpdate.Boarding("Victoria"), OnTheWayLiveUpdate.boarding(trip, changing, trains, at(5)))
         // Only the other way listed: no platform rather than the wrong one.
         val otherWay = board(Departure("victoria", "Victoria", "inbound", "Walthamstow Central Underground Station", "Northbound - Platform 7", at(4), "tube"))
-        assertEquals(OnTheWayLiveUpdate.Boarding("Brixton"), OnTheWayLiveUpdate.boarding(trip, changing, otherWay, now))
+        assertEquals(OnTheWayLiveUpdate.Boarding("Victoria"), OnTheWayLiveUpdate.boarding(trip, changing, otherWay, now))
+    }
+
+    @Test
+    fun `a bus's heading is its blind, not the route's last stop the Planner names`() {
+        // The Planner heads the ride by its route's last stop; the buses' blinds say somewhere else.
+        val ride = TripLeg(
+            "bus", "24", "24", "EXAMPLE-POLE-A", "Victoria Station", "EXAMPLE-POLE-B", "Example Stop B", at(18), at(40),
+            headings = listOf("Example Terminus"),
+        )
+        val route = LineSequence(
+            listOf(LineRoute("Victoria Station - Example Terminus", listOf("EXAMPLE-POLE-A", "EXAMPLE-POLE-M", "EXAMPLE-POLE-B", "EXAMPLE-POLE-T"))),
+            mapOf(
+                "EXAMPLE-POLE-A" to "Victoria Station", "EXAMPLE-POLE-M" to "Example Stop M",
+                "EXAMPLE-POLE-B" to "Example Stop B", "EXAMPLE-POLE-T" to "Example Terminus",
+            ),
+        )
+        val onBus = ActiveTrip(TripRoute(listOf(victoria, ride)), "Example Stop B", startedAt = now, legIndex = 1)
+        val changing = TripProgress.Changing(ride, at(18))
+        fun bus(destination: String, minutes: Long) = Departure("24", "24", "outbound", destination, null, at(minutes), "bus")
+        // Gone before the change is done; a short working that ends before the rider's stop; then the one to take.
+        val board = ActiveTripTracker.NextBoard(ride, listOf(bus("Euston", 17), bus("Example Stop M", 19), bus("Euston", 21)), now)
+        val routes = mapOf("24" to route)
+        assertEquals("Euston", OnTheWayLiveUpdate.boarding(onBus, changing, board, now) { routes[it] }?.heading)
+        // Waiting with no bus followed yet, the same.
+        assertEquals("Euston", OnTheWayLiveUpdate.boarding(onBus, TripProgress.Waiting(ride, at(21)), board, at(19)) { routes[it] }?.heading)
+        // The route not held yet, so no bus is known to take the ride: where the rider gets off.
+        assertEquals("Example Stop B", OnTheWayLiveUpdate.boarding(onBus, changing, board, now)?.heading)
+        // Held, with none on the board that takes the ride: not a short working's blind either.
+        val shortOnly = board.copy(departures = listOf(bus("Example Stop M", 19)))
+        assertEquals("Example Stop B", OnTheWayLiveUpdate.boarding(onBus, changing, shortOnly, now) { routes[it] }?.heading)
+
+        // Routed once for the board and read again each tick: once the bus to take has gone, no blind is left.
+        val placements = OnTheWayLiveUpdate.Placements()
+        assertEquals("Euston", OnTheWayLiveUpdate.boarding(onBus, changing, board, now, placements) { routes[it] }?.heading)
+        assertEquals("Example Stop B", OnTheWayLiveUpdate.boarding(onBus, changing, board, at(22), placements) { routes[it] }?.heading)
+        val placed = placements.of(board, ride, route, now, now)
+        assertSame(placed, placements.of(board, ride, route, now, at(1)))
+        // A new board, or the route loaded again, is routed afresh.
+        assertNotSame(placed, placements.of(board.copy(), ride, route, now, at(1)))
+        assertNotSame(placed, placements.of(board, ride, route.copy(), now, at(1)))
+        // The clock set back before the last placing: placed again, so the trains it had dropped come back.
+        val rewound = OnTheWayLiveUpdate.Placements()
+        assertEquals("Example Stop B", OnTheWayLiveUpdate.boarding(onBus, changing, board, at(22), rewound) { routes[it] }?.heading)
+        assertEquals("Euston", OnTheWayLiveUpdate.boarding(onBus, changing, board, now, rewound) { routes[it] }?.heading)
+    }
+
+    @Test
+    fun `waiting with none followed, the next train's heading and platform both, not a doubtful one`() {
+        val unfollowed = trip.copy(vehicleId = "")
+        val trains = board(
+            // TfL may be tracking this one twice: the tracker would pick the next, so the notification names that.
+            Departure("victoria", "Victoria", "outbound", "Brixton Underground Station", "Southbound - Platform 8", at(4), "tube", doubtful = true),
+            Departure("victoria", "Victoria", "outbound", "Brixton Underground Station", "Southbound - Platform 5", at(6), "tube"),
+        )
+        assertEquals(OnTheWayLiveUpdate.Boarding("Brixton", "Platform 5"), OnTheWayLiveUpdate.boarding(unfollowed, waiting, trains, now))
+        // Only the doubtful one listed: that one, rather than none.
+        val doubtfulOnly = board(Departure("victoria", "Victoria", "outbound", "Brixton Underground Station", "Southbound - Platform 8", at(4), "tube", doubtful = true))
+        assertEquals(OnTheWayLiveUpdate.Boarding("Brixton", "Platform 8"), OnTheWayLiveUpdate.boarding(unfollowed, waiting, doubtfulOnly, now))
     }
 
     @Test

@@ -2883,7 +2883,10 @@ boarding or a change, as the board heads that stop (D8): the train's platform, o
 chip has few characters. Stops left on a ride ("Next stop" at one); on a walk the distance left,
 in the rider's units, once a fix places them; minutes otherwise. Boarding or
 changing, the notification's line also names where the train goes and where to stand ("➔ Stratford ·
-Platform 2 · Due in 4 min"). With no current answer the bar and chip are left off, as the text then says it's
+Platform 2 · Due in 4 min"). Where it goes is what its front shows: the board's destination for the
+train followed, else for the next on the step's own line the rider can catch that takes them to their
+stop; with neither known, the stop they get off at (maintainer, 2026-10-15). Never the Planner's
+terminus, which is the route's last stop and often not what a bus's blind says. With no current answer the bar and chip are left off, as the text then says it's
 checking, and so is the bar with the train lost, as where the rider is along the ride isn't known; a
 route of more than ten legs folds its shortest into a neighbor, as Android draws ten at most.
 **One notification for the trip** (maintainer, 2026-10-09): while it's up, "Get off soon", "Time to

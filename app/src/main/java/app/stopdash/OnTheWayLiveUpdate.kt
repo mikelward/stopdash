@@ -10,6 +10,7 @@ import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.DepartureLabels
 import app.stopdash.domain.DestinationAbbreviations
 import app.stopdash.domain.DistanceSystem
+import app.stopdash.domain.LineSequence
 import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.PlatformDirection
 import app.stopdash.domain.StopDistance
@@ -112,14 +113,28 @@ internal object OnTheWayLiveUpdate {
     }
 
     /**
-     * Where to board when the step is boarding or a change: the destination of the train followed, as
-     * the board names it, else the plan's own heading; and where to stand as the board heads the stop
-     * ([groupHeaderLabel]): at a station the train's platform, else the direction its platform faces;
-     * at a bus stop its pole's letter, else the "towards" on its sign, else its bearing ([busPoleLabel]).
-     * Null on any other step. Off the main thread: it looks through the boarding stop's board.
+     * Where to board when the step is boarding or a change: where the train goes as its front shows it,
+     * the board's own destination for the train followed, else for the next of the step's own line the
+     * rider can catch that takes them where they get off, as the trip's board keeps them
+     * ([OnTheWay.placeTrains]) and the tracker would pick one ([OnTheWay.nextTrain]): the step names that
+     * line, so another's blind beside it would mislead. With none on the board, the stop they get off at;
+     * never the plan's heading, which names the route's last stop rather than a bus's blind. And where to
+     * stand as the board heads the stop ([groupHeaderLabel]): at a station that same train's platform,
+     * else the direction its platform faces;
+     * at a bus stop its pole's letter, else the "towards" on its sign, else its bearing
+     * ([busPoleLabel]). [route] is a line's route where it's already held, never fetched here; the board
+     * is routed once by [placements] and read again at each [now]. Null on any other step. Off the main
+     * thread: it routes the boarding stop's board.
      */
     @WorkerThread
-    fun boarding(trip: ActiveTrip, progress: TripProgress?, board: ActiveTripTracker.NextBoard?, now: Instant): Boarding? {
+    fun boarding(
+        trip: ActiveTrip,
+        progress: TripProgress?,
+        board: ActiveTripTracker.NextBoard?,
+        now: Instant,
+        placements: Placements = Placements(),
+        route: (String) -> LineSequence? = { null },
+    ): Boarding? {
         val leg = when (progress) {
             is TripProgress.Waiting -> progress.leg
             is TripProgress.Changing -> progress.leg
@@ -138,27 +153,69 @@ internal object OnTheWayLiveUpdate {
             }
         }
         val planned = leg.headings.firstOrNull()?.let { DepartureLabels.destinationLabel(it, "") ?: it }
-        val heading = followed?.first?.destination?.takeIf { it.isNotBlank() }?.let { DepartureLabels.destinationLabel(it, "") } ?: planned
-        // Changing, none is followed yet: the platform is the next catchable train's on the ride's line to
-        // where the plan's goes, so a board listing both ways never points the rider at the wrong one.
-        val next = followed?.first ?: (progress as? TripProgress.Changing)?.let { changing ->
-            read?.departures
-                // Not one gone already: the tick can rebuild this between refreshes, past the change's end.
-                ?.filter { it.lineId == leg.lineId && !it.expectedArrival.isBefore(maxOf(changing.until, now)) }
-                ?.filter { planned != null && DepartureLabels.destinationLabel(it.destination, "") == planned }
-                ?.minByOrNull { it.expectedArrival }
-        }
+        // The ride's own line's trains on the board that take the rider where they get off. Without the line's
+        // route held, those to where the plan's goes, by name, so a board listing both ways never points the
+        // rider at the wrong one.
+        val trains = read?.let { b ->
+            val fetchedAt = b.fetchedAt
+            val sequence = route(leg.lineId)
+            if (fetchedAt != null && sequence != null) {
+                placements.of(b, leg, sequence, fetchedAt, now).trainsAt(now).trains.filter { it.lineId == leg.lineId }
+            } else {
+                b.departures.filter { it.lineId == leg.lineId && planned != null && DepartureLabels.destinationLabel(it.destination, "") == planned }
+            }
+        }.orEmpty()
+        // The train the step names, its heading and its platform both: the one followed, else the next the
+        // rider can catch as the tracker would pick it ([OnTheWay.nextTrain]), not one gone before they can be
+        // there (the tick can rebuild this between refreshes, past a change's end).
+        val train = followed?.first ?: OnTheWay.nextTrain(trains, maxOf(OnTheWay.readyAt(trip, progress) ?: now, now))
+        // As its front shows it; with no train known, where the rider gets off (maintainer, 2026-10-15). Never
+        // the plan's heading: the Planner names the route's last stop, which is often not what a bus's blind says.
+        val heading = train?.destination?.takeIf { it.isNotBlank() }
+            ?.let { DepartureLabels.destinationLabel(it, "") } ?: leg.toName.takeIf { it.isNotBlank() }
         val where = if (ActiveTripTracker.boardsAtPole(leg)) {
             // The pole the bus or tram followed calls at, else the ride's own, as the board heads it.
             (followed?.second ?: read?.pole)?.let { busPoleLabel(it.stopLetter, it.towards, it.bearing) }
         } else {
-            next?.platform?.let { platform ->
+            train?.platform?.let { platform ->
                 val direction = PlatformDirection.of(platform)
                 PlatformDirection.platformNumber(platform)?.let { groupHeaderLabel(StopQualifier.Platform(it, direction)) }
                     ?: direction?.let { groupHeaderLabel(StopQualifier.Compass(it)) }
             }
         }
         return Boarding(heading?.takeIf { it.isNotBlank() }, where).takeIf { it.heading != null || it.where != null }
+    }
+
+    /**
+     * The ride's board as [OnTheWay.placeTrains] routes it on the ride's line, worked out once and kept
+     * until the board, the ride or the line's route changes: the notification is shown again every tick,
+     * and a long route isn't walked again each time for the same answer (Codex on #882). One for each
+     * notification flow, which reads it one tick at a time.
+     */
+    class Placements {
+        private var board: ActiveTripTracker.NextBoard? = null
+        private var leg: TripLeg? = null
+        private var sequence: LineSequence? = null
+        private var from: Instant? = null
+        private var placed: OnTheWay.PlacedTrains? = null
+
+        /**
+         * [board]'s trains for [leg] on [sequence], fetched at [fetchedAt]: as placed before for these, else
+         * from [now]. Placed again when the clock has gone back before the last placing, which dropped the
+         * trains gone by then: a countdown follows the wall clock, as the trip's screen rebuilds on a rewind.
+         */
+        @WorkerThread
+        fun of(board: ActiveTripTracker.NextBoard, leg: TripLeg, sequence: LineSequence, fetchedAt: Instant, now: Instant): OnTheWay.PlacedTrains {
+            placed?.takeIf { board === this.board && sequence === this.sequence && leg == this.leg && from?.isAfter(now) == false }
+                ?.let { return it }
+            return OnTheWay.placeTrains(leg, board.departures, fetchedAt, mapOf(leg.lineId to sequence), now).also {
+                this.board = board
+                this.leg = leg
+                this.sequence = sequence
+                from = now
+                placed = it
+            }
+        }
     }
 
     /**

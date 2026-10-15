@@ -50,6 +50,15 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `the next train is the soonest catchable, a doubtful one only when no other is listed, named or not`() {
+        // Unlike a pick to follow, a train TfL names no id for still counts as the next.
+        val trains = listOf(train("7", 2), train("8", 5).copy(doubtful = true), train("", 6), train("9", 7))
+        assertEquals(at(6), OnTheWay.nextTrain(trains, at(4))?.expectedArrival)
+        assertEquals("8", OnTheWay.nextTrain(listOf(train("7", 2), train("8", 5).copy(doubtful = true)), at(4))?.vehicleId)
+        assertNull(OnTheWay.nextTrain(trains, at(8)))
+    }
+
+    @Test
     fun `waits while the train is still due at the boarding stop`() {
         val following = OnTheWay.follow(trip, train("8", 5))
         val (next, progress) = OnTheWay.advance(following, listOf(call("A", 5), call("B", 9), call("C", 14)), at(3))
