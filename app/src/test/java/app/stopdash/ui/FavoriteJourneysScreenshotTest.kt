@@ -23,9 +23,14 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.TextLayoutResult
 import app.stopdash.domain.JourneyAlertSchedule
 import app.stopdash.domain.JourneyAlerts
 import app.stopdash.domain.JourneyEnd
+import app.stopdash.domain.TimeWindow
+import java.time.LocalTime
 import java.time.DayOfWeek
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.Coordinates
@@ -72,6 +77,9 @@ class FavoriteJourneysScreenshotTest {
         mode = "tube",
     )
 
+    // A direction's alert line as the list says it: to [to], on [times].
+    private fun line(to: String, times: String) = alertLine(to) { "Alerts to $it: $times" }
+
     private fun show(state: FavoriteJourneysUi, onRemove: (FavoriteJourney) -> Unit = {}) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -109,7 +117,7 @@ class FavoriteJourneysScreenshotTest {
     @Test
     fun the_menu_pauses_alerts_while_some_are_on() {
         val asked = mutableListOf<Boolean>()
-        showWithMenu(FavoriteJourneysUi(listOf(northern), alertSummaries = mapOf(northern.key to listOf("Alerts to Waterloo: Mon–Fri 08:00–10:00")), anyAlertsOn = true), paused = false) { asked += it }
+        showWithMenu(FavoriteJourneysUi(listOf(northern), alertSummaries = mapOf(northern.key to listOf(line("Waterloo", "Mon–Fri 08:00–10:00"))), anyAlertsOn = true), paused = false) { asked += it }
         if (capturing()) com.github.takahirom.roborazzi.captureScreenRoboImage("src/test/snapshots/images/favorite-journeys-pause-menu.png")
         composeRule.onNodeWithText("Pause alerts").performClick()
         assertEquals(listOf(true), asked)
@@ -139,11 +147,11 @@ class FavoriteJourneysScreenshotTest {
             // The scan runs on the worker, not the caller's thread (AGENTS.md *Main thread*): the map
             // notes where its journeys are read.
             val threads = app.stopdash.ThreadRecorder()
-            val summaries = object : AbstractMap<String, List<String>>() {
-                override val entries: Set<Map.Entry<String, List<String>>>
+            val summaries = object : AbstractMap<String, List<AlertLine>>() {
+                override val entries: Set<Map.Entry<String, List<AlertLine>>>
                     get() {
                         threads.note()
-                        return mapOf(northern.key to emptyList<String>(), victoriaLine.key to listOf("Alerts to Brixton: daily")).entries
+                        return mapOf(northern.key to emptyList<AlertLine>(), victoriaLine.key to listOf(line("Brixton", "daily"))).entries
                     }
             }
             assertEquals(true, anyJourneyAlertsOn(summaries, dispatcher))
@@ -156,7 +164,7 @@ class FavoriteJourneysScreenshotTest {
 
     @Test
     fun the_menu_offers_no_pause_until_the_pause_is_read() {
-        showWithMenu(FavoriteJourneysUi(listOf(northern), alertSummaries = mapOf(northern.key to listOf("Alerts to Waterloo: Mon–Fri 08:00–10:00")), anyAlertsOn = true), paused = null) {}
+        showWithMenu(FavoriteJourneysUi(listOf(northern), alertSummaries = mapOf(northern.key to listOf(line("Waterloo", "Mon–Fri 08:00–10:00"))), anyAlertsOn = true), paused = null) {}
         composeRule.onNodeWithTag("pauseJourneyAlerts").assertDoesNotExist()
     }
 
@@ -433,7 +441,7 @@ class FavoriteJourneysScreenshotTest {
 
     @Test
     fun a_row_keeps_its_height_when_its_alert_summary_changes() {
-        var summaries by mutableStateOf(mapOf(northern.key to emptyList<String>()))
+        var summaries by mutableStateOf(mapOf(northern.key to emptyList<AlertLine>()))
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 FavoriteJourneysScreen(state = FavoriteJourneysUi(listOf(northern, victoriaLine), alertSummaries = summaries), onBack = {}, onRemove = {})
@@ -442,7 +450,7 @@ class FavoriteJourneysScreenshotTest {
         composeRule.waitForIdle()
         val below = composeRule.onNodeWithTag("remove-${victoriaLine.key}").getUnclippedBoundsInRoot()
         // A save finishing after the rider came back turns both directions on: the row below stays put (Codex on #700).
-        summaries = mapOf(northern.key to listOf("Alerts to Waterloo: Mon–Fri 08:00–10:00", "Alerts to Euston: Mon–Fri 16:00–18:00"))
+        summaries = mapOf(northern.key to listOf(line("Waterloo", "Mon–Fri 08:00–10:00"), line("Euston", "Mon–Fri 16:00–18:00")))
         composeRule.waitForIdle()
         assertEquals(below, composeRule.onNodeWithTag("remove-${victoriaLine.key}").getUnclippedBoundsInRoot())
     }
@@ -490,6 +498,115 @@ class FavoriteJourneysScreenshotTest {
         captureSnapshot("favorite-journeys-alerts.png")
         composeRule.onNodeWithTag("openAlerts-${northern.key}").performClick()
         assertEquals(listOf(northern), opened)
+    }
+
+    @Test
+    fun a_long_destination_shortens_so_its_alert_times_still_show() {
+        // King's Cross's long hub name, as a ride's end can carry it: the line names it as far as the row
+        // allows, and the days and times are never what's cut.
+        val toHub = FavoriteJourney(
+            JourneyEnd("940GZZLUVIC", "Victoria"),
+            JourneyEnd("HUBKGX", "King's Cross & St Pancras International"),
+            "victoria",
+            lineName = "Victoria",
+            mode = "tube",
+        )
+        val alerts = mapOf(
+            JourneyAlerts.directionKey(toHub, toHub.from.stopId) to JourneyAlertSchedule(windows = JourneyAlertSchedule.DEFAULT_WINDOWS.drop(1)),
+        )
+        val summaries = journeyAlertSummaries(composeRule.activity, listOf(toHub), alerts)
+        show(FavoriteJourneysUi(listOf(toHub), alertSummaries = summaries))
+        val full = "Alerts to King's Cross & St Pancras International: Mon–Fri 16:00–18:00"
+        // Too long for the row even shortened, so only the name is cut, and it's still read out in full.
+        val shown = composeRule.onNodeWithContentDescription(full, useUnmergedTree = true)
+        val node = shown.fetchSemanticsNode()
+        val text = node.config[SemanticsProperties.Text].joinToString()
+        assertTrue(text, text.startsWith("Alerts to King's X & St") && text.endsWith("…: Mon–Fri 16:00–18:00"))
+        val layouts = mutableListOf<TextLayoutResult>()
+        node.config[SemanticsActions.GetTextLayoutResult].action!!(layouts)
+        assertEquals(false, layouts.single().hasVisualOverflow)
+        captureSnapshot("favorite-journeys-alerts-long-name.png")
+    }
+
+    @Test
+    fun a_destination_of_two_places_keeps_both_when_cut() {
+        // Each place is cut on its own, as a departure's destination is, so the second isn't lost behind the first
+        // (Codex on #862). A made-up stop of two places, as no real one is needed (SPEC *Privacy*).
+        val toPair = FavoriteJourney(
+            JourneyEnd("P1", "Victoria Station"),
+            JourneyEnd("P2", "Example Street Market/Alpha Lane"),
+            "99",
+            lineName = "99",
+            mode = "bus",
+        )
+        val alerts = mapOf(
+            JourneyAlerts.directionKey(toPair, toPair.from.stopId) to JourneyAlertSchedule(windows = JourneyAlertSchedule.DEFAULT_WINDOWS.drop(1)),
+        )
+        val summaries = journeyAlertSummaries(composeRule.activity, listOf(toPair), alerts)
+        show(FavoriteJourneysUi(listOf(toPair), alertSummaries = summaries))
+        val node = composeRule.onNodeWithContentDescription(
+            "Alerts to Example Street Market/Alpha Lane: Mon–Fri 16:00–18:00",
+            useUnmergedTree = true,
+        ).fetchSemanticsNode()
+        val text = node.config[SemanticsProperties.Text].joinToString()
+        val place = text.removePrefix("Alerts to ").removeSuffix(": Mon–Fri 16:00–18:00")
+        assertTrue(text, text.startsWith("Alerts to ") && text.endsWith(": Mon–Fri 16:00–18:00"))
+        val (first, second) = place.split("/")
+        assertTrue(place, first.startsWith("Ex") && second.startsWith("Al"))
+        val layouts = mutableListOf<TextLayoutResult>()
+        node.config[SemanticsActions.GetTextLayoutResult].action!!(layouts)
+        assertEquals(false, layouts.single().hasVisualOverflow)
+    }
+
+    @Test
+    fun an_alert_line_too_long_even_without_its_destination_keeps_its_times() {
+        // Four windows don't fit the row even with no name at all: the line loses its start, not its times (Codex on #862).
+        val toHub = FavoriteJourney(
+            JourneyEnd("940GZZLUVIC", "Victoria"),
+            JourneyEnd("HUBKGX", "King's Cross & St Pancras International"),
+            "victoria",
+            lineName = "Victoria",
+            mode = "tube",
+        )
+        val windows = listOf(6 to 7, 8 to 10, 16 to 18, 20 to 21).map { (from, to) -> TimeWindow(LocalTime.of(from, 0), LocalTime.of(to, 0)) }
+        val alerts = mapOf(JourneyAlerts.directionKey(toHub, toHub.from.stopId) to JourneyAlertSchedule(windows = windows))
+        val summaries = journeyAlertSummaries(composeRule.activity, listOf(toHub), alerts)
+        show(FavoriteJourneysUi(listOf(toHub), alertSummaries = summaries))
+        val times = "Mon–Fri 06:00–07:00, 08:00–10:00, 16:00–18:00, 20:00–21:00"
+        val node = composeRule.onNodeWithContentDescription(
+            "Alerts to King's Cross & St Pancras International: $times",
+            useUnmergedTree = true,
+        ).fetchSemanticsNode()
+        val text = node.config[SemanticsProperties.Text].joinToString()
+        assertTrue(text, text.endsWith(times))
+        val layouts = mutableListOf<TextLayoutResult>()
+        node.config[SemanticsActions.GetTextLayoutResult].action!!(layouts)
+        val layout = layouts.single()
+        // Cut, but at its start: what's drawn runs to the line's very end.
+        assertTrue(layout.isLineEllipsized(0))
+        assertEquals(text.length, layout.getLineEnd(0, visibleEnd = true))
+        captureSnapshot("favorite-journeys-alerts-many-windows.png")
+    }
+
+    @Test
+    fun an_alert_line_shortens_only_where_it_goes() {
+        val line = alertLine("King's Cross & St Pancras International") { "Alerts to $it: Mon–Fri 16:00–18:00" }
+        // Each form once: its floor is its shortened form, so the row has two to try, not three (Codex on #862).
+        assertEquals(
+            listOf(
+                "Alerts to King's Cross & St Pancras International: Mon–Fri 16:00–18:00",
+                "Alerts to King's X & St Pancras Intl: Mon–Fri 16:00–18:00",
+            ),
+            line.forms,
+        )
+        // Split around the name, for a row too narrow for any form: only the name is cut.
+        assertEquals("Alerts to ", line.before)
+        assertEquals("King's X & St Pancras Intl", line.name)
+        assertEquals(": Mon–Fri 16:00–18:00", line.after)
+        // A translation may put the name anywhere.
+        val french = alertLine("Euston") { "Alertes vers $it : lun.–ven." }
+        assertEquals("Alertes vers ", french.before)
+        assertEquals(" : lun.–ven.", french.after)
     }
 
     @Test
