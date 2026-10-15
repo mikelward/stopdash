@@ -136,8 +136,16 @@ internal fun LaterTripScreen(
             error?.let {
                 item(key = "error") { LaterNotice(stringResource(R.string.trip_plan_failed, stringResource(errorMessage(it))), state.planning, onRetry) }
             }
-            if (error == null && current && state.incomplete) {
-                item(key = "incomplete") { LaterNotice(stringResource(R.string.trip_plan_incomplete), state.planning, onRetry) }
+            // A station unanswered says so; else a request for more routes that failed says only that some may be
+            // missing, as the plan reached every station.
+            val missed = when {
+                error != null || !current -> null
+                state.incomplete -> R.string.trip_plan_incomplete
+                state.routesMissed -> R.string.trip_later_routes_missed
+                else -> null
+            }
+            missed?.let {
+                item(key = "incomplete") { LaterNotice(stringResource(it), state.planning, onRetry) }
             }
             when {
                 cards == null && error == null -> item(key = "planning") {

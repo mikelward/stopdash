@@ -41,6 +41,21 @@ class RefusedStopsTest {
     }
 
     @Test
+    fun `a refusal at a later trip's time isn't one for now or another time`() {
+        val refused = RefusedStops()
+        val night = TripTime(TripTime.Kind.LEAVE, java.time.LocalDateTime.of(2026, 10, 17, 2, 30))
+        refused.add("490G0A", work, asked.copy(time = night))
+        assertTrue(refused.has("490G0A", work, asked.copy(time = night)))
+        // A stop with no route through it at night may have one by day, or now.
+        assertFalse(refused.has("490G0A", work, asked))
+        assertFalse(refused.has("490G0A", work, asked.copy(time = night.copy(kind = TripTime.Kind.ARRIVE))))
+        assertFalse(refused.has("490G0A", work, asked.copy(time = TripTime(TripTime.Kind.LEAVE, java.time.LocalDateTime.of(2026, 10, 17, 9, 0)))))
+        // And one refused now still holds for now only.
+        refused.add("490G0B", work, asked)
+        assertFalse(refused.has("490G0B", work, asked.copy(time = night)))
+    }
+
+    @Test
     fun `lets the oldest go past its bound`() {
         val refused = RefusedStops()
         (0..RefusedStops.MAX).forEach { refused.add("490G$it", station, asked) }

@@ -5923,8 +5923,12 @@ class TripScreenScreenshotTest {
     )
 
     // A later trip's state for [request]: [routes] as its model lists them ([LaterTripViewModel.cardOf]).
-    private fun later(routes: List<TripRoute>?, request: LaterTripViewModel.Request = sundayRequest, incomplete: Boolean = false) =
-        LaterTripViewModel.State(request = request, cards = routes?.map(LaterTripViewModel::cardOf), incomplete = incomplete)
+    private fun later(
+        routes: List<TripRoute>?,
+        request: LaterTripViewModel.Request = sundayRequest,
+        incomplete: Boolean = false,
+        routesMissed: Boolean = false,
+    ) = LaterTripViewModel.State(request = request, cards = routes?.map(LaterTripViewModel::cardOf), incomplete = incomplete, routesMissed = routesMissed)
 
     private fun showLater(
         state: MutableState<LaterTripViewModel.State>,
@@ -6009,6 +6013,14 @@ class TripScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Couldn't plan to every station").assertIsDisplayed()
         composeRule.onNodeWithText("09:05–09:25 · 20 min").assertIsDisplayed()
+        // Every station answered but a request for more routes didn't: said as that, never as a station missed.
+        state.value = later(listOf(dayOn(viaWhitechapel)), routesMissed = true)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Couldn't plan every route").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Couldn't plan to every station").assertCountEquals(0)
+        captureSnapshot("trip-later-routes-missed.png")
+        composeRule.onNodeWithText("Try again").performClick()
+        assertEquals(2, retried)
         // Another time's cards, as a new time is handed on: planning, never them under this time's header.
         val anotherTime = LaterTripViewModel.Request(sunday.copy(at = sunday.at.plusHours(1)))
         state.value = later(listOf(dayOn(viaWhitechapel)), anotherTime, incomplete = true)

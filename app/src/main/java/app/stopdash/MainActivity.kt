@@ -5155,6 +5155,10 @@ class MainActivity : ComponentActivity() {
                             destinations = destinations,
                             destinationIds = destinationIds,
                             warn = ::logDepartureWarning,
+                            // The bus stops towards the destination a plan from here asks via, as for the trip for now.
+                            stations = { StationIndexStore.load(appContext) },
+                            bundledStops = { BundledStopsStore.load(appContext) },
+                            refused = RefusedStops.SHARED,
                         )
                     }
                 },

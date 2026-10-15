@@ -223,7 +223,7 @@ class TripViewModelTest {
         val towardOrigins = mutableListOf<TripOrigin>()
         var byToward: Map<String, List<TripRoute>> = emptyMap()
         var towardNotFound: Set<String> = emptySet()
-        override suspend fun quickestVia(from: TripOrigin, to: TripDestination, via: String, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes): List<TripRoute> {
+        override suspend fun quickestVia(from: TripOrigin, to: TripDestination, via: String, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?): List<TripRoute> {
             towardAsked += via
             towardOrigins += from
             if (via in towardNotFound) throw TflException.NotFound(null)
@@ -6852,7 +6852,7 @@ class TripViewModelTest {
             val planner = object : JourneyPlanner {
                 override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?) =
                     listOf(longWalk)
-                override suspend fun quickestVia(from: TripOrigin, to: TripDestination, via: String, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes): List<TripRoute> {
+                override suspend fun quickestVia(from: TripOrigin, to: TripDestination, via: String, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes, at: TripTime?): List<TripRoute> {
                     threads.note()
                     return listOf(busToTrain)
                 }

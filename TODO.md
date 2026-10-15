@@ -2143,12 +2143,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               that read can make a route the rider merely closed read as not offered. Have the trip screen
               report why it closed the open route — Back, or a settled plan dropping it — and show the
               notice only for the second, retiring `notPlannedForNow` and its worker hop.
-        - [ ] Ask via the bus stops towards the destination for a later trip too (maintainer,
-              2026-10-15: a follow-up PR; Codex, #859). From a position, the trip for now also asks the
-              Planner via up to three nearby bus stops (*Buses towards the destination*), since its three
-              answers can pass over the bus that serves the rider; the later list doesn't yet. Run the same
-              requests from `LaterTripViewModel`, passing the picked time through `quickestVia`, and drop
-              the "except" from SPEC *A later trip* and `docs/PRIVACY.md`.
+        - [x] Ask via the bus stops towards the destination for a later trip too (maintainer,
+              2026-10-15: a follow-up PR; Codex, #859). The later list now runs the trip for now's
+              requests via up to three nearby bus stops (*Buses towards the destination*), for the time
+              picked, through the requests both share.
         - [ ] Keep the later list's cards through a rotation (maintainer, 2026-10-15: a to-do; Codex,
               #859). The screen shows cards only for the very `Request` the model answers, and a recreated
               composition builds a new one, so "Planning…" can show until the model takes it, then the same
@@ -4341,6 +4339,24 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 ## Decisions needing review
 
+- [ ] **"Couldn't plan every route" on a later list (autopilot, 2026-10-15; Codex, #875).** A later plan
+  that reached every station but lost a request for more routes (via a bus stop towards the destination,
+  or via the fastest route's last stop) said "Couldn't plan to every station", which is false for a
+  one-station trip. Taken: its own notice, "Couldn't plan every route", with Try again, the station notice
+  kept for a station that didn't answer. English only, under the translation markers. *Alternatives:*
+  one generic notice for both; or no notice, as the trip for now shows none for these (it plans again
+  every few minutes, which the later list doesn't). **Reversible:** `trip_later_routes_missed`,
+  `LaterTripViewModel.State.routesMissed` and their tests. **To confirm:** the wording on a device.
+- [ ] **A later trip's bus stops towards the destination ignore what's hidden (autopilot, 2026-10-15).**
+  The trip for now picks no stop for a hidden mode or an avoided bus line, but it plans again every few
+  minutes; the later list plans once and only lists the plan again when what's left out changes. Taken:
+  the later list asks every bus line's stop, hidden or not, and leaves the routes out when it lists them,
+  so a line shown again lists its bus at once. *Cost:* a hidden line's stop can take one of the three
+  asks, and with buses hidden the later list still makes up to three requests whose routes it won't
+  show. *Alternatives:* skip hidden lines' stops as the trip for now does, leaving a line shown again
+  without its bus until *Try again* (said nowhere); or plan again when what's left out changes which
+  stops would be asked. **Reversible:** the `hidden = emptySet()` in `LaterTripViewModel.planToward`
+  and its test. **To confirm:** that the wasted requests are worth the instant relist.
 - [ ] **A rerouting's destinations aren't marked on a line's page (autopilot, 2026-10-03).** A
   Northern line alert after a points failure said northbound trains "will go to" two branch ends,
   and a route page whose stop list began past the failure marked only the destination, the one stop

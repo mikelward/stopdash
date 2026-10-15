@@ -2,9 +2,13 @@ package app.stopdash.ui
 
 import app.stopdash.ThreadRecorder
 import app.stopdash.domain.AvoidedLines
+import app.stopdash.domain.BundledStops
 import app.stopdash.domain.Coordinates
+import app.stopdash.domain.IndexedStation
 import app.stopdash.domain.JourneyPlanner
 import app.stopdash.domain.MaxWalk
+import app.stopdash.domain.RefusedStops
+import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripDestination
@@ -14,6 +18,8 @@ import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripTime
 import app.stopdash.domain.WalkingSpeed
+import java.io.BufferedReader
+import java.io.StringReader
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
@@ -64,6 +70,10 @@ class LaterTripViewModelTest {
         val asked = mutableListOf<Pair<String, TripTime?>>()
         val froms = mutableListOf<TripOrigin>()
         var failFor: Set<String> = emptySet()
+        // The answers via each bus stop towards the destination, by the stop asked via, and those asked.
+        var byToward: Map<String, List<TripRoute>> = emptyMap()
+        var towardFails: Set<String> = emptySet()
+        val towardAsked = mutableListOf<Pair<String, TripTime?>>()
         var threads: ThreadRecorder? = null
         // Each answer waits on this while set, as a slow Planner would.
         var gate: CompletableDeferred<Unit>? = null
@@ -85,6 +95,21 @@ class LaterTripViewModelTest {
             gate?.await()
             if (key in failFor) throw TflException.Offline(null)
             return byDestination[key].orEmpty()
+        }
+
+        override suspend fun quickestVia(
+            from: TripOrigin,
+            to: TripDestination,
+            via: String,
+            speed: WalkingSpeed,
+            maxWalk: MaxWalk,
+            stepFree: StepFree,
+            modes: TripModes,
+            at: TripTime?,
+        ): List<TripRoute> {
+            synchronized(towardAsked) { towardAsked += via to at }
+            if (via in towardFails) throw TflException.Offline(null)
+            return byToward[via].orEmpty()
         }
     }
 
@@ -348,7 +373,7 @@ class LaterTripViewModelTest {
     }
 
     @Test
-    fun `a place's routes stand when its request via the last stop fails, said as an incomplete plan`() = runTest(dispatcher) {
+    fun `a place's routes stand when its request via the last stop fails, said as routes missed`() = runTest(dispatcher) {
         // Two rides, then a walk to the place: the trip asks again via the last ride's stop, and that fails.
         val walk = TripLeg(TripLeg.WALKING, "", "", "C", "C", "D", "Place D", at(30), at(36))
         val route = TripRoute(listOf(leg("red", "A", "B", 5, 15), leg("blue", "B", "C", 20, 30), walk))
@@ -364,8 +389,132 @@ class LaterTripViewModelTest {
         later.show(LaterTripViewModel.Request(leave))
         advanceUntilIdle()
         assertEquals(listOf(route), later.routes)
-        assertTrue(later.state.value.incomplete)
+        assertTrue(later.state.value.routesMissed)
+        // Every station answered: not said as one missed.
+        assertFalse(later.state.value.incomplete)
         assertNull(later.state.value.error)
+    }
+
+    // Bus stops around the obviously-fake (51.5, -0.12), as the bundled stops file holds them: A (the pair
+    // 490G0A) about 200 m south serving the 1, B about 300 m north serving the 2.
+    private val bundled = BundledStops.read(
+        BufferedReader(
+            StringReader(
+                listOf(
+                    "# stopdash stops v1\tbounds=51.25,-0.65,51.75,0.4",
+                    "L\t1\tbus\t1",
+                    "L\t2\tbus\t2",
+                    "S\t4900000A1\tB\tStop A\t51.498200\t-0.120000\t490G0A\t\tA\tS\t\t1",
+                    "S\t4900000B1\tB\tStop B\t51.502700\t-0.120000\t490G0B\t\tB\tN\t\t2",
+                ).joinToString("\n"),
+            ),
+        ),
+    )
+
+    // The station X, about 5 km south of the rider: past the reach, so the stops towards it are asked about.
+    private val stations = StationIndex(listOf(IndexedStation("X", "X", latitude = 51.455, longitude = -0.12)))
+
+    // The Planner's own route, and what it offers via the stop pair A: the 1 from A to T, then the red line.
+    private val own = TripRoute(listOf(leg("red", "S", "X", 10, 45)))
+    private val busToTrain = TripRoute(
+        listOf(
+            TripLeg(TripLeg.WALKING, "", "", "", "", "4900000A1", "Stop A", at(1), at(4)),
+            leg("1", "4900000A1", "T", 5, 12, mode = "bus").copy(fromArea = "490G0A"),
+            leg("red", "T", "X", 15, 32),
+        ),
+    )
+
+    private fun fromHere(
+        planner: JourneyPlanner,
+        warnings: MutableList<String> = mutableListOf(),
+        origin: TripOrigin = TripOrigin.Here(Coordinates(51.5, -0.12)),
+        stops: BundledStops = bundled,
+    ) = LaterTripViewModel(
+        planner, { origin }, listOf(TripDestination.Stop("X")), io = dispatcher, compute = dispatcher,
+        warn = { warnings += it }, stations = { stations }, bundledStops = { stops }, refused = RefusedStops(),
+    )
+
+    @Test
+    fun `a later trip from here asks via each bus stop towards the destination, at its time, and lists the bus`() = runTest(dispatcher) {
+        val planner = Planner(mapOf("X" to listOf(own))).apply { byToward = mapOf("490G0A" to listOf(busToTrain)) }
+        val warnings = mutableListOf<String>()
+        val later = fromHere(planner, warnings)
+        later.show(LaterTripViewModel.Request(leave))
+        advanceUntilIdle()
+        // A serves the 1 and lies towards X; B is behind the rider. Asked for the time picked, as the plan is.
+        assertEquals(listOf("490G0A" to leave), planner.towardAsked)
+        assertEquals(listOf(busToTrain.copy(towardStop = true), own), later.routes)
+        assertFalse(later.state.value.incomplete)
+        assertTrue(warnings.toString(), warnings.contains("later trip plan via stops towards the destination: 1 asked"))
+        assertTrue(warnings.toString(), warnings.contains("later trip plan via a stop towards the destination: 1 of 1 routes ride a bus from there"))
+        // The log says how many, never where or when.
+        assertTrue(warnings.toString(), warnings.none { "490G0A" in it || "4900000A1" in it || "09:00" in it || "2026" in it })
+    }
+
+    @Test
+    fun `a failed request via a stop towards the destination leaves the plan standing, said as routes missed`() = runTest(dispatcher) {
+        val planner = Planner(mapOf("X" to listOf(own))).apply { towardFails = setOf("490G0A") }
+        val later = fromHere(planner)
+        later.show(LaterTripViewModel.Request(leave))
+        advanceUntilIdle()
+        assertEquals(listOf(own), later.routes)
+        assertTrue(later.state.value.routesMissed)
+        assertFalse(later.state.value.incomplete)
+        assertNull(later.state.value.error)
+    }
+
+    @Test
+    fun `no bundled stops asks via none and says so in the log, the plan standing as complete`() = runTest(dispatcher) {
+        // Read once a process, so a Retry couldn't bring them: no incomplete notice the rider can't clear.
+        val planner = Planner(mapOf("X" to listOf(own))).apply { byToward = mapOf("490G0A" to listOf(busToTrain)) }
+        val warnings = mutableListOf<String>()
+        val later = fromHere(planner, warnings, stops = BundledStops.EMPTY)
+        later.show(LaterTripViewModel.Request(leave))
+        advanceUntilIdle()
+        assertTrue(planner.towardAsked.isEmpty())
+        assertEquals(listOf(own), later.routes)
+        assertFalse(later.state.value.incomplete)
+        assertFalse(later.state.value.routesMissed)
+        assertTrue(warnings.toString(), warnings.contains("later trip plan via stops towards the destination: no bundled stops"))
+    }
+
+    @Test
+    fun `the stops towards the destination add to a plan, never make one`() = runTest(dispatcher) {
+        // The plan's own request failed: a bus found via a stop is no plan on its own.
+        val planner = Planner(emptyMap()).apply {
+            failFor = setOf("X")
+            byToward = mapOf("490G0A" to listOf(busToTrain))
+        }
+        val later = fromHere(planner)
+        later.show(LaterTripViewModel.Request(leave))
+        advanceUntilIdle()
+        assertNull(later.routes)
+        assertEquals(DeparturesUiState.Error.Kind.OFFLINE, later.state.value.error)
+    }
+
+    @Test
+    fun `a hidden bus line's stop is still asked, so showing the line again lists its bus without planning again`() = runTest(dispatcher) {
+        val planner = Planner(mapOf("X" to listOf(own))).apply { byToward = mapOf("490G0A" to listOf(busToTrain)) }
+        val later = fromHere(planner)
+        later.show(LaterTripViewModel.Request(leave, avoidedLines = setOf(AvoidedLines.key("1", "1"))))
+        advanceUntilIdle()
+        assertEquals(listOf("490G0A" to leave), planner.towardAsked)
+        assertEquals(listOf(own), later.routes)
+        later.show(LaterTripViewModel.Request(leave))
+        advanceUntilIdle()
+        assertEquals(listOf(busToTrain.copy(towardStop = true), own), later.routes)
+        assertEquals(1, planner.asked.size)
+        assertEquals(1, planner.towardAsked.size)
+    }
+
+    @Test
+    fun `a later trip from a stop asks via no stop towards the destination`() = runTest(dispatcher) {
+        val planner = Planner(mapOf("X" to listOf(own))).apply { byToward = mapOf("490G0A" to listOf(busToTrain)) }
+        val later = fromHere(planner, origin = TripOrigin.Stop("A"))
+        later.show(LaterTripViewModel.Request(leave))
+        advanceUntilIdle()
+        assertTrue(planner.towardAsked.isEmpty())
+        assertEquals(listOf(own), later.routes)
     }
 
     @Test

@@ -216,8 +216,9 @@ class KtorTflClient(
         maxWalk: MaxWalk,
         stepFree: StepFree,
         modes: TripModes,
+        at: TripTime?,
     ): List<TripRoute> =
-        finished(listOf(plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = null, via = via)), from, to)
+        finished(listOf(plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = null, via = via, at = at)), from, to)
 
     // One request, for the fewest changes from one stop to another ([DirectRoute]): its failure is the caller's to handle.
     override suspend fun fewestChangesBetween(

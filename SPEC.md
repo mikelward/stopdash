@@ -2282,8 +2282,13 @@ when ("Leave Sun 27 09:00", the date dropped for today) and "Timetable, not live
 Planner's departure and arrival and its minutes, then a row per ride — when it leaves, its line,
 where it gets off — and its walks. The Planner is asked for routes one way only — leaving no sooner
 than a leave-at time, arriving no later than an arrive-by one — and a route that breaks the time isn't
-listed. Leaving at a time lists the soonest there first; arriving by one, the latest to leave first. It asks the Planner what the trip for now does except via the bus stops towards the destination
-(*Buses towards the destination*), which a later trip doesn't ask yet (a follow-up, maintainer, 2026-10-15). It plans once, and again only on *Try again* or when the rider's walk, step-free level or modes change
+listed. Leaving at a time lists the soonest there first; arriving by one, the latest to leave first. It asks the Planner what the trip for now does, the requests via the bus stops towards the destination
+(*Buses towards the destination*) included, each for the time picked; a stop the Planner finds no route
+through at that time is asked again for another time or for now, as a stop with no route through it at
+night may have one by day. Every bus line picks its stop there, hidden or avoided or not, as what's left
+out only lists the plan again: a line shown again lists its bus at once. Where every station answered but
+a request for more routes (via a stop, or via the fastest route's last stop) failed, the list says
+"Couldn't plan every route", with a retry, rather than that a station was missed. It plans once, and again only on *Try again* or when the rider's walk, step-free level or modes change
 (a mode hidden or a line avoided only lists the plan again): no stop's departures, line status or
 closures are fetched, and it doesn't re-plan as the rider moves, except that a move far enough to change
 the trip's nearest stop makes the trip afresh, and its later list is planned again from there. Whatever it shows answers the time and
