@@ -3,6 +3,7 @@ package app.stopdash.domain
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -34,8 +35,49 @@ class PlaceDirectTest {
         assertEquals("TOP", row.fromId)
         assertEquals(listOf(60L, 300L, 600L), row.departures.map { it.expectedArrival.epochSecond - now.epochSecond })
         assertEquals(listOf("BOT"), row.reaches.map { it.id })
+        // Named by where its trains get the rider off.
+        assertEquals("Bottom", row.offStop?.name)
         assertFalse(result.pending)
         assertFalse(result.unresolved)
+    }
+
+    private fun row(vararg trainReaches: List<DirectTrips.End>, forks: List<Boolean> = trainReaches.map { false }) =
+        PlaceDirect.Row("rail", "Rail", "tube", "TOP", "Top", trainReaches.mapIndexed { i, _ -> departure("Bottom", 60L * (i + 1)) }, trainReaches.toList(), forks)
+
+    private val bottomA = DirectTrips.End("BOTA", "Bottom A")
+    private val bottomB = DirectTrips.End("BOTB", "Bottom B")
+
+    @Test
+    fun `a row is named by the stop nearest the place that every one of its trains gets off at`() {
+        assertEquals("BOTA", row(listOf(bottomA, bottomB), listOf(bottomA, bottomB)).offStop?.id)
+        // The soonest calls nearer the place, but the next only farther: the stop both reach.
+        assertEquals("BOTB", row(listOf(bottomA, bottomB), listOf(bottomB)).offStop?.id)
+    }
+
+    @Test
+    fun `trains that get off at one station by its sibling ids name it`() {
+        val bottom = DirectTrips.End("BOT", "Bottom", "HUBB")
+        val bottomX = DirectTrips.End("BOTX", "Bottom", "HUBB")
+        assertEquals("BOT", row(listOf(bottom), listOf(bottomX)).offStop?.id)
+        // TfL's two names for one station's two ids are one station too.
+        val stPancras = DirectTrips.End("910GSTPX", "St Pancras International", "HUBKGX")
+        val stPancrasLow = DirectTrips.End("910GSTPXBOX", "St Pancras International LL", "HUBKGX")
+        assertEquals("910GSTPX", row(listOf(stPancras), listOf(stPancrasLow)).offStop?.id)
+        // Two stations an interchange joins are two stops, not one.
+        val kingsCross = DirectTrips.End("940GZZLUKSX", "King's Cross St. Pancras", "HUBKGX")
+        assertNull(row(listOf(stPancras), listOf(kingsCross)).offStop)
+        assertNull(row(listOf(bottom), listOf(DirectTrips.End("OTH", "Other", "HUBB"))).offStop)
+    }
+
+    @Test
+    fun `a row whose trains don't get off at one known stop names none`() {
+        // Apart: neither stop is where every train gets the rider off.
+        assertNull(row(listOf(bottomA), listOf(bottomB)).offStop)
+        // A train at a fork reaches only one of its stops, which can't be told.
+        assertNull(row(listOf(bottomA), listOf(bottomA, bottomB), forks = listOf(false, true)).offStop)
+        // A train whose stops near the place aren't known.
+        assertNull(row(listOf(bottomA), emptyList()).offStop)
+        assertNull(PlaceDirect.Row("rail", "Rail", "tube", "TOP", "Top", listOf(departure("Bottom", 60))).offStop)
     }
 
     @Test
@@ -239,6 +281,8 @@ class PlaceDirectTest {
         assertEquals(listOf(listOf("BOTA", "BOTB")), result.rows.single().trainReaches.map { r -> r.map { it.id } })
         // Alternatives, not two calls on one way: it gets to only one of them.
         assertEquals(listOf(true), result.rows.single().trainForks)
+        // So the row names no stop to get off at.
+        assertNull(result.rows.single().offStop)
     }
 
     @Test

@@ -1978,7 +1978,9 @@ nothing; one neither list places gets no Direct section. Each line from the
 trip's origin stops whose route calls at a stop within the rider's max walk of the place, at their walking
 pace (as far as the Planner lets the routes' own last walk go, so a stop the routes walk on from counts
 here too; maintainer, 2026-10-07; a change to either looks again),
-once, from its nearest stop, with its next three trains ("3 · 8 · 13 min"), nearest stop first, a row on
+once, from its nearest stop, with its next three trains ("3 · 8 · 13 min"), named by the stop near the
+place they get the rider off at (maintainer, 2026-10-15; where they don't all get off at one known stop,
+as a train at a fork, by where it leaves from: "From Bank"), nearest stop first, a row on
 show keeping its place while the trip is open (a line found later goes under the rows, never above, and
 a stop the rider's fix wavers just past the trip's reach stays one until 50 m past it; SPEC principle 4); a line
 not running a good service says so under its row ("Jubilee: Minor Delays"), as does a closure at the

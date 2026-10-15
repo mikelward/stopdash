@@ -69,6 +69,7 @@ import app.stopdash.R
 import app.stopdash.data.TflRouteSequenceDto
 import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.Departure
+import app.stopdash.domain.DirectTrips
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Countdown
 import app.stopdash.domain.FavoritePlaceIcon
@@ -1251,10 +1252,20 @@ class TripScreenScreenshotTest {
     }
 
     // A trip to a place's Direct section (SPEC *Direct to a place*): its lines from the rider's stops.
-    private fun directRow(lineId: String, lineName: String, mode: String, from: String, vararg minutes: Long, disruption: String? = null): PlaceDirectViewModel.ShownRow {
+    // [off]: the stop near the place each train gets the rider off at; null, none known (a fork).
+    private fun directRow(
+        lineId: String,
+        lineName: String,
+        mode: String,
+        from: String,
+        vararg minutes: Long,
+        disruption: String? = null,
+        off: String? = "Canary Wharf",
+    ): PlaceDirectViewModel.ShownRow {
         val trains = minutes.map { Departure(lineId, lineName, "", "Canary Wharf", null, now.plusSeconds(it * 60), mode) }
+        val reaches = off?.let { name -> trains.map { listOf(DirectTrips.End(name, name)) } }.orEmpty()
         return PlaceDirectViewModel.ShownRow(
-            PlaceDirect.Row(lineId, lineName, mode, from, from, trains),
+            PlaceDirect.Row(lineId, lineName, mode, from, from, trains, reaches),
             Countdown.mergedLabel(trains, now),
             disruption,
         )
@@ -1287,13 +1298,13 @@ class TripScreenScreenshotTest {
 
     @Test
     fun trip_place_direct() {
-        // Under the choices, over the routes: each line once, its stop and next trains; three, then "+N more".
+        // Under the choices, over the routes: each line once, where it gets off and its next trains; three, then "+N more".
         showDirect(
             PlaceDirectViewModel.State.Ready(
                 listOf(
                     directRow("elizabeth", "Elizabeth line", "elizabeth-line", "Bond Street", 3, 8, 13),
                     directRow("jubilee", "Jubilee", "tube", "Bond Street", 2, 5, 9, disruption = "Minor Delays"),
-                    directRow("dlr", "DLR", "dlr", "Bank", 4, 10),
+                    directRow("dlr", "DLR", "dlr", "Bank", 4, 10, off = null),
                     directRow("135", "135", "bus", "Old Street", 6),
                 ),
                 checking = false,
@@ -1302,6 +1313,9 @@ class TripScreenScreenshotTest {
         )
         composeRule.onNodeWithText("Direct").assertIsDisplayed()
         composeRule.onNodeWithTag("placeDirect-elizabeth").assertIsDisplayed()
+        // Each row is named by the stop it gets the rider off at; where that can't be told, by where it leaves from.
+        composeRule.onNodeWithTag("placeDirectStop-elizabeth", useUnmergedTree = true).assertTextEquals("Canary Wharf")
+        composeRule.onNodeWithTag("placeDirectStop-dlr", useUnmergedTree = true).assertTextEquals("From Bank")
         composeRule.onAllNodesWithTag("placeDirect-135").assertCountEquals(0)
         // A line not running a good service says so under its row.
         composeRule.onNodeWithText("Jubilee: Minor Delays").assertIsDisplayed()
