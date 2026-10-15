@@ -1535,6 +1535,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             STP's board in the station codes; a trip's client gives every stop of a station its
             board (`boardAtEveryStop`), while a list still shows it under one; and each board is
             kept once per station in the shared arrivals cache, so screens share one request.
+      - [ ] **Get off at a station TfL routes under its other id** (Codex on #879): #879 lets a train
+            board under a station's other id ([RouteStops.candidatePaths]), but the far end still matches
+            by id. `LineSequence.callingAt` aliases a destination's siblings only when no route calls at
+            it, so a trip *to* St Pancras main (`910GSTPX`) on a northbound Thameslink, whose route calls
+            there as `910GSTPXBOX`, is judged as missing it (`DirectTrips.judge`, `RouteStops.reaches`,
+            `forLeg`). The fix would count a route stop that's the same station by TfL's code as the trip's
+            end. It's the fourth finding on station-code matching, so the maintainer decides the shape
+            first: code matching at ends only, or one station identity for boarding and ends alike.
       - [x] **Delete the unreachable direct-trips page path**: `LookDepartures` is now only a
             station page with nowhere to stand; the direct-trips filter page, a trip from here
             through it, and a To… destination's widening to the stops around it are gone, with
