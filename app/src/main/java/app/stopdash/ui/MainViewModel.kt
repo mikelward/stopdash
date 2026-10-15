@@ -378,9 +378,11 @@ class MainViewModel(
         boarding: Map<String, Set<String>> = emptyMap(),
         // The journeys in the list's order, nearest first ([WidgetJourneysReport.order]).
         order: List<String> = emptyList(),
+        // Each journey's ends as the list names them ([WidgetJourneysReport.names]).
+        names: Map<String, Pair<String, String>> = emptyMap(),
     ) {
         // Compared with what was written last on the worker, as it walks every journey ([writeWidgetJourneys]).
-        widgetJourneysReport = WidgetJourneysReport(keys, checks, shownFrom, boarding, order)
+        widgetJourneysReport = WidgetJourneysReport(keys, checks, shownFrom, boarding, order, names)
         writeWidgetJourneys()
     }
 

@@ -130,7 +130,7 @@ internal fun journeyStopsOf(
  * And the boarding keys of each journey whose neighboring poles are settled (none to look up, or
  * looked up and judged: [poleKeys], [poles], [siblings], [siblingsPending]), so a pole that no longer
  * qualifies loses its pin. And the journeys' order, nearest first, as [journeys] lists them, so the
- * widget leads with the same ride. Each the same [Reported] as [last]'s where it holds the same.
+ * widget leads with the same ride, and their ends' names, so it can head them as the list does. Each the same [Reported] as [last]'s where it holds the same.
  */
 @WorkerThread
 internal fun cardReportsOf(
@@ -175,10 +175,12 @@ internal fun cardReportsOf(
     }
     // The order the list shows them in, nearest first, for the widget to lead with the same ride.
     val order = journeys.filter { it.key in keys }.map { it.key }
+    // Each one's ends as the list names them, in the direction shown, for the widget's ride headings.
+    val names = journeys.filter { it.key in keys }.associate { it.key to (it.from.name to it.to.name) }
     // The far ends to check for a closure.
     val destinations = cards.flatMap { card -> card.destinationIds.map { id -> StopRef(id, card.journey.to.name) } }.distinctBy { it.id }
     return CardReports(
-        Reported.of(WidgetJourneysReport(keys, checks, shownFrom, boarding, order), last?.widget),
+        Reported.of(WidgetJourneysReport(keys, checks, shownFrom, boarding, order, names), last?.widget),
         Reported.of(destinations, last?.destinations),
         Reported.of(cards.flatMapTo(LinkedHashSet()) { it.misses }, last?.misses),
         Reported.of(cards.mapNotNullTo(LinkedHashSet()) { (it.state as? JourneyCardState.Checking)?.waitingOn }, last?.checking),

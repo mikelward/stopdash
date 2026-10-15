@@ -66,6 +66,7 @@ import app.stopdash.domain.Dismissals
 import app.stopdash.data.DataStoreNearbySetStore
 import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.data.DataStoreStarredRowsStore
+import app.stopdash.data.RideGroupingSetting
 import app.stopdash.data.RouteTopologyStore
 import app.stopdash.domain.Countdown
 import app.stopdash.domain.Departure
@@ -75,11 +76,16 @@ import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.GlanceRows
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.DeparturesSnapshot
+import app.stopdash.domain.DestinationAbbreviations
 import app.stopdash.domain.DestinationGroup
+import app.stopdash.domain.EvenShortening
 import app.stopdash.domain.JourneyCall
 import app.stopdash.domain.NoTimes
 import app.stopdash.domain.PlannedAlert
+import app.stopdash.domain.WidgetJourney
+import app.stopdash.domain.WidgetJourneys
 import app.stopdash.domain.isStatusOnly
+import app.stopdash.domain.RideGrouping
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.StarredRow
@@ -107,6 +113,8 @@ import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
@@ -237,7 +245,21 @@ open class StopDashWidget internal constructor(
         // same in-process setting the list uses, so the widget leaves out exactly what the list
         // does, even a change that failed to save and holds only until restart. Its read waits for
         // the stored set on a cold start and is bounded, so it can delay this render but never hang it.
-        val hiddenModes = HiddenModesSetting.loaded()
+        // Settings → Group favorite rides is read the same way, and alongside it, so a stalled store holds
+        // the render for one bounded wait, not one per setting.
+        val (hiddenModes, grouping) = loadedTogether({ HiddenModesSetting.loaded() }, { RideGroupingSetting.loaded() })
+        // By ride, each ride is headed as the app heads it ("From ➔ To", spoken "From to To"); by stop,
+        // its rows go under the stop they board from.
+        val rideTitle: ((String, String) -> GroupHeader)? = if (grouping == RideGrouping.RIDE) {
+            { from, to ->
+                GroupHeader(
+                    text = context.getString(R.string.journey_title, from, to),
+                    spoken = context.getString(R.string.journey_title_spoken, from, to),
+                )
+            }
+        } else {
+            null
+        }
         // The alerts the user dismissed in the app (SPEC *Disruptions*), read here rather than
         // stored with the snapshot, so the widget always follows the app's dismissed set as it is
         // now ([DeparturesSnapshot.withDismissals]). An unreadable set counts as none: the mark
@@ -313,7 +335,7 @@ open class StopDashWidget internal constructor(
             logWidgetSnapshotWarning("widget sizes read failed: ${e::class.simpleName}")
             emptyList()
         }
-        val models = widgetModels(shown, now, starred, fontScale, topology, hiddenModes, sizes, tap, bare = bare)
+        val models = widgetModels(shown, now, starred, fontScale, topology, hiddenModes, sizes, tap, bare = bare, rideTitle = rideTitle)
         StopdashDebugLog.info(
             "widget: drew %s to %s rows across sizes, data %s s old",
             models.all.minOf { it.rows.size },
@@ -392,6 +414,8 @@ internal suspend fun widgetModels(
     worker: CoroutineDispatcher = Dispatchers.Default,
     // The compact widget's models ([WidgetGeometry.bare]).
     bare: Boolean = false,
+    // How a ride is headed when the rides are grouped by ride ([widgetModel]); null groups them by stop.
+    rideTitle: ((from: String, to: String) -> GroupHeader)? = null,
 ): WidgetModels = withContext(worker) {
     val build = { size: DpSize ->
         widgetModel(
@@ -402,6 +426,7 @@ internal suspend fun widgetModels(
             topology = topology,
             hiddenModes = hiddenModes,
             tap = tap,
+            rideTitle = rideTitle,
         )
     }
     val everyRow = build(DpSize(WIDGET_MIN_WIDTH, WIDGET_UNBOUNDED_HEIGHT))
@@ -590,6 +615,10 @@ internal fun widgetModel(
     tap: WidgetTapNote? = null,
     // Two columns where the cell is wide enough ([WIDGET_TWO_COLUMN_WIDTH]); false lays out one.
     columns: Boolean = true,
+    // Settings → Group favorite rides: grouped by ride, each ride is headed as this names it (the app's
+    // "From ➔ To", and what a screen reader says for it) over its own trains, in the app's order
+    // ([pinRides]); null groups the rides' rows by the stop they board from ([pinJourneys]).
+    rideTitle: ((from: String, to: String) -> GroupHeader)? = null,
 ): WidgetModel {
     if (snapshot == null) {
         return WidgetModel(hasData = false, stale = false, uncertain = false, stamp = null, rows = emptyList())
@@ -655,7 +684,14 @@ internal fun widgetModel(
     // its groups as still fit, and once the budget is spent no more rows are added. This bounds
     // an oversized *first* row too (it shows at most `maxLines` groups) rather than exempting
     // it. Groups within a row keep destinationLines' soonest-first order and per-line time cap.
-    val journeyRows = pinJourneys(ordered, snapshot, now)
+    // Grouped by ride, each row knows the ride it's under; by stop, the stop is its heading. Until
+    // the app has named every ride (an earlier build's pins, before the app next reports), the whole
+    // widget goes by stop, as before grouping by ride: rides are named all at once, so one with no
+    // name means none have one, and no stop is headed twice (maintainer, 2026-10-15; Codex, #872).
+    val rides = rideTitle?.takeIf { snapshot.journeys.all { it.fromName.isNotBlank() && it.toName.isNotBlank() } }
+        ?.let { pinRides(ordered, snapshot, now) }
+    val journeyRows = rides?.map { it.first } ?: pinJourneys(ordered, snapshot, now)
+    val rideOf = java.util.IdentityHashMap<DepartureRow, WidgetJourney>().apply { rides?.forEach { (row, ride) -> put(row, ride) } }
     // A line two nearby stops both serve shows once, from the nearer, as the in-app list does, so it
     // doesn't take two of the widget's few slots (Codex P2 on #44). Folded before a journey's
     // departures are lifted out, so a journey from the nearer stop still drops the farther stop's
@@ -676,9 +712,34 @@ internal fun widgetModel(
     // another row at a journey's origin can't pull ahead of a later journey.
     val journeyBand = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<DepartureRow, Boolean>())
         .apply { addAll(journeyRows) }
+    // Wide enough for two columns, side by side: each row is then costed at its column's width.
+    val twoColumns = columns && geometry != null && geometry.width >= WIDGET_TWO_COLUMN_WIDTH
+    val rowWidth = geometry?.let { if (twoColumns) widgetColumnWidth(it.width) else it.width }
+    // Grouped by ride: a heading per ride over its rows, as the app's ride card has, in the order the
+    // rows come ([pinRides] put the nearest ride first). Every ride here is named ([rides]).
+    fun byRide(band: List<DepartureRow>): List<StopGroup> =
+        band.groupBy { WidgetJourneys.baseKey(rideOf.getValue(it).key) }.map { (key, rows) ->
+            val ride = rideOf.getValue(rows.first())
+            // Drawn with both ends shortened evenly to fit its line, said with both in full.
+            val (from, to) = if (rowWidth != null && geometry != null) {
+                widgetRideEnds(ride.fromName, ride.toName, rowWidth, geometry.fontScale)
+            } else {
+                ride.fromName to ride.toName
+            }
+            val title = rideTitle!!(ride.fromName, ride.toName)
+            StopGroup(
+                stopName = rideTitle(from, to).text,
+                key = "ride|$key",
+                showHeader = geometry?.bare != true,
+                rows = rows,
+                placeKey = "ride|$key",
+                spokenName = title.spoken,
+            )
+        }
     fun grouped(rows: List<DepartureRow>): List<StopGroup> {
         val (band, rest) = rows.partition { it in journeyBand }
-        val groups = StopGrouping.groupByStop(band, warningsLead = false) + StopGrouping.groupByStop(rest, warningsLead = false)
+        val bandGroups = if (rides != null) byRide(band) else StopGrouping.groupByStop(band, warningsLead = false)
+        val groups = bandGroups + StopGrouping.groupByStop(rest, warningsLead = false)
         // The full widget always names its station, even when it shows only one (maintainer,
         // 2026-10-11): unlike the app, it has no other cue to where its departures are. The compact
         // widget names none ([WidgetGeometry.bare]). A place running on from the journey band into the
@@ -695,9 +756,6 @@ internal fun widgetModel(
     val currentStops = shownStops.filter {
         it.arrivalsFresh && !Staleness.isStale(it.fetchedAt, now)
     }.mapTo(HashSet()) { it.stopId }
-    // Wide enough for two columns, side by side: each row is then costed at its column's width.
-    val twoColumns = columns && geometry != null && geometry.width >= WIDGET_TWO_COLUMN_WIDTH
-    val rowWidth = geometry?.let { if (twoColumns) widgetColumnWidth(it.width) else it.width }
     // Each destination line's layout, decided from its own countdown and the cell's width (see
     // widgetRowStacked), so the lines a tight budget drops can't change the ones it keeps; without a
     // geometry nothing stacks. The planned-work calendar sits before the first line's countdown.
@@ -799,7 +857,7 @@ internal fun widgetModel(
     // Rows costed for two columns that end up in one (no split fits, or the compact layout) are laid out
     // again at the cell's whole width, so none stacks, or is dropped, for a half width it isn't drawn at.
     if (twoColumns && columnBreak == null) {
-        return widgetModel(snapshot, now, starred, maxLines, maxLinesWithNote, maxLinesCompact, geometry, topology, hiddenModes, tap, columns = false)
+        return widgetModel(snapshot, now, starred, maxLines, maxLinesWithNote, maxLinesCompact, geometry, topology, hiddenModes, tap, columns = false, rideTitle = rideTitle)
     }
     // Only when there's a departure to fit: with none, the empty states ("No upcoming departures",
     // "may be out of date") are the honest message and fit any size.
@@ -909,6 +967,59 @@ internal fun pinJourneys(ordered: List<DepartureRow>, snapshot: DeparturesSnapsh
 /** Whether [row] is a status-only row for a line one of the journeys from its stop ([at]) rides. */
 private fun journeyStatusRow(row: DepartureRow, at: Set<JourneyCall>) =
     row.isStatusOnly && at.any { it.lineId == row.lineId }
+
+/** [first] and [second], awaited at once rather than in turn, so two bounded waits cost the longer of them. */
+internal suspend fun <A, B> loadedTogether(first: suspend () -> A, second: suspend () -> B): Pair<A, B> = coroutineScope {
+    val a = async { first() }
+    val b = async { second() }
+    a.await() to b.await()
+}
+
+/**
+ * [pinJourneys] for rides grouped by ride (Settings → Group favorite rides, SPEC *Journeys*): each row
+ * with the ride whose trains it shows, from that ride's origin and neighboring poles. Fresh rows ahead
+ * of stale ones, then the rides in the order the app's list shows them ([WidgetJourney.rank]; those
+ * with none after, by their soonest rows), soonest first within a ride. A train two rides board at one
+ * stop shows under the first of them only, as the list shows a route once; a line's status with no
+ * train shows under every ride it holds up, as the list never leaves one out (Codex, #872).
+ */
+internal fun pinRides(ordered: List<DepartureRow>, snapshot: DeparturesSnapshot, now: Instant): List<Pair<DepartureRow, WidgetJourney>> {
+    if (snapshot.journeys.isEmpty()) return emptyList()
+    // Each ride's pins, its own and its poles', in the app's order (stable for pins with no place).
+    val rides = snapshot.journeys.groupBy { WidgetJourneys.baseKey(it.key) }.values.toList()
+        .sortedBy { pins -> pins.minOf { it.rank ?: Int.MAX_VALUE } }
+    val atStop = ordered.groupBy { it.stopId }
+    // What an earlier ride already shows: a train at a stop. A line's status is shown once per ride.
+    val trains = HashSet<Pair<String, Departure>>()
+    val statuses = HashSet<Triple<Int, String, String>>()
+    val pinned = ArrayList<Triple<DepartureRow, WidgetJourney, Int>>()
+    rides.forEachIndexed { index, pins ->
+        // The ride itself, for its heading: its own pin, else a pole's (all carry its names).
+        val ride = pins.firstOrNull { it.key == WidgetJourneys.baseKey(it.key) } ?: pins.first()
+        // Its place: the app's order; every ride the app hasn't placed shares the last, so their rows'
+        // own times order them, soonest first (Codex, #872).
+        val place = if (pins.all { it.rank == null }) Int.MAX_VALUE else index
+        for (pin in pins) {
+            for (row in atStop[pin.originId].orEmpty()) {
+                if (journeyStatusRow(row, pin.calls)) {
+                    // A copy each: the rows are told apart by identity when grouped under their rides.
+                    if (statuses.add(Triple(index, row.stopId, row.lineId))) pinned += Triple(row.copy(), ride, place)
+                    continue
+                }
+                val calling = row.upcoming.filter { JourneyCall.of(it) in pin.calls && trains.add(row.stopId to it) }
+                if (calling.isNotEmpty()) pinned += Triple(row.copy(upcoming = calling, destination = calling.first().destination), ride, place)
+            }
+        }
+    }
+    return pinned.sortedWith(
+        compareBy(
+            // As [pinJourneys]: a status-only row has no countdown to go stale, and leads.
+            { (row, _, _) -> if (!row.isStatusOnly && Staleness.isStale(row.fetchedAt, now)) 1 else 0 },
+            { (_, _, place) -> place },
+            { (row, _, _) -> row.upcoming.firstOrNull()?.expectedArrival ?: Instant.MIN },
+        ),
+    ).map { (row, ride, _) -> row to ride }
+}
 
 /**
  * [ordered] without what [pinJourneys] lifted out: a journey-only stop (not nearby) shows nothing
@@ -1757,6 +1868,29 @@ internal fun widgetTextEms(text: String): Float = text.sumOf { c ->
         else -> 0.6
     }
 }.toFloat()
+
+/** A stop or ride header's em at font scale 1: its 12sp. */
+private val WIDGET_HEADER_EM = 12.dp
+
+/**
+ * A ride's two ends as its heading draws them on a line of a cell [width] wide at [fontScale], shortened
+ * evenly as the app's ride heading is (SPEC *Long names shorten evenly*): both in full, then both with their
+ * common words shortened, then both at their floor, and only then each cut, with "…", to an even share of
+ * the line, so neither end is lost to the other's length. Estimated as [widgetStatusFits] estimates a status.
+ */
+internal fun widgetRideEnds(from: String, to: String, width: Dp, fontScale: Float = 1f): Pair<String, String> {
+    // In hundredths of a dp, so a part's share isn't rounded to whole dp.
+    fun widthOf(text: String) = kotlin.math.ceil(widgetTextEms(text) * WIDGET_HEADER_EM.value * fontScale * 100).toInt()
+    val line = ((width - WIDGET_HORIZONTAL_PADDING).value * 100).toInt()
+    val choice = EvenShortening.choose(DestinationAbbreviations.forms(from), DestinationAbbreviations.forms(to), line, widthOf(" ➔ "), ::widthOf)
+    fun cut(text: String, max: Int?): String {
+        if (max == null || widthOf(text) <= max) return text
+        var kept = text
+        while (kept.length > 1 && widthOf("${kept.trimEnd()}…") > max) kept = kept.dropLast(1)
+        return "${kept.trimEnd()}…"
+    }
+    return cut(choice.first, choice.firstMax) to cut(choice.second, choice.secondMax)
+}
 
 /** The countdown's em at font scale 1: its 13sp. */
 private val WIDGET_COUNTDOWN_EM = 13.dp

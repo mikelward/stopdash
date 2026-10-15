@@ -819,8 +819,8 @@ object TrainSpacingSetting {
 internal fun logTrainSpacing(on: Boolean) = StopdashDebugLog.info("settings: train spacing %s", if (on) "on" else "off")
 
 /**
- * How the near-me list groups a favorite ride's departures (SPEC *Journeys*, maintainer 2026-10-14),
- * held in memory for the list to read on its first frame and persisted in order as
+ * How the near-me list and the widget group a favorite ride's departures (SPEC *Journeys*, maintainer
+ * 2026-10-14), held in memory for the list to read on its first frame and persisted in order as
  * [DistanceUnitsSetting] is. Starts at [RideGrouping.RIDE], the stored default.
  */
 object RideGroupingSetting {
@@ -840,6 +840,9 @@ object RideGroupingSetting {
 
     /** Whether the stored choice has been read, so Settings can hold its row until then. */
     val isLoaded: StateFlow<Boolean> get() = holder.isLoaded
+
+    /** The choice once the stored one has been read, for the widget (see [StoredSettingHolder.loaded]). */
+    suspend fun loaded(): RideGrouping = holder.loaded()
 
     /** The user chose [grouping]: applied at once, persisted in order. */
     fun set(grouping: RideGrouping) = holder.set(grouping)

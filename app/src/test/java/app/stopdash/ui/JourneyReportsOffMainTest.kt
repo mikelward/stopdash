@@ -319,7 +319,7 @@ class JourneyReportsOffMainTest {
                         listKey = "victoria",
                         listWork = listWork,
                         onJourneyDestinations = { refs -> destinations += refs.map { it.id } },
-                        onWidgetJourneys = { keys, checks, from, boarding, order -> widget += WidgetJourneysReport(keys, checks, from, boarding, order) },
+                        onWidgetJourneys = { keys, checks, from, boarding, order, names -> widget += WidgetJourneysReport(keys, checks, from, boarding, order, names) },
                     )
                 }
             }
@@ -328,6 +328,11 @@ class JourneyReportsOffMainTest {
         assertEquals(1, destinations.size)
         val widgetReports = widget.size
         assertTrue(widgetReports > 0)
+        // The ride's ends as the list names them, for the widget to head it by.
+        assertEquals(
+            mapOf(victoriaToWarrenStreet.key to (victoriaToWarrenStreet.from.name to victoriaToWarrenStreet.to.name)),
+            widget.last().names,
+        )
 
         // Fetched again: a new snapshot, the same trains.
         val before = listWork.cardReports.value
@@ -385,7 +390,7 @@ class JourneyReportsOffMainTest {
                         journeys = journeys,
                         listKey = "victoria",
                         listWork = listWork,
-                        onWidgetJourneys = { keys, checks, from, boarding, order -> reports += WidgetJourneysReport(keys, checks, from, boarding, order) },
+                        onWidgetJourneys = { keys, checks, from, boarding, order, names -> reports += WidgetJourneysReport(keys, checks, from, boarding, order, names) },
                     )
                 }
             }

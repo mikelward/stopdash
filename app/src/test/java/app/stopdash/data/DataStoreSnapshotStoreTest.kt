@@ -77,12 +77,12 @@ class DataStoreSnapshotStoreTest {
     fun `the widget's journeys and journey-only stops round-trip`() = runTest {
         val store = DataStoreSnapshotStore(FakeDataStore(null))
         val withJourneys = snapshot().copy(
-            // With where its lines get off, and its place in the list's order, so the widget leads with
-            // the nearest ride.
+            // With where its lines get off, its place in the list's order, so the widget leads with the
+            // nearest ride, and its ends' names, so it can head the ride as the app does.
             journeys = listOf(
                 WidgetJourney(
                     "940GZZLUOXC", setOf(JourneyCall("victoria", "Brixton", null)), "940GZZLUOXC|940GZZLUBXN",
-                    alightIds = setOf("940GZZLUBXN"), rank = 2,
+                    alightIds = setOf("940GZZLUBXN"), rank = 2, fromName = "Oxford Circus", toName = "Brixton",
                 ),
             ),
             journeyOnlyStopIds = setOf("940GZZLUOXC"),
@@ -97,6 +97,8 @@ class DataStoreSnapshotStoreTest {
         val older = "{\"originId\":\"940GZZLUOXC\",\"calls\":[{\"lineId\":\"victoria\",\"destination\":\"Brixton\"}],\"key\":\"k\"}"
         val pin = kotlinx.serialization.json.Json.decodeFromString(PersistedWidgetJourney.serializer(), older)
         assertEquals(emptyList<String>(), pin.alightIds)
+        // Nor does it know its ends' names: the widget heads it by its stop until the app names it.
+        assertEquals("" to "", pin.fromName to pin.toName)
     }
 
     @Test

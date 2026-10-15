@@ -422,4 +422,7 @@ data class StopGroup(
     // it doesn't carry the place, whose key switches to a per-stop one while a stop has a line-status
     // row; a drill-down that already knows its stops matches on this (SPEC D8).
     val splitKey: String = "",
+    // What a screen reader says for the header where it differs from what's drawn: a widget ride's
+    // "Park to Hill" for its drawn "Park ➔ Hill". Blank says the header as it's built from the name.
+    val spokenName: String = "",
 )

@@ -2739,9 +2739,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           rider's distance to each ride's nearer end, as its stops do, instead of the order they
           were saved in; the widget, which heads its rides' rows by stop, orders those stops by
           the app's ride order (each pin keeps its ride's place), instead of soonest first.
-    - [ ] **The widget follows Group favorite rides** (maintainer, 2026-10-15). The widget
-          always groups its rides' rows by stop, whatever the setting. Grouped by ride, it should
-          head each ride and keep the app's ride order, as the list does.
+    - [x] **The widget follows Group favorite rides** (maintainer, 2026-10-15). The widget
+          grouped its rides' rows by stop whatever the setting. Grouped by ride, it now heads each
+          ride by its ends over its own trains, in the app's ride order, as the list does.
     - [x] **A route shows once on the main list** (maintainer, 2026-10-15). A farther ride left out
           a bus a nearer ride already showed only when it was the same stop; a ride boarding from
           the stops around its start repeated routes the ride from home showed. Now a ride leaves

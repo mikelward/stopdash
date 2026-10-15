@@ -108,7 +108,7 @@ object BudgetedRows {
             val full = context(group)
             GroupHeader(
                 text = groupHeaderTitle(full.stopName, full.qualifier),
-                spoken = groupHeaderSpoken(full.qualifier)?.let { "${full.stopName}, $it" } ?: full.stopName,
+                spoken = full.spokenName.ifEmpty { groupHeaderSpoken(full.qualifier)?.let { "${full.stopName}, $it" } ?: full.stopName },
             )
         } else {
             null

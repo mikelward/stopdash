@@ -61,7 +61,7 @@ usage stats** you can opt in to (see below): off unless you turn them on, they s
 details, app interactions, device details and identifiers, and the approximate region Google
 derives from your IP address, but never your location, stops or journeys. The second is **your
 own Android backup and device-to-device transfer**, if you have it enabled: like any app's data, your saved stopdash
-data (your settings and its last-good departures snapshot, which lists the widget's nearby stops nearest first, and which of them the app shows each line from, and the widget's favorite rides nearest first, but never how far each was) rides it, so a phone swap keeps your
+data (your settings and its last-good departures snapshot, which lists the widget's nearby stops nearest first, and which of them the app shows each line from, and the widget's favorite rides nearest first, named by their ends, but never how far each was) rides it, so a phone swap keeps your
 setup — all but the crash-report opt-in, which stays with the install, the rows your watch's complications show, which the phone relearns from the watch, and the stops the app last found near you, which say where you are now and are kept on the phone only. That is Android's channel, tied to your Google account — not something stopdash sends.
 The third is a **bug report you choose to send** (see *Sending a bug report* below): it hands
 the app you pick a diagnostic report that, unlike everything else here, **includes your exact
@@ -216,7 +216,7 @@ settings and stars, so they ride your own Android backup like the rest (above); 
 logged or sent anywhere. One that stopdash can't follow yet (no one line serves both ends, or an end is
 one of your favorite places) is kept the same way, an end that is a place kept as that place rather than
 its position; nothing is fetched for it. For the widget, the departures at a journey's nearer stop, which of
-them reach the other end, and the stops there they get off at, are saved with the widget's other departures on the device. Showing a journey's trains fetches the departures at its nearer stop
+them reach the other end, the stops there they get off at, and the names of its two ends, to head it by, are saved with the widget's other departures on the device. Showing a journey's trains fetches the departures at its nearer stop
 from TfL, like any other stop, and at the stops beside it; to find those, and the stops a short walk
 from the other end, it asks TfL for the stops around each end's public position (TfL's own, never
 yours), as opening a station does, and keeps the answer on the device for up to a day.
