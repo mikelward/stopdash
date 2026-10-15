@@ -294,6 +294,7 @@ import app.stopdash.ui.FavoriteJourneyPicker
 import app.stopdash.ui.FavoriteJourneysScreen
 import app.stopdash.ui.LocationRationaleDialog
 import app.stopdash.ui.JourneyAlertsScreen
+import app.stopdash.ui.AlertLine
 import app.stopdash.ui.anyJourneyAlertsOn
 import app.stopdash.ui.journeyAlertSummaries
 import app.stopdash.ui.JourneyAlertsUi
@@ -7105,7 +7106,7 @@ internal object StopJourneyWrites {
 /** The favorite journeys list as shown: the journeys, each one's alert summary, and whether to ask for location. */
 internal data class FavoriteJourneysList(
     val journeys: List<FavoriteJourney>?,
-    val summaries: Map<String, List<String>>,
+    val summaries: Map<String, List<AlertLine>>,
     val askLocation: Boolean,
     val pending: List<app.stopdash.domain.PendingJourney> = emptyList(),
     // Some journey's alerts are on, worked out with [summaries] off the main thread.

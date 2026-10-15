@@ -16,6 +16,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
@@ -89,6 +90,87 @@ internal fun ShortenedText(forms: List<String>, style: TextStyle, modifier: Modi
                 .then(if (display != full) Modifier.semantics { contentDescription = full } else Modifier),
         )
     }
+}
+
+/**
+ * A line naming a place amid other copy that ends it ("Alerts to ‹place›: Mon–Fri 08:00–10:00"): the
+ * first of [forms] (distinct, the whole line with the place in full, then shortened, longest first) that
+ * fits the width given; else [before] and [after] around as much of [name] as fits, cut with a "…" (each
+ * slash-separated place on its own, as [SplitName] does); and if even the copy around it won't fit, the
+ * line trimmed from its start. So the end of the line, what it
+ * goes on to say after the place, is the last thing cut. The first form stays the screen-reader label
+ * when another shows.
+ */
+@Composable
+internal fun ShortenedLine(
+    forms: List<String>,
+    before: String,
+    name: String,
+    after: String,
+    style: TextStyle,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+) {
+    val full = forms.first()
+    BoxWithConstraints(modifier = modifier) {
+        val measurer = rememberTextMeasurer()
+        // Keyed on the font scale too, as in [ShortenedText].
+        val fontScale = LocalDensity.current.fontScale
+        val width = constraints.maxWidth
+        val display = remember(forms, before, name, after, style, fontScale, width) {
+            forms.firstOrNull { measurer.measure(it, style, maxLines = 1).size.width <= width }
+                ?: run {
+                    // The copy either side whole, and the name in what's left.
+                    val room = width - measurer.measure(before + after, style, maxLines = 1).size.width
+                    if (room <= 0) forms.last() else before + fitPlaces(name, room, measurer, style) + after
+                }
+        }
+        Text(
+            text = display,
+            style = style,
+            color = color,
+            maxLines = 1,
+            // Anything still too wide loses its start, never the end the line is for.
+            overflow = TextOverflow.StartEllipsis,
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (display != full) Modifier.semantics { contentDescription = full } else Modifier),
+        )
+    }
+}
+
+/**
+ * [name] cut to fit [room] px, each slash-separated place on its own as [SplitName] draws them, so none
+ * is lost behind the first: shortest first, a place that fits its share keeps it all, the rest sharing
+ * what's left, each cut where its "…" fits.
+ */
+private fun fitPlaces(name: String, room: Int, measurer: TextMeasurer, style: TextStyle): String {
+    fun widthOf(text: String) = measurer.measure(text, style, maxLines = 1).size.width
+    fun cut(text: String, max: Int): String {
+        val layout = measurer.measure(
+            text,
+            style,
+            overflow = TextOverflow.Ellipsis,
+            maxLines = 1,
+            constraints = Constraints(maxWidth = max.coerceAtLeast(0)),
+        )
+        return if (!layout.isLineEllipsized(0)) text else text.take(layout.getLineEnd(0, visibleEnd = true)).trimEnd() + "…"
+    }
+    val places = name.split("/").map { it.trim() }
+    if (places.size == 1) return cut(name, room)
+    val widths = places.map(::widthOf)
+    val shown = places.toMutableList()
+    var left = room - widthOf("/".repeat(places.size - 1))
+    places.indices.sortedBy { widths[it] }.forEachIndexed { done, i ->
+        val share = left / (places.size - done)
+        if (widths[i] <= share) {
+            left -= widths[i]
+        } else {
+            shown[i] = cut(places[i], share)
+            left -= share
+        }
+    }
+    return shown.joinToString("/")
 }
 
 /**

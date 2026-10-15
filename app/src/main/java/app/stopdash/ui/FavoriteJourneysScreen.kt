@@ -44,6 +44,7 @@ import app.stopdash.R
 import java.time.DayOfWeek
 import java.time.format.TextStyle
 import app.stopdash.domain.SnapshotStore
+import app.stopdash.domain.DestinationAbbreviations
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.FavoriteJourneysStore
 import app.stopdash.domain.JourneyAlertSchedule
@@ -93,7 +94,7 @@ data class FavoriteJourneysUi(
     // What each journey's row says of its alerts, by journey key ([journeyAlertSummaries], worked out
     // off the main thread): one line per watched direction, or none for "Tap to enable alerts". A journey
     // missing (not worked out yet, or the schedules unreadable) says nothing of alerts.
-    val alertSummaries: Map<String, List<String>> = emptyMap(),
+    val alertSummaries: Map<String, List<AlertLine>> = emptyMap(),
     // Some journey's alerts are on ([anyJourneyAlertsOn], worked out off the main thread), so the menu
     // offers Pause alerts.
     val anyAlertsOn: Boolean = false,
@@ -548,7 +549,7 @@ private fun Note(text: String, error: Boolean = false) {
 @Composable
 private fun JourneyRow(
     journey: FavoriteJourney,
-    alerts: List<String>?,
+    alerts: List<AlertLine>?,
     onRemove: () -> Unit,
     onOpen: (() -> Unit)?,
 ) {
@@ -635,25 +636,51 @@ private fun PendingJourneyRow(journey: PendingJourney, onRemove: () -> Unit) {
 
 // Under a journey: each watched direction's days and times, or "Tap to enable alerts".
 @Composable
-private fun AlertsSummary(lines: List<String>?) {
+private fun AlertsSummary(lines: List<AlertLine>?) {
     // Always two one-line slots, one per direction, filled or not: a save finishing after the rider has come
     // back to this list changes what a row says but never its height, so no row below it moves under a tap
     // (Codex on #700). Unknown (null) holds the same space, empty.
-    val shown = when {
-        lines == null -> emptyList()
-        lines.isEmpty() -> listOf(stringResource(R.string.favorite_journey_alerts_off))
-        else -> lines
-    }
+    val style = MaterialTheme.typography.bodyMedium
     for (slot in 0 until 2) {
-        val text = shown.getOrNull(slot).orEmpty()
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (lines.isNullOrEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        val line = lines?.getOrNull(slot)
+        if (line != null) {
+            // A long destination shortens, then is cut on its own, so the days and times show.
+            ShortenedLine(line.forms, line.before, line.name, line.after, style, color = MaterialTheme.colorScheme.primary)
+        } else {
+            Text(
+                text = if (slot == 0 && lines?.isEmpty() == true) stringResource(R.string.favorite_journey_alerts_off) else "",
+                style = style,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
+}
+
+/**
+ * One watched direction's line under a favorite ride ([journeyAlertSummaries]): [forms] is the whole line
+ * with its destination in full, then shortened, then at its floor ([DestinationAbbreviations.forms]), each
+ * once, so a long name shortens before the line is cut. [before] and [after] are the floor's line either
+ * side of its name, [name], for a row too narrow even for that: then only the name is cut, and the days
+ * and times, which end the line in every language, are the last thing to go ([ShortenedLine]).
+ */
+data class AlertLine(val forms: List<String>, val before: String, val name: String, val after: String)
+
+private const val NAME_MARK = "\uFFFC"
+
+/** The [AlertLine] for a direction to [name], [line] writing the whole line around a form of it. */
+@WorkerThread
+internal fun alertLine(name: String, line: (String) -> String): AlertLine {
+    val names = DestinationAbbreviations.forms(name)
+    val marked = line(NAME_MARK)
+    return AlertLine(
+        // Each form once, here off the main thread, so the row has nothing to sift (Codex on #862).
+        forms = names.map(line).distinct(),
+        before = marked.substringBefore(NAME_MARK),
+        name = names.last(),
+        after = marked.substringAfter(NAME_MARK, missingDelimiterValue = ""),
+    )
 }
 
 /**
@@ -661,22 +688,23 @@ private fun AlertsSummary(lines: List<String>?) {
  * (Codex on #757).
  */
 internal suspend fun anyJourneyAlertsOn(
-    summaries: Map<String, List<String>>,
+    summaries: Map<String, List<AlertLine>>,
     worker: CoroutineDispatcher = app.stopdash.domain.Workers.compute,
 ): Boolean = withContext(worker) { summaries.values.any { it.isNotEmpty() } }
 
 /**
  * What each journey's row in Settings says of its alerts ([FavoriteJourneysUi.alertSummaries]): for
  * each watched direction, the saved way first, where it goes, its days in a few words ("Mon–Fri") and
- * its windows ("Alerts to Waterloo: Mon–Fri 08:00–10:00"); empty when none is watched. Walks every
- * journey and window, so it runs off the main thread (AGENTS.md *Main thread*).
+ * its windows ("Alerts to Waterloo: Mon–Fri 08:00–10:00"), with each form of where it goes ([AlertLine]);
+ * empty when none is watched. Walks every journey and window, so it runs off the main thread (AGENTS.md
+ * *Main thread*).
  */
 @WorkerThread
 internal fun journeyAlertSummaries(
     context: Context,
     journeys: List<FavoriteJourney>,
     schedules: Map<String, JourneyAlertSchedule>,
-): Map<String, List<String>> {
+): Map<String, List<AlertLine>> {
     val locale = context.resources.configuration.locales[0]
     fun days(days: Set<DayOfWeek>): String = when (days) {
         DayOfWeek.values().toSet() -> context.getString(R.string.journey_alerts_days_every)
@@ -688,14 +716,11 @@ internal fun journeyAlertSummaries(
     return journeys.associate { journey ->
         journey.key to listOf(journey, journey.reversed()).mapNotNull { way ->
             schedules[JourneyAlerts.directionKey(way, way.from.stopId)]?.let { schedule ->
-                context.getString(
-                    R.string.favorite_journey_alerts_direction,
-                    way.to.name,
-                    days(schedule.days),
-                    schedule.windows.joinToString(", ") {
-                        context.getString(R.string.journey_alerts_window, it.start.format(TIME), it.end.format(TIME))
-                    },
-                )
+                val onDays = days(schedule.days)
+                val windows = schedule.windows.joinToString(", ") {
+                    context.getString(R.string.journey_alerts_window, it.start.format(TIME), it.end.format(TIME))
+                }
+                alertLine(way.to.name) { name -> context.getString(R.string.favorite_journey_alerts_direction, name, onDays, windows) }
             }
         }
     }
