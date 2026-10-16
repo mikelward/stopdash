@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -58,6 +59,7 @@ import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
@@ -2345,6 +2347,24 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithText("Closed").assertDoesNotExist()
         // The stamp says so too, for a list whose one place shows no heading to hold the spinner.
         composeRule.onNodeWithText("Checking…").assertExists()
+    }
+
+    @Test
+    fun `a card heading has its destinations' size and weight`() {
+        // A heavier heading read as larger than the destinations under it, so it matches them now
+        // (maintainer, 2026-10-16).
+        var heading: TextStyle? = null
+        var destination: TextStyle? = null
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                heading = groupHeaderStyle()
+                destination = MaterialTheme.typography.titleMedium
+            }
+        }
+        composeRule.runOnIdle {
+            assertEquals(destination!!.fontSize, heading!!.fontSize)
+            assertEquals(destination!!.fontWeight, heading!!.fontWeight)
+        }
     }
 
     @Test
