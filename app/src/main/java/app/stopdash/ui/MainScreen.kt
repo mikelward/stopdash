@@ -172,6 +172,7 @@ import app.stopdash.domain.Staleness
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StepFreeAccess
+import app.stopdash.domain.STATUS_DIRECTION_KEY
 import app.stopdash.domain.StepFreeLevel
 import app.stopdash.domain.StationLead
 import app.stopdash.domain.StopArrivals
@@ -944,10 +945,12 @@ fun MainScreen(
         keep = ListInputs.sameList,
     ) {
         listRows?.let { from ->
-            // A route shows once: a ride leaves out what a nearer one shows ([withoutRepeatedRoutes]).
-            val cards = withoutRepeatedRoutes(judgeCards(from), journeyViewKey, topology, stopDistanceMeters)
-            // What the journey cards above already show: a near-me row they cover isn't repeated.
-            val cardRows = cards.flatMap { (it.state as? JourneyCardState.Trains)?.shownRows.orEmpty() }
+            // A card checking again holds what it drew last ([heldWhileChecking]), and a route shows
+            // once: a ride leaves out what a nearer one shows ([withoutRepeatedRoutes]).
+            val last = listWork.shown.value?.value?.cards
+            val cards = withoutRepeatedRoutes(heldWhileChecking(judgeCards(from), last, journeyViewKey), journeyViewKey, topology, stopDistanceMeters)
+            // What the journey cards above already show, held ones too: a near-me row they cover isn't repeated.
+            val cardRows = cards.flatMap { it.state.drawn?.shownRows.orEmpty() }
             shownRowsOf(from, quietPending?.rows() ?: nearbyRows, cardRows, starred, stopDistanceMeters, cards, cardJourneys, topology)
         }
     }?.takeIf { listRows != null }
@@ -2783,7 +2786,7 @@ private fun DepartureList(
                 // group. Until then (checking, couldn't check, none due) its heading stays, so the note
                 // under it says which ride.
                 val byStop = !journeyView && rideGrouping == RideGrouping.STOP &&
-                    (card.state as? JourneyCardState.Trains)?.visibleRows?.isNotEmpty() == true
+                    card.state.drawn?.visibleRows?.isNotEmpty() == true
                 if (journeyView) {
                     item(key = "journey-actions|${card.journey.key}") {
                         JourneyActions(
@@ -2826,38 +2829,46 @@ private fun DepartureList(
                 } else {
                     card.state
                 }
-                when (val state = heldState) {
-                    is JourneyCardState.Trains -> if (state.rows.isEmpty()) {
-                        // Only trains to change from: "no direct trains" unless some departure couldn't be
-                        // checked (it may be direct), which the note below says instead.
+                // One of the card's stop cards. Every one is drawn from here, checking or not, so a card that
+                // checks again keeps its place in the list and its rows their place in it (SPEC *Journeys*).
+                // The ride's own line with no train ([JourneyCard.lineCard]) opens nothing.
+                fun rideStopCard(key: String, stopCard: StopCard, checking: Boolean, atOnce: Boolean = false, noneRes: Int? = null) {
+                    item(key = "journey-card|${card.journey.key}|$key") {
+                        StopGroupCard(
+                            stopCard,
+                            now,
+                            starred = starred,
+                            onToggleStar = onToggleStar,
+                            starringAvailable = starringAvailable,
+                            onOpenDetail = onOpenDetail.takeUnless { stopCard === card.lineCard },
+                            onOpenSettings = onOpenSettings,
+                            checking = journeyChecking(card.journey, checking, atOnce),
+                            noTrainsSpoken = noneRes?.let { stringResource(it, card.journey.to.name) },
+                        )
+                    }
+                }
+                // Its trains: its own, or, while it checks again, those it drew last ([JourneyCardState.Checking.held]).
+                fun trains(state: JourneyCardState.Trains, checking: Boolean) {
+                    if (state.rows.isEmpty()) {
+                        // None direct: the ride's own line with a dash, its one row, above any trains to change
+                        // from — unless some departure couldn't be checked (it may be direct), which the note
+                        // below says instead.
                         if (state.changes.isEmpty() || !state.incomplete) {
-                            item(key = "journey-none|${card.journey.key}") {
-                                JourneyNote(
-                                    stringResource(
-                                        when {
-                                            state.changes.isNotEmpty() -> R.string.journey_none_direct
-                                            card.journey.bus -> R.string.journey_none_bus
-                                            else -> R.string.journey_none
-                                        },
-                                        card.journey.to.name,
-                                    ),
-                                )
-                            }
+                            rideStopCard(
+                                "ride",
+                                card.lineCard,
+                                checking,
+                                noneRes = when {
+                                    state.changes.isNotEmpty() -> R.string.journey_none_direct
+                                    card.journey.bus -> R.string.journey_none_bus
+                                    else -> R.string.journey_none
+                                },
+                            )
                         }
                         // Its trains to change from, every one shown above by a nearer ride: said in their place.
                         if (state.changesShownAbove) {
                             item(key = "journey-shown-above|${card.journey.key}") {
                                 JourneyNote(stringResource(R.string.journey_shown_above))
-                            }
-                        }
-                        journeyMore(card, state)
-                        journeyChanges(card, state, now, starred, onToggleStar, starringAvailable, onOpenChangeDetail, onOpenSettings)
-                        if (state.incomplete) {
-                            item(key = "journey-note|${card.journey.key}") {
-                                JourneyNote(
-                                    stringResource(R.string.journey_incomplete),
-                                    onRetry = onRetryJourneyRoutes.takeIf { state.retry },
-                                )
                             }
                         }
                     } else if (state.shownAbove) {
@@ -2868,16 +2879,6 @@ private fun DepartureList(
                                 JourneyNote(stringResource(R.string.journey_shown_above))
                             }
                         }
-                        journeyMore(card, state)
-                        journeyChanges(card, state, now, starred, onToggleStar, starringAvailable, onOpenChangeDetail, onOpenSettings)
-                        if (state.incomplete) {
-                            item(key = "journey-note|${card.journey.key}") {
-                                JourneyNote(
-                                    stringResource(R.string.journey_incomplete),
-                                    onRetry = onRetryJourneyRoutes.takeIf { state.retry },
-                                )
-                            }
-                        }
                     } else {
                         // Grouped by ride, the journey heading stands over one card holding every stop's
                         // trains, as a ride boarding from one stop always drew, so the near-me list starts at
@@ -2885,19 +2886,7 @@ private fun DepartureList(
                         // (maintainer, 2026-10-14). Grouped by stop, each stop's heading carries the star
                         // and where the ride goes in its place. The journey's own view heads every group
                         // with where it boards ("King's Cross St Pancras – Platform 7").
-                        if (!journeyView && !byStop) {
-                            item(key = "journey-card|${card.journey.key}|ride") {
-                                StopGroupCard(
-                                    state.rideCard,
-                                    now,
-                                    starred = starred,
-                                    onToggleStar = onToggleStar,
-                                    starringAvailable = starringAvailable,
-                                    onOpenDetail = onOpenDetail,
-                                    onOpenSettings = onOpenSettings,
-                                )
-                            }
-                        }
+                        if (!journeyView && !byStop) rideStopCard("ride", state.rideCard, checking)
                         if (journeyView || byStop) state.groups.forEachIndexed { groupIndex, group ->
                             if (journeyView) {
                                 item(key = "journey-stop|${card.journey.key}|${group.key}") {
@@ -2931,46 +2920,40 @@ private fun DepartureList(
                                     )
                                 }
                             }
-                            item(key = "journey-card|${card.journey.key}|${group.key}") {
-                                StopGroupCard(
-                                    state.cards[groupIndex],
-                                    now,
-                                    starred = starred,
-                                    onToggleStar = onToggleStar,
-                                    starringAvailable = starringAvailable,
-                                    onOpenDetail = onOpenDetail,
-                                    onOpenSettings = onOpenSettings,
-                                )
-                            }
-                        }
-                        journeyMore(card, state)
-                        // A suspended line's status row is no direct train: with trains to change from, say so under it.
-                        if (state.changes.isNotEmpty() && !state.incomplete && !Journeys.directDue(state.rows)) {
-                            item(key = "journey-none|${card.journey.key}") {
-                                JourneyNote(stringResource(R.string.journey_none_direct, card.journey.to.name))
-                            }
-                        }
-                        journeyChanges(card, state, now, starred, onToggleStar, starringAvailable, onOpenChangeDetail, onOpenSettings)
-                        if (state.incomplete) {
-                            item(key = "journey-note|${card.journey.key}") {
-                                JourneyNote(
-                                    stringResource(R.string.journey_incomplete),
-                                    onRetry = onRetryJourneyRoutes.takeIf { state.retry },
-                                )
-                            }
+                            rideStopCard(group.key, state.cards[groupIndex], checking)
                         }
                     }
-                    is JourneyCardState.Checking -> item(key = "journey-note|${card.journey.key}") {
-                        JourneyNote(
-                            stringResource(if (card.journey.bus) R.string.journey_checking_bus else R.string.journey_checking),
-                        )
-                    }
-                    is JourneyCardState.NotChecked -> item(key = "journey-note|${card.journey.key}") {
-                        if (refreshing && state.refreshAsks) {
+                    // No note says there's no direct train above the trains to change from: the ride's own line
+                    // with a dash says so, as a suspended line's status row does.
+                    journeyMore(card, state)
+                    journeyChanges(card, state, now, starred, onToggleStar, starringAvailable, onOpenChangeDetail, onOpenSettings, checking)
+                    if (state.incomplete) {
+                        item(key = "journey-note|${card.journey.key}") {
                             JourneyNote(
-                                stringResource(if (card.journey.bus) R.string.journey_checking_bus else R.string.journey_checking),
+                                stringResource(R.string.journey_incomplete),
+                                onRetry = onRetryJourneyRoutes.takeIf { state.retry },
                             )
+                        }
+                    }
+                }
+                when (val state = heldState) {
+                    is JourneyCardState.Trains -> trains(state, checking = false)
+                    // Checking again, what it drew last stays in place, its times giving way to spinners; checking
+                    // for the first time, the ride's own line with a spinner, until its trains are in.
+                    is JourneyCardState.Checking -> {
+                        val held = state.held
+                        if (held != null) {
+                            trains(held, checking = true)
                         } else {
+                            rideStopCard("ride", card.lineCard, checking = true, atOnce = true)
+                        }
+                    }
+                    // Missing only departures a refresh under way asks again: checking, as the stamp says, never
+                    // that it couldn't check what it's about to.
+                    is JourneyCardState.NotChecked -> if (refreshing && state.refreshAsks) {
+                        rideStopCard("ride", card.lineCard, checking = true, atOnce = true)
+                    } else {
+                        item(key = "journey-note|${card.journey.key}") {
                             JourneyNote(
                                 stringResource(if (card.journey.bus) R.string.journey_not_checked_bus else R.string.journey_not_checked),
                                 onRetry = onRetryJourneyRoutes.takeIf { state.retry },
@@ -4189,11 +4172,34 @@ internal data class JourneyCard(
     val toForms: List<String> = DestinationAbbreviations.forms(journey.to.name)
 
     /**
+     * The ride's own line at its origin as a row with no times: the card's one row while it has no train
+     * to show, a spinner while it's first checked and a dash when none is due (SPEC *Journeys*). Shaped as
+     * that line's status row there, so a suspension's row gives way to it in place. Worked out with the
+     * card, on the worker.
+     */
+    val lineCard: StopCard = (boardingIds.firstOrNull() ?: journey.from.stopId).let { origin ->
+        val row = DepartureRow(
+            stopId = origin,
+            stopName = journey.from.name,
+            lineId = journey.lineId,
+            // A journey saved before its line's name was kept still has a pill to show.
+            lineName = journey.lineName.ifBlank { journey.lineId },
+            direction = "",
+            directionKey = STATUS_DIRECTION_KEY,
+            destination = "",
+            mode = journey.mode,
+            upcoming = emptyList(),
+            fetchedAt = Instant.EPOCH,
+        )
+        StopCard(StopGroup(journey.from.name, key = "ride", showHeader = false, rows = listOf(row), placeKey = origin), listOf(emptyList()))
+    }
+
+    /**
      * The keys of its groups that board at its origin, the end a far ride's distance is measured to
      * ([MainScreen]'s `farJourneyMeters`): grouped by stop, only those headings may carry that distance,
      * not a neighboring pole's. Worked out with the card, on the worker.
      */
-    val originGroupKeys: Set<String> = (state as? JourneyCardState.Trains)?.groups
+    val originGroupKeys: Set<String> = state.drawn?.groups
         ?.filter { group -> group.rows.any { it.stopId == journey.from.stopId } }
         ?.mapTo(HashSet()) { it.key }
         .orEmpty()
@@ -4236,7 +4242,8 @@ internal fun withoutRepeatedRoutes(
     // How far each stop is: a ride hides only what a ride above shows from no farther away.
     stopDistanceMeters: Map<String, Double> = emptyMap(),
 ): List<JourneyCard> {
-    val trains = cards.map { it.state as? JourneyCardState.Trains }
+    // What each draws, a card checking again its held trains, so the cards around it hold still too.
+    val trains = cards.map { it.state.drawn }
     val repeated = DepartureRows.repeatedRows(
         trains.map { it?.rows.orEmpty() },
         cards.zip(trains).map { (card, state) -> if (card.journey.key == viewKey) JOURNEY_ROWS else state?.limit ?: 0 },
@@ -4251,7 +4258,7 @@ internal fun withoutRepeatedRoutes(
         if (state == null || card.journey.key == viewKey || rows == state.repeated && changes == state.repeatedChanges) {
             card
         } else {
-            card.copy(state = state.copy(repeated = rows, repeatedChanges = changes))
+            card.copy(state = card.state.withDrawn(state.copy(repeated = rows, repeatedChanges = changes)))
         }
     }
 }
@@ -4259,9 +4266,12 @@ internal fun withoutRepeatedRoutes(
 internal sealed interface JourneyCardState {
     /**
      * The origin's departures or the line's route aren't in yet: [waitingOn] says which, for the debug
-     * log ([CardReports.checking]); by line id and the kind of wait alone, never a stop.
+     * log ([CardReports.checking]); by line id and the kind of wait alone, never a stop. [held] is what
+     * the card drew before it began checking again ([heldWhileChecking]): drawn in place, its times giving
+     * way to spinners, so the card holds still. Null on a first check, which draws the ride's own line
+     * with a spinner ([JourneyCard.lineCard]).
      */
-    data class Checking(val waitingOn: String) : JourneyCardState
+    data class Checking(val waitingOn: String, val held: Trains? = null) : JourneyCardState
 
     /** The line's route couldn't be loaded, so which trains call at the far end is unknown. */
     data object RouteFailed : JourneyCardState
@@ -4373,6 +4383,45 @@ internal sealed interface JourneyCardState {
 }
 
 /**
+ * The trains a card draws: its own, or those it holds while it checks again ([JourneyCardState.Checking.held]).
+ * What the screen lays out and leaves out of the list below; what's claimed as checked, for the widget
+ * and the disruptions row, is only ever a [JourneyCardState.Trains] of its own.
+ */
+internal val JourneyCardState.drawn: JourneyCardState.Trains?
+    get() = this as? JourneyCardState.Trains ?: (this as? JourneyCardState.Checking)?.held
+
+/** This state with [trains] in place of what it draws ([drawn]). */
+private fun JourneyCardState.withDrawn(trains: JourneyCardState.Trains): JourneyCardState = when (this) {
+    is JourneyCardState.Checking -> copy(held = trains)
+    else -> trains
+}
+
+/**
+ * [cards], each one checking again ([JourneyCardState.Checking]) holding the trains it drew last, from
+ * [last] (the cards as last drawn), when that was the same journey shown the same way round: its rows
+ * stay where they are rather than the card giving way to a note and coming back (SPEC *Journeys*,
+ * principle 4). Its rows are left out again from scratch ([withoutRepeatedRoutes]), and drawn as many
+ * as a card draws ([viewKey] its own view). A first check, or one after a flip, holds nothing.
+ */
+@WorkerThread
+internal fun heldWhileChecking(cards: List<JourneyCard>, last: List<JourneyCard>?, viewKey: String?): List<JourneyCard> {
+    if (last.isNullOrEmpty()) return cards
+    return cards.map { card ->
+        val state = card.state as? JourneyCardState.Checking ?: return@map card
+        val held = state.held ?: last.firstOrNull { it.journey == card.journey }?.state?.drawn ?: return@map card
+        card.copy(
+            state = state.copy(
+                held = held.copy(
+                    limit = if (card.journey.key == viewKey) Int.MAX_VALUE else JOURNEY_ROWS,
+                    repeated = emptySet(),
+                    repeatedChanges = emptySet(),
+                ),
+            ),
+        )
+    }
+}
+
+/**
  * A journey card's trains on another branch ([JourneyCardState.Trains.changes]), under a "King's Cross
  * ➔ Camden Town (for High Barnet)" heading per change stop, each boarding stop's in its own card like the direct trains.
  */
@@ -4385,6 +4434,8 @@ private fun LazyListScope.journeyChanges(
     starringAvailable: Boolean,
     onOpenDetail: (DepartureRow, RouteFocus?) -> Unit,
     onOpenSettings: () -> Unit,
+    // Checked again, its trains held meanwhile ([JourneyCardState.Checking.held]).
+    checking: Boolean = false,
 ) {
     state.changeStops.forEach { change ->
         val stopId = change.stopId
@@ -4413,11 +4464,21 @@ private fun LazyListScope.journeyChanges(
                     starringAvailable = starringAvailable,
                     onOpenDetail = onOpenDetail,
                     onOpenSettings = onOpenSettings,
+                    checking = journeyChecking(card.journey, checking),
                 )
             }
         }
     }
 }
+
+/** What a journey card's rows say while they're checked again ([RowsChecking]); null when they aren't. */
+@Composable
+private fun journeyChecking(journey: FavoriteJourney, checking: Boolean, atOnce: Boolean = false): RowsChecking? =
+    if (checking) {
+        RowsChecking(stringResource(if (journey.bus) R.string.journey_checking_bus else R.string.journey_checking), atOnce)
+    } else {
+        null
+    }
 
 /** A journey card's one-line status in place of trains, with a retry when there's one to offer. */
 @Composable
@@ -4646,8 +4707,16 @@ internal fun StopGroupCard(
     // Draws a timed row's times in place of its countdowns: a trip's later ride, which says how often
     // its line runs. Null counts down.
     timesInstead: (@Composable (DepartureRow) -> Unit)? = null,
+    // Its rows being checked again: each row's time gives way to a spinner (SPEC *Journeys*). Null when not.
+    checking: RowsChecking? = null,
+    // A ride's own line with no train due ([JourneyCard.lineCard]): its row's dash, heard as this. Not the
+    // near-me list's "?", so no timetable is asked for (SPEC *Departures*).
+    noTrainsSpoken: String? = null,
 ) {
     val group = card.group
+    // Rows from the last check stand a moment ([settled]) before their times give way, so a quick check
+    // changes nothing on screen; a row with no answer of its own spins at once.
+    val spinning = settled(checking != null, at = checking == null || checking.atOnce)
     // Cap the line pill at half the card's inner width, so a long name at a large font scale
     // ellipsizes rather than consuming the card and starving the countdown, which must stay one line
     // (SPEC D8). Inner width ≈ screen minus the list's 16dp side padding and the row's 16dp padding.
@@ -4695,6 +4764,22 @@ internal fun StopGroupCard(
                                         row.status?.let { status -> DisruptionChip(status.description) }
                                             ?: row.plannedAlerts.firstOrNull()?.let { planned -> PlannedAlertGlyph(planned) }
                                     }
+                                    if (spinning && checking != null) {
+                                        TimesSpinner(checking.spoken, Modifier.padding(start = 12.dp))
+                                        return@RouteRow
+                                    }
+                                    if (noTrainsSpoken != null) {
+                                        Text(
+                                            text = stringResource(R.string.status_no_departures),
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            modifier = Modifier
+                                                .padding(start = 12.dp)
+                                                .semantics { contentDescription = noTrainsSpoken },
+                                        )
+                                        return@RouteRow
+                                    }
                                     // A dash when the line's source answered with no trains and none is due
                                     // ([EmptyTimes]): a National Rail board lists every train it runs, and a TfL
                                     // line's timetable says what TfL's live list leaves out. "?" when one might be
@@ -4715,15 +4800,7 @@ internal fun StopGroupCard(
                                     if (mark == EmptyTimes.Mark.LOADING) {
                                         // Its timetable is still being fetched: a spinner says "wait", where a "?" read
                                         // as an answer (maintainer, 2026-10-03).
-                                        val loading = stringResource(R.string.status_times_loading_description)
-                                        CircularProgressIndicator(
-                                            strokeWidth = 2.dp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier
-                                                .padding(start = 12.dp)
-                                                .size(16.dp)
-                                                .semantics { contentDescription = loading },
-                                        )
+                                        TimesSpinner(stringResource(R.string.status_times_loading_description), Modifier.padding(start = 12.dp))
                                         return@RouteRow
                                     }
                                     val spoken = stringResource(
@@ -4795,7 +4872,9 @@ internal fun StopGroupCard(
                                             onHideMode = onHideMode,
                                             destination = { modifier -> DestinationLabelContent(label = label, branch = group2.branch, modifier = modifier) },
                                             times = {
-                                                if (timesInstead != null) {
+                                                if (spinning && checking != null) {
+                                                    TimesSpinner(checking.spoken)
+                                                } else if (timesInstead != null) {
                                                     timesInstead(row)
                                                 } else {
                                                     CountdownLabel(group2.times, stale, now, grayBefore = grayBefore, untimed = group2.untimed)
@@ -4811,6 +4890,25 @@ internal fun StopGroupCard(
             }
         }
     }
+}
+
+/**
+ * A card's rows being checked again ([StopGroupCard]): each row's time gives way to a spinner heard as
+ * [spoken], at once when [atOnce] (a row with no answer of its own to stand meanwhile), else once the
+ * check has held a moment.
+ */
+internal class RowsChecking(val spoken: String, val atOnce: Boolean = false)
+
+/** A spinner where a row's time or mark goes: it's still being fetched or checked, heard as [spoken]. */
+@Composable
+private fun TimesSpinner(spoken: String, modifier: Modifier = Modifier) {
+    CircularProgressIndicator(
+        strokeWidth = 2.dp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier
+            .size(16.dp)
+            .semantics { contentDescription = spoken },
+    )
 }
 
 /**

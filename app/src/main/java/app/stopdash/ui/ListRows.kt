@@ -140,7 +140,7 @@ internal class ShownRows(
 @WorkerThread
 internal fun ridePlaceMeters(cards: List<JourneyCard>, nearMe: List<StopGroup>, stopDistanceMeters: Map<String, Double>): Map<String, Double> {
     if (stopDistanceMeters.isEmpty()) return emptyMap()
-    val rideGroups = cards.flatMap { (it.state as? JourneyCardState.Trains)?.groups.orEmpty() }
+    val rideGroups = cards.flatMap { it.state.drawn?.groups.orEmpty() }
     if (rideGroups.isEmpty()) return emptyMap()
     val places = rideGroups.mapTo(HashSet()) { it.placeKey }
     return (rideGroups + nearMe.filter { it.placeKey in places })

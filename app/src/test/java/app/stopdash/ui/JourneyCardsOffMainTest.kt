@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import app.stopdash.domain.Departure
 import app.stopdash.domain.JourneyEnd
@@ -100,7 +101,7 @@ class JourneyCardsOffMainTest {
             }
         }
         settle(scheduler)
-        composeRule.onAllNodesWithText("Checking trains…").assertCountEquals(1)
+        composeRule.onAllNodesWithContentDescription("Checking trains…").assertCountEquals(1)
 
         // The route is in: nothing places the journey on it until the worker runs.
         route.complete(victoriaLine)
@@ -116,7 +117,7 @@ class JourneyCardsOffMainTest {
         }
         settle(scheduler)
         assertNotNull(listWork.segments.value?.value?.segments?.get(victoriaToWarrenStreet.key))
-        composeRule.onAllNodesWithText("Checking trains…").assertCountEquals(0)
+        composeRule.onAllNodesWithContentDescription("Checking trains…").assertCountEquals(0)
         composeRule.onAllNodesWithText("Couldn't check trains").assertCountEquals(0)
     }
     @Test
@@ -240,7 +241,7 @@ class JourneyCardsOffMainTest {
         assertEquals(listOf("PARKK"), listWork.siblings.value?.value?.get(parkToHill.key)?.poles?.map { it.id })
         // The card heads pole K's bus under its own letter (grouped by stop).
         composeRule.onAllNodesWithText("Stop K", substring = true, useUnmergedTree = true).assertCountEquals(1)
-        composeRule.onAllNodesWithText("Checking buses…").assertCountEquals(0)
+        composeRule.onAllNodesWithContentDescription("Checking buses…").assertCountEquals(0)
         composeRule.onAllNodesWithText("Couldn't check buses").assertCountEquals(0)
     }
 }

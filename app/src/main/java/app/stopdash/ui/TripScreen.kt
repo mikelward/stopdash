@@ -3457,7 +3457,7 @@ internal const val NOTE_SETTLE_MILLIS = 1_500L
  * shows first, the first [value] unless given. Compared by
  */
 @Composable
-private fun <T> settled(value: T, at: Boolean, initial: T = value): T {
+internal fun <T> settled(value: T, at: Boolean, initial: T = value): T {
     var shown by remember { mutableStateOf(initial) }
     LaunchedEffect(value) {
         // Timed on frames, not delay(): the frame clock is the one a screenshot test drives.

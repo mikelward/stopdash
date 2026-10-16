@@ -4,6 +4,7 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.JourneyChange
 import app.stopdash.domain.StopArrivals
+import app.stopdash.domain.hasTrains
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -162,5 +163,72 @@ class JourneyCardStateTest {
         // Off the near-me list (no distances), and with no trains to head, nothing.
         assertTrue(ridePlaceMeters(listOf(card), nearMe.groups, emptyMap()).isEmpty())
         assertTrue(ridePlaceMeters(listOf(card.copy(state = JourneyCardState.Checking("route"))), nearMe.groups, meters).isEmpty())
+    }
+
+    @Test
+    fun `a card checking again holds what it drew last, for the same ride the same way round only`() {
+        fun rowsAt(stop: String, vararg to: String) = DepartureRows.across(
+            listOf(StopArrivals(stop, stop, to.mapIndexed { i, dest -> departure(dest, 60L + i * 60) }, fetchedAt = now)),
+            now,
+        )
+        val ride = app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("KING", "King"), app.stopdash.domain.JourneyEnd("NORTH", "North"), "example")
+        val drew = JourneyCard(ride, JourneyCardState.Trains(rowsAt("KING", "North End"), limit = JOURNEY_ROWS, repeated = setOf(0)))
+        val checking = JourneyCard(ride, JourneyCardState.Checking("example's route"))
+        val held = heldWhileChecking(listOf(checking), listOf(drew), viewKey = null).single().state as JourneyCardState.Checking
+        // Its rows stay, still checking: what it waits on is kept for the log.
+        assertEquals("example's route", held.waitingOn)
+        assertEquals((drew.state as JourneyCardState.Trains).rows, held.held?.rows)
+        assertEquals(held.held, held.drawn)
+        // What a nearer ride shows is worked out again, and its own view draws them all.
+        assertTrue(held.held!!.repeated.isEmpty())
+        assertEquals(JOURNEY_ROWS, held.held!!.limit)
+        val inView = heldWhileChecking(listOf(checking), listOf(drew), viewKey = ride.key).single().state as JourneyCardState.Checking
+        assertEquals(Int.MAX_VALUE, inView.held?.limit)
+        // Held again on the next check, from what it held.
+        val again = heldWhileChecking(listOf(checking), listOf(JourneyCard(ride, held)), viewKey = null).single().state as JourneyCardState.Checking
+        assertEquals(held.held?.rows, again.held?.rows)
+        // Flipped, the same journey key the other way round holds nothing: those were the other way's trains.
+        val flipped = JourneyCard(ride.reversed(), JourneyCardState.Checking("example's route"))
+        assertEquals(flipped, heldWhileChecking(listOf(flipped), listOf(drew), viewKey = null).single())
+        // Nor does a first check, nor a card drawn as anything but trains last.
+        assertEquals(checking, heldWhileChecking(listOf(checking), null, viewKey = null).single())
+        assertEquals(checking, heldWhileChecking(listOf(checking), listOf(JourneyCard(ride, JourneyCardState.RouteFailed)), viewKey = null).single())
+        // A card with trains of its own is left as it is.
+        assertEquals(drew, heldWhileChecking(listOf(drew), listOf(checking), viewKey = null).single())
+    }
+
+    @Test
+    fun `a ride below a held card leaves out what it holds, so neither moves`() {
+        fun rowsAt(stop: String, vararg to: String) = DepartureRows.across(
+            listOf(StopArrivals(stop, stop, to.mapIndexed { i, dest -> departure(dest, 60L + i * 60) }, fetchedAt = now)),
+            now,
+        )
+        fun ride(from: String, to: String) =
+            app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd(from, from), app.stopdash.domain.JourneyEnd(to, to), "example")
+        val near = JourneyCard(
+            ride("KING", "NORTH"),
+            JourneyCardState.Checking("example's route", held = JourneyCardState.Trains(rowsAt("KING", "North End"), limit = JOURNEY_ROWS)),
+        )
+        val far = JourneyCard(ride("KING", "NPARK"), JourneyCardState.Trains(rowsAt("KING", "North End"), limit = JOURNEY_ROWS))
+        val cards = withoutRepeatedRoutes(listOf(near, far), viewKey = null)
+        // The nearer card is still checking, and still draws what it holds.
+        assertTrue(cards[0].state is JourneyCardState.Checking)
+        assertEquals(1, cards[0].state.drawn?.drawnRows?.size)
+        // The farther one leaves out the route the held card shows, as it did before the check.
+        assertTrue((cards[1].state as JourneyCardState.Trains).shownAbove)
+    }
+
+    @Test
+    fun `a card's own line is its one row while it has no train to show`() {
+        val ride = app.stopdash.domain.FavoriteJourney(
+            app.stopdash.domain.JourneyEnd("KING", "King"), app.stopdash.domain.JourneyEnd("NORTH", "North"), "northern", "Northern", "tube",
+        )
+        val row = JourneyCard(ride, JourneyCardState.Trains(emptyList())).lineCard.group.rows.single()
+        // The line's status row there, so a suspension's row gives way to it in place.
+        assertEquals(listOf("KING", "northern", app.stopdash.domain.STATUS_DIRECTION_KEY, ""), listOf(row.stopId, row.lineId, row.directionKey, row.platform))
+        assertEquals("Northern", row.lineName)
+        assertTrue(!row.hasTrains && row.status == null)
+        // Once the ride is placed, at the stop it boards from.
+        assertEquals("KING-2", JourneyCard(ride, JourneyCardState.Trains(emptyList()), boardingIds = listOf("KING-2")).lineCard.group.rows.single().stopId)
     }
 }
