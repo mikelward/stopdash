@@ -2242,6 +2242,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               that doesn't grow case by case, e.g. both ends resolved to one set of ids, or the search
               marking the destination's stops, and decide whether such a pick should then be refused,
               ignored, or kept.
+        - [ ] **An interchange via is named by the station picked, not the interchange** (Codex, #905). The
+              Via… search offers an interchange under each of its stations' names (King's Cross, St Pancras
+              International), and a view's Via names the station it was opened on, but either goes via the
+              whole interchange, so "Via King's Cross" can list a route only through St Pancras. Decide whether
+              the Via row names the interchange once its stations are looked up (the lookup already runs), or
+              notes the rest ("King's Cross & St Pancras"), for picks from both.
         - [ ] **Plan again on the way keeps no via.** A trip started from a route via a stop, planned
               again from partway along (*Plan again*), is a new trip to the same destination and goes
               any way; the rider can pick the stop again with *Via…*. Carry it (and drop it once the
