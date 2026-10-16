@@ -821,6 +821,41 @@ class KtorTflClientTest {
     }
 
     @Test
+    fun `a train listed on two lines is grayed on both and logged as such`() = runTest {
+        fun listing(line: String, vehicle: String, at: String) = """
+            {"lineId": "$line", "lineName": "$line", "platformName": "Westbound - Platform 2",
+             "towards": "Check Front of Train", "expectedArrival": "$at", "modeName": "tube",
+             "vehicleId": "$vehicle"}
+        """
+        val body = "[" + listOf(
+            listing("hammersmith-city", "201", "2026-10-16T09:01:00Z"),
+            listing("hammersmith-city", "123", "2026-10-16T09:01:30Z"),
+            listing("metropolitan", "123", "2026-10-16T09:01:30Z"),
+        ).joinToString(",") + "]"
+        val engine = MockEngine {
+            respond(ByteReadChannel(body), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val logged = mutableListOf<String>()
+        val departures = KtorTflClient(
+            httpClient = http,
+            baseUrl = "https://tfl.example",
+            clock = { Instant.parse("2026-10-16T09:00:00Z") },
+            logDoubtful = { logged += it },
+            decodeDispatcher = serialDecode,
+            trainSpacing = { false },
+        ).arrivals("940GZZLUBST")
+        assertEquals(setOf("hammersmith-city" to "123", "metropolitan" to "123"), departures.filter { it.grayed }.map { it.lineId to it.vehicleId }.toSet())
+        val line = logged.single { it.startsWith("doubtful at") }
+        assertTrue(line, line.contains("hammersmith-city P2 123 Check Front of Train (on two lines)"))
+        assertTrue(line, line.contains("metropolitan P2 123 Check Front of Train (on two lines)"))
+        assertFalse(line, line.contains("201"))
+    }
+
+    @Test
     fun `retains TfL direction, defaulting to empty when the field is absent`() = runTest {
         val departures = client(arrivalsJson).arrivals("940GZZLUVIC")
 

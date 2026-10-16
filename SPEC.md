@@ -674,6 +674,17 @@ still lists after it was due counts for nothing. Each one marked is noted in the
 the feed looked like can be compared with what the rider saw. Buses, and platforms TfL names by
 direction alone, are left as they are.
 
+**A tube train TfL lists on two lines at once is grayed on both** (maintainer, 2026-10-16). Until TfL
+settles which line a train runs as, it lists the train at one platform under each line it could be
+(Hammersmith & City and Metropolitan, or Hammersmith & City and District) with the same id, due within a
+minute of each other and most often with no destination, and drops one listing once it knows. Two lines'
+listings further apart are two trains, since an id is unique only within a line. In a recording at the
+hubs (2026-10-16), 25 of the 26 Hammersmith & City trains that left the board early from a close pair
+were such a listing (`dev-docs/arrivals-measurements.md`). Either line may be the one it runs as, so both
+listings are grayed and read as maybe not running, however far out. As with the later of a close pair, a
+trip on either line follows another train first. These listings are left out of the close-pair rule
+above, so a train next to one isn't grayed because of it. Each is noted in the debug log as on two lines.
+
 **Bunched tube trains are spaced out** (maintainer, 2026-10-13). TfL
 times each train as if the line ahead were clear, so a queue reads as due within a minute of each
 other (0 · 0 · 1 · 2 · 2 min) when the trains come about two minutes apart. Each train of a line at one

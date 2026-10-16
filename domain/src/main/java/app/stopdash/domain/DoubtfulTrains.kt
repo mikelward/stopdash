@@ -25,6 +25,17 @@ import java.util.IdentityHashMap
  * recordings say nothing, and TfL's whole-minute times would pair most real trains, so a pair there is
  * left alone too.
  *
+ * TfL also lists one train under two lines at once, while it hasn't settled which the train runs as: the
+ * same id at the same platform as a Hammersmith & City train and as a Metropolitan one (or a District
+ * one), most often with no destination yet, until one of the two listings goes. The two are due within
+ * [PAIR] of each other (99% of the time in the recording); an id is unique within a line only, so two
+ * lines' listings further apart are taken for two trains. Of the Hammersmith & City trains that left the
+ * board early from a close pair in a recording of the hubs, 25 of 26 were such a listing
+ * (`dev-docs/arrivals-measurements.md`, 2026-10-16). Either line may be the one it runs as, so both
+ * listings are grayed (maintainer, 2026-10-16) and marked [Departure.doubtful], so a trip on either line
+ * counts on another train first. They're left out of the pairs above: a train next to one of them is
+ * judged only against the trains that are surely its line's.
+ *
  * Only the tube's tracking does this, and only a numbered platform says two trains share one: a bus
  * stop, a platform TfL names by direction alone, or its "Platform Unknown", is left as it is.
  */
@@ -35,8 +46,15 @@ object DoubtfulTrains {
     /** How soon the first of a [PAIR] must be due for the pair to be marked: as far as the recordings looked. */
     val PAIR_WITHIN: Duration = Duration.ofMinutes(5)
 
-    /** What [mark] returned, and which of them it marked (for the debug log). */
-    data class Result(val departures: List<Departure>, val marked: List<Departure>)
+    /**
+     * What [mark] returned, which of them it marked, and which of those are one train listed on two
+     * lines ([onTwoLines]), for the debug log.
+     */
+    data class Result(
+        val departures: List<Departure>,
+        val marked: List<Departure>,
+        val onTwoLines: List<Departure> = emptyList(),
+    )
 
     /** [departures] as of [now], with each pair marked, in their given order. Walks the whole board, so off the main thread. */
     @WorkerThread
@@ -49,10 +67,27 @@ object DoubtfulTrains {
         // can't be the one a train behind it is too close to.
         // TfL leaves a train's mode blank at times: it takes its line's, from the line's other trains.
         val lineMode = departures.filter { it.mode.isNotBlank() }.associate { it.lineId to it.mode }
-        departures.filter {
+        val tube = departures.filter {
             it.mode.ifBlank { lineMode[it.lineId].orEmpty() }.equals("tube", ignoreCase = true) &&
                 PlatformDirection.knownPlatformNumber(it.platform) != null && !Countdown.hasDeparted(it, now)
         }
+        // One train listed on two lines at one platform: either line may be the one it runs as. Its
+        // listings are due within [PAIR] of each other; an id is unique within a line only, so two lines'
+        // trains further apart are two trains.
+        val onTwoLines = Collections.newSetFromMap(IdentityHashMap<Departure, Boolean>())
+        tube.filter { it.vehicleId.isNotBlank() }
+            .groupBy { PlatformDirection.knownPlatformNumber(it.platform) to it.vehicleId }
+            .values.forEach { listings ->
+                listings.filter { one ->
+                    listings.any { other ->
+                        other.lineId != one.lineId &&
+                            Duration.between(one.expectedArrival, other.expectedArrival).abs() <= PAIR
+                    }
+                }.forEach { onTwoLines += it }
+            }
+        doubtful += onTwoLines
+        paired += onTwoLines
+        tube.filter { it !in onTwoLines }
             // By the platform's number, not TfL's label: it names one platform both with and without
             // its direction ("Platform 2", "Southbound - Platform 2"). "Platform Unknown" is no platform.
             .groupBy { it.lineId to PlatformDirection.knownPlatformNumber(it.platform) }
@@ -69,9 +104,17 @@ object DoubtfulTrains {
             }
         if (paired.isEmpty()) return Result(departures, emptyList())
         val marked = ArrayList<Departure>()
+        val twoLines = ArrayList<Departure>()
         val all = departures.map { d ->
-            if (d in paired) d.copy(doubtful = d in doubtful, paired = d in paired).also { marked += it } else d
+            if (d in paired) {
+                d.copy(doubtful = d in doubtful, paired = d in paired).also {
+                    marked += it
+                    if (d in onTwoLines) twoLines += it
+                }
+            } else {
+                d
+            }
         }
-        return Result(all, marked)
+        return Result(all, marked, twoLines)
     }
 }

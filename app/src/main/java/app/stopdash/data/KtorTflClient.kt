@@ -553,14 +553,19 @@ class KtorTflClient(
 
     // A train TfL may be tracking twice is marked, and said so: what the feed looked like each time is
     // what tells a real close pair from a copy. Each is the "earlier" or "later" of two a minute or less
-    // apart, either of which may be the copy; a trip passes the later over.
+    // apart, either of which may be the copy (a trip passes the later over), or one train listed "on two
+    // lines" at once.
     @WorkerThread
     private fun withDoubtfulMarked(stopId: String, departures: List<Departure>): List<Departure> {
         val result = DoubtfulTrains.mark(departures, clock())
         if (result.marked.isNotEmpty()) {
             logDoubtful(
                 "doubtful at $stopId: " + result.marked.joinToString { d ->
-                    val why = if (d.doubtful) "later" else "earlier"
+                    val why = when {
+                        result.onTwoLines.any { it === d } -> "on two lines"
+                        d.doubtful -> "later"
+                        else -> "earlier"
+                    }
                     "${d.lineId} P${PlatformDirection.platformNumber(d.platform)} ${d.vehicleId.ifBlank { "no id" }} " +
                         "${d.destination}${d.branch?.let { " via $it" }.orEmpty()} ($why)"
                 },
