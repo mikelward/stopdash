@@ -1254,7 +1254,7 @@ class TripViewModel(
                         val answer = try {
                             withContext(io) { planner.fewestChangesVia(from, destination, finalStop.stopId, speed, limit, access, modes) }
                         } catch (e: TflException) {
-                            // The plan stands without it, as it does without either of its own two
+                            // The plan stands without it, as it does without any one of its own
                             // requests. The stop isn't logged: it's a way to the rider's place.
                             warn("trip plan via the fastest route's last stop failed: ${e::class.simpleName}")
                             viaFailed = true

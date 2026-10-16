@@ -172,21 +172,31 @@ class KtorTflClient(
     ): List<TripRoute> {
         val fromParam = from.plannerParam()
         val toParam = to.plannerParam()
-        // The Planner offers three routes, often one route at three departures, so it's asked three
+        // The Planner offers three routes, often one route at three departures, so it's asked four
         // times at once: for the quickest (its default); for the fewest changes, which finds a walk to
-        // a station, or one bus the whole way, that the quickest three passed over; and for the least
-        // walking, which finds the bus to the station in place of the walk there (SPEC *Trips with a
-        // change*). Any answer alone still plans the trip; only all failing fails it.
+        // a station, or one bus the whole way, that the quickest three passed over; for the least
+        // walking, which finds the bus to the station in place of the walk there; and for buses alone,
+        // which finds the bus the whole way, usually the cheapest (SPEC *Trips with a change*). That
+        // last only while the bus rides: with it off there's none to find. Any answer alone still plans
+        // the trip; only all failing fails it.
+        val asks = PlanAsk.ALL.filter { !it.busOnly || modes.busOnlyModes != null }
         val answers = coroutineScope {
-            PREFERENCES.map { preference ->
-                async { attemptPlan { plan(fromParam, toParam, speed, maxWalk, stepFree, modes, preference = preference, at = at) } }
+            asks.map { ask ->
+                async {
+                    attemptPlan { plan(fromParam, toParam, speed, maxWalk, stepFree, modes, preference = ask.preference, busOnly = ask.busOnly, at = at) }
+                }
             }.awaitAll()
         }
         // Each failure is logged by which request it was, as they can differ (offline and rate-limited,
         // say); with every one failed, the quickest's fails the plan (the trip logs it).
         answers.forEachIndexed { index, answer ->
             val failure = answer.exceptionOrNull() ?: return@forEachIndexed
-            val source = PREFERENCES[index]?.let { planSource(it, via = null, at = at) } ?: "journey planner (quickest)${laterSuffix(at)}"
+            val ask = asks[index]
+            val source = if (ask == PlanAsk.QUICKEST) {
+                "journey planner (quickest)${laterSuffix(at)}"
+            } else {
+                planSource(ask.preference, via = null, busOnly = ask.busOnly, at = at)
+            }
             if (index > 0 || answers.any { it.isSuccess }) warn("$source: ${failure::class.simpleName}")
         }
         if (answers.none { it.isSuccess }) throw checkNotNull(answers.first().exceptionOrNull())
@@ -306,10 +316,13 @@ class KtorTflClient(
         leaveOut: Set<String> = emptySet(),
         // From one stop to another, for a Direct row's ride ([DirectRoute]): said apart in the log.
         between: Boolean = false,
+        // Buses alone ([TripModes.busOnlyModes]), for the plan's bus-only request.
+        busOnly: Boolean = false,
         // A later trip's time ([TripTime]); none plans for now.
         at: TripTime? = null,
     ): List<TripRoute> {
-        val source = planSource(preference, via, leaveOut, between, at)
+        val source = planSource(preference, via, leaveOut, between, busOnly, at)
+        val modeList = if (busOnly) checkNotNull(modes.busOnlyModes) else plannerModes(modes, leaveOut)
         // How long the Planner took, logged once for every request whatever its outcome (it can take
         // seconds, so a slow trip page says whether its plan or what follows held it up; a failed one
         // can be the slow one, Codex, #563), from before the request waits for a slot and the rate
@@ -319,7 +332,7 @@ class KtorTflClient(
         var outcome: String? = null
         var offered = ""
         try {
-            return planRequest(source, fromParam, toParam, speed, maxWalk, stepFree, plannerModes(modes, leaveOut), preference, via, at) { status ->
+            return planRequest(source, fromParam, toParam, speed, maxWalk, stepFree, modeList, preference, via, at) { status ->
                 if (waited == null) waited = asked.elapsedNow().inWholeMilliseconds
                 status?.let { outcome = it }
             }.also { routes ->
@@ -423,9 +436,11 @@ class KtorTflClient(
         via: String?,
         leaveOut: Set<String> = emptySet(),
         between: Boolean = false,
+        busOnly: Boolean = false,
         at: TripTime? = null,
     ): String {
         val source = when {
+            busOnly -> "journey planner (bus only)"
             leaveOut.isNotEmpty() -> "journey planner (without ${leaveOut.sorted().joinToString("+")})"
             via != null && preference == LEAST_INTERCHANGE -> "journey planner (fewest changes via a stop)"
             via != null -> "journey planner (quickest via a stop)"
@@ -1051,9 +1066,6 @@ class KtorTflClient(
         /** The Planner's `journeyPreference` for the routes with the least walking. */
         const val LEAST_WALKING: String = "leastwalking"
 
-        /** Each plan's requests, by `journeyPreference`: the quickest (the Planner's default), the fewest changes, the least walking. */
-        private val PREFERENCES: List<String?> = listOf(null, LEAST_INTERCHANGE, LEAST_WALKING)
-
         /**
          * The fixed, always-resolvable destination the postcode resolver plans to — King's Cross St
          * Pancras Underground, a major interchange (public TfL data, SPEC *Privacy*). Only the trip's
@@ -1123,3 +1135,21 @@ private val WORK_AHEAD_FORMAT: java.time.format.DateTimeFormatter =
     java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss").withZone(java.time.ZoneOffset.UTC)
 
 internal fun logDoubtfulTrains(message: String) = StopdashDebugLog.info("arrivals: %s", message)
+
+/**
+ * One of a plan's requests ([KtorTflClient.journeys]): its `journeyPreference` ([preference]; none for
+ * the quickest, the Planner's default), and whether it rides buses alone ([busOnly]).
+ */
+private data class PlanAsk(val preference: String?, val busOnly: Boolean = false) {
+    companion object {
+        val QUICKEST = PlanAsk(null)
+
+        /** Each plan's requests, in the order their answers merge: the quickest, the fewest changes, the least walking, buses alone. */
+        val ALL: List<PlanAsk> = listOf(
+            QUICKEST,
+            PlanAsk(KtorTflClient.LEAST_INTERCHANGE),
+            PlanAsk(KtorTflClient.LEAST_WALKING),
+            PlanAsk(null, busOnly = true),
+        )
+    }
+}
