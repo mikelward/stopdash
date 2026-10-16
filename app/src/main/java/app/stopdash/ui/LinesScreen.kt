@@ -534,8 +534,8 @@ internal fun LineStopPage(
     // Its line, under the lines here, kept for a station once they are worked out.
     accessSlot: Boolean = false,
     // Opened from a route page's stop list: headed by the departure tapped, with Go in place of From and To,
-    // its star the journey there ([RouteStopMode]), and, where the ride gets off ([RouteStopMode.alighting]), no
-    // [pole] line; null for a stop opened from a line's map.
+    // its star the journey there ([RouteStopMode]), and, where the ride gets off ([RouteStopMode.alighting]), a To
+    // row and no [pole] line; null for a stop opened from a line's map.
     route: RouteStopMode? = null,
 ) {
     BackHandler(onBack = onBack)
@@ -606,7 +606,7 @@ internal fun LineStopPage(
                 )
             }
             if (route != null) {
-                item(key = "departure") { RouteStopDeparture(route) }
+                item(key = "departure") { RouteStopDeparture(route, name) }
                 // Go only where the ride can be followed: decided by the line's mode, so it's there from the first frame.
                 if (route.onGo != null || onDepartures != null) {
                     item(key = "actions") {
@@ -707,22 +707,30 @@ class RouteStopMode(
     val alighting: Boolean = false,
 )
 
-/** The departure a route stop's details were opened from: its line's pill, where it was boarded and where it goes. */
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * The departure a route stop's details were opened from: its line's pill on a line of its own, then where it was
+ * boarded and where it goes, then the stop itself, [stopName], where the ride gets off (maintainer, 2026-10-16):
+ * only where it does ([RouteStopMode.alighting]), so the boarding stop never reads "To" itself (Codex on #892).
+ * From always starts its own line, never beside a short pill, so From and To line up as a pair.
+ */
 @Composable
-private fun RouteStopDeparture(route: RouteStopMode) {
+private fun RouteStopDeparture(route: RouteStopMode, stopName: String) {
     val journey = route.journey
     Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.testTag("routeStopDeparture")) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.Center) {
-            LinePill(route.line.name, route.line.id, route.line.mode)
+        LinePill(route.line.name, route.line.id, route.line.mode)
+        Text(
+            if (route.towards.isBlank()) {
+                stringResource(R.string.route_stop_departure_from, route.fromName)
+            } else {
+                stringResource(R.string.route_stop_departure, route.fromName, route.towards)
+            },
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        if (route.alighting) {
             Text(
-                if (route.towards.isBlank()) {
-                    stringResource(R.string.route_stop_departure_from, route.fromName)
-                } else {
-                    stringResource(R.string.route_stop_departure, route.fromName, route.towards)
-                },
+                stringResource(R.string.route_stop_to, stopName),
                 style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.align(Alignment.CenterVertically),
+                modifier = Modifier.testTag("routeStopTo"),
             )
         }
         // The star's change didn't save, or the favorites couldn't be read (with Retry): said here, under what it's for.

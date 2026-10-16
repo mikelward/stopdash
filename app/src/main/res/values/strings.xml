@@ -382,6 +382,9 @@
     <string name="route_stop_departure">From %1$s, towards %2$s</string>
     <!-- As route_stop_departure, for a departure TfL names no destination for: "From Victoria". -->
     <string name="route_stop_departure_from">From %1$s</string>
+    <!-- TODO: translate -->
+    <!-- Under route_stop_departure: the stop the details are for, where the ride gets off, "To Warren Street". -->
+    <string name="route_stop_to" tools:ignore="MissingTranslation">To %1$s</string>
     <!-- A stop's details opened from a route page's stop: starts the trip there on the way, on that line. -->
     <string name="route_stop_go">Go</string>
     <!-- A stop's details: go to this stop, as To… does. -->

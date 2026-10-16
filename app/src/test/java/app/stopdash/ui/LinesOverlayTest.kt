@@ -772,6 +772,7 @@ class LinesOverlayTest {
         )
         showRouteStop(repository, LineStopRef("490X", "Somewhere Road"), LineRef("299", "299", "bus"), "Somewhere Road", "North End", alighting = false)
         composeRule.onNodeWithTag("lineStopPole").assertTextContains("Stop H, towards North End")
+        composeRule.onNodeWithTag("routeStopTo").assertDoesNotExist()
         assertEquals(1, asked.threads().size)
     }
 
