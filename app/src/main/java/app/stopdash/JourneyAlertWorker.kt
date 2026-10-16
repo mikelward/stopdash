@@ -25,6 +25,7 @@ import app.stopdash.data.DataStoreFavoriteJourneysStore
 import app.stopdash.data.FavoriteJourneysWrites
 import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.data.KtorTflClient
+import app.stopdash.data.LineAlertDirections
 import app.stopdash.data.RejectedApiKey
 import app.stopdash.data.SharedTflRateLimiter
 import app.stopdash.data.SharedTflRequestPool
@@ -245,9 +246,9 @@ internal object JourneyAlertChecks {
      * another screen had within [reuse] is taken as it stands, a request one has out is waited on, and the
      * rest asked of [request] one group at a time ([LineStatusBatch]), a group that fails leaving only its
      * lines unanswered (Codex on #700). Null when none was answered; failures logged by count only (SPEC
-     * *Privacy*). This check's client looks up no alert's direction, so what it asks is held for the
-     * others as still waiting on that ([LineStatus.awaitingDirections]): a screen asks again rather than
-     * show it unsplit.
+     * *Privacy*). This check's client looks up each new alert's direction before it answers, so what it
+     * asks is held for the others split, or as still waiting on a direction where that lookup failed
+     * ([LineStatus.awaitingDirections]): a screen then asks again rather than show it unsplit.
      */
     internal suspend fun answered(
         lineIds: Set<String>,
@@ -256,7 +257,7 @@ internal object JourneyAlertChecks {
         reuse: java.time.Duration = LINE_STATUS_REUSE,
         request: suspend (List<String>) -> List<LineStatus>,
     ): List<LineStatus>? {
-        val checked = cache.check(lineIds, clock, reuse) { chunk -> request(chunk).map { it.copy(awaitingDirections = true) } }
+        val checked = cache.check(lineIds, clock, reuse) { chunk -> request(chunk) }
         checked.failure?.let { logJourneyAlertWarning("line status failed for ${checked.failed.size} line(s): ${it::class.simpleName}") }
         if (checked.unknown.isNotEmpty()) logJourneyAlertWarning("TfL doesn't know ${checked.unknown.size} line(s)")
         return if (checked.answers.isNotEmpty()) checked.statuses.values.toList() else null
@@ -832,6 +833,11 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
                 requestPool = SharedTflRequestPool.pool,
                 keyAnswered = RejectedApiKey.SHARED::record,
                 warn = ::logJourneyAlertWarning,
+                // Which way each alert runs, so a diversion TfL scopes to the other way doesn't alert this
+                // one (maintainer, 2026-10-16): looked up once per alert, shared with the list and the
+                // widget, and waited for, as no later refresh would split this check's answer.
+                alertDirections = LineAlertDirections.shared,
+                awaitAlertDirections = true,
             )
             JourneyAlertChecks.answered(lineIds) { chunk -> client.lineStatuses(chunk) }
         } catch (e: CancellationException) {

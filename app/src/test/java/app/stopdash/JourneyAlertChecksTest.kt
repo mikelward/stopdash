@@ -570,19 +570,24 @@ class JourneyAlertChecksTest {
         assertEquals("Severe Delays", statuses!!.single().description)
     }
 
-    // This check's client looks up no alert's direction: what it asks is held as still waiting on that,
-    // so a screen asks again rather than show it unsplit.
+    // This check's client looks up each new alert's direction before it answers: what it asks is held for
+    // the screens as it answered, split and taken as it stands, or still waiting on a direction where that
+    // lookup failed, so a screen asks again rather than show it unsplit.
     @Test
-    fun what_the_check_asks_is_left_for_the_screens_as_awaiting_its_directions() {
+    fun what_the_check_asks_is_left_for_the_screens_as_its_client_answered() {
         val now = java.time.Instant.parse("2026-10-05T08:00:00Z")
         val cache = app.stopdash.domain.LineStatusCache()
         runBlocking {
-            JourneyAlertChecks.answered(setOf("victoria"), cache = cache, clock = { now }) { chunk -> chunk.map { LineStatus(it, 6, "Severe Delays") } }
+            JourneyAlertChecks.answered(setOf("victoria", "bus1"), cache = cache, clock = { now }) { chunk ->
+                chunk.map { LineStatus(it, 6, "Severe Delays", awaitingDirections = it == "bus1") }
+            }
         }
-        val held = cache["victoria"] as app.stopdash.domain.LineStatusCache.Held.Verdict
-        assertTrue(held.status.awaitingDirections)
-        var asked = 0
-        runBlocking { cache.check(listOf("victoria"), { now.plusSeconds(5) }, java.time.Duration.ofSeconds(90)) { asked++; emptyList() } }
-        assertEquals(1, asked)
+        val split = cache["victoria"] as app.stopdash.domain.LineStatusCache.Held.Verdict
+        assertFalse(split.status.awaitingDirections)
+        val waiting = cache["bus1"] as app.stopdash.domain.LineStatusCache.Held.Verdict
+        assertTrue(waiting.status.awaitingDirections)
+        val asked = mutableListOf<String>()
+        runBlocking { cache.check(listOf("victoria", "bus1"), { now.plusSeconds(5) }, java.time.Duration.ofSeconds(90)) { asked += it; emptyList() } }
+        assertEquals(listOf("bus1"), asked)
     }
 }

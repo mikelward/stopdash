@@ -3,6 +3,8 @@ package app.stopdash.data
 import app.stopdash.domain.LineStatus
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 
 /**
  * Which directions of travel each line alert affects, and which stops, looked up once per alert and
@@ -48,6 +50,10 @@ class LineAlertDirections(private val capacity: Int = DEFAULT_CAPACITY) {
     // Access-ordered, so the eviction below drops the alert least recently read.
     private val known = LinkedHashMap<String, Scope>(16, 0.75f, true)
     private val pendingLines = HashSet<String>()
+
+    // Each lookup under way, completed when it's over, answered or not ([settle]): what a caller that
+    // waits for directions joins rather than claim the line again ([underWay]).
+    private val settled = HashMap<String, CompletableDeferred<Unit>>()
 
     // What each lookup under way is for: every alert its line showed when claimed ([alertKey]), all of
     // which [record] writes. A line among [ended] saw one of them end mid-lookup ([forgetGone]): its
@@ -96,6 +102,7 @@ class LineAlertDirections(private val capacity: Int = DEFAULT_CAPACITY) {
             claimed.forEach {
                 pendingLines.add(it.id)
                 lookingUp[it.id] = it.shownKeys()
+                settled.getOrPut(it.id) { CompletableDeferred() }
             }
         }
     }
@@ -232,7 +239,17 @@ class LineAlertDirections(private val capacity: Int = DEFAULT_CAPACITY) {
         pendingLines.removeAll(ids)
         lookingUp.keys.removeAll(ids)
         ended.removeAll(ids)
+        ids.forEach { settled.remove(it)?.complete(Unit) }
     }
+
+    /**
+     * The lookups under way for [lines] that have an alert whose direction isn't known yet, each done
+     * when its lookup is over, answered or not: another client's, which [claimUnknown] won't claim again,
+     * for a caller that waits for directions to join (Codex on #911).
+     */
+    @Synchronized
+    fun underWay(lines: List<TflLineDto>): List<Deferred<Unit>> =
+        lines.filter { it.id in pendingLines && anyUnknown(it) }.mapNotNull { settled[it.id] }
 
     // [line]'s alerts not looked up yet, by key and kind: none for their text, or none of their kind.
     private fun unknownAlerts(line: TflLineDto): Set<String> =

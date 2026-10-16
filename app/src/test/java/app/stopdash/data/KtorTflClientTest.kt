@@ -23,9 +23,12 @@ import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -553,6 +556,186 @@ class KtorTflClientTest {
         assertFalse(second.awaitingDirections)
         assertTrue(lookups.children.none())
         assertEquals(listOf(null, "true", null), requests)
+    }
+
+    @Test
+    fun `a check that waits for a new alert's direction answers split the first time`() = runTest {
+        val north = "STATION A: routes are on diversion northbound via Street A."
+        val south = "Road closed: buses towards Town B will miss stops."
+        fun statusJson(detail: Boolean) = """
+            [{"id": "bus1", "name": "1", "lineStatuses": [
+              {"statusSeverity": 0, "statusSeverityDescription": "Special Service", "reason": "$north",
+               "disruption": {"affectedRoutes": [${if (detail) """{"direction": "inbound"}""" else ""}]}},
+              {"statusSeverity": 0, "statusSeverityDescription": "Special Service", "reason": "$south",
+               "disruption": {"affectedRoutes": [${if (detail) """{"direction": "outbound"}""" else ""}]}}
+            ]}]
+        """.trimIndent()
+        val requests = mutableListOf<String?>()
+        var detailFails = false
+        val engine = MockEngine { request ->
+            val detail = request.url.parameters["detail"]
+            requests += detail
+            if (detail == "true" && detailFails) {
+                respond(ByteReadChannel("{}"), HttpStatusCode.InternalServerError, headersOf(HttpHeaders.ContentType, "application/json"))
+            } else {
+                respond(
+                    content = ByteReadChannel(statusJson(detail == "true")),
+                    headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                )
+            }
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val directions = LineAlertDirections()
+        // The journey alert check's client: no scope to run the lookup off, as it has no next refresh.
+        val client = KtorTflClient(
+            httpClient = http,
+            baseUrl = "https://tfl.example", decodeDispatcher = serialDecode,
+            alertDirections = directions,
+            awaitAlertDirections = true,
+            alertDirectionDispatcher = StandardTestDispatcher(testScheduler),
+            clock = { Instant.parse("2026-10-16T15:00:00Z") },
+        )
+
+        // The lookup is waited for, so the first answer is already split and needs no asking again.
+        val first = client.lineStatuses(listOf("bus1")).single()
+        assertEquals(listOf(null, "true"), requests)
+        assertEquals(north, first.forDirection("inbound").fullText)
+        assertEquals(south, first.forDirection("outbound").fullText)
+        assertEquals(setOf(setOf("inbound"), setOf("outbound")), first.underWay.map { it.directions }.toSet())
+        assertFalse(first.awaitingDirections)
+        // Known now, it isn't looked up again.
+        client.lineStatuses(listOf("bus1"))
+        assertEquals(listOf(null, "true", null), requests)
+
+        // A lookup that fails leaves the answer unsplit, counting for both directions, and waiting on it.
+        detailFails = true
+        val failing = KtorTflClient(
+            httpClient = http,
+            baseUrl = "https://tfl.example", decodeDispatcher = serialDecode,
+            alertDirections = LineAlertDirections(),
+            awaitAlertDirections = true,
+            alertDirectionDispatcher = StandardTestDispatcher(testScheduler),
+            clock = { Instant.parse("2026-10-16T15:00:00Z") },
+        )
+        val unsplit = failing.lineStatuses(listOf("bus1")).single()
+        assertTrue(unsplit.byDirection.isEmpty())
+        assertTrue(unsplit.underWay.all { it.directions == null })
+        assertTrue(unsplit.awaitingDirections)
+    }
+
+    @Test
+    fun `a check that waits for directions joins another client's lookup already under way`() = runTest {
+        val reason = "STATION A: routes are on diversion northbound via Street A."
+        fun statusJson(detail: Boolean) = """
+            [{"id": "bus1", "name": "1", "lineStatuses": [
+              {"statusSeverity": 0, "statusSeverityDescription": "Special Service", "reason": "$reason",
+               "disruption": {"affectedRoutes": [${if (detail) """{"direction": "inbound"}""" else ""}]}}
+            ]}]
+        """.trimIndent()
+        val detailAsks = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            if (request.url.parameters["detail"] == "true") detailAsks += request.url.segments[1]
+            respond(ByteReadChannel(statusJson(detail = false)), headers = headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val decode = Json { ignoreUnknownKeys = true }
+        val now = Instant.parse("2026-10-16T15:00:00Z")
+        // The check reads the clock first to claim its lookups: the other lookup lands only after that,
+        // as the request before it runs off this test's clock and would otherwise let it land first.
+        val claiming = CompletableDeferred<Unit>()
+        fun checkClient(directions: LineAlertDirections) = KtorTflClient(
+            httpClient = http,
+            baseUrl = "https://tfl.example", decodeDispatcher = serialDecode,
+            alertDirections = directions,
+            awaitAlertDirections = true,
+            clock = { claiming.complete(Unit); now },
+        )
+
+        // Another client (the list, the widget) has the line's lookup out, and it lands a second in.
+        val directions = LineAlertDirections()
+        val claimed = directions.claimUnknown(decode.decodeFromString<List<TflLineDto>>(statusJson(detail = false)), now)
+        assertEquals(1, claimed.size)
+        launch {
+            claiming.await()
+            delay(1_000)
+            directions.record(claimed, decode.decodeFromString<List<TflLineDto>>(statusJson(detail = true)))
+        }
+        val start = testScheduler.currentTime
+        val joined = checkClient(directions).lineStatuses(listOf("bus1")).single()
+        // It waited on that lookup, not asking the detail again itself, and answers split by its result.
+        assertEquals(1_000L, testScheduler.currentTime - start)
+        assertEquals(reason, joined.forDirection("inbound").fullText)
+        assertEquals(listOf(setOf("inbound")), joined.underWay.map { it.directions })
+        assertFalse(joined.awaitingDirections)
+
+        // One that never lands here is given up on after a while: the alert counts for both directions.
+        val stuck = LineAlertDirections()
+        assertEquals(1, stuck.claimUnknown(decode.decodeFromString<List<TflLineDto>>(statusJson(detail = false)), now).size)
+        val waited = testScheduler.currentTime
+        val unsplit = checkClient(stuck).lineStatuses(listOf("bus1")).single()
+        assertEquals(KtorTflClient.OTHER_LOOKUP_WAIT_MILLIS, testScheduler.currentTime - waited)
+        assertTrue(unsplit.underWay.all { it.directions == null })
+        assertTrue(unsplit.awaitingDirections)
+        assertTrue(detailAsks.isEmpty())
+    }
+
+    @Test
+    fun `a check that joins a lookup for an alert since reworded looks up the new one itself`() = runTest {
+        val old = "STATION A: routes are on diversion via Street A."
+        val reworded = "STATION A: routes are on diversion northbound via Street A."
+        fun statusJson(reason: String, detail: Boolean) = """
+            [{"id": "bus1", "name": "1", "lineStatuses": [
+              {"statusSeverity": 0, "statusSeverityDescription": "Special Service", "reason": "$reason",
+               "disruption": {"affectedRoutes": [${if (detail) """{"direction": "inbound"}""" else ""}]}}
+            ]}]
+        """.trimIndent()
+        val detailAsks = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            val detail = request.url.parameters["detail"] == "true"
+            if (detail) detailAsks += request.url.segments[1]
+            respond(ByteReadChannel(statusJson(reworded, detail)), headers = headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val decode = Json { ignoreUnknownKeys = true }
+        val now = Instant.parse("2026-10-16T15:00:00Z")
+        // Another client claimed the line while it showed the old wording, and its answer, for that
+        // wording, lands a second in: dropped, as the line shows another alert by then.
+        val directions = LineAlertDirections()
+        val claimed = directions.claimUnknown(decode.decodeFromString<List<TflLineDto>>(statusJson(old, detail = false)), now)
+        assertEquals(1, claimed.size)
+        // Landing only once the check has read the clock to claim, so after it joined (see above).
+        val claiming = CompletableDeferred<Unit>()
+        launch {
+            claiming.await()
+            delay(1_000)
+            directions.record(claimed, decode.decodeFromString<List<TflLineDto>>(statusJson(old, detail = true)))
+        }
+        val client = KtorTflClient(
+            httpClient = http,
+            baseUrl = "https://tfl.example", decodeDispatcher = serialDecode,
+            alertDirections = directions,
+            awaitAlertDirections = true,
+            alertDirectionDispatcher = StandardTestDispatcher(testScheduler),
+            clock = { claiming.complete(Unit); now },
+        )
+
+        val start = testScheduler.currentTime
+        val status = client.lineStatuses(listOf("bus1")).single()
+        // It joined that lookup, and once it was over looked up the new wording itself: split by it.
+        assertEquals(1_000L, testScheduler.currentTime - start)
+        assertEquals(listOf("bus1"), detailAsks)
+        assertEquals(reworded, status.forDirection("inbound").fullText)
+        assertEquals(listOf(setOf("inbound")), status.underWay.map { it.directions })
+        assertFalse(status.awaitingDirections)
     }
 
     @Test

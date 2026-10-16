@@ -3748,9 +3748,10 @@ Builds on Phase 1's minimal line-status marking.
         stops"). Each widget pin now records the far-end stops its departures get off at
         (`WidgetJourney.alightIds`, the card's `destinationIds`), so the check rides a pinned line from the pole
         it boards at to those stops, as well as from the saved ends, and places its alerts on the line's route.
-  - [ ] **Only the alerts for the way traveled**, where TfL scopes an alert to a direction (bus
-        diversions): needs the alert's direction looked up in the background, and which TfL direction
-        the journey's line runs between its ends.
+  - [x] **Only the alerts for the way traveled**, where TfL scopes an alert to a direction (bus
+        diversions; maintainer, 2026-10-16: a southbound-only diversion alerted the way home). The check's
+        client now looks up a new alert's direction and waits for it (`awaitAlertDirections`), and the
+        ride's routes say which way it runs.
   - [ ] **Places as the primary entity** (maintainer, 2026-10-08: "To design"). Favorite places are
         what the rider saves; trips are routes between two places; direct routes and route alerts
         hang off those, absorbing favorite journeys and trips with a change. Includes an **"Add Home ➔
