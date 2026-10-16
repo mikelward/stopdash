@@ -582,6 +582,23 @@ class JourneyAlertsTest {
     }
 
     @Test
+    fun `a bus diversion TfL scopes to the other way doesn't alert a ride whatever its words`() {
+        // An alert for the buses heading into town alerted the way home, its words placing it on no stretch
+        // of that way's route (maintainer, 2026-10-16). Made-up words, placing nothing.
+        val oneWay = busRoute.copy(routes = listOf(busRoute.routes.single().copy(direction = "outbound")))
+        val words = "EXAMPLE STREET, EC3: Route 99 is on diversion southbound only due to roadworks. Buses are diverted via Other Lane."
+        val southbound = LineStatus("99", 5, "Diversion", words, soleAlert = true, underWay = listOf(LineAlert(5, "Diversion", words, setOf("inbound"))))
+        assertTrue(alertsFor(busRide("b4", "b6"), southbound, routes = mapOf("99" to oneWay)).isEmpty())
+        // The route is read for it: the direction alone can place it.
+        val ride = busRide("b4", "b6")
+        assertEquals(setOf("99"), JourneyAlerts.routesToRead(listOf(ride), mapOf(ride.key to setOf("99")), mapOf("99" to southbound)))
+        // Scoped to this way, or to none known, it's on.
+        val northbound = southbound.copy(underWay = listOf(LineAlert(5, "Diversion", words, setOf("outbound"))))
+        assertEquals(1, alertsFor(busRide("b4", "b6"), northbound, routes = mapOf("99" to oneWay)).size)
+        assertEquals(1, alertsFor(busRide("b4", "b6"), southbound.copy(underWay = emptyList()), routes = mapOf("99" to oneWay)).size)
+    }
+
+    @Test
     fun `a line a ride pins is weighed as its own mode`() {
         // A line pinned rather than saved on is ridden as the snapshot says, not as the ride's own (Codex on #866):
         // a rail line's closure away from the stops stays on, as a bus line's alert off the ride doesn't.

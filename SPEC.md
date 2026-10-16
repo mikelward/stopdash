@@ -1496,7 +1496,11 @@ kind the route page makes), and an alert whose stretch lies off the ride in ever
 left out. Each line is ridden from the journey's ends and, for a line the widget pins beside it, from the
 pole it boards at to the far-end stops its departures get off at, as the app last found them (maintainer,
 2026-10-15). Unknown is on: a route not read, or a direction none of whose rides it can place, keeps the
-alert. Each check is
+alert. Nor does a bus alert TfL scopes to one way alert a ride the other way, whatever its words: a
+diversion southbound only says nothing of the way home (maintainer, 2026-10-16). Which way an alert runs is
+looked up once per alert, as the list's is (TfL's detailed status, about 150 KB a line, kept in memory and
+shared with the list and the widget), and waited for, as the check has no later refresh to split its answer
+on; until it's known, or where the lookup fails, the alert counts for both ways. Each check is
 started by **inexact alarms** at its time, run as an expedited job: Android holds an app's deferred
 jobs half an hour or more while it's off screen, even with the phone in use and the battery setting
 "Optimized" (maintainer's bug report, 2026-10-09). Neither alarm needs a permission: one with a
@@ -1566,8 +1570,8 @@ It goes when the lines recover or the window closes: it times out at the window'
 if two checks pass without renewing it, so it never outlives its window or the check behind it (D4),
 offline or not. Where both directions' windows overlap, both directions' lines are checked. A check TfL didn't answer claims nothing:
 what's shown stays until its timeout. A tap opens the app. The check asks about every alert on the
-line, either direction: which way a disruption runs is known only for some bus alerts, and only after
-a lookup the background check doesn't make.
+line, either direction: which way a disruption runs is known only for some bus alerts, from the lookup
+above, and only a bus ride's alert is left out for running the other way.
 Each check, and each arming of the next, leaves a line in the debug log (principle 2): when it was due
 and how late it ran, the lines it asked about with TfL's status for each, and what it posted or took
 down, so an alert that never came can be explained from a bug report. Never the journey's stops.

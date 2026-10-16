@@ -48,6 +48,29 @@ class LineAlertDirectionsTest {
     }
 
     @Test
+    fun `a lookup under way can be joined, and is done however it ends`() {
+        val cache = LineAlertDirections()
+        val plain = listOf(line("bus1", "Diverted" to emptyList()), line("bus2", "Closed" to emptyList()))
+        // Nothing claimed, nothing to join.
+        assertTrue(cache.underWay(plain).isEmpty())
+
+        val claimed = cache.claimUnknown(plain, now)
+        val joined = cache.underWay(plain)
+        assertEquals(2, joined.size)
+        assertTrue(joined.none { it.isCompleted })
+        // Recorded for one line, failed for the other: both are over.
+        cache.record(claimed.filter { it.id == "bus1" }, listOf(line("bus1", "Diverted" to listOf("inbound"))))
+        cache.fail(claimed.filter { it.id == "bus2" }, now)
+        assertTrue(joined.all { it.isCompleted })
+        // A known line has nothing under way; one given up on is over too.
+        assertTrue(cache.underWay(plain.take(1)).isEmpty())
+        val again = cache.claimUnknown(listOf(line("bus3", "New" to emptyList())), now)
+        val pending = cache.underWay(again).single()
+        cache.release(again)
+        assertTrue(pending.isCompleted)
+    }
+
+    @Test
     fun `a new alert on a known line is claimed again`() {
         val cache = LineAlertDirections()
         val claimed = cache.claimUnknown(listOf(line("bus1", "Old" to emptyList())), now)

@@ -77,6 +77,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
@@ -127,6 +128,10 @@ class KtorTflClient(
     // whose HTTP client closes when its work ends): alerts then count for both directions.
     private val alertDirections: LineAlertDirections? = null,
     private val alertDirectionScope: CoroutineScope? = null,
+    // Whether a new alert's lookup is waited for, before the statuses are built, rather than run off
+    // the refresh in [alertDirectionScope]: for the journey alert check, which has no next refresh to
+    // split its alerts on, and no screen waiting on it.
+    private val awaitAlertDirections: Boolean = false,
     // The lookup decodes a ~150 KB response a line, so it runs off the main thread; a test swaps in
     // its own dispatcher to await it.
     private val alertDirectionDispatcher: CoroutineDispatcher = Dispatchers.IO,
@@ -823,7 +828,7 @@ class KtorTflClient(
         if (results.answers.isEmpty()) throw TflException.NotFound(null)
         val lines = results.answers.flatMap { it.value }
         lookUpAlertDirections(lines)
-        val directions = alertDirections?.takeIf { alertDirectionScope != null }
+        val directions = alertDirections?.takeIf { alertDirectionScope != null || awaitAlertDirections }
         return lines.mapNotNull { line ->
             line.toLineStatus(
                 clock(),
@@ -840,42 +845,75 @@ class KtorTflClient(
      * Starts the one-off direction lookup ([LineAlertDirections]) for the alerts in [lines] not seen
      * before, without waiting for it: this refresh shows them for both directions, the next one by
      * direction. The detailed response is ~150 KB a line, so it is asked for only here, per new alert.
+     * Where [awaitAlertDirections], it's waited for instead, so these statuses are split already; one
+     * that fails leaves its alerts for both directions, as an unfinished one does.
      */
-    private fun lookUpAlertDirections(lines: List<TflLineDto>) {
+    private suspend fun lookUpAlertDirections(lines: List<TflLineDto>) {
         val cache = alertDirections ?: return
+        if (awaitAlertDirections) {
+            // Waited for until no alert of [lines] is left to look up: each pass looks up what it can
+            // claim and joins another client's lookup already under way, which isn't claimed again. A
+            // joined lookup can settle without answering for these alerts (one these lines no longer
+            // show, whose answer is dropped), so the next pass claims what's still unknown (Codex on
+            // #911). Bounded: a joined lookup may never end here, and a few passes cover the overlaps.
+            repeat(DIRECTION_PASSES) {
+                val claimed = cache.claimUnknown(lines, clock())
+                if (claimed.isNotEmpty()) {
+                    try {
+                        withContext(alertDirectionDispatcher) { lookUp(cache, claimed) }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // Its alerts count for both directions, as before the lookup; it's asked again after a wait.
+                        cache.fail(claimed, clock())
+                        warn("alert directions: ${claimed.size} lines, ${e::class.simpleName}")
+                    }
+                }
+                val others = cache.underWay(lines)
+                if (others.isEmpty()) return
+                if (withTimeoutOrNull(OTHER_LOOKUP_WAIT_MILLIS) { others.awaitAll() } == null) {
+                    warn("alert directions: another lookup for ${others.size} lines not over in time")
+                    return
+                }
+            }
+            return
+        }
         val scope = alertDirectionScope ?: return
         val claimed = cache.claimUnknown(lines, clock())
         if (claimed.isEmpty()) return
-        scope.launch(alertDirectionDispatcher) {
-            try {
-                // One request per group TfL accepts, each recorded on its own (LineStatusBatch), so a
-                // later group failing doesn't discard the directions an earlier one returned.
-                val byId = claimed.associateBy { it.id }
-                val results = LineStatusBatch.request(claimed.map { it.id }) { chunk ->
-                    tflRequest { key ->
-                        httpClient.get("$baseUrl/Line/${chunk.joinToString(",")}/Status") {
-                            parameter("detail", "true")
-                            applyAppKey(key)
-                            allowSlowAnswer()
-                        }.body<List<TflLineDto>>()
-                    }
+        scope.launch(alertDirectionDispatcher) { lookUp(cache, claimed) }
+    }
+
+    // The lookup itself for [claimed], recorded in [cache] ([lookUpAlertDirections]).
+    private suspend fun lookUp(cache: LineAlertDirections, claimed: List<TflLineDto>) {
+        try {
+            // One request per group TfL accepts, each recorded on its own (LineStatusBatch), so a
+            // later group failing doesn't discard the directions an earlier one returned.
+            val byId = claimed.associateBy { it.id }
+            val results = LineStatusBatch.request(claimed.map { it.id }) { chunk ->
+                tflRequest { key ->
+                    httpClient.get("$baseUrl/Line/${chunk.joinToString(",")}/Status") {
+                        parameter("detail", "true")
+                        applyAppKey(key)
+                        allowSlowAnswer()
+                    }.body<List<TflLineDto>>()
                 }
-                results.answers.forEach { answer -> cache.record(answer.lineIds.mapNotNull(byId::get), answer.value) }
-                // The rest keep showing for both directions, as before, and are asked about again
-                // once they've waited, longer after each failure ([LineAlertDirections.fail]).
-                val unanswered = results.failed + results.unknown
-                if (unanswered.isNotEmpty()) {
-                    // A group never sent (after an earlier one failed) didn't fail: it's asked about on
-                    // the next refresh rather than waiting as though it had.
-                    val unsent = results.unsent.toSet()
-                    cache.fail(unanswered.filterNot { it in unsent }.mapNotNull(byId::get), clock())
-                    cache.release(results.unsent.mapNotNull(byId::get))
-                    warn("alert directions: ${unanswered.size} lines, ${results.failure?.let { it::class.simpleName } ?: "NotFound"}")
-                }
-            } catch (e: CancellationException) {
-                cache.release(claimed)
-                throw e
             }
+            results.answers.forEach { answer -> cache.record(answer.lineIds.mapNotNull(byId::get), answer.value) }
+            // The rest keep showing for both directions, as before, and are asked about again
+            // once they've waited, longer after each failure ([LineAlertDirections.fail]).
+            val unanswered = results.failed + results.unknown
+            if (unanswered.isNotEmpty()) {
+                // A group never sent (after an earlier one failed) didn't fail: it's asked about on
+                // the next refresh rather than waiting as though it had.
+                val unsent = results.unsent.toSet()
+                cache.fail(unanswered.filterNot { it in unsent }.mapNotNull(byId::get), clock())
+                cache.release(results.unsent.mapNotNull(byId::get))
+                warn("alert directions: ${unanswered.size} lines, ${results.failure?.let { it::class.simpleName } ?: "NotFound"}")
+            }
+        } catch (e: CancellationException) {
+            cache.release(claimed)
+            throw e
         }
     }
 
@@ -1062,6 +1100,19 @@ class KtorTflClient(
          * gets a fresh one.
          */
         const val STALL_RETRY_DELAY_MILLIS: Long = 1_500
+
+        /**
+         * How long a client that waits for an alert's direction ([awaitAlertDirections]) joins another
+         * client's lookup already under way: past a slow detail answer, short of a check's own budget.
+         */
+        const val OTHER_LOOKUP_WAIT_MILLIS: Long = 30_000
+
+        /**
+         * How many times a client that waits for an alert's direction ([awaitAlertDirections]) claims
+         * and joins lookups before answering with what's known: one for its own, one more after joining
+         * a lookup that didn't answer for its alerts, and one to spare.
+         */
+        const val DIRECTION_PASSES: Int = 3
 
         /**
          * How long a request TfL is slow to start answering may go without data: the nearby-stops
