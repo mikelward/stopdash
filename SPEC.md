@@ -2206,11 +2206,15 @@ changing on foot there is dropped on the phone, since the Planner can't leave ou
 riding through it isn't, as a train runs through a closed station. A bus stop is avoided by its stop
 area, both its poles. A place's Direct trains neither board nor get off there.
 
-**Three requests per plan.** The Planner answers with about three routes, often one route at three
-departures, so each plan asks it three times at once: for the quickest routes (its default), for the
+**Four requests per plan.** The Planner answers with about three routes, often one route at three
+departures, so each plan asks it four times at once: for the quickest routes (its default), for the
 **fewest changes**, which finds the walk to a station or the one bus the whole way that the quickest
-three passed over (maintainer, 2026-09-30), and for the **least walking**, which finds the bus to the
-station in place of a long walk there (maintainer, 2026-10-03). The answers merge in that order, and
+three passed over (maintainer, 2026-09-30), for the **least walking**, which finds the bus to the
+station in place of a long walk there (maintainer, 2026-10-03), and for **buses alone** (the bus and
+walking, at the Planner's quickest), which finds the bus the whole way, usually the cheapest (maintainer,
+2026-10-16). That last is asked whenever the bus rides, with only buses on too, since the quickest
+still rides the coach, the cable car and replacement buses, any of which can crowd out the bus; with
+buses turned off there's none to find. The answers merge in that order, and
 a route more than one offers (the same lines between the same stops at the same times) appears once;
 the list then orders them as always (tiers, then arrival). Any answer alone still plans the trip, and
 says which request failed in the debug log; only all failing fails the plan.
@@ -2219,7 +2223,7 @@ says which request failed in the debug log; only all failing fails the plan.
 a place or postcode picked in the *To…* search — the fewest changes can trade the one bus the whole way for a train and a long walk from the station, since a walk
 counts as no change, while the quickest routes change on to that same bus — so neither request offers
 the bus a short walk from the rider (maintainer's report, 2026-09-30). So when the route to a place
-arriving soonest by the Planner's times rides more than once, the Planner is asked a **fourth** time,
+arriving soonest by the Planner's times rides more than once, the Planner is asked a **fifth** time,
 for the fewest changes to the place **via** the stop that route gets off its last ride at; each
 route it offers riding fewer times joins the list as its own card, ranked like any other. The
 Planner builds the whole route, its walk on to the place included, so StopDash joins nothing: an
@@ -2256,7 +2260,7 @@ farther stops, a stop behind the rider, a night bus and a train add none; a stop
 whichever way it lies, as the fix is that uncertain. At most **three** stops, nearest first, so a
 street with many lines can't fan the plan out, and none when the destination is itself within 800 m.
 The stops are found on the device from the bundled stops, so they wait on no answer: the requests go
-out alongside the plan's own three, in parallel. The plan's own three still decide whether the plan
+out alongside the plan's own four, in parallel. The plan's own four still decide whether the plan
 stands: with all of them failed it has failed, and a re-plan keeps the last plan with its error and
 Retry rather than a list of only these routes. Asking via the station instead finds nothing new, as
 a train passing through it counts. The Planner builds the whole route, the walk to the stop timed at
@@ -2314,13 +2318,13 @@ protected nothing TfL didn't already have, so it is not to be reinstated as a pr
 minutes old (the plan is held in memory only, so a trip reopened after process death re-plans), again
 every 15 minutes while the screen stays visible, on a re-locate to a new nearest stop or 150 m on from where it was planned, and once
 per tap of Retry or pull on the routes: about four plans an hour for a trip left open, plus one per re-locate, Retry or pull the
-rider makes, each **three** Planner calls (quickest, fewest changes and least walking, above), so about
-twelve calls an hour; a trip to a place whose fastest route changes adds a **fourth** each time (above),
-about sixteen; a trip from a position adds one per bus stop towards the destination, at most **three**
+rider makes, each **four** Planner calls (quickest, fewest changes, least walking and buses alone,
+above), so about sixteen calls an hour; a trip to a place whose fastest route changes adds a **fifth**
+each time (above), about twenty; a trip from a position adds one per bus stop towards the destination, at most **three**
 a plan, and one more for each stop with no route through it (*Buses towards the destination*): about
-twenty-eight an hour, forty at the very most, all within the keyless ~50 a minute. To a station complex each plan is those three per station plus three for its bus stops
-(about six targets at King's Cross, two or three at a typical interchange): about 72 calls an hour at
-King's Cross, within the keyless ~50 a minute. Ranking needs every listed route's live trains, so each refresh fetches arrivals
+thirty-two an hour, forty-four at the very most, all within the keyless ~50 a minute. To a station complex each plan is those four per station plus four for its bus stops
+(about six targets at King's Cross, two or three at a typical interchange): about 96 calls an hour at
+King's Cross, 24 at once per plan, within the keyless ~50 a minute. Ranking needs every listed route's live trains, so each refresh fetches arrivals
 at every stop where any listed route boards a ride (its first stop and each change), once per
 stop however many routes share it: the Planner offers a handful of routes, so a few requests,
 under ten in practice, plus one line-status call for all their lines. Closure checks at the stops

@@ -29,10 +29,23 @@ data class TripModes(
     val plannerModes: String
         get() = PLANNER_MODES.filterNot { mode -> ModeGroups.ALL.any { it.key in off && mode in it.modes } }.joinToString(",")
 
+    /**
+     * The Planner's `mode` list for a plan's request for buses alone (SPEC *Trips with a change*):
+     * the bus and walking, so the rider's pace applies as it does to [plannerModes]. A coach rides in
+     * the bus group but is no bus, so it's left out. Null with the bus turned off: there's no bus to
+     * find. With the bus the only group riding it's still asked: [plannerModes] keeps the coach, the
+     * cable car and replacement buses, any of which can be the quickest and crowd out the bus (Codex).
+     */
+    val busOnlyModes: String?
+        get() = if (ModeGroups.ALL.any { it.key == BUS_GROUP && rides(it) }) BUS_ONLY_MODES else null
+
     /** Names this choice for the plans kept per choice; empty when everything rides. */
     val key: String get() = off.sorted().joinToString("+")
 
     companion object {
+        private const val BUS_GROUP = "bus"
+        private const val BUS_ONLY_MODES = "bus,walking"
+
         /** The stored default: every group rides. */
         val DEFAULT = TripModes()
 

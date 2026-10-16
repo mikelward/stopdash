@@ -75,4 +75,18 @@ class TripModesTest {
     fun `a stored set turning every group off reads as riding them all`() {
         assertEquals(TripModes.DEFAULT, TripModes.fromStored(ModeGroups.ALL.map { it.key }.toSet()))
     }
+
+    @Test
+    fun `buses alone are asked for whenever the bus rides`() {
+        // Every group riding: the bus and walking, so the rider's pace still applies; no coach.
+        assertEquals("bus,walking", TripModes.DEFAULT.busOnlyModes)
+        assertEquals("bus,walking", TripModes.DEFAULT.with(group("tube"), ride = false).busOnlyModes)
+        // The bus off: no bus to find.
+        assertEquals(null, TripModes.DEFAULT.with(group("bus"), ride = false).busOnlyModes)
+        // The bus the only group riding: still asked, since the plan's own modes keep the coach, the
+        // cable car and replacement buses, any of which can be quicker than the bus.
+        val onlyBus = ModeGroups.ALL.filter { it.key != "bus" }.fold(TripModes.DEFAULT) { modes, g -> modes.with(g, ride = false) }
+        assertTrue(onlyBus.plannerModes.split(",").containsAll(listOf("coach", "cable-car", "replacement-bus")))
+        assertEquals("bus,walking", onlyBus.busOnlyModes)
+    }
 }
