@@ -17,6 +17,8 @@ import app.stopdash.domain.StopArrivals
 import app.stopdash.ui.ARRIVALS_REUSE
 import java.time.Instant
 import app.stopdash.domain.FontSizeSettings
+import app.stopdash.StopdashDebugLog
+import com.mikelward.androidlog.DebugLog
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -25,6 +27,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -43,10 +46,21 @@ import org.robolectric.annotation.Config
 class WidgetRefreshWorkerTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
 
+    private val lines = mutableListOf<String>()
+    private val sink = DebugLog.Sink { line -> synchronized(lines) { lines += line } }
+
     @Before
     fun setUp() {
         WorkManagerTestInitHelper.initializeTestWorkManager(context)
+        StopdashDebugLog.addSink(sink)
     }
+
+    @After
+    fun tearDown() {
+        StopdashDebugLog.removeSink(sink)
+    }
+
+    private fun logged(text: String) = synchronized(lines) { lines.filter { text in it } }
 
     private fun wm() = WorkManager.getInstance(context)
 
@@ -112,6 +126,46 @@ class WidgetRefreshWorkerTest {
         val worker = TestListenableWorkerBuilder<WidgetRefreshWorker>(context).build()
         assertEquals(ListenableWorker.Result.success(), worker.doWork())
         assertEquals(0, enqueuedCount())
+        // The setting is still on, so the widget gets no updates until a render restarts it: said in the log.
+        assertEquals(1, logged("widget: live refresh stopped: no widget placed").size)
+    }
+
+    /**
+     * A tick Android held back says how late it ran and what Android holds the app to: a widget 4 hours
+     * behind with the setting on left nothing in the log to say why (bug report, 2026-10-16).
+     */
+    @Test
+    fun `a tick that runs late says how late, and what Android holds the app to`() = runTest {
+        DataStoreAppSettings.from(context).setLiveWidgetRefresh(true)
+        val ago = 11 * 60_000L
+        val worker = TestListenableWorkerBuilder<WidgetRefreshWorker>(context)
+            .setInputData(liveRefreshInput(android.os.SystemClock.elapsedRealtime() - ago, System.currentTimeMillis() - ago))
+            .build()
+        worker.doWork()
+        val late = logged("widget: live refresh ran ")
+        assertEquals(1, late.size)
+        val seconds = Regex("ran (\\d+) s after due \\(standby bucket ").find(late.single())?.groupValues?.get(1)?.toLong()
+        assertTrue("about 10 min late: ${late.single()}", seconds != null && seconds in 600L..660L)
+    }
+
+    @Test
+    fun `a tick on time, or nudged by Doze, says nothing about when it ran`() = runTest {
+        DataStoreAppSettings.from(context).setLiveWidgetRefresh(true)
+        val nudged = WIDGET_REFRESH_INTERVAL_MILLIS + LIVE_REFRESH_LATE_LOG_MILLIS / 2
+        for (ago in listOf(0L, nudged)) {
+            TestListenableWorkerBuilder<WidgetRefreshWorker>(context)
+                .setInputData(liveRefreshInput(android.os.SystemClock.elapsedRealtime() - ago, System.currentTimeMillis() - ago))
+                .build()
+                .doWork()
+        }
+        assertTrue(logged("after due").isEmpty())
+    }
+
+    @Test
+    fun `starting a chain that wasn't scheduled says so, and an alive one says nothing`() = runTest {
+        applyWidgetRefreshSetting(context, enabled = true)
+        applyWidgetRefreshSetting(context, enabled = true)
+        assertEquals(1, logged("widget: live refresh wasn't scheduled; starting it").size)
     }
 
     private class FakeSettings(private val flow: Flow<Boolean>) : AppSettings {

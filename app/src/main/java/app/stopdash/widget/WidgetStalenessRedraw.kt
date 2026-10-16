@@ -31,9 +31,6 @@ internal const val WIDGET_STALENESS_WORK_NEXT = "stopdash-widget-staleness-redra
 
 private const val SLOT_KEY = "slot"
 
-/** When a redraw was due, wall-clock millis, so the log can say how late Android ran it. */
-private const val DUE_KEY = "due"
-
 /** The slot of the redraw running now in this process, if any; set by [WidgetStalenessWorker]. */
 @Volatile
 internal var runningStalenessSlot: String? = null
@@ -136,7 +133,7 @@ private fun enqueueStalenessRedraw(workManager: WorkManager, delay: Duration, ru
         ExistingWorkPolicy.REPLACE,
         OneTimeWorkRequestBuilder<WidgetStalenessWorker>()
             .setInitialDelay(delay.inWholeMilliseconds, TimeUnit.MILLISECONDS)
-            .setInputData(workDataOf(SLOT_KEY to target, DUE_KEY to System.currentTimeMillis() + delay.inWholeMilliseconds))
+            .setInputData(workDataOf(SLOT_KEY to target, *RunLateness.dueIn(delay.inWholeMilliseconds)))
             .build(),
     )
     if (other != running) workManager.cancelUniqueWork(other)
@@ -163,8 +160,7 @@ class WidgetStalenessWorker(appContext: Context, params: WorkerParameters) :
             runningStalenessSlot = inputData.getString(SLOT_KEY) ?: WIDGET_STALENESS_WORK
             // How late Android ran it: the widget holds its last render meanwhile, so a long delay here
             // is a widget showing times that have passed.
-            val due = inputData.getLong(DUE_KEY, 0L)
-            if (due > 0L) StopdashDebugLog.info("widget: redraw ran %s s after due", (System.currentTimeMillis() - due) / 1000)
+            RunLateness.of(inputData)?.let { StopdashDebugLog.info("widget: redraw ran %s after due", it.describe()) }
             try {
                 redrawWidgets(applicationContext)
             } finally {
