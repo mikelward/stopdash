@@ -565,6 +565,23 @@ class JourneyAlertsTest {
     }
 
     @Test
+    fun `a diversion's later notice that buses still miss the stretch doesn't alert a ride off it`() {
+        // A second alert on the same diversion, saying buses "continue to miss the same stops", kept a ride
+        // nowhere near it alerted, as its words placed nothing (maintainer, 2026-10-16). Made-up words.
+        val later = "EXAMPLE STREET, EC3: Route 99 is on diversion northbound until 18:00 on Saturday 31 October due to " +
+            "electrical works. In addition to the existing diversion, buses are diverted via Example Street and Other Lane. " +
+            "Buses continue to miss the same stops from 'Bank Station/King William Street' to 'Moorgate Station'."
+        val both = LineStatus(
+            "99", 5, "Diversion", later,
+            underWay = listOf(LineAlert(5, "Diversion", southEnd), LineAlert(5, "Diversion", later)),
+        )
+        assertTrue(alertsFor(busRide("b4", "b6"), both).isEmpty())
+        assertTrue(alertsFor(busRide("b4", "b6"), LineStatus("99", 5, "Diversion", later, soleAlert = true)).isEmpty())
+        // A ride through the stretch is still alerted.
+        assertEquals(listOf("Diversion"), alertsFor(busRide("b1", "b6"), both).map { it.description })
+    }
+
+    @Test
     fun `a line a ride pins is weighed as its own mode`() {
         // A line pinned rather than saved on is ridden as the snapshot says, not as the ride's own (Codex on #866):
         // a rail line's closure away from the stops stays on, as a bus line's alert off the ride doesn't.

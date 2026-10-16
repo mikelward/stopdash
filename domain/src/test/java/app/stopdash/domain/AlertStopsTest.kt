@@ -124,6 +124,19 @@ class AlertStopsTest {
         )
         // Unquoted names, each with its letter quoted.
         assertEquals(setOf("S0", "S1", "S2"), AlertStops.stretched("Buses are missing stops from Alpha Road 'F' to Gamma Road / Delta Road 'T'.", road))
+        // A later notice of the same diversion, saying buses still miss them (maintainer, 2026-10-16); denied, it places nothing.
+        assertEquals(
+            setOf("S0", "S1", "S2"),
+            AlertStops.stretched(
+                "EXAMPLE STREET, E1: Route 99 is on diversion towards North End until 18:00 on Saturday 31 October due to electrical " +
+                    "works. In addition to the existing diversion from Example Street, buses are diverted via Other Lane and Last Terrace. " +
+                    "Buses continue to miss the same stops from Alpha Road 'L' to Gamma Road / Delta Road 'G'.",
+                road,
+            ),
+        )
+        assertEquals(emptySet<String>(), AlertStops.stretched("Buses no longer continue to miss the same stops from Alpha Road 'L' to Gamma Road / Delta Road 'G'.", road))
+        // Only those words: other ways of saying buses miss a stretch, not seen from TfL, place nothing (Codex on #895).
+        assertEquals(emptySet<String>(), AlertStops.stretched("Buses will miss stops from 'Alpha Road' to 'Gamma Road / Delta Road'.", road))
         // A curtailment leaves out the stops after where buses terminate and before where they start
         // (made-up stops, TfL's wording).
         val cut = stops("South End", "Alpha Road", "Beta Road", "Gamma Road", "North End")
