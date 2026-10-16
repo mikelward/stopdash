@@ -447,9 +447,10 @@
     <string name="trip_avoiding">Avoiding</string>
     <!-- Screen-reader label for one of those chips, which a tap stops avoiding; the argument names the line. -->
     <string name="trip_stop_avoiding">Stop avoiding %1$s</string>
-    <!-- A route's door-to-door time and arrival, from live trains plus the Planner's run times, so
-         "about" (~). %1$d is minutes, %2$s a clock time. -->
-    <string name="trip_duration_arrival">%1$d min · ~%2$s</string>
+    <!-- A route's door-to-door time and arrival, from live trains plus the Planner's run times. No
+         mark of its own: only an estimate is marked, "est." (maintainer, 2026-10-16: "~" here and
+         "est." there read as two ways of saying the same thing). %1$d is minutes, %2$s a clock time. -->
+    <string name="trip_duration_arrival">%1$d min · %2$s</string>
     <!-- The same, with a leg timed from the Planner's timetable because no live train is known yet:
          "est." leads, before the duration (maintainer, 2026-10-04). -->
     <string name="trip_duration_arrival_estimated">est. %1$d min · %2$s</string>
@@ -1113,8 +1114,8 @@
     <string name="on_the_way_other_routes">Other routes</string>
     <string name="on_the_way_done">Done</string>
     <!-- The whole trip on its screen's card, beside where it goes: %2$d the minutes left, then %1$s the clock time it gets there.
-         "About" (~): TfL's prediction where the rider gets off, with only walks after. -->
-    <string name="on_the_way_trip_eta">%2$d min · ~%1$s</string>
+         TfL's prediction where the rider gets off, with only walks after: unmarked, as only an estimate is. -->
+    <string name="on_the_way_trip_eta">%2$d min · %1$s</string>
     <!-- As on_the_way_trip_eta, partly estimated from the plan: "est." leads, and is the first thing
          the card drops when the row is short (maintainer, 2026-10-04). -->
     <string name="on_the_way_trip_eta_estimated">est. %2$d min · %1$s</string>

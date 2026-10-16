@@ -363,13 +363,13 @@ class TripScreenScreenshotTest {
             }
             composeRule.mainClock.advanceTimeBy(1_000)
             composeRule.onNodeWithText("Checking trips…").assertIsDisplayed()
-            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
+            composeRule.onAllNodesWithText("27 min · 08:29").assertCountEquals(0)
 
             gate.countDown()
             composeRule.mainClock.autoAdvance = true
             // The page's whole frame waits on the worker ([tripFrame]): no route is timed until it runs.
             composeRule.waitUntil(timeoutMillis = 5_000) {
-                composeRule.onAllNodesWithText("27 min · ~08:29").fetchSemanticsNodes().isNotEmpty()
+                composeRule.onAllNodesWithText("27 min · 08:29").fetchSemanticsNodes().isNotEmpty()
             }
             composeRule.onAllNodesWithText("Checking trips…").assertCountEquals(0)
         } finally {
@@ -415,7 +415,7 @@ class TripScreenScreenshotTest {
             composeRule.onAllNodesWithText("3 · 7 · 11 min").assertCountEquals(2)
             composeRule.onAllNodesWithText("2 · 6 · 10 min").assertCountEquals(0)
             // So do the routes' own times, the whole page from one frame ([tripFrame]).
-            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(1)
+            composeRule.onAllNodesWithText("27 min · 08:29").assertCountEquals(1)
 
             // Released, the worker works them out for the new time.
             gate.countDown()
@@ -423,7 +423,7 @@ class TripScreenScreenshotTest {
                 composeRule.onAllNodesWithText("2 · 6 · 10 min").fetchSemanticsNodes().size == 2
             }
             composeRule.onAllNodesWithText("3 · 7 · 11 min").assertCountEquals(0)
-            composeRule.onAllNodesWithText("26 min · ~08:29").assertCountEquals(1)
+            composeRule.onAllNodesWithText("26 min · 08:29").assertCountEquals(1)
         } finally {
             // Opened whatever happened, so a failed check can't leave the worker's thread waiting.
             gate.countDown()
@@ -486,12 +486,12 @@ class TripScreenScreenshotTest {
                 return headers.filter { it < card.boundsInRoot.top }.maxOrNull() == fastest.boundsInRoot.top
             }
             // Headed, and its times in (each from its own run on the worker).
-            composeRule.waitUntil(timeoutMillis = 5_000) { fastestAbove("27 min · ~08:29") }
+            composeRule.waitUntil(timeoutMillis = 5_000) { fastestAbove("27 min · 08:29") }
 
             threads.execute { gate.await() }
             shownAt = now.plusSeconds(10)
             composeRule.waitForIdle()
-            assertTrue("the last cards stand in under their own headers", fastestAbove("27 min · ~08:29"))
+            assertTrue("the last cards stand in under their own headers", fastestAbove("27 min · 08:29"))
             gate.countDown()
             composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodesWithTag("routeLabel").fetchSemanticsNodes().size == 2 }
 
@@ -502,7 +502,7 @@ class TripScreenScreenshotTest {
             try {
                 state = planned.copy(routes = listOf(viaStratford, viaWhitechapel))
                 composeRule.waitForIdle()
-                composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
+                composeRule.onAllNodesWithText("27 min · 08:29").assertCountEquals(0)
                 composeRule.onAllNodesWithTag("routeLabel").assertCountEquals(0)
             } finally {
                 replanned.countDown()
@@ -515,7 +515,7 @@ class TripScreenScreenshotTest {
             try {
                 state = planned.copy(routes = emptyList())
                 composeRule.waitForIdle()
-                composeRule.onAllNodesWithText("38 min · ~08:40").assertCountEquals(0)
+                composeRule.onAllNodesWithText("38 min · 08:40").assertCountEquals(0)
                 composeRule.onAllNodesWithTag("routeLabel").assertCountEquals(0)
             } finally {
                 held.countDown()
@@ -562,7 +562,7 @@ class TripScreenScreenshotTest {
             stepping.set(true)
             state = planned.copy(routes = listOf(viaStratford, viaWhitechapel))
             composeRule.waitForIdle()
-            fun newListShown() = composeRule.onAllNodesWithText("27 min · ~08:29").fetchSemanticsNodes().isEmpty() &&
+            fun newListShown() = composeRule.onAllNodesWithText("27 min · 08:29").fetchSemanticsNodes().isEmpty() &&
                 composeRule.onAllNodesWithTag("tripRoutes").fetchSemanticsNodes().isNotEmpty()
             var runs = 0
             while (!newListShown()) {
@@ -606,16 +606,16 @@ class TripScreenScreenshotTest {
                 }
             }
             composeRule.waitUntil(timeoutMillis = 5_000) {
-                composeRule.onAllNodesWithText("27 min · ~08:29").fetchSemanticsNodes().isNotEmpty()
+                composeRule.onAllNodesWithText("27 min · 08:29").fetchSemanticsNodes().isNotEmpty()
             }
             threads.execute { gate.await() }
             trip = "b" to TripViewModel.State(planning = true)
             composeRule.waitForIdle()
-            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
+            composeRule.onAllNodesWithText("27 min · 08:29").assertCountEquals(0)
             // The same trip's frame still stands in: back to the first trip, its routes show at once.
             trip = "a" to planned
             composeRule.waitForIdle()
-            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(1)
+            composeRule.onAllNodesWithText("27 min · 08:29").assertCountEquals(1)
         } finally {
             gate.countDown()
             worker.close()
@@ -681,23 +681,23 @@ class TripScreenScreenshotTest {
                 }
             }
             composeRule.waitUntil(timeoutMillis = 5_000) {
-                composeRule.onAllNodesWithText("27 min · ~08:29").fetchSemanticsNodes().isNotEmpty()
+                composeRule.onAllNodesWithText("27 min · 08:29").fetchSemanticsNodes().isNotEmpty()
             }
             threads.execute { gate.await() }
-            composeRule.onNodeWithText("27 min · ~08:29").performClick()
+            composeRule.onNodeWithText("27 min · 08:29").performClick()
             composeRule.waitForIdle()
             assertTrue(openRoute.value != null)
             // The list's frame doesn't stand in for the route asked for: the tap never seems to do nothing,
             // the list left tappable (Codex, #529).
-            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
+            composeRule.onAllNodesWithText("27 min · 08:29").assertCountEquals(0)
             composeRule.runOnUiThread { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
             composeRule.waitForIdle()
             assertEquals(0, backs)
             assertEquals(null, openRoute.value)
             // Closed, the list's frame in hand shows at once.
-            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(1)
+            composeRule.onAllNodesWithText("27 min · 08:29").assertCountEquals(1)
             // The on-screen arrow too (Codex, #529).
-            composeRule.onNodeWithText("27 min · ~08:29").performClick()
+            composeRule.onNodeWithText("27 min · 08:29").performClick()
             composeRule.waitForIdle()
             assertTrue(openRoute.value != null)
             composeRule.onNodeWithContentDescription("Back").performClick()
@@ -993,47 +993,47 @@ class TripScreenScreenshotTest {
                 }
             }
             composeRule.waitUntil(timeoutMillis = 5_000) {
-                composeRule.onAllNodesWithText("27 min · ~08:29").fetchSemanticsNodes().isNotEmpty()
+                composeRule.onAllNodesWithText("27 min · 08:29").fetchSemanticsNodes().isNotEmpty()
             }
             threads.execute { gate.await() }
             relocating = true
             composeRule.waitForIdle()
-            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
+            composeRule.onAllNodesWithText("27 min · 08:29").assertCountEquals(0)
             relocating = false
             composeRule.waitForIdle()
-            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(1)
+            composeRule.onAllNodesWithText("27 min · 08:29").assertCountEquals(1)
             // Nor once the rider hides a mode: the routes it left out wait for their own frame.
             hidden = setOf("bus")
             composeRule.waitForIdle()
-            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
+            composeRule.onAllNodesWithText("27 min · 08:29").assertCountEquals(0)
             hidden = emptySet()
             composeRule.waitForIdle()
             // Nor once an alert is dismissed: its warnings wait for a frame without them (Codex, #529).
             dismissed = setOf(DismissedAlert.ofLineStatus(planned.statuses.getValue("jubilee")))
             composeRule.waitForIdle()
-            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
+            composeRule.onAllNodesWithText("27 min · 08:29").assertCountEquals(0)
             dismissed = emptySet()
             composeRule.waitForIdle()
             // Nor once a planning option changes: the routes planned under the old one wait (Codex, #529).
             maxWalk = MaxWalk.entries.first { it != MaxWalk.DEFAULT }
             composeRule.waitForIdle()
-            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
+            composeRule.onAllNodesWithText("27 min · 08:29").assertCountEquals(0)
             maxWalk = MaxWalk.DEFAULT
             composeRule.waitForIdle()
             // Nor once a refresh fails: the frame that showed its trains as live waits for one that says it
             // couldn't (Codex, #529).
             state = planned.copy(statusFailed = true, failures = planned.failures + 1)
             composeRule.waitForIdle()
-            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
+            composeRule.onAllNodesWithText("27 min · 08:29").assertCountEquals(0)
             state = planned
             composeRule.waitForIdle()
             // A tick on, it stands in; two, it doesn't (Codex, #529).
             shownAt = now.plusSeconds(10)
             composeRule.waitForIdle()
-            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(1)
+            composeRule.onAllNodesWithText("27 min · 08:29").assertCountEquals(1)
             shownAt = now.plusSeconds(20)
             composeRule.waitForIdle()
-            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
+            composeRule.onAllNodesWithText("27 min · 08:29").assertCountEquals(0)
         } finally {
             gate.countDown()
             worker.close()
@@ -1074,15 +1074,15 @@ class TripScreenScreenshotTest {
                 }
             }
             composeRule.waitUntil(timeoutMillis = 5_000) {
-                composeRule.onAllNodesWithText("27 min · ~08:29").fetchSemanticsNodes().isNotEmpty()
+                composeRule.onAllNodesWithText("27 min · 08:29").fetchSemanticsNodes().isNotEmpty()
             }
             threads.execute { gate.await() }
             shownAt = now.plusSeconds(10)
             composeRule.waitForIdle()
-            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(1)
+            composeRule.onAllNodesWithText("27 min · 08:29").assertCountEquals(1)
             shownAt = now.plusSeconds(20)
             composeRule.waitForIdle()
-            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
+            composeRule.onAllNodesWithText("27 min · 08:29").assertCountEquals(0)
         } finally {
             gate.countDown()
             worker.close()
@@ -1192,9 +1192,9 @@ class TripScreenScreenshotTest {
         // Fastest over the first card, the one arriving soonest; Other between it and the rest.
         val fastest = headers[0].getUnclippedBoundsInRoot()
         val other = headers[1].getUnclippedBoundsInRoot()
-        val first = composeRule.onNodeWithText("27 min · ~08:29").getUnclippedBoundsInRoot()
-        val second = composeRule.onNodeWithText("28 min · ~08:30").getUnclippedBoundsInRoot()
-        val third = composeRule.onNodeWithText("38 min · ~08:40").getUnclippedBoundsInRoot()
+        val first = composeRule.onNodeWithText("27 min · 08:29").getUnclippedBoundsInRoot()
+        val second = composeRule.onNodeWithText("28 min · 08:30").getUnclippedBoundsInRoot()
+        val third = composeRule.onNodeWithText("38 min · 08:40").getUnclippedBoundsInRoot()
         assertTrue(fastest.bottom <= first.top && first.bottom <= other.top && other.bottom <= second.top && second.top < third.top)
     }
 
@@ -1203,9 +1203,9 @@ class TripScreenScreenshotTest {
         show(planned)
         // Via Canada Water: the 3 min Windrush (a 2 min walk to it), 18 min on, 3 to change, the
         // Jubilee at 25, 2 min on: 27 min. Via Whitechapel misses the Elizabeth line at 18 for 24.
-        composeRule.onNodeWithText("27 min · ~08:29").assertIsDisplayed()
-        composeRule.onNodeWithText("28 min · ~08:30").assertIsDisplayed()
-        composeRule.onNodeWithText("38 min · ~08:40").assertIsDisplayed()
+        composeRule.onNodeWithText("27 min · 08:29").assertIsDisplayed()
+        composeRule.onNodeWithText("28 min · 08:30").assertIsDisplayed()
+        composeRule.onNodeWithText("38 min · 08:40").assertIsDisplayed()
         // Screen readers hear each first-leg time with its destination.
         composeRule.onAllNodesWithContentDescription(" min to ", substring = true).onFirst().assertExists()
         captureSnapshot("trip-routes.png")
@@ -1228,7 +1228,7 @@ class TripScreenScreenshotTest {
         composeRule.onAllNodesWithTag("tripFare", useUnmergedTree = true).assertCountEquals(2)
         captureSnapshot("trip-routes-fares.png")
         // Open, a route says its level and where the Planner warns of one, the pink reader.
-        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.onNodeWithText("27 min · 08:29").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("£3.10 · peak").assertIsDisplayed()
         composeRule.onNodeWithTag("routeFarePinkReader").assertIsDisplayed()
@@ -1255,7 +1255,7 @@ class TripScreenScreenshotTest {
     @Test
     fun an_open_route_with_no_fare_says_none() {
         show(planned)
-        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.onNodeWithText("27 min · 08:29").performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodesWithTag("routeFare").assertCountEquals(0)
         composeRule.onAllNodesWithTag("routeFarePinkReader").assertCountEquals(0)
@@ -1508,7 +1508,7 @@ class TripScreenScreenshotTest {
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("walkingSpeed").assertExists()
-        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.onNodeWithText("27 min · 08:29").performClick()
         composeRule.waitForIdle()
         listOf("walkingSpeed", "maxWalk", "stepFree", "tripModes").forEach { composeRule.onAllNodesWithTag(it).assertCountEquals(0) }
         composeRule.onNodeWithContentDescription("Back").performClick()
@@ -1768,9 +1768,9 @@ class TripScreenScreenshotTest {
         composeRule.waitForIdle()
         assertEquals(1, pulled)
         // The routes stay up while the new plan and times come in.
-        composeRule.onNodeWithText("28 min · ~08:30").assertIsDisplayed()
+        composeRule.onNodeWithText("28 min · 08:30").assertIsDisplayed()
         // An open route is one choice already made: no pull there, its times refresh on the tick.
-        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.onNodeWithText("28 min · 08:30").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("6 stops to Whitechapel").assertIsDisplayed()
         composeRule.onAllNodesWithTag("tripRoutesPull").assertCountEquals(0)
@@ -1779,7 +1779,7 @@ class TripScreenScreenshotTest {
     @Test
     fun an_open_route_is_titled_and_back_returns_to_the_from_to_bar() {
         show(planned, ends = TripEnds(fromStation = null, toName = "Canary Wharf", onChangeFrom = {}, onChangeTo = {}))
-        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.onNodeWithText("28 min · 08:30").performClick()
         composeRule.waitForIdle()
         // One route open: its legs under the trip's title, not ends to change.
         composeRule.onNodeWithText("To Canary Wharf").assertIsDisplayed()
@@ -1810,7 +1810,7 @@ class TripScreenScreenshotTest {
                 )
             }
         }
-        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.onNodeWithText("28 min · 08:30").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("6 stops to Whitechapel").assertIsDisplayed()
         composeRule.onAllNodesWithText("Walking speed").assertCountEquals(0)
@@ -1840,7 +1840,7 @@ class TripScreenScreenshotTest {
                 )
             }
         }
-        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.onNodeWithText("28 min · 08:30").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("6 stops to Whitechapel").assertIsDisplayed()
         // A finished plan without the route: back to the list.
@@ -1851,7 +1851,7 @@ class TripScreenScreenshotTest {
         state.value = planned
         composeRule.waitForIdle()
         composeRule.onNodeWithText("6 stops to Whitechapel").assertDoesNotExist()
-        composeRule.onNodeWithText("28 min · ~08:30").assertIsDisplayed()
+        composeRule.onNodeWithText("28 min · 08:30").assertIsDisplayed()
     }
 
     @Test
@@ -1918,7 +1918,7 @@ class TripScreenScreenshotTest {
         // They went with the scroll, and the routes have the room.
         composeRule.onNodeWithTag("tripPlanOptions").assertIsNotDisplayed()
         composeRule.onNodeWithText(banner).assertIsNotDisplayed()
-        composeRule.onNodeWithText("28 min · ~08:30").assertIsDisplayed()
+        composeRule.onNodeWithText("28 min · 08:30").assertIsDisplayed()
     }
 
     // A header partly scrolled off that grows (a banner landing) grows off the top: the routes under the
@@ -1988,7 +1988,7 @@ class TripScreenScreenshotTest {
             composeRule.waitForIdle()
         }
         composeRule.onNodeWithText(banner).assertIsNotDisplayed()
-        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.onNodeWithText("28 min · 08:30").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText(banner).assertIsDisplayed()
     }
@@ -2236,7 +2236,7 @@ class TripScreenScreenshotTest {
     @Test
     @Config(qualifiers = "en-rGB-w200dp-h914dp-420dpi")
     fun on_a_narrow_row_the_fare_drops_below_the_arrival_never_cut() {
-        // Too narrow for "27 min · ~08:29" and "£3.10" side by side (Codex on #722): the fare takes a
+        // Too narrow for "27 min · 08:29" and "£3.10" side by side (Codex on #722): the fare takes a
         // line of its own, at the row's end, and both are laid out whole.
         show(planned.copy(routes = listOf(viaCanadaWater.copy(fare = TripFare(310)))))
         fun node(tag: String) = composeRule.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode()
@@ -2517,7 +2517,7 @@ class TripScreenScreenshotTest {
     @Test
     fun trip_route_legs() {
         show(planned)
-        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.onNodeWithText("28 min · 08:30").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("6 stops to Whitechapel").assertIsDisplayed()
         composeRule.onNodeWithText("┊  3 min to change").assertIsDisplayed()
@@ -2528,7 +2528,7 @@ class TripScreenScreenshotTest {
     @Test
     fun an_open_routes_later_leg_says_how_often_its_line_runs() {
         show(planned)
-        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.onNodeWithText("28 min · 08:30").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("2 stops to Canary Wharf").assertIsDisplayed()
         // The Elizabeth line, ridden after the change, says how often it runs instead of counting
@@ -2558,10 +2558,10 @@ class TripScreenScreenshotTest {
                 queued.poll()?.let { threads.submit(it).get() }
                 composeRule.waitForIdle()
             }
-            fun listed() = composeRule.onAllNodesWithText("28 min · ~08:30").fetchSemanticsNodes().isNotEmpty()
+            fun listed() = composeRule.onAllNodesWithText("28 min · 08:30").fetchSemanticsNodes().isNotEmpty()
             repeat(200) { if (!listed()) step() }
             assertTrue("the route is listed", listed())
-            composeRule.onNodeWithText("28 min · ~08:30").performClick()
+            composeRule.onNodeWithText("28 min · 08:30").performClick()
             composeRule.waitForIdle()
             var opened = false
             repeat(200) {
@@ -2603,7 +2603,7 @@ class TripScreenScreenshotTest {
     @Test
     fun an_open_routes_later_leg_with_too_few_trains_known_shows_no_times() {
         show(planned)
-        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.onNodeWithText("27 min · 08:29").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("1 stop to Canary Wharf").assertIsDisplayed()
         // One Jubilee train known at Canada Water says nothing of how often the line runs, and its
@@ -2622,7 +2622,7 @@ class TripScreenScreenshotTest {
     fun an_open_route_stays_open_when_six_faster_routes_crowd_it_out_of_the_list() {
         val state = mutableStateOf(planned)
         showWith(state)
-        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.onNodeWithText("28 min · 08:30").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("6 stops to Whitechapel").assertIsDisplayed()
         // A settled plan with six routes arriving sooner: the list would time only those, but the
@@ -2647,7 +2647,7 @@ class TripScreenScreenshotTest {
                 )
             }
         }
-        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.onNodeWithText("28 min · 08:30").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("6 stops to Whitechapel").assertIsDisplayed()
         // Its Elizabeth line hidden: the route isn't shown, so the list is, and the route is closed.
@@ -2657,7 +2657,7 @@ class TripScreenScreenshotTest {
         // Shown again, it's back in the list, not reopened over it.
         hidden.value = emptySet()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("28 min · ~08:30").assertIsDisplayed()
+        composeRule.onNodeWithText("28 min · 08:30").assertIsDisplayed()
         composeRule.onNodeWithText("6 stops to Whitechapel").assertDoesNotExist()
     }
 
@@ -2896,13 +2896,13 @@ class TripScreenScreenshotTest {
                 }
             }
             composeRule.waitUntil(timeoutMillis = 5_000) {
-                composeRule.onAllNodesWithText("13 min · ~08:15").fetchSemanticsNodes().isNotEmpty()
+                composeRule.onAllNodesWithText("13 min · 08:15").fetchSemanticsNodes().isNotEmpty()
             }
             threads.execute { gate.await() }
             // The same plan, newer arrivals only, none listing the train through: the frame stands in.
             state = state.copy(live = emptyMap())
             composeRule.waitForIdle()
-            composeRule.onNodeWithText("13 min · ~08:15").performClick()
+            composeRule.onNodeWithText("13 min · 08:15").performClick()
             composeRule.waitForIdle()
             assertEquals(throughKey, openRoute.value)
         } finally {
@@ -3051,7 +3051,7 @@ class TripScreenScreenshotTest {
         }
         // The list itself offers no Start: only an open route does.
         composeRule.onNodeWithText("Start").assertDoesNotExist()
-        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.onNodeWithText("27 min · 08:29").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Start").performClick()
         composeRule.runOnIdle { assertEquals(viaCanadaWater, started) }
@@ -3073,7 +3073,7 @@ class TripScreenScreenshotTest {
                     )
                 }
             }
-            composeRule.onNodeWithText("27 min · ~08:29").performClick()
+            composeRule.onNodeWithText("27 min · 08:29").performClick()
             composeRule.waitForIdle()
             val key = composeRule.runOnIdle { openRoute.value }
             // Closed, then the same route opened by the trip itself, as a Direct row's tap does.
@@ -3103,7 +3103,7 @@ class TripScreenScreenshotTest {
                     )
                 }
             }
-            composeRule.onNodeWithText("27 min · ~08:29").performClick()
+            composeRule.onNodeWithText("27 min · 08:29").performClick()
             composeRule.waitForIdle()
             composeRule.onNodeWithText("Start").performClick()
             composeRule.runOnIdle {
@@ -3138,7 +3138,7 @@ class TripScreenScreenshotTest {
                 }
             }
             // An open route is still the trip.
-            composeRule.onNodeWithText("27 min · ~08:29").performClick()
+            composeRule.onNodeWithText("27 min · 08:29").performClick()
             composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodesWithText("Stratford").fetchSemanticsNodes().isNotEmpty() }
             composeRule.onNodeWithText("Stratford").performClick()
             composeRule.waitForIdle()
@@ -3188,7 +3188,7 @@ class TripScreenScreenshotTest {
                 )
             }
         }
-        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.onNodeWithText("27 min · 08:29").performClick()
         // Worked out off the main thread ([rememberStartCheck]): Start holds its place until then.
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onAllNodesWithText("Can't follow National Rail trains yet").fetchSemanticsNodes().isNotEmpty()
@@ -3210,7 +3210,7 @@ class TripScreenScreenshotTest {
                 )
             }
         }
-        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.onNodeWithText("27 min · 08:29").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Start").assertDoesNotExist()
         composeRule.onNodeWithText("Open current trip").performClick()
@@ -3240,7 +3240,7 @@ class TripScreenScreenshotTest {
                 )
             }
         }
-        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.onNodeWithText("27 min · 08:29").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Open current trip").assertIsDisplayed()
         // Start asks first: ending the trip on the way can't be undone. Cancel leaves it be.
@@ -3272,7 +3272,7 @@ class TripScreenScreenshotTest {
                 )
             }
         }
-        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.onNodeWithText("27 min · 08:29").performClick()
         waitForStart()
         composeRule.onNodeWithText("Start").performClick()
         composeRule.onNodeWithText("Replace current trip?").assertIsDisplayed()
@@ -3299,7 +3299,7 @@ class TripScreenScreenshotTest {
                 }
             }
         }
-        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.onNodeWithText("27 min · 08:29").performClick()
         composeRule.waitForIdle()
         // "Open current trip" wraps at twice the font size: both grow past 56dp, as one, unclipped.
         val open = composeRule.onNodeWithText("Open current trip").fetchSemanticsNode().boundsInRoot
@@ -3323,7 +3323,7 @@ class TripScreenScreenshotTest {
                 )
             }
         }
-        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.onNodeWithText("27 min · 08:29").performClick()
         composeRule.waitForIdle()
         waitForStart()
         composeRule.onNodeWithText("Start").performClick()
@@ -3336,11 +3336,11 @@ class TripScreenScreenshotTest {
     @Test
     fun an_open_routes_header_warns_just_before_its_arrival() {
         show(planned)
-        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.onNodeWithText("27 min · 08:29").performClick()
         composeRule.waitForIdle()
         // One ⚠ for the disrupted Jubilee, just before the arrival (maintainer, 2026-09-28), not
         // beside its pill: on the arrival's line, ending left of it.
-        val arrival = composeRule.onAllNodesWithText("27 min · ~08:29", useUnmergedTree = true).fetchSemanticsNodes().single().boundsInRoot
+        val arrival = composeRule.onAllNodesWithText("27 min · 08:29", useUnmergedTree = true).fetchSemanticsNodes().single().boundsInRoot
         val glyph = composeRule.onAllNodesWithContentDescription("Minor Delays", useUnmergedTree = true).fetchSemanticsNodes()
             .map { it.boundsInRoot }.single { it.top < arrival.bottom && arrival.top < it.bottom }
         assertTrue(glyph.right <= arrival.left)
@@ -3350,7 +3350,7 @@ class TripScreenScreenshotTest {
     @Test
     fun trip_leg_opens_its_line() {
         show(planned)
-        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.onNodeWithText("27 min · 08:29").performClick()
         composeRule.waitForIdle()
         // The Jubilee leg's row opens the line's page, with its service alert, as the main screen's does.
         composeRule.onNodeWithText("Stratford").performClick()
@@ -3383,7 +3383,7 @@ class TripScreenScreenshotTest {
             }
         }
         settle()
-        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.onNodeWithText("27 min · 08:29").performClick()
         settle()
         composeRule.onNodeWithText("Stratford").performClick()
         settle()
@@ -3410,7 +3410,7 @@ class TripScreenScreenshotTest {
                 )
             }
         }
-        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.onNodeWithText("27 min · 08:29").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Stratford").performClick()
         composeRule.waitForIdle()
@@ -3458,12 +3458,12 @@ class TripScreenScreenshotTest {
         }
         val state = androidx.compose.runtime.mutableStateOf(running)
         showWith(state)
-        assertEquals(listOf("27 min · ~08:29", "28 min · ~08:30", "38 min · ~08:40"), arrivals())
+        assertEquals(listOf("27 min · 08:29", "28 min · 08:30", "38 min · 08:40"), arrivals())
         state.value = running.copy(closures = running.closures + (canaryWharfXr.first to listOf(StopDisruption("Canary Wharf Station: Station closed due to a power failure"))))
         composeRule.waitForIdle()
-        assertEquals(listOf("27 min · ~08:29", "38 min · ~08:40", "28 min · ~08:30"), arrivals())
+        assertEquals(listOf("27 min · 08:29", "38 min · 08:40", "28 min · 08:30"), arrivals())
         composeRule.onNodeWithContentDescription("Canary Wharf: Station closed due to a power failure", useUnmergedTree = true).assertExists()
-        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.onNodeWithText("28 min · 08:30").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("2 stops to Canary Wharf").assertIsDisplayed()
         composeRule.onNodeWithText("Station closed due to a power failure", substring = true).assertExists()
@@ -3488,7 +3488,7 @@ class TripScreenScreenshotTest {
             composeRule.onAllNodesWithContentDescription(notice, useUnmergedTree = true).assertCountEquals(0)
             gate.countDown()
             composeRule.waitUntil(timeoutMillis = 5_000) {
-                composeRule.onAllNodesWithText("28 min · ~08:30").fetchSemanticsNodes().isNotEmpty()
+                composeRule.onAllNodesWithText("28 min · 08:30").fetchSemanticsNodes().isNotEmpty()
             }
             composeRule.onNodeWithContentDescription(notice, useUnmergedTree = true).assertExists()
         } finally {
@@ -3559,7 +3559,7 @@ class TripScreenScreenshotTest {
     fun a_leg_page_vouches_once_its_line_and_its_stop_are_checked() {
         // Windrush checked as running and Highbury & Islington checked open: nothing to report.
         show(planned.copy(closuresAt = mapOf(highbury.first to now)))
-        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.onNodeWithText("28 min · 08:30").performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodesWithText("Crystal Palace").onFirst().performClick()
         composeRule.waitForIdle()
@@ -3576,7 +3576,7 @@ class TripScreenScreenshotTest {
                 statusFailedLines = setOf("jubilee"),
             ),
         )
-        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.onNodeWithText("28 min · 08:30").performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodesWithText("Crystal Palace").onFirst().performClick()
         composeRule.waitForIdle()
@@ -3587,7 +3587,7 @@ class TripScreenScreenshotTest {
     fun a_leg_page_at_a_closed_stop_never_calls_it_clean() {
         // Windrush checked as running, but Highbury & Islington checked and closed.
         show(planned.copy(closures = planned.closures + (highbury.first to listOf(StopDisruption("Station closed due to a power failure")))))
-        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.onNodeWithText("28 min · 08:30").performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodesWithText("Crystal Palace").onFirst().performClick()
         composeRule.waitForIdle()
@@ -3602,7 +3602,7 @@ class TripScreenScreenshotTest {
         val checked = planned.copy(closuresAt = mapOf(highbury.first to now))
         val state = androidx.compose.runtime.mutableStateOf(checked.copy(closuresAt = mapOf(highbury.first to old)))
         showWith(state)
-        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.onNodeWithText("28 min · 08:30").performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodesWithText("Crystal Palace").onFirst().performClick()
         composeRule.waitForIdle()
@@ -3621,7 +3621,7 @@ class TripScreenScreenshotTest {
     @Test
     fun a_leg_page_whose_stop_is_not_yet_checked_claims_nothing() {
         show(planned.copy(closures = planned.closures - highbury.first, closuresUnknown = setOf(highbury.first)))
-        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.onNodeWithText("28 min · 08:30").performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodesWithText("Crystal Palace").onFirst().performClick()
         composeRule.waitForIdle()
@@ -3632,7 +3632,7 @@ class TripScreenScreenshotTest {
     fun a_leg_page_whose_stop_check_just_failed_claims_nothing() {
         // Highbury & Islington checked open before, but its latest check failed.
         show(planned.copy(closuresFailed = setOf(highbury.first)))
-        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.onNodeWithText("28 min · 08:30").performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodesWithText("Crystal Palace").onFirst().performClick()
         composeRule.waitForIdle()
@@ -3643,7 +3643,7 @@ class TripScreenScreenshotTest {
     fun a_leg_opened_after_a_failed_status_check_claims_nothing() {
         // The last statuses are held, but the latest check failed: the line's page can't vouch for it.
         show(planned.copy(statusFailed = true, statusFailedLines = setOf("mildmay", "jubilee", "windrush")))
-        composeRule.onNodeWithText("27 min · ~08:29", substring = true).performClick()
+        composeRule.onNodeWithText("27 min · 08:29", substring = true).performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Stratford").performClick()
         composeRule.waitForIdle()
@@ -3837,7 +3837,7 @@ class TripScreenScreenshotTest {
         // The Jubilee stop's last refresh failed: its held arrivals open with the stale caveat.
         val failed = planned.live + (canadaWaterTube.first to planned.live.getValue(canadaWaterTube.first).copy(failed = true))
         show(planned.copy(live = failed))
-        composeRule.onNodeWithText("27 min · ~08:29", substring = true).performClick()
+        composeRule.onNodeWithText("27 min · 08:29", substring = true).performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Stratford").performClick()
         composeRule.waitForIdle()
@@ -3870,7 +3870,7 @@ class TripScreenScreenshotTest {
     @Test
     fun a_failed_replan_shows_over_an_open_route() {
         show(planned.copy(planError = DeparturesUiState.Error.Kind.OFFLINE))
-        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.onNodeWithText("28 min · 08:30").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("6 stops to Whitechapel").assertIsDisplayed()
         composeRule.onNodeWithText("Couldn't plan the trip: You're offline").assertIsDisplayed()
@@ -5478,7 +5478,7 @@ class TripScreenScreenshotTest {
         // The trip has settled: opening a route draws its row as it is, never "Checking…" held for a
         // moment first (Codex, #543).
         composeRule.mainClock.autoAdvance = false
-        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.onNodeWithText("28 min · 08:30").performClick()
         composeRule.waitForIdle()
         // A few frames for the route's own row to be worked out, well inside the hold.
         composeRule.mainClock.advanceTimeBy(100)
@@ -5530,7 +5530,7 @@ class TripScreenScreenshotTest {
         val disrupted = running.copy(statuses = running.statuses + ("jubilee" to LineStatus("jubilee", 9, "Minor Delays")))
         show(disrupted, worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
         inRow("Jubilee").assertExists()
-        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.onNodeWithText("28 min · 08:30").performClick()
         composeRule.waitForIdle()
         // The route open: the list has left the screen.
         composeRule.onAllNodes(hasTestTag("tripRoutes")).assertCountEquals(0)
@@ -5943,7 +5943,7 @@ class TripScreenScreenshotTest {
                 }
             }
         }
-        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.onNodeWithText("28 min · 08:30").performClick()
         composeRule.waitForIdle()
         showing.value = false
         composeRule.waitForIdle()
@@ -5964,7 +5964,7 @@ class TripScreenScreenshotTest {
                 )
             }
         }
-        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.onNodeWithText("28 min · 08:30").performClick()
         composeRule.waitForIdle()
         // A new trip model, as after a kill: it starts with no route open.
         openRoute.value = null
@@ -6027,7 +6027,7 @@ class TripScreenScreenshotTest {
         }
         // Over the list, nothing: it's the trip for now, as it says.
         composeRule.onAllNodesWithTag("openRouteNotice").assertCountEquals(0)
-        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.onNodeWithText("28 min · 08:30").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("6 stops to Whitechapel").assertIsDisplayed()
         composeRule.onNodeWithTag("openRouteNotice").assertTextEquals("Times for now, not Sun 27 09:00")

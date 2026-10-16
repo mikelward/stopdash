@@ -221,7 +221,7 @@
     <string name="trip_direct_partial">Tüm hatlar kontrol edilemedi</string>
     <string name="trip_avoiding">Kaçınılan</string>
     <string name="trip_stop_avoiding">Kaçınmayı bırak: %1$s</string>
-    <string name="trip_duration_arrival">%1$d dk · ~%2$s</string>
+    <string name="trip_duration_arrival">%1$d dk · %2$s</string>
     <string name="trip_duration_arrival_estimated">tahmini %1$d dk · %2$s</string>
     <string name="trip_duration_arrival_range">tahmini %1$d–%2$d dk · %3$s–%4$s</string>
     <string name="trip_duration_arrival_open">tahmini %1$d+ dk · %2$s+</string>
@@ -615,7 +615,7 @@
     <string name="on_the_way_take_this">Buna bin</string>
     <string name="on_the_way_other_routes">Diğer güzergâhlar</string>
     <string name="on_the_way_done">Bitti</string>
-    <string name="on_the_way_trip_eta">%2$d dk · ~%1$s</string>
+    <string name="on_the_way_trip_eta">%2$d dk · %1$s</string>
     <string name="on_the_way_trip_eta_estimated">tahmini %2$d dk · %1$s</string>
     <string name="on_the_way_step_time">%2$d dk · %1$s</string>
     <string name="on_the_way_go_next">İleri</string>
