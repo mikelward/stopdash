@@ -9,6 +9,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -145,7 +146,8 @@ class LineSearchScreenshotTest {
         journey: StationJourneyState? = StationJourneyState(toWarrenStreet, saved = false, failed = false) {},
         onGo: (() -> Unit)? = {},
         goReady: Boolean = true,
-    ) = RouteStopMode(victoriaLine, "Victoria", "Walthamstow Central", onGo, goReady, journey)
+        alighting: Boolean = true,
+    ) = RouteStopMode(victoriaLine, "Victoria", "Walthamstow Central", onGo, goReady, journey, alighting)
 
     @Test
     fun route_stop_details() {
@@ -181,6 +183,8 @@ class LineSearchScreenshotTest {
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("From Victoria, towards Walthamstow Central").assertIsDisplayed()
+        // A station's zone stays, though a bus stop's letter doesn't (maintainer, 2026-10-16).
+        composeRule.onNodeWithText("Zone 1").assertIsDisplayed()
         // Go in place of From and To.
         composeRule.onNodeWithText("From").assertDoesNotExist()
         composeRule.onNodeWithText("To").assertDoesNotExist()
@@ -260,6 +264,46 @@ class LineSearchScreenshotTest {
             }
         }
         composeRule.onNodeWithText("From Victoria").assertIsDisplayed()
+    }
+
+    @Test
+    fun route_stop_has_no_bus_stop_letter_or_way() {
+        // The ride gets off here: the letter and the way say where to board (maintainer, 2026-10-16).
+        composeRule.setContent {
+            StopDashTheme {
+                LineStopPage(
+                    name = "Somewhere Road", distance = "350 m", onFrom = {}, onTo = {}, onBack = {},
+                    onDepartures = {},
+                    pole = app.stopdash.domain.StopQualifier.BusStop("H", "North End"),
+                    route = RouteStopMode(
+                        LineRef("299", "299", "bus"), "South End", "North End", onGo = {}, goReady = true, journey = null,
+                        alighting = true,
+                    ),
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("From South End, towards North End").assertIsDisplayed()
+        composeRule.onNodeWithTag("lineStopPole").assertDoesNotExist()
+        captureSnapshot("route-stop-bus.png")
+    }
+
+    @Test
+    fun route_s_boarding_stop_keeps_its_letter() {
+        // Boarded here, not got off: its letter says which pole (Codex on #892). A station off the train's path
+        // reads the same.
+        composeRule.setContent {
+            StopDashTheme {
+                LineStopPage(
+                    name = "South End", distance = null, onFrom = {}, onTo = {}, onBack = {},
+                    pole = app.stopdash.domain.StopQualifier.BusStop("H", "North End"),
+                    route = RouteStopMode(LineRef("299", "299", "bus"), "South End", "North End", onGo = null, goReady = false, journey = null),
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("From South End, towards North End").assertIsDisplayed()
+        composeRule.onNodeWithTag("lineStopPole").assertTextContains("Stop H", substring = true)
     }
 
     @Test

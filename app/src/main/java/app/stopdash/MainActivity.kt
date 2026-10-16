@@ -5817,6 +5817,9 @@ class MainActivity : ComponentActivity() {
                     onGo = if (followable && hasRideInputs) go else null,
                     goReady = ride != null,
                     journey = journey,
+                    // Where the ride gets off: a stop the train calls at after boarding, not the boarding stop itself
+                    // nor a station off its path.
+                    alighting = open.ridden && !open.boarding,
                 ),
             )
         }

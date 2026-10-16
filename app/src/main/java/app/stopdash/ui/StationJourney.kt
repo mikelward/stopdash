@@ -33,6 +33,9 @@ data class RouteStopOpen(
     // The route's boarding stop itself, at the head of the list, which there's no riding to: no Go. A loop's later
     // call there, tapped on the list, isn't it.
     val boarding: Boolean = false,
+    // Whether the train followed calls there after boarding: false for a station the map draws off its path (an
+    // unfolded branch), where the ride doesn't get off.
+    val ridden: Boolean = false,
     // What Go rides there, worked out from the page's stop list as the details open; not saved, so a page
     // brought back after the process was gone offers none.
     val go: RouteGo? = null,
@@ -75,16 +78,17 @@ class StationJourneyState(
 
 /**
  * Keeps a tapped route stop across a rotation or process death, as the details it opened are; its [RouteStopOpen.go]
- * isn't kept. Saved as "v2", then its ids and names, its line (blank where none), where it is (null where
- * unknown), whether it's the boarding stop, then its journey's where it has one. A save from before (the
- * station alone) restores as that.
+ * isn't kept. Saved as "v3", then its ids and names, its line (blank where none), where it is (null where
+ * unknown), whether it's the boarding stop and whether the train calls there, then its journey's where it has
+ * one. A "v2" save (no [RouteStopOpen.ridden]) restores as not ridden, claiming no ride there; one from before
+ * that (the station alone) restores as that.
  */
 internal val RouteStopOpenSaver: Saver<RouteStopOpen?, Any> = Saver(
     save = { open ->
         open?.let { o ->
             arrayListOf<Any?>(
-                "v2", o.stationId, o.name, o.hubId, o.stopId, o.line?.id.orEmpty(), o.line?.name.orEmpty(), o.line?.mode.orEmpty(),
-                o.fromName, o.towards, o.position?.latitude, o.position?.longitude, o.boarding,
+                "v3", o.stationId, o.name, o.hubId, o.stopId, o.line?.id.orEmpty(), o.line?.name.orEmpty(), o.line?.mode.orEmpty(),
+                o.fromName, o.towards, o.position?.latitude, o.position?.longitude, o.boarding, o.ridden,
             ).apply {
                 o.journey?.let { j ->
                     addAll(listOf(j.lineId, j.lineName, j.mode))
@@ -96,9 +100,12 @@ internal val RouteStopOpenSaver: Saver<RouteStopOpen?, Any> = Saver(
     restore = { saved ->
         val v = saved as List<*>
         fun end(at: Int) = JourneyEnd(v[at] as String, v[at + 1] as String, v[at + 2] as Double?, v[at + 3] as Double?, v[at + 4] as String)
-        if (v.firstOrNull() == "v2") {
+        val version = v.firstOrNull()
+        if (version == "v2" || version == "v3") {
             val lat = v[10] as Double?
             val lon = v[11] as Double?
+            // Where the journey starts: after [RouteStopOpen.ridden] in a v3 save.
+            val j = if (version == "v3") 14 else 13
             RouteStopOpen(
                 stationId = v[1] as String,
                 name = v[2] as String,
@@ -109,7 +116,8 @@ internal val RouteStopOpenSaver: Saver<RouteStopOpen?, Any> = Saver(
                 towards = v[9] as String,
                 position = if (lat != null && lon != null) Coordinates(lat, lon) else null,
                 boarding = v[12] as Boolean,
-                journey = if (v.size > 13) FavoriteJourney(end(16), end(21), v[13] as String, v[14] as String, v[15] as String) else null,
+                ridden = version == "v3" && v[13] as Boolean,
+                journey = if (v.size > j) FavoriteJourney(end(j + 3), end(j + 8), v[j] as String, v[j + 1] as String, v[j + 2] as String) else null,
             )
         } else {
             RouteStopOpen(
