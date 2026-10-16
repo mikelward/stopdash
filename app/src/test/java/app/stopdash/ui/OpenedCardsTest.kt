@@ -95,6 +95,42 @@ class OpenedCardsTest {
         assertTrue(moved.cards.isEmpty())
     }
 
+    // Codex on #889: an opened farther station is fetched by its own model, and its stale guesses fade
+    // while it is, as the list's do.
+    @Test
+    fun theStopsBeingFetched_areTheListsAndEveryOpenCards() = runBlocking {
+        val list = MutableStateFlow(FetchingStops(1, setOf("NA")))
+        val cardFetching = MutableStateFlow(FetchingStops(1, setOf("MA")))
+        val withModel = open.copy(fetching = cardFetching)
+        val loads = MutableStateFlow(Picked(null, mapOf("a" to withModel, "b" to FartherLoad.Loading)))
+        val fetching = fetchingWithOpened(list, loads, compute)
+        assertEquals(setOf("NA", "MA"), fetching.first())
+
+        // The card's model lands: only the list's are left.
+        cardFetching.value = FetchingStops.NONE
+        assertEquals(setOf("NA"), fetching.first { it == setOf("NA") })
+        // And the list's: none.
+        list.value = FetchingStops.NONE
+        assertEquals(emptySet<String>(), fetching.first { it.isEmpty() })
+        // A card closed with its model mid-fetch takes its stops with it.
+        cardFetching.value = FetchingStops(2, setOf("MA"))
+        assertEquals(setOf("MA"), fetching.first { it == setOf("MA") })
+        loads.value = Picked(null, emptyMap())
+        assertEquals(emptySet<String>(), fetching.first { it.isEmpty() })
+    }
+
+    @Test
+    fun theStopsBeingFetched_areWorkedOutOnTheWorker() = runBlocking {
+        val ranOn = mutableListOf<String>()
+        val loads = MutableStateFlow(Picked(null, mapOf("a" to open.copy(fetching = MutableStateFlow(FetchingStops(1, setOf("MA")))))))
+        val fetching = fetchingWithOpened(MutableStateFlow(FetchingStops(1, setOf("NA"))), loads, compute, union = { own, opened ->
+            ranOn += Thread.currentThread().name.substringBefore(" @")
+            opened.fold(own) { all, ids -> all + ids }
+        })
+        assertEquals(setOf("NA", "MA"), fetching.first())
+        assertTrue("$ranOn", ranOn.isNotEmpty() && ranOn.all { it == "test-compute" })
+    }
+
     @Test
     fun noOpenCard_carriesTheCardsWithNoRows() = runBlocking {
         val loads = mapOf<String, FartherLoad>("a" to FartherLoad.Loading)

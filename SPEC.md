@@ -1349,13 +1349,14 @@ does, never "couldn't check" for a check about to be made, as the disruptions ro
 2026-10-05).
 
 **The card holds still while it checks** (maintainer, 2026-10-16). Checked again, it keeps what it
-drew last, each row where it was, and after a moment each row's time gives way to a spinner: a quick
-check changes nothing on screen, and a longer one shows no time it can't stand behind. Checked for
-the first time, its one row is the ride's own line with a spinner. With no train due, that row stays,
+drew last, each row where it was, and after a moment each row's time, as it was, fades and pulses
+until the check is in, heard as checking: a quick check changes nothing on screen, and a longer one
+never passes its last answer off as live. A time held past the staleness threshold shows as the
+stale guess, as anywhere (D4). Checked for the first time, its one row is the ride's own line with a
+spinner, as it has no answer to fade. With no train due, that row stays,
 a dash for its time, heard as "No trains to … soon"; a suspension's status row gives way to it in
 place, and it to the first train, so through the night the card never moves. Only a check that
-failed, or a route that couldn't load, is a note under the heading. A softer indicator than the
-spinner is still to be chosen (TODO).
+failed, or a route that couldn't load, is a note under the heading.
 
 **On the widget**, a journey's departures lead the list too (maintainer, 2026-09-23), in the
 direction the app last showed, and **nearest ride first** in the order the app's list last showed
@@ -4632,6 +4633,16 @@ Mirrors the sibling fleet:
     adds a timeline entry at each, past which the frame is open-ended. Where the tile's entries
     run out, its tail withholds every time as "?". The watch complication, too small for a time
     and a mark, keeps "?".
+  - **A guess being checked fades** (maintainer, 2026-10-16). In the app's list, an opened
+    farther station's stops included, while a refresh is fetching a stale stop again, each of
+    that stop's guesses fades and pulses, heard as
+    checking, as a favorite ride's times do while it checks again. It fades until the stop's
+    answer is on screen, an answer that came back waiting for the rest of the refresh included,
+    and stops at once if the stop's own request fails, whatever else is still out. With nothing
+    under way for it (offline, or after its fetch failed) a guess stands as it is, since no work is
+    about to replace it, as does a row with no guess at all: a line's status, or "No key", which
+    no fetch gives times without a key. It stays a guess either way: the fade never turns it back
+    into a countdown.
 - **D5 — Widget refresh is opportunistic and bounded, not aggressive polling.** Tap,
   host update, and a bounded periodic schedule while plausibly visible; degrade to
   on-demand. The interval is a battery-tuning detail, not a spec guarantee. Keeping the

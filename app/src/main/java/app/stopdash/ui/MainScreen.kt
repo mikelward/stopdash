@@ -71,6 +71,14 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -250,6 +258,9 @@ fun MainScreen(
     // which take this screen (or its list) out of composition, so a return lands where it was.
     listState: LazyListState = rememberLazyListState(),
     refreshing: Boolean = false,
+    // The stops whose departures a refresh is asking for right now ([MainViewModel.fetchingStops]): a
+    // stale stop's guesses fade while it is (SPEC D4).
+    fetchingStops: Set<String> = emptySet(),
     // From "near me now" (`stopId` → meters): collapse a line served by several adjacent
     // nearby stops to its nearest stop. Empty for a location-free list, shown unchanged.
     stopDistanceMeters: Map<String, Double> = emptyMap(),
@@ -1610,6 +1621,7 @@ fun MainScreen(
                         LoadedContent(
                             drawnState ?: shown, drawnNow, onPullRefresh ?: onRefresh, refreshing, content, shownRows,
                             listCards = shownCards,
+                            fetchingStops = fetchingStops,
                             listState = if (platformRows != null) drillListState else listState,
                             dismissedClosures = if (platformRows != null) emptyList() else dismissedClosures,
                             sharedNotices = sharedNotices,
@@ -1821,6 +1833,8 @@ private fun LoadedContent(
     rows: List<DepartureRow>,
     // [rows] as the list's stop cards draw them, worked out with them on the list's worker.
     listCards: ListCards = ListCards.NONE,
+    // The stops being fetched right now ([MainScreen]'s fetchingStops).
+    fetchingStops: Set<String> = emptySet(),
     listState: LazyListState = rememberLazyListState(),
     // The near-me closures dismissed, for a closed place's heading ([DepartureList]).
     dismissedClosures: List<DepartureRow> = emptyList(),
@@ -2050,6 +2064,7 @@ private fun LoadedContent(
                         trackedPending = pending,
                         hiddenModes = hiddenModes,
                         refreshing = refreshing,
+                        fetchingStops = fetchingStops,
                         holdLanded = holdLanded,
                         pendingTracker = pendingTracker,
                         fetchedStopIds = state.stops.mapTo(HashSet()) { it.stopId } - state.openedLoadingStopIds,
@@ -2576,6 +2591,8 @@ private fun DepartureList(
     // A refresh or relocate under way: a journey card missing only departures it asks again says it's
     // checking, not that it couldn't ([JourneyCardState.NotChecked.refreshAsks]).
     refreshing: Boolean = false,
+    // The stops being fetched right now ([MainScreen]'s fetchingStops): a stale row of one fades.
+    fetchingStops: Set<String> = emptySet(),
     // Where the held cards live ([MainScreen] keeps it, so they outlive this list).
     pendingTracker: PendingTracker = remember { PendingTracker() },
     // The stops whose departures have been fetched, so an opened card with none shown can tell
@@ -3076,6 +3093,9 @@ private fun DepartureList(
                     onOpenDetail = onOpenDetail,
                     onOpenSettings = onOpenSettings,
                     onHideMode = onHideMode,
+                    // A refresh asking for a stale stop's departures again: its guesses say so, each row by
+                    // its own stop.
+                    checkingStale = if (fetchingStops.isEmpty()) null else RowsChecking(stringResource(R.string.checking_stamp), stopIds = fetchingStops),
                 )
             }
         }
@@ -4707,16 +4727,22 @@ internal fun StopGroupCard(
     // Draws a timed row's times in place of its countdowns: a trip's later ride, which says how often
     // its line runs. Null counts down.
     timesInstead: (@Composable (DepartureRow) -> Unit)? = null,
-    // Its rows being checked again: each row's time gives way to a spinner (SPEC *Journeys*). Null when not.
+    // Its rows being checked again: each row's time, as it was, fades and pulses while it is (SPEC
+    // *Journeys*); a row with no answer of its own shows a spinner. Null when not.
     checking: RowsChecking? = null,
+    // A refresh under way: each stale row's time ("21:14?") fades and pulses while its stop is asked for
+    // ([RowsChecking.stopIds]) (SPEC D4). Null when none is: a stale row then stays as it is, a guess no
+    // work is about to replace.
+    checkingStale: RowsChecking? = null,
     // A ride's own line with no train due ([JourneyCard.lineCard]): its row's dash, heard as this. Not the
     // near-me list's "?", so no timetable is asked for (SPEC *Departures*).
     noTrainsSpoken: String? = null,
 ) {
     val group = card.group
-    // Rows from the last check stand a moment ([settled]) before their times give way, so a quick check
-    // changes nothing on screen; a row with no answer of its own spins at once.
-    val spinning = settled(checking != null, at = checking == null || checking.atOnce)
+    // Rows stand a moment as they are ([settled]) before they say they're being checked, so a quick check
+    // changes nothing on screen; a row with no answer of its own says so at once.
+    val checkingShown = settled(checking != null, at = checking == null || checking.atOnce)
+    val staleCheckingShown = settled(checkingStale != null, at = checkingStale == null)
     // Cap the line pill at half the card's inner width, so a long name at a large font scale
     // ellipsizes rather than consuming the card and starving the countdown, which must stay one line
     // (SPEC D8). Inner width ≈ screen minus the list's 16dp side padding and the row's 16dp padding.
@@ -4736,6 +4762,11 @@ internal fun StopGroupCard(
                     // its own group, which a row can't leave.
                     key(row.stopId, row.lineId, row.directionKey, row.platform) {
                         val stale = Staleness.isStale(row.fetchedAt, now)
+                        // What this row's time says while it's checked: the card's own check, or a refresh
+                        // fetching a stale row's stop, whose guesses ("21:14?") it fades (SPEC D4).
+                        val cardChecking = checking.takeIf { checkingShown }
+                        val rowChecking = cardChecking
+                            ?: checkingStale?.takeIf { stale && staleCheckingShown && it.stopIds?.contains(row.stopId) != false }
                         val isStarred = StarredRow.of(row) in starred
                         if (!row.hasTrains) {
                             // A status row: the line is suspended (its reason shown) and returned no
@@ -4764,8 +4795,10 @@ internal fun StopGroupCard(
                                         row.status?.let { status -> DisruptionChip(status.description) }
                                             ?: row.plannedAlerts.firstOrNull()?.let { planned -> PlannedAlertGlyph(planned) }
                                     }
-                                    if (spinning && checking != null) {
-                                        TimesSpinner(checking.spoken, Modifier.padding(start = 12.dp))
+                                    // A status row has no guess for a stale stop's refresh to fade: only the card's
+                                    // own check says so here.
+                                    if (cardChecking?.atOnce == true) {
+                                        TimesSpinner(cardChecking.spoken, Modifier.padding(start = 12.dp))
                                         return@RouteRow
                                     }
                                     if (noTrainsSpoken != null) {
@@ -4776,7 +4809,8 @@ internal fun StopGroupCard(
                                             maxLines = 1,
                                             modifier = Modifier
                                                 .padding(start = 12.dp)
-                                                .semantics { contentDescription = noTrainsSpoken },
+                                                .semantics { contentDescription = noTrainsSpoken }
+                                                .then(checkingFade(cardChecking?.spoken)),
                                         )
                                         return@RouteRow
                                     }
@@ -4820,6 +4854,9 @@ internal fun StopGroupCard(
                                         maxLines = 1,
                                         modifier = Modifier
                                             .padding(start = 12.dp)
+                                            // "No key" stands: no check gives a National Rail line its times without
+                                            // a key, and it's a button, which a fade would read as off (Codex, #889).
+                                            .then(checkingFade(cardChecking?.spoken.takeUnless { noKey }))
                                             .then(
                                                 // The dash alone could be heard as missing data, and "?" as nothing at
                                                 // all; say "No departures" or "Times unknown".
@@ -4872,12 +4909,17 @@ internal fun StopGroupCard(
                                             onHideMode = onHideMode,
                                             destination = { modifier -> DestinationLabelContent(label = label, branch = group2.branch, modifier = modifier) },
                                             times = {
-                                                if (spinning && checking != null) {
-                                                    TimesSpinner(checking.spoken)
-                                                } else if (timesInstead != null) {
+                                                if (timesInstead != null) {
                                                     timesInstead(row)
                                                 } else {
-                                                    CountdownLabel(group2.times, stale, now, grayBefore = grayBefore, untimed = group2.untimed)
+                                                    CountdownLabel(
+                                                        group2.times,
+                                                        stale,
+                                                        now,
+                                                        modifier = checkingFade(rowChecking?.spoken),
+                                                        grayBefore = grayBefore,
+                                                        untimed = group2.untimed,
+                                                    )
                                                 }
                                             },
                                         )
@@ -4893,11 +4935,36 @@ internal fun StopGroupCard(
 }
 
 /**
- * A card's rows being checked again ([StopGroupCard]): each row's time gives way to a spinner heard as
- * [spoken], at once when [atOnce] (a row with no answer of its own to stand meanwhile), else once the
- * check has held a moment.
+ * A card's rows being checked ([StopGroupCard]): each row's time, as it was, fades and pulses
+ * ([checkingFade]), heard as [spoken], once the check has held a moment. A row with no answer of its
+ * own ([atOnce]) shows a spinner at once instead, with nothing to fade.
  */
-internal class RowsChecking(val spoken: String, val atOnce: Boolean = false)
+internal class RowsChecking(
+    val spoken: String,
+    val atOnce: Boolean = false,
+    // The stops whose rows are being checked; null for all of the card's.
+    val stopIds: Set<String>? = null,
+)
+
+/**
+ * A row's time while it's checked: faded and gently pulsing, so it reads as being checked rather than
+ * live, and heard as [spoken] after it. Nothing when [spoken] is null. The time itself is unchanged:
+ * the last answer, counting down, or the stale guess ("21:14?") a stale row already shows (SPEC D4).
+ */
+@Composable
+private fun checkingFade(spoken: String?): Modifier {
+    if (spoken == null) return Modifier
+    val pulse = rememberInfiniteTransition(label = "checking")
+    val alpha by pulse.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.6f,
+        animationSpec = infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "checking",
+    )
+    return Modifier
+        .graphicsLayer { this.alpha = alpha }
+        .semantics { stateDescription = spoken }
+}
 
 /** A spinner where a row's time or mark goes: it's still being fetched or checked, heard as [spoken]. */
 @Composable

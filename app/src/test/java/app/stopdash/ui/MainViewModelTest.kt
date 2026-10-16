@@ -1498,6 +1498,151 @@ class MainViewModelTest {
         assertEquals(1, store.saves.size)
     }
 
+    /**
+     * Answers every stop at once, until [refetching]: then [failing]'s request fails once [failGate] opens,
+     * [answering]'s are answered at once, and the rest wait on [gate].
+     */
+    private inner class RefetchClient(val failing: String, val answering: Set<String> = emptySet()) : TflClient {
+        var refetching = false
+        val failGate = CompletableDeferred<Unit>()
+        val gate = CompletableDeferred<Unit>()
+
+        override suspend fun arrivals(stopId: String): List<Departure> {
+            if (refetching) {
+                if (stopId == failing) {
+                    failGate.await()
+                    throw RuntimeException("arrivals failed for $stopId")
+                }
+                if (stopId !in answering) gate.await()
+            }
+            return listOf(departure("victoria", "Victoria", 120))
+        }
+
+        override suspend fun lineStatuses(lineIds: Collection<String>): List<LineStatus> = emptyList()
+
+        override suspend fun stopDisruptions(stopId: String): List<StopDisruption> = emptyList()
+    }
+
+    // Codex on #889: a stale stop's guesses fade while its own request is out, not for as long as any is.
+    @Test
+    fun `a stop is no longer being fetched once its request fails, the rest once the batch lands`() = runTest(dispatcher) {
+        val client = RefetchClient(seeds[0].id)
+        val vm = viewModel(client)
+        advanceUntilIdle()
+        assertTrue(vm.state.value is DeparturesUiState.Loaded)
+        assertEquals(emptySet<String>(), vm.fetchingStops.value.ids)
+
+        client.refetching = true
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(seeds.mapTo(HashSet()) { it.id }, vm.fetchingStops.value.ids)
+
+        // The first stop's request fails while the second's is still out: only the second is being fetched.
+        client.failGate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(setOf(seeds[1].id), vm.fetchingStops.value.ids)
+        assertTrue(vm.refreshing.value)
+
+        // The batch lands, the first stop's aged rows kept: none is being fetched.
+        client.gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(emptySet<String>(), vm.fetchingStops.value.ids)
+        assertTrue((vm.state.value as DeparturesUiState.Loaded).partialRefresh)
+        assertFalse(vm.refreshing.value)
+    }
+
+    // Codex on #889: its answer back, a stop's guesses are still about to be replaced, by the batch's list.
+    @Test
+    fun `a stop whose answer came back is still being fetched until the batch lands`() = runTest(dispatcher) {
+        val client = RefetchClient("none", answering = setOf(seeds[0].id))
+        val vm = viewModel(client)
+        advanceUntilIdle()
+
+        client.refetching = true
+        vm.refresh()
+        advanceUntilIdle()
+        // The first stop's answer is in, held for the second: its kept rows are still about to be replaced.
+        assertEquals(seeds.mapTo(HashSet()) { it.id }, vm.fetchingStops.value.ids)
+
+        client.gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(emptySet<String>(), vm.fetchingStops.value.ids)
+    }
+
+    // Codex on #889: the set walks every stop it holds, so a failure trims it on the worker
+    // (AGENTS.md *Main thread: read and dispatch only*).
+    @Test
+    fun `a failed stop is taken out of the stops being fetched on the worker`() = runTest(dispatcher) {
+        // A worker held on a scheduler of its own, so this (the main) thread can be run to idle without it.
+        val scheduler = kotlinx.coroutines.test.TestCoroutineScheduler()
+        val held = StandardTestDispatcher(scheduler)
+        val client = RefetchClient(seeds[0].id)
+        val vm = MainViewModel(client, seeds, clock = { now }, io = dispatcher, compute = held)
+        repeat(10) {
+            scheduler.advanceUntilIdle()
+            advanceUntilIdle()
+        }
+        assertTrue(vm.state.value is DeparturesUiState.Loaded)
+
+        client.refetching = true
+        vm.refresh()
+        repeat(10) {
+            scheduler.advanceUntilIdle()
+            advanceUntilIdle()
+        }
+        assertEquals(seeds.mapTo(HashSet()) { it.id }, vm.fetchingStops.value.ids)
+
+        // The first stop's request fails: this thread run alone leaves the set as it was.
+        client.failGate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(seeds.mapTo(HashSet()) { it.id }, vm.fetchingStops.value.ids)
+        // The worker trims it.
+        scheduler.advanceUntilIdle()
+        advanceUntilIdle()
+        assertEquals(setOf(seeds[1].id), vm.fetchingStops.value.ids)
+    }
+
+    // Codex on #889: a superseded refresh's watcher, past its request when it was called off, still runs.
+    @Test
+    fun `a superseded refresh's failure leaves the newer refresh's stops being fetched alone`() = runTest(dispatcher) {
+        val client = RefetchClient(seeds[0].id)
+        val vm = viewModel(client)
+        advanceUntilIdle()
+
+        client.refetching = true
+        vm.refresh()
+        advanceUntilIdle()
+        val first = vm.fetchingStops.value.refresh
+        vm.refresh()
+        advanceUntilIdle()
+        val second = vm.fetchingStops.value
+        assertTrue(second.refresh != first)
+        assertEquals(seeds.mapTo(HashSet()) { it.id }, second.ids)
+
+        // The first refresh's failure lands after the second set its stops: they stand.
+        vm.arrivalsFailed(first, seeds[0].id)
+        assertEquals(second, vm.fetchingStops.value)
+        // The second's own failure trims them.
+        vm.arrivalsFailed(second.refresh, seeds[0].id)
+        assertEquals(setOf(seeds[1].id), vm.fetchingStops.value.ids)
+    }
+
+    @Test
+    fun `a refresh called off leaves no stop being fetched`() = runTest(dispatcher) {
+        val client = RefetchClient(seeds[0].id)
+        val vm = viewModel(client)
+        advanceUntilIdle()
+
+        client.refetching = true
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(seeds.mapTo(HashSet()) { it.id }, vm.fetchingStops.value.ids)
+
+        vm.cancelFetch()
+        advanceUntilIdle()
+        assertEquals(emptySet<String>(), vm.fetchingStops.value.ids)
+    }
+
     @Test
     fun `a line TfL doesn't know is asked about once and stays unchecked`() = runTest(dispatcher) {
         var statusCalls = 0

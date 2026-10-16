@@ -3784,6 +3784,9 @@ class MainActivity : ComponentActivity() {
                 key(cardKey) { AutoRefresh(model, relocating) }
             }
             val shownState = shownFarther.state
+            // The list's stops being fetched and every open card's, worked out off the main thread.
+            val fetchingStops by remember(fartherModels, viewModel) { fartherModels.fetchingWith(viewModel.fetchingStops) }
+                .collectByIdentityWithLifecycle()
             // These background refreshes are composed only while the departures view is shown:
             // the licenses screen is hosted above this subtree (see onCreate), so opening it
             // removes DeparturesForStops from composition and stops the polling (Codex).
@@ -3968,6 +3971,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onLocate = onLocate,
                     refreshing = refreshing,
+                    fetchingStops = fetchingStops,
                     // From "near me now": collapse a line served by several adjacent nearby stops
                     // to its nearest stop (SPEC *Finding stops → Near me now*). Spans both tiers, so
                     // a revealed stop collapses like an eager one. Empty for a location-free list
@@ -5576,6 +5580,7 @@ class MainActivity : ComponentActivity() {
         )
         val state by viewModel.state.collectByIdentityWithLifecycle()
         val refreshing by viewModel.refreshing.collectAsStateWithLifecycle()
+        val fetchingStops by viewModel.fetchingStops.collectByIdentityWithLifecycle()
         val starred by viewModel.starred.collectByIdentityWithLifecycle()
         val starringAvailable by viewModel.starringAvailable.collectAsStateWithLifecycle()
         val starWriteFailed by viewModel.starWriteFailed.collectAsStateWithLifecycle()
@@ -5619,6 +5624,7 @@ class MainActivity : ComponentActivity() {
                 },
                 onLocate = onLocate,
                 refreshing = refreshing,
+                fetchingStops = fetchingStops.ids,
                 starred = starred,
                 onToggleStar = viewModel::toggleStar,
                 onShowAllModes = HiddenModesSetting::showAll,

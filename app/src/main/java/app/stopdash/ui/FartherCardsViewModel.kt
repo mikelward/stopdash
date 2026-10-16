@@ -119,7 +119,7 @@ class FartherCardsViewModel(
                 viewModelFactory { initializer { newModel(refs, distances) } },
             )[place.key, MainViewModel::class]
             models[place.key] = model
-            loads = loads + (place.key to FartherLoad.Open(stops, distances, model.state))
+            loads = loads + (place.key to FartherLoad.Open(stops, distances, model.state, model.fetchingStops))
         }
     }
 
@@ -227,6 +227,23 @@ class FartherCardsViewModel(
         return flow
     }
 
+    // The list's stops being fetched this set's screen reads ([fetchingWith]); one per list, as [shown] is.
+    private var fetching: Pair<StateFlow<FetchingStops>, StateFlow<Set<String>>>? = null
+
+    /**
+     * The stops being fetched on this screen: [list]'s own and every open card's, each card's model
+     * fetching its station apart from the list. A stale stop's guesses fade while it's here (SPEC D4),
+     * an opened farther station's included (Codex, #889). Worked out on [compute] whenever any changes
+     * ([fetchingWithOpened]); a call from composition reads or builds the flow, no more.
+     */
+    fun fetchingWith(list: StateFlow<FetchingStops>): StateFlow<Set<String>> {
+        fetching?.let { (from, flow) -> if (from === list) return flow }
+        val flow = fetchingWithOpened(list, picked, compute)
+            .stateIn(viewModelScope, SharingStarted.Eagerly, list.value.ids)
+        fetching = list to flow
+        return flow
+    }
+
     /** Refresh every opened card's departures, as the list refreshes its own. */
     fun refresh() {
         for (model in models.values) model.refresh()
@@ -320,6 +337,24 @@ internal fun openedCards(
     .flowOn(compute)
 
 /**
+ * [list]'s stops being fetched with every open card's in [cards] ([FartherLoad.Open.fetching]), each
+ * change worked out on [compute]: the union walks every stop of every set (AGENTS *Main thread*).
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+internal fun fetchingWithOpened(
+    list: Flow<FetchingStops>,
+    cards: Flow<Picked>,
+    compute: CoroutineDispatcher,
+    union: (Set<String>, List<Set<String>>) -> Set<String> = { own, opened -> opened.fold(own) { all, ids -> all + ids } },
+): Flow<Set<String>> {
+    val opened = cards.flatMapLatest { (_, loads) ->
+        val each = loads.values.mapNotNull { (it as? FartherLoad.Open)?.fetching }
+        if (each.isEmpty()) flowOf(emptyList()) else combine(each) { sets -> sets.map { it.ids } }
+    }
+    return combine(list, opened) { own, sets -> union(own.ids, sets) }.flowOn(compute)
+}
+
+/**
  * Where a farther station's card stands (SPEC *Finding stops → Farther stations*): its stops being
  * looked up, the lookup failed (tap to try again), or open, with its stops and each one's distance
  * from the fix; its departures come from its model ([FartherCardsViewModel.model]).
@@ -332,11 +367,16 @@ sealed interface FartherLoad {
         val distanceMeters: Map<String, Double>,
         // The card's own departures model's state, published with the card so they never part.
         val departures: StateFlow<DeparturesUiState> = NO_DEPARTURES,
+        // The stops that model is fetching now ([MainViewModel.fetchingStops]), carried the same way.
+        val fetching: StateFlow<FetchingStops> = NOT_FETCHING,
     ) : FartherLoad
 }
 
 // An open card built without a model (a preview): its departures read as still loading.
 private val NO_DEPARTURES: StateFlow<DeparturesUiState> = MutableStateFlow(DeparturesUiState.Loading).asStateFlow()
+
+// ... and nothing is being fetched for it.
+private val NOT_FETCHING: StateFlow<FetchingStops> = MutableStateFlow(FetchingStops.NONE).asStateFlow()
 
 /**
  * [list] with each opened farther card's departures added (SPEC *Finding stops → Farther
