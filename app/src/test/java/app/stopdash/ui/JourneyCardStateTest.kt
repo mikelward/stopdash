@@ -166,6 +166,24 @@ class JourneyCardStateTest {
     }
 
     @Test
+    fun `a ride's heading is as far as its origin, once placed, whatever the poles beside it`() {
+        val ride = app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("PARK-K", "Park"), app.stopdash.domain.JourneyEnd("HILL", "Hill"), "example")
+        val meters = mapOf("PARK-K" to 240.0, "PARK-L" to 120.0, "ELSE" to 10.0)
+        // Its origin placed, the poles beside it not found yet; then found, one of them nearer: the same
+        // number both times, so it never changes under the rider (Codex on #891). The checking state
+        // doesn't matter either.
+        val placed = JourneyCard(ride, JourneyCardState.Checking("the stops around its origin"), boardingIds = listOf("PARK-K"))
+        assertEquals(mapOf(ride.key to 240.0), rideMeters(listOf(placed), meters))
+        val withPoles = placed.copy(state = JourneyCardState.Trains(emptyList()), boardingIds = listOf("PARK-K", "PARK-L"))
+        assertEquals(mapOf(ride.key to 240.0), rideMeters(listOf(withPoles), meters))
+        // Before its route places the origin, none: the saved stop may not be the one it boards from.
+        assertTrue(rideMeters(listOf(placed.copy(boardingIds = emptyList())), meters).isEmpty())
+        // Its origin unmeasured (a far ride), or off the near-me list: none.
+        assertTrue(rideMeters(listOf(placed), mapOf("PARK-L" to 120.0)).isEmpty())
+        assertTrue(rideMeters(listOf(placed), emptyMap()).isEmpty())
+    }
+
+    @Test
     fun `a card checking again holds what it drew last, for the same ride the same way round only`() {
         fun rowsAt(stop: String, vararg to: String) = DepartureRows.across(
             listOf(StopArrivals(stop, stop, to.mapIndexed { i, dest -> departure(dest, 60L + i * 60) }, fetchedAt = now)),

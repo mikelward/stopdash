@@ -3957,6 +3957,38 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `grouped by ride, its heading says how far the stop it boards from is`() {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalRouteStops provides RouteStopsRepository(parkSource)) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(
+                                listOf(manorHouse(), parkPole("490000001L", "L", "b1", 120), parkPole("490000001K", "K", "b3", 240)),
+                                now.minusSeconds(60),
+                            ),
+                            now,
+                            {},
+                            // Its origin, not the nearer pole beside it, which is found after the heading is up.
+                            stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0, "490000001L" to 180.0, "490000001K" to 120.0),
+                            journeys = listOf(parkToHill),
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        // After the star, dimmed, as a stop's heading says it, and heard after the ride.
+        composeRule.onNodeWithContentDescription("Park to Hill, 180 m").assertExists()
+        composeRule.onAllNodesWithText(" (180 m)", useUnmergedTree = true).assertCountEquals(1)
+        // No button beside it: a tap anywhere on it opens the ride, where Swap direction is.
+        composeRule.onAllNodesWithContentDescription("Swap direction").assertCountEquals(0)
+        composeRule.onNodeWithContentDescription("Park to Hill, 180 m").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Swap direction").assertExists()
+    }
+
+    @Test
     fun `grouped by stop, each stop a ride boards from carries its star and where it goes`() {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -4019,7 +4051,8 @@ class MainScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        // The note says which ride it's checking.
+        // The note says which ride it's checking, under a heading with no distance until its route
+        // places the stop it boards from (no route here).
         composeRule.onNodeWithContentDescription("Manor House to King's Cross St. Pancras").assertExists()
         composeRule.onNodeWithContentDescription("Checking trains…").assertExists()
     }

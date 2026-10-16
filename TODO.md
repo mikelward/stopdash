@@ -2627,6 +2627,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       and rail only (SPEC *Journeys*).
   - [x] **Settle the heading's ⇄ tap target.** Dropped (maintainer, 2026-10-16): a compact 24dp
         target beside the one that opens the ride, whose own view keeps Swap direction.
+  - [x] **The heading says how far the ride's stop is** (maintainer, 2026-10-16), as a stop's
+        heading does: its origin's.
   - [x] **Card headings a size larger, on the widget too** (maintainer, 2026-10-16): the size of the
         destinations under them, set apart by weight.
   - [x] **A discoverable way to star a journey.** A dismissible tip atop a starrable stop list
