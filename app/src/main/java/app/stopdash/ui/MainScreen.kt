@@ -121,6 +121,7 @@ import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -3869,12 +3870,19 @@ private fun FartherCardView(
 }
 
 /**
+ * The style every heading over a card shares — a stop's, a ride's, a stop a ride boards from — so the
+ * list reads as one: the size of the destinations under it, set apart by weight (maintainer,
+ * 2026-10-16; it was a size smaller, and read as small beside its rows).
+ */
+@Composable
+internal fun groupHeaderStyle(): TextStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+
+/**
  * The one combined header above a group's card (SPEC D8): the place name and its platform/pole
  * qualifier on a single title-case line — "King's Cross St Pancras – Platform 1", "Cranley Gardens –
  * Stop G", "Highgate – Eastbound" — with [distanceLabel] ("(120 m)", null on the location-free watched
  * list, D1) appended dimmed. No small caps, no tracking: the place name and the qualifier share one
- * [MaterialTheme.typography.labelLarge] / [FontWeight.SemiBold] / `onSurface` style, and only the
- * distance is muted to `onSurfaceVariant`.
+ * [groupHeaderStyle] / `onSurface` style, and only the distance is muted to `onSurfaceVariant`.
  *
  * The place name is the one element that clips: it takes the row's slack and ellipsizes when long,
  * while the " – <qualifier>" and " (<distance>)" are reserved (measured first) so they stay fully
@@ -3912,7 +3920,7 @@ internal fun StopGroupHeader(
     // until it's back (SPEC *Freshness → Cold load*).
     checkingClosure: Boolean = false,
 ) {
-    val style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+    val style = groupHeaderStyle()
     val closedLabel = stringResource(R.string.farther_closed)
     val openLabel = stringResource(R.string.action_show_platform)
     val stationLabel = stringResource(R.string.action_show_station)
@@ -4651,7 +4659,7 @@ private fun RideStopHeader(
     // How far the stop is ("120 m"), dimmed after its platform while the line has room; null for none.
     distanceLabel: String? = null,
 ) {
-    val style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+    val style = groupHeaderStyle()
     // "Park, Stop L to Hill, 120 m": the stop as a heading reads it, never the drawn arrow.
     val stop = groupHeaderSpoken(qualifier)?.let { "$name, $it" } ?: name
     val title = stringResource(R.string.journey_title_spoken, stop, destinationForms.first())
@@ -4687,7 +4695,7 @@ private fun RideStopHeader(
 
 /**
  * A journey card's heading, "Highgate ➔ King's Cross St Pancras ★": the direction shown, styled like
- * a stop group header (same weight and group-break space) so the list reads as one. A tap on the
+ * a stop group header (same style and group-break space) so the list reads as one. A tap on the
  * heading opens the journey's own view ([onOpen], null leaves it inert — as in that view); the ⇄
  * button at the end swaps the direction in place ([onSwap]), for planning the way back without
  * leaving the list (maintainer, 2026-09-24).
@@ -4727,7 +4735,7 @@ private fun JourneyHeader(
             RideTitle(
                 from = fromForms,
                 to = toForms,
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                style = groupHeaderStyle(),
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f, fill = false),
             )
@@ -4743,7 +4751,7 @@ private fun JourneyHeader(
             if (distanceLabel != null) {
                 Text(
                     text = " ($distanceLabel)",
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    style = groupHeaderStyle(),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     softWrap = false,

@@ -2628,6 +2628,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
   - [ ] **Settle the heading's ⇄ tap target.** It is a compact 24dp target (below the 48dp
         guideline) while the control is tried out (maintainer, 2026-09-24); keep, enlarge, or drop
         it once judged on a device.
+  - [x] **Card headings a size larger, on the widget too** (maintainer, 2026-10-16): the size of the
+        destinations under them, set apart by weight.
   - [x] **A discoverable way to star a journey.** A dismissible tip atop a starrable stop list
         says a long press on a stop stars the journey there (maintainer, 2026-09-24).
   - [x] **Star from the stop list by long press, not tap** (maintainer, 2026-10-05, after a stray tap

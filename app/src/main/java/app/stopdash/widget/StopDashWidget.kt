@@ -1350,7 +1350,8 @@ private fun WidgetStatusLine(text: String) {
     )
 }
 
-/** A stop header above its place's rows, on one line. A long one clips at the end: Glance can't
+/** A stop or ride header above its rows, on one line, as the app's are: the size of the destinations
+ *  under it, set apart by weight (maintainer, 2026-10-16). A long one clips at the end: Glance can't
  *  measure text, so it can't reserve the qualifier the way the in-app header does. */
 @androidx.compose.runtime.Composable
 private fun WidgetStopHeader(header: WidgetHeader) {
@@ -1360,8 +1361,8 @@ private fun WidgetStopHeader(header: WidgetHeader) {
         modifier = GlanceModifier.semantics { contentDescription = header.spoken },
         style = TextStyle(
             color = GlanceTheme.colors.onBackground,
-            fontWeight = FontWeight.Medium,
-            fontSize = widgetSp(12f),
+            fontWeight = FontWeight.Bold,
+            fontSize = widgetSp(13f),
         ),
     )
 }
@@ -1819,11 +1820,12 @@ internal fun widgetRowsHeight(
 }
 
 /**
- * What a stop header takes, in dp rounded up, at [fontScale]: its one line of 12sp text and the 4dp
- * above and below it ([WidgetRows]; the first header has no space above, so it's costed at the most).
+ * What a stop header takes, in dp rounded up, at [fontScale]: its one line of 13sp text, a destination
+ * line's height, and the 4dp above and below it ([WidgetRows]; the first header has no space above, so
+ * it's costed at the most).
  */
 internal fun widgetHeaderHeight(fontScale: Float = 1f): Int =
-    kotlin.math.ceil((WIDGET_HEADER_GAP * 2 + WIDGET_SMALL_TEXT_HEIGHT * fontScale).value).toInt()
+    kotlin.math.ceil((WIDGET_HEADER_GAP * 2 + WIDGET_DESTINATION_TEXT_HEIGHT * fontScale).value).toInt()
 
 /**
  * What a line's status under its countdowns takes, in dp rounded up, at [fontScale]: the 4dp above
@@ -1835,7 +1837,7 @@ internal fun widgetStatusLineHeight(fontScale: Float = 1f): Int =
 /** The space above and below a stop header, and above a status under a row. */
 private val WIDGET_HEADER_GAP = 4.dp
 
-/** A 12sp line's height at font scale 1 (a stop header, a status), with a dp to spare so it never clips. */
+/** A 12sp line's height at font scale 1 (a status), with a dp to spare so it never clips. */
 private val WIDGET_SMALL_TEXT_HEIGHT = 17.dp
 
 /**
@@ -1922,8 +1924,8 @@ internal fun widgetTextEms(text: String): Float = text.sumOf { c ->
     }
 }.toFloat()
 
-/** A stop or ride header's em at font scale 1: its 12sp. */
-private val WIDGET_HEADER_EM = 12.dp
+/** A stop or ride header's em at font scale 1: its 13sp. */
+private val WIDGET_HEADER_EM = 13.dp
 
 /**
  * A ride's two ends as its heading draws them on a line of a cell [width] wide at [fontScale], shortened
