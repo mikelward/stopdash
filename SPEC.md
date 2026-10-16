@@ -338,8 +338,8 @@ The app finds stops two ways:
   with the row, or **Remove favorite** when a saved place sits at its position. A long press
   never opens the row. If a removal from Recent can't be saved the row stays and the search says so
   until the next long press, even if it was closed meanwhile; a starred row is unstarred where it was starred.
-  *From…* and *To…* keep **separate recent lists** — where the rider looks from
-  and where they go — so each search lists its own history. As the user types, those and every place the app has lately shown near them (the
+  *From…*, *To…* and a trip's *Via…* keep **separate recent lists** — where the rider looks from,
+  where they go, and what they go via (maintainer, 2026-10-16) — so each search lists its own history. As the user types, those and every place the app has lately shown near them (the
   widget's last departures and the nearby-lookup cache, less any stop TfL lists with no lines,
   which would open to nothing) match on the device alongside the bundled stations, so a starred bus stop appears at once; a bus stop (a journey's end
   included) lists as its stop area, whose page holds its poles. A recently picked or starred place leads its matching tier, the most recently picked first. All
@@ -2434,8 +2434,9 @@ with the Via row's × above to go any way. A place's *Direct* section isn't show
 there, not via the stop. The stop is part of what the trip is: its plan is kept for reuse apart from the
 trip any way's, and choosing one, another, or none shows that trip's own plan, never another's. It is kept with the trip while it's open, over a rotation, a
 recreated process and a look at To… left with Back, by where the trip goes, so a new nearest stop to start from keeps it and another
-destination starts without one; never saved beyond that, and never logged (the debug log says a request
-went "via a stop", never which). **Cost:** free, and no request of its own: a trip via an ordinary stop makes the
+destination starts without one. The stop picked is also remembered under *Via…*'s own *Recent*, on the
+device as *From…*'s and *To…*'s picks are (*Finding stops*), so a later trip goes via it again in a tap;
+it's never logged (the debug log says a request went "via a stop", never which). **Cost:** free, and no request of its own: a trip via an ordinary stop makes the
 plan's four, and drops the up to four extra a trip from a position or to a place makes; via a complex,
 four per station (eight via Finsbury Park), and to a complex, that for each of its stations too. At about
 four plans an hour that is about sixteen calls an hour via a stop and thirty-two via Finsbury Park; via

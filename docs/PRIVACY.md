@@ -99,7 +99,7 @@ devices and stopdash never receives it, so it adds no data type *collected* by t
 Google's Data Layer documentation says what passes through its servers is end-to-end encrypted
 between your phone and your watch, and between them over Bluetooth the link is encrypted too.
 
-**Find a station** (the menu's *From…* and *To…*, and a station's *To…*) looks up what you type in lists of London's
+**Find a station** (the menu's *From…* and *To…*, a station's *To…*, and a trip's *Via…*) looks up what you type in lists of London's
 stations and bus stops that ship inside the app, on your device; in *From…* and *To…* also in a list of London places,
 streets and postcodes that ships inside the app. What you type isn't sent anywhere, with two exceptions for places
 outside London, which those lists don't cover: if you tap *Search outside London*, or type a complete postcode the
@@ -108,8 +108,8 @@ starts with a house number is looked up in the lists by its street. After a pick
 departures; a place picked in *From…* sends that place's position (a public place, street or postcode
 center from the bundled list, not yours) to find the stops around it, and as the start of any trip
 planned from it; and the station's own position (a public place, not yours) to find the stops around it (for *To…*, the stops and the routes of the lines leaving where you start from; a *To…* from the near-me list starts from the location the near-me list was found from, which goes to TfL's Journey Planner as the trip's start — see **Trips with a change** — and refreshing it or coming back to the app finds your location again, exactly as the near-me list does). The name isn't saved or
-logged. The last eight stations or places you pick from *From…*'s search list (not your saved places, which are already kept), and separately the last eight
-destinations you pick in *To…* (a stop, or a place or postcode with its name and map position), are remembered on the device to list under *Recent*, in app storage
+logged. The last eight stations or places you pick from *From…*'s search list (not your saved places, which are already kept, nor *Here*, your own position), separately the last eight
+destinations you pick in *To…* (a stop, or a place or postcode with its name and map position), and separately the last eight stops you pick in a trip's *Via…*, are remembered on the device to list under *Recent*, in app storage
 that Android never backs up or transfers; they are
 never logged or sent anywhere, and clearing the app's data removes them. So that a starred stop
 can be listed by name there, the place each starred row belongs to (its stop area or station, as
@@ -171,8 +171,9 @@ complex such as Finsbury Park the id of each of its stations, one request each. 
 requests via the fastest route's last stop and via the bus stops near the start, which a trip via your
 stop doesn't make. A stop id says no more about you than the trip's two ends already do, so it adds no
 Play Data Safety category. The stop is kept with the trip while it's open (over a rotation, or Android
-closing the app in the background) and forgotten when you leave it or pick another destination; it is
-never saved or logged (the debug log says only that a request went via a stop, never which).
+closing the app in the background) and forgotten when you leave it or pick another destination. The stop
+you pick is also remembered on the device under *Via…*'s own *Recent*, as described under **Find a
+station**; it is never logged (the debug log says only that a request went via a stop, never which).
 
 **A later trip** (*Change time…* on a trip) sends the same requests to TfL's Journey Planner,
 the ones via bus stops near the start (or via the stop you picked) included, with the **date and time** you picked, and whether you'd leave then or arrive by then, so the Planner

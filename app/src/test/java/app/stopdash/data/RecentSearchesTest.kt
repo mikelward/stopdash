@@ -29,6 +29,19 @@ class RecentSearchesTest {
     }
 
     @Test
+    fun `Via keeps its own history, apart from From and To`() {
+        val searches = RecentSearches(tmp.root)
+        val finsburyPark = StationMatch("HUBFPK", "Finsbury Park", listOf("tube", "national-rail"))
+        searches.store(RecentSearches.Kind.TO).add(bank)
+        searches.store(RecentSearches.Kind.VIA).add(finsburyPark)
+        assertEquals(listOf(finsburyPark), searches.store(RecentSearches.Kind.VIA).load())
+        assertEquals(listOf(bank), searches.store(RecentSearches.Kind.TO).load())
+        assertTrue(searches.store(RecentSearches.Kind.FROM).load().isEmpty())
+        // Read back afresh, as after a restart: from its own file.
+        assertEquals(listOf(finsburyPark), RecentSearches(tmp.root).store(RecentSearches.Kind.VIA).load())
+    }
+
+    @Test
     fun `From keeps the file it always used, so its history survives the update`() {
         FileRecentStationsStore(File(tmp.root, "recent-stations.json")).add(oxford)
         val searches = RecentSearches(tmp.root)
