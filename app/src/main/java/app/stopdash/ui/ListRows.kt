@@ -15,6 +15,7 @@ import app.stopdash.domain.StationLead
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopGroup
 import app.stopdash.domain.StopGrouping
+import app.stopdash.domain.TripVia
 import app.stopdash.domain.isStatusOnly
 import app.stopdash.domain.stopPlaceKey
 import java.time.Instant
@@ -204,7 +205,22 @@ internal class PlatformView(
     // The stop its "Show on map" button shows, and the name to label it with: the nearest of the view's
     // stops the near-me list measured, as a heading's distance named it; null where none was (D1).
     val mapStop: Pair<String, String>? = null,
+    // The stop its "Via" button plans a trip through ([viaOf]); null where the view has no one stop to.
+    val via: TripVia? = null,
 )
+
+/**
+ * The stop a trip via a platform or station view goes through, named [name] (its "Via" button, SPEC *Going via a
+ * stop*), as the Via… search would give it: a station's interchange where it has one, so Finsbury Park's
+ * Underground platform goes via all of Finsbury Park, changing there between any lines; else the one station or
+ * stop the view shows. A [bus] view goes via its pole, as a rider picks a bus stop, never the interchange, which
+ * is asked via its stations. Null where the view shows more than one stop with no interchange over them (a bus
+ * place's poles): the Planner goes via one stop, and no one of them is the view's.
+ */
+internal fun viaOf(stops: List<StopArrivals>, bus: Boolean, name: String): TripVia? {
+    if (!bus) stops.mapTo(HashSet()) { it.hubId }.singleOrNull()?.takeIf { it.isNotBlank() }?.let { return TripVia(it, name) }
+    return stops.mapTo(HashSet()) { it.stopId }.singleOrNull()?.let { TripVia(it, name) }
+}
 
 /** The whole station a platform belongs to: its cluster keys, as a station view saves them, its bare
  *  name, and whether it is a bus place, whose button says "All stops". */
@@ -384,8 +400,16 @@ internal fun platformViewOf(
         .filter { it in stopDistanceMeters }
         .minByOrNull { stopDistanceMeters.getValue(it) }
         ?.let { it to (if (station) stationTitle else matched.first().stopName) }
+    // Via: every stop the view stands for, not only those with departures now — an All stops view is several poles
+    // even while one of them shows nothing (Codex) — named as its title names the place (a pole by its letter).
+    val via = matched.firstOrNull()?.let { first ->
+        val modes = matched.flatMap { it.rows }.mapNotNullTo(HashSet()) { it.mode.ifBlank { null } }
+        val bus = modes == setOf("bus")
+        val name = if (station) stationTitle else if (bus && matched.size == 1) groupHeaderTitle(first.stopName, first.qualifier) else first.stopName
+        viaOf(platformStops, bus, name)
+    }
     return PlatformView(
         viewRows, title, source, now, ListCards.of(viewRows, warningsLead = true, topology), RowsByKey.of(viewRows),
-        station = stationOf, mapStop = mapStop,
+        station = stationOf, mapStop = mapStop, via = via,
     )
 }

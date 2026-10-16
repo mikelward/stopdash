@@ -27,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.Saver
@@ -50,6 +51,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
+import app.stopdash.domain.DestinationViaChoice
 import app.stopdash.domain.PlaceArt
 import app.stopdash.domain.TripVia
 import app.stopdash.domain.ViaChoice
@@ -144,28 +146,51 @@ internal fun TripEndsBar(
  * The stop a trip goes via (SPEC *Going via a stop*), for [TripEndsBar]'s Via row: its [name], a tap to
  * pick another ([onChange]), and its × to go any way again ([onClear]).
  */
-internal class TripEndsVia(val name: String, val onChange: () -> Unit, val onClear: () -> Unit)
+class TripEndsVia(val name: String, val onChange: () -> Unit, val onClear: () -> Unit)
 
 /**
- * Keeps a trip's [ViaChoice] over a rotation and a recreated process: each of its stops' id and name, empty for
- * none, on the device.
+ * Keeps a trip's [DestinationViaChoice] over a rotation and a recreated process: the destination it belongs to,
+ * then each of its stops' id and name, empty for none, on the device.
  */
-internal val ViaChoiceSaver: Saver<ViaChoice, Any> = listSaver(
-    save = { choice -> listOf(choice.via, choice.pending).flatMap { listOf(it?.stopId.orEmpty(), it?.name.orEmpty()) } },
+internal val ViaChoiceSaver: Saver<DestinationViaChoice, Any> = listSaver(
+    save = { held ->
+        listOf(held.destination.orEmpty()) +
+            listOf(held.choice.via, held.choice.pending).flatMap { listOf(it?.stopId.orEmpty(), it?.name.orEmpty()) }
+    },
     restore = { saved ->
         fun at(index: Int) = saved.getOrNull(index)?.takeIf { it.isNotEmpty() }?.let { TripVia(it, saved.getOrNull(index + 1).orEmpty()) }
-        ViaChoice(via = at(0), pending = at(2))
+        DestinationViaChoice(saved.firstOrNull()?.takeIf { it.isNotEmpty() }, ViaChoice(via = at(1), pending = at(3)))
     },
 )
 
 /**
  * A trip's [ViaChoice] while the trip to [destination] is open, kept over a rotation and a recreated process
- * ([ViaChoiceSaver]). Another destination starts without one. The trip holds it above its To… picker, which
- * shows in the trip's place, so opening To… and coming Back keeps the via (Codex on #887).
+ * ([ViaChoiceSaver]). Another destination starts without one; the first one picked keeps what was chosen before
+ * it (SPEC *Going via a stop*). [held] is the caller's, where the via has to outlast this composable — the near-me
+ * trip's, over an overlay that takes the trip off screen, and set by a view's Via; null holds it here.
  */
 @Composable
-internal fun rememberViaChoice(destination: String?): MutableState<ViaChoice> =
-    rememberSaveable(destination, stateSaver = ViaChoiceSaver) { mutableStateOf(ViaChoice()) }
+internal fun rememberViaChoice(destination: String?, held: MutableState<DestinationViaChoice>? = null): MutableState<ViaChoice> {
+    val choice = held ?: rememberSaveable(stateSaver = ViaChoiceSaver) { mutableStateOf(DestinationViaChoice(destination)) }
+    val now = choice.value.to(destination)
+    // Kept as the destination's own once it is shown, so the next destination starts from it, not from before.
+    SideEffect { if (choice.value != now) choice.value = now }
+    return remember(choice, destination) { DestinationViaState(choice, destination) }
+}
+
+/** [held]'s choice as the trip to [destination] sees it ([DestinationViaChoice.to]), and set as its own. */
+private class DestinationViaState(private val held: MutableState<DestinationViaChoice>, private val destination: String?) :
+    MutableState<ViaChoice> {
+    override var value: ViaChoice
+        get() = held.value.to(destination).choice
+        set(value) {
+            held.value = DestinationViaChoice(destination, value)
+        }
+
+    override fun component1(): ViaChoice = value
+
+    override fun component2(): (ViaChoice) -> Unit = { value = it }
+}
 
 /**
  * The width every [TripEndsBar] label takes: the widest of "From", "Via" and "To", so the fields start at

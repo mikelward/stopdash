@@ -16,6 +16,7 @@ import app.stopdash.domain.StopFinder
 import app.stopdash.domain.CollapsedPlaces
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.DepartureRow
+import app.stopdash.domain.DestinationViaChoice
 import app.stopdash.domain.FartherBuses
 import app.stopdash.domain.FartherStations
 import app.stopdash.domain.FavoriteJourney
@@ -120,6 +121,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -329,10 +331,12 @@ import app.stopdash.ui.LaterTripNav
 import app.stopdash.ui.LaterTripScreen
 import app.stopdash.ui.LaterTripViewModel
 import app.stopdash.ui.TripEnds
+import app.stopdash.ui.TripEndsVia
 import app.stopdash.ui.TripScreen
 import app.stopdash.ui.TripStart
 import app.stopdash.ui.TripTimeDialog
 import app.stopdash.ui.TripViewModel
+import app.stopdash.ui.ViaChoiceSaver
 import app.stopdash.ui.rememberViaChoice
 import app.stopdash.ui.tripTimeLabel
 import app.stopdash.ui.WatchInstallActions
@@ -1125,6 +1129,10 @@ class MainActivity : ComponentActivity() {
                 // whether its destination search is up, and the destination picked. Its starting
                 // stops aren't kept: they're worked out from the current nearby set.
                 var hereTripOpen by rememberSaveable { mutableStateOf(false) }
+                // The stop the near-me trip goes via (SPEC *Going via a stop*), and the destination it was chosen for:
+                // held here with the trip's destination rather than in the trip, so it outlasts an overlay over the
+                // trip (From…, Settings) as the destination does, and a view's Via can open the trip with one set.
+                val hereVia = rememberSaveable(stateSaver = ViaChoiceSaver) { mutableStateOf(DestinationViaChoice(null)) }
                 // The trip on the way's options left since it started (Back, or another station opened): forgotten,
                 // so a later visit to the same station or another near-me trip is never taken for them (Codex, #658).
                 LaunchedEffect(onTheWayFrom, openStationId, hereTripOpen, originChange) {
@@ -1178,6 +1186,8 @@ class MainActivity : ComponentActivity() {
                     hereToId = null
                     hereToName = ""
                     hereFavorite = null
+                    // The next trip goes via nothing unless a view's Via opens it.
+                    hereVia.value = DestinationViaChoice(null)
                 }
                 // The near-me trip's own retained models (its origins' and its destination's), dropped
                 // when a change of start replaces that trip with a station's, so their fetches stop.
@@ -2876,6 +2886,7 @@ class MainActivity : ComponentActivity() {
                                         toId = hereToId,
                                         toName = hereToName,
                                         favorite = hereFavorite,
+                                        via = hereVia,
                                         // The trip's From row, over its To… search or its routes: start
                                         // from a station instead. This trip stays open underneath, so Back
                                         // finds it as it was; a station picked replaces it with that
@@ -2995,6 +3006,14 @@ class MainActivity : ComponentActivity() {
                                             onPlanTo = {
                                                 UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
                                                 listStores.clearAll()
+                                                hereTripOpen = true
+                                                herePicking = true
+                                            },
+                                            // As To…, the trip going via the view's stop from the start.
+                                            onPlanVia = { via ->
+                                                UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
+                                                listStores.clearAll()
+                                                hereVia.value = DestinationViaChoice(null, ViaChoice().picked(via, via.stopId.startsWith(HUB_PREFIX), toId = null))
                                                 hereTripOpen = true
                                                 herePicking = true
                                             },
@@ -3482,6 +3501,9 @@ class MainActivity : ComponentActivity() {
         // "To…" from the near-me list (SPEC *Finding stops → From… To…*); null where the page starts nothing
         // (a stop's departures opened from its details).
         onPlanTo: (() -> Unit)?,
+        // A platform or station view's "Via": that trip, through the view's stop (SPEC *Going via a stop*). Near me
+        // only: a From… station's views are of where its trip starts.
+        onPlanVia: ((TripVia) -> Unit)? = null,
         // The saved favorite places, offered as route chips atop the list less those the rider is at
         // (SPEC D9 → *Routing from the near-me list*), and the trip a tap opens. Empty (a From…
         // station's page) shows no row.
@@ -4142,6 +4164,12 @@ class MainActivity : ComponentActivity() {
                         null
                     } else {
                         { onPlanTo() }
+                    },
+                    // Offered where To… is, the trip being the same one.
+                    onPlanVia = if (hereOriginNow.isNullOrEmpty() || onPlanVia == null) {
+                        null
+                    } else {
+                        { via -> onPlanVia(via) }
                     },
                     stationBrowse = stationBrowse,
                     updateAvailable = updateAvailable,
@@ -4911,6 +4939,9 @@ class MainActivity : ComponentActivity() {
         // no stop to pick and no interchange to expand — the picker and hub lookup below are skipped.
         // Null for an ordinary To… trip to a stop.
         favorite: TripDestination.Place? = null,
+        // The stop the trip goes via, held by the caller so it outlasts an overlay over the trip, and set there by a
+        // view's Via (SPEC *Going via a stop*). Null holds it here, with the trip.
+        via: MutableState<DestinationViaChoice>? = null,
         onPlanTo: () -> Unit,
         onPickTo: (StationMatch) -> Unit,
         // Set only where the trip can route to a saved favorite place (the near-me To… picker): tapping
@@ -5064,17 +5095,38 @@ class MainActivity : ComponentActivity() {
         SideEffect { anchorHolder.start = start }
         val fromId = start.stopId
         LaunchedEffect(Unit) { onShown() }
-        // A stop the rider sends the trip through (SPEC *Going via a stop*), picked with the overflow's Via…: kept
-        // with the trip while it's open, by where it goes, so a new nearest stop to start from keeps it and another
-        // destination starts without one. Never saved elsewhere. Held here, above the To… picker that shows in the
-        // trip's place, so opening To… and coming Back keeps it (Codex on #887). The via in place, and a station
-        // complex just picked that takes its place once its stations have been looked up ([ViaChoice]), so Back
-        // meanwhile leaves the via as it was.
+        // A stop the rider sends the trip through (SPEC *Going via a stop*), picked with the overflow's Via… or a
+        // view's Via: kept with the trip while it's open, by where it goes, so a new nearest stop to start from keeps
+        // it and another destination starts without one. Never saved elsewhere. Held above the To… picker that shows
+        // in the trip's place, so opening To… and coming Back keeps it (Codex on #887); the near-me trip's by the
+        // activity ([via]), so an overlay over it does too (Codex on #905). The via in place, and a station complex
+        // just picked that takes its place once its stations have been looked up ([ViaChoice]), so Back meanwhile
+        // leaves the via as it was.
         var viaChoice by rememberViaChoice(
             favorite?.let { "place:${it.coordinate.latitude},${it.coordinate.longitude}" } ?: toId,
+            held = via,
         )
+        // A stop picked in either Via… search below, over the via in place, so a station complex still being looked
+        // up leaves it for Back to return to, before the trip has a destination as after (Codex on #905).
+        val pickVia = { match: StationMatch ->
+            viaChoice = viaChoice.picked(TripVia(match.id, match.name), match.id.startsWith(HUB_PREFIX), toId)
+        }
         // The destination search: before anything is picked, and when the trip's To row reopens it.
-        if (picking || (favorite == null && toId == null)) {
+        val noDestination = favorite == null && toId == null
+        // The Via… search over it, for the stop a view's Via picked before where the trip goes.
+        var pickingFirstVia by rememberSaveable { mutableStateOf(false) }
+        if (pickingFirstVia && noDestination) {
+            ViaSearch(
+                rankFrom = rankFrom,
+                onPick = { match ->
+                    pickingFirstVia = false
+                    pickVia(match)
+                },
+                onBack = { pickingFirstVia = false },
+            )
+            return
+        }
+        if (picking || noDestination) {
             val state by search.state.collectByIdentityWithLifecycle()
             LaunchedEffect(Unit) { search.refreshYours() }
             ReportScreen(UsageEvent.Screen.TRIP_TO)
@@ -5128,6 +5180,11 @@ class MainActivity : ComponentActivity() {
                     fromIcon = fromIcon,
                     // The destination search is kept (above): it's the start that changes.
                     onChangeFrom = onChangeFrom,
+                    // A via picked before the destination (a view's Via), the latest pick if it is still to be looked up:
+                    // a trip's own via isn't shown over its To row's search, as another destination starts without it.
+                    via = (viaChoice.pending ?: viaChoice.via)?.takeIf { noDestination }?.let { first ->
+                        TripEndsVia(first.name, onChange = { pickingFirstVia = true }, onClear = { viaChoice = viaChoice.cleared() })
+                    },
                 )
             }
             return
@@ -5196,7 +5253,7 @@ class MainActivity : ComponentActivity() {
                 rankFrom = rankFrom,
                 onPick = { match ->
                     pickingVia = false
-                    viaChoice = viaChoice.picked(TripVia(match.id, match.name), match.id.startsWith(HUB_PREFIX), toId)
+                    pickVia(match)
                 },
                 onBack = { pickingVia = false },
             )

@@ -38,4 +38,25 @@ data class ViaChoice(val via: TripVia? = null, val pending: TripVia? = null) {
 
     /** The Via row's ×: the trip goes any way. */
     fun cleared(): ViaChoice = ViaChoice()
+
+    /**
+     * A choice made before the trip had a destination (a stop's Via, SPEC *Going via a stop*) for the trip to
+     * [toId] once it has one: kept, less a stop that is that destination itself, as [picked] would drop it.
+     */
+    fun carriedTo(toId: String?): ViaChoice =
+        ViaChoice(via = via?.takeUnless { it.stopId == toId }, pending = pending?.takeUnless { it.stopId == toId })
+}
+
+/**
+ * A trip's [choice] and the [destination] it belongs to, null before one is picked. Another destination starts
+ * without one; the first destination picked keeps what was chosen before it ([ViaChoice.carriedTo]), so a trip
+ * opened via a stop goes via it wherever the rider then picks.
+ */
+data class DestinationViaChoice(val destination: String?, val choice: ViaChoice = ViaChoice()) {
+    /** The choice for the trip to [to]. */
+    fun to(to: String?): DestinationViaChoice = when (destination) {
+        to -> this
+        null -> DestinationViaChoice(to, choice.carriedTo(to))
+        else -> DestinationViaChoice(to)
+    }
 }

@@ -68,4 +68,38 @@ class ViaChoiceTest {
     fun `the cross goes any way`() {
         assertEquals(ViaChoice(), ViaChoice(via = highbury, pending = finsburyPark).cleared())
     }
+
+    @Test
+    fun `a via chosen before the destination goes with the first destination picked`() {
+        // A stop's Via opens the trip with no destination yet (maintainer, 2026-10-16).
+        val before = DestinationViaChoice(null, ViaChoice(pending = finsburyPark))
+        assertEquals(DestinationViaChoice("940GZZLUCYF", ViaChoice(pending = finsburyPark)), before.to("940GZZLUCYF"))
+        assertEquals(DestinationViaChoice("place:51.5,-0.12", ViaChoice(via = highbury)), DestinationViaChoice(null, ViaChoice(via = highbury)).to("place:51.5,-0.12"))
+    }
+
+    @Test
+    fun `a complex picked over a via chosen before the destination leaves it for Back`() {
+        // Codex on #905: the trip's Via… before a destination dropped the via a stop's Via had filled in.
+        val before = DestinationViaChoice(null, ViaChoice(via = highbury).picked(finsburyPark, isComplex = true, toId = null))
+        val trip = before.to("940GZZLUKSX")
+        assertEquals(ViaChoice(via = highbury, pending = finsburyPark), trip.choice)
+        // Back while its stations are looked up: the via it had.
+        assertEquals(ViaChoice(via = highbury), trip.choice.cancelled())
+    }
+
+    @Test
+    fun `a via that is the destination picked is dropped, as picking it would be`() {
+        assertEquals(DestinationViaChoice("HUBFPK"), DestinationViaChoice(null, ViaChoice(pending = finsburyPark)).to("HUBFPK"))
+        assertEquals(DestinationViaChoice("940GZZLUHAI"), DestinationViaChoice(null, ViaChoice(via = highbury)).to("940GZZLUHAI"))
+        // One of its stations is still a destination of its own, the complex planned via as picked.
+        assertEquals(ViaChoice(pending = finsburyPark), DestinationViaChoice(null, ViaChoice(pending = finsburyPark)).to("940GZZLUFPK").choice)
+    }
+
+    @Test
+    fun `another destination starts without one, and the same keeps it`() {
+        val held = DestinationViaChoice("940GZZLUKSX", ViaChoice(via = highbury))
+        assertEquals(held, held.to("940GZZLUKSX"))
+        assertEquals(DestinationViaChoice("940GZZLUVIC"), held.to("940GZZLUVIC"))
+        assertEquals(DestinationViaChoice(null), held.to(null))
+    }
 }
