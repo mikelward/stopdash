@@ -214,14 +214,34 @@ sealed class UsageEvent(val name: String, val params: Map<String, String>) {
      * where others are labeled, "unlabeled" where no card is (a lone route, or routes alike in every way
      * labeled), or "unknown" for a route started without being opened from a card here.
      */
-    enum class RouteChoice(val value: String) {
-        FASTEST("fastest"),
-        SIMPLEST("simplest"),
-        LEAST_WALKING("least_walking"),
-        FASTEST_SIMPLEST("fastest+simplest"),
-        FASTEST_LEAST_WALKING("fastest+least_walking"),
-        SIMPLEST_LEAST_WALKING("simplest+least_walking"),
-        FASTEST_SIMPLEST_LEAST_WALKING("fastest+simplest+least_walking"),
+    enum class RouteChoice(val value: String, private val labels: Set<RouteLabel> = emptySet()) {
+        FASTEST("fastest", setOf(RouteLabel.FASTEST)),
+        SIMPLEST("simplest", setOf(RouteLabel.SIMPLEST)),
+        LEAST_WALKING("least_walking", setOf(RouteLabel.LEAST_WALKING)),
+        CHEAPEST("cheapest", setOf(RouteLabel.CHEAPEST)),
+        FASTEST_SIMPLEST("fastest+simplest", setOf(RouteLabel.FASTEST, RouteLabel.SIMPLEST)),
+        FASTEST_LEAST_WALKING("fastest+least_walking", setOf(RouteLabel.FASTEST, RouteLabel.LEAST_WALKING)),
+        FASTEST_CHEAPEST("fastest+cheapest", setOf(RouteLabel.FASTEST, RouteLabel.CHEAPEST)),
+        SIMPLEST_LEAST_WALKING("simplest+least_walking", setOf(RouteLabel.SIMPLEST, RouteLabel.LEAST_WALKING)),
+        SIMPLEST_CHEAPEST("simplest+cheapest", setOf(RouteLabel.SIMPLEST, RouteLabel.CHEAPEST)),
+        LEAST_WALKING_CHEAPEST("least_walking+cheapest", setOf(RouteLabel.LEAST_WALKING, RouteLabel.CHEAPEST)),
+        FASTEST_SIMPLEST_LEAST_WALKING(
+            "fastest+simplest+least_walking",
+            setOf(RouteLabel.FASTEST, RouteLabel.SIMPLEST, RouteLabel.LEAST_WALKING),
+        ),
+        FASTEST_SIMPLEST_CHEAPEST("fastest+simplest+cheapest", setOf(RouteLabel.FASTEST, RouteLabel.SIMPLEST, RouteLabel.CHEAPEST)),
+        FASTEST_LEAST_WALKING_CHEAPEST(
+            "fastest+least_walking+cheapest",
+            setOf(RouteLabel.FASTEST, RouteLabel.LEAST_WALKING, RouteLabel.CHEAPEST),
+        ),
+        SIMPLEST_LEAST_WALKING_CHEAPEST(
+            "simplest+least_walking+cheapest",
+            setOf(RouteLabel.SIMPLEST, RouteLabel.LEAST_WALKING, RouteLabel.CHEAPEST),
+        ),
+        FASTEST_SIMPLEST_LEAST_WALKING_CHEAPEST(
+            "fastest+simplest+least_walking+cheapest",
+            setOf(RouteLabel.FASTEST, RouteLabel.SIMPLEST, RouteLabel.LEAST_WALKING, RouteLabel.CHEAPEST),
+        ),
         OTHER("other"),
         UNLABELED("unlabeled"),
         UNKNOWN("unknown");
@@ -234,20 +254,9 @@ sealed class UsageEvent(val name: String, val params: Map<String, String>) {
              */
             @WorkerThread
             fun of(header: List<RouteLabel>, firstHeader: List<RouteLabel>): RouteChoice {
-                val fastest = RouteLabel.FASTEST in header
-                val simplest = RouteLabel.SIMPLEST in header
-                val leastWalking = RouteLabel.LEAST_WALKING in header
-                return when {
-                    fastest && simplest && leastWalking -> FASTEST_SIMPLEST_LEAST_WALKING
-                    fastest && simplest -> FASTEST_SIMPLEST
-                    fastest && leastWalking -> FASTEST_LEAST_WALKING
-                    simplest && leastWalking -> SIMPLEST_LEAST_WALKING
-                    fastest -> FASTEST
-                    simplest -> SIMPLEST
-                    leastWalking -> LEAST_WALKING
-                    firstHeader.isNotEmpty() -> OTHER
-                    else -> UNLABELED
-                }
+                val labels = header.toSet() - RouteLabel.OTHER
+                return entries.firstOrNull { it.labels.isNotEmpty() && it.labels == labels }
+                    ?: if (firstHeader.isNotEmpty()) OTHER else UNLABELED
             }
         }
     }

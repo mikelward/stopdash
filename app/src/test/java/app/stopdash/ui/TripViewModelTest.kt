@@ -3422,6 +3422,29 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `the route costing least is timed past the cap`() {
+        // Six tube routes at a tube fare fill the cap; the bus the whole way, arriving last, costs a bus fare.
+        val tubes = (0 until TripViewModel.MAX_ROUTES).map { i -> TripRoute(listOf(leg("line$i", "A", "C", 5, 20L + i)), TripFare(290)) }
+        val bus = TripRoute(listOf(leg("43", "Q", "C", 3, 45).copy(mode = "bus")), TripFare(175))
+        val best = TripViewModel.bestOf(tubes + bus)
+        assertTrue(bus in best)
+        assertEquals(TripViewModel.MAX_ROUTES + 1, best.size)
+        // Of two at the bus fare, the sooner only.
+        val laterBus = TripRoute(listOf(leg("134", "Q", "C", 3, 50).copy(mode = "bus")), TripFare(175))
+        val both = TripViewModel.bestOf(tubes + laterBus + bus)
+        assertTrue(bus in both)
+        assertFalse(laterBus in both)
+        // One route more at most: none past the cap when the cheapest is already among the soonest...
+        val cheapTube = TripRoute(listOf(leg("line9", "A", "C", 5, 15)), TripFare(175))
+        assertEquals(TripViewModel.MAX_ROUTES, TripViewModel.bestOf(tubes + cheapTube + bus).size)
+        // ...and none where every fare is alike, or no route is priced.
+        val sameFare = TripRoute(listOf(leg("43", "Q", "C", 3, 45).copy(mode = "bus")), TripFare(290))
+        assertFalse(sameFare in TripViewModel.bestOf(tubes + sameFare))
+        val unpriced = tubes.map { it.copy(fare = null) }
+        assertFalse(sameFare in TripViewModel.bestOf(unpriced + sameFare))
+    }
+
+    @Test
     fun `the merged plan keeps the routes arriving soonest, with their variants`() {
         val routes = (0 until TripViewModel.MAX_ROUTES + 2).map { i ->
             TripRoute(listOf(leg("line$i", "A", "C", 5, 20L + i)))

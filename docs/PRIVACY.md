@@ -348,7 +348,7 @@ What it sends:
   "10–25 m" and "1–3 s"), and how many stops of each kind were near you, in ranges (0, 1, 2–3, 4 or
   more); for a trip, how planning it went (how many routes, in ranges, or why it failed), whether it
   started from where you are or a station and went to a station or a place, and the kind of route
-  you opened or started ("Fastest", "Simplest", "Least walking" or another, and how many changes);
+  you opened or started ("Fastest", "Simplest", "Least walking", "Cheapest" or another, and how many changes);
   and each setting you change, with its new value ("Slow", "Step-free to the train", "Buses off"
   and so on). Never which stop, line, journey or place, nor what you searched for: avoiding,
   hiding or adding a line counts only that you did. What's counted as the app starts, before it

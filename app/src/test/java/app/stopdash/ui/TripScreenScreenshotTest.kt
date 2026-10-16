@@ -1236,6 +1236,22 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun trip_routes_cheapest() {
+        // Every card priced and the fares differing: the one costing least says so in its header, beside
+        // whatever else it is. With a card unpriced ([trip_routes_with_fares]) none is called cheapest.
+        val priced = planned.copy(
+            routes = listOf(
+                viaStratford.copy(fare = TripFare(350)),
+                viaCanadaWater.copy(fare = TripFare(310)),
+                viaWhitechapel.copy(fare = TripFare(280)),
+            ),
+        )
+        show(priced)
+        composeRule.onAllNodesWithText("Cheapest", substring = true).assertCountEquals(1)
+        captureSnapshot("trip-routes-cheapest.png")
+    }
+
+    @Test
     fun an_open_route_with_no_fare_says_none() {
         show(planned)
         composeRule.onNodeWithText("27 min · ~08:29").performClick()

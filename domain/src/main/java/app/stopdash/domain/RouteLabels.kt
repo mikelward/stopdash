@@ -4,11 +4,12 @@ import androidx.annotation.WorkerThread
 
 /**
  * A header over a card in a trip's routes (maintainer, 2026-09-30): which route gets there soonest,
- * which takes the fewest rides and which walks least (maintainer, 2026-10-03), so a rider choosing
- * between them sees the trade at a glance rather than working it out from the pills. **Other** heads
- * the routes that are none of these. A card can carry several, read in this order.
+ * which takes the fewest rides, which walks least (maintainer, 2026-10-03) and which costs least
+ * (maintainer, 2026-10-16), so a rider choosing between them sees the trade at a glance rather than
+ * working it out from the pills. **Other** heads the routes that are none of these. A card can carry
+ * several, read in this order.
  */
-enum class RouteLabel { FASTEST, SIMPLEST, LEAST_WALKING, OTHER }
+enum class RouteLabel { FASTEST, SIMPLEST, LEAST_WALKING, CHEAPEST, OTHER }
 
 /** A card of a trip's routes by its [index] in the list ranked best first, and the [header] over it (empty for none). */
 data class HeadedCard(val index: Int, val header: List<RouteLabel>)
@@ -26,6 +27,9 @@ data class HeadedCard(val index: Int, val header: List<RouteLabel>)
  *   tie, the first card included (maintainer, 2026-10-04: "Fastest · Least walking" on the top card
  *   when it walks as little as any), and only when the cards don't all walk as much: otherwise none
  *   walks less.
+ * - **Cheapest** is every card at the lowest fare, all of them where several tie, the first card
+ *   included, and only when every card has a fare and they don't all cost the same: a card with no
+ *   fare could be the cheapest, and with every fare alike none costs less.
  * - A card that is several says so once, in that order.
  */
 @WorkerThread
@@ -38,13 +42,19 @@ fun routeLabels(cards: List<TripTiming.Estimate>): List<List<RouteLabel>> {
     val walking = cards.map { it.route.walking }
     val least = walking.min()
     if (least < walking.max()) walking.forEachIndexed { i, walk -> if (walk == least) labels[i] += RouteLabel.LEAST_WALKING }
+    val fares = cards.map { it.route.fare?.pence }
+    if (fares.none { it == null }) {
+        val pence = fares.filterNotNull()
+        val lowest = pence.min()
+        if (lowest < pence.max()) pence.forEachIndexed { i, fare -> if (fare == lowest) labels[i] += RouteLabel.CHEAPEST }
+    }
     return labels
 }
 
 /**
  * A trip's cards in the order shown ([cards] best first, as for [routeLabels]), each with the header
- * over it: the labeled cards first, Fastest then Simplest then Least walking (by each card's first
- * label), then the rest in their own order under a single **Other** header (maintainer, 2026-09-30).
+ * over it: the labeled cards first, Fastest then Simplest then Least walking then Cheapest (by each
+ * card's first label), then the rest in their own order under a single **Other** header (maintainer, 2026-09-30).
  * So Simplest moves up to sit beside Fastest, and the unlabeled cards read as one group rather than
  * being split around it. With no card labeled, nothing is "other" than anything, so the cards keep
  * their order under no header at all.

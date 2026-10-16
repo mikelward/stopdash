@@ -517,6 +517,32 @@ class TripTimingTest {
     }
 
     @Test
+    fun `the route costing least is kept though it changes more and arrives later`() {
+        fun estimate(route: TripRoute, arrival: Long) = TripTiming.Estimate(route, TripTiming.Basis.LIVE, at(arrival), emptyList(), false, now)
+        // The train straight there at a train fare, or two buses on one bus fare: a change more, later,
+        // and walking as much.
+        val train = estimate(TripRoute(listOf(walk("X", "A", 0, 5), leg("blue", "A", "C", departs = 6, arrives = 30)), TripFare(290)), 30)
+        fun buses(pence: Int?, arrives: Long) = estimate(
+            TripRoute(
+                listOf(walk("X", "Q", 0, 5), leg("43", "Q", "B", departs = 6, arrives = 20, mode = "bus"), leg("134", "B", "C", departs = 22, arrives = arrives, mode = "bus")),
+                pence?.let { TripFare(it) },
+            ),
+            arrives,
+        )
+        val cheaper = buses(175, 40)
+        assertEquals(listOf(train, cheaper), TripTiming.withoutSlowerChanges(listOf(train, cheaper)))
+        // Costing as much, or unpriced, it's left off as before.
+        assertEquals(listOf(train), TripTiming.withoutSlowerChanges(listOf(train, buses(290, 40))))
+        assertEquals(listOf(train), TripTiming.withoutSlowerChanges(listOf(train, buses(null, 40))))
+        // Of two at the bus fare, the first only: one card more at most.
+        val later = buses(175, 45)
+        assertEquals(listOf(train, cheaper), TripTiming.withoutSlowerChanges(listOf(train, cheaper, later)))
+        // Against an unpriced first route nothing is known to cost less, so nothing is kept for it.
+        val unpricedTrain = estimate(train.route.copy(fare = null), 30)
+        assertEquals(listOf(unpricedTrain), TripTiming.withoutSlowerChanges(listOf(unpricedTrain, cheaper)))
+    }
+
+    @Test
     fun `a route found via a stop towards the destination is kept whatever it saves`() {
         fun estimate(route: TripRoute, arrival: Long) = TripTiming.Estimate(route, TripTiming.Basis.LIVE, at(arrival), emptyList(), false, now)
         val walkThere = estimate(TripRoute(listOf(walk("X", "A", 0, 12), leg("blue", "A", "C", departs = 14, arrives = 30))), 30)
