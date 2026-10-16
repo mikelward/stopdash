@@ -54,7 +54,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
-import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
@@ -127,7 +126,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -2859,7 +2857,6 @@ private fun DepartureList(
                             card.toForms,
                             // First on screen, or first under the "Faraway favorites" label: no break.
                             firstOnScreen = index == 0,
-                            onSwap = { onFlipJourney(card.journey) },
                             onOpen = onOpen,
                             distanceLabel = distanceLabel,
                         )
@@ -4694,11 +4691,11 @@ private fun RideStopHeader(
 }
 
 /**
- * A journey card's heading, "Highgate ➔ King's Cross St Pancras ★": the direction shown, styled like
- * a stop group header (same style and group-break space) so the list reads as one. A tap on the
- * heading opens the journey's own view ([onOpen], null leaves it inert — as in that view); the ⇄
- * button at the end swaps the direction in place ([onSwap]), for planning the way back without
- * leaving the list (maintainer, 2026-09-24).
+ * A journey card's heading, "Highgate ➔ King's Cross St Pancras ★": the direction shown, styled like a
+ * stop group header (same style and group-break space) so the list reads as one. A tap anywhere on it opens
+ * the journey's own view ([onOpen], null leaves it inert — as in that view), where Swap direction is:
+ * the heading carries no button of its own (maintainer, 2026-10-16; a ⇄ at its end was tried from
+ * 2026-09-24, a 24dp target with no 48dp minimum).
  */
 @Composable
 private fun JourneyHeader(
@@ -4707,70 +4704,50 @@ private fun JourneyHeader(
     fromForms: List<String>,
     toForms: List<String>,
     firstOnScreen: Boolean,
-    // Null hides the ⇄ (a far journey's collapsed heading: nothing below it to swap).
-    onSwap: (() -> Unit)?,
     onOpen: (() -> Unit)? = null,
     // How far away a collapsed far journey is ("2.4 km"), dimmed after the star; null for none.
     distanceLabel: String? = null,
 ) {
     val openLabel = stringResource(R.string.action_open_journey)
-    val swapLabel = stringResource(R.string.action_flip_journey)
     val title = stringResource(R.string.journey_title_spoken, journey.from.name, journey.to.name)
     val spoken = distanceLabel?.let { "$title, $it" } ?: title
+    val style = groupHeaderStyle()
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 4.dp, end = 4.dp, top = if (firstOnScreen) 0.dp else 16.dp),
+            // The tap target spans the group-break space above the text too, as a stop header's does.
+            .then(if (onOpen != null) Modifier.clickable(onClickLabel = openLabel, onClick = onOpen) else Modifier)
+            .padding(start = 4.dp, end = 4.dp, top = if (firstOnScreen) 0.dp else 16.dp)
+            // Read "Highgate to King's Cross", not the arrow's name.
+            .semantics(mergeDescendants = true) { contentDescription = spoken },
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier
-                .weight(1f)
-                .then(if (onOpen != null) Modifier.clickable(onClickLabel = openLabel, onClick = onOpen) else Modifier)
-                // Read "Highgate to King's Cross", not the arrow's name.
-                .semantics(mergeDescendants = true) { contentDescription = spoken },
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // Both ends shorten evenly, so a long name at one never pushes the other off the line.
-            RideTitle(
-                from = fromForms,
-                to = toForms,
-                style = groupHeaderStyle(),
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f, fill = false),
+        // Both ends shorten evenly, so a long name at one never pushes the other off the line; the star
+        // and the distance are measured first, so they always show.
+        RideTitle(
+            from = fromForms,
+            to = toForms,
+            style = style,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        // The gold star marks a favorite journey, telling its heading apart from a bus place's
+        // "Place ➔ Destination" header (maintainer, 2026-09-24). Decorative: the card is a journey
+        // by construction, so it adds nothing to the spoken label.
+        Icon(
+            Icons.Filled.Star,
+            contentDescription = null,
+            tint = LocalStarredBorderColor.current,
+            modifier = Modifier.padding(start = 4.dp).size(16.dp),
+        )
+        if (distanceLabel != null) {
+            Text(
+                text = " ($distanceLabel)",
+                style = style,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                softWrap = false,
             )
-            // The gold star marks a favorite journey, telling its heading apart from a bus place's
-            // "Place ➔ Destination" header (maintainer, 2026-09-24). Decorative: the card is a journey
-            // by construction, so it adds nothing to the spoken label.
-            Icon(
-                Icons.Filled.Star,
-                contentDescription = null,
-                tint = LocalStarredBorderColor.current,
-                modifier = Modifier.padding(start = 4.dp).size(16.dp),
-            )
-            if (distanceLabel != null) {
-                Text(
-                    text = " ($distanceLabel)",
-                    style = groupHeaderStyle(),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    softWrap = false,
-                )
-            }
-        }
-        if (onSwap == null) return@Row
-        // Compact on purpose (maintainer, 2026-09-24): a 24dp target with no 48dp minimum, so the
-        // heading keeps a header's height while the swap control is still being tried out. The
-        // journey's own view carries a full-size Swap direction button.
-        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
-            IconButton(onClick = onSwap, modifier = Modifier.size(24.dp)) {
-                Icon(
-                    SwapIcon,
-                    contentDescription = swapLabel,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
         }
     }
 }
