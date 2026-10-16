@@ -248,9 +248,9 @@ sealed class UsageEvent(val name: String, val params: Map<String, String>) {
 
         companion object {
             /**
-             * The choice a card's [header] ([HeadedCard.header]) makes, given the list's first card's
-             * ([firstHeader]): labeled cards come first ([headedCards]), so with none heading the first,
-             * none is labeled. Worked out with the cards, never on a tap.
+             * The choice a card's [header] ([HeadedCard.header]) makes, given the first header the list
+             * shows ([firstHeader], empty with no card labeled): a card with none is "other" beside labeled
+             * ones, else unlabeled. Worked out with the cards, never on a tap.
              */
             @WorkerThread
             fun of(header: List<RouteLabel>, firstHeader: List<RouteLabel>): RouteChoice {

@@ -63,6 +63,16 @@ class CardMoveTest {
         assertEquals(again.keys.keys.reversed(), swapped.keys.keys)
     }
 
+    @Test
+    fun a_first_card_that_isnt_fastest_stays_first_and_counts_as_other() {
+        // Two rides arriving in 45 minutes, first, over one ride reading 36: no Fastest, and the simpler
+        // card stays below the one ranked first.
+        val first = card("1", 45).map { it.copy(route = TripRoute(it.route.legs + it.route.legs.single().copy(lineId = "9", fromId = "B1"))) }
+        val listed = listedCards(listOf(first, card("2", 36)), null)
+        assertEquals(listOf(0, 1), listed.order.map { it.index })
+        assertEquals(listOf(app.stopdash.domain.UsageEvent.RouteChoice.OTHER, app.stopdash.domain.UsageEvent.RouteChoice.SIMPLEST), listed.choices)
+    }
+
     // Frame by frame: a single jump of the clock would only start the animation, at its far end.
     private fun halfASlide() = repeat((CARD_MOVE_MILLIS / 2 / 16).toInt()) {
         composeRule.mainClock.advanceTimeByFrame()

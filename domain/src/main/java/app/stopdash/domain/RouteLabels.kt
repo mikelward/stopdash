@@ -1,6 +1,7 @@
 package app.stopdash.domain
 
 import androidx.annotation.WorkerThread
+import java.time.temporal.ChronoUnit
 
 /**
  * A header over a card in a trip's routes (maintainer, 2026-09-30): which route gets there soonest,
@@ -19,8 +20,13 @@ data class HeadedCard(val index: Int, val header: List<RouteLabel>)
  * best first); empty for a card with none.
  *
  * - **Fastest** is the first card, since the list is already ordered by the arrival StopDash can
- *   stand behind: never on a lone card (fastest of one says nothing) nor one whose arrival is
- *   withheld, which can't be called fastest.
+ *   stand behind: never on a lone card (fastest of one says nothing), one whose arrival is withheld,
+ *   which can't be called fastest, nor one a card below gets there before, in an earlier minute
+ *   (maintainer, 2026-10-16): an estimate stays below a live route it may not beat, and the header
+ *   over it would say what the card below plainly contradicts. It's by when each gets there, not the
+ *   minutes it shows from now (maintainer, 2026-10-16: arrival time is what matters), so cards
+ *   arriving in the same minute tie, and midnight or the clock change can't make a later one read
+ *   as sooner.
  * - **Simplest** is the card with the fewest rides, the earliest shown where several tie, and only
  *   when the cards don't all ride the same number of times: otherwise none is simpler.
  * - **Least walking** is every card walking least by the Planner's times, all of them where several
@@ -38,7 +44,10 @@ data class HeadedCard(val index: Int, val header: List<RouteLabel>)
 fun routeLabels(cards: List<TripTiming.Estimate>): List<List<RouteLabel>> {
     val labels = List(cards.size) { mutableListOf<RouteLabel>() }
     if (cards.size < 2) return labels
-    if (cards[0].arrival != null) labels[0] += RouteLabel.FASTEST
+    val first = cards[0].arrival?.truncatedTo(ChronoUnit.MINUTES)
+    if (first != null && cards.drop(1).none { it.arrival?.truncatedTo(ChronoUnit.MINUTES)?.isBefore(first) == true }) {
+        labels[0] += RouteLabel.FASTEST
+    }
     val rides = cards.map { it.route.rides.size }
     rides.indexOf(rides.min()).takeIf { rides.min() < rides.max() }?.let { labels[it] += RouteLabel.SIMPLEST }
     val walking = cards.map { it.route.walking }
@@ -61,12 +70,18 @@ fun routeLabels(cards: List<TripTiming.Estimate>): List<List<RouteLabel>> {
  * So Simplest moves up to sit beside Fastest, and the unlabeled cards read as one group rather than
  * being split around it. With no card labeled, nothing is "other" than anything, so the cards keep
  * their order under no header at all.
+ *
+ * The first card stays first whenever its arrival is known, under whatever labels it has, none
+ * included: it's the route the list ranked best, and it loses Fastest only to a sooner card ranked
+ * below it for want of a live train, which a label must not lift over it (Codex, #899). Only a first
+ * card whose arrival is withheld gives up its place to the labeled ones.
  */
 @WorkerThread
 fun headedCards(cards: List<TripTiming.Estimate>): List<HeadedCard> {
     val labels = routeLabels(cards)
     if (labels.all { it.isEmpty() }) return cards.indices.map { HeadedCard(it, emptyList()) }
-    val (labeled, rest) = labels.indices.partition { labels[it].isNotEmpty() }
-    return labeled.sortedBy { labels[it].first() }.map { HeadedCard(it, labels[it]) } +
+    val lead = if (cards.first().arrival != null) listOf(HeadedCard(0, labels[0])) else emptyList()
+    val (labeled, rest) = labels.indices.filter { index -> lead.none { it.index == index } }.partition { labels[it].isNotEmpty() }
+    return lead + labeled.sortedBy { labels[it].first() }.map { HeadedCard(it, labels[it]) } +
         rest.mapIndexed { i, index -> HeadedCard(index, if (i == 0) listOf(RouteLabel.OTHER) else emptyList()) }
 }
