@@ -3120,9 +3120,8 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithText("Manor House", substring = true).assertExists()
         captureSnapshot("main-journey-card.png")
 
-        // The ⇄ at the end of the heading swaps the direction in place.
-        composeRule.onNodeWithContentDescription("Swap direction").performClick()
-        assertEquals(journey, flipped)
+        // The heading has no swap button: that is in the journey's own view.
+        composeRule.onAllNodesWithContentDescription("Swap direction").assertCountEquals(0)
 
         // A tap on the heading opens the journey's own view: its trains headed by where they board,
         // under Swap and Unstar, with the near-me list gone.
