@@ -2156,6 +2156,21 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               where the plan priced its buses. A price given only to an identical copy from another call is
               also lost, since the trip keeps just the new routes from those calls. The fix is one pass where
               the trip publishes its plan; held back as more coupling than these rarer cases are worth.
+        - [ ] **Price a Thameslink or Great Northern ride the Planner left unpriced** (maintainer,
+              2026-10-16): the Planner can leave a route riding one blank even where the ride stays inside
+              the pay as you go zones, so its card shows no fare and can't be called cheapest unless a bus
+              fare beside it is. Either look the ride up (TfL's `StopPoint/{from}/FareTo/{to}`, one request
+              per ride, cached; free) or work it out from the two stations' zones, which StopDash already
+              reads for a station's page, against TfL's pay as you go fares for National Rail, peak or
+              off-peak by the time planned. Only where both stations are inside the zones; a ride leaving
+              them stays blank. A worked-out fare is StopDash's own price, not the Planner's, so SPEC
+              *Fare* ("no fare rather than a guess") changes with it, and a fare table changes every March.
+        - [ ] **Keep the bus fare's route past the cap beside unpriced trains** (deferred from #906, Codex):
+              `TripViewModel.bestOf` keeps the cheapest priced route past the soonest few only where another
+              priced route costs more, so a bus route that is the plan's only priced one, beside unpriced
+              trains, can still be cut before its *Cheapest* card shows. `bestOf` runs in composition
+              (`TripScreen`, and the view model's handlers called from it), so the extra pass over its routes
+              belongs with moving that work to the worker path (AGENTS.md *Main thread*), not before it.
         - [ ] Needs a device check: the arrival and the fare at a large font, where the fare drops below
               the arrival; and the walk row on a card whose first stop is under a minute away.
         - [ ] **A one-bus card came up unpriced** (report, 2026-10-15): the only card from the fewest
