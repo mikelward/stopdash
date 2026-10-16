@@ -2711,9 +2711,13 @@ class MainActivity : ComponentActivity() {
                                 var widgetFollows by remember { mutableStateOf<Boolean?>(null) }
                                 // How much location is allowed while in use, for the Location row: read with it.
                                 var locationAccessNow by remember { mutableStateOf<LocationAccess?>(null) }
+                                // Whether StopDash's battery use is Unrestricted, for "Keep updating when idle"
+                                // (SPEC D5): changed only in Android's settings, so read with them.
+                                var keepUpdatingWhenIdle by remember { mutableStateOf<Boolean?>(null) }
                                 val followsScope = rememberCoroutineScope()
                                 val readFollows: () -> Unit = {
                                     followsScope.launch {
+                                        keepUpdatingWhenIdle = withContext(Dispatchers.IO) { batteryUnrestrictedOrNull(applicationContext) }
                                         widgetFollows = withContext(Dispatchers.IO) { JourneyAlertLocation.allowedAllTheTime(applicationContext) }
                                         locationAccessNow = locationAccess({ ContextCompat.checkSelfPermission(applicationContext, it) == PackageManager.PERMISSION_GRANTED })
                                     }
@@ -2775,6 +2779,10 @@ class MainActivity : ComponentActivity() {
                                         }
                                     },
                                     onDismissLiveWidgetRefreshError = { liveWidgetRefreshFailed = false },
+                                    // Set in Android's settings for the app (Battery → Unrestricted), which StopDash
+                                    // opens; the switch reads it again on return.
+                                    keepUpdatingWhenIdle = keepUpdatingWhenIdle,
+                                    onKeepUpdatingWhenIdleClick = ::openAppSettings,
                                     // The paste field. Applied to memory at once (next refresh uses it) and
                                     // persisted in the background; a blank clears it back to keyless (SPEC D7).
                                     // Disabled until the stored key has actually been read, so the field can't be

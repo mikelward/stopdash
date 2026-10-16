@@ -871,6 +871,13 @@
     <string name="favorite_place_start_description">Start from %1$s</string>
     <string name="settings_title">Settings</string>
     <string name="settings_live_widget_refresh_title">Automatically update widget</string>
+    <!-- TODO: translate -->
+    <!-- Under "Automatically update widget": on while StopDash's battery use is Unrestricted in
+         Android's settings, which a tap opens, so the minute updates keep running while the device
+         sits unused, a wall display or a phone in a pocket (maintainer, 2026-10-16). -->
+    <string name="settings_keep_updating_title" tools:ignore="MissingTranslation">Keep updating when idle</string>
+    <!-- TODO: translate -->
+    <string name="settings_keep_updating_summary" tools:ignore="MissingTranslation">Uses more battery</string>
     <string name="settings_live_widget_refresh_summary">Refreshes the home-screen widget about once a minute in the background. Uses more battery and data.</string>
     <!-- Settings' Location row: how much location StopDash may use, from Android's grant. Tapping it
          asks for precise location, or opens Android's location settings for StopDash. -->

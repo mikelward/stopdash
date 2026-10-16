@@ -3954,7 +3954,9 @@ default: turning it off stops a saved place being recognized by its Wi-Fi and de
 learned. Then "Automatic watch and widget location" (D1), which reads on
 while location is allowed all the time: turning it on opens the disclosure and Android's prompt,
 and turning it off opens Android's settings for the app, where the grant is taken away. Last is the
-opt-in "Automatically update widget" toggle (D5), the widget's update about once a minute. A rider
+opt-in "Automatically update widget" toggle (D5), the widget's update about once a minute, and
+under it, while it's on, "Keep updating when idle": on while StopDash's battery use is
+Unrestricted in Android's settings, which tapping it opens (D5). A rider
 with a StopDash widget placed and automatic updates off is pointed at these rows by a card atop the
 near-me list, "Automatically update widget?": **Settings** opens Settings scrolled to its widget
 rows, and **Dismiss** puts the card away for good. It also goes once automatic updates are on, and it
@@ -4915,6 +4917,17 @@ Mirrors the sibling fleet:
     the screen off — would need a foreground service, its persistent notification, and the
     Play foreground-service-type policy that carries; that is the deferred follow-up
     (mechanism A, *Widget follow-ups* in `TODO.md`).
+  - **Keep updating when idle (maintainer, 2026-10-16).** Android holds a deferrable
+    chain for hours while a device sits unused, a plugged-in device included where its battery
+    protection pauses charging, unless the app's battery use is Unrestricted. A wall display
+    that nobody opens the app on, and a phone kept in a pocket with a watch on the wrist, both
+    want the minute updates to go on; a phone that is just carried doesn't want the battery
+    cost. So it is the rider's choice, offered under the toggle and only while the toggle is on:
+    a switch that shows whether StopDash's battery use is Unrestricted and, tapped, opens
+    Android's settings for the app, where it is changed. StopDash doesn't ask for the
+    permission that would let it show Android's one-tap exemption dialog: Play allows that
+    only where an app's core function can't work without it, and this is an option, not the
+    core.
 - **D6 — The app refreshes on open, on foreground return, on pull-to-refresh, and
   auto-refreshes once a minute while the screen is on** (paused when backgrounded). The
   intended targets — home users and an always-on kiosk display — leave the screen open,
