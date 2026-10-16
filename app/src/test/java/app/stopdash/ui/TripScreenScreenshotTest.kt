@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Typography
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
@@ -63,6 +64,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -2306,6 +2309,26 @@ class TripScreenScreenshotTest {
         val arrival = fontSizeOf(composeRule.onAllNodes(hasTestTag("tripArrival"), useUnmergedTree = true).onFirst())
         val times = fontSizeOf(composeRule.onAllNodes(hasTestTag("firstRideTimes"), useUnmergedTree = true).onFirst())
         assertEquals(times, arrival)
+    }
+
+    // A card's label is as large as the stops on the card under it (maintainer, 2026-10-16: a size
+    // smaller, it read as small beside the main screen's headings), still bold.
+    @Test
+    fun a_route_cards_label_is_as_large_as_its_stops() {
+        show(planned)
+        val label = textLayoutOf(composeRule.onAllNodesWithTag("routeLabel", useUnmergedTree = true).onFirst()).layoutInput.style
+        val stop = textLayoutOf(composeRule.onAllNodesWithTag("rideStopName", useUnmergedTree = true).onFirst()).layoutInput.style
+        assertEquals(stop.fontSize, label.fontSize)
+        assertEquals(FontWeight.Bold, label.fontWeight)
+    }
+
+    private fun textLayoutOf(node: SemanticsNodeInteraction): TextLayoutResult {
+        // A name with a shorter form is measured in a box around its text ([ShortenedText]): its child.
+        val text = node.fetchSemanticsNode().takeIf { SemanticsActions.GetTextLayoutResult in it.config }
+            ?: node.onChild().fetchSemanticsNode()
+        val results = mutableListOf<TextLayoutResult>()
+        text.config[SemanticsActions.GetTextLayoutResult].action!!(results)
+        return results.single()
     }
 
     @Test
@@ -6090,9 +6113,36 @@ class TripScreenScreenshotTest {
         composeRule.onNodeWithText("09:07–09:39 · 32 min").assertIsDisplayed()
         composeRule.onNodeWithText("£3.10").assertIsDisplayed()
         composeRule.onAllNodesWithText("09:21").assertCountEquals(1)
+        // Its rows as large as the trip for now's (maintainer, 2026-10-16: a size smaller, they read as
+        // small beside them), at their own weight.
+        val row = Typography().bodyLarge
+        for (text in listOf("09:21", "Whitechapel")) {
+            val style = textLayoutOf(composeRule.onNodeWithText(text, useUnmergedTree = true)).layoutInput.style
+            assertEquals(text, row.fontSize, style.fontSize)
+            assertEquals(text, row.fontWeight, style.fontWeight)
+        }
         captureSnapshot("trip-later.png")
         composeRule.onNodeWithText("09:05–09:25 · 20 min").performClick()
         assertEquals(routes[0], opened)
+    }
+
+    @Test
+    fun a_later_trips_walk_is_as_large_as_its_rides() {
+        // A walk between rides is as large as the ride rows beside it (maintainer, 2026-10-16), at its own weight.
+        val walkFirst = TripRoute(
+            listOf(
+                TripLeg(
+                    mode = "walking", lineId = "", lineName = "", fromId = "", fromName = "Here",
+                    toId = whitechapelXr.first, toName = whitechapelXr.second, departure = at(3), arrival = at(8),
+                ),
+                leg("elizabeth-line", "elizabeth", "Elizabeth line", whitechapelXr, canaryWharfXr, 19, 23, 2),
+            ),
+        )
+        showLater(mutableStateOf(later(listOf(dayOn(walkFirst)))))
+        val row = Typography().bodyLarge
+        val walk = textLayoutOf(composeRule.onNodeWithText("Walk to Whitechapel", substring = true, useUnmergedTree = true)).layoutInput.style
+        assertEquals(row.fontSize, walk.fontSize)
+        assertEquals(row.fontWeight, walk.fontWeight)
     }
 
     @Test
