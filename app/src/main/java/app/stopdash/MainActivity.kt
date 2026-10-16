@@ -4178,7 +4178,8 @@ class MainActivity : ComponentActivity() {
     /**
      * The Via… search (SPEC *Going via a stop*): stations and stops, found on the device as the To… search
      * finds them, ranked from where the trip starts ([rankFrom]); no places, as a trip goes via a stop. A pick
-     * isn't added to the rider's recent destinations: it's a way there, not somewhere they went.
+     * is remembered under Via…'s own Recent, apart from From…'s and To…'s: a way there, not somewhere the
+     * rider went.
      */
     @Composable
     private fun ViaSearch(rankFrom: Coordinates?, onPick: (StationMatch) -> Unit, onBack: () -> Unit) {
@@ -4188,14 +4189,17 @@ class MainActivity : ComponentActivity() {
             key = "via-search",
             factory = viewModelFactory {
                 initializer {
+                    // Its own recent list, read and recorded alike, as From…'s and To…'s are.
+                    val recents = recentSearches(appContext).store(RecentSearches.Kind.VIA)
                     StationSearchViewModel(
                         createSavedStateHandle(),
                         loadIndex = { StationIndexStore.load(appContext) },
                         loadBusStops = { BusStopIndexStore.load(appContext) },
-                        // The rider's own stops and recent destinations, read as the To… search reads them.
-                        loadYours = { loadYourStops(appContext, recentSearches(appContext).store(RecentSearches.Kind.TO)) },
+                        loadYours = { loadYourStops(appContext, recents) },
                         searchPlaces = false,
                         warn = ::logDepartureWarning,
+                        recordOpen = { recents.add(it) },
+                        recordRemove = { withContext(Dispatchers.IO) { recents.remove(it) } },
                     )
                 }
             },
@@ -4206,8 +4210,12 @@ class MainActivity : ComponentActivity() {
         StationSearchScreen(
             state = state,
             onQueryChange = viaSearch::onQueryChange,
+            onAskRemoveRecent = viaSearch::askRemoveRecent,
+            onCancelRemoveRecent = viaSearch::cancelRemoveRecent,
+            onRemoveRecent = viaSearch::onRemoveRecent,
             positionOf = viaSearch::positionOf,
             onOpenStation = { match ->
+                viaSearch.onOpened(match)
                 viaSearch.clear()
                 onPick(match)
             },
@@ -7118,7 +7126,7 @@ internal fun nearbyStopsCache(context: Context): NearbyStopsCache = synchronized
 }
 
 /**
- * Each station search's recent picks ([RecentSearches]: *From…*'s and *To…*'s apart), process-wide,
+ * Each station search's recent picks ([RecentSearches]: *From…*'s, *To…*'s and *Via…*'s apart), process-wide,
  * backed by files in the app's no-backup directory, so each list survives a restart but never
  * leaves the device.
  */
