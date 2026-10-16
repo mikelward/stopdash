@@ -1238,7 +1238,8 @@ class TripScreenScreenshotTest {
     @Test
     fun trip_routes_cheapest() {
         // Every card priced and the fares differing: the one costing least says so in its header, beside
-        // whatever else it is. With a card unpriced ([trip_routes_with_fares]) none is called cheapest.
+        // whatever else it is. With a card unpriced beside train fares ([trip_routes_with_fares]) none is
+        // called cheapest, as it could cost less; beside a bus fare one riding a train can't ([routeLabels]).
         val priced = planned.copy(
             routes = listOf(
                 viaStratford.copy(fare = TripFare(350)),

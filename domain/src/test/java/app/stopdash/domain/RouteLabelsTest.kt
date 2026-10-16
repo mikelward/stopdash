@@ -33,6 +33,26 @@ class RouteLabelsTest {
         )
     }
 
+    private fun leg(mode: String, line: String, from: String, to: String) = TripLeg(
+        mode = mode, lineId = line, lineName = line, fromId = from, fromName = from, toId = to, toName = to,
+        departure = t, arrival = t,
+    )
+
+    // A card's best route riding [legs] (`490…` ids for London bus stops), arriving [inMinutes] from now, costing [pence].
+    private fun card(inMinutes: Long, vararg legs: TripLeg, pence: Int? = null) = TripTiming.Estimate(
+        route = TripRoute(legs.toList(), pence?.let { TripFare(it) }),
+        basis = TripTiming.Basis.LIVE,
+        arrival = t.plusSeconds(inMinutes * 60),
+        legs = emptyList(),
+        blocked = false,
+        start = t,
+    )
+
+    private val bus = leg("bus", "1", "490000001A", "490000002B")
+    private val secondBus = leg("bus", "2", "490000002B", "490000003C")
+    private val train = leg("national-rail", "rail", "910GAAAAAAA", "910GBBBBBBB")
+    private val tube = leg("tube", "tube", "940GZZAAAAA", "940GZZBBBBB")
+
     private val none = emptyList<RouteLabel>()
     private val fastest = listOf(RouteLabel.FASTEST)
     private val simplest = listOf(RouteLabel.SIMPLEST)
@@ -222,6 +242,45 @@ class RouteLabelsTest {
         assertEquals(listOf(fastest, none), routeLabels(listOf(card(2, 30), card(2, 34))))
         // A lone card, however cheap, isn't called cheapest.
         assertEquals(listOf(none), routeLabels(listOf(card(1, 30, pence = 175))))
+    }
+
+    @Test
+    fun `the bus fare is cheapest beside unpriced cards that ride a train`() {
+        // The report's shape (2026-10-16): the bus to the tube priced, the bus to a Thameslink train
+        // twice unpriced, and buses the whole way on one bus fare. Riding a train costs more than any
+        // bus fare, so the buses are cheapest though two cards show no fare.
+        assertEquals(
+            listOf(fastest, none, none, cheapest),
+            routeLabels(
+                listOf(
+                    card(47, bus, tube, pence = 485),
+                    card(55, bus, train),
+                    card(65, bus, train),
+                    card(67, bus, secondBus, pence = 175),
+                ),
+            ),
+        )
+        // With no other card priced, the bus fare still costs less than the train.
+        assertEquals(
+            listOf(listOf(RouteLabel.FASTEST, RouteLabel.CHEAPEST), none),
+            routeLabels(listOf(card(30, bus, pence = 175), card(40, train))),
+        )
+    }
+
+    @Test
+    fun `an unpriced card holds cheapest back unless it costs more than a bus fare`() {
+        // The lowest fare is a train's, which an unpriced train could undercut.
+        assertEquals(listOf(fastest, none, none), routeLabels(listOf(card(30, tube, pence = 290), card(34, train), card(40, tube, pence = 340))))
+        // An unpriced bus the whole way could cost the same bus fare; a tram costs a bus fare too, a
+        // replacement bus perhaps nothing, and a walk nothing at all.
+        for (unpriced in listOf(secondBus, leg("tram", "tram", "940GZZCRAAA", "940GZZCRBBB"), leg("replacement-bus", "", "490000001A", "490000002B"))) {
+            assertEquals(listOf(fastest, none, none), routeLabels(listOf(card(30, tube, pence = 485), card(34, unpriced), card(40, bus, pence = 175))))
+        }
+        val walkOnly = routeLabels(listOf(card(30, tube, pence = 485), card(34, walk("X", "Y", 30)), card(40, bus, pence = 175)))
+        assertEquals(listOf(false, false, false), walkOnly.map { RouteLabel.CHEAPEST in it })
+        // A bus beyond London may charge its own fare, so it isn't the bus fare a train costs more than.
+        val beyond = leg("bus", "1", "490000001A", "210000000X")
+        assertEquals(listOf(fastest, none, none), routeLabels(listOf(card(30, tube, pence = 485), card(34, train), card(40, beyond, pence = 175))))
     }
 
     @Test

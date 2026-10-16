@@ -28,8 +28,10 @@ data class HeadedCard(val index: Int, val header: List<RouteLabel>)
  *   when it walks as little as any), and only when the cards don't all walk as much: otherwise none
  *   walks less.
  * - **Cheapest** is every card at the lowest fare, all of them where several tie, the first card
- *   included, and only when every card has a fare and they don't all cost the same: a card with no
- *   fare could be the cheapest, and with every fare alike none costs less.
+ *   included, and only when some card costs more: with every fare alike none costs less. A card with
+ *   no fare could be the cheapest, so it holds the header back, unless the lowest fare is one bus fare
+ *   and that card rides a train ([BusFare.costsMoreThanABus]; maintainer, 2026-10-16: the bus the
+ *   whole way beside an unpriced Thameslink), which costs more for sure.
  * - A card that is several says so once, in that order.
  */
 @WorkerThread
@@ -43,11 +45,12 @@ fun routeLabels(cards: List<TripTiming.Estimate>): List<List<RouteLabel>> {
     val least = walking.min()
     if (least < walking.max()) walking.forEachIndexed { i, walk -> if (walk == least) labels[i] += RouteLabel.LEAST_WALKING }
     val fares = cards.map { it.route.fare?.pence }
-    if (fares.none { it == null }) {
-        val pence = fares.filterNotNull()
-        val lowest = pence.min()
-        if (lowest < pence.max()) pence.forEachIndexed { i, fare -> if (fare == lowest) labels[i] += RouteLabel.CHEAPEST }
-    }
+    val lowest = fares.filterNotNull().minOrNull() ?: return labels
+    val atLowest = fares.indices.filter { fares[it] == lowest }
+    val busFare = atLowest.any { BusFare.onOneBusFare(cards[it].route) }
+    // Every other card costs more: priced above the lowest, or unpriced but dearer than a bus fare.
+    val dearer = fares.indices.filter { i -> fares[i]?.let { it > lowest } ?: (busFare && BusFare.costsMoreThanABus(cards[i].route)) }
+    if (dearer.isNotEmpty() && atLowest.size + dearer.size == cards.size) atLowest.forEach { labels[it] += RouteLabel.CHEAPEST }
     return labels
 }
 

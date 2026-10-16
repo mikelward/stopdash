@@ -537,9 +537,36 @@ class TripTimingTest {
         // Of two at the bus fare, the first only: one card more at most.
         val later = buses(175, 45)
         assertEquals(listOf(train, cheaper), TripTiming.withoutSlowerChanges(listOf(train, cheaper, later)))
-        // Against an unpriced first route nothing is known to cost less, so nothing is kept for it.
+        // Against an unpriced first route nothing is known to cost less, so nothing is kept for it...
         val unpricedTrain = estimate(train.route.copy(fare = null), 30)
         assertEquals(listOf(unpricedTrain), TripTiming.withoutSlowerChanges(listOf(unpricedTrain, cheaper)))
+        // ...unless it rides a train and the buses are London's on one bus fare, which costs less for sure.
+        val londonBuses = estimate(
+            TripRoute(
+                listOf(
+                    walk("X", "490000001A", 0, 5),
+                    leg("43", "490000001A", "490000002B", departs = 6, arrives = 20, mode = "bus"),
+                    leg("134", "490000002B", "490000003C", departs = 22, arrives = 40, mode = "bus"),
+                ),
+                TripFare(175),
+            ),
+            40,
+        )
+        val unpricedRail = estimate(TripRoute(listOf(walk("X", "A", 0, 5), leg("thameslink", "A", "C", departs = 6, arrives = 30, mode = "national-rail"))), 30)
+        assertEquals(listOf(unpricedRail, londonBuses), TripTiming.withoutSlowerChanges(listOf(unpricedRail, londonBuses)))
+        // A tram at the same fare listed first doesn't hide them: only a bus fare is known to cost less.
+        val trams = estimate(
+            TripRoute(
+                listOf(
+                    walk("X", "940GZZCRAAA", 0, 5),
+                    leg("tram", "940GZZCRAAA", "940GZZCRBBB", departs = 6, arrives = 20, mode = "tram"),
+                    leg("tram", "940GZZCRBBB", "940GZZCRCCC", departs = 22, arrives = 38, mode = "tram"),
+                ),
+                TripFare(175),
+            ),
+            38,
+        )
+        assertEquals(listOf(unpricedRail, londonBuses), TripTiming.withoutSlowerChanges(listOf(unpricedRail, trams, londonBuses)))
     }
 
     @Test
