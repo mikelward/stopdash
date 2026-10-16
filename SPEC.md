@@ -1282,7 +1282,7 @@ reads, the stop with its platform or pole ➔ where the ride goes, then the ride
 own title, then how far the stop is ("Park – Stop L ➔ Hill ★ (120 m)"; the distance is the first thing to go on a
 tight line, and a far ride's, measured to its origin, heads only the origin's stop). A tap on one
 opens the journey's own view, where Swap direction is. Until the ride has departures to group (checking, couldn't check, none due) it keeps
-its heading, so the note under it says which ride. Either way the journey's own view heads every
+its heading, so the row or note under it says which ride. Either way the journey's own view heads every
 group.
 
 **Long names shorten evenly** (maintainer, 2026-10-14): a ride's two ends, or a stop and where its
@@ -1347,6 +1347,15 @@ leave it saying it couldn't check — except while a refresh is asking for them 
 background, the fresh fix that starts with included), when it says it's checking, as the list's stamp
 does, never "couldn't check" for a check about to be made, as the disruptions row has it (maintainer,
 2026-10-05).
+
+**The card holds still while it checks** (maintainer, 2026-10-16). Checked again, it keeps what it
+drew last, each row where it was, and after a moment each row's time gives way to a spinner: a quick
+check changes nothing on screen, and a longer one shows no time it can't stand behind. Checked for
+the first time, its one row is the ride's own line with a spinner. With no train due, that row stays,
+a dash for its time, heard as "No trains to … soon"; a suspension's status row gives way to it in
+place, and it to the first train, so through the night the card never moves. Only a check that
+failed, or a route that couldn't load, is a note under the heading. A softer indicator than the
+spinner is still to be chosen (TODO).
 
 **On the widget**, a journey's departures lead the list too (maintainer, 2026-09-23), in the
 direction the app last showed, and **nearest ride first** in the order the app's list last showed
@@ -1529,8 +1538,10 @@ debug log notes each pause and unpause, and a check skipped for it.
 
 **Change at a fork.** When a line runs only one branch from the origin (a Northern line train to
 Edgware from King's Cross, none to High Barnet) and no direct train is due, the card shows the
-other branch's trains instead, under "King's Cross ➔ Camden Town (for High Barnet)", with "No direct
-trains" above them (maintainer, 2026-09-24). The change stop is the last stop the train's path
+other branch's trains instead, under "King's Cross ➔ Camden Town (for High Barnet)", below the
+ride's own line with a dash, heard as "No direct trains to …" (maintainer, 2026-09-24; the dash
+replaced a "No direct trains" note, 2026-10-16). A suspended line's status row says the same, so no
+note comes between it and the trains to change from. The change stop is the last stop the train's path
 shares with the route to the far end, from the route data the card already loads; the brackets name
 the journey's own end, not the branch's terminus. While a direct train is due none is offered, since
 changing mostly lands the rider on that same train at the fork. It names only where to change, not

@@ -3424,7 +3424,7 @@ class MainScreenScreenshotTest {
     @Test
     fun `with no direct train soon the card says so above the trains to change from`() {
         journeyScreen(forkedOrigin("West End" to 60, "West End" to 480), forkedSource, kingToNorthEnd)
-        composeRule.onNodeWithText("No direct trains to North Park soon").assertExists()
+        composeRule.onNodeWithContentDescription("No direct trains to North Park soon").assertExists()
         // The journey's own end in the brackets, not the branch's terminus.
         composeRule.onNodeWithText("King ➔ Fork (for North Park)").assertExists()
         // A screen reader hears "to", not the drawn arrow.
@@ -3452,7 +3452,7 @@ class MainScreenScreenshotTest {
         journeyScreen(forkedOrigin("West End" to 60, "Nowhere" to 120), forkedSource, kingToNorthEnd)
         composeRule.onNodeWithText("King ➔ Fork (for North Park)").assertExists()
         composeRule.onNodeWithText("Some routes couldn't be checked").assertExists()
-        composeRule.onAllNodesWithText("No direct trains", substring = true).assertCountEquals(0)
+        composeRule.onAllNodesWithContentDescription("No direct trains", substring = true).assertCountEquals(0)
     }
 
     @Test
@@ -3755,7 +3755,7 @@ class MainScreenScreenshotTest {
         // The starred line and the other bus there; not the interchange's modeless line.
         assertEquals(listOf("b1", "b2"), origins.single().lines.map { it.id })
         // A bus journey's card talks about buses.
-        composeRule.onNodeWithText("Checking buses…").assertExists()
+        composeRule.onNodeWithContentDescription("Checking buses…").assertExists()
     }
 
     // Synthetic ids: the journey boards b1 at stop L; b3 leaves stop K beside it, for Hill too.
@@ -3899,7 +3899,7 @@ class MainScreenScreenshotTest {
         composeRule.waitForIdle()
         // The note says which ride it's checking.
         composeRule.onNodeWithContentDescription("Manor House to King's Cross St. Pancras").assertExists()
-        composeRule.onNodeWithText("Checking trains…").assertExists()
+        composeRule.onNodeWithContentDescription("Checking trains…").assertExists()
     }
 
     // The Piccadilly line from King's Cross to Heathrow (public big-station ids and names), the ride's
@@ -3945,7 +3945,7 @@ class MainScreenScreenshotTest {
         // than draw one way and regroup the other.
         journeyScreen(kingsCrossPiccadilly(), kingsCrossToHeathrowSource, kingsCrossToHeathrow, rideGrouping = null)
         composeRule.onNodeWithContentDescription("King's Cross & St Pancras International to Heathrow Terminals 2 & 3").assertExists()
-        composeRule.onNodeWithText("Checking trains…").assertExists()
+        composeRule.onNodeWithContentDescription("Checking trains…").assertExists()
         composeRule.onAllNodesWithText("Heathrow Terminal 5").assertCountEquals(0)
     }
 
@@ -4104,6 +4104,104 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `a journey card checked again keeps its trains in place, their times giving way to spinners`() {
+        val origin = StopArrivals(
+            "940GZZLUVIC",
+            "Victoria",
+            listOf(dep("victoria", "Victoria", "northbound", "Walthamstow Central", 300, "Northbound - Platform 5")),
+            fetchedAt = now.minusSeconds(60),
+        )
+        var stops by mutableStateOf(listOf(manorHouse(), origin))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(
+                        LocalRouteStops provides RouteStopsRepository(
+                            object : RouteSequenceSource {
+                                override suspend fun routeSequence(lineId: String, direction: String) = victoriaLine
+                            },
+                        ),
+                    ) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(stops, now.minusSeconds(60)),
+                            now,
+                            {},
+                            stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
+                            journeys = listOf(victoriaToWarrenStreet),
+                            rideGrouping = RideGrouping.RIDE,
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("5 min").assertExists()
+        val top = composeRule.onNodeWithText("Walthamstow Central").getUnclippedBoundsInRoot().top
+        // Its origin's departures are asked for again: the card checks, holding what it drew where it was.
+        stops = listOf(manorHouse())
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithContentDescription("Checking trains…").fetchSemanticsNodes().isNotEmpty()
+        }
+        assertEquals(top, composeRule.onNodeWithText("Walthamstow Central").getUnclippedBoundsInRoot().top)
+        composeRule.onAllNodesWithText("5 min").assertCountEquals(0)
+        captureSnapshot("main-journey-card-checking.png")
+        // Back: its times again, in place.
+        stops = listOf(manorHouse(), origin)
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("5 min").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onAllNodesWithContentDescription("Checking trains…").assertCountEquals(0)
+        assertEquals(top, composeRule.onNodeWithText("Walthamstow Central").getUnclippedBoundsInRoot().top)
+    }
+
+    @Test
+    fun `a ride's line reopening with no train due yet keeps its row in place, a dash for its time`() {
+        // The line is closed overnight: TfL answers with no trains, and its status row shows on the card.
+        val closed = StopArrivals(
+            "940GZZLUVIC",
+            "Victoria",
+            departures = emptyList(),
+            fetchedAt = now.minusSeconds(60),
+            lines = listOf(LineRef("victoria", "Victoria", "tube")),
+        )
+        val journey = victoriaToWarrenStreet.copy(lineName = "Victoria", mode = "tube")
+        var statuses by mutableStateOf(mapOf("victoria" to LineStatus("victoria", severity = 2, description = "Suspended")))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(
+                        LocalRouteStops provides RouteStopsRepository(
+                            object : RouteSequenceSource {
+                                override suspend fun routeSequence(lineId: String, direction: String) = victoriaLine
+                            },
+                        ),
+                    ) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(listOf(manorHouse(), closed), now.minusSeconds(60), lineStatuses = statuses),
+                            now,
+                            {},
+                            stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
+                            journeys = listOf(journey),
+                            rideGrouping = RideGrouping.RIDE,
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Suspended").assertExists()
+        val top = composeRule.onNodeWithText("VIC").getUnclippedBoundsInRoot().top
+        // Open again, with no train due yet: the same row, its line with a dash, heard as none soon.
+        statuses = emptyMap()
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithContentDescription("No trains to Warren Street soon").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onAllNodesWithText("Suspended").assertCountEquals(0)
+        assertEquals(top, composeRule.onNodeWithText("VIC").getUnclippedBoundsInRoot().top)
+        // No note in its place.
+        composeRule.onAllNodesWithText("No trains to", substring = true).assertCountEquals(0)
+        captureSnapshot("main-journey-card-none.png")
+    }
+
+    @Test
     fun `a journey whose origin failed to refresh says it couldn't check, not that there are no trains`() {
         // The origin's last refresh failed: kept aged, with nothing current left to show.
         val aged = StopArrivals("940GZZLUVIC", "Victoria", emptyList(), fetchedAt = now.minusSeconds(600), arrivalsFresh = false)
@@ -4111,7 +4209,7 @@ class MainScreenScreenshotTest {
             override suspend fun routeSequence(lineId: String, direction: String) = victoriaLine
         })
         composeRule.onNodeWithText("Couldn't check trains").assertExists()
-        composeRule.onAllNodesWithText("No trains to", substring = true).assertCountEquals(0)
+        composeRule.onAllNodesWithContentDescription("No trains to", substring = true).assertCountEquals(0)
     }
 
     @Test
@@ -4147,12 +4245,12 @@ class MainScreenScreenshotTest {
                 }
             }
         }
-        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("Checking trains", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithContentDescription("Checking trains", substring = true).fetchSemanticsNodes().isNotEmpty() }
         composeRule.onAllNodesWithText("Couldn't check trains").assertCountEquals(0)
         refreshing = false
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Couldn't check trains").assertExists()
-        composeRule.onAllNodesWithText("Checking trains", substring = true).assertCountEquals(0)
+        composeRule.onAllNodesWithContentDescription("Checking trains", substring = true).assertCountEquals(0)
     }
 
     @Test
@@ -4173,7 +4271,7 @@ class MainScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        composeRule.onAllNodesWithText("Checking trains", substring = true).assertCountEquals(1)
+        composeRule.onAllNodesWithContentDescription("Checking trains", substring = true).assertCountEquals(1)
         composeRule.onAllNodesWithText("Couldn't check trains").assertCountEquals(0)
         refreshing = false
         composeRule.waitForIdle()
@@ -4201,7 +4299,7 @@ class MainScreenScreenshotTest {
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Couldn't check trains").assertExists()
-        composeRule.onAllNodesWithText("Checking trains", substring = true).assertCountEquals(0)
+        composeRule.onAllNodesWithContentDescription("Checking trains", substring = true).assertCountEquals(0)
     }
 
     @Test
@@ -4254,7 +4352,7 @@ class MainScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Checking trains…").assertExists()
+        composeRule.onNodeWithContentDescription("Checking trains…").assertExists()
     }
 
     @Test

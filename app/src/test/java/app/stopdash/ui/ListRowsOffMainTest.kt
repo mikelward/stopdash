@@ -9,6 +9,7 @@ import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import app.stopdash.domain.Departure
 import app.stopdash.domain.JourneyEnd
@@ -260,12 +261,12 @@ class ListRowsOffMainTest {
         // against the snapshot they came from: the empty rows aren't read as a fresh "no trains".
         state = DeparturesUiState.Loaded(stops = listOf(victoria(now, 4)), fetchedAt = now)
         composeRule.waitForIdle()
-        composeRule.onAllNodesWithText("No trains to Warren Street soon").assertCountEquals(0)
+        composeRule.onAllNodesWithContentDescription("No trains to Warren Street soon").assertCountEquals(0)
         composeRule.onAllNodesWithText("Couldn't check trains").assertCountEquals(1)
 
         settle(scheduler)
         composeRule.onAllNodesWithText("Couldn't check trains").assertCountEquals(0)
-        composeRule.onAllNodesWithText("No trains to Warren Street soon").assertCountEquals(0)
+        composeRule.onAllNodesWithContentDescription("No trains to Warren Street soon").assertCountEquals(0)
     }
 
     @Test
