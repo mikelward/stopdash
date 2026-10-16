@@ -101,6 +101,7 @@ import android.os.SystemClock
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -381,10 +382,12 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZonedDateTime
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -1828,6 +1831,8 @@ class MainActivity : ComponentActivity() {
                                 onReturn = { returnLatch.pending = true },
                                 onLeave = nearbyViewModel::leftForeground,
                                 onReturnWithoutSet = { nearbyViewModel.locateAfterLeftBehind() },
+                                awayKey = "nearby-away",
+                                log = ::logForegroundReturn,
                             )
                         },
                         overlayContent = {
@@ -4576,6 +4581,8 @@ class MainActivity : ComponentActivity() {
             onReturn = { returnPending = true },
             onLeave = fromNearby::leftForeground,
             onReturnWithoutSet = { fromNearby.locateAfterLeftBehind() },
+            awayKey = "from-page-away",
+            log = ::logForegroundReturn,
         )
         val closeTrip = { onTo(to.closePicker().clearDestination()) }
         // The page's trip (its To… search, then the routes): from the stops around it, or, from a saved
@@ -6509,14 +6516,25 @@ internal class ForegroundReturnLatch : androidx.lifecycle.ViewModel() {
 }
 
 /**
+ * Whether the app left the foreground, other than for a configuration change, and hasn't been seen
+ * back yet ([refreshOnForeground]). Retained like [ForegroundReturnLatch], for the same reason: a
+ * setting changed while the app is away (dark theme, say) rebuilds the activity only as it comes back,
+ * so the return lands on a new observer, which must still know the app was away rather than take the
+ * return for its first start. Dies with the process, where the ViewModel init's own load covers it.
+ */
+internal class ForegroundAway : androidx.lifecycle.ViewModel() {
+    var left = false
+}
+
+/**
  * Observes the activity lifecycle for a genuine background→foreground return and, when the near-me
  * set is already [isReady], calls [onReturn] to latch a pending re-location (SPEC *Finding stops* /
  * D6). Hosted **above** the Settings/Licenses overlay switch so a return that lands while an overlay
  * is open is still seen — the departures view that consumes the latch is out of composition then, so
- * an observer hosted there would miss the return entirely. The first foreground per activity instance
- * is skipped (the ViewModel init covers it, and a rotation restarts this with its own skip), and
- * [isBusy] gates a return that lands mid-relocate — one started since the app left, since one from
- * before, which [onLeave] marks as the app goes, would be superseded. A return with no set shown goes
+ * an observer hosted there would miss the return entirely. A start the app didn't leave for isn't a
+ * return: the first (the ViewModel init covers it) and a rotation's ([ForegroundAway]). [isBusy]
+ * gates a return that lands mid-relocate — one started since the app left, since one from before,
+ * which [onLeave] marks as the app goes, would be superseded. A return with no set shown goes
  * to [onReturnWithoutSet] instead. Extracted (with [ConsumeForegroundReturn]) so the
  * observer/overlay/consume wiring is exercised by a test rather than restated — a regression that
  * moved this back inside the departures view leaves the latch unset while an overlay is open.
@@ -6529,17 +6547,29 @@ internal fun ForegroundReturnLatcher(
     onLeave: () -> Unit = {},
     // A return while not [isReady]: a gate has no set to re-locate, but may still be owed a look.
     onReturnWithoutSet: () -> Unit = {},
+    // The retained mark of having left ([ForegroundAway]): one per observer, so each sees the return.
+    awayKey: String = "foreground-away",
+    log: ((String) -> Unit)? = null,
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
+    val activity = LocalActivity.current
+    val away: ForegroundAway = viewModel(key = awayKey)
     // Read the latest lambdas without re-keying the effect (a fresh lambda each recomposition would
-    // restart it and reset the first-foreground skip).
+    // restart it).
     val currentIsReady = rememberUpdatedState(isReady)
     val currentIsBusy = rememberUpdatedState(isBusy)
     val currentOnReturn = rememberUpdatedState(onReturn)
     val currentOnLeave = rememberUpdatedState(onLeave)
     val currentOnReturnWithoutSet = rememberUpdatedState(onReturnWithoutSet)
     LaunchedEffect(lifecycleOwner) {
-        refreshOnForeground(lifecycleOwner.lifecycle, isBusy = { currentIsBusy.value() }, onBackground = { currentOnLeave.value() }) {
+        refreshOnForeground(
+            lifecycleOwner.lifecycle,
+            away = away,
+            changingConfigurations = { activity?.isChangingConfigurations == true },
+            isBusy = { currentIsBusy.value() },
+            onBackground = { currentOnLeave.value() },
+            log = log,
+        ) {
             if (currentIsReady.value()) currentOnReturn.value() else currentOnReturnWithoutSet.value()
         }
     }
@@ -6587,27 +6617,55 @@ internal fun relocateAction(
 }
 
 /**
- * Runs [onForeground] each time [lifecycle] re-enters STARTED **except the first**: the
- * first foreground is the initial load (done in the ViewModel's `init`, and re-run on a
- * fresh activity after process death), and a configuration change restarts this with its
- * own first-skip, so neither path double-fetches while a genuine return from the
- * background does refresh (SPEC D6). [onBackground] runs each time it leaves STARTED, so what
- * was under way then can be told from what starts after. Extracted so the skip-first/return-again rule is
- * unit-testable off a device.
+ * Runs [onForeground] each time [lifecycle] re-enters STARTED after the app left the foreground
+ * ([away]), so a genuine return refreshes (SPEC D6), while the first start (the initial load, done in
+ * the ViewModel's `init`, and re-run on a fresh activity after process death) and a rotation's, whose
+ * stop [changingConfigurations] says was for the change, don't double-fetch. Kept in [away], retained
+ * across the activity being rebuilt, not counted from this observer's own starts: a setting changed
+ * while the app was away rebuilds it only as it comes back, and that return is the new observer's
+ * first start (a bug report, 2026-10-16: the list came back to its old times, a minute from the next).
+ * [onBackground] runs each time it leaves STARTED, so what was under way then can be told from what
+ * starts after; [log] says how each return was taken. Extracted so the rule is unit-testable off a
+ * device.
  */
 internal suspend fun refreshOnForeground(
     lifecycle: Lifecycle,
+    away: ForegroundAway = ForegroundAway(),
+    changingConfigurations: () -> Boolean = { false },
     isBusy: () -> Boolean = { false },
     onBackground: () -> Unit = {},
+    log: ((String) -> Unit)? = null,
+    // Where [log] writes, off the main thread: a log line is I/O.
+    worker: CoroutineDispatcher = Dispatchers.Default,
     onForeground: () -> Unit,
 ) {
-    var firstForeground = true
+    // This observer's own starts: a return on its first was to a screen rebuilt while away.
+    var started = false
     // Told as the lifecycle stops, not from the block below, which a stop can cancel before it runs.
-    val leaving = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) onBackground() }
+    val leaving = LifecycleEventObserver { _, event ->
+        if (event == Lifecycle.Event.ON_STOP) {
+            if (!changingConfigurations()) away.left = true
+            onBackground()
+        }
+    }
     lifecycle.addObserver(leaving)
     try {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            if (firstForeground) firstForeground = false else if (!isBusy()) onForeground()
+            val rebuilt = !started
+            started = true
+            if (!away.left) return@repeatOnLifecycle
+            away.left = false
+            val to = if (rebuilt) "back in front, to a screen rebuilt while away" else "back in front"
+            val line = if (isBusy()) {
+                "$to: a relocation started since is under way"
+            } else {
+                onForeground()
+                "$to: refreshing"
+            }
+            // Written whole even if the app leaves again meanwhile: the return it says was taken was.
+            // The next start waits for it (repeatOnLifecycle runs one block at a time), so it's skipped
+            // with no [log] to write to.
+            if (log != null) withContext(NonCancellable + worker) { log(line) }
         }
     } finally {
         lifecycle.removeObserver(leaving)
@@ -6708,6 +6766,9 @@ private fun tickingNow(): Instant {
  * ViewModel store (Codex). A top-level function captures nothing.
  */
 internal fun logLocationWarning(message: String) = StopdashDebugLog.warning("location: %s", message)
+
+/** How a return to the foreground was taken ([refreshOnForeground]): no data, only what happened. */
+private fun logForegroundReturn(message: String) = StopdashDebugLog.info("foreground: %s", message)
 
 /**
  * The last few positions the rider's fixes and lookups placed them at (SPEC *Privacy*): in memory
