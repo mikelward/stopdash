@@ -2418,7 +2418,8 @@ internal fun CardHeader(header: List<RouteLabel>) {
 
 /**
  * The bold header over a card: "Fastest", "Simplest", "Least walking", "Cheapest", several of them
- * ("Fastest · Simplest"), or "Other" ([headedCards]), read as a heading.
+ * ("Fastest · Simplest"), or "Other" ([headedCards]), read as a heading. The size of the card's own
+ * text (maintainer, 2026-10-16: a size smaller, it read as small beside the main screen's headings).
  */
 @Composable
 private fun RouteLabelHeader(labels: List<RouteLabel>) {
@@ -2435,7 +2436,7 @@ private fun RouteLabelHeader(labels: List<RouteLabel>) {
     }
     Text(
         text = names.joinToString(stringResource(R.string.trip_label_separator)),
-        style = MaterialTheme.typography.titleSmall,
+        style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.Bold,
         modifier = Modifier.semantics { heading() }.testTag("routeLabel"),
     )

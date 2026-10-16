@@ -221,21 +221,24 @@ private fun LaterCard(card: LaterTripViewModel.Card, onClick: () -> Unit) {
     }
 }
 
-/** A ride: when it leaves, its line, and where it gets off. A walk: where to, and how long. */
+/**
+ * A ride: when it leaves, its line, and where it gets off. A walk: where to, and how long. The size of
+ * the trip for now's rows (maintainer, 2026-10-16: a size smaller, they read as small beside them).
+ */
 @Composable
 private fun LaterRow(row: LaterTripViewModel.Row) {
     if (row.walk) {
         Text(
             stringResource(R.string.trip_walk, row.toName, row.minutes),
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         return
     }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(row.time, style = MaterialTheme.typography.bodyMedium)
+        Text(row.time, style = MaterialTheme.typography.bodyLarge)
         LinePill(row.lineName, row.lineId, row.mode)
-        Text(row.toName, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(row.toName, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
