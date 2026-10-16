@@ -279,6 +279,16 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   no time cap; if one won't finish, hold it and ask, autopilot included. Arm no
   auto-merge on it until then: auto-merge cannot see the order. Read the list from the
   session's record, not memory.
+- **Wake the PRs a merge leaves behind.** A merge can leave other open PRs on its base
+  needing a rebase (`dirty`, or `behind` where branches must be up to date), and nothing
+  tells them. So at your first turn after one of your PRs merges, by hand or by
+  auto-merge, send every other open PR on that base that another session drives one
+  message — the session URL ends its body, where your client can message sessions — naming
+  the PR that merged. Send it whatever the PR's state reads: right after a merge GitHub
+  can still be computing mergeability, so a PR about to need a rebase can look clean. It
+  is no merge cue for the receiver, whose own PR is still open: it prompts a read, not an
+  action, and the receiver's own rules decide the rebase. Skip a PR with no session URL,
+  and don't retry a failed send; its own scheduled check is the fallback.
 - **A red baseline is the next task** — get `./gradlew test`/`lint` green before pulling
   new work from `TODO.md`; stepping past it as "unrelated" needs the user's real answer,
   never an autopilot guess.
