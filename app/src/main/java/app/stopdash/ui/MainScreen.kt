@@ -103,6 +103,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -3917,12 +3918,12 @@ internal fun groupHeaderStyle(): TextStyle = MaterialTheme.typography.titleMediu
  * list, D1) appended dimmed. No small caps, no tracking: the place name and the qualifier share one
  * [groupHeaderStyle] / `onSurface` style, and only the distance is muted to `onSurfaceVariant`.
  *
- * The place name is the one element that clips: it takes the row's slack and ellipsizes when long,
- * while the " – <qualifier>" and " (<distance>)" are reserved (measured first) so they stay fully
- * visible — a long "King's Cross St Pancras – Platform 7 (120 m)" keeps "– Platform 7 (120 m)" and
- * clips the name. The whole row announces one screen-reader label — the place name, the spoken
- * qualifier (which keeps the direction/towards the visible segment drops), then the distance. Extra
- * top space marks the break between groups; the first on screen takes none.
+ * The " (<distance>)" is reserved (measured first) so it stays fully visible, and the place name and
+ * " – <qualifier>" share what's left ([headerSplit]): a long "King's Cross St Pancras – Platform 7
+ * (120 m)" keeps "– Platform 7 (120 m)" and clips the name, while two long ones each keep half. The
+ * whole row announces one screen-reader label — the place name, the spoken qualifier (which keeps the
+ * direction/towards the visible segment drops), then the distance. Extra top space marks the break
+ * between groups; the first on screen takes none.
  */
 @Composable
 internal fun StopGroupHeader(
@@ -4008,34 +4009,32 @@ internal fun StopGroupHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // The distance ("(120 m)") is short and reserved (unweighted, measured first). The name and
-        // the qualifier then SHARE the rest, each weighted, so neither can consume the whole row and
-        // crowd the other to zero: a long place name and a long qualifier each keep at least their
-        // half and clip within it, so the rider's boarding place always stays visible (Codex P1, PR
-        // #122). `fill = false` lets a short name/qualifier sit at its natural width and pack left
-        // rather than pad out its half. The name ellipsizes; the qualifier hard-clips its glyphs.
-        Text(
-            // A journey's change heading carries the "heading to" arrow ("King's Cross ➔ Camden Town").
-            text = withArrowIcons(name),
-            inlineContent = arrowInlineContent(MaterialTheme.colorScheme.onSurface),
-            style = style,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = nameMaxLines,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false),
-        )
-        if (label != null) {
+        // the qualifier then share the rest ([headerSplit]): a short one keeps its width and the other
+        // takes everything it leaves, and two long ones each keep half, so neither can crowd the other
+        // to zero and the rider's boarding place always stays visible (Codex P1, PR #122). `fill =
+        // false` lets the pair sit at its natural width and pack left.
+        NameThenQualifier(Modifier.weight(1f, fill = false)) {
             Text(
-                text = withArrowIcons("${groupHeaderJoin(label)}$label"),
+                // A journey's change heading carries the "heading to" arrow ("King's Cross ➔ Camden Town").
+                text = withArrowIcons(name),
                 inlineContent = arrowInlineContent(MaterialTheme.colorScheme.onSurface),
                 style = style,
                 color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                softWrap = false,
-                // Elide with a single "…" (never a mid-glyph cut) when the name and qualifier can't
-                // both fit their shared half of the row.
+                maxLines = nameMaxLines,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
             )
+            if (label != null) {
+                Text(
+                    text = withArrowIcons("${groupHeaderJoin(label)}$label"),
+                    inlineContent = arrowInlineContent(MaterialTheme.colorScheme.onSurface),
+                    style = style,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    softWrap = false,
+                    // Elide with a single "…" (never a mid-glyph cut) when it's the longer of the two.
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         if (distanceLabel != null) {
             Text(
@@ -4078,6 +4077,44 @@ internal fun StopGroupHeader(
             onHideMode = { mode -> onHideMode?.invoke(mode) },
         )
     }
+    }
+}
+
+/**
+ * How a heading's line shares [available] px between its place name ([name] px wide unclipped) and its
+ * qualifier ([qualifier] px), as (name width, qualifier width): both whole when they fit; otherwise
+ * the shorter keeps its width and the longer takes the rest, and two that are both longer than half
+ * each keep half. An even split regardless clipped a long name beside a short "– Stop J" with half
+ * the line empty (maintainer, 2026-10-16).
+ */
+internal fun headerSplit(available: Int, name: Int, qualifier: Int): Pair<Int, Int> {
+    val room = available.coerceAtLeast(0)
+    val qualifierWidth = minOf(qualifier, maxOf(room / 2, room - name)).coerceAtLeast(0)
+    return minOf(name, room - qualifierWidth).coerceAtLeast(0) to qualifierWidth
+}
+
+/**
+ * A heading's place name, then its qualifier if there is a second child, laid out by [headerSplit] and
+ * centered on the line, as the [Row] around them centers its children.
+ */
+@Composable
+private fun NameThenQualifier(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Layout(content, modifier) { measurables, constraints ->
+        val name = measurables[0]
+        val qualifier = measurables.getOrNull(1)
+        val (nameWidth, qualifierWidth) = headerSplit(
+            constraints.maxWidth,
+            name.maxIntrinsicWidth(constraints.maxHeight),
+            qualifier?.maxIntrinsicWidth(constraints.maxHeight) ?: 0,
+        )
+        val namePlaced = name.measure(constraints.copy(minWidth = 0, maxWidth = nameWidth))
+        val qualifierPlaced = qualifier?.measure(constraints.copy(minWidth = 0, maxWidth = qualifierWidth))
+        val width = (namePlaced.width + (qualifierPlaced?.width ?: 0)).coerceIn(constraints.minWidth, constraints.maxWidth)
+        val height = maxOf(namePlaced.height, qualifierPlaced?.height ?: 0).coerceIn(constraints.minHeight, constraints.maxHeight)
+        layout(width, height) {
+            namePlaced.placeRelative(0, (height - namePlaced.height) / 2)
+            qualifierPlaced?.placeRelative(namePlaced.width, (height - qualifierPlaced.height) / 2)
+        }
     }
 }
 

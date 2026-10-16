@@ -760,9 +760,12 @@ name**. A pole is never headed by one bus's destination, which says where that b
 stop heads (maintainer, 2026-10-03). "Stop" is reserved for a literal pole letter; the direction word
 and the "➔ towards" carry no "Stop". Precedence: letter → towards → bearing → bare. The trip's board
 heads the boarding pole the same way. The header is **one line** — "Place – Qualifier
-(distance)", title case, no small caps — where the place name and the qualifier **share the row**
-(each weighted, each keeps at least its half and clips within it) so neither a long name nor a long
-qualifier can crowd the other to zero, and the short near-me distance is reserved after them. A
+(distance)", title case, no small caps — where the place name and the qualifier **share the row**:
+each shows whole when both fit, the shorter keeps its width while the longer takes the rest, and only
+when both are long does each keep half, so neither a long name nor a long qualifier can crowd the
+other to zero, and a short qualifier leaves the name the whole line (maintainer, 2026-10-16: an even
+split clipped a long stop name beside "– Stop J" with half the line empty). The short near-me distance
+is reserved after them. A
 two-way service at a stop is two cards, one per direction; a one-directional case (a terminus
 platform, a
 one-way-street stop, a single branch) is one. Nothing is hidden behind a gesture, which
