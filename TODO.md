@@ -3935,11 +3935,13 @@ and these carry the rest as their own PRs:
         on and no update in those hours either. The log now says how late a live-refresh tick runs,
         why the chain stopped or restarted, and what Android holds the app to (standby bucket,
         battery optimization, battery saver), so the next report tells sleep from a dead chain.
-      - [ ] **Offer to exempt the app from battery optimization** where the widget updates itself
-        (maintainer, 2026-10-16): asked on the device when "Automatically update widget" is turned
-        on, a choice rather than a default, since it suits a passive wall display and not a phone
-        in a pocket; the state shown in Settings to change later. Open: the one-tap system dialog
-        (a Play-restricted permission) or the app's own battery settings.
+      - [x] **Offer to exempt the app from battery optimization** where the widget updates itself
+        (maintainer, 2026-10-16): "Keep updating when idle" under "Automatically update
+        widget", on while StopDash's battery use is Unrestricted, a tap opening Android's settings
+        for the app rather than the Play-restricted one-tap dialog (SPEC D5). Needs a device check
+        that the wall tablet's updates keep running with it on.
+      - [ ] **A watch-only rider gets no minute updates**: the chain retires while no widget is
+        placed, though each update also reaches the watch.
       - [x] **The trip on the widget** (maintainer, 2026-10-05): while On the way follows a trip,
         the widget shows the departures at the next change, and the next step above them where
         there's room, from the summary

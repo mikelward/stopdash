@@ -35,6 +35,7 @@ import app.stopdash.domain.WalkingSpeed
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -441,12 +442,54 @@ class SettingsScreenScreenshotTest {
     fun settings_on() {
         composeRule.setContent {
             StopDashTheme {
-                SettingsScreen(liveWidgetRefresh = true, onLiveWidgetRefreshChange = {}, onBack = {})
+                SettingsScreen(liveWidgetRefresh = true, onLiveWidgetRefreshChange = {}, onBack = {}, keepUpdatingWhenIdle = false)
             }
         }
         composeRule.waitForIdle()
 
         captureSnapshot("settings-on.png")
+    }
+
+    /**
+     * "Keep updating when idle" (SPEC D5): offered only under automatic updates, it shows
+     * whether StopDash's battery use is Unrestricted and reports a tap, which opens Android's settings
+     * for the app. The tap doesn't flip it: only Android's setting does, read again on return.
+     */
+    @Test
+    fun keep_updating_is_offered_under_automatic_updates_and_shows_the_battery_setting() {
+        var automatic by mutableStateOf(false)
+        var unrestricted by mutableStateOf<Boolean?>(null)
+        var taps = 0
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(
+                    liveWidgetRefresh = automatic, onLiveWidgetRefreshChange = {}, onBack = {},
+                    keepUpdatingWhenIdle = unrestricted, onKeepUpdatingWhenIdleClick = { taps++ },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("keepUpdatingSwitch").assertDoesNotExist()
+
+        automatic = true
+        composeRule.waitForIdle()
+        // Not read yet: shown, but not offered as off.
+        composeRule.onNodeWithTag("keepUpdatingSwitch").performScrollTo().assertIsOff().assertIsNotEnabled()
+        unrestricted = false
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Keep updating when idle").assertIsDisplayed()
+        composeRule.onNodeWithText("Uses more battery").assertIsDisplayed()
+        composeRule.onNodeWithTag("keepUpdatingSwitch").assertIsOff().performClick()
+        assertEquals(1, taps)
+        composeRule.onNodeWithTag("keepUpdatingSwitch").assertIsOff()
+        // Back from Android's settings with Unrestricted chosen.
+        unrestricted = true
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("keepUpdatingSwitch").assertIsOn()
+        // Directly under the switch it depends on.
+        val automaticTop = composeRule.onNodeWithTag("liveWidgetSwitch").getUnclippedBoundsInRoot().top
+        val keepTop = composeRule.onNodeWithTag("keepUpdatingSwitch").getUnclippedBoundsInRoot().top
+        assertTrue(keepTop > automaticTop)
     }
 
     @Test

@@ -94,6 +94,12 @@ fun SettingsScreen(
     // value that may not reflect the stored choice — showing it off-and-tappable would let a
     // previously-enabled install read as off (Codex P2 on #56).
     liveWidgetRefreshEnabled: Boolean = true,
+    // Whether StopDash's battery use is Unrestricted in Android's settings, so the minute updates keep
+    // running while the device isn't in use (SPEC D5); null until read, when the switch is disabled.
+    // Shown only while [liveWidgetRefresh] is on. A tap is reported for the caller to open Android's
+    // settings for the app, the only place it changes: StopDash can't set it itself.
+    keepUpdatingWhenIdle: Boolean? = null,
+    onKeepUpdatingWhenIdleClick: () -> Unit = {},
     // Whether the widget follows the rider (location allowed all the time, SPEC D1), null until read,
     // when the switch is disabled; and a report of a tap, which the caller turns into the disclosure
     // and Android's prompt, or Android's settings to turn it off.
@@ -497,6 +503,19 @@ fun SettingsScreen(
                     SettingErrorRow(
                         text = stringResource(R.string.settings_live_widget_refresh_failed),
                         onDismiss = onDismissLiveWidgetRefreshError,
+                    )
+                }
+                // Android holds background work while a device sits unused, a wall display's minute
+                // updates included, unless the app's battery use is Unrestricted (bug report,
+                // 2026-10-16). A choice, not a default: it costs a phone in a pocket battery.
+                if (liveWidgetRefresh) {
+                    SettingSwitchRow(
+                        title = stringResource(R.string.settings_keep_updating_title),
+                        summary = stringResource(R.string.settings_keep_updating_summary),
+                        checked = keepUpdatingWhenIdle == true,
+                        onCheckedChange = { onKeepUpdatingWhenIdleClick() },
+                        enabled = keepUpdatingWhenIdle != null,
+                        switchTestTag = "keepUpdatingSwitch",
                     )
                 }
                 onInstallOnWatch?.let { install ->

@@ -45,6 +45,30 @@ internal fun backgroundLimits(context: Context): String {
     return "standby bucket $bucket, background $restricted, battery $optimized, battery saver $saver, $charge"
 }
 
+/**
+ * Whether StopDash's battery use is Unrestricted in Android's settings, so Android doesn't hold its
+ * background work while the device isn't in use. That takes both of the things Settings reads: exempt
+ * from battery optimization, and not background-restricted. Either alone isn't one of its three
+ * choices, and a tap on the switch lands the rider on Unrestricted, which sets both. Binder calls, so
+ * off the main thread.
+ */
+@WorkerThread
+internal fun isBatteryUnrestricted(context: Context): Boolean =
+    context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName) &&
+        !context.getSystemService(ActivityManager::class.java).isBackgroundRestricted
+
+/**
+ * [isBatteryUnrestricted] for Settings' "Keep updating when idle" switch, or null when it can't
+ * be read: the switch then stays disabled rather than showing a guess.
+ */
+@WorkerThread
+internal fun batteryUnrestrictedOrNull(context: Context): Boolean? = try {
+    isBatteryUnrestricted(context)
+} catch (e: RuntimeException) {
+    StopdashDebugLog.warning("battery setting read failed: %s", e::class.simpleName)
+    null
+}
+
 /** The bucket's name as the platform documents it, or its number for one it doesn't. */
 internal fun standbyBucketName(bucket: Int): String = when (bucket) {
     // EXEMPTED is a system API, so it has no public constant.

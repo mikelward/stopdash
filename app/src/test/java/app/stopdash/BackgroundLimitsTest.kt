@@ -69,6 +69,29 @@ class BackgroundLimitsTest {
     }
 
     @Test
+    fun `reads whether StopDash's battery use is Unrestricted, for Settings' switch`() {
+        val powerManager = shadowOf(context.getSystemService(PowerManager::class.java))
+        val activityManager = shadowOf(context.getSystemService(ActivityManager::class.java))
+        activityManager.setBackgroundRestricted(false)
+        powerManager.setIgnoringBatteryOptimizations(context.packageName, false)
+        assertEquals(false, batteryUnrestrictedOrNull(context))
+        powerManager.setIgnoringBatteryOptimizations(context.packageName, true)
+        assertEquals(true, batteryUnrestrictedOrNull(context))
+        // Exempt but background-restricted is none of Settings' three choices, so not Unrestricted.
+        activityManager.setBackgroundRestricted(true)
+        assertEquals(false, batteryUnrestrictedOrNull(context))
+    }
+
+    @Test
+    fun `the log names each battery signal on its own`() {
+        val powerManager = shadowOf(context.getSystemService(PowerManager::class.java))
+        shadowOf(context.getSystemService(ActivityManager::class.java)).setBackgroundRestricted(true)
+        powerManager.setIgnoringBatteryOptimizations(context.packageName, true)
+        val limits = backgroundLimits(context)
+        assertTrue(limits, limits.contains("background restricted, battery not optimized"))
+    }
+
+    @Test
     fun `a bucket the platform doesn't name reads as its number`() {
         assertEquals("exempted", standbyBucketName(5))
         assertEquals("restricted", standbyBucketName(UsageStatsManager.STANDBY_BUCKET_RESTRICTED))
