@@ -1006,6 +1006,11 @@
     <!-- Screen-reader action on a route page's station: opens that station's page. -->
     <string name="action_show_stop">Show stop</string>
     <string name="action_show_on_map">Show on map</string>
+    <!-- TODO: translate -->
+    <!-- A platform or station view's button opening a trip through it, where to still to pick (SPEC *Going via a
+         stop*), and that button as TalkBack reads it (%1$s is the stop's name). -->
+    <string name="action_plan_via" tools:ignore="MissingTranslation">Via</string>
+    <string name="action_plan_via_spoken" tools:ignore="MissingTranslation">Plan a trip via %1$s</string>
     <string name="action_star_journey">Favorite ride</string>
     <string name="action_flip_journey">Swap direction</string>
     <!-- Screen-reader action on a journey heading: opens the journey's own view. -->

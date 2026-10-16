@@ -100,6 +100,7 @@ import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripDestination
+import app.stopdash.domain.TripVia
 import app.stopdash.domain.UntimedTrain
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -1762,15 +1763,17 @@ class MainScreenScreenshotTest {
     @Test
     fun `a heading is one tap target, and its platform's Whole station button shows the whole station`() {
         var mapped: Pair<String, String>? = null
+        val planned = mutableListOf<TripVia>()
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     MainScreen(
-                        DeparturesUiState.Loaded(listOf(kingsCrossStPancras(), manorHouse()), now.minusSeconds(60)),
+                        DeparturesUiState.Loaded(listOf(kingsCrossStPancras().copy(hubId = "HUBKGX"), manorHouse()), now.minusSeconds(60)),
                         now,
                         {},
                         stopDistanceMeters = mapOf("940GZZLUKSX" to 120.0, "940GZZLUMRH" to 400.0),
                         onOpenStopMap = { stopId, name -> mapped = stopId to name },
+                        onPlanVia = { planned += it },
                     )
                 }
             }
@@ -1787,6 +1790,9 @@ class MainScreenScreenshotTest {
         captureSnapshot("main-platform-view-buttons.png")
         composeRule.onNodeWithText("Show on map").performClick()
         assertEquals("940GZZLUKSX" to "King's Cross St. Pancras", mapped)
+        // Via: a trip through the station's interchange, as the Via… search gives its name (maintainer, 2026-10-16).
+        composeRule.onNodeWithContentDescription("Plan a trip via King's Cross St. Pancras").performClick()
+        assertEquals(listOf(TripVia("HUBKGX", "King's Cross St. Pancras")), planned)
         composeRule.onNodeWithText("Whole station").performClick()
         composeRule.waitForIdle()
         // Every King's Cross platform, and nothing from Manor House.
@@ -1794,9 +1800,34 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithText("Walthamstow Central").assertExists()
         composeRule.onNodeWithText("Cockfosters").assertExists()
         composeRule.onAllNodesWithText("Manor House", substring = true).assertCountEquals(0)
-        // Already the whole station: only the map is offered.
+        // Already the whole station: only the map and Via are offered.
         composeRule.onNodeWithText("Whole station").assertDoesNotExist()
         composeRule.onNodeWithText("Show on map").assertExists()
+        composeRule.onNodeWithTag("viewVia").performClick()
+        assertEquals(TripVia("HUBKGX", "King's Cross St. Pancras"), planned.last())
+    }
+
+    @Test
+    fun `a view offers no Via where nothing plans a trip from it`() {
+        // A From… station's views, whose trip starts there.
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(listOf(kingsCrossStPancras(), manorHouse()), now.minusSeconds(60)),
+                        now,
+                        {},
+                        stopDistanceMeters = mapOf("940GZZLUKSX" to 120.0, "940GZZLUMRH" to 400.0),
+                        onOpenStopMap = { _, _ -> },
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithText("King's Cross St. Pancras").onFirst().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("viewActions").assertExists()
+        composeRule.onNodeWithTag("viewVia").assertDoesNotExist()
     }
 
     @Test

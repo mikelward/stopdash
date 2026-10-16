@@ -1187,8 +1187,9 @@ level at a time — platform, then station, then the full list (maintainer, 2026
 that drops a platform opened this way closes it to its station, and on to the full list if the
 station is gone too. **Show on map** shows the view's nearest stop in the user's maps app — a pin at
 TfL's published stop position, labeled with the place name, never the rider's own fix — where the
-near-me list measured one (D1). With no maps app installed it says so rather than doing nothing. A
-notice's own heading (a closure with nothing else to show) has no platform to open: its one tap
+near-me list measured one (D1). With no maps app installed it says so rather than doing nothing.
+**Via** (maintainer, 2026-10-16), after those two so they stay put, opens the near-me trip with To…'s
+search, the trip already going via the view's stop (*Going via a stop*). A notice's own heading (a closure with nothing else to show) has no platform to open: its one tap
 opens its station where it heads one, else shows it on the map.
 
 TfL's endpoint is named "Arrivals"; for a bus stop these are departures *from* that
@@ -2445,7 +2446,15 @@ picking the trip's own destination changes nothing, and any other stop is planne
 the destination's own stations or stops included (maintainer, 2026-10-16: telling every name a destination
 goes by from another stop costs more than a rare odd pick, which gets what it asked for). A station complex
 takes the via's place once its stations have been looked up, Back meanwhile keeping the via the trip had,
-and the trip shows the new one from the moment they are. It is the Planner's own `via`, so the Planner builds
+and the trip shows the new one from the moment they are. A platform or station view's **Via** (maintainer, 2026-10-16: "opens the trip planner with that station as the
+via … prefilled") opens the near-me trip at its To… search with the Via row already filled: the view's
+station as the Via… search would give its name, its **interchange** where it has one (Finsbury Park's
+Underground platform goes via all of Finsbury Park, changing there between any lines), and a bus pole its own
+pole, as a rider picks a bus stop. A bus place's *All stops* view, its poles under no one stop, offers none, as
+the Planner goes via one stop. The row's tap picks another and its × goes any way, as on the trip; the first
+destination picked keeps it (picking the via itself as where to go drops it, as above), and another destination
+after that starts without one, as any trip's does. It is offered where To… is, on the near-me list only: a From…
+station's views are of where its trip starts. It is the Planner's own `via`, so the Planner builds
 each whole route through the stop and StopDash joins nothing (*One ride to the fastest route's last
 stop*). The Planner counts a route as passing only the stop it was asked via — via Finsbury Park's
 Underground station, a Great Northern train through its National Rail station doesn't — so a **station
@@ -2460,7 +2469,7 @@ routes, not a failure, and a trip with none through any of them says **"No trips
 with the Via row's × above to go any way. A place's *Direct* section isn't shown: its trains go straight
 there, not via the stop. The stop is part of what the trip is: its plan is kept for reuse apart from the
 trip any way's, and choosing one, another, or none shows that trip's own plan, never another's. It is kept with the trip while it's open, over a rotation, a
-recreated process and a look at To… left with Back, by where the trip goes, so a new nearest stop to start from keeps it and another
+recreated process and a look at To… left with Back — on the near-me trip, anything opened over it and left with Back too (From…, Settings; Codex on #905) — by where the trip goes, so a new nearest stop to start from keeps it and another
 destination starts without one. The stop picked is also remembered under *Via…*'s own *Recent*, on the
 device as *From…*'s and *To…*'s picks are (*Finding stops*), so a later trip goes via it again in a tap;
 it's never logged (the debug log says a request went "via a stop", never which). **Cost:** free, and no request of its own: a trip via an ordinary stop makes the

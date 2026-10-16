@@ -144,6 +144,9 @@ fun StationSearchScreen(
     // its own icon ([fromIcon], a saved place's) or this one's.
     fromPlace: PlaceArt? = null,
     fromIcon: String? = null,
+    // With [onChangeFrom]: the stop the trip goes via, picked before where it goes (a view's Via, SPEC *Going via a
+    // stop*), as a Via row between From and To. Null shows none.
+    via: TripEndsVia? = null,
     // A Recent row's menu asks to take it off the list ([onAskRemoveRecent], null offering no such
     // item); the question is [StationSearchViewModel.State.pendingRemoval], so it outlives a
     // rotation, and Remove calls [onRemoveRecent], Cancel [onCancelRemoveRecent].
@@ -250,6 +253,7 @@ fun StationSearchScreen(
                     fromPlace = fromPlace,
                     fromIcon = fromIcon,
                     actions = appMenu,
+                    via = via,
                 ) { modifier ->
                     BasicTextField(
                         value = field,

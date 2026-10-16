@@ -198,6 +198,7 @@ import app.stopdash.domain.PlaceStops
 import app.stopdash.domain.PlaceStopsFinder
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripLeg
+import app.stopdash.domain.TripVia
 import app.stopdash.domain.UntimedTrain
 import app.stopdash.domain.UsageEvent
 import app.stopdash.domain.WidgetJourneysReport
@@ -446,6 +447,10 @@ fun MainScreen(
     // there. An app-bar action on a searched station's page; an overflow item on the near-me list,
     // where the trip starts from the stops near the rider. Null leaves it out.
     onPlanTo: (() -> Unit)? = null,
+    // A platform or station view's "Via" (SPEC *Going via a stop*): a trip from where the rider is, through the
+    // view's stop, its destination still to pick. Null leaves it out (a From… station's views: its trip starts
+    // there).
+    onPlanVia: ((TripVia) -> Unit)? = null,
     // The saved favorite places to offer as route chips atop the near-me list (SPEC D9 → *Routing
     // from the near-me list*), already less the ones the rider is at; [onRouteToPlace] plans a trip
     // to the one tapped. Empty (the default, and on a station's page) shows no row.
@@ -1159,7 +1164,8 @@ fun MainScreen(
             }
         }
         val onMap = view.mapStop?.let { (stopId, name) -> onOpenStopMap?.let { open -> { open(stopId, name) } } }
-        if (onStation == null && onMap == null) null else ViewActions(view.station?.bus == true, onStation, onMap)
+        val via = view.via?.let { stop -> onPlanVia?.let { plan -> ViewVia(stop.name) { plan(stop) } } }
+        if (onStation == null && onMap == null && via == null) null else ViewActions(view.station?.bus == true, onStation, onMap, via)
     }
     val drawnNow = (if (platformRows != null) platformView?.now else drawnFrom?.now) ?: now
     // A platform or station view's rows are built apart from the list's, maybe from another
@@ -4630,9 +4636,12 @@ private fun JourneyNote(text: String, onRetry: (() -> Unit)? = null) {
 /**
  * A platform or station view's buttons (SPEC D8), what a tap on a heading's name or distance used to
  * do: [onStation] opens the whole station (all its stops, for a bus place [bus]), [onMap] shows its
- * nearest stop in the maps app. Null hides a button.
+ * nearest stop in the maps app, and [via] plans a trip through it. Null hides a button.
  */
-internal class ViewActions(val bus: Boolean, val onStation: (() -> Unit)?, val onMap: (() -> Unit)?)
+internal class ViewActions(val bus: Boolean, val onStation: (() -> Unit)?, val onMap: (() -> Unit)?, val via: ViewVia? = null)
+
+/** A view's "Via" (SPEC *Going via a stop*): a trip through the stop named [name], opened by [onPlan]. */
+internal class ViewVia(val name: String, val onPlan: () -> Unit)
 
 /**
  * [actions] as labeled buttons, as a journey's own view has Swap direction: full-size and named, where
@@ -4663,6 +4672,17 @@ private fun ViewActionsRow(actions: ViewActions) {
             OutlinedButton(onClick = open) {
                 Icon(Icons.Filled.Place, contentDescription = null, modifier = Modifier.size(18.dp))
                 Text(stringResource(R.string.action_show_on_map), modifier = Modifier.padding(start = 8.dp))
+            }
+        }
+        // Last, so the buttons above stay where they were.
+        actions.via?.let { via ->
+            val spoken = stringResource(R.string.action_plan_via_spoken, via.name)
+            OutlinedButton(
+                onClick = via.onPlan,
+                modifier = Modifier.testTag("viewVia").semantics { contentDescription = spoken },
+            ) {
+                Icon(AltRouteIcon, contentDescription = null, modifier = Modifier.size(18.dp))
+                Text(stringResource(R.string.action_plan_via), modifier = Modifier.padding(start = 8.dp))
             }
         }
     }
