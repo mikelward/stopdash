@@ -30,6 +30,7 @@ Recordings stay outside the repository (AGENTS.md *Privacy*). All of these stops
 | Midday | Tue 11:07 – 12:37 | 15 below |
 | Evening | Tue 19:01 – 20:31 | 15 below |
 | End of morning peak | Wed 2026-10-14, 09:14 – 10:14 | Camden Town, Euston, King's Cross, Tottenham Court Road |
+| End of morning peak | Fri 2026-10-16, 09:17 – 11:14 | 15 below |
 
 The 15: King's Cross, Bond Street, Liverpool Street, Stratford, Waterloo, Camden Town,
 Stockwell, Baker Street, Farringdon, Paddington (both tube stations), and the Elizabeth line at
@@ -127,6 +128,63 @@ Signals still to test against the recordings, to tell the copy from the real tra
 
 The hour below gives first numbers, from TfL's own record, for a time that slides later and for
 two trains swapping order. Neither is settled.
+
+### Which of a pair vanished
+
+From the Friday recording, by `arrivals_recorder.py pairs`. The pairs and "vanished" are as
+above, with four differences:
+
+- Each pair counts once, at the closest TfL showed it.
+- A train TfL placed "At Platform" came.
+- A pair is unsettled when either train can't be judged. That covers a train still listed at the
+  end, one void as `score` takes it (moved platform, listed twice, or two reaching the platform
+  under 90 s apart), and one last listed over a minute past its time without being "At Platform".
+- A train TfL lists on two lines at once is left out, as the app leaves it out (below).
+
+| Shown apart | Both came | Earlier vanished | Later vanished | Both vanished | Unsettled |
+|---|---|---|---|---|---|
+| 0–5 s | 29 | 3 | 0 | 0 | 22 |
+| 6–60 s | 255 | 4 | 4 | 0 | 153 |
+| 61–89 s | 11 | 0 | 0 | 0 | 4 |
+
+- **Neither train of a pair is the safe one to show.** When one vanished, it was the earlier 7
+  times and the later 4. Graying only the later isn't supported.
+- **With trains on two lines left out, few pairs had a train vanish:** 11 of the 295 settled
+  pairs 60 s apart or less. 6 were on the Jubilee, 2 of 15 on the Hammersmith & City, 2 on the
+  Central and 1 on the Northern. The settled pairs the app grays were nearly all two real trains.
+- **A train listed on two lines at once:** until TfL settles which line a train runs as, it
+  lists it at one platform under each line it could be, with the same id, due within a minute,
+  most often with no destination. The app grays both listings and leaves them out of the pair
+  rule (`DoubtfulTrains`). It was nearly always the Hammersmith & City listing that went:
+
+  | Line | Listings | Settled | Vanished |
+  |---|---|---|---|
+  | Hammersmith & City | 126 | 108 | 107 |
+  | Metropolitan | 108 | 20 | 5 |
+  | District | 16 | 0 | 0 |
+
+  Most of the Metropolitan and District listings couldn't be judged: 91 were void as `score`
+  takes them, and 13 were still listed when the recording ended. A listing TfL also lists twice on
+  its own line has no id to follow, so isn't counted, though it's still left out of the pairs.
+- **Far fewer vanished than on Tuesday:** 11 of 295 settled pairs 60 s apart or less, against
+  about two-thirds of the 6–60 s pairs there. The Tuesday count didn't set aside trains that
+  moved platform, stood listed long past their time, were placed "At Platform" early, or were
+  listed on two lines at once. It was also taken in the peak itself. Running `pairs` over the
+  Tuesday recording would say which difference matters.
+- **None of the signals separates the two.** In the 11 pairs where one train vanished, the one
+  that vanished against the one that came:
+  - had stopped counting down in its last 90 s listed: 2 of 11, against 1 of 10;
+  - had no location at its last listing: 0 of 11, against 0 of 9;
+  - was at one location with the other in a poll: in none of the 11 pairs, but in 26 of the
+    295 pairs that both came.
+- **175 of the 0–60 s pairs were unsettled:**
+  - 80 had a train void as "moved platform". That was mostly the same train seen again on its
+    way back from the end of the line: 4–7 minutes later at Stockwell (Victoria), 7–10 at
+    Waterloo (Bakerloo, Northern). This falls within the 10 minutes `visits` counts as one visit.
+  - 55 were two trains reaching the platform under 90 s apart. That is where a copy standing
+    with the real train would show.
+  - 25 were stale times, 13 were still listed when the recording ended, and 2 were listed twice
+    or at the platform together.
 
 ## Slipping times and order swaps
 
