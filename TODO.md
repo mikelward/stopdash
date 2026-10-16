@@ -1722,7 +1722,17 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               showed, and hide a doubtful train outright only once a rule separates the two. First
               numbers for a time sliding later and for two trains swapping order are in
               `dev-docs/arrivals-measurements.md` (2026-10-14, TfL's own record only); neither is
-              settled without a station display to check against.
+              settled without a station display to check against. The 2026-10-16 pair breakdown found
+              the train that vanished was the earlier at least as often as the later, and most early
+              vanishing was one train TfL listed on two lines at once (now grayed on both, outside
+              the pairs).
+        - [ ] **Tell a train back from the end of the line from one that moved platform** (2026-10-16
+              recording): the recorder voids a train listed at two platforms of one line within
+              `REAPPEARS_AFTER` (10 min). At Stockwell and Waterloo that was mostly the same train
+              seen again 4–10 minutes later, on its way back from the end of the line. It voided 80
+              of 175 unsettled close pairs, and the same visits drop out of `score`. Tell the two
+              apart (the platforms' directions, or a gap too short for the round trip) before the
+              next measurement.
         - [x] Which train makes each departure, and one train's calls ahead (`VehicleSource`).
         - [x] Following a started trip from its train's calls (`OnTheWay`, `:domain`).
           - [x] **A loop train's boarding call jumping over five minutes at once**: a loop train still
