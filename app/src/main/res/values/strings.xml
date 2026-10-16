@@ -979,8 +979,14 @@
     <string name="action_back">Back</string>
     <!-- Screen-reader action on a stop/platform header: opens the view filtered to it. -->
     <string name="action_show_platform">Show this stop only</string>
-    <!-- Screen-reader action on a stop/platform header: opens the view of the whole station. -->
+    <!-- Screen-reader action on a notice heading: opens the view of the whole station. -->
     <string name="action_show_station">Show whole station</string>
+    <!-- TODO: translate -->
+    <!-- A platform view's button opening the view of its whole station. -->
+    <string name="action_whole_station" tools:ignore="MissingTranslation">Whole station</string>
+    <!-- TODO: translate -->
+    <!-- The same button for a bus place: the view of all its stops. -->
+    <string name="action_all_stops" tools:ignore="MissingTranslation">All stops</string>
     <!-- Screen-reader action on a route page's station: opens that station's page. -->
     <string name="action_show_stop">Show stop</string>
     <string name="action_show_on_map">Show on map</string>

@@ -104,6 +104,7 @@ import java.time.Instant
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -1755,7 +1756,8 @@ class MainScreenScreenshotTest {
     }
 
     @Test
-    fun `tapping the station name shows the whole station, the rest of the header one platform`() {
+    fun `a heading is one tap target, and its platform's Whole station button shows the whole station`() {
+        var mapped: Pair<String, String>? = null
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -1763,18 +1765,34 @@ class MainScreenScreenshotTest {
                         DeparturesUiState.Loaded(listOf(kingsCrossStPancras(), manorHouse()), now.minusSeconds(60)),
                         now,
                         {},
+                        stopDistanceMeters = mapOf("940GZZLUKSX" to 120.0, "940GZZLUMRH" to 400.0),
+                        onOpenStopMap = { stopId, name -> mapped = stopId to name },
                     )
                 }
             }
         }
         composeRule.waitForIdle()
+        // The name opens the platform, as the rest of the heading does (maintainer, 2026-10-16).
         composeRule.onAllNodesWithText("King's Cross St. Pancras").onFirst().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Back").assertExists()
+        // A platform, not the station: its buttons offer the whole station (its other platforms are
+        // on the same stop), and the map.
+        composeRule.onNodeWithTag("viewActions").assertExists()
+        composeRule.onNodeWithText("Whole station").assertExists()
+        captureSnapshot("main-platform-view-buttons.png")
+        composeRule.onNodeWithText("Show on map").performClick()
+        assertEquals("940GZZLUKSX" to "King's Cross St. Pancras", mapped)
+        composeRule.onNodeWithText("Whole station").performClick()
         composeRule.waitForIdle()
         // Every King's Cross platform, and nothing from Manor House.
         composeRule.onNodeWithContentDescription("Back").assertExists()
         composeRule.onNodeWithText("Walthamstow Central").assertExists()
         composeRule.onNodeWithText("Cockfosters").assertExists()
         composeRule.onAllNodesWithText("Manor House", substring = true).assertCountEquals(0)
+        // Already the whole station: only the map is offered.
+        composeRule.onNodeWithText("Whole station").assertDoesNotExist()
+        composeRule.onNodeWithText("Show on map").assertExists()
     }
 
     @Test
@@ -1793,12 +1811,22 @@ class MainScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onAllNodesWithText("King's Cross St. Pancras").onFirst().performClick()
         composeRule.waitForIdle()
+        composeRule.onNodeWithText("Whole station").performClick()
+        composeRule.waitForIdle()
         composeRule.onNodeWithText("Cockfosters").assertExists()
 
         // In the station view, a platform header narrows to that platform.
         composeRule.onAllNodesWithContentDescription("Platform 1, Northbound", substring = true).onFirst().performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Walthamstow Central").assertExists()
+        composeRule.onNodeWithText("Cockfosters").assertDoesNotExist()
+
+        // Its Whole station button steps back out to the station it came from, as back does.
+        composeRule.onNodeWithText("Whole station").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Cockfosters").assertExists()
+        composeRule.onAllNodesWithContentDescription("Platform 1, Northbound", substring = true).onFirst().performClick()
+        composeRule.waitForIdle()
         composeRule.onNodeWithText("Cockfosters").assertDoesNotExist()
 
         // Back steps out to the whole station, not past it to the full list.
@@ -1828,6 +1856,8 @@ class MainScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onAllNodesWithText("King's Cross St. Pancras").onFirst().performClick()
         composeRule.waitForIdle()
+        composeRule.onNodeWithText("Whole station").performClick()
+        composeRule.waitForIdle()
         composeRule.onAllNodesWithContentDescription("Platform 1, Northbound", substring = true).onFirst().performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Walthamstow Central").assertExists()
@@ -1844,7 +1874,7 @@ class MainScreenScreenshotTest {
     }
 
     @Test
-    fun `tapping a header's distance shows that stop on a map, not the platform`() {
+    fun `a heading's distance opens its platform, whose Show on map button shows the stop`() {
         var opened: Pair<String, String>? = null
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -1862,8 +1892,12 @@ class MainScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onAllNodesWithText("(400 m)", substring = true, useUnmergedTree = true).onFirst().performClick()
         composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Back").assertExists()
+        assertEquals(null, opened)
+        // A station with nothing more than this platform offers no Whole station.
+        composeRule.onNodeWithText("Whole station").assertDoesNotExist()
+        composeRule.onNodeWithText("Show on map").performClick()
         assertEquals("940GZZLUMRH" to "Manor House", opened)
-        composeRule.onNodeWithContentDescription("Back").assertDoesNotExist()
     }
 
     @Test
@@ -1894,6 +1928,10 @@ class MainScreenScreenshotTest {
 
         composeRule.onAllNodesWithText("Turnpike Lane").onFirst().performClick()
         composeRule.waitForIdle()
+        // A bus place's pole offers its other stops as All stops.
+        composeRule.onNodeWithText("Whole station").assertDoesNotExist()
+        composeRule.onNodeWithText("All stops").performClick()
+        composeRule.waitForIdle()
         composeRule.onNodeWithContentDescription("Back").assertExists()
         // The folded pole's 141 is back, and the title is the bare station name.
         composeRule.onAllNodesWithText("Palmers Green").assertCountEquals(2)
@@ -1921,11 +1959,20 @@ class MainScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onAllNodesWithText("Turnpike Lane").onFirst().performClick()
         composeRule.waitForIdle()
+        // Its one pole is the whole place: nothing more to open.
+        composeRule.onNodeWithText("All stops").assertDoesNotExist()
 
         state = DeparturesUiState.Loaded(listOf(turnpikeLaneNorth(), joining, manorHouse()), now.minusSeconds(60))
         composeRule.waitForIdle()
+        composeRule.onNodeWithText("All stops").performClick()
+        composeRule.waitForIdle()
         composeRule.onNodeWithContentDescription("Back").assertExists()
         composeRule.onNodeWithText("Wood Green").assertExists()
+        // The whole place follows a pole joining it on a refresh.
+        state = DeparturesUiState.Loaded(listOf(turnpikeLaneNorth(), joining, turnpikeLaneSouth(), manorHouse()), now.minusSeconds(60))
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Back").assertExists()
+        composeRule.onNodeWithText("London Bridge").assertExists()
     }
 
     @Test
@@ -2299,7 +2346,7 @@ class MainScreenScreenshotTest {
     }
 
     @Test
-    fun `tapping a closed station's distance shows it on a map`() {
+    fun `tapping a closed station's heading shows it on a map`() {
         val closed = StopArrivals(
             "940GZZLUESQ", "Euston Square", emptyList(),
             fetchedAt = now.minusSeconds(60),
@@ -2323,6 +2370,42 @@ class MainScreenScreenshotTest {
         composeRule.onAllNodesWithText("(250 m)", substring = true, useUnmergedTree = true).onFirst().performClick()
         composeRule.waitForIdle()
         assertEquals("940GZZLUESQ" to "Euston Square", opened)
+    }
+
+    @Test
+    fun `an opened farther station's notice heading opens the station, not the map`() {
+        // The notice heads the opened station's platforms below the loaded places, so its one tap
+        // opens that station, as a place-wide notice does in the list proper (SPEC D8).
+        val notice = "No step-free access between the ticket hall and the Victoria line platforms."
+        val station = kingsCrossStPancras().copy(disruptions = listOf(StopDisruption(notice)))
+        val place = fartherPlace("940GZZLUKSX", "King's Cross St. Pancras", 1_600.0, Triple("victoria", "Victoria", "tube"))
+        var mapped: Pair<String, String>? = null
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(listOf(eustonSouthbound(), station), now.minusSeconds(60)),
+                        now,
+                        {},
+                        stopDistanceMeters = mapOf("940GZZLUEUS" to 80.0, "940GZZLUKSX" to 1_600.0),
+                        farther = listOf(FartherCard(place, FartherLoad.Open(emptyList(), mapOf("940GZZLUKSX" to 1_600.0)))),
+                        onOpenStopMap = { stopId, name -> mapped = stopId to name },
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithText(notice, substring = true).assertCountEquals(1)
+        composeRule.onAllNodesWithText("King's Cross St. Pancras").onFirst().performClick()
+        composeRule.waitForIdle()
+        composeRule.runOnIdle { assertNull(mapped) }
+        // The whole station: every platform, nothing from Euston, and only the map on offer.
+        composeRule.onNodeWithContentDescription("Back").assertExists()
+        composeRule.onNodeWithText("Walthamstow Central").assertExists()
+        composeRule.onNodeWithText("Cockfosters").assertExists()
+        composeRule.onAllNodesWithText("Euston").assertCountEquals(0)
+        composeRule.onNodeWithText("Whole station").assertDoesNotExist()
+        composeRule.onNodeWithText("Show on map").assertExists()
     }
 
     @Test
@@ -5731,6 +5814,56 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithText("Tap to see").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Brixton").assertExists()
+    }
+
+    @Test
+    fun `a held station's notice heading, once tapped open, opens the station`() {
+        // Opened, the held card's notice heads the station's platforms, so its one tap opens that
+        // station rather than the map (SPEC D8).
+        val notice = "No step-free access between the ticket hall and the Victoria line platforms."
+        val kingsCross = StopRef("940GZZLUKSX", "King's Cross St. Pancras", listOf(LineRef("victoria", "Victoria", "tube")))
+        val eustonSquare = StopArrivals(
+            "940GZZLUESQ",
+            "Euston Square",
+            listOf(dep("circle", "Circle", "eastbound", "Aldgate", 300, "Platform 1")),
+            fetchedAt = now.minusSeconds(60),
+        )
+        val distances = mapOf("940GZZLUKSX" to 120.0, "940GZZLUESQ" to 400.0)
+        var state by mutableStateOf<DeparturesUiState>(
+            DeparturesUiState.Loaded(
+                stops = listOf(eustonSquare),
+                fetchedAt = now,
+                statusPending = true,
+                disruptionUnknown = true,
+                pendingStops = listOf(kingsCross),
+            ),
+        )
+        var mapped: Pair<String, String>? = null
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(state, now, {}, stopDistanceMeters = distances, onOpenStopMap = { stopId, name -> mapped = stopId to name })
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        state = DeparturesUiState.Loaded(
+            listOf(kingsCrossStPancras().copy(disruptions = listOf(StopDisruption(notice))), eustonSquare),
+            now.minusSeconds(60),
+        )
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Tap to see").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Walthamstow Central").assertExists()
+        composeRule.onAllNodesWithText(notice, substring = true).assertCountEquals(1)
+
+        composeRule.onAllNodesWithText("King's Cross St. Pancras").onFirst().performClick()
+        composeRule.waitForIdle()
+        composeRule.runOnIdle { assertNull(mapped) }
+        composeRule.onNodeWithContentDescription("Back").assertExists()
+        composeRule.onNodeWithText("Cockfosters").assertExists()
+        composeRule.onAllNodesWithText("Euston Square").assertCountEquals(0)
+        composeRule.onNodeWithText("Whole station").assertDoesNotExist()
     }
 
     @Test

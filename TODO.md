@@ -786,6 +786,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           platforms/poles and routes). Landed as an experiment (maintainer, 2026-09-23): the name
           within the header is the tap target — revisit if its discoverability or target size
           doesn't hold up on a device.
+      - [x] **Revisited** (maintainer, 2026-10-16): a heading is one tap target, the platform, and
+            the platform view carries **Whole station** (All stops for a bus place) and **Show on
+            map** as labeled buttons, where the name and the distance were narrow unmarked taps.
     - [ ] Tapping a **route card** → a view filtered to that line **and direction**.
     - [x] Tapping a **platform/pole sub-header** → a view filtered to just that platform
       (maintainer, 2026-09-23): the main screen filtered in place to the group's stops, back arrow
