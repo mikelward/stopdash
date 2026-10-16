@@ -2667,8 +2667,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         target beside the one that opens the ride, whose own view keeps Swap direction.
   - [x] **The heading says how far the ride's stop is** (maintainer, 2026-10-16), as a stop's
         heading does: its origin's.
-  - [x] **Card headings a size larger, on the widget too** (maintainer, 2026-10-16): the size of the
-        destinations under them, set apart by weight.
+  - [x] **Card headings a size larger, on the widget too** (maintainer, 2026-10-16): the size and
+        weight of the destinations under them. A heavier weight set them apart at first, but read as
+        larger, so both are Medium now, the widget's destinations included.
   - [x] **A discoverable way to star a journey.** A dismissible tip atop a starrable stop list
         says a long press on a stop stars the journey there (maintainer, 2026-09-24).
   - [x] **Star from the stop list by long press, not tap** (maintainer, 2026-10-05, after a stray tap

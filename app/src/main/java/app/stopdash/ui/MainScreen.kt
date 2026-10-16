@@ -3905,11 +3905,11 @@ private fun FartherCardView(
 
 /**
  * The style every heading over a card shares — a stop's, a ride's, a stop a ride boards from — so the
- * list reads as one: the size of the destinations under it, set apart by weight (maintainer,
- * 2026-10-16; it was a size smaller, and read as small beside its rows).
+ * list reads as one: the destinations' own size and weight (maintainer, 2026-10-16; it was a size
+ * smaller, and read as small beside its rows, then a weight heavier, and read as larger).
  */
 @Composable
-internal fun groupHeaderStyle(): TextStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+internal fun groupHeaderStyle(): TextStyle = MaterialTheme.typography.titleMedium
 
 /**
  * The one combined header above a group's card (SPEC D8): the place name and its platform/pole

@@ -1350,9 +1350,9 @@ private fun WidgetStatusLine(text: String) {
     )
 }
 
-/** A stop or ride header above its rows, on one line, as the app's are: the size of the destinations
- *  under it, set apart by weight (maintainer, 2026-10-16). A long one clips at the end: Glance can't
- *  measure text, so it can't reserve the qualifier the way the in-app header does. */
+/** A stop or ride header above its rows, on one line, as the app's are: the destinations' own size
+ *  and weight (maintainer, 2026-10-16). A long one clips at the end: Glance can't measure text, so it
+ *  can't reserve the qualifier the way the in-app header does. */
 @androidx.compose.runtime.Composable
 private fun WidgetStopHeader(header: WidgetHeader) {
     Text(
@@ -1361,7 +1361,7 @@ private fun WidgetStopHeader(header: WidgetHeader) {
         modifier = GlanceModifier.semantics { contentDescription = header.spoken },
         style = TextStyle(
             color = GlanceTheme.colors.onBackground,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.Medium,
             fontSize = widgetSp(13f),
         ),
     )
@@ -1581,7 +1581,8 @@ private fun WidgetDestination(label: String, spoken: String?, modifier: GlanceMo
         text = label,
         maxLines = 1,
         modifier = spoken?.let { modifier.semantics { contentDescription = it } } ?: modifier,
-        style = TextStyle(color = GlanceTheme.colors.onBackground, fontSize = widgetSp(13f)),
+        // Medium, as the app's destinations are (titleMedium) and the header above it is.
+        style = TextStyle(color = GlanceTheme.colors.onBackground, fontWeight = FontWeight.Medium, fontSize = widgetSp(13f)),
     )
 }
 
