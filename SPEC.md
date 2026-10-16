@@ -83,7 +83,15 @@ The app finds stops two ways:
   stand in for the return's: it was asked from where the rider was then, so the return re-locates
   over it and its own fix wins. If it ended while the app was away without stops to show (no fix,
   a failed lookup, none nearby), the return looks again with a fresh fix rather than leave that
-  outcome up until the rider retries.
+  outcome up until the rider retries. A fix is only ever taken **with the app in front**: with
+  location allowed only while in use, Android gives an app it doesn't count in front no fix at all,
+  not even the last one it holds, and just after an unlock it can take a moment to count the app on
+  screen as in front. A fix asked for meanwhile waits until the app is on screen and Android counts
+  it in front (a trip's foreground service counts, with nothing on screen), leaving what's shown as
+  it was, and is asked for anyway once the app has been on screen a moment without it (bug report,
+  2026-10-16: one asked for as a tablet woke, before the app was in front, read as "couldn't get
+  your location" with location working, took the near-me stops off the widget, and was still up
+  when the app came back).
   Re-resolving skips the "locating…" spinner on the common success path — the departures stay
   on screen during the fix rather than
   flashing back to the gate on every pull — but an unsuccessful re-resolve is **surfaced

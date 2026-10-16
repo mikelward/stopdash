@@ -600,6 +600,9 @@ class MainActivity : ComponentActivity() {
                             tripFixes.latest.filterNotNull().map(tripFixes::aged),
                         )
                     },
+                    // A fix only with the app in front: Android refuses one to an app it doesn't count
+                    // in front, and that came back as "couldn't get your location" (SPEC *Finding stops*).
+                    awaitInFront = AppForeground::await,
                 )
             }
         }

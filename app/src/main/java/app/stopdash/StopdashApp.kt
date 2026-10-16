@@ -134,6 +134,8 @@ open class StopdashApp : Application() {
         logProcessExits()
         // Before anything fetches, so every fetch is stamped by it.
         installSteadyClock()
+        // Before the first activity, so a near-me fix knows when the app is on screen.
+        AppForeground.install(this)
         warmSharedState()
         installWatchSync()
         installWidgetDismissalRedraw()
