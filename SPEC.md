@@ -1159,17 +1159,21 @@ station when opened from one) rather than
 show an empty platform as "no departures". A route tapped inside it opens the route page, and back
 from there returns to the platform view.
 
-Tapping the **place name** within a header opens the same view for the **whole station** — every
-platform/pole group of that place — titled by the bare place name (maintainer, 2026-09-23, an
-experiment: the name is a narrow tap target and nothing marks it as one, so its discoverability is
-on trial). The rest of the header row still opens the one platform, and a screen reader offers the
-name as its own "whole station" button. Inside the whole-station view a platform header narrows
-further to **that platform**, and back steps out one level at a time — platform, then station, then
-the full list (maintainer, 2026-09-23). A refresh that drops a platform opened this way closes it to
-its station, and on to the full list if the station is gone too. Tapping the **distance** shows that
-group's nearest stop in the user's maps app — a pin at TfL's published stop position, labeled with
-the place name, never the rider's own fix (maintainer, 2026-09-23; like the name, an undecorated tap
-target). With no maps app installed it says so rather than doing nothing.
+A heading is **one tap target** (maintainer, 2026-10-16): the whole row opens its platform, name
+and distance included. The name opening the whole station and the distance opening the map were
+narrow taps that nothing marked, three targets in one row (tried from 2026-09-23); they're now
+labeled buttons atop the platform view, as a ride's own view has Swap direction. **Whole station**
+(**All stops** for a bus place) opens the same view for the whole station — every platform/pole
+group of that place — titled by the bare place name; it shows only where the station holds more
+than the platform, and from a platform opened inside the station it steps back out to it. Inside the
+whole-station view a platform header narrows further to **that platform**, and back steps out one
+level at a time — platform, then station, then the full list (maintainer, 2026-09-23). A refresh
+that drops a platform opened this way closes it to its station, and on to the full list if the
+station is gone too. **Show on map** shows the view's nearest stop in the user's maps app — a pin at
+TfL's published stop position, labeled with the place name, never the rider's own fix — where the
+near-me list measured one (D1). With no maps app installed it says so rather than doing nothing. A
+notice's own heading (a closure with nothing else to show) has no platform to open: its one tap
+opens its station where it heads one, else shows it on the map.
 
 TfL's endpoint is named "Arrivals"; for a bus stop these are departures *from* that
 stop, which is what a rider wants. StopDash calls them departures throughout the UI.

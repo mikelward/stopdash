@@ -15,6 +15,7 @@ import app.stopdash.domain.StationLead
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopGroup
 import app.stopdash.domain.StopGrouping
+import app.stopdash.domain.isStatusOnly
 import app.stopdash.domain.stopPlaceKey
 import java.time.Instant
 import java.util.IdentityHashMap
@@ -197,7 +198,17 @@ internal class PlatformView(
     val listCards: ListCards = ListCards.NONE,
     // One of [rows] by its identity, for an open route page.
     val byKey: RowsByKey = RowsByKey.NONE,
+    // The whole station a platform view's "Whole station" button opens; null in a station view, or where
+    // the station holds nothing this view doesn't.
+    val station: PlatformStation? = null,
+    // The stop its "Show on map" button shows, and the name to label it with: the nearest of the view's
+    // stops the near-me list measured, as a heading's distance named it; null where none was (D1).
+    val mapStop: Pair<String, String>? = null,
 )
+
+/** The whole station a platform belongs to: its cluster keys, as a station view saves them, its bare
+ *  name, and whether it is a bus place, whose button says "All stops". */
+internal class PlatformStation(val ids: String, val title: String, val bus: Boolean)
 
 /** [ListRows] for [stops], worked out on the list's worker, never in composition. */
 internal fun listRowsOf(
@@ -314,6 +325,8 @@ internal fun platformViewOf(
     hiddenModes: Set<String>,
     alertSequences: Map<String, LineSequence?>,
     topology: RouteTopology = RouteTopology.EMPTY,
+    // The near-me list's distances, for the stop "Show on map" shows; empty off it (D1).
+    stopDistanceMeters: Map<String, Double> = emptyMap(),
 ): PlatformView {
     val stops = source.stops
     val lineStatuses = source.lineStatuses
@@ -352,5 +365,27 @@ internal fun platformViewOf(
     val places = platformStops.mapTo(HashSet()) { stopPlaceKey(it) }
     val closures = rows.filter { it.stopDisruption != null && stopPlaceKey(it) in places }
     val viewRows = closures + stopRows.filter { it.stopDisruption == null && it in groupRows }
-    return PlatformView(viewRows, title, source, now, ListCards.of(viewRows, warningsLead = true, topology), RowsByKey.of(viewRows))
+    // The buttons a heading's name and distance stood for (SPEC D8). The whole station, from a platform
+    // only, and only where it holds more: another platform of the same stop, or another stop of its
+    // cluster. Its keys are the platform's clusters, as a tap on its name saved them.
+    val stationOf = if (station) {
+        null
+    } else {
+        matched.firstOrNull()?.let { first ->
+            val clusters = matched.flatMap { it.rows }.mapTo(LinkedHashSet()) { stationClusterOf(it.clusterId, it.stopId) }
+            val more = groups.any { it !in matched && it.rows.any { row -> !row.isStatusOnly } } ||
+                stops.any { it.stopId !in ids && stationClusterOf(it.clusterId, it.stopId) in clusters }
+            val modes = matched.flatMap { it.rows }.mapNotNullTo(HashSet()) { it.mode.ifBlank { null } }
+            if (more) PlatformStation(clusters.joinToString(","), first.stopName, bus = modes == setOf("bus")) else null
+        }
+    }
+    // The nearest measured stop of those it shows, as the heading's distance named its nearest.
+    val mapStop = (if (station) platformStops.map { it.stopId } else matched.flatMap { it.rows }.map { it.stopId })
+        .filter { it in stopDistanceMeters }
+        .minByOrNull { stopDistanceMeters.getValue(it) }
+        ?.let { it to (if (station) stationTitle else matched.first().stopName) }
+    return PlatformView(
+        viewRows, title, source, now, ListCards.of(viewRows, warningsLead = true, topology), RowsByKey.of(viewRows),
+        station = stationOf, mapStop = mapStop,
+    )
 }

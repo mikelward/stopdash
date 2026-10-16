@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -1084,7 +1085,7 @@ fun MainScreen(
         listWork.platform,
         PlatformInputs(
             platformStopIds.orEmpty(), platformKey, platformIsStation,
-            Inputs(shown, platformTitle, starred, dismissed, hiddenModes, alertSequences, topology),
+            Inputs(shown, platformTitle, starred, dismissed, hiddenModes, alertSequences, topology, stopDistanceMeters),
         ),
         keep = PlatformInputs.sameView,
     ) {
@@ -1098,7 +1099,7 @@ fun MainScreen(
         } else {
             platformViewOf(
                 drawn.from.source, drawn.from.now, ids, platformKey, platformIsStation, platformTitle, starred, dismissed,
-                drawn.rows, hiddenModes, alertSequences, topology,
+                drawn.rows, hiddenModes, alertSequences, topology, stopDistanceMeters,
             )
         }
     }?.takeIf { platformStopIds != null }
@@ -1137,6 +1138,25 @@ fun MainScreen(
     // And how far the stop each ride boards from is, for its heading.
     val shownRideMeters = if (platformRows != null) emptyMap() else shown?.rideMeters.orEmpty()
     BackHandler(enabled = platformRows != null) { closeView() }
+    // The view's buttons (SPEC D8): its whole station from a platform, and its nearest stop on the map,
+    // each only where it has one.
+    val viewActions = platformView?.takeIf { platformRows != null && !platformGone }?.let { view ->
+        val onStation = view.station?.let { station ->
+            {
+                if (parentStationIds != null) {
+                    // Opened from its station, which is one level up: step back out to it.
+                    closeView()
+                } else {
+                    platformStopIds = station.ids
+                    platformIsStation = true
+                    platformKey = ""
+                    platformTitle = station.title
+                }
+            }
+        }
+        val onMap = view.mapStop?.let { (stopId, name) -> onOpenStopMap?.let { open -> { open(stopId, name) } } }
+        if (onStation == null && onMap == null) null else ViewActions(view.station?.bus == true, onStation, onMap)
+    }
     val drawnNow = (if (platformRows != null) platformView?.now else drawnFrom?.now) ?: now
     // A platform or station view's rows are built apart from the list's, maybe from another
     // snapshot: the view is drawn against its own (Codex, #524).
@@ -1754,6 +1774,7 @@ fun MainScreen(
                             onUnpauseAlerts = unpauseHere,
                             // The full list only, as the place chips: not a platform, station or searched page.
                             disruptionsRow = disruptionsRow.takeIf { platformRows == null && stationTitle == null },
+                            viewActions = viewActions.takeIf { !journeyViewOpen },
                         )
                     }
 
@@ -1934,6 +1955,8 @@ private fun LoadedContent(
     onUnpauseAlerts: (() -> Unit)? = null,
     // The disruptions row ([HomeDisruptionsRow]), under the place chips; null shows none.
     disruptionsRow: TripRow? = null,
+    // A platform or station view's buttons ([ViewActions]); null shows none.
+    viewActions: ViewActions? = null,
 ) {
     // Hiding a mode applies to the loading cards too, as to the loaded rows.
     val shownPending = remember(pending, hiddenModes) { visiblePending(pending, hiddenModes) }
@@ -2143,6 +2166,7 @@ private fun LoadedContent(
                         widgetUpdate = widgetUpdate.takeIf { !journeyView },
                         onUnpauseAlerts = onUnpauseAlerts.takeIf { !journeyView },
                         disruptionsRow = disruptionsRow.takeIf { !journeyView },
+                        viewActions = viewActions.takeIf { !journeyView },
                         nearbyEmptyNote = if (rows.isEmpty() && !journeyView && !nearbyShownAbove && shownPending.isEmpty() && dismissedClosures.isEmpty()) {
                             // With modes hidden, say so rather than "no departures": they may be running.
                             if (hiddenModes.isNotEmpty()) {
@@ -2693,11 +2717,16 @@ private fun DepartureList(
     onUnpauseAlerts: (() -> Unit)? = null,
     // The disruptions row ([HomeDisruptionsRow]), under the place chips; null shows none.
     disruptionsRow: TripRow? = null,
+    // A platform or station view's buttons ([ViewActions]), first in it; null shows none.
+    viewActions: ViewActions? = null,
     modifier: Modifier,
 ) {
     // The units near-me distances are written in: the Settings choice, resolved against the locale;
     // null (no labels) until the stored choice has been read.
     val distanceSystem = LocalDistanceSystem.current
+    // What a notice heading's one tap opens, for a screen reader ([noticeGroupItems]).
+    val wholeStationLabel = stringResource(R.string.action_show_station)
+    val mapLabel = stringResource(R.string.action_show_on_map)
     // Stop notices (SPEC *Disruptions*). On the near-me list (distances present) each rides with its
     // place: on its own pole's card, or as the place's own group above its sections, at the place's
     // distance ([NoticePlan]). Elsewhere (the watched list, a platform's own view) they lead as
@@ -3039,6 +3068,8 @@ private fun DepartureList(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        // A platform or station view's buttons, above everything in it (maintainer, 2026-10-16).
+        viewActions?.let { actions -> item(key = "view-actions") { ViewActionsRow(actions) } }
         // A closure alert keys on its stop and hub so a recycled row can't carry another
         // alert's expanded state onto it.
         // The saved places to route to, first of all (SPEC D9 → *Routing from the near-me list*): an
@@ -3108,15 +3139,6 @@ private fun DepartureList(
                         distanceLabel,
                         firstOnScreen = first,
                         onClick = onOpenPlatform?.let { open -> { open(group) } },
-                        onNameClick = onOpenStation?.let { open -> { open(group) } },
-                        // The distance opens the group's own nearest stop in the maps app — for a
-                        // bus place that's this pole, the one the rider walks to.
-                        onDistanceClick = onOpenStopMap?.let { open ->
-                            group.rows
-                                .mapNotNull { r -> stopDistanceMeters[r.stopId]?.let { r.stopId to it } }
-                                .minByOrNull { it.second }
-                                ?.let { (stopId, _) -> { open(stopId, group.stopName) } }
-                        },
                         hideModes = if (onHideMode != null) headerModes(group, modesByPlace) else emptyList(),
                         onHideMode = onHideMode,
                         closed = group.key in closedPoles,
@@ -3244,15 +3266,16 @@ private fun DepartureList(
         )
         // A notice's own group: its place's heading (the interchange, else the stop; a pole's letter)
         // with its distance and a "Closed" chip when it says so, then the notice unless dismissed.
-        // The distance opens [mapStopId] in the maps app, as a section heading's does: the notice's
-        // own stop, or for a place-wide notice the nearest stop of the section it heads.
+        // Its one tap target opens the whole station where it heads one ([station]), else shows
+        // [mapStopId] in the maps app: the notice's own stop, or for a place-wide notice the nearest
+        // stop of the section it heads. A closed station with nothing running has no view to open,
+        // so its map is where a tap goes (maintainer, 2026-10-16).
         fun noticeGroupItems(
             notice: DepartureRow,
             dismissed: Boolean,
             meters: Double?,
             mapStopId: String? = notice.stopId.takeIf { it in stopDistanceMeters },
-            // The section a place-wide notice heads: its name opens the whole station, as that
-            // section's own heading does.
+            // The section a place-wide notice heads: a tap on the heading opens its whole station.
             station: StopGroup? = null,
         ) {
             val closed = ClosedNotice.saysClosed(notice.stopDisruption.orEmpty())
@@ -3274,10 +3297,9 @@ private fun DepartureList(
                     },
                     distanceSystem?.let { system -> meters?.let { StopDistance.label(it, system) } },
                     firstOnScreen = first,
-                    onNameClick = station?.let { group -> onOpenStation?.let { open -> { open(group) } } },
-                    onDistanceClick = mapStopId?.takeIf { meters != null }?.let { stopId ->
-                        onOpenStopMap?.let { open -> { open(stopId, name) } }
-                    },
+                    onClick = station?.let { group -> onOpenStation?.let { open -> { open(group) } } }
+                        ?: mapStopId?.takeIf { meters != null }?.let { stopId -> onOpenStopMap?.let { open -> { open(stopId, name) } } },
+                    clickLabel = if (station != null && onOpenStation != null) wholeStationLabel else mapLabel,
                     closed = closed,
                 )
             }
@@ -3299,8 +3321,10 @@ private fun DepartureList(
             // The distance shown is the card's, so its tap opens the card's nearest stop.
             val nearest = place.stopIds.minByOrNull { stopDistanceMeters[it] ?: Double.MAX_VALUE }
                 ?.takeIf { it in stopDistanceMeters }
+            // Opened, the notice heads the place's groups, so its tap opens that station (Codex).
+            val headed = groupsByPlace[place.placeKey]?.firstOrNull()?.takeIf { shown }
             placeNotices.forEach { (notice, dismissed) ->
-                noticeGroupItems(notice, dismissed, place.place.meters.takeIf { place.distanced }, nearest)
+                noticeGroupItems(notice, dismissed, place.place.meters.takeIf { place.distanced }, nearest, station = headed)
             }
             if (placeNotices.isNotEmpty() && cue != FartherCue.TAP_TO_SEE && cue != FartherCue.LOADING) return
             if (shown) {
@@ -3381,7 +3405,9 @@ private fun DepartureList(
             // opened has none to resolve, so its distance stays plain.
             val nearest = (card.load as? FartherLoad.Open)?.distanceMeters?.minByOrNull { it.value }?.key
                 ?: card.place.stops.map { it.id }.let { ids -> cardNotices.firstNotNullOfOrNull { (n, _) -> n.stopId.takeIf { it in ids } } ?: ids.firstOrNull() }
-            cardNotices.forEach { (notice, dismissed) -> noticeGroupItems(notice, dismissed, card.place.meters, nearest) }
+            cardNotices.forEach { (notice, dismissed) ->
+                noticeGroupItems(notice, dismissed, card.place.meters, nearest, station = opened?.firstOrNull())
+            }
             if (opened != null) {
                 opened.forEach { group -> groupItems(1, group) }
             } else if (cardNotices.isEmpty()) {
@@ -3904,13 +3930,12 @@ internal fun StopGroupHeader(
     qualifier: StopQualifier?,
     distanceLabel: String?,
     firstOnScreen: Boolean,
-    // Opens this group's platform view; null leaves the header inert.
+    // Opens this group's platform view, the header's one tap target (maintainer, 2026-10-16: a tap on
+    // the name or the distance no longer does something else; the platform view has buttons for those).
+    // Null leaves the header inert.
     onClick: (() -> Unit)? = null,
-    // Opens the whole place from a tap on the name itself (the rest of the row opens the platform).
-    // Null leaves the name to the row.
-    onNameClick: (() -> Unit)? = null,
-    // Shows the stop in the maps app from a tap on the distance. Null leaves the distance to the row.
-    onDistanceClick: (() -> Unit)? = null,
+    // What [onClick] opens, for a screen reader; null says it opens the platform.
+    clickLabel: String? = null,
     // A place name stays one line; a journey's change heading wraps rather than lose its "(for …)".
     nameMaxLines: Int = 1,
     // What a screen reader hears for [name] when it differs ("King's Cross to Camden Town, for High
@@ -3929,9 +3954,7 @@ internal fun StopGroupHeader(
 ) {
     val style = groupHeaderStyle()
     val closedLabel = stringResource(R.string.farther_closed)
-    val openLabel = stringResource(R.string.action_show_platform)
-    val stationLabel = stringResource(R.string.action_show_station)
-    val mapLabel = stringResource(R.string.action_show_on_map)
+    val openLabel = clickLabel ?: stringResource(R.string.action_show_platform)
     val label = remember(qualifier) { groupHeaderLabel(qualifier) }
     // The full spoken label: the place name, the spoken qualifier (direction/towards kept), then the
     // distance — read as one, so a screen reader hears the whole header rather than three fragments.
@@ -3998,11 +4021,7 @@ internal fun StopGroupHeader(
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = nameMaxLines,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .weight(1f, fill = false)
-                // The name is its own tap target (child first, so it wins over the row's platform tap)
-                // and its own screen-reader button, read as the place name with a "whole station" hint.
-                .then(if (onNameClick != null) Modifier.clickable(onClickLabel = stationLabel, onClick = onNameClick) else Modifier),
+            modifier = Modifier.weight(1f, fill = false),
         )
         if (label != null) {
             Text(
@@ -4025,13 +4044,6 @@ internal fun StopGroupHeader(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 softWrap = false,
-                // Its own tap target (child first, so it wins over the row's platform tap) and its own
-                // screen-reader button, like the place name.
-                modifier = if (onDistanceClick != null) {
-                    Modifier.clickable(onClickLabel = mapLabel, onClick = onDistanceClick)
-                } else {
-                    Modifier
-                },
             )
         }
         if (closed) {
@@ -4572,6 +4584,47 @@ private fun JourneyNote(text: String, onRetry: (() -> Unit)? = null) {
             modifier = Modifier.weight(1f, fill = false),
         )
         if (onRetry != null) TextButton(onClick = onRetry) { Text(stringResource(R.string.try_again)) }
+    }
+}
+
+/**
+ * A platform or station view's buttons (SPEC D8), what a tap on a heading's name or distance used to
+ * do: [onStation] opens the whole station (all its stops, for a bus place [bus]), [onMap] shows its
+ * nearest stop in the maps app. Null hides a button.
+ */
+internal class ViewActions(val bus: Boolean, val onStation: (() -> Unit)?, val onMap: (() -> Unit)?)
+
+/**
+ * [actions] as labeled buttons, as a journey's own view has Swap direction: full-size and named, where
+ * the heading's name and distance were narrow taps nothing marked (maintainer, 2026-10-16).
+ */
+@Composable
+private fun ViewActionsRow(actions: ViewActions) {
+    // Wraps, so at a large text size or on a narrow screen the second drops to its own line.
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.testTag("viewActions"),
+    ) {
+        actions.onStation?.let { open ->
+            OutlinedButton(onClick = open) {
+                Icon(
+                    painterResource(if (actions.bus) R.drawable.ic_mode_bus else R.drawable.ic_mode_rail),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    stringResource(if (actions.bus) R.string.action_all_stops else R.string.action_whole_station),
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+        }
+        actions.onMap?.let { open ->
+            OutlinedButton(onClick = open) {
+                Icon(Icons.Filled.Place, contentDescription = null, modifier = Modifier.size(18.dp))
+                Text(stringResource(R.string.action_show_on_map), modifier = Modifier.padding(start = 8.dp))
+            }
+        }
     }
 }
 
