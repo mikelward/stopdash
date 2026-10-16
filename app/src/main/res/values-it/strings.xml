@@ -223,7 +223,7 @@
     <string name="trip_direct_partial">Impossibile verificare tutte le linee</string>
     <string name="trip_avoiding">Evitate</string>
     <string name="trip_stop_avoiding">Non evitare più %1$s</string>
-    <string name="trip_duration_arrival">%1$d min · ~%2$s</string>
+    <string name="trip_duration_arrival">%1$d min · %2$s</string>
     <string name="trip_duration_arrival_estimated">stima %1$d min · %2$s</string>
     <string name="trip_duration_arrival_range">stima %1$d–%2$d min · %3$s–%4$s</string>
     <string name="trip_duration_arrival_open">stima %1$d+ min · %2$s+</string>
@@ -618,7 +618,7 @@
     <string name="on_the_way_take_this">Prendi questo</string>
     <string name="on_the_way_other_routes">Altri percorsi</string>
     <string name="on_the_way_done">Fine</string>
-    <string name="on_the_way_trip_eta">%2$d min · ~%1$s</string>
+    <string name="on_the_way_trip_eta">%2$d min · %1$s</string>
     <string name="on_the_way_trip_eta_estimated">stima %2$d min · %1$s</string>
     <string name="on_the_way_step_time">%2$d min · %1$s</string>
     <string name="on_the_way_go_next">Avanti</string>

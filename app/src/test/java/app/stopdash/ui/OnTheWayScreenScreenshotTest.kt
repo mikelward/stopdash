@@ -1726,7 +1726,7 @@ class OnTheWayScreenScreenshotTest {
             }
         }
         captureSnapshot("on-the-way-card-large-text.png")
-        val eta = composeRule.onNodeWithTag("onTheWayEta").assertIsDisplayed().assertTextEquals("31 min · ~08:33").getUnclippedBoundsInRoot()
+        val eta = composeRule.onNodeWithTag("onTheWayEta").assertIsDisplayed().assertTextEquals("31 min · 08:33").getUnclippedBoundsInRoot()
         // Its floor, the "To" whole, on the time's row; the full name stays the screen reader's.
         val name = composeRule.onNodeWithContentDescription("To Canary Wharf").getUnclippedBoundsInRoot()
         assertTrue("$name beside $eta", name.top < eta.bottom && eta.top < name.bottom)
@@ -1754,11 +1754,11 @@ class OnTheWayScreenScreenshotTest {
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("onTheWayEta"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertTextEquals("31 min · ~08:33")
+        composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertTextEquals("31 min · 08:33")
         // The same leg, a new prediction: timed at once from what's held.
         progress = TripProgress.Riding(jubilee, "Canning Town", 2, at(35), getOffSoon = false)
         composeRule.waitForIdle()
-        composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertTextEquals("35 min · ~08:37")
+        composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertTextEquals("35 min · 08:37")
     }
 
     @Test
@@ -1877,14 +1877,14 @@ class OnTheWayScreenScreenshotTest {
     fun the_trip_says_its_time_left_and_when_it_gets_there() {
         val resources = composeRule.activity.resources
         assertEquals("est. 14 min · 08:16", etaText(resources, OnTheWay.Eta(at(14), live = false), now))
-        assertEquals("14 min · ~08:16", etaText(resources, OnTheWay.Eta(at(14), live = true), now))
+        assertEquals("14 min · 08:16", etaText(resources, OnTheWay.Eta(at(14), live = true), now))
         // On the last ride, TfL's time where they get off; not from an answer too old to stand behind.
         val last = trip.copy(legIndex = 2, boarded = true, onBoardSeen = true)
         val riding = TripProgress.Riding(jubilee, "Canning Town", 2, at(31), getOffSoon = false)
         show(last, riding)
         // On the card, under where the trip goes, over the step at hand (maintainer, 2026-10-03).
         onCard("To Canary Wharf").assertIsDisplayed()
-        composeRule.onNodeWithTag("onTheWayEta").assertTextEquals("31 min · ~08:33")
+        composeRule.onNodeWithTag("onTheWayEta").assertTextEquals("31 min · 08:33")
     }
 
     @Test

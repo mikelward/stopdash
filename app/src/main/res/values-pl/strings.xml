@@ -233,7 +233,7 @@
     <string name="trip_direct_partial">Nie udało się sprawdzić wszystkich linii</string>
     <string name="trip_avoiding">Unikane</string>
     <string name="trip_stop_avoiding">Przestań unikać: %1$s</string>
-    <string name="trip_duration_arrival">%1$d min · ~%2$s</string>
+    <string name="trip_duration_arrival">%1$d min · %2$s</string>
     <string name="trip_duration_arrival_estimated">szac. %1$d min · %2$s</string>
     <string name="trip_duration_arrival_range">szac. %1$d–%2$d min · %3$s–%4$s</string>
     <string name="trip_duration_arrival_open">szac. %1$d+ min · %2$s+</string>
@@ -634,7 +634,7 @@
     <string name="on_the_way_take_this">Wybierz ten</string>
     <string name="on_the_way_other_routes">Inne trasy</string>
     <string name="on_the_way_done">Gotowe</string>
-    <string name="on_the_way_trip_eta">%2$d min · ~%1$s</string>
+    <string name="on_the_way_trip_eta">%2$d min · %1$s</string>
     <string name="on_the_way_trip_eta_estimated">szac. %2$d min · %1$s</string>
     <string name="on_the_way_step_time">%2$d min · %1$s</string>
     <string name="on_the_way_go_next">Dalej</string>

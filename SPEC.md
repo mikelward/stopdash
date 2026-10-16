@@ -2022,7 +2022,9 @@ train for the other branch isn't shown on the leg at all, so the rider sees only
 take (maintainer, 2026-09-27). A train the list wouldn't count down — canceled, or with no time TfL
 stands behind (*Disruptions*) — is never a reachable train: it is skipped for the arrival and the
 ordering, and shown as the list shows it.
-Run and change times are the Planner's, so the arrival reads "about". The same end-to-end arrival
+Run and change times are the Planner's, but a live arrival carries no mark of its own: only an estimate
+does, "est." (maintainer, 2026-10-16: a live "~11:26" beside an "est. 11:18" read as two ways of saying
+"maybe", the live one the more doubtful-looking). The same end-to-end arrival
 orders the routes within a tier, so "fastest" never assumes a connection the rider can't make. A leg with no live
 train in reach yet (none predicted that far ahead, its arrivals failed, or they have gone stale under
 D4) falls back to the
@@ -2049,7 +2051,7 @@ leg. Since the Planner's timetable does say when the next one leaves, a withheld
 least 5 minutes old plans the trip again at once rather than wait out the 15-minute reuse (maintainer,
 2026-09-27): once per plan, so it asks at most every 5 minutes, and each time the log says which leg
 withheld the arrival and why. A re-locate in flight (a return to the app) is waited for first, as the
-minute tick waits for it, so the routes change once, for where the rider is now. Otherwise its arrival reads **"est."** instead of "about", and within
+minute tick waits for it, so the routes change once, for where the rider is now. Otherwise its arrival reads **"est."**, and within
 its tier it sorts **after every route whose legs are all live** — unless it is timed from at least one
 live train, or rides a line live trains show running at the stop it boards, and gets there before
 that route **even at the latest end of its range** (maintainer, 2026-09-30: a live ride then a
@@ -2686,8 +2688,8 @@ as it was.
   line's name never do (maintainer, 2026-10-03).
   The app bar says StopDash: the card names the trip, so the bar needn't.
 - **Time left.** On the card, under where the trip goes, it says when it gets there and how long is
-  left (maintainer, 2026-10-01; moved onto the card 2026-10-03): "29 min · ~08:31". It's "~" when it's TfL's prediction for where
-  the rider gets off the ride they're on, with only walks after. It's "est." when any of it is the
+  left (maintainer, 2026-10-01; moved onto the card 2026-10-03): "29 min · 08:31", unmarked when it's TfL's prediction for where
+  the rider gets off the ride they're on, with only walks after (it read "~08:31" until 2026-10-16). It's "est." when any of it is the
   Planner's ("est. 37 min · 08:39": the "est." leads, before the minutes, and it's the first thing the
   card drops when the row is too short for the trip's name beside it; maintainer, 2026-10-04): a train still to come (its time at the boarding stop, then the time on board), or a ride
   or change still ahead. Still to board, with the train followed gone by (TfL can list a bus past its
