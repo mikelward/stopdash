@@ -63,7 +63,7 @@ class SharedInTest {
     }
 
     @Test
-    fun `a link that can't be followed, or names no spot, falls back to the name`() = runBlocking {
+    fun `a link that can't be followed, or names no spot or postcode, falls back to the name`() = runBlocking {
         val shared = SharedIn(text = "Somewhere\nhttps://maps.app.goo.gl/X")
         assertEquals(SharedPlace.Ask.Search("Somewhere"), readSharedIn(shared) { null })
         assertEquals(
@@ -135,6 +135,35 @@ class SharedInTest {
         assertEquals(
             SharedPlace.Ask.Search("Room b12 3rd floor"),
             readSharedIn(SharedIn(text = "Room b12 3rd floor"), follow = noFollow, places = { index }),
+        )
+    }
+
+    @Test
+    fun `a Maps link that names its place by text plans to its address's postcode`() = runBlocking {
+        // What a short link shared from the Maps app leads to: the place's name and address, no spot.
+        val led = "https://maps.google.com?q=Somewhere,+10+Example+Street,+London+XX1+1XX&ftid=0x0:0x1&entry=gps"
+        val logged = mutableListOf<String>()
+        assertEquals(
+            SharedPlace.Ask.Point(Coordinates(51.5, -0.1), "Somewhere"),
+            readSharedIn(SharedIn(text = "Somewhere\nhttps://maps.app.goo.gl/X?g_st=ac"), places = { index }, log = { logged += it }) { led },
+        )
+        assertEquals(listOf("share: text, read as a bundled postcode in a Maps link"), logged)
+        // A link alone is titled by the place's name, the address's first part.
+        assertEquals(
+            SharedPlace.Ask.Point(Coordinates(51.5, -0.1), "Somewhere"),
+            readSharedIn(SharedIn(text = "https://maps.app.goo.gl/X"), places = { index }) { led },
+        )
+        // A postcode the bundle doesn't hold is searched, as a shared address's is.
+        assertEquals(
+            SharedPlace.Ask.Search("YY1 1YY"),
+            readSharedIn(SharedIn(text = "Somewhere\nhttps://maps.app.goo.gl/X"), places = { index }) {
+                "https://maps.google.com?q=Somewhere,+1+Far+Road,+Elsewhere+YY1+1YY&ftid=0x0:0x1"
+            },
+        )
+        // An address in the share itself still comes first.
+        assertEquals(
+            SharedPlace.Ask.Search("YY1 1YY"),
+            readSharedIn(SharedIn(text = "1 Far Road, Elsewhere YY1 1YY\nhttps://maps.app.goo.gl/X"), places = { index }) { led },
         )
     }
 

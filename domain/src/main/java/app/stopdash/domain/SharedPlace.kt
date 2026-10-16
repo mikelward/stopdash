@@ -162,11 +162,26 @@ object SharedPlace {
             ?: CENTER.find(path)?.takeIf { path.startsWith("/maps/place/") || path.startsWith("/maps/@") }
                 ?.let { pointOf(it.groupValues[1], it.groupValues[2]) }
         if (point != null) return Ask.Point(point, label?.let(::capped))
+        return mapsTextOf(url)?.let(::queryOf)?.let(Ask::Search)
+    }
+
+    /**
+     * The text a Google Maps link ([url], a full one, or where a short one led) names its place by, whole
+     * and decoded, or null where it names none. A short link shared from the Maps app leads to its place's
+     * name and address with no spot in it (`maps.google.com?q=Tate+Modern,+Bankside,+London+SE1+9TG&ftid=…`),
+     * so this is where its postcode is ([addressesOf]). A consent page is read for the Maps link it carries.
+     */
+    @WorkerThread
+    fun mapsTextOf(url: String): String? {
+        val (host, _) = hostAndPath(url) ?: return null
+        val params = paramsOf(url)
+        if (host == "consent.google.com") return params["continue"]?.takeIf(::isFullMapsLink)?.let(::mapsTextOf)
+        if (!isFullMapsLink(url)) return null
         // A point that isn't a real one (0,0) is no place, not text to search.
         return sequenceOf("q", "query", "destination", "daddr").mapNotNull { params[it] }
             .filterNot { LABELED_POINT.matches(it) }
-            .firstNotNullOfOrNull { queryOf(it) }
-            ?.let(Ask::Search)
+            .firstOrNull { lineOf(it) != null }
+            ?.let(::bounded)
     }
 
     // A `geo:` link's `q=` text, decoded and trimmed; null for no link or no text.
