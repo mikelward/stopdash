@@ -4706,7 +4706,10 @@ Mirrors the sibling fleet:
   so a one-minute cadence keeps TfL predictions (which update roughly every ~30 s) fresh
   without a manual pull, while staying a tiny fraction of the keyless per-IP rate budget.
   A failed tick keeps the last-good departures with a warning (D4), never a blank screen.
-  The interval is one tuned constant in code, not a spec guarantee.
+  The interval is one tuned constant in code, not a spec guarantee. A **foreground return** is
+  any coming back after the app left, the screen rebuilt as it returns included (a setting such as
+  dark theme changed while it was away), so the list never sits on its old times waiting for the
+  first tick; a rotation, which the app never left for, is not one.
 - **D7 — No baked-in TfL key; works keyless, optional user key for the higher limit.**
   A shared key would pool all users into one bucket and ship a credential; a per-user
   key avoids both. See *Data source*.

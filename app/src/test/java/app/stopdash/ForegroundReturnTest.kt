@@ -97,6 +97,42 @@ class ForegroundReturnTest {
     }
 
     @Test
+    fun `a return to an observer rebuilt while away still latches`() {
+        // The activity rebuilt as the app comes back (a setting changed while it was away) composes a new
+        // observer, whose first start is that return: the mark of having left is retained, not counted
+        // from the observer's own starts (a bug report, 2026-10-16).
+        val owner = FakeOwner()
+        var pending by mutableStateOf(false)
+        var composed by mutableStateOf(true)
+
+        composeRule.setContent {
+            CompositionLocalProvider(LocalLifecycleOwner provides owner) {
+                if (composed) {
+                    ForegroundReturnLatcher(
+                        isReady = { true },
+                        isBusy = { false },
+                        onReturn = { pending = true },
+                    )
+                }
+            }
+        }
+
+        composeRule.runOnUiThread { owner.registry.currentState = Lifecycle.State.STARTED }
+        composeRule.waitForIdle()
+        assertEquals("the initial start isn't a return", false, pending)
+        composeRule.runOnUiThread { owner.registry.currentState = Lifecycle.State.CREATED }
+        composeRule.waitForIdle()
+        // Rebuilt while away: the old observer goes and a new one comes.
+        composed = false
+        composeRule.waitForIdle()
+        composed = true
+        composeRule.waitForIdle()
+        composeRule.runOnUiThread { owner.registry.currentState = Lifecycle.State.STARTED }
+        composeRule.waitForIdle()
+        assertEquals("the return latches on the rebuilt observer", true, pending)
+    }
+
+    @Test
     fun `a return before the set is ready does not latch`() {
         // A return before the near-me set resolves (the gate is still up, e.g. a permission grant via
         // Settings) is the gate's own locate() — latching here would double-fetch after the grant.
