@@ -4104,7 +4104,7 @@ class MainScreenScreenshotTest {
     }
 
     @Test
-    fun `a journey card checked again keeps its trains in place, their times giving way to spinners`() {
+    fun `a journey card checked again keeps its trains in place, their times fading while it does`() {
         val origin = StopArrivals(
             "940GZZLUVIC",
             "Victoria",
@@ -4137,18 +4137,18 @@ class MainScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("5 min").assertExists()
         val top = composeRule.onNodeWithText("Walthamstow Central").getUnclippedBoundsInRoot().top
-        // Its origin's departures are asked for again: the card checks, holding what it drew where it was.
+        // Its origin's departures are asked for again: the card checks, holding what it drew where it was,
+        // its time as it was, faded and heard as being checked.
+        val checking = hasText("5 min") and SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Checking trains…")
         stops = listOf(manorHouse())
-        composeRule.waitUntil(10_000) {
-            composeRule.onAllNodesWithContentDescription("Checking trains…").fetchSemanticsNodes().isNotEmpty()
-        }
+        composeRule.waitUntil(10_000) { composeRule.onAllNodes(checking).fetchSemanticsNodes().isNotEmpty() }
         assertEquals(top, composeRule.onNodeWithText("Walthamstow Central").getUnclippedBoundsInRoot().top)
-        composeRule.onAllNodesWithText("5 min").assertCountEquals(0)
-        captureSnapshot("main-journey-card-checking.png")
-        // Back: its times again, in place.
-        stops = listOf(manorHouse(), origin)
-        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("5 min").fetchSemanticsNodes().isNotEmpty() }
         composeRule.onAllNodesWithContentDescription("Checking trains…").assertCountEquals(0)
+        captureSnapshot("main-journey-card-checking.png")
+        // Back: its times as they are, in place.
+        stops = listOf(manorHouse(), origin)
+        composeRule.waitUntil(10_000) { composeRule.onAllNodes(checking).fetchSemanticsNodes().isEmpty() }
+        composeRule.onNodeWithText("5 min").assertExists()
         assertEquals(top, composeRule.onNodeWithText("Walthamstow Central").getUnclippedBoundsInRoot().top)
     }
 
@@ -5107,6 +5107,51 @@ class MainScreenScreenshotTest {
                     ?.any { guess.matches(it.text) } == true
             },
         ).onFirst().assertExists()
+    }
+
+    @Test
+    fun `a stale stop's guesses fade while a refresh fetches it, and stand as they are when none is`() {
+        val stale = stops(now.minusSeconds(600))
+        var fetching by mutableStateOf(stale.mapTo(HashSet()) { it.stopId }.toSet())
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(stale, now.minusSeconds(600)),
+                        now,
+                        {},
+                        refreshing = fetching.isNotEmpty(),
+                        fetchingStops = fetching,
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        val guess = Regex("\\d\\d:\\d\\d\\?")
+        fun guesses(spoken: String?) = composeRule.onAllNodes(
+            SemanticsMatcher("a time marked as a guess") { node ->
+                node.config.getOrNull(SemanticsProperties.Text)?.any { guess.matches(it.text) } == true &&
+                    node.config.getOrNull(SemanticsProperties.StateDescription) == spoken
+            },
+        )
+        // A refresh is fetching the stale stops again: each guess stays, faded and heard as being checked.
+        val all = guesses("Checking…").fetchSemanticsNodes().size
+        assertTrue(all > 0)
+        guesses(null).assertCountEquals(0)
+        captureSnapshot("main-stale-refreshing.png")
+        // The other stops' requests failed while the tube's is still out: their guesses stand at once, no
+        // longer about to be replaced, while the tube's still fade.
+        fetching = setOf("940GZZLUWPL")
+        composeRule.waitForIdle()
+        val standing = guesses(null).fetchSemanticsNodes().size
+        assertTrue(standing > 0)
+        guesses("Checking…").assertCountEquals(all - standing)
+        assertTrue(all - standing > 0)
+        // Nothing under way: the guesses stand as they are, no work about to replace them.
+        fetching = emptySet()
+        composeRule.waitForIdle()
+        guesses("Checking…").assertCountEquals(0)
+        guesses(null).assertCountEquals(all)
     }
 
     @Test

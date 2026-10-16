@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import androidx.annotation.VisibleForTesting
 import androidx.annotation.WorkerThread
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -146,6 +147,17 @@ internal val FAR_ARRIVALS_REUSE: Duration = Duration.ofSeconds(90)
  * as a "Loading" card rather than holding the rest.
  */
 internal const val FIRST_PAINT_GRACE_MS = 2_000L
+
+/**
+ * The stops a refresh has yet to show ([ids]): asked for, or answered and waiting on the rest of the
+ * batch. A stale one's guesses fade while it's here (SPEC D4). Stamped with the [refresh] that set it,
+ * so a superseded refresh never trims a newer one's set.
+ */
+data class FetchingStops(val refresh: Long, val ids: Set<String>) {
+    companion object {
+        val NONE = FetchingStops(0, emptySet())
+    }
+}
 
 /**
  * Owns the departures snapshot the screen renders (SPEC staleness contract): the fetch
@@ -686,6 +698,27 @@ class MainViewModel(
     private val _refreshing = MutableStateFlow(false)
     val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
 
+    // The stops whose departures a refresh is asking for right now: a stale stop's kept guesses fade
+    // while it is (SPEC D4). A stop leaves at once when its request fails, rather than when the whole
+    // batch lands, since nothing is then about to replace its guesses (Codex, #889); the rest leave
+    // with the batch's list, since an answer that came back is still to be shown until then.
+    private val _fetchingStops = MutableStateFlow(FetchingStops.NONE)
+    val fetchingStops: StateFlow<FetchingStops> = _fetchingStops.asStateFlow()
+
+    // The last refresh to set [fetchingStops], counted on the main thread.
+    private var fetchingRefresh = 0L
+
+    /**
+     * Takes [stopId] out of [fetchingStops] as its departures request fails, only while the set is still
+     * [refresh]'s own: a superseded refresh's watcher, past its request when it was called off, leaves a
+     * newer refresh's set alone (Codex, #889). On [compute]: the set walks every stop it holds, and
+     * [update] retries against the latest value, refresh included.
+     */
+    @VisibleForTesting
+    internal fun arrivalsFailed(refresh: Long, stopId: String) {
+        _fetchingStops.update { if (it.refresh == refresh) it.copy(ids = it.ids - stopId) else it }
+    }
+
     // The starred set the screen pins to the top (SPEC D8). Collected from the store so a
     // toggle re-orders the list at once; an Unavailable set (a newer-version file this build
     // can't read) pins nothing rather than guessing — the stars are preserved on disk.
@@ -914,6 +947,7 @@ class MainViewModel(
         reportedDuringReconcile = false
         journeyStopsSetDuringReconcile = false
         _refreshing.value = false
+        _fetchingStops.value = FetchingStops.NONE
         // A cold load cut short keeps the stops it showed and names the ones it never got, rather
         // than leave them "Loading" with nothing coming (SPEC principle 2).
         // Its line status was never checked, so that now reads "couldn't check", as does a closure
@@ -1037,6 +1071,8 @@ class MainViewModel(
         val nearIds: Set<String>,
         val journeyIds: Set<String>,
         val toFetch: List<StopRef>,
+        // The stops this refresh asks for, the ones it carries over unasked aside ([fetchingStops]).
+        val fetching: Set<String>,
     )
 
     /**
@@ -1217,6 +1253,9 @@ class MainViewModel(
         // Called on [compute] (one at a time, in order), so the caller works its state out there and
         // hops to the main thread only to publish it.
         onProgress: (suspend (BatchProgress) -> Unit)? = null,
+        // Called on [compute] with a stop whose departures request failed, as it fails, while the rest
+        // may still be out ([fetchingStops]). Null skips it.
+        onArrivalsFailed: ((String) -> Unit)? = null,
         // Whether a stop another screen fetched within [ArrivalsCache.TTL] is taken from
         // [sharedArrivals] rather than asked for; false on a pull-to-refresh, which asks afresh.
         useShared: Boolean = true,
@@ -1351,6 +1390,12 @@ class MainViewModel(
                             }
                         }
                     }
+                }
+            }
+            if (onArrivalsFailed != null) {
+                stops.forEachIndexed { i, stop ->
+                    val arrival = arrivals[i] ?: return@forEachIndexed
+                    launch(compute) { if (arrival.await().isFailure) onArrivalsFailed(stop.id) }
                 }
             }
             // Sent once there's something to show it for — a stop's arrivals back, or a stop shown
@@ -2051,6 +2096,7 @@ class MainViewModel(
             _state.value = DeparturesUiState.Loading
         }
         _refreshing.value = true
+        val refreshNo = ++fetchingRefresh
         val job = viewModelScope.launch {
             // Stamp each stop from the START of the fetch, not after the request chain, so
             // a slow TfL or many stops can't report the oldest departures as "just updated"
@@ -2107,20 +2153,24 @@ class MainViewModel(
             }
             // What this fetch is for, worked out on the worker from the tiers and journey stops above
             // (AGENTS.md *Main thread: read and dispatch only*): each pass walks every stop.
-            val (prior, reuse, nearIds, journeyIds, toFetch) = withContext(compute) {
+            val (prior, reuse, nearIds, journeyIds, toFetch, fetching) = withContext(compute) {
+                // Fetch the whole set, merged into the prior at this cycle's stamp (see [fetchBatch]) —
+                // except stops fetched moments ago, carried over as they are. A retry soon after a
+                // rate-limited refresh then spends the budget left only on the stops still missing,
+                // rather than refetching every stop and hitting the limit again.
+                val reuse = if (priorLoaded != null && !force) recentlyFetched(priorLoaded, now, automatic, distances0) else emptySet()
+                val toFetch = fetchedOf(near0, journeys0)
                 RefreshSetup(
                     prior = priorStops.associateBy { it.stopId },
-                    // Fetch the whole set, merged into the prior at this cycle's stamp (see [fetchBatch]) —
-                    // except stops fetched moments ago, carried over as they are. A retry soon after a
-                    // rate-limited refresh then spends the budget left only on the stops still missing,
-                    // rather than refetching every stop and hitting the limit again.
-                    reuse = if (priorLoaded != null && !force) recentlyFetched(priorLoaded, now, automatic, distances0) else emptySet(),
+                    reuse = reuse,
                     // The nearby stops this fetch is for: the only ones the widget may be given below.
                     nearIds = near0.mapTo(HashSet()) { it.id },
                     journeyIds = journeys0.mapTo(HashSet()) { it.id },
-                    toFetch = fetchedOf(near0, journeys0),
+                    toFetch = toFetch,
+                    fetching = toFetch.mapTo(HashSet()) { it.id } - reuse,
                 )
             }
+            _fetchingStops.value = FetchingStops(refreshNo, fetching)
             // Only while there's nothing else to show — a cold load with no saved snapshot, or one
             // already part-shown this way. A kept snapshot stays on screen until the batch is done.
             // Never saved: a part-loaded list isn't a snapshot (SPEC D4).
@@ -2143,7 +2193,9 @@ class MainViewModel(
             // This (main) thread, where the state is published; the progress itself is worked out on
             // [compute], one report at a time, in order ([fetchBatch]).
             val publisher = checkNotNull(currentCoroutineContext()[ContinuationInterceptor])
-            val batch = fetchBatch(toFetch, prior, now, reuse, useShared = !force, onProgress = if (!coldAtStart) null else { progress ->
+            val batch = fetchBatch(toFetch, prior, now, reuse, useShared = !force, onArrivalsFailed = { id ->
+                arrivalsFailed(refreshNo, id)
+            }, onProgress = if (!coldAtStart) null else { progress ->
                 val (shown, waiting, failed) = progress
                 // Worked out here, off the main thread: whichever the screen turns out to show.
                 val allFailed = shown.isEmpty() && waiting.isEmpty() && failed.isNotEmpty()
@@ -2295,6 +2347,9 @@ class MainViewModel(
                 Publish(newState, snapshot, snapshot?.takeIf { authoritative }, published)
             }
             _state.value = newState
+            // Each stop's answer is on screen, or its aged rows are kept: none is being fetched now,
+            // though the refresh still has its saves and checks to settle.
+            _fetchingStops.value = FetchingStops.NONE
             closureShown += published.closureAsks
             coldLoadUnfinished = false
 
@@ -2418,7 +2473,12 @@ class MainViewModel(
         // newer refresh doesn't clear the newer one's indicator.
         // Nor does a fetch that finishes while a reconcile is on the worker: that reconcile is under way
         // and its own refresh clears it (Codex on #548).
-        job.invokeOnCompletion { if (fetchJob === job && !reconcilePending) _refreshing.value = false }
+        job.invokeOnCompletion {
+            // However it ended, canceled included, nothing it asked for is still coming: its own set goes,
+            // never a newer refresh's.
+            _fetchingStops.update { if (it.refresh == refreshNo) FetchingStops.NONE else it }
+            if (fetchJob === job && !reconcilePending) _refreshing.value = false
+        }
         // The journeys' far ends too, after this fetch (which caches any it covers).
         checkJourneyDestinations()
     }

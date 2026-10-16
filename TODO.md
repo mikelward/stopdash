@@ -4049,16 +4049,16 @@ and these carry the rest as their own PRs:
             memory. `PackageManager.getBackgroundPermissionOptionLabel()` gives the device's own
             label for "Allow all the time" (read off the main thread); "While using the app" has no
             such API, so it stays quoted and needs a device check in each language.
-- [ ] **A softer checking indicator in a row's time** (maintainer, 2026-10-16): a favorite ride's
-      card checked again shows a spinner where each time goes (SPEC *Journeys*). Mocked alongside it:
-      three dots fading in turn, a dot travelling along a short line, a shimmer, and the old time
-      faded. The dots and the moving dot read as more playful; the faded time is the quietest, but
-      it keeps counting old departures down, so it needs a cap on how long it may stand. Kept the
-      spinner for now.
-- [ ] **The same treatment for a stale near-me stop** (maintainer, 2026-10-16): its "?" times give
-      way to the checking indicator while a refresh is fetching that stop, keeping "?" when nothing
-      is in flight (offline, or after a failed fetch), so the animation never stands for work that
-      isn't happening.
+- [x] **A softer checking indicator in a row's time** (maintainer, 2026-10-16): mocked against the
+      spinner a favorite ride's card first showed — three dots fading in turn, a dot travelling along
+      a short line, a shimmer, and the old time faded — and the faded time chosen to try everywhere
+      (SPEC *Journeys*, D4). A time held past the staleness threshold shows as the stale guess, so the
+      fade never counts old departures down past it. A row with no answer yet keeps the spinner.
+      - [ ] **Device check:** the fade reads as "checking" and not as a disabled row, on the journey
+            card and the near-me list, in light and dark; the dots or the moving dot stay the fallback.
+- [x] **The same treatment for a stale near-me stop** (maintainer, 2026-10-16): its "21:14?" guesses
+      fade and pulse while a refresh is fetching it, and stand as they are when nothing is in flight
+      (offline, or after a failed fetch), so the animation never stands for work that isn't happening.
 - [ ] **Translations pass** (standing): once the maintainer has confirmed them on a device,
       translate the strings marked `TODO: translate` into every language (terms from
       `dev-docs/translations.md`) and drop the marks (AGENTS *Translations*).
