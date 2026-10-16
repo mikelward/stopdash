@@ -1902,7 +1902,11 @@ Google. "Once" is per share, while the app runs (maintainer, 2026-10-13): a recr
 same share delivered again reuses the answer, but a share restored after Android ends the app
 mid-request, or the same link shared again later, may ask again, the same request to the same
 recipient, so nothing more is disclosed. Only Google's Maps addresses are followed, and the page itself is never fetched. A link
-that can't be followed, or names its place only by text, searches the shared name instead. A shared point is the trip's destination, sent to TfL's Journey
+that names its place only by text — what the Maps app's own short links lead to, its name and address
+with no spot (maintainer, 2026-10-16) — is read for that address's postcode as a shared address is:
+the trip plans straight to the postcode where the bundle holds it, titled by the shared name, and the
+postcode is searched where it doesn't. A link that can't be followed, or whose text has no postcode,
+searches the shared name instead. A shared point is the trip's destination, sent to TfL's Journey
 Planner as any destination is (`docs/PRIVACY.md`). Without a location grant it says so, as a favorite's
 chip does; a share with nothing to search for says "No place to search for in what was shared".
 A share into the app already open lands where a fresh start would: whatever screen was open over the

@@ -4509,6 +4509,12 @@ and these carry the rest as their own PRs:
       the link can't be followed.
   - [ ] **Device check:** share a place, a dropped pin and a search result from Google Maps; each
         should open a trip to its spot, and with the network off, a search for its name.
+- [x] **Read a Maps app link's address for its postcode** (maintainer, 2026-10-16). A short link
+      shared from the Maps app leads to `maps.google.com?q=<name>, <address>&ftid=…`, with no spot, so
+      the follow above only ever searched the name. Its postcode now plans the trip as a shared address
+      does, titled by the shared name.
+  - [ ] **Device check:** share a London place from the Maps app; the trip should open straight to it,
+        titled by its name, and the bug report's log should say "read as a bundled postcode in a Maps link".
 - [x] **Plan straight to an address shared from Calendar** (maintainer, 2026-10-13). An address with a
       postcode the bundle holds plans to that postcode, titled by its street; others search the postcode,
       or the street where there's none.

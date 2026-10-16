@@ -162,6 +162,24 @@ class SharedPlaceTest {
     }
 
     @Test
+    fun `a link's text is read whole, so an address's postcode past a name's length is kept`() {
+        // What a short link shared from the Maps app leads to: the name and address, no spot.
+        val street = "Somewhere With A Very Long Name Indeed, 10 Example Street, Example District"
+        val text = SharedPlace.mapsTextOf("https://maps.google.com?q=${street.replace(' ', '+')},+London+XX1+1XX&ftid=0x0:0x1&entry=gps")
+        assertEquals("$street, London XX1 1XX", text)
+        assertEquals(listOf("XX1 1XX"), SharedPlace.addressesOf(text).map { it.postcode })
+        assertEquals(
+            "Somewhere",
+            SharedPlace.mapsTextOf("https://consent.google.com/m?continue=https://maps.google.com/maps?q%3DSomewhere&gl=GB"),
+        )
+        // A point, punctuation, or a page that isn't Google's Maps names no text.
+        assertNull(SharedPlace.mapsTextOf("https://maps.google.com/?q=51.5,-0.12"))
+        assertNull(SharedPlace.mapsTextOf("https://maps.google.com/?q=,"))
+        assertNull(SharedPlace.mapsTextOf("https://evil.example/maps?q=Somewhere"))
+        assertNull(SharedPlace.mapsTextOf("https://consent.google.com/m?continue=https://evil.example/?q%3DSomewhere"))
+    }
+
+    @Test
     fun `a consent page is read for the Maps link it carries, and nothing else is read`() {
         assertEquals(
             SharedPlace.Ask.Point(Coordinates(51.5, -0.12), "Somewhere"),
