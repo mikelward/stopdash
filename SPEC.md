@@ -3257,9 +3257,15 @@ quality bar*). So stopdash surfaces, for watched stops and their lines:
 - **Cancellations** of specific predicted services, where TfL exposes them.
 
 **The home screen has a disruptions row** (maintainer, 2026-10-05) under the favorite places' chips,
-so Home and the favorites keep the top, scrolling with the list as they do: the trip's row ("Disruptions:", each disrupted line's pill, then "Checking…",
-"Unknown:" with what couldn't be checked, or "None"), always one line high, the pills that don't fit
-counted as "+N", with no chevron. The pills go worst first, the rider's own lines ahead of the rest when as bad (those near them and those of their starred rows
+so Home and the favorites keep the top, scrolling with the list as they do. It is a card, as the
+departures are, with their border whatever it says (maintainer, 2026-10-16). Anything disrupted, or
+anything that couldn't be checked, tints its fill and puts a ⚠ where the trip's row says "Disruptions:": each disrupted line's pill, then "Unknown:" with
+what couldn't be checked, or "Couldn't check for disruptions" with no line to name. With nothing to show
+it is a plain card saying "No disruptions" beside a ✓, so all clear is said rather than left to a blank
+word; while it checks, "Checking for disruptions" beside a spinner, and a failed check is never shown as
+all clear. It is always one line high whatever it says, the tint and the mark changing and never its
+size, with the pills that don't fit counted as "+N", and a chevron, since a tap always opens its lines
+(maintainer, 2026-10-16). The pills go worst first, the rider's own lines ahead of the rest when as bad (those near them and those of their starred rows
 and journeys first, then those near their favorite places, so an interchange by a place never buries the rider's own line among its others;
 maintainer, 2026-10-09), the line with the nearer stop first (any stop the list or the near-me lookup found, however far), then by name, a route by its number (the 43 before the 134),
 so "+N" takes the mildest first (maintainer, 2026-10-07:
