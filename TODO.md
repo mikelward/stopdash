@@ -1606,10 +1606,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [x] **Fastest / Simplest headers** (maintainer, 2026-09-30): a bold header over the first
             card ("Fastest") and over the one riding fewest ("Simplest"), or "Fastest · Simplest" on
             one card that is both (`routeLabels`, `:domain`). The rules are autopilot's; see
-            *Decisions needing review*.
+            *Decisions needing review*. Since 2026-10-16 (maintainer) the first card isn't Fastest
+            when a card below arrives in an earlier minute, an estimate ranked below a live route.
             - [x] **"Other" over the rest** (maintainer, 2026-09-30): one header over the cards
                   neither Fastest nor Simplest, after those two (`headedCards`), so Simplest moves
-                  up beside Fastest; no Other where neither of those is shown.
+                  up beside Fastest; no Other where neither of those is shown. The first card is the
+                  exception (2026-10-16): with its arrival known it keeps first place, headerless
+                  when it has no label, rather than moving down under Other.
       - [x] **Around severe delays** (maintainer, 2026-10-08): when the Planner's soonest route rides
             a line with severe delays, it's asked once more with that line's mode left out (TfL can't
             leave out one line), merged (`AroundDelays`); a route on a severely delayed line ranks as
@@ -4531,7 +4534,11 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   confirm:** on a device, the next rerouting alert's page.
 - [ ] **Which routes get a Fastest / Simplest header (autopilot, 2026-09-30).** Taken: Fastest over
   the first card, which the list already ranks as the soonest arrival StopDash stands behind, and
-  none on a lone card or one whose arrival is withheld; Simplest over the card with the fewest
+  none on a lone card or one whose arrival is withheld; nor, the maintainer's call (2026-10-16), on
+  a first card that a card below arrives before, in an earlier minute (an "est." route ranked below a
+  live one it may not beat), which then keeps its place with no Fastest anywhere, judged by arrival
+  time rather than minutes from now (also the maintainer's, with a separate "Soonest" judged not worth
+  another label); Simplest over the card with the fewest
   rides, the earliest shown on a tie, and none when every card rides as often; "Fastest ·
   Simplest" when one card is both. *Alternatives:* Fastest by raw earliest arrival across tiers
   (could crown an "est." route over a live one); "Simplest" read as fewest walking minutes. (The

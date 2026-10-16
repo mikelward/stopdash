@@ -1664,8 +1664,13 @@ out later. A bold header says
 so over it, **Fastest**, and **Simplest** heads the card riding fewest times (fewest changes; the
 earliest shown on a tie), or **Fastest · Simplest** heads one card that is both (maintainer,
 2026-09-30), so the trade between them reads at a glance. Neither heads a lone card, Fastest never a
-card whose arrival is withheld, and Simplest only when the cards don't all ride as often. The cards
-headed so come first, Fastest then Simplest, and the rest follow in their own order under one
+card whose arrival is withheld, nor one a card below gets there before, in an earlier minute
+(maintainer, 2026-10-16: an "est." route ranked below a live bus for want of a live train read sooner
+than the bus headed Fastest; it's by arrival time, not the minutes shown from now, so midnight or the
+clock change never make a later route read as sooner), and Simplest only when the cards don't all
+ride as often. The cards headed so come first, Fastest then Simplest — the first card kept first
+whenever its arrival is known, with whatever headers it has or none, so a card losing Fastest to a
+sooner one below never lets that one past it — and the rest follow in their own order under one
 **Other** header (maintainer, 2026-09-30), so a Simplest card arriving later moves up beside Fastest
 rather than splitting the rest in two. **Least walking** (maintainer, 2026-10-03) heads **every** card
 walking least by the Planner's times (at the rider's pace), the first card included (maintainer,
@@ -1686,7 +1691,8 @@ terminals and Hatton Cross, which is free (Heathrow's free travel zone; TfL's Pl
 those rides). Each plan
 also asks the Planner for buses alone (below), so the bus the whole way, at a bus fare, is offered
 beside the train. Like Least walking, the route costing least is timed past the cap, and the list's
-order is as for every other header: labeled cards first by their first label, the rest under Other.
+order is as for every other header: labeled cards first by their first label, the rest under Other
+(the first card aside, above).
 With none of these headers shown, no card is headed Other. Routes riding the
 same lines in turn but changing at a different stop are **cards of their own**, told apart by the
 stops their ride rows name (below) (maintainer, 2026-09-27). Routes whose first ride goes between the

@@ -3427,7 +3427,9 @@ internal fun listedCards(cards: List<List<TripTiming.Estimate>>, previous: CardO
     val keys = order.map { cardKey(cards[it.index].first().route) }
     val headers = order.map { it.header }
     val same = previous != null && keys == previous.keys && headers == previous.headers
-    val first = headers.firstOrNull().orEmpty()
+    // The first header the list shows: a card unlabeled with others labeled is "other", the first one
+    // included when it kept its place without a label ([headedCards]).
+    val first = headers.firstOrNull { it.isNotEmpty() }.orEmpty()
     return ListedCards(cards, order, if (same) previous else CardOrder(keys, headers), headers.map { UsageEvent.RouteChoice.of(it, first) })
 }
 

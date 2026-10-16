@@ -102,6 +102,68 @@ class RouteLabelsTest {
     }
 
     @Test
+    fun `the first card isn't fastest when a card below shows a sooner arrival`() {
+        // A live bus first, ranked above a train timed from the timetable alone that reads sooner: no
+        // Fastest, though the rest still label as before.
+        assertEquals(
+            listOf(none, simplest),
+            routeLabels(listOf(card(2, 45), card(1, 36))),
+        )
+        // Arriving together, or later, it's still fastest.
+        assertEquals(listOf(fastest, simplest), routeLabels(listOf(card(2, 36), card(1, 36))))
+        assertEquals(listOf(fastest, none, simplest), routeLabels(listOf(card(2, 36), card(2, 40), card(1, null))))
+        // Seconds sooner within the same minute: both cards read 12:36, so the first is still fastest.
+        fun at(card: TripTiming.Estimate, seconds: Long) = card.copy(arrival = t.plusSeconds(36 * 60 + seconds))
+        assertEquals(listOf(fastest, simplest), routeLabels(listOf(at(card(2, 36), 40), at(card(1, 36), 20))))
+        // A second sooner across the minute: the card below reads 12:35, so the first isn't.
+        assertEquals(listOf(none, simplest), routeLabels(listOf(at(card(2, 36), 0), at(card(1, 36), -1))))
+        // Planned at 12:00:30, the same two arrivals read 36 min and 35 min, but both get there at
+        // 12:36: arrival time decides (maintainer, 2026-10-16), so the first is still fastest.
+        fun from(card: TripTiming.Estimate) = card.copy(start = t.plusSeconds(30))
+        assertEquals(
+            listOf(fastest, simplest),
+            routeLabels(listOf(from(at(card(2, 36), 40)), from(at(card(1, 36), 20)))),
+        )
+        // A card below arriving later stays later whatever its clock reads: across midnight (00:10 after
+        // 23:55) and the autumn clock change (01:10 GMT, fifteen minutes after 01:55 BST).
+        fun arriving(card: TripTiming.Estimate, start: String, arrival: String) =
+            card.copy(start = Instant.parse(start), arrival = Instant.parse(arrival))
+        assertEquals(
+            listOf(fastest, simplest),
+            routeLabels(
+                listOf(
+                    arriving(card(2, 36), "2026-09-30T21:00:00Z", "2026-09-30T22:55:00Z"),
+                    arriving(card(1, 36), "2026-09-30T21:00:00Z", "2026-09-30T23:10:00Z"),
+                ),
+            ),
+        )
+        assertEquals(
+            listOf(fastest, simplest),
+            routeLabels(
+                listOf(
+                    arriving(card(2, 36), "2026-10-25T00:20:00Z", "2026-10-25T00:55:00Z"),
+                    arriving(card(1, 36), "2026-10-25T00:20:00Z", "2026-10-25T01:10:00Z"),
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `a first card that isn't fastest keeps its place`() {
+        // The live route first without a label of its own: it stays on top, headerless, rather than the
+        // simpler estimate below it moving up past it.
+        assertEquals(
+            listOf(HeadedCard(0, none), HeadedCard(1, simplest), HeadedCard(2, listOf(RouteLabel.OTHER))),
+            headedCards(listOf(card(2, 45), card(1, 36), card(2, 50))),
+        )
+        // With a label after Simplest's, it still leads.
+        assertEquals(
+            listOf(HeadedCard(0, cheapest), HeadedCard(1, simplest)),
+            headedCards(listOf(card(2, 45, pence = 175), card(1, 36, pence = 330))),
+        )
+    }
+
+    @Test
     fun `every card walking least is labeled so`() {
         // A bus to the station rather than the twelve-minute walk there: a change, but four minutes on foot.
         assertEquals(
