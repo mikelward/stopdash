@@ -6,6 +6,7 @@ import io
 import json
 import os
 import sys
+import tempfile
 import unittest
 import urllib.error
 
@@ -861,6 +862,226 @@ class HeadwayTest(unittest.TestCase):
             poll(3600, train("B", 3650, 3600)), poll(3620, train("B", 3650, 3620)), poll(3680),
         ]
         self.assertEqual({KEY: []}, ar.headways(ar.load(lines), 60, 90))
+
+
+def listed_pair(a, b, end=240):
+    """Polls every 20 s from 0 to `end` of two trains at one platform. `a` and `b` give each its
+    listing at a poll, a train() or None: f(t)."""
+    return [poll(t, *[x for x in (a(t), b(t)) if x]) for t in range(0, end + 1, 20)]
+
+
+def until(last, vehicle, due, location=""):
+    """A train listed up to `last`, due at `due` (a time, or f(t)), at `location`."""
+    return lambda t: train(vehicle, due(t) if callable(due) else due, t, location=location) if t <= last else None
+
+
+def two_lines(*trains, end=240):
+    """Polls every 20 s from 0 to `end` of trains at platform 2 of two lines: (line, f(t)), as
+    `listed_pair` takes them."""
+    def on(line, listing):
+        return dict(listing, lineId=line, platformName="Platform 2")
+    return [poll(t, *[on(line, x) for line, f in trains if (x := f(t))]) for t in range(0, end + 1, 20)]
+
+
+def pair_of(lines, where=False):
+    found = ar.pairs(ar.load(lines), GAP, ar.on_two_lines(lines), ar.locations(lines) if where else None)
+    return {(p["earlier"][2], p["later"][2]): p for p in found}
+
+
+class PairsTest(unittest.TestCase):
+    def test_which_of_a_pair_left_the_board_before_it_was_due(self):
+        # Both due 30 s apart. A is last listed due now; B 70 s before it was due, or 10 s.
+        later_gone = pair_of(listed_pair(until(100, "A", 100), until(60, "B", 130)))[("A", "B")]
+        self.assertEqual(30, later_gone["gap"])
+        self.assertEqual("later vanished", ar.pair_outcome(later_gone))
+        both_came = pair_of(listed_pair(until(100, "A", 100), until(120, "B", 130)))[("A", "B")]
+        self.assertEqual("both came", ar.pair_outcome(both_came))
+        earlier_gone = pair_of(listed_pair(until(40, "A", 100), until(120, "B", 130)))[("A", "B")]
+        self.assertEqual("earlier vanished", ar.pair_outcome(earlier_gone))
+        both_gone = pair_of(listed_pair(until(40, "A", 100), until(40, "B", 130)))[("A", "B")]
+        self.assertEqual("both vanished", ar.pair_outcome(both_gone))
+
+    def test_a_train_leaves_the_board_halfway_to_the_poll_that_no_longer_lists_it(self):
+        # B is last listed at 100 with 40 s to go; the poll at 120 doesn't list it, so it left at
+        # about 110, with 30 s to go: not more than VANISHED_WITH.
+        pair = pair_of(listed_pair(until(100, "A", 100), until(100, "B", 140)))[("A", "B")]
+        self.assertEqual("both came", ar.pair_outcome(pair))
+        # With 41 s to go at 100, it left with 31.
+        pair = pair_of(listed_pair(until(100, "A", 100), until(100, "B", 141)))[("A", "B")]
+        self.assertEqual("later vanished", ar.pair_outcome(pair))
+
+    def test_a_train_last_listed_long_past_its_time_isnt_settled(self):
+        # A is still listed at 180, 80 s after it was due: a stale time.
+        pair = pair_of(listed_pair(until(180, "A", 100), until(120, "B", 130)))[("A", "B")]
+        self.assertIsNone(pair["vanished"])
+        # 40 s past its time is within arrived_within: it came.
+        pair = pair_of(listed_pair(until(140, "A", 100), until(120, "B", 130)))[("A", "B")]
+        self.assertEqual("both came", ar.pair_outcome(pair))
+        # So did one TfL placed "At Platform", however long it then stood listed.
+        a = lambda t: (standing if t >= 100 else train)("A", 100, t) if t <= 180 else None  # noqa: E731
+        pair = pair_of(listed_pair(a, until(120, "B", 130)))[("A", "B")]
+        self.assertEqual("both came", ar.pair_outcome(pair))
+
+    def test_a_train_placed_at_the_platform_came_whatever_time_it_still_showed(self):
+        # TfL places B "At Platform" at 60 with 70 s still to go, then drops it.
+        b = lambda t: (standing if t == 60 else train)("B", 130, t) if t <= 60 else None  # noqa: E731
+        pair = pair_of(listed_pair(until(100, "A", 100), b))[("A", "B")]
+        self.assertEqual("both came", ar.pair_outcome(pair))
+
+    def test_a_pair_still_listed_when_its_run_ends_isnt_settled(self):
+        pair = pair_of(listed_pair(until(100, "A", 100), until(240, "B", 300)))
+        # 200 s apart: no pair. B due 300, still listed at 240, the last poll.
+        self.assertEqual({}, pair)
+        pair = pair_of(listed_pair(until(240, "A", 250), until(240, "B", 280)))[("A", "B")]
+        self.assertIsNone(pair["vanished"])
+        self.assertIsNone(ar.pair_outcome(pair))
+
+    def test_a_train_moved_to_another_platform_hasnt_vanished(self):
+        # B leaves platform 2's board at 60, 70 s before it was due, for platform 1, where it comes.
+        b = lambda t: train("B", 130, t, platform="Platform 1" if t > 60 else "Platform 2") if t <= 120 else None  # noqa: E731
+        pair = pair_of(listed_pair(until(100, "A", 100), b))[("A", "B")]
+        self.assertIsNone(pair["vanished"])
+        self.assertIsNone(ar.pair_outcome(pair))
+
+    def test_a_train_listed_twice_hasnt_vanished(self):
+        # B is listed twice at 80, so which listing held isn't known; then it leaves the board, 50 s
+        # before its time.
+        def listed(t):
+            a = [train("A", 100, t)] if t <= 100 else []
+            b = [train("B", 130, t)] if t <= 80 else []
+            return a + b + ([train("B", 140, t)] if t == 80 else [])
+        pair = pair_of([poll(t, *listed(t)) for t in range(0, 241, 20)])[("A", "B")]
+        self.assertIsNone(pair["vanished"])
+
+    def test_two_trains_reaching_the_platform_under_min_headway_apart_arent_both_real(self):
+        # A reaches the platform at 90 or so, B at 130: one of them is a copy.
+        def listed(t):
+            a = [(standing if t == 100 else train)("A", 100, t)] if t <= 100 else []
+            b = [(standing if t == 140 else train)("B", 140, t)] if t <= 140 else []
+            return a + b
+        pair = pair_of([poll(t, *listed(t)) for t in range(0, 241, 20)])[("A", "B")]
+        self.assertIsNone(pair["vanished"])
+
+    def test_only_trains_next_to_each_other_close_enough_and_soon_enough_pair(self):
+        lines = [poll(t, train("A", 100, t), train("C", 110, t), train("B", 130, t)) for t in range(0, 241, 20)]
+        self.assertEqual({("A", "C"), ("C", "B")}, set(pair_of(lines)))
+        # 90 s apart is MIN_HEADWAY: no pair.
+        self.assertEqual({}, pair_of(listed_pair(until(100, "A", 100), until(190, "B", 190))))
+        # The first never due within 5 min.
+        self.assertEqual({}, pair_of(listed_pair(until(240, "A", 1000), until(240, "B", 1020))))
+        # A train with no id can't be followed.
+        self.assertEqual({}, pair_of(listed_pair(until(100, "A", 100), until(120, "000", 130))))
+
+    def test_a_pair_counts_once_at_the_closest_it_was_shown(self):
+        pair = pair_of(listed_pair(until(100, "A", 100), until(120, "B", lambda t: 180 if t == 0 else 130)))
+        self.assertEqual(1, len(pair))
+        self.assertEqual(30, pair[("A", "B")]["gap"])
+
+    def test_a_pair_shown_in_both_orders_keeps_the_first(self):
+        # A slides behind B at 20.
+        pair = pair_of(listed_pair(until(120, "A", lambda t: 100 if t == 0 else 120), until(100, "B", 110)))
+        self.assertEqual({("A", "B")}, set(pair))
+        self.assertTrue(pair[("A", "B")]["swapped"])
+        self.assertEqual(10, pair[("A", "B")]["gap"])
+
+    def test_whether_the_one_that_vanished_had_stopped_counting_down(self):
+        # B's time slides with the clock, 30 s behind A at first, until it's dropped at 60.
+        pair = pair_of(listed_pair(until(100, "A", 100), until(60, "B", lambda t: t + 130)))[("A", "B")]
+        self.assertEqual("later vanished", ar.pair_outcome(pair))
+        self.assertEqual({pair["earlier"]: False, pair["later"]: True}, pair["stalled"])
+        # Gone at 20, with too little history to say.
+        pair = pair_of(listed_pair(until(100, "A", 100), until(20, "B", lambda t: t + 130)))[("A", "B")]
+        self.assertIsNone(pair["stalled"][pair["later"]])
+
+    def test_stalled_needs_its_time_to_move_later_by_half_the_time_passed(self):
+        history = [(at(t), at(100 + t // 4)) for t in range(0, 61, 20)]
+        self.assertFalse(ar.stalled(history, at(60)))
+        history = [(at(t), at(100 + t // 2)) for t in range(0, 61, 20)]
+        self.assertTrue(ar.stalled(history, at(60)))
+        # Only the last STALL_WINDOW counts: a train that stalled long before is counting down now.
+        history = [(at(t), at(300 + min(t, 100))) for t in range(0, 241, 20)]
+        self.assertFalse(ar.stalled(history, at(240)))
+
+    def test_where_each_was_when_one_vanished(self):
+        place = "Between Station A and Station B"
+        pair = pair_of(listed_pair(until(100, "A", 100, place), until(60, "B", 130)), where=True)[("A", "B")]
+        self.assertEqual({pair["earlier"]: False, pair["later"]: True}, pair["blank"])
+        self.assertFalse(pair["same_place"])
+        pair = pair_of(listed_pair(until(100, "A", 100, place), until(60, "B", 130, place)), where=True)
+        self.assertTrue(pair[("A", "B")]["same_place"])
+        # A not listed at B's last poll: nothing said of where it was.
+        dropped = lambda t: None if t == 60 else until(100, "A", 100, place)(t)  # noqa: E731
+        pair = pair_of(listed_pair(dropped, until(60, "B", 130)), where=True)[("A", "B")]
+        self.assertIsNone(pair["blank"][pair["earlier"]])
+
+    def test_a_train_listed_on_two_lines_is_left_out_as_the_app_leaves_it_out(self):
+        # T is listed both as a Hammersmith & City train and as a Metropolitan one at platform 2, due
+        # 5 s apart: one train TfL hasn't settled the line of. The app grays it for that and leaves
+        # it out of the pair rule, so it pairs with neither A (30 s ahead on its line) nor X (25 s
+        # behind on the other).
+        def board(met_due):
+            return two_lines(
+                ("hammersmith-city", until(100, "A", 100)), ("hammersmith-city", until(120, "T", 130)),
+                ("metropolitan", until(met_due - 20, "T", met_due)), ("metropolitan", until(140, "X", 160)))
+        self.assertEqual({}, pair_of(board(135)))
+        # Due 70 s apart, they're two trains, an id being unique only within a line: each pairs.
+        self.assertEqual({("A", "T"), ("X", "T")}, set(pair_of(board(200))))
+
+    def test_what_became_of_a_train_listed_on_two_lines(self):
+        # TfL lists T on both lines until 60, then drops the Metropolitan listing, 75 s before it
+        # was due: that listing vanished. The Hammersmith & City one came.
+        lines = two_lines(("hammersmith-city", until(120, "T", 130)), ("metropolitan", until(60, "T", 135)))
+        found = {visit[0][1]: vanished for visit, vanished in ar.two_line_trains(ar.load(lines), ar.on_two_lines(lines), GAP).items()}
+        self.assertEqual({"hammersmith-city": False, "metropolitan": True}, found)
+        # 70 s apart, they're two trains, neither on two lines.
+        lines = two_lines(("hammersmith-city", until(120, "T", 130)), ("metropolitan", until(180, "T", 200)))
+        self.assertEqual({}, ar.two_line_trains(ar.load(lines), ar.on_two_lines(lines), GAP))
+
+    def test_a_train_listed_twice_on_one_line_and_once_on_another_is_still_left_out(self):
+        # TfL lists T on the Hammersmith & City at platforms 1 and 2, and on the Metropolitan at
+        # platform 2, 5 s from the first. `load` takes the Hammersmith & City listings as a train
+        # with no id, but the app still finds T on two lines at platform 2 and leaves its
+        # Metropolitan listing out, so it doesn't pair with X, 25 s behind.
+        def on(line, listing, platform="Platform 2"):
+            return dict(listing, lineId=line, platformName=platform)
+        lines = [poll(t, *[x for x in (
+            on("hammersmith-city", train("T", 130, t), "Platform 1"), on("hammersmith-city", train("T", 130, t)),
+            on("metropolitan", train("T", 135, t)), on("metropolitan", train("X", 160, t)),
+        ) if t <= 120]) for t in range(0, 241, 20)]
+        self.assertEqual({}, pair_of(lines))
+
+    def test_the_pairs_command_prints_each_band(self):
+        lines = listed_pair(until(100, "A", 100), until(60, "B", lambda t: t + 130))
+        lines += listed_pair(until(100, "C", 100), until(120, "D", 103))
+        lines += listed_pair(until(40, "E", 100), until(160, "F", 175))
+        lines += listed_pair(until(240, "G", 250), until(240, "H", 280))
+        lines += two_lines(("hammersmith-city", until(120, "T", 130)), ("metropolitan", until(60, "T", 135)))
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "recording.jsonl")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines) + "\n")
+            out = io.StringIO()
+            saved, sys.stdout = sys.stdout, out
+            try:
+                self.assertEqual(0, ar.main(["pairs", path, "--max-gap", str(GAP)]))
+            finally:
+                sys.stdout = saved
+        rows = {line.split()[0]: line.split()[2:] for line in out.getvalue().splitlines()
+                if line.strip().split()[:1] and line.split()[0] in ("0-5", "6-60", "61-89")}
+        # Both came, earlier vanished, later vanished, both vanished, unsettled.
+        self.assertEqual(["1", "0", "0", "0", "0"], rows["0-5"])
+        self.assertEqual(["0", "0", "1", "0", "1"], rows["6-60"])
+        self.assertEqual(["0", "1", "0", "0", "0"], rows["61-89"])
+        # By line, the pairs the app grays (0-60 s), unsettled ones included.
+        by_line = [line.split()[1:] for line in out.getvalue().splitlines() if line.split()[:1] == ["northern"]]
+        self.assertEqual([["1", "0", "1", "0", "1"]], by_line)
+        # B stopped counting down; A didn't, and E and F had too little history to say.
+        self.assertIn("vanished 1 of 1, the other 0 of 1", out.getvalue())
+        self.assertIn("no location at its last listing", out.getvalue())
+        # T, left out of the pairs, by line: listings, settled, vanished.
+        two = out.getvalue().split("Trains listed on two lines at once")[1].splitlines()[1:]
+        self.assertEqual([["hammersmith-city", "1", "1", "0"], ["metropolitan", "1", "1", "1"]],
+                         [line.split() for line in two])
 
 
 class MedianTest(unittest.TestCase):
