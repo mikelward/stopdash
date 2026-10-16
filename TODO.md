@@ -749,18 +749,42 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         different one ("Paddington" beside "Paddington (H&C)"), a qualified name matches exactly
         first, or (a train's own calls) not by a stop already on the ride's route.
   - [ ] **Consider matching stations by id rather than name** (maintainer, 2026-10-03: "record
-        other options, especially this one"). The bundled station index gives each of Hammersmith's
-        two stations, and each Paddington, its own id, so wherever both sides carry an id (or one the
-        index can map a name to), comparing ids would remove the name ambiguity at its source rather
-        than ruling on brackets. Names stay the fallback where TfL's sources disagree on ids, which
-        is why the name rule exists. A bigger change than the qualifier PR (#499), so its own PR.
+        other options, especially this one"). Planned for the station model, not built yet (*One model for stands,
+        stations and hubs*, below): its phase 2 moves station identity onto the bundled ids, TfL's ICS
+        code and the record's mode, with names only the fallback where TfL gives no id, so this will
+        be built there, not as a PR of its own (Codex on #890). The bundled station index gives each of
+        Hammersmith's two stations, and each Paddington, its own id, so comparing ids removes the
+        name ambiguity at its source rather than ruling on brackets.
         Alternatives considered for #499 and not taken: patch each site Codex flags (smallest diff,
         but each fix was local and the next finding came from another site); or show the
         qualifier and match exactly as before it (brackets ignored everywhere), leaving the
         Paddington and Hammersmith mix-ups as they were. Known gap of the name rule: the
         near-me terminating filter keys names without a qualifier (`Terminating.nameKey`, saved
         with each stop), so it still can't tell the two Hammersmiths apart by name alone; TfL's
-        destination id decides first, so this only applies when TfL gives none.
+        destination id decides first, so this only applies when TfL gives none. Phase 3 of the
+        station model judges that filter by the stop or station of TfL's destination id.
+  - [ ] **One model for stands, stations and hubs** (maintainer, 2026-10-16: "write it up as a
+        design first"). Designed in `dev-docs/station-model.md`, not built.
+        - Each stand (platform or pole) belongs to one station or bus stop, and each of those to one
+          hub: a TfL interchange, or a lone station, with its own bus stops.
+        - Every feature looks membership up at the level the rider picked. That replaces today's five
+          "same station" rules and the screens that skip `StopPlace`.
+        - Settled 2026-10-16: a station is the records sharing TfL's ICS code and a mode; a bus stop is
+          both directions of its road; two bus stops are one junction when their names say the same
+          junction in either order; a favorite ride is between two hubs; the level is called a hub;
+          the trip planner keeps one request per record of a station, as today; a station's own bus
+          stops reach 200 m; the weekly bundle refresh works out every stop's station and hub, and
+          the device only reads them; a stop the bundle doesn't hold stays on its own until a
+          refresh takes it in; rides saved before which the hub rule would make one stay as saved.
+          Every existing rule has a fate in the design.
+        - Four PRs: bundle the model unused (TfL's ICS codes and the worked-out membership) and
+          record it in SPEC; move
+          station identity onto it; move hubs onto it (rides, planner targets, Direct, the alert
+          fold); then delete the old rules and fold SPEC's wording into one paragraph.
+        - Favorite rides stay (maintainer, 2026-10-16), so phase 3 builds on them. Nothing is left
+          open.
+        - It takes in matching stations by id (above), *A closed station's other ids*, *A bus ending
+          at another pole of the place it's listed at* and *Decide the station bus-stop radius*.
   - [ ] **Revisit the header grain for a busy interchange** (maintainer, 2026-09-21). The rail
         platform split and the bus letter split (above) already break a hub into per-platform/per-pole
         blocks. Still open: whether a dense hub wants a *finer* grain still (per-line dividers within
@@ -894,6 +918,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             hidden), so deferred: `reconcileDismissals` would need to prove all of a hub's members
             were queried before adding the hub id to `checkedPlaces` (track checked source stops, or
             hub-membership completeness), which the current per-cluster paging doesn't cheaply supply.
+            Planned for the station model's phase 3, not built yet (*One model for stands, stations and hubs*,
+            `dev-docs/station-model.md`): its hubs supply that membership, and the alert fold's row
+            prunes a hub-keyed dismissal only once every member has settled its closure check:
+            its newest answer, from whichever refresh asked, succeeded and newer than the
+            dismissal, so a hub too big for one refresh settles over several, with that progress stored
+            with the dismissal so a killed process doesn't start it over (Codex on #890).
     - [ ] **Per-description dedup** (Codex P2, PR #91). A stop's disruptions are joined into its one
           stop-status row's text (`stopStatusRow`), so the hub fold keys on the joined string: where
           two members of a hub carry *different sets* of notices — one reports X, the other X · Y —
@@ -924,7 +954,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           cards. Still their own: the near-me headers (`StopGrouping`), the disruption fold, the route
           map's pole pairing (two of an interchange's poles named apart stay two, *Map*), same-station
           name checks across ids (`sameStation` in RouteStops and StopLinks, `PlaceDirect`, `OffPlan`),
-          and `OnTheWay`'s stop areas — each a different question, or one to move onto it next.
+          and `OnTheWay`'s stop areas — each a different question.
+          Planned for the station model, not built yet (*One model for stands, stations and hubs*,
+          `dev-docs/station-model.md`), which gives each of these a fate in its *Every existing rule*,
+          so none moves onto `StopPlace`: the disruption fold and dismissal keys go to the hub, the
+          route map's pairing to the stop and then the hub, the same-station checks to station
+          membership (phase 2), on the way's stop areas to `Hubs.stopOf` (phase 3), and `StopPlace`
+          itself is replaced in phase 3 and deleted in phase 4. The near-me headers (`StopGrouping`)
+          stay a display grouping by design, so nothing is left here (Codex on #890).
     - [ ] **Give a stop no position, not 0.0** (Codex on #867, three times): `StopLocation` stores a
           position TfL left out as 0.0, so every reader guesses which zero means "none". #867 settled it at
           the source (an axis left out zeroes both, and the nearby-stops cache dropped files written before
@@ -1072,9 +1109,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       across the road still shows where the rider's distance isn't known. Hiding it by the place's
       other poles was tried and dropped (maintainer, 2026-10-09): each surface (list, widget, watch,
       complication) holds a different set of a place's stops, and a stop with no stop area is grouped
-      by its name, so the verdict differed by surface. Alternatives to weigh: carry each place's
-      confirmed member ids (TfL stop areas only) in the persisted snapshot so every surface judges
-      alike; or judge it at fetch time against the stop's stop area from TfL.
+      by its name, so the verdict differed by surface. Planned for phase 3 of the station model, not built yet
+      (`dev-docs/station-model.md`, `Terminating.nearer`'s row): the filter judges by the stop or
+      station of TfL's destination id, from the bundled membership every surface reads alike. That
+      replaces the snapshot and fetch-time alternatives once weighed here (Codex on #890).
 - [ ] **A trip starting at a terminus can't follow the train it shows** (Codex, #729). The trip's
       board now lists a terminus's arriving trains as the departures they become ([Turnback]), but
       the trip checks a train by its own calls from TfL, which until it leaves are still its inbound
@@ -1547,6 +1585,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         - [ ] (Consider) `OnTheWay.rideRoutes` aliases a ride's boarding stop by hub and name
               (`LineSequence.callingAt`), not by TfL's code as a ride's far end now is. No failure
               found from it yet; one identity for boarding too is the maintainer's call.
+              Planned for the station model, not built yet (*One model for stands, stations and hubs*,
+              `dev-docs/station-model.md`): its phase 2 moves on the way's `callingAt` matching
+              onto station membership, the `RouteStops.sameStation` row of its *Every existing
+              rule*, so nothing is left here to decide (Codex on #890).
       - [x] **Delete the unreachable direct-trips page path**: `LookDepartures` is now only a
             station page with nowhere to stand; the direct-trips filter page, a trip from here
             through it, and a To… destination's widening to the stops around it are gone, with
@@ -1586,7 +1628,6 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [ ] **A plan kept after a failed re-plan from a new place still walks from the old one**: every card
             keeps its first walk from where the rider was (Codex on #648). Only an open Direct route is let go
             (and said); the cards stay with the plan's error and Retry. Drop, mark, or keep them as they are?
-      - [ ] **Retire favorite journeys** now Direct covers them (no migration: no users yet).
       - [x] **Direct on a trip to a station or stop** (maintainer, 2026-10-14: "Stations are places, or
             should be"): placed from the bundled station and bus stop lists, the same section as a place's.
       - [ ] **A station is a place throughout** (maintainer, 2026-10-14): only Direct treats one as a place
@@ -2346,8 +2387,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             `boardAt`, `pullRefresh`…). It did before as an inline line check; marking `drops` `@WorkerThread`
             names fourteen call paths to move off the main thread (AGENTS.md *Main thread*).
       - [ ] (Consider) **A closed station's other ids**: a stop is avoided by the id its ride named (a bus stop
-            by its area), so an interchange known by several ids (Liverpool Street's Elizabeth line and Tube
-            stations) is only left out on the line it was avoided from; a station hub id would take in both.
+            by its area), so a station known by several ids is only left out on the record it was avoided
+            from. Planned for phase 2 of the station model, not built yet (`dev-docs/station-model.md`, *Trips and
+            avoiding*): an avoid takes in every record of the station picked, St Pancras's three
+            included, and a bus stop's every pole (Codex on #890). It stays at the station, not the hub,
+            as everything that acts on a stop does, so Liverpool Street's rail station and its
+            Underground stay two avoids; a hub-wide avoid isn't planned.
       - [ ] **Alert a rider on another train than the plan's** (maintainer, 2026-10-06), the same way,
             once the tracker notices it (the item above on a branch taken without a tap).
       - [ ] (Consider) **A stop gone past while the trip still has them on the ride**: with no calls
@@ -2829,9 +2874,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             ride's far end and the farther bus cards' "at the station" ask it too.
       - [ ] **A favorite ride stores one line; derive them all** (maintainer, 2026-10-15): Settings' row shows
             only the line it was saved on, not another route that runs it too, and alerts watch that line
-            plus whichever the card last saw. Store no line and derive every line between the two places from
-            the static route sequences, once, cached, for the card, alerts and the Settings label alike. Next,
-            on `StopPlace`.
+            plus whichever the card last saw. Store no line, and derive every line between the two places for
+            the card, alerts and the Settings label alike. Designed as phase 3 of the station model
+            (`dev-docs/station-model.md`, *Deriving every line between two hubs*), which this item follows:
+            candidates from the bundle and the boards the card fetches, each confirmed on every read against
+            `RouteStops`' sequences, the persisted lines only a fallback shown as not checked, and to be built on
+            `Hubs`, not `StopPlace`, which phase 4 deletes.
       - [ ] **Decide the station bus-stop radius** (maintainer, 2026-10-14): 150 m is the near-me list's
             "at the station" rule (`StopPlace.OWN_STOP_METERS`), picked against a small station's own
             stops (under 100 m), not against a big terminus. Measured from the bundled stops, an interchange's
@@ -2846,7 +2894,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             station's. It would be Add's own value, leaving the near-me list at 150 m. Not the card's reach:
             the rider's max walk (about 20 min) around a station takes in the other end's own stops, so a pair
             a short ride apart would overlap. Weigh other termini (Euston, Waterloo, Liverpool Street) before
-            choosing.
+            choosing. **Decided** (maintainer, 2026-10-16): 200 m, one constant for Add and the near-me
+            list alike, to be built into the station model's owner rule in phase 1 (`dev-docs/station-model.md`), which
+            phase 2's station targets already need; the near-me list and Add take it as they move onto
+            the model in phase 3.
   - [ ] **Rename a starred journey** — needs a label in the stored file (a schema version bump, so
         an older build can't drop it on its next write).
   - [ ] **Converge "journey" and "trip"** (maintainer, 2026-10-05: "longer term we'll need to
@@ -3451,6 +3502,10 @@ Builds on Phase 1's minimal line-status marking.
           records, one place, no hub. Its station page (From, a search) now asks for every id's stops.
       - [ ] A trip planned **to** such a station still plans to the one id picked; the planner takes one
             id per station, so the second record's platforms are reached only if TfL routes through it.
+            Planned for the station model, not built yet (*One model for stands, stations and hubs*,
+            `dev-docs/station-model.md`, `PlanTargets.of`'s row): its phases 2 and 3 plan a trip to a
+            station to every record of it, one Planner request each, so not a fix of its own (Codex
+            on #890).
   - [x] **Favorite it**: a star on the stop's details adds it as a favorite place, through the editor
         filled in with the stop (maintainer, 2026-10-07: a favorite place, not its services pinned).
     - [ ] The star doesn't show a stop that is already a favorite place; matching one by position is open.
