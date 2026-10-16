@@ -388,6 +388,9 @@ fun MainScreen(
     // Open the Settings screen (from the overflow menu). Default no-op so an unwired build/test
     // renders the screen without a settings destination.
     onOpenSettings: () -> Unit = {},
+    // Opens Settings at the National Rail key, its row flashed: the key dialog's "Add key" and a National
+    // Rail line's "No key". The activity's ([LocalAppMenu]), so the station page's "No key" opens it too.
+    onAddRailKey: () -> Unit = LocalAppMenu.current?.onOpenRailKeySettings ?: onOpenSettings,
     // True when Google Play reports a newer version is available: the overflow icon gets a red
     // dot and the menu gains an "Update available" item. Off by default (and in debug — see
     // PlayUpdateChecker), so the common build/test renders the plain overflow.
@@ -1656,7 +1659,7 @@ fun MainScreen(
                             starringAvailable = starringAvailable,
                             onOpenDetail = openDetail(UsageEvent.Tap.STOP_ROW),
                             onOpenChangeDetail = openDetail(UsageEvent.Tap.CHANGE_CARD),
-                            onOpenSettings = onOpenSettings,
+                            onAddRailKey = onAddRailKey,
                             dismissed = dismissed,
                             onDismissAlert = onDismissAlert,
                         )
@@ -1714,7 +1717,7 @@ fun MainScreen(
                             onOpenFarther = onOpenFarther,
                             onOpenDetail = openDetail(UsageEvent.Tap.STOP_ROW),
                             onOpenChangeDetail = openDetail(UsageEvent.Tap.CHANGE_CARD),
-                            onOpenSettings = onOpenSettings,
+                            onAddRailKey = onAddRailKey,
                             dismissed = dismissed,
                             onDismissAlert = onDismissAlert,
                             // The full list and a whole-station view drill down to a platform; inside a platform
@@ -1807,7 +1810,7 @@ fun MainScreen(
         RailKeyDialog(
             onAddKey = {
                 railKeyAsked = false
-                onOpenSettings()
+                onAddRailKey()
             },
             onShowAnyway = {
                 railKeyAsked = false
@@ -1913,8 +1916,8 @@ private fun LoadedContent(
     onOpenDetail: (DepartureRow, RouteFocus?) -> Unit = { _, _ -> },
     // The same for a row on a journey's change card, counted apart (UsageEvent).
     onOpenChangeDetail: (DepartureRow, RouteFocus?) -> Unit = onOpenDetail,
-    // Opens Settings from a National Rail line's "No key".
-    onOpenSettings: () -> Unit = {},
+    // Opens Settings at the National Rail key, from a National Rail line's "No key".
+    onAddRailKey: () -> Unit = {},
     dismissed: Set<DismissedAlert> = emptySet(),
     onDismissAlert: (DepartureRow) -> Unit = {},
     // Drill into one group's platform/pole; null disables the tap.
@@ -2122,7 +2125,7 @@ private fun LoadedContent(
                         unavailableStopIds = state.unavailableStopIds,
                         closurePending = state.closurePending,
                         listState = listState,
-                        onOpenSettings = onOpenSettings,
+                        onAddRailKey = onAddRailKey,
                         onHideMode = onHideMode,
                         modesByPlace = modesByPlace,
                         onOpenDetail = onOpenDetail,
@@ -2666,8 +2669,8 @@ private fun DepartureList(
     stopClusterIds: Map<String, String> = emptyMap(),
     // The notices filed against more than one stop of a place, as (place, text) ([planNotices]).
     sharedNotices: Set<Pair<String, String>> = emptySet(),
-    // Opens Settings from a National Rail line's "No key" (SPEC *National Rail*).
-    onOpenSettings: () -> Unit = {},
+    // Opens Settings at the National Rail key, from a National Rail line's "No key" (SPEC *National Rail*).
+    onAddRailKey: () -> Unit = {},
     // Hides a mode from a long press on a near-me row or header; null keeps long-press as starring.
     onHideMode: ((String) -> Unit)? = null,
     // Each place's modes not yet hidden (by cluster), for a header's "Hide ‹mode›" items.
@@ -2934,7 +2937,7 @@ private fun DepartureList(
                             onToggleStar = onToggleStar,
                             starringAvailable = starringAvailable,
                             onOpenDetail = onOpenDetail.takeUnless { stopCard === card.lineCard },
-                            onOpenSettings = onOpenSettings,
+                            onAddRailKey = onAddRailKey,
                             checking = journeyChecking(card.journey, checking, atOnce),
                             noTrainsSpoken = noneRes?.let { stringResource(it, card.journey.to.name) },
                             rideLineHide = rememberRideLineHide(card.journey, onHideRideLine),
@@ -3020,7 +3023,7 @@ private fun DepartureList(
                     // No note says there's no direct train above the trains to change from: the ride's own line
                     // with a dash says so, as a suspended line's status row does.
                     journeyMore(card, state)
-                    journeyChanges(card, state, now, starred, onToggleStar, starringAvailable, onOpenChangeDetail, onOpenSettings, checking = checking, onHideRideLine = onHideRideLine)
+                    journeyChanges(card, state, now, starred, onToggleStar, starringAvailable, onOpenChangeDetail, onAddRailKey, checking = checking, onHideRideLine = onHideRideLine)
                     if (state.incomplete) {
                         item(key = "journey-note|${card.journey.key}") {
                             JourneyNote(
@@ -3161,7 +3164,7 @@ private fun DepartureList(
                     onToggleStar = onToggleStar,
                     starringAvailable = starringAvailable,
                     onOpenDetail = onOpenDetail,
-                    onOpenSettings = onOpenSettings,
+                    onAddRailKey = onAddRailKey,
                     onHideMode = onHideMode,
                     // A refresh asking for a stale stop's departures again: its guesses say so, each row by
                     // its own stop.
@@ -4559,7 +4562,7 @@ private fun LazyListScope.journeyChanges(
     onToggleStar: (DepartureRow) -> Unit,
     starringAvailable: Boolean,
     onOpenDetail: (DepartureRow, RouteFocus?) -> Unit,
-    onOpenSettings: () -> Unit,
+    onAddRailKey: () -> Unit,
     // Checked again, its trains held meanwhile ([JourneyCardState.Checking.held]).
     checking: Boolean = false,
     // A change train's line can be hidden from the ride too: the ride's trains to change from are its own
@@ -4592,7 +4595,7 @@ private fun LazyListScope.journeyChanges(
                     onToggleStar = onToggleStar,
                     starringAvailable = starringAvailable,
                     onOpenDetail = onOpenDetail,
-                    onOpenSettings = onOpenSettings,
+                    onAddRailKey = onAddRailKey,
                     checking = journeyChecking(card.journey, checking),
                     rideLineHide = rememberRideLineHide(card.journey, onHideRideLine),
                 )
@@ -4878,7 +4881,7 @@ internal fun StopGroupCard(
     starringAvailable: Boolean,
     // Null (a trip on the way's board) leaves the rows with nothing to open ([RouteRow]).
     onOpenDetail: ((DepartureRow, RouteFocus?) -> Unit)?,
-    onOpenSettings: () -> Unit = {},
+    onAddRailKey: () -> Unit = {},
     // Offers "Hide ‹mode›" in each row's long-press menu; null keeps long-press as starring.
     onHideMode: ((String) -> Unit)? = null,
     // A favorite ride's card: offers "Hide ‹line› on this ride" in each row's long-press menu, for the
@@ -5034,7 +5037,7 @@ internal fun StopGroupCard(
                                                     Modifier.clickable(
                                                         onClickLabel = stringResource(R.string.status_no_rail_key_action),
                                                         role = Role.Button,
-                                                        onClick = onOpenSettings,
+                                                        onClick = onAddRailKey,
                                                     )
                                                 } else {
                                                     Modifier

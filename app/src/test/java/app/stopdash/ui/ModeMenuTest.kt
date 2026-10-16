@@ -1,6 +1,7 @@
 package app.stopdash.ui
 
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
@@ -12,6 +13,7 @@ import app.stopdash.domain.ModeGroups
 import app.stopdash.ui.theme.StopDashTheme
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -67,17 +69,29 @@ class ModeMenuTest {
     fun `with no key National Rail is unticked, and ticking it asks for a key rather than showing it`() {
         var toggled: Pair<String, Boolean>? = null
         var settingsOpened = false
+        var railKeyOpened = false
         composeRule.setContent {
             StopDashTheme {
-                MainScreen(
-                    state = DeparturesUiState.Loading,
-                    now = now,
-                    onRefresh = {},
-                    hiddenModes = setOf("national-rail", "international-rail"),
-                    railKeyMissing = true,
-                    onSetModeGroupShown = { group, shown -> toggled = group.key to shown },
-                    onOpenSettings = { settingsOpened = true },
-                )
+                // As the activity provides it: Settings at the National Rail key.
+                CompositionLocalProvider(
+                    LocalAppMenu provides AppMenuActions(
+                        updateAvailable = false,
+                        onOpenAppListing = {},
+                        onSendBugReport = {},
+                        onOpenLicenses = {},
+                        onOpenRailKeySettings = { railKeyOpened = true },
+                    ),
+                ) {
+                    MainScreen(
+                        state = DeparturesUiState.Loading,
+                        now = now,
+                        onRefresh = {},
+                        hiddenModes = setOf("national-rail", "international-rail"),
+                        railKeyMissing = true,
+                        onSetModeGroupShown = { group, shown -> toggled = group.key to shown },
+                        onOpenSettings = { settingsOpened = true },
+                    )
+                }
             }
         }
         composeRule.onNodeWithContentDescription("More options").performClick()
@@ -85,7 +99,9 @@ class ModeMenuTest {
         composeRule.onNodeWithText("National Rail needs a key").assertExists()
         assertEquals(null, toggled)
         composeRule.onNodeWithText("Add key").performClick()
-        assertTrue(settingsOpened)
+        // Settings at the key, not at its top.
+        assertTrue(railKeyOpened)
+        assertFalse(settingsOpened)
         assertEquals(null, toggled)
 
         composeRule.onNodeWithContentDescription("More options").performClick()

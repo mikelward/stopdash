@@ -578,7 +578,7 @@ The app finds stops two ways:
   same, each with a checkbox ticked while it shows. **National Rail starts unticked while no
   National Rail key is set** (maintainer, 2026-10-08): without one its rows have no times and flood a
   big station. Ticking it while no key is set, however it came to be hidden, opens a dialog saying a free Rail Data Marketplace key gives its
-  times, with **Get a key** (the sign-up page), **Add key** (Settings) and **Show anyway**. Adding a
+  times, with **Get a key** (the sign-up page), **Add key** (Settings, at the key) and **Show anyway**. Adding a
   key shows it by itself. The default is never stored: once the rider shows or hides National Rail
   themselves, their choice stands, key or none. The near-me banner and Settings' Hidden list leave
   the default out (an empty list still names it). A trip follows it like any hide (maintainer,
@@ -959,7 +959,9 @@ Where its countdown would be, the status row says what is known (maintainer, 202
 **dash** only when StopDash is sure no train is coming, **"?"** (heard as "Times unknown") when one
 might be but its source hasn't said when, **"No data"** when no source answered for it (a National
 Rail line whose board failed, or that no board covers), and **"No key"** for a National Rail line at a
-station a key would cover when none is set — a tap on it opens Settings.
+station a key would cover when none is set — a tap on it opens Settings at the key. Opened at the key,
+Settings starts scrolled to the National Rail key's row and flashes it twice, so the eye lands on
+the field to paste into rather than hunting the last row of a long screen.
 
 *Sure* means (maintainer, 2026-10-03): a National Rail board that answered with no trains, since it
 lists every train it runs; a TfL line whose status says it isn't running here (closed, suspended, or
@@ -4072,7 +4074,7 @@ surface.)
   Marketplace key pasted in settings (maintainer, 2026-09-24), a rail station's departures also
   come from National Rail's own live departure boards (Darwin's `GetDepartureBoard`, by the
   station's three-letter CRS code), alongside TfL's; without one, a disrupted line's status row there says "No
-  key" and opens Settings (*Departures*). Like D7, stopdash ships no key. TfL's `910G` ids end in the station's TIPLOC, and
+  key" and opens Settings at the key (*Departures*). Like D7, stopdash ships no key. TfL's `910G` ids end in the station's TIPLOC, and
   NaPTAN (DfT, Open Government Licence v3.0) pairs each TIPLOC with its CRS, so the app bundles
   that table (rebuilt weekly with the station list) and the two join exactly, never by name.
   Where TfL lists one station under two National Rail ids, a list shows its board under one of
