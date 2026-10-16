@@ -134,7 +134,10 @@ class TripTimingTest {
         assertEquals(TripTiming.Basis.ESTIMATED, estimate.basis)
         assertEquals(at(17), estimate.legs[1].board)
         assertEquals(at(27), estimate.arrival)
-        assertEquals(Duration.ZERO, estimate.slack)
+        // Should it not come, the next is within blue's 3 min gap of the rider getting there at 15:
+        // boarded by 18, there by 28.
+        assertTrue(estimate.legs[1].running)
+        assertEquals(Duration.ofMinutes(1), estimate.slack)
         // Nor does a line whose predictions don't show it running every few minutes lose the
         // Planner's train, however far off it is: nothing says a train comes sooner.
         val late = TripRoute(listOf(twoLegs.legs[0], leg("blue", "B", "C", departs = 40, arrives = 50)))
@@ -142,6 +145,82 @@ class TripTimingTest {
         val planned = TripTiming.estimate(late, now, Duration.ZERO, { sparse[it] })
         assertEquals(at(40), planned.legs[1].board)
         assertEquals(at(50), planned.arrival)
+        assertFalse(planned.legs[1].running)
+        assertEquals(Duration.ZERO, planned.slack)
+    }
+
+    // Near a line's start TfL predicts only the trains already running: on one branch, two, both
+    // leaving before a rider walking there arrives (maintainer, 2026-10-16).
+    @Test
+    fun `a Planner train on a line two live trains show running is vouched for, with a range`() {
+        // Ready for blue at 15 (red at 2, 10 min run, 3 min change); blue's two predictions, 5 min
+        // apart, end at 6, so the Planner's blue at 20 times the leg.
+        val live = mapOf(0 to listOf(train("red", 2)), 1 to listOf(train("blue", 1), train("blue", 6)))
+        val estimate = TripTiming.estimate(twoLegs, now, Duration.ZERO, { live[it] })
+        assertEquals(TripTiming.Basis.ESTIMATED, estimate.basis)
+        assertEquals(at(20), estimate.legs[1].board)
+        assertFalse(estimate.legs[1].live)
+        assertTrue(estimate.legs[1].running)
+        assertEquals(at(30), estimate.arrival)
+        // Two trains can't say the gap between them: should the Planner's not come, the next is within
+        // the longest a frequent line has of the rider getting there, boarded by 25, there by 35.
+        assertEquals(Duration.ofMinutes(5), estimate.slack)
+        assertEquals(at(35), estimate.latest)
+        // The Planner's own train is the latest when it leaves more than that after the rider gets there.
+        val far = TripRoute(listOf(twoLegs.legs[0], leg("blue", "B", "C", departs = 28, arrives = 38)))
+        assertEquals(Duration.ZERO, TripTiming.estimate(far, now, Duration.ZERO, { live[it] }).slack)
+        // A bus too, and the Overground, alike.
+        for (mode in listOf("bus", "overground")) {
+            val other = TripRoute(listOf(twoLegs.legs[0], twoLegs.legs[1].copy(mode = mode)))
+            assertTrue(mode, TripTiming.estimate(other, now, Duration.ZERO, { live[it] }).legs[1].running)
+        }
+        // Not one train alone, nor two too far apart, which may be the night's last.
+        for (sparse in listOf(listOf(6L), listOf(1L, 12L))) {
+            val thin = mapOf(0 to listOf(train("red", 2)), 1 to sparse.map { train("blue", it) })
+            val timed = TripTiming.estimate(twoLegs, now, Duration.ZERO, { thin[it] })
+            assertFalse(sparse.toString(), timed.legs[1].running)
+            assertEquals(sparse.toString(), Duration.ZERO, timed.slack)
+        }
+        // Nor a line whose last refresh failed, its trains held; one not running; nor trains held
+        // from a stop that failed beside one that refreshed with none.
+        assertFalse(TripTiming.estimate(twoLegs, now, Duration.ZERO, { live[it] }, current = { it != 1 }).legs[1].running)
+        assertFalse(TripTiming.estimate(twoLegs, now, Duration.ZERO, { live[it] }, notRunning = setOf("blue")).legs[1].running)
+        assertFalse(
+            TripTiming.estimate(twoLegs, now, Duration.ZERO, { live[it] }, refreshed = { if (it == 1) emptyList() else live.getValue(it) }).legs[1].running,
+        )
+        // Nor National Rail or a tram, where the next could be a long wait.
+        for (mode in listOf("national-rail", "tram")) {
+            val other = TripRoute(listOf(twoLegs.legs[0], twoLegs.legs[1].copy(mode = mode)))
+            val timed = TripTiming.estimate(other, now, Duration.ZERO, { live[it] })
+            assertFalse(mode, timed.legs[1].running)
+            assertEquals(mode, Duration.ZERO, timed.slack)
+        }
+    }
+
+    @Test
+    fun `a walk then a line live trains show running ranks above a slower live route`() {
+        // A 16 min walk to B, past blue's two predictions there; the Planner's blue at 18, there at 30.
+        val walkThenBlue = TripRoute(listOf(walk("A", "B", departs = 0, arrives = 16), leg("blue", "B", "C", departs = 18, arrives = 30)))
+        val blueTrains = mapOf(1 to listOf(train("blue", 2), train("blue", 7)))
+        val planned = TripTiming.estimate(walkThenBlue, now, Duration.ZERO, { blueTrains[it] })
+        assertEquals(TripTiming.Basis.ESTIMATED, planned.basis)
+        assertEquals(at(30), planned.arrival)
+        // At its latest, blue a 10 min gap after the rider reaches B: there by 38.
+        assertEquals(at(38), planned.latest)
+        // A route live throughout, there at 45: the estimate goes first even at its latest.
+        val red = TripRoute(listOf(leg("red", "A", "C", departs = 3, arrives = 45)))
+        val live = TripTiming.estimate(red, now, Duration.ZERO, { listOf(train("red", 3)) })
+        assertEquals(TripTiming.Basis.LIVE, live.basis)
+        assertEquals(listOf(planned, live), TripTiming.rank(listOf(live, planned)))
+        // Not when the live route gets there by its latest.
+        val sooner = TripRoute(listOf(leg("red", "A", "C", departs = 0, arrives = 37)))
+        val close = TripTiming.estimate(sooner, now, Duration.ZERO, { listOf(train("red", 0)) })
+        assertEquals(at(37), close.arrival)
+        assertEquals(listOf(close, planned), TripTiming.rank(listOf(planned, close)))
+        // Nor with blue seen only once: the timetable alone stands behind it.
+        val once = TripTiming.estimate(walkThenBlue, now, Duration.ZERO, { if (it == 1) listOf(train("blue", 2)) else null })
+        assertEquals(at(30), once.arrival)
+        assertEquals(listOf(live, once), TripTiming.rank(listOf(once, live)))
     }
 
     @Test
@@ -415,6 +494,9 @@ class TripTimingTest {
         // Timed from the timetable alone, with no live train: below, however early.
         val planned = estimated(10, 0, legs = timed.map { it.copy(live = false) })
         assertEquals(listOf(live, planned), TripTiming.rank(listOf(planned, live)))
+        // Unless live trains show a line it rides running at the stop it boards (maintainer, 2026-10-16).
+        val running = estimated(10, 10, legs = timed.map { it.copy(live = false) }.let { it.dropLast(1) + it.last().copy(running = true) })
+        assertEquals(listOf(running, live), TripTiming.rank(listOf(live, running)))
         // Estimates keep their own order: one arriving later never passes an earlier one to get
         // ahead, however sure its own latest.
         val later = estimated(24, 0)
