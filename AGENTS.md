@@ -1,7 +1,7 @@
 ---
 trigger: always_on
 alwaysApply: true
-last_modified: 2026-10-15
+last_modified: 2026-10-16
 ---
 
 # AGENTS.md
@@ -272,21 +272,13 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   reversible guess and record it under `TODO.md`'s *Decisions needing review*; the loop's
   own steps never wait, but destructive or irreversible actions outside the loop, and
   privacy uncertainty (is this a coordinate? a watched stop?), still wait for a real answer.
-- **"Merge in order"** (or "drive in order") is drive that yields to older PRs close to
-  landing: merge by hand, never auto-merge (disarm any armed). Just before merging, wait
-  for an open, non-draft, lower-numbered PR on the same base that has ever passed Codex
-  (a "didn't find any major issues" comment or a green `codex` status, on any head) and
-  has had activity (a push, review, comment, reaction or state change) in the last 30
-  minutes, for at most 30 minutes in total across rechecks, then merge anyway and name it.
-  Keep driving this PR while waiting; rebase only where the ruleset requires it or it is
-  `dirty`, and merge on the current head's verdict, rechecking first. Say which PR you
-  waited on or passed over.
 - **A paragraph that orders a new work item after the item before it — "next", "then",
   "after that", "follow-up" — must be merged in order, after every earlier item this
   session was given and any other PR the paragraph names.** Its PR may open in parallel
   but merges only once each of those is finished, with its PRs merged, in any repo, with
-  no time cap; if one won't finish, hold it and ask, autopilot included. Read the list
-  from the session's record, not memory.
+  no time cap; if one won't finish, hold it and ask, autopilot included. Arm no
+  auto-merge on it until then: auto-merge cannot see the order. Read the list from the
+  session's record, not memory.
 - **A red baseline is the next task** — get `./gradlew test`/`lint` green before pulling
   new work from `TODO.md`; stepping past it as "unrelated" needs the user's real answer,
   never an autopilot guess.
