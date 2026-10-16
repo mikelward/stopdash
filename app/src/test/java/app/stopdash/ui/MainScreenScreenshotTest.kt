@@ -944,18 +944,18 @@ class MainScreenScreenshotTest {
             railFeed = RailFeed.NO_KEY,
         )
         val statuses = mapOf("great-northern" to LineStatus("great-northern", severity = 6, description = "Severe Delays"))
-        var openedSettings = false
+        var openedRailKey = false
         capture("main-rail-no-key.png") {
             MainScreen(
                 DeparturesUiState.Loaded(listOf(stop), now.minusSeconds(30), lineStatuses = statuses),
                 now,
                 {},
-                onOpenSettings = { openedSettings = true },
+                onAddRailKey = { openedRailKey = true },
             )
         }
         composeRule.onNodeWithText("No data").assertDoesNotExist()
         composeRule.onNodeWithText("No key").performClick()
-        assertTrue(openedSettings)
+        assertTrue(openedRailKey)
     }
 
     @Test

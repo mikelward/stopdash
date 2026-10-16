@@ -1259,6 +1259,53 @@ class SettingsScreenScreenshotTest {
         composeRule.onNodeWithTag("liveWidgetSwitch").assertIsDisplayed()
     }
 
+    @Test
+    fun opened_for_the_rail_key_it_opens_scrolled_to_it_and_flashes_it_twice() {
+        var shown = 0
+        // Driven frame by frame, to see the flashes as they run.
+        composeRule.mainClock.autoAdvance = false
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(
+                    liveWidgetRefresh = false,
+                    onLiveWidgetRefreshChange = {},
+                    onBack = {},
+                    startOnRailKey = true,
+                    onRailKeyShown = { shown++ },
+                )
+            }
+        }
+        // Near the top of the first flash: scrolled to the key, the top of Settings out of view.
+        composeRule.mainClock.advanceTimeBy(140)
+        composeRule.onNodeWithTag("favoritePlacesRow").assertIsNotDisplayed()
+        composeRule.onNodeWithTag("railKeyField").assertIsDisplayed()
+        // At the window's own height: a shorter capture would lay the screen out again under the scroll
+        // already made for this one, and cut the row off.
+        captureSnapshot("settings-rail-key-flash.png", heightPx = composeRule.activity.window.decorView.rootView.height)
+        // Into the second flash (each takes 300 ms): still flashing.
+        composeRule.mainClock.advanceTimeBy(360)
+        assertEquals(0, shown)
+        // Past 600 ms: done, and said so once.
+        composeRule.mainClock.advanceTimeBy(200)
+        assertEquals(1, shown)
+        composeRule.mainClock.advanceTimeBy(1_000)
+        assertEquals(1, shown)
+        composeRule.onNodeWithTag("railKeyField").assertIsDisplayed()
+    }
+
+    @Test
+    fun the_rail_key_flashes_twice_and_ends_unlit() {
+        // Unlit at either end and between flashes, fully lit at each of the two peaks.
+        assertEquals(0f, railKeyFlashAlpha(0f), 0.001f)
+        assertEquals(0f, railKeyFlashAlpha(1f), 0.001f)
+        for (flash in 0 until 2) {
+            assertEquals(1f, railKeyFlashAlpha((flash + 0.4f) / 2f), 0.001f)
+            assertEquals(0.5f, railKeyFlashAlpha((flash + 0.2f) / 2f), 0.001f)
+            assertEquals(0.5f, railKeyFlashAlpha((flash + 0.7f) / 2f), 0.001f)
+        }
+        assertEquals(0f, railKeyFlashAlpha(0.5f), 0.001f)
+    }
+
     private fun captureSnapshot(name: String, widthPx: Int = 1080, heightPx: Int = 1920) {
         if (!capturing()) return
         val root = composeRule.activity.window.decorView.rootView

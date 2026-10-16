@@ -986,10 +986,14 @@ class MainActivity : ComponentActivity() {
                 // next opening starts at its top, not on that page (Codex, #657).
                 // Settings opened from the "Automatically update widget?" card: it opens at its widget rows.
                 var settingsOnWidgets by rememberSaveable { mutableStateOf(false) }
+                // Settings opened from "Add key" or a National Rail line's "No key": it opens at the National Rail
+                // key, the row flashed, then drops this, so Settings composed afresh opens at its top.
+                var settingsOnRailKey by rememberSaveable { mutableStateOf(false) }
                 LaunchedEffect(settingsOpen) {
                     if (!settingsOpen) {
                         settingsOnDisruptions = false
                         settingsOnWidgets = false
+                        settingsOnRailKey = false
                     }
                 }
                 // The location gate's About dialog, hosted here rather than in the gate: a lookup that
@@ -1805,6 +1809,11 @@ class MainActivity : ComponentActivity() {
                         onOpenDisruptionsSettings = {
                             UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SETTINGS))
                             settingsOnDisruptions = true
+                            settingsOpen = true
+                        },
+                        onOpenRailKeySettings = {
+                            UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SETTINGS))
+                            settingsOnRailKey = true
                             settingsOpen = true
                         },
                     ),
@@ -2813,6 +2822,8 @@ class MainActivity : ComponentActivity() {
                                     onDismissAvoidedError = AvoidedLinesSetting::writeFailureShown,
                                     startOnDisruptions = settingsOnDisruptions,
                                     startOnWidgets = settingsOnWidgets,
+                                    startOnRailKey = settingsOnRailKey,
+                                    onRailKeyShown = { settingsOnRailKey = false },
                                     onDisruptionsClosed = { settingsOnDisruptions = false },
                                     onOpenFavoritePlacesFromDisruptions = {
                                         settingsOnDisruptions = true

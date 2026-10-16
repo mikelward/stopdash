@@ -1,6 +1,9 @@
 package app.stopdash.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -40,6 +43,7 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
@@ -209,6 +213,11 @@ fun SettingsScreen(
     // Opened from the near-me "Automatically update widget?" card: Settings opens scrolled to its
     // widget rows, starting at the first, rather than at the top.
     startOnWidgets: Boolean = false,
+    // Opened from "Add key" or a National Rail line's "No key": Settings opens scrolled to the National Rail
+    // key, its row flashed twice so the eye finds it, then [onRailKeyShown], so Settings composed
+    // afresh (back from a page opened over it) opens at its top and doesn't flash again.
+    startOnRailKey: Boolean = false,
+    onRailKeyShown: () -> Unit = {},
     // Favorite places opened from the Disruptions summary page, whose lines it includes: back from them
     // returns to that page, not Settings' top.
     onOpenFavoritePlacesFromDisruptions: () -> Unit = onOpenFavoritePlaces,
@@ -250,15 +259,23 @@ fun SettingsScreen(
             // a large Android font scale can't push the lower controls off a short screen where
             // they'd be unreachable (Codex).
             val scrollState = rememberScrollState()
-            // Opened for the widget rows: scrolled to the first as soon as it's laid out, and the rows drawn
-            // only from then, so the top of Settings is never shown before the jump. Once, so a return from
-            // a page over Settings keeps the rider's place.
-            var scrolledToWidgets by rememberSaveable { mutableStateOf(!startOnWidgets) }
+            // Opened for the widget rows or the National Rail key: scrolled to it as soon as it's laid out, and
+            // the rows drawn only from then, so the top of Settings is never shown before the jump. Once, so a
+            // return from a page over Settings keeps the rider's place.
+            var scrolledToStart by rememberSaveable { mutableStateOf(!startOnWidgets && !startOnRailKey) }
+            // How far through its flashes the National Rail key's row is (0 to 1): one animation, so the
+            // flashes take their time and no more, none waiting a frame to start ([railKeyFlashAlpha]).
+            val railKeyFlash = remember { Animatable(0f) }
+            LaunchedEffect(startOnRailKey, scrolledToStart) {
+                if (!startOnRailKey || !scrolledToStart) return@LaunchedEffect
+                railKeyFlash.animateTo(1f, tween(RAIL_KEY_FLASH_MILLIS, easing = LinearEasing))
+                onRailKeyShown()
+            }
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .scrollEdgeCue(scrollState, scrollCueColors(MaterialTheme.colorScheme.surface))
-                    .graphicsLayer { alpha = if (scrolledToWidgets) 1f else 0f }
+                    .graphicsLayer { alpha = if (scrolledToStart) 1f else 0f }
                     .verticalScroll(scrollState),
             ) {
                 // Text size (display scaling, SPEC *Display size*): a slider that mirrors — and
@@ -450,9 +467,9 @@ fun SettingsScreen(
                 }
                 Box(
                     modifier = Modifier.onGloballyPositioned {
-                        if (!scrolledToWidgets) {
+                        if (startOnWidgets && !scrolledToStart) {
                             scrollState.dispatchRawDelta(it.positionInParent().y)
-                            scrolledToWidgets = true
+                            scrolledToStart = true
                         }
                     },
                 ) {
@@ -511,15 +528,29 @@ fun SettingsScreen(
                 )
                 // The optional National Rail key (SPEC *National Rail*): without it, National Rail
                 // lines say "No key"; with it, their live times from National Rail's own feed.
-                ApiKeyRow(
-                    apiKey = railApiKey,
-                    loaded = railApiKeyLoaded,
-                    onSave = onRailApiKeyChange,
-                    title = stringResource(R.string.settings_rail_key_title),
-                    summary = stringResource(R.string.settings_rail_key_summary),
-                    tagPrefix = "railKey",
-                    maskedAt = menuOpens,
-                )
+                val flashColor = MaterialTheme.colorScheme.primaryContainer
+                Box(
+                    modifier = Modifier
+                        .testTag("railKeyRow")
+                        .onGloballyPositioned {
+                            if (startOnRailKey && !scrolledToStart) {
+                                scrollState.dispatchRawDelta(it.positionInParent().y)
+                                scrolledToStart = true
+                            }
+                        }
+                        // Read as it's drawn, so the flashes redraw the row alone, never recompose it.
+                        .drawBehind { drawRect(flashColor, alpha = railKeyFlashAlpha(railKeyFlash.value)) },
+                ) {
+                    ApiKeyRow(
+                        apiKey = railApiKey,
+                        loaded = railApiKeyLoaded,
+                        onSave = onRailApiKeyChange,
+                        title = stringResource(R.string.settings_rail_key_title),
+                        summary = stringResource(R.string.settings_rail_key_summary),
+                        tagPrefix = "railKey",
+                        maskedAt = menuOpens,
+                    )
+                }
             }
         }
     }
@@ -544,6 +575,20 @@ fun SettingsScreen(
         )
     }
     }
+}
+
+// The National Rail key's row, opened for: two quick flashes, 600 ms in all (maintainer, 2026-10-16: three
+// over 1.8 s was much too long, and three in 600 ms too aggressive), each up in the first 40% of its time
+// and fading over the rest.
+private const val RAIL_KEY_FLASHES = 2
+private const val RAIL_KEY_FLASH_MILLIS = 600
+private const val FLASH_UP = 0.4f
+
+/** The National Rail key row's highlight [progress] (0 to 1) through its flashes: none before or after. */
+internal fun railKeyFlashAlpha(progress: Float): Float {
+    if (progress <= 0f || progress >= 1f) return 0f
+    val phase = (progress * RAIL_KEY_FLASHES) % 1f
+    return if (phase < FLASH_UP) phase / FLASH_UP else (1f - phase) / (1f - FLASH_UP)
 }
 
 /**

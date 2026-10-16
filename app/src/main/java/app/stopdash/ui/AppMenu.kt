@@ -45,6 +45,9 @@ data class AppMenuActions(
     // Opens Settings on the disruptions summary's page, whose Back goes up to Settings itself: what the
     // lines page offers, the row's own settings being what a rider there reaches for. Null offers none.
     val onOpenDisruptionsSettings: (() -> Unit)? = null,
+    // Opens Settings scrolled to the National Rail key, its row flashed: where "Add key" and a National
+    // Rail line's "No key" send the rider. Null leaves them on Settings' own opening.
+    val onOpenRailKeySettings: (() -> Unit)? = null,
 )
 
 /** The activity's [AppMenuActions]; null (a test, a preview) offers none. */
