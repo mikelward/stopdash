@@ -2225,13 +2225,15 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               trip's stop, but its screen has no From/To bar, so it names the stop only when no route passes it,
               and changing or removing it means going back to the trip for now (*Leave now* or Back). Decide
               whether the later list's header names the stop and its overflow offers *Via…* and its removal.
-        - [ ] **From… drops the via, and the later time** (maintainer, 2026-10-16: a to-do, not this PR;
-              Codex, #887). Opening From… shows the station search in the trip's place, which takes the
-              trip out of the composition, so Back, or another start to the same destination, comes back
-              with no via. *Change time…*'s later time is held the same way and is lost the same way, as it
-              was before the via. Hold the trip's options (via and later time) in one trip-scoped holder
-              keyed by destination, shared by the trip from here and the trip from a station, kept over a
-              recreated process and cleared when the trip closes, so no screen taking the trip's place
+        - [ ] **A change of start drops the via, and the later time** (maintainer, 2026-10-16: a to-do, not
+              this PR; Codex, #887 and #905). Since #905 the trip from here holds its via with its destination,
+              so From… and Back keep it; but a station picked in From… starts that station's trip to the same
+              destination with no via (`OriginChange` and `stationTo` carry only `ToChoice`), and a trip from a
+              station still holds its via inside the trip, lost under any screen that takes its place.
+              *Change time…*'s later time is held the same way and is lost the same way. Hold the trip's
+              options (via and later time) in one trip-scoped holder keyed by destination, carried by a change
+              of start and shared by the trip from here and the trip from a station, kept over a recreated
+              process (`SavedTrip`) and cleared when the trip closes, so no screen taking the trip's place
               drops them.
         - [ ] **A via that's part of the destination** (maintainer, 2026-10-16: a to-do, not this PR;
               Codex, #887). Only the destination's own stop is ignored as a via; one of its stations, the
