@@ -3623,6 +3623,9 @@ Builds on Phase 1's minimal line-status marking.
         a long bus route alerted a ride nowhere near it. The check now reads the line's route while an alert
         its words could place is under way, and leaves out one whose stretch is off the ride, as On the way
         does (`JourneyAlerts.onRide`).
+  - [x] **A diversion's later notice placed too** (maintainer, 2026-10-16): a second alert on the same
+        diversion, saying buses "continue to miss the same stops from A to B", placed nothing, so it kept a
+        ride nowhere near it alerted. That wording now gives the stretch (`AlertStops`).
   - [x] **Weigh a ride's other lines on their own poles** (Codex on #866; maintainer, 2026-10-15: "Record the
         stops"). Each widget pin now records the far-end stops its departures get off at
         (`WidgetJourney.alightIds`, the card's `destinationIds`), so the check rides a pinned line from the pole

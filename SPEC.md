@@ -2748,7 +2748,8 @@ as it was.
   the ride has stops the alert says won't be served and the ride calls at none of them. Only the words
   TfL's bus alerts are seen to use count (maintainer, 2026-10-01): a stretch ("not serving stops
   between 'A' and 'B'", "the stops from 'A' (E) to 'B' will not be served", "missing stops from A 'F'
-  to B 'T'", "bus stops from 'A' to 'B' will be missed", "the 'Hail & Ride' section from A to B are not being
+  to B 'T'", a later notice's "continue to miss the same stops from A 'L' to B 'G'" (maintainer, 2026-10-16),
+  "bus stops from 'A' to 'B' will be missed", "the 'Hail & Ride' section from A to B are not being
   served"), stops one by one ("missing the stop 'A'",
   "will not serve stops 'A' and 'B'", "will miss stops A and B", "bus stop 'A' will not be served"), or a curtailment ("curtailed to
   A", "will terminate at 'A'" leave out the stops after it; "will start from stop at 'B'" those

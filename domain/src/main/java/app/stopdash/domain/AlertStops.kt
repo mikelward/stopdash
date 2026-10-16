@@ -408,7 +408,8 @@ object AlertStops {
     // from 'A' (E) to 'B' will not be served", "Stops between 'A' (H) and 'B' (CL) will not be
     // served", "Bus stops from 'A' to 'B' (PR) will be missed", and "Buses are missing stops from A 'F'
     // to B 'T'" (or "missing A 'E' to B (T)", "missing stops between A (BN and BP) and B (M and P)", or
-    // several segments), and "The 'Hail & Ride' section from A
+    // several segments), a later notice of the same diversion's "Buses continue to miss the same stops
+    // from A 'L' to B 'G'" (maintainer, 2026-10-16), and "The 'Hail & Ride' section from A
     // to B are not being served". Only these place an alert, so wording nobody has seen
     // TfL use places nothing and the alert stays on: reading free prose for where service is affected
     // kept misreading it ("good service between", "will not be diverted between", "diverted except
@@ -421,6 +422,7 @@ object AlertStops {
         """\b(?:the\s+)?(?:bus\s+)?stops\s+between\s+FROM\s+and\s+TO\s+$NOT_SERVED""",
         """\bmissing\s+(?:the\s+)?(?:stops\s+from\s+)?FROM\s+to\s+TO""",
         """\bmissing\s+(?:the\s+)?stops\s+between\s+FROM\s+and\s+TO""",
+        """\bcontinue\s+to\s+miss\s+the\s+same\s+stops\s+from\s+FROM\s+to\s+TO""",
         // A later segment of the same list: "missing the stops from A 'CA' to B 'T' northbound, and from
         // C 'U' to D 'CB' southbound", "… and stops from C to D towards South End".
         """\bmissing\s+(?:the\s+)?stops\s+from\s+[^.;:?!]*?\band\s+(?:the\s+)?(?:stops\s+)?from\s+FROM\s+to\s+TO""",
