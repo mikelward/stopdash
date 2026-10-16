@@ -2447,7 +2447,9 @@ picking the trip's own destination changes nothing, and any other stop is planne
 the destination's own stations or stops included (maintainer, 2026-10-16: telling every name a destination
 goes by from another stop costs more than a rare odd pick, which gets what it asked for). A station complex
 takes the via's place once its stations have been looked up, Back meanwhile keeping the via the trip had,
-and the trip shows the new one from the moment they are. A platform or station view's **Via** (maintainer, 2026-10-16: "opens the trip planner with that station as the
+and the trip shows the new one from the moment they are. The To… search offers *Via…* in its overflow too, before
+the trip has anywhere to go (maintainer, 2026-10-16), filling its Via row as a view's Via does (below); not over a
+trip's To row's search, as the next destination starts without one. A platform or station view's **Via** (maintainer, 2026-10-16: "opens the trip planner with that station as the
 via … prefilled") opens the near-me trip at its To… search with the Via row already filled: the view's
 station as the Via… search would give its name, its **interchange** where it has one (Finsbury Park's
 Underground platform goes via all of Finsbury Park, changing there between any lines), and a bus pole its own
