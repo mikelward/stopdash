@@ -183,6 +183,12 @@ class LineSearchScreenshotTest {
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("From Victoria, towards Walthamstow Central").assertIsDisplayed()
+        // Where the ride gets off, on its own line between the departure and Go (maintainer, 2026-10-16).
+        val from = composeRule.onNodeWithText("From Victoria, towards Walthamstow Central").getUnclippedBoundsInRoot()
+        val to = composeRule.onNodeWithText("To Warren Street").assertIsDisplayed().getUnclippedBoundsInRoot()
+        val go = composeRule.onNodeWithTag("routeStopGo").getUnclippedBoundsInRoot()
+        assertTrue("To at ${to.top}, under From's ${from.bottom}", to.top >= from.bottom)
+        assertTrue("To ends at ${to.bottom}, over Go at ${go.top}", to.bottom <= go.top)
         // A station's zone stays, though a bus stop's letter doesn't (maintainer, 2026-10-16).
         composeRule.onNodeWithText("Zone 1").assertIsDisplayed()
         // Go in place of From and To.
@@ -283,15 +289,19 @@ class LineSearchScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("From South End, towards North End").assertIsDisplayed()
+        // From starts its own line under the pill, even beside a short one like this, so From and To line up.
+        val pill = composeRule.onNodeWithText("299").getUnclippedBoundsInRoot()
+        val from = composeRule.onNodeWithText("From South End, towards North End").assertIsDisplayed().getUnclippedBoundsInRoot()
+        assertTrue("From at ${from.top}, under the pill's ${pill.bottom}", from.top >= pill.bottom)
+        composeRule.onNodeWithText("To Somewhere Road").assertIsDisplayed()
         composeRule.onNodeWithTag("lineStopPole").assertDoesNotExist()
         captureSnapshot("route-stop-bus.png")
     }
 
     @Test
-    fun route_s_boarding_stop_keeps_its_letter() {
-        // Boarded here, not got off: its letter says which pole (Codex on #892). A station off the train's path
-        // reads the same.
+    fun route_s_boarding_stop_keeps_its_letter_and_says_no_to() {
+        // Boarded here, not got off: its letter says which pole, and "To" itself would be wrong (Codex on #892). A
+        // station off the train's path reads the same.
         composeRule.setContent {
             StopDashTheme {
                 LineStopPage(
@@ -303,6 +313,7 @@ class LineSearchScreenshotTest {
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("From South End, towards North End").assertIsDisplayed()
+        composeRule.onNodeWithTag("routeStopTo").assertDoesNotExist()
         composeRule.onNodeWithTag("lineStopPole").assertTextContains("Stop H", substring = true)
     }
 

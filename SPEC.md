@@ -1048,8 +1048,9 @@ line's other way. Its folds open one at a time, the last folding again as the ne
 failed, a line the map can't lay out): the train's stops in hand are never replaced by a note. **A tap on a station opens its details over the route page** (maintainer, 2026-10-09; it opened the
 station's own departures page from 2026-10-06): the same page a stop tapped on a line's map opens (*Finding a
 line*), with the lines there and around it, step-free access, zone and Departures, but headed by the
-departure tapped ("From Victoria, towards Walthamstow Central", behind the line's pill) and with **Go** in
-place of From and To. A bus stop the ride gets off at shows no letter or way, and asks for none
+departure tapped ("From Victoria, towards Walthamstow Central", behind the line's pill) and where the ride
+gets off on the line under it ("To Warren Street", maintainer, 2026-10-16), and with **Go** in place of From
+and To. A bus stop the ride gets off at shows no letter or way, and asks for none
 (maintainer, 2026-10-16): they say where to board, so the boarding stop, and a station off the train's path,
 keep them. Go starts the trip there on the way (*On the way*) on that line from the boarding stop,
 along the route page's own stop list, no Planner asked; the trip follows the soonest of the line's trains
