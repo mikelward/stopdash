@@ -77,7 +77,10 @@ class TimetableRepository(
             boards[id] = shown
             // Claimed before the mark is worked out, so a failed timetable being asked for again
             // reads as loading ([EmptyTimes.Board.retrying]), not as the failure.
-            val claimed = if (shown.notRunning) emptyList() else shown.keys.filter { key -> needed(entries[key], today, now) && inFlight.add(key) }
+            val claimed = if (shown.notRunning) emptyList() else shown.keys.filter { key ->
+                // A night bus by day is settled without its timetable ([EmptyTimes.resting]).
+                !EmptyTimes.resting(key, now) && needed(entries[key], today, now) && inFlight.add(key)
+            }
             publish(id, shown)
             claimed.forEach { key ->
                 launch {
