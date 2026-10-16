@@ -2051,9 +2051,18 @@ least 5 minutes old plans the trip again at once rather than wait out the 15-min
 withheld the arrival and why. A re-locate in flight (a return to the app) is waited for first, as the
 minute tick waits for it, so the routes change once, for where the rider is now. Otherwise its arrival reads **"est."** instead of "about", and within
 its tier it sorts **after every route whose legs are all live** — unless it is timed from at least one
-live train and gets there before that route **even at the latest end of its range** (maintainer,
-2026-09-30: a live ride then a frequent bus boarded on arrival sat below a slower live route even at
-its worst). So an estimate
+live train, or rides a line live trains show running at the stop it boards, and gets there before
+that route **even at the latest end of its range** (maintainer, 2026-09-30: a live ride then a
+frequent bus boarded on arrival sat below a slower live route even at its worst). *Running* asks what
+boarding on arrival asks, on as few trains as a bus needs whatever the mode: a Tube, DLR, Overground,
+Elizabeth line or bus leg with two live trains or more at the stop, none long after the one before,
+though all leave before the rider gets there (maintainer, 2026-10-16: near a line's start TfL predicts
+only the trains already running, two on one branch, and a walk to the Tube timed by the Planner's
+train sat 13 minutes ahead of a live route yet below it). Two are enough because the Planner's train
+still times the leg; they only vouch that the line runs. Such a leg gives the arrival a range too:
+should the Planner's train not come, the next is within the line's longer typical gap of the rider
+getting there (the longest a frequent line has where its trains are too few to say), never sooner
+than the Planner's own. So an estimate
 is listed first only when it beats the live-confirmed routes however its waits fall, never on its
 hopeful end; estimates keep their own order among themselves, so none passes an earlier one to get
 there. Walks
