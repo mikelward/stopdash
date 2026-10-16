@@ -5115,7 +5115,8 @@ class MainActivity : ComponentActivity() {
         }
         // The destination search: before anything is picked, and when the trip's To row reopens it.
         val noDestination = favorite == null && toId == null
-        // The Via… search over it, for the stop a view's Via picked before where the trip goes.
+        // The Via… search over it, for a stop to go via before where the trip goes: the overflow's Via…, or the Via
+        // row a view's Via filled.
         var pickingFirstVia by rememberSaveable { mutableStateOf(false) }
         if (pickingFirstVia && noDestination) {
             ViaSearch(
@@ -5187,6 +5188,9 @@ class MainActivity : ComponentActivity() {
                     via = (viaChoice.pending ?: viaChoice.via)?.takeIf { noDestination }?.let { first ->
                         TripEndsVia(first.name, onChange = { pickingFirstVia = true }, onClear = { viaChoice = viaChoice.cleared() })
                     },
+                    // The overflow's Via… for the same, before the trip has anywhere to go: over its To row's search
+                    // it would go with a destination about to change, as the Via row isn't shown there either.
+                    onPickVia = if (noDestination) { { pickingFirstVia = true } } else null,
                 )
             }
             return

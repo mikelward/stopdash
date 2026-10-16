@@ -176,6 +176,51 @@ class AppMenuOverflowTest {
         sendsABugReport()
     }
 
+    // Before the trip has anywhere to go, the To… search's overflow offers Via…, over the app's own items, as the
+    // trip's page does (SPEC *Going via a stop*); it picks the stop once and leaves the report alone.
+    @Test
+    fun the_to_search_offers_via_before_the_app_items() {
+        var picks = 0
+        show {
+            StationSearchScreen(
+                StationSearchViewModel.State(),
+                onQueryChange = {},
+                onOpenStation = {},
+                onBack = {},
+                autoFocus = false,
+                onChangeFrom = {},
+                onPickVia = { picks++ },
+            )
+        }
+        composeRule.onNodeWithContentDescription("More options").performClick()
+        val via = composeRule.onNodeWithTag("searchPickVia").assertIsDisplayed().getUnclippedBoundsInRoot()
+        val report = composeRule.onNodeWithText("Send bug report").getUnclippedBoundsInRoot()
+        assertTrue("Via… over the app's items", via.bottom <= report.top)
+        composeRule.onNodeWithText("Via…").performClick()
+        composeRule.runOnIdle {
+            assertEquals(1, picks)
+            assertEquals(0, reports)
+        }
+    }
+
+    // Where it isn't given (a To row's search over a trip that has somewhere to go), there's no Via….
+    @Test
+    fun the_to_search_offers_no_via_unasked() {
+        show {
+            StationSearchScreen(
+                StationSearchViewModel.State(),
+                onQueryChange = {},
+                onOpenStation = {},
+                onBack = {},
+                autoFocus = false,
+                onChangeFrom = {},
+            )
+        }
+        composeRule.onNodeWithContentDescription("More options").performClick()
+        composeRule.onNodeWithText("Send bug report").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Via…").assertCountEquals(0)
+    }
+
     @Test
     fun settings_sends_a_bug_report() {
         show { SettingsScreen(liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = {}) }

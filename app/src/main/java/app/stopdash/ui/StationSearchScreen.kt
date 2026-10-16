@@ -35,6 +35,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -147,6 +148,9 @@ fun StationSearchScreen(
     // With [onChangeFrom]: the stop the trip goes via, picked before where it goes (a view's Via, SPEC *Going via a
     // stop*), as a Via row between From and To. Null shows none.
     via: TripEndsVia? = null,
+    // With [onChangeFrom]: *Via…* in the overflow, over the app's own items, to pick a stop the trip goes via before
+    // where it goes, as the trip's page offers it (SPEC *Going via a stop*). Null offers none.
+    onPickVia: (() -> Unit)? = null,
     // A Recent row's menu asks to take it off the list ([onAskRemoveRecent], null offering no such
     // item); the question is [StationSearchViewModel.State.pendingRemoval], so it outlives a
     // rotation, and Remove calls [onRemoveRecent], Cancel [onCancelRemoveRecent].
@@ -241,7 +245,22 @@ fun StationSearchScreen(
     // picks for it (maintainer, 2026-09-28); elsewhere at the screen's 16dp margin.
     val chipsStart = if (onChangeFrom != null) tripEndsFieldStart(endsLabelWidth, LocalDensity.current) else 16.dp
     // The app's overflow at the From row's end, as on the trip page; none where the activity gives no menu.
-    val appMenu: (@Composable () -> Unit)? = if (LocalAppMenu.current != null) { { AppMenuOverflow() } } else null
+    val appMenu: (@Composable () -> Unit)? = if (LocalAppMenu.current != null) {
+        {
+            AppMenuOverflow { close ->
+                if (onPickVia != null) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.trip_via_pick)) },
+                        onClick = {
+                            close()
+                            onPickVia()
+                        },
+                        modifier = Modifier.testTag("searchPickVia"),
+                    )
+                }
+            }
+        }
+    } else null
     Scaffold(
         topBar = {
             if (onChangeFrom != null) {
