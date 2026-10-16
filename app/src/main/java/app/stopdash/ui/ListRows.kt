@@ -127,6 +127,8 @@ internal class ShownRows(
     val journeys: List<FavoriteJourney>,
     // How far each place [cards] board from is ([ridePlaceMeters]), for their by-stop headings.
     val ridePlaceMeters: Map<String, Double> = emptyMap(),
+    // How far the stop each of [cards] boards from is, by journey key ([rideMeters]), for their headings.
+    val rideMeters: Map<String, Double> = emptyMap(),
     val rowsByKey: RowsByKey = RowsByKey.NONE,
     val cardRowsByKey: RowsByKey = RowsByKey.NONE,
 )
@@ -149,6 +151,22 @@ internal fun ridePlaceMeters(cards: List<JourneyCard>, nearMe: List<StopGroup>, 
             groups.asSequence().flatMap { it.rows.asSequence() }.mapNotNull { stopDistanceMeters[it.stopId] }.minOrNull()?.let { place to it }
         }
         .toMap()
+}
+
+/**
+ * How far the stop each journey card boards from is, by journey key, for the ride's heading (SPEC
+ * *Journeys*): its origin, as the near-me list measured it, once its route has placed it — the end a
+ * far ride's heading measures to as well. Not the nearer of it and the poles beside it: those are found
+ * after the heading is up, so a nearer one would change the number while the rider reads it (Codex on
+ * #891). None before the origin is placed, or when it wasn't measured (off the near-me list, D1, or a
+ * far ride, whose heading says how far its nearer end is instead). On the worker with the cards.
+ */
+@WorkerThread
+internal fun rideMeters(cards: List<JourneyCard>, stopDistanceMeters: Map<String, Double>): Map<String, Double> {
+    if (stopDistanceMeters.isEmpty()) return emptyMap()
+    return cards.mapNotNull { card ->
+        card.boardingIds.firstOrNull()?.let { stopDistanceMeters[it] }?.let { card.journey.key to it }
+    }.toMap()
 }
 
 /** A platform or station view ([platformViewOf]): what the saved view keys on, and its inputs. */
@@ -265,6 +283,7 @@ internal fun shownRowsOf(
     return ShownRows(
         rows, listCards, dismissedClosures, from, cards, journeyRowsShown, journeys,
         ridePlaceMeters(cards, listCards.groups, stopDistanceMeters),
+        rideMeters(cards, stopDistanceMeters),
         RowsByKey.of(rows),
         RowsByKey.of(journeyRowsShown),
     )

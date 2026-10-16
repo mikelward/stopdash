@@ -1268,9 +1268,13 @@ marking a favorite journey so its heading reads apart from a bus place's "Place 
 maintainer 2026-09-24) with the trains or
 buses **on any line** from the origin that **call at the far end** (from each line's route; one whose
 path can't be resolved is left out, not guessed). The origin is whichever end is **nearer the rider's
-fix**, from TfL's published stop positions. The heading carries no button of its own: a ⇄ at its end
-swapped the direction in place from 2026-09-24, and was dropped as a second, smaller tap target in a
-row that already opens the ride (maintainer, 2026-10-16). A tap on the heading opens
+fix**, from TfL's published stop positions. After the star the heading says how far the stop it
+boards from is, dimmed, as a stop's heading says it ("Highgate ➔ King's Cross St. Pancras ★ (120 m)",
+maintainer 2026-10-16): its origin, once its route has placed it, so the number never changes while
+the rider reads it, as it would if a nearer pole beside the origin turned up a moment later. A far
+ride's says how far its nearer end is. The heading carries no button of
+its own: a ⇄ at its end swapped the direction in place from 2026-09-24, and was dropped as a second,
+smaller tap target in a row that already opens the ride (maintainer, 2026-10-16). A tap on the heading opens
 the **journey's own view**: the journey in full, **Swap direction** and **Remove favorite** buttons, and
 its trains with each group headed by where it boards (the platform or pole), rendered from the same
 snapshot as the list; unstarring closes it.

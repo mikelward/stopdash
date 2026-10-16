@@ -1134,6 +1134,8 @@ fun MainScreen(
     val shownCards = if (platformRows != null) platformView?.takeUnless { platformGone }?.listCards ?: ListCards.NONE else shown?.listCards ?: ListCards.NONE
     // How far each place a journey card boards from is, worked out with the rows; none in a platform view.
     val shownRidePlaceMeters = if (platformRows != null) emptyMap() else shown?.ridePlaceMeters.orEmpty()
+    // And how far the stop each ride boards from is, for its heading.
+    val shownRideMeters = if (platformRows != null) emptyMap() else shown?.rideMeters.orEmpty()
     BackHandler(enabled = platformRows != null) { closeView() }
     val drawnNow = (if (platformRows != null) platformView?.now else drawnFrom?.now) ?: now
     // A platform or station view's rows are built apart from the list's, maybe from another
@@ -1656,6 +1658,7 @@ fun MainScreen(
                             farJourneyMeters = farJourneyMeters,
                             rideGrouping = rideGrouping,
                             ridePlaceMeters = shownRidePlaceMeters,
+                            rideMeters = shownRideMeters,
                             onRevealFar = if (platformRows == null && !farRevealed && farJourneyMeters.isNotEmpty()) {
                                 {
                                     UsageEvents.log(UsageEvent.FarawayFavorites)
@@ -1877,6 +1880,7 @@ private fun LoadedContent(
     farJourneyMeters: Map<String, Double> = emptyMap(),
     rideGrouping: RideGrouping? = RideGrouping.RIDE,
     ridePlaceMeters: Map<String, Double> = emptyMap(),
+    rideMeters: Map<String, Double> = emptyMap(),
     onRevealFar: (() -> Unit)? = null,
     starred: Set<StarredRow> = emptySet(),
     onToggleStar: (DepartureRow) -> Unit = {},
@@ -2126,6 +2130,7 @@ private fun LoadedContent(
                         farJourneyMeters = farJourneyMeters,
                         rideGrouping = rideGrouping,
                         ridePlaceMeters = ridePlaceMeters,
+                        rideMeters = rideMeters,
                         onRevealFar = onRevealFar,
                         // Not in a journey's own view, nor when every nearby row is already on a journey
                         // card above.
@@ -2658,6 +2663,8 @@ private fun DepartureList(
     rideGrouping: RideGrouping? = RideGrouping.RIDE,
     // How far each place the cards board from is, worked out with the rows ([ridePlaceMeters]).
     ridePlaceMeters: Map<String, Double> = emptyMap(),
+    // How far the stop each card boards from is, by journey key, worked out with them ([rideMeters]).
+    rideMeters: Map<String, Double> = emptyMap(),
     onRevealFar: (() -> Unit)? = null,
     // True in a journey's own view: the title bar names the journey, so its heading is dropped, and
     // each of its groups is headed by its platform/pole so the rider sees where to board.
@@ -2803,8 +2810,9 @@ private fun DepartureList(
         pendingPlaces.mapNotNull { withoutHidden(remeasured(pendingTracker.widened(it), stopDistanceMeters), hiddenModes) }
     }
     // A journey's heading (or, in its own view, its actions), closure notices, and trains or note —
-    // shared by the near journeys at the top and the revealed faraway ones at the bottom, whose
-    // headings also carry their distance ([farMeters]).
+    // shared by the near journeys at the top, whose headings say how far the stop they board from is
+    // ([rideMeters]), and the revealed faraway ones at the bottom, whose say how far their nearer end
+    // is ([farMeters]).
     // The rest behind "+N more" (or "More", with stops not yet fetched), opening the journey's own view,
     // which draws and fetches them all.
     fun LazyListScope.journeyMore(card: JourneyCard, state: JourneyCardState.Trains) {
@@ -2826,6 +2834,8 @@ private fun DepartureList(
     fun LazyListScope.journeyItems(cards: List<JourneyCard>, farMeters: Map<String, Double>? = null) {
             cards.forEachIndexed { index, card ->
                 val distanceLabel = distanceSystem?.let { system -> farMeters?.get(card.journey.key)?.let { StopDistance.label(it, system) } }
+                // How far the stop a near ride boards from is, for its heading ([rideMeters]).
+                val rideDistance = distanceSystem?.let { system -> rideMeters[card.journey.key]?.let { StopDistance.label(it, system) } }
                 val onOpen = onOpenJourney?.let { open -> { open(card.journey) } }
                 // Grouped by stop (SPEC *Journeys*), each stop the ride boards from carries the star and
                 // where it goes, so the ride needs no heading of its own — once it has departures to
@@ -2858,7 +2868,7 @@ private fun DepartureList(
                             // First on screen, or first under the "Faraway favorites" label: no break.
                             firstOnScreen = index == 0,
                             onOpen = onOpen,
-                            distanceLabel = distanceLabel,
+                            distanceLabel = distanceLabel ?: rideDistance,
                         )
                     }
                 }
@@ -4691,8 +4701,9 @@ private fun RideStopHeader(
 }
 
 /**
- * A journey card's heading, "Highgate ➔ King's Cross St Pancras ★": the direction shown, styled like a
- * stop group header (same style and group-break space) so the list reads as one. A tap anywhere on it opens
+ * A journey card's heading, "Highgate ➔ King's Cross St Pancras ★ (120 m)": the direction shown, styled
+ * like a stop group header (same style and group-break space) so the list reads as one, then how far
+ * the stop it boards from is, dimmed, as a stop's header says it. A tap anywhere on it opens
  * the journey's own view ([onOpen], null leaves it inert — as in that view), where Swap direction is:
  * the heading carries no button of its own (maintainer, 2026-10-16; a ⇄ at its end was tried from
  * 2026-09-24, a 24dp target with no 48dp minimum).
@@ -4705,7 +4716,7 @@ private fun JourneyHeader(
     toForms: List<String>,
     firstOnScreen: Boolean,
     onOpen: (() -> Unit)? = null,
-    // How far away a collapsed far journey is ("2.4 km"), dimmed after the star; null for none.
+    // How far it is ("120 m", or a collapsed far journey's "2.4 km"), dimmed after the star; null for none.
     distanceLabel: String? = null,
 ) {
     val openLabel = stringResource(R.string.action_open_journey)
