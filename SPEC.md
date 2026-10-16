@@ -3964,8 +3964,8 @@ default: turning it off stops a saved place being recognized by its Wi-Fi and de
 learned. Then "Automatic watch and widget location" (D1), which reads on
 while location is allowed all the time: turning it on opens the disclosure and Android's prompt,
 and turning it off opens Android's settings for the app, where the grant is taken away. Last is the
-opt-in "Automatically update widget" toggle (D5), the widget's update about once a minute, and
-under it, while it's on, "Keep updating when idle": on while StopDash's battery use is
+opt-in "Automatically update widget" toggle (D5), the widget's and a watch's update about once a
+minute, and under it, while it's on, "Keep updating when idle": on while StopDash's battery use is
 Unrestricted in Android's settings, which tapping it opens (D5). A rider
 with a StopDash widget placed and automatic updates off is pointed at these rows by a card atop the
 near-me list, "Automatically update widget?": **Settings** opens Settings scrolled to its widget
@@ -4927,6 +4927,29 @@ Mirrors the sibling fleet:
     the screen off — would need a foreground service, its persistent notification, and the
     Play foreground-service-type policy that carries; that is the deferred follow-up
     (mechanism A, *Widget follow-ups* in `TODO.md`).
+  - **For the watch too (maintainer, 2026-10-16).** The watch never fetches on its own: it
+    shows what the phone last sent it, and every refresh reaches it. So the chain fetches while
+    there is something to update — a StopDash widget placed, or a watch in reach with the
+    StopDash watch app — and waits when there is neither, rather than fetch every minute for no
+    one. In reach means near the phone, not merely paired or reachable through the cloud: what
+    is sent to a watch that is off or left at home only waits for it, or updates a watch nobody
+    is wearing, while the phone pays for it every minute. A watch that can't be asked counts as
+    there: the rider chose the minute's cost, which is all a wrong "there" spends until the
+    next minute asks again, while a wrong "not there" would leave the watch quietly falling
+    behind (principle 2). The chain used to run only while a widget was placed, so a phone in
+    a pocket never kept the watch on the wrist current.
+  - **It waits, it doesn't stop (maintainer, 2026-10-17).** With nothing to update, or nothing
+    stored yet to refresh, the chain checks every five minutes, without fetching, and goes back
+    to every minute when there is something again. Only turning the setting off ends it. It
+    used to stop, and then only an event could start it again: a widget being placed, a watch
+    asking for a refresh or coming back in reach, the app's next start. Nothing reports some of
+    those moments at all (a watch coming home was reachable through the cloud all along; a
+    watch hears nothing of a first snapshot), and the others can be lost (the process torn down
+    first, a tick deciding at the same moment), each loss leaving the watch or widget without
+    updates until something else came along; review found that eleven times. The events still
+    bring the minute back at once; the check is what makes sure it comes back. Its cost, with
+    the setting on and nothing to update, is a wake every five minutes, deferred while the phone
+    is idle, and no fetch.
   - **Keep updating when idle (maintainer, 2026-10-16).** Android holds a deferrable
     chain for hours while a device sits unused, a plugged-in device included where its battery
     protection pauses charging, unless the app's battery use is Unrestricted. A wall display

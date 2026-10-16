@@ -72,8 +72,8 @@ class WatchPublishWorker(appContext: Context, params: WorkerParameters) : Corout
 /**
  * Notices a watch gaining the app or coming back in reach, and republishes the current snapshot
  * to it (forced, past the identical-content check), so a watch never keeps an older snapshot than
- * the phone's just because nothing changed while it was away. Also takes a watch's refresh
- * requests.
+ * the phone's just because nothing changed while it was away; and starts the minute updates again
+ * if they stopped while it was away ([watchAppeared]). Also takes a watch's refresh requests.
  */
 class PhoneWearListenerService : WearableListenerService() {
     /** A watch asking for a refresh ([WatchRefreshWorker]); it carries only a request id. */
@@ -96,9 +96,7 @@ class PhoneWearListenerService : WearableListenerService() {
     }
 
     override fun onCapabilityChanged(info: CapabilityInfo) {
-        if (WatchListenerEvents.capabilityChanged(info.name, info.nodes.size, ::logWatch)) {
-            WatchPublishWorker.enqueue(this, force = true)
-        }
+        if (WatchListenerEvents.capabilityChanged(info.name, info.nodes.size, ::logWatch)) watchAppeared(this)
     }
 
     private fun logWatch(line: String) = StopdashDebugLog.watchStatus(line)

@@ -4000,8 +4000,16 @@ and these carry the rest as their own PRs:
         widget", on while StopDash's battery use is Unrestricted, a tap opening Android's settings
         for the app rather than the Play-restricted one-tap dialog (SPEC D5). Needs a device check
         that the wall tablet's updates keep running with it on.
-      - [ ] **A watch-only rider gets no minute updates**: the chain retires while no widget is
-        placed, though each update also reaches the watch.
+      - [x] **A watch-only rider gets no minute updates** (maintainer, 2026-10-16): the chain now
+        fetches while a widget is placed or a watch with the app is in reach, and with neither waits
+        on a five-minute check rather than stopping (maintainer, 2026-10-17); a watch asking for a
+        refresh or coming back in reach brings the minute back at once (SPEC D5). Needs a device
+        check that a watch coming back in reach gets minute updates within five minutes, sooner when
+        the Data Layer's capability change fires on reconnect, and that updates keep reaching the
+        watch with the phone in a pocket and no widget placed.
+      - [ ] **The toggle names only the widget**: "Automatically update widget" and its summary
+        ("Refreshes the home-screen widget…") don't say the watch gets the updates too. New copy is
+        the maintainer's to approve, English first.
       - [x] **The trip on the widget** (maintainer, 2026-10-05): while On the way follows a trip,
         the widget shows the departures at the next change, and the next step above them where
         there's room, from the summary

@@ -53,6 +53,10 @@ class WatchRefreshWorker(appContext: Context, params: WorkerParameters) : Corout
             // The watch times out and says the phone is out of reach, which is then true enough.
             StopdashDebugLog.warning("watch: refresh reply failed: %s", e::class.simpleName)
         }
+        // A watch in reach just asked: the minute updates are for it too, if they stopped while no
+        // widget was placed and no watch was in reach (SPEC D5). A resume that fails is retried as
+        // its own work.
+        resumeLiveRefreshForWatchRequest(applicationContext)
         return Result.success()
     }
 

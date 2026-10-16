@@ -2,6 +2,7 @@ package app.stopdash.widget
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import androidx.work.ExistingWorkPolicy
 import androidx.work.ListenableWorker
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
@@ -10,6 +11,7 @@ import androidx.work.testing.WorkManagerTestInitHelper
 import app.stopdash.data.DataStoreAppSettings
 import app.stopdash.data.WatchRefreshOutcome
 import app.stopdash.domain.AppSettings
+import app.stopdash.watch.WatchReach
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusCheck
@@ -18,14 +20,19 @@ import app.stopdash.ui.ARRIVALS_REUSE
 import java.time.Instant
 import app.stopdash.domain.FontSizeSettings
 import app.stopdash.StopdashDebugLog
+import app.stopdash.ThreadRecorder
 import com.mikelward.androidlog.DebugLog
+import java.util.concurrent.Executors
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.After
 import org.junit.Before
@@ -53,11 +60,14 @@ class WidgetRefreshWorkerTest {
     fun setUp() {
         WorkManagerTestInitHelper.initializeTestWorkManager(context)
         StopdashDebugLog.addSink(sink)
+        // No watch unless a test puts one in reach: the real question asks Play services.
+        LiveRefreshSurfaces.watchReach = { WatchReach.NONE }
     }
 
     @After
     fun tearDown() {
         StopdashDebugLog.removeSink(sink)
+        LiveRefreshSurfaces.reset()
     }
 
     private fun logged(text: String) = synchronized(lines) { lines.filter { text in it } }
@@ -108,6 +118,55 @@ class WidgetRefreshWorkerTest {
         assertEquals(1, enqueuedCount())
     }
 
+    /**
+     * A resume while a tick runs: that tick may already have decided to wait, there being nothing
+     * to update when it asked, so the resume goes after it rather than being skipped (Codex on
+     * #918). A tick waiting to run already is the chain going on, and is kept.
+     */
+    @Test
+    fun `a resume follows a running tick and keeps a waiting one`() {
+        assertNull(liveRefreshResumePolicy(listOf(WorkInfo.State.ENQUEUED)))
+        assertNull(liveRefreshResumePolicy(listOf(WorkInfo.State.RUNNING, WorkInfo.State.BLOCKED)))
+        assertEquals(ExistingWorkPolicy.APPEND_OR_REPLACE, liveRefreshResumePolicy(listOf(WorkInfo.State.RUNNING)))
+        assertEquals(ExistingWorkPolicy.APPEND_OR_REPLACE, liveRefreshResumePolicy(listOf(WorkInfo.State.SUCCEEDED)))
+        assertEquals(ExistingWorkPolicy.APPEND_OR_REPLACE, liveRefreshResumePolicy(emptyList()))
+        // A check parked minutes out is replaced by a minute tick, unless a tick is running.
+        assertEquals(ExistingWorkPolicy.REPLACE, liveRefreshResumePolicy(listOf(WorkInfo.State.ENQUEUED), parkedWaiting = true))
+        assertNull(liveRefreshResumePolicy(listOf(WorkInfo.State.RUNNING, WorkInfo.State.ENQUEUED), parkedWaiting = true))
+    }
+
+    /**
+     * A check parked five minutes out (nothing to update, or nothing stored yet) gives way to a minute
+     * tick when something resumes the chain, a widget placed or a watch asking, rather than keeping
+     * the newcomer waiting up to five minutes for its first update (Codex on #918).
+     */
+    @Test
+    fun `a resume replaces a parked check with a minute tick`() = runTest {
+        scheduleWidgetRefresh(context, LIVE_REFRESH_RECHECK_MILLIS, parked = true)
+        resumeWidgetRefreshIfEnabled(context, FakeSettings(flowOf(true)))
+        val next = scheduledWork().single { it.state == WorkInfo.State.ENQUEUED }
+        assertEquals(WIDGET_REFRESH_INTERVAL_MILLIS, next.initialDelayMillis)
+        assertFalse(LIVE_REFRESH_PARKED_TAG in next.tags)
+        assertEquals(1, logged("widget: live refresh: a minute tick replaces the waiting check").size)
+        // A minute tick already waiting is kept.
+        val kept = next.id
+        resumeWidgetRefreshIfEnabled(context, FakeSettings(flowOf(true)))
+        assertEquals(listOf(kept), scheduledWork().filter { it.state == WorkInfo.State.ENQUEUED }.map { it.id })
+    }
+
+    // The successor waits behind the tick, and the tick's own reschedule leaves exactly one.
+    @Test
+    fun `a successor queued behind a tick is replaced by that tick's own next one`() = runTest {
+        scheduleWidgetRefresh(context)
+        scheduleWidgetRefresh(context, policy = ExistingWorkPolicy.APPEND_OR_REPLACE)
+        assertEquals(setOf(WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED), scheduledWork().map { it.state }.toSet())
+
+        scheduleWidgetRefresh(context)
+
+        assertEquals(1, enqueuedCount())
+        assertTrue(scheduledWork().none { it.state == WorkInfo.State.BLOCKED })
+    }
+
     @Test
     fun `disabling when nothing is scheduled is a no-op`() = runTest {
         applyWidgetRefreshSetting(context, enabled = false)
@@ -115,19 +174,208 @@ class WidgetRefreshWorkerTest {
     }
 
     /**
-     * With the setting on but no widget installed (the Robolectric default — no host), the worker
-     * retires the chain: it returns success without fetching or rescheduling, so it doesn't loop
-     * every minute with no surface to update (Codex P1 on #56). The render path
-     * (`resumeWidgetRefreshIfEnabled`) restarts it when a widget is added.
+     * With the setting on but no widget installed (the Robolectric default — no host) and no watch in
+     * reach, the worker neither fetches nor stops: the next tick is a check five minutes out, said
+     * once for the run (maintainer, 2026-10-17). Fetching every minute would be for no one (Codex P1 on
+     * #56); stopping left a widget placed or a watch come home without updates whenever the one event
+     * that would have restarted them was lost (Codex on #918).
      */
     @Test
-    fun `the worker retires without rescheduling when no widget is installed`() = runTest {
+    fun `with no widget placed and no watch in reach, the worker waits on a five-minute check`() = runTest {
         DataStoreAppSettings.from(context).setLiveWidgetRefresh(true)
         val worker = TestListenableWorkerBuilder<WidgetRefreshWorker>(context).build()
         assertEquals(ListenableWorker.Result.success(), worker.doWork())
+        val next = scheduledWork().single { it.state == WorkInfo.State.ENQUEUED }
+        assertEquals(LIVE_REFRESH_RECHECK_MILLIS, next.initialDelayMillis)
+        assertTrue(LIVE_REFRESH_PARKED_TAG in next.tags)
+        assertTrue("no fetch", logged(NOTHING_STORED).isEmpty())
+        assertFalse(liveRefreshGoesOn(context, FakeSettings(flowOf(true))))
+        assertEquals(1, enqueuedCount())
+        assertEquals(1, logged("widget: live refresh waiting: no widget placed and no watch in reach; checking every 5 min").size)
+    }
+
+    /**
+     * Waiting replaces the chain, so a resume queued behind a running tick (a widget placed, a watch
+     * asking, as that tick decided) is left to run a minute out rather than replaced by the check.
+     */
+    @Test
+    fun `a tick that waits leaves a resume queued behind it`() = runTest {
+        scheduleWidgetRefresh(context)
+        scheduleWidgetRefresh(context, policy = ExistingWorkPolicy.APPEND_OR_REPLACE)
+        val before = scheduledWork().map { it.id }.toSet()
+        parkLiveRefresh(context, NO_LIVE_REFRESH_SURFACE)
+        assertEquals(before, scheduledWork().map { it.id }.toSet())
+        assertTrue(scheduledWork().none { LIVE_REFRESH_PARKED_TAG in it.tags })
+    }
+
+    /**
+     * A phone in a pocket and a watch on the wrist, no widget placed: every update reaches the watch
+     * through the watch sync, and the watch fetches nothing itself, so the chain goes on for it
+     * (maintainer, 2026-10-16). It gets past the check to the stored stops, which a test has none of.
+     */
+    @Test
+    fun `a watch in reach keeps the worker going with no widget placed`() = runTest {
+        DataStoreAppSettings.from(context).setLiveWidgetRefresh(true)
+        LiveRefreshSurfaces.watchReach = { WatchReach.NEARBY }
+        val worker = TestListenableWorkerBuilder<WidgetRefreshWorker>(context).build()
+        assertEquals(ListenableWorker.Result.success(), worker.doWork())
+        assertTrue(logged("no watch in reach").isEmpty())
+        assertEquals(1, logged("widget: live refresh waiting: nothing stored to refresh").size)
+    }
+
+    /**
+     * Nothing stored yet, so nothing to refresh: the chain waits on the five-minute check, said once,
+     * for a widget as for a watch alone. A widget's first snapshot pokes its render, which brings the
+     * minute back sooner; a watch hears of nothing, so stopping there left it without minute updates
+     * until something else restarted them (Codex on #918).
+     */
+    @Test
+    fun `nothing stored yet waits, for a widget as for a watch`() = runTest {
+        DataStoreAppSettings.from(context).setLiveWidgetRefresh(true)
+        LiveRefreshSurfaces.watchReach = { WatchReach.NEARBY }
+        assertEquals(ListenableWorker.Result.success(), nothingStoredYet(context))
+        assertEquals(ListenableWorker.Result.success(), nothingStoredYet(context))
+        val next = scheduledWork().single { it.state == WorkInfo.State.ENQUEUED }
+        assertEquals(LIVE_REFRESH_RECHECK_MILLIS, next.initialDelayMillis)
+        assertTrue(LIVE_REFRESH_PARKED_TAG in next.tags)
+        assertEquals(1, logged("widget: live refresh waiting: nothing stored to refresh; checking every 5 min").size)
+
+        wm().cancelUniqueWork(WIDGET_REFRESH_WORK).result.get()
+        LiveRefreshSurfaces.widgetPlaced = { true }
+        assertEquals(ListenableWorker.Result.success(), nothingStoredYet(context))
+        assertEquals(LIVE_REFRESH_RECHECK_MILLIS, scheduledWork().single { it.state == WorkInfo.State.ENQUEUED }.initialDelayMillis)
+    }
+
+    @Test
+    fun `the chain fetches for a widget or a watch in reach, waits with neither, and ends when turned off`() = runTest {
+        val on = FakeSettings(flowOf(true))
+        LiveRefreshSurfaces.widgetPlaced = { false }
+        LiveRefreshSurfaces.watchReach = { WatchReach.NEARBY }
+        assertTrue(liveRefreshGoesOn(context, on))
+        LiveRefreshSurfaces.widgetPlaced = { true }
+        LiveRefreshSurfaces.watchReach = { WatchReach.NONE }
+        assertTrue(liveRefreshGoesOn(context, on))
         assertEquals(0, enqueuedCount())
-        // The setting is still on, so the widget gets no updates until a render restarts it: said in the log.
-        assertEquals(1, logged("widget: live refresh stopped: no widget placed").size)
+        LiveRefreshSurfaces.widgetPlaced = { false }
+        assertFalse(liveRefreshGoesOn(context, on))
+        assertEquals(LIVE_REFRESH_RECHECK_MILLIS, scheduledWork().single { it.state == WorkInfo.State.ENQUEUED }.initialDelayMillis)
+        // Turned off, it ends whatever is there, scheduling nothing and saying nothing: the rider ended it.
+        wm().cancelUniqueWork(WIDGET_REFRESH_WORK).result.get()
+        LiveRefreshSurfaces.widgetPlaced = { true }
+        assertFalse(liveRefreshGoesOn(context, FakeSettings(flowOf(false))))
+        assertEquals(0, enqueuedCount())
+        assertEquals(1, logged("live refresh waiting").size)
+    }
+
+    // A placed widget is the cheap local answer, so a widget user's minute never waits on Play services.
+    @Test
+    fun `a phone with a widget placed never asks for a watch`() = runTest {
+        var asked = 0
+        LiveRefreshSurfaces.widgetPlaced = { true }
+        LiveRefreshSurfaces.watchReach = { asked++; WatchReach.NONE }
+        assertNull(LiveRefreshSurfaces.whyNone(context))
+        assertEquals(0, asked)
+    }
+
+    /**
+     * Removing the last widget leaves the pending tick for the next tick to decide, which asks before
+     * it fetches. A cancel there could take the tick a watch's resume had just queued, the watch
+     * having come back after the removal asked for it, and nothing would start the chain again
+     * (Codex on #918).
+     */
+    @Test
+    fun `the last widget removed leaves a tick a watch's resume queued`() = runTest {
+        // No widget placed and, when the removal looks, no watch in reach either.
+        LiveRefreshSurfaces.widgetPlaced = { false }
+        // The watch comes back and its resume queues a tick, then the last widget's removal lands.
+        resumeWidgetRefreshIfEnabled(context, FakeSettings(flowOf(true)))
+        assertEquals(1, enqueuedCount())
+        StopDashWidget().onDelete(context, object : androidx.glance.GlanceId {})
+        assertEquals(1, enqueuedCount())
+        // With the watch on the wrist, the tick goes on; with nothing to update, it waits.
+        LiveRefreshSurfaces.watchReach = { WatchReach.NEARBY }
+        assertTrue(liveRefreshGoesOn(context, FakeSettings(flowOf(true))))
+        LiveRefreshSurfaces.watchReach = { WatchReach.NONE }
+        assertFalse(liveRefreshGoesOn(context, FakeSettings(flowOf(true))))
+        assertEquals(1, logged("widget: live refresh waiting: no widget placed and no watch in reach").size)
+    }
+
+    /**
+     * A watch left at home online is reachable through the cloud, but not on the wrist (Codex on
+     * #918): the chain waits rather than fetch for it, its coming back near the phone may not change
+     * the set of reachable watches, which is all the capability listener reports, and the check five
+     * minutes out is what sees it.
+     */
+    @Test
+    fun `an away watch neither fetches nor stops, and the next check is minutes out`() = runTest {
+        DataStoreAppSettings.from(context).setLiveWidgetRefresh(true)
+        LiveRefreshSurfaces.watchReach = { WatchReach.AWAY }
+        val worker = TestListenableWorkerBuilder<WidgetRefreshWorker>(context).build()
+        assertEquals(ListenableWorker.Result.success(), worker.doWork())
+        val next = scheduledWork().single { it.state == WorkInfo.State.ENQUEUED }
+        assertEquals(LIVE_REFRESH_RECHECK_MILLIS, next.initialDelayMillis)
+        assertTrue(LIVE_REFRESH_PARKED_TAG in next.tags)
+        assertTrue("no fetch", logged(NOTHING_STORED).isEmpty())
+        // Said once for a run of away answers.
+        assertFalse(liveRefreshGoesOn(context, FakeSettings(flowOf(true))))
+        assertEquals(1, logged("widget: live refresh waiting: no widget placed and the watch is away; checking every 5 min").size)
+    }
+
+    // The wait's end is said once the tick that ends it has refreshed.
+    @Test
+    fun `an away watch back near the phone gets the minute updates again`() = runTest {
+        val on = FakeSettings(flowOf(true))
+        LiveRefreshSurfaces.watchReach = { WatchReach.AWAY }
+        assertFalse(liveRefreshGoesOn(context, on))
+        LiveRefreshSurfaces.watchReach = { WatchReach.NEARBY }
+        assertTrue(liveRefreshGoesOn(context, on))
+        LiveRefreshSurfaces.updating()
+        LiveRefreshSurfaces.updating()
+        assertEquals(1, logged("widget: live refresh: every minute again").size)
+    }
+
+    /**
+     * A watch question that fails counts as a watch there, so a transient Play services error can't
+     * stop the watch's updates and leave it falling behind: the rider chose the minute's cost already.
+     * It's said once for a run of failures, and again when the question is answered.
+     */
+    @Test
+    fun `a watch check that fails counts as a watch there, said once until it answers`() = runTest {
+        val on = FakeSettings(flowOf(true))
+        LiveRefreshSurfaces.watchReach = { throw IllegalStateException("no answer") }
+        assertTrue(liveRefreshGoesOn(context, on))
+        assertTrue(liveRefreshGoesOn(context, on))
+        assertEquals(1, logged("widget: live refresh: watch check failed: IllegalStateException; updating anyway").size)
+        // Answered again: said, and a watch gone now makes it wait.
+        LiveRefreshSurfaces.watchReach = { WatchReach.NONE }
+        assertFalse(liveRefreshGoesOn(context, on))
+        assertEquals(1, logged("widget: live refresh: watch check answers again").size)
+        assertEquals(1, logged("widget: live refresh waiting: no widget placed and no watch in reach").size)
+    }
+
+    // A Play services call that never returns can't hold a tick open.
+    @Test
+    fun `a watch check that doesn't answer in time counts as a watch there`() {
+        LiveRefreshSurfaces.watchReach = { awaitCancellation() }
+        runBlocking { assertNull(LiveRefreshSurfaces.whyNone(context, boundMillis = 50)) }
+        assertEquals(1, logged("widget: live refresh: watch check timed out; updating anyway").size)
+    }
+
+    // Both questions are calls into the system: asked on the io dispatcher, never the caller's thread.
+    @Test
+    fun `the widget and the watch are asked on the io dispatcher, not the caller's thread`() {
+        val caller = Executors.newSingleThreadExecutor { Thread(it, "test-caller") }.asCoroutineDispatcher()
+        val io = Executors.newSingleThreadExecutor { Thread(it, "test-io") }.asCoroutineDispatcher()
+        try {
+            val threads = ThreadRecorder()
+            LiveRefreshSurfaces.widgetPlaced = { threads.note(); false }
+            LiveRefreshSurfaces.watchReach = { threads.note(); WatchReach.NEARBY }
+            assertNull(runBlocking(caller) { LiveRefreshSurfaces.whyNone(context, io) })
+            assertEquals(listOf("test-io", "test-io"), threads.threads())
+        } finally {
+            caller.close()
+            io.close()
+        }
     }
 
     /**
@@ -188,7 +436,7 @@ class WidgetRefreshWorkerTest {
 
     @Test
     fun `resume does not schedule when the setting reads off`() = runTest {
-        resumeWidgetRefreshIfEnabled(context, FakeSettings(flowOf(false)))
+        assertTrue(resumeWidgetRefreshIfEnabled(context, FakeSettings(flowOf(false))))
         assertEquals(0, enqueuedCount())
     }
 
@@ -200,7 +448,8 @@ class WidgetRefreshWorkerTest {
      */
     @Test
     fun `resume gives up without scheduling when the settings read hangs`() = runTest {
-        resumeWidgetRefreshIfEnabled(context, FakeSettings(flow { awaitCancellation() }))
+        // False: the setting couldn't be read, for a caller that can try again.
+        assertFalse(resumeWidgetRefreshIfEnabled(context, FakeSettings(flow { awaitCancellation() })))
         assertEquals(0, enqueuedCount())
     }
 

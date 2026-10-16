@@ -444,8 +444,10 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
   at (your phone's font scale times StopDash's own); for each **scheduled widget
   redraw**, and each **automatic widget update** that ran over two minutes late, how many seconds
   after it was due Android ran it (by the time since the device started, and by the clock too where
-  the two differ); and when automatic updates stopped with the setting on, or were found not
-  scheduled and started again, and why — counts and seconds only, no stop or place,
+  the two differ); and when automatic updates waited with the setting on, for no widget and no
+  watch near the phone, a watch away from the phone or a first set of departures, went back to
+  every minute, or were found not scheduled and started again, and why — counts and seconds only,
+  no stop or place,
 - **per-refresh request counts and timing**: how many TfL requests a refresh made, of which
   kinds, how long it took, and how long it waited on the app's own rate limit — counts and
   milliseconds only, no stop or place,
@@ -524,8 +526,10 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
 - **where the link to a paired watch stands**, when it changes: whether any paired watch has
   StopDash, how many do (a count only), whether the latest departures were queued for it or had
   already been, that a watch asked for a refresh, that a trip on the way was queued for it or
-  taken off it, and the failure type if a send failed —
-  never which watch, its name or id, or what was sent.
+  taken off it, and the failure type if a send failed. With automatic updates on and no widget
+  placed, also whether a watch with StopDash is near the phone or reachable only away from it, as
+  the updates check, when that changes, and the failure type if the check failed —
+  never which watch, its name or id, where it or the phone is, or what was sent.
 - **a trip step you asked for that wasn't made**, and why, by kind (no trip, already there, the
   trip had moved on first, it would end the trip, it couldn't be saved), and that a trip refresh was
   cut short so your step went first — never a stop, a line or where you're going.

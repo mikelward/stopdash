@@ -345,7 +345,19 @@ the watch app ships would break pairing between old and new installs.
   - Each request carries a random id that its answer echoes, so a late answer to a timed-out
     request can't settle a newer one. The phone queues a watch's requests and answers each.
 - The phone's existing opt-in **live widget refresh** (D5) keeps the watch fresh too, since
-  each cycle pushes. It needs no watch-side setting.
+  each cycle pushes. It needs no watch-side setting, and no widget: the chain runs while a
+  widget is placed or a watch with the app is in reach, so a phone in a pocket keeps the watch
+  current. In reach is a reachable node (`CapabilityClient.FILTER_REACHABLE`) that is also
+  `isNearby`: a watch left at home stays reachable through the cloud over Wi-Fi or cellular, and
+  isn't on the wrist. With neither a widget nor a watch in reach, or nothing stored to refresh yet,
+  the chain parks rather than stops (`parkLiveRefresh`): no fetch, and the next tick five minutes
+  out to ask again. Only the setting turned off ends it. The park is what guarantees the minute
+  comes back, because nothing reliably says when it should: an away watch coming home doesn't
+  change the reachable set `onCapabilityChanged` reports (`Node` equality is by id alone), a watch
+  is told nothing of a first snapshot, and the events that do say so can be lost (the listener's
+  service torn down, a tick deciding at the same moment). A widget placed, a watch's refresh
+  request and its capability coming back (`onCapabilityChanged`) replace the parked check with a
+  minute tick at once; they make the way back quicker, not certain.
 
 ### Staleness on the watch (D4)
 
@@ -541,6 +553,10 @@ it before committing to the design.
   - Pick the debounce window when the work starts.
 - **Phone battery:** one Data Layer write per snapshot the phone already takes, and only when the
   watch app is installed on a paired watch. A watch-requested refresh is one extra fetch per tap, debounced.
+  With live refresh on, a watch in reach keeps the minute's round of requests going with no widget
+  placed: the cost the rider chose for a widget, now paid for the watch as well. With nothing to
+  update, the setting on costs a wake every five minutes, with a widget check and a local Play
+  services question and no fetch.
 - **Watch battery:** no fetching of its own and no polling. But **receiving** each pushed
   snapshot costs something: a Bluetooth or Wi-Fi transfer, a decode, and a tile/complication
   update. With the phone app open, or live refresh on, that could be about once a minute. So
