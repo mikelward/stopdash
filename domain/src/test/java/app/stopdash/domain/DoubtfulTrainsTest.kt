@@ -171,6 +171,60 @@ class DoubtfulTrainsTest {
     }
 
     @Test
+    fun `a train listed on two lines at one platform is grayed on both, and the train beside it is not`() {
+        // As TfL listed one platform: a Hammersmith & City train, and 30 s behind it one train listed both as
+        // a Hammersmith & City train and as a Metropolitan one, with no destination yet.
+        val ahead = train(60, "Hammersmith", null, "201", platform = "Westbound - Platform 2", line = "hammersmith-city")
+        val asHammersmith = train(90, "", null, "123", platform = "Westbound - Platform 2", line = "hammersmith-city")
+        val asMetropolitan = train(90, "", null, "123", platform = "Platform 2", line = "metropolitan")
+        val result = DoubtfulTrains.mark(listOf(ahead, asHammersmith, asMetropolitan), now)
+        // It may run as either line, so both listings are grayed and a trip counts on another train first.
+        assertEquals(listOf(false, true, true), result.departures.map { it.grayed })
+        assertEquals(listOf(false, true, true), result.departures.map { it.doubtful })
+        assertEquals(result.departures.drop(1), result.onTwoLines)
+        assertEquals(result.departures.drop(1), result.marked)
+        // The train ahead isn't paired with the listing 30 s behind it: that may not be its line's at all.
+        assertSame(ahead, result.departures[0])
+    }
+
+    @Test
+    fun `a train on two lines is grayed however far out it is`() {
+        // Its line isn't settled at any distance, unlike a close pair, which is judged within five minutes.
+        val board = listOf(
+            train(900, "", null, "123", platform = "Platform 2", line = "district"),
+            train(900, "", null, "123", platform = "Platform 2", line = "hammersmith-city"),
+        )
+        assertEquals(listOf(true, true), DoubtfulTrains.mark(board, now).departures.map { it.grayed })
+    }
+
+    @Test
+    fun `one id on two lines due far apart is two trains`() {
+        // An id is unique within a line only: two lines' trains at one platform minutes apart can share one.
+        val board = listOf(
+            train(60, "Hammersmith", null, "123", platform = "Platform 2", line = "hammersmith-city"),
+            train(121, "Uxbridge", null, "123", platform = "Platform 2", line = "metropolitan"),
+        )
+        val result = DoubtfulTrains.mark(board, now)
+        assertSame(board, result.departures)
+        assertTrue(result.onTwoLines.isEmpty())
+        // A minute apart, they're one train TfL hasn't settled the line of.
+        val close = board.mapIndexed { i, d -> if (i == 1) d.copy(expectedArrival = now.plusSeconds(120)) else d }
+        assertEquals(listOf(true, true), DoubtfulTrains.mark(close, now).departures.map { it.grayed })
+    }
+
+    @Test
+    fun `one id on two lines at different platforms is two trains`() {
+        // A train's id is unique within its line only: trains of two lines at different platforms can share one.
+        val board = listOf(
+            train(60, "Brixton", null, "123", platform = "Southbound - Platform 5", line = "victoria"),
+            train(70, "Cockfosters", null, "123", platform = "Northbound - Platform 6", line = "piccadilly"),
+        )
+        val result = DoubtfulTrains.mark(board, now)
+        assertSame(board, result.departures)
+        assertTrue(result.onTwoLines.isEmpty())
+    }
+
+    @Test
     fun `a board with nothing doubtful is returned as given`() {
         val board = listOf(train(30, "Morden", "Bank", "1"), train(300, "Edgware", null, "2"))
         val result = DoubtfulTrains.mark(board, now)
