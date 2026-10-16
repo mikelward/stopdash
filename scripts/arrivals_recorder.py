@@ -9,7 +9,10 @@ This tool measures that, and a fix for it, against what actually happened:
              JSON line per stop per poll to --out;
     score    from a recording, find when each train actually reached each platform, then compare
              TfL's raw times with the same times spaced at least --gap seconds apart per platform
-             (each train no sooner than the one ahead of it, as adjusted, plus the gap).
+             (each train no sooner than the one ahead of it, as adjusted, plus the gap);
+    pairs    from a recording, take each pair of trains TfL showed close together at one platform
+             (as the app grays them, and a little further apart), and count which of the two left
+             the board before it was due, and what the one that did looked like beforehand.
 
 Neither method is judged against its own numbers: the truth comes from where TfL says the train
 is, not from any prediction, to within half a poll interval.
@@ -149,11 +152,7 @@ def load(lines, mode="tube"):
     prediction of anything to come (`upcoming`).
     """
     records = [json.loads(line) for line in lines if line.strip()]
-    line_modes = {}
-    for poll in records:
-        for arrival in poll["arrivals"]:
-            if arrival.get("modeName") and arrival.get("lineId"):
-                line_modes.setdefault(arrival["lineId"], arrival["modeName"])
+    line_modes = modes_of_lines(records)
     polls = []
     for poll in records:
         polled_at = parse_time(poll["polledAt"])
@@ -218,6 +217,33 @@ def load(lines, mode="tube"):
         polls.append((polled_at, poll["stop"], platforms, ambiguous, at_platform, crowded))
     polls.sort(key=lambda p: p[0])
     return polls
+
+
+def modes_of_lines(records):
+    """Each line's mode, from the listings that name it: {line: mode}."""
+    modes = {}
+    for poll in records:
+        for arrival in poll["arrivals"]:
+            if arrival.get("modeName") and arrival.get("lineId"):
+                modes.setdefault(arrival["lineId"], arrival["modeName"])
+    return modes
+
+
+def locations(lines, mode="tube"):
+    """Where TfL said each `mode` train at a numbered platform was, at each poll:
+    {(polled_at, platform, vehicle): location}, "" where it left it blank. `load` keeps only "At
+    Platform"; the pair breakdown (`pairs`) reads the rest."""
+    records = [json.loads(line) for line in lines if line.strip()]
+    line_modes = modes_of_lines(records)
+    where = {}
+    for poll in records:
+        polled_at = parse_time(poll["polledAt"])
+        for arrival in poll["arrivals"]:
+            key = platform_key(poll["stop"], arrival, mode, line_modes)
+            vehicle = vehicle_id(arrival)
+            if key is not None and vehicle:
+                where[(polled_at, key, vehicle)] = (arrival.get("currentLocation") or "").strip()
+    return where
 
 
 def physical(platform):
@@ -788,6 +814,277 @@ def by_line(polls, gaps, arrived_within, max_gap, window=300):
     return {line: score(polls, gaps, arrived_within, max_gap, window, line) for line in names}
 
 
+# The pair breakdown (`pairs`) follows the app's rule for a pair (DoubtfulTrains.kt): two of a line's
+# trains next to each other at one platform, the first due within PAIR_WITHIN. It looks as far apart
+# as just under MIN_HEADWAY, wider than the app's 60 s, to see what the bands either side of it hold.
+PAIR_WITHIN = datetime.timedelta(minutes=5)
+PAIR_BANDS = ((0, 5), (6, 60), (61, 89))
+APP_PAIR = 60  # DoubtfulTrains.PAIR, in seconds.
+# A train that leaves the board with more than this still to go didn't come when it was shown: it
+# vanished. One TfL drops with less to go may have come (TfL can drop a train as it arrives).
+VANISHED_WITH = datetime.timedelta(seconds=30)
+# A train that has stopped counting down: over its last STALL_WINDOW listed, its expected time moved
+# later by at least half the time that passed (one counting down keeps its time). TfL's answer is
+# cached for about 30 s, so the window must hold two of its updates: STALL_SPAN of listings at least.
+STALL_WINDOW = datetime.timedelta(seconds=90)
+STALL_SPAN = datetime.timedelta(seconds=45)
+
+
+def left_board(polls, max_gap, arrived_within=60):
+    """How each visit left the board: {visit: (vanished, poll index of its last listing)}, vanished
+    when it still had more than VANISHED_WITH to go when it left (halfway between that listing's
+    poll and the stop's next, as `settle` takes it), unless TfL ever placed it "At Platform": that
+    marks its arrival, as `platform_arrivals` takes it, whatever time it still showed. None of
+    these is in it:
+    - a visit still listed when its run of polls ended: it may yet have come;
+    - one `settle` voids (moved to another platform, listed twice, or reaching the platform under
+      MIN_HEADWAY after another): it can't be followed or can't be real;
+    - one last listed more than `arrived_within` seconds past its time and never placed "At
+      Platform": a stale time says nothing of whether it came. One TfL placed there came, however
+      long it then stood listed."""
+    run_of = runs(polls, max_gap)
+    visit_of = visits(polls, max_gap)
+    last = {}
+    there = set()
+    for i, (_, _, platforms, _, at_platform, _) in enumerate(polls):
+        for platform, trains in platforms.items():
+            for vehicle, expected in trains:
+                visit = visit_of.get((i, platform, vehicle))
+                if visit is not None:
+                    last[visit] = (i, expected)
+                    if (platform, vehicle) in at_platform:
+                        there.add(visit)
+    lost = settle(polls, arrived_within, max_gap)[1]
+    next_poll = {}
+    previous = {}
+    for i, (polled_at, stop, _, _, _, _) in enumerate(polls):
+        if stop in previous:
+            next_poll[previous[stop]] = polled_at
+        previous[stop] = i
+    result = {}
+    for visit, (i, expected) in last.items():
+        polled_at = polls[i][0]
+        if polled_at == run_of[i][1] or visit in lost:
+            continue
+        if (polled_at - expected).total_seconds() > arrived_within and visit not in there:
+            continue
+        left = polled_at + (next_poll[i] - polled_at) / 2
+        result[visit] = (visit not in there and expected - left > VANISHED_WITH, i)
+    return result
+
+
+def stalled(history, end):
+    """Whether a train had stopped counting down by `end`, from its listings [(polled_at,
+    expected)] (time order): its expected time moved later by at least half the time that passed
+    over its listings in the STALL_WINDOW to `end`. None when they span less than STALL_SPAN."""
+    recent = [(t, e) for t, e in history if end - STALL_WINDOW <= t <= end]
+    if len(recent) < 2 or recent[-1][0] - recent[0][0] < STALL_SPAN:
+        return None
+    (t0, e0), (t1, e1) = recent[0], recent[-1]
+    return (e1 - e0) * 2 >= t1 - t0
+
+
+def on_two_lines(lines, mode="tube"):
+    """The listings of a train TfL lists on two lines at once, as the app finds them
+    (DoubtfulTrains.kt): {(polled_at, platform, vehicle, expected)} for each not yet due whose id
+    another line lists at the same platform of the same stop, due within APP_PAIR of it. Until TfL
+    settles which line a train runs as, it lists it under each it could be (the Hammersmith & City
+    and the Metropolitan or District) and drops one listing once it knows, so one of the two leaves
+    the board early. An id is unique within a line only, so listings further apart are two trains.
+
+    Read from the feed itself, as the app reads it, not from `load`'s polls: those take a train
+    listed twice on one line as a train with no id, which would hide its listing on the other."""
+    records = [json.loads(line) for line in lines if line.strip()]
+    line_modes = modes_of_lines(records)
+    found = set()
+    for poll in records:
+        polled_at = parse_time(poll["polledAt"])
+        by_track = collections.defaultdict(list)
+        for arrival in poll["arrivals"]:
+            key = platform_key(poll["stop"], arrival, mode, line_modes)
+            vehicle = vehicle_id(arrival)
+            if key is None or not vehicle or not arrival.get("expectedArrival"):
+                continue
+            expected = parse_time(arrival["expectedArrival"])
+            if expected > polled_at:
+                by_track[(physical(key), vehicle)].append((key, expected))
+        for (_, vehicle), listings in by_track.items():
+            for platform, expected in listings:
+                if any(other[1] != platform[1] and abs((e - expected).total_seconds()) <= APP_PAIR
+                       for other, e in listings):
+                    found.add((polled_at, platform, vehicle, expected))
+    return found
+
+
+def two_line_trains(polls, two_lines, max_gap, arrived_within=60):
+    """What became of each visit `on_two_lines` ever lists (`two_lines`): {visit: vanished}, None
+    for one that hasn't settled how it left the board (`left_board`). A listing `load` took as a
+    train with no id has no visit, so isn't counted."""
+    visit_of = visits(polls, max_gap)
+    left = left_board(polls, max_gap, arrived_within)
+    index = collections.defaultdict(list)
+    for i, (polled_at, stop, _, _, _, _) in enumerate(polls):
+        index[(polled_at, stop)].append(i)
+    result = {}
+    for polled_at, platform, vehicle, _ in two_lines:
+        for i in index[(polled_at, platform[0])]:
+            visit = visit_of.get((i, platform, vehicle))
+            if visit is not None:
+                result[visit] = left[visit][0] if visit in left else None
+    return result
+
+
+def pairs(polls, max_gap, two_lines, where=None, arrived_within=60):
+    """Each pair of trains the app would gray, or nearly (see PAIR_BANDS), and what became of it.
+
+    A pair is two visits a poll lists next to each other at one platform, neither yet due, the
+    first due within PAIR_WITHIN, at most PAIR_BANDS' widest apart. A listing of a train TfL lists
+    on two lines at once (`two_lines`, from `on_two_lines`) is left out of its queue, as the app
+    leaves it out: it is grayed for that, not for the train next to it. One `load` took as a train
+    with no id is matched by its time. Each pair counts once, in the band of the
+    closest TfL showed them; "earlier" is the one first shown first. Returns a list of
+    dicts: "earlier", "later" (visits), "gap" (s), "swapped" (shown in the other order at another
+    poll), "line", "vanished" ({visit: bool}, or None for a pair either of which hasn't settled
+    how it left the board, `left_board`), and for a pair one of which vanished, "stalled" ({visit: bool or None}: had
+    stopped counting down by the vanished one's last listing, `stalled`). With `where`
+    (`locations`), also "blank" ({visit: bool}: no location at the vanished one's last listing) and
+    "same_place" (both at one location at a poll pairing them). Trains with no id can't be followed,
+    so make no pairs.
+    """
+    visit_of = visits(polls, max_gap)
+    left = left_board(polls, max_gap, arrived_within)
+    history = collections.defaultdict(list)
+    for i, (polled_at, _, platforms, _, _, _) in enumerate(polls):
+        for platform, trains in platforms.items():
+            for vehicle, expected in trains:
+                visit = visit_of.get((i, platform, vehicle))
+                if visit is not None:
+                    history[visit].append((polled_at, expected))
+    widest = PAIR_BANDS[-1][1]
+    named = {(t, platform, vehicle) for t, platform, vehicle, _ in two_lines}
+    unnamed = {(t, platform, expected) for t, platform, _, expected in two_lines}
+    found = {}
+    for i, (polled_at, _, platforms, _, _, _) in enumerate(polls):
+        for platform, trains in platforms.items():
+            # As the app does (Countdown.hasDeparted), a train due now has gone.
+            due = [(vehicle, expected) for vehicle, expected in trains if expected > polled_at
+                   and (polled_at, platform, vehicle) not in named
+                   and (vehicle or (polled_at, platform, expected) not in unnamed)]
+            for (va, ea), (vb, eb) in zip(due, due[1:]):
+                if ea - polled_at >= PAIR_WITHIN:
+                    break
+                gap = (eb - ea).total_seconds()
+                a, b = visit_of.get((i, platform, va)), visit_of.get((i, platform, vb))
+                if gap > widest or a is None or b is None:
+                    continue
+                pair = found.setdefault(frozenset((a, b)), {
+                    "earlier": a, "later": b, "gap": gap, "swapped": False, "line": platform[1],
+                    "same_place": False if where is not None else None,
+                })
+                pair["gap"] = min(pair["gap"], gap)
+                pair["swapped"] |= (a, b) != (pair["earlier"], pair["later"])
+                if where is not None:
+                    here = where.get((polled_at, platform, va)), where.get((polled_at, platform, vb))
+                    pair["same_place"] |= bool(here[0]) and here[0] == here[1]
+    result = []
+    for pair in found.values():
+        a, b = pair["earlier"], pair["later"]
+        pair["vanished"] = {a: left[a][0], b: left[b][0]} if a in left and b in left else None
+        gone = [v for v in (a, b) if pair["vanished"] and pair["vanished"][v]]
+        if len(gone) == 1:
+            last = left[gone[0]][1]
+            end = polls[last][0]
+            pair["stalled"] = {v: stalled(history[v], end) for v in (a, b)}
+            if where is not None:
+                # None for one not listed at that poll: nothing was said of where it was.
+                places = {v: where.get((end, v[0], v[2])) for v in (a, b)}
+                pair["blank"] = {v: None if place is None else not place for v, place in places.items()}
+        result.append(pair)
+    return result
+
+
+def pair_outcome(pair):
+    """Which of a pair vanished: "both came", "earlier vanished", "later vanished", "both
+    vanished", or None while either hasn't settled (`left_board`)."""
+    vanished = pair["vanished"]
+    if vanished is None:
+        return None
+    earlier, later = vanished[pair["earlier"]], vanished[pair["later"]]
+    if earlier and later:
+        return "both vanished"
+    if earlier or later:
+        return "earlier vanished" if earlier else "later vanished"
+    return "both came"
+
+
+PAIR_OUTCOMES = ("both came", "earlier vanished", "later vanished", "both vanished")
+
+
+def pair_report(found, out=None, two_lines=None):
+    """`pairs`' breakdown as a table; with `two_lines` (`two_line_trains`), what became of the trains
+    left out of it as listed on two lines."""
+    out = out or sys.stdout
+    def band(gap):
+        return next((low, high) for low, high in PAIR_BANDS if gap <= high)
+
+    def row(label, counted, unsettled=None):
+        counts = collections.Counter(pair_outcome(p) for p in counted)
+        cells = "".join(f"{counts[o]:>18}" for o in PAIR_OUTCOMES)
+        tail = f"{unsettled:>14}" if unsettled is not None else ""
+        print(f"  {label:>18}{cells}{tail}", file=out)
+
+    print("Pairs of a line's trains next to each other at one platform, the first due within 5 min,"
+          " by the closest", file=out)
+    print(f"TfL showed them. A train vanished if it left the board with more than"
+          f" {VANISHED_WITH.seconds} s to go;", file=out)
+    print("earlier and later are as first shown. Unsettled: still listed when the recording ended,"
+          " or void as `score` takes it", file=out)
+    print("(moved platform, listed twice, or two reaching the platform under 90 s apart), or one last listed long"
+          " past its time.", file=out)
+    print("A train TfL lists on two lines at once is left out, as the app leaves it out.", file=out)
+    print(f"  {'Shown apart':>18}" + "".join(f"{o:>18}" for o in PAIR_OUTCOMES) + f"{'unsettled':>14}",
+          file=out)
+    for low, high in PAIR_BANDS:
+        in_band = [p for p in found if band(p["gap"]) == (low, high)]
+        row(f"{low}-{high} s", [p for p in in_band if pair_outcome(p)],
+            sum(1 for p in in_band if pair_outcome(p) is None))
+    swapped = sum(1 for p in found if p["swapped"])
+    print(f"  {swapped} of {len(found)} pairs were shown in both orders.", file=out)
+    close = [p for p in found if p["gap"] <= APP_PAIR]
+    print(f"By line, 0-{APP_PAIR} s apart (the pairs the app grays):", file=out)
+    for line in sorted({p["line"] for p in close}):
+        on = [p for p in close if p["line"] == line]
+        row(line, [p for p in on if pair_outcome(p)], sum(1 for p in on if pair_outcome(p) is None))
+    one = [p for p in found if pair_outcome(p) in ("earlier vanished", "later vanished")]
+    print(f"Pairs one of which vanished ({len(one)}), the one that vanished against the other:", file=out)
+
+    def tally(signal):
+        mine = [p[signal][v] for p in one for v in (p["earlier"], p["later"]) if p["vanished"][v]]
+        other = [p[signal][v] for p in one for v in (p["earlier"], p["later"]) if not p["vanished"][v]]
+
+        def share(values):
+            known = [v for v in values if v is not None]
+            return f"{sum(known)} of {len(known)}"
+        return share(mine), share(other)
+
+    mine, other = tally("stalled")
+    print(f"  stopped counting down in its last {STALL_WINDOW.seconds} s listed:"
+          f" vanished {mine}, the other {other}", file=out)
+    if found and found[0]["same_place"] is not None:
+        mine, other = tally("blank")
+        print(f"  no location at its last listing: vanished {mine}, the other {other}", file=out)
+        both_came = [p for p in found if pair_outcome(p) == "both came"]
+        print(f"  both at one location at some poll: {sum(p['same_place'] for p in one)} of {len(one)}"
+              f" (both came: {sum(p['same_place'] for p in both_came)} of {len(both_came)})", file=out)
+    if two_lines is not None:
+        print("Trains listed on two lines at once (left out above), by line: listings, settled,"
+              " vanished:", file=out)
+        for line in sorted({visit[0][1] for visit in two_lines}):
+            on = [vanished for visit, vanished in two_lines.items() if visit[0][1] == line]
+            settled = [v for v in on if v is not None]
+            print(f"  {line:>18}{len(on):>10}{len(settled):>10}{sum(settled):>10}", file=out)
+
+
 def report(result, gaps_by_platform, out=sys.stdout, lines=None):
     def label(h):
         low, high = h
@@ -845,16 +1142,29 @@ def main(argv=None):
     sc.add_argument("--max-gap", type=float, default=90,
                     help="a stop's polls further apart than this break its coverage (default 90 s)")
     sc.add_argument("--mode", default="tube")
+    pa = sub.add_parser("pairs", help="what became of trains shown close together at one platform")
+    pa.add_argument("recording")
+    pa.add_argument("--max-gap", type=float, default=90,
+                    help="a stop's polls further apart than this break its coverage (default 90 s)")
+    pa.add_argument("--arrived-within", type=float, default=60,
+                    help="a train last listed further past its time is left unsettled (default 60 s)")
+    pa.add_argument("--mode", default="tube")
     args = parser.parse_args(argv)
     if args.command == "record":
         with open(args.out, "a", encoding="utf-8") as out:
             record(args.stops, args.interval, args.duration, out)
         return 0
     with open(args.recording, encoding="utf-8") as f:
-        polls = load(f, args.mode)
+        lines = f.readlines()
+    polls = load(lines, args.mode)
     if not polls:
         print(f"{args.recording}: no polls", file=sys.stderr)
         return 1
+    if args.command == "pairs":
+        two_lines = on_two_lines(lines, args.mode)
+        pair_report(pairs(polls, args.max_gap, two_lines, locations(lines, args.mode), args.arrived_within),
+                    two_lines=two_line_trains(polls, two_lines, args.max_gap, args.arrived_within))
+        return 0
     gaps = [float(g) for g in args.gap.split(",") if g]
     report(
         score(polls, gaps, args.arrived_within, args.max_gap),
