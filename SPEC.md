@@ -1660,7 +1660,13 @@ card walks as much; after Fastest and Simplest, sharing a header with them the s
 Least walking"): each plan also asks the Planner for its least-walking routes beside the quickest and the
 fewest changes, so the bus to the station is offered beside the long walk there. Such a route stays
 on the list though it changes more and arrives later (below), and is timed past the cap on routes
-timed. With none of these headers shown, no card is headed Other. Routes riding the
+timed. **Cheapest** (maintainer, 2026-10-16) heads **every** card at the lowest fare, the first card
+included, after Least walking and sharing a header the same way ("Fastest · Cheapest"), only when every
+card shows a fare (a card with none could cost least) and they don't all cost the same: each plan
+also asks the Planner for buses alone (below), so the bus the whole way, at a bus fare, is offered
+beside the train. Like Least walking, the route costing least is timed past the cap, and the list's
+order is as for every other header: labeled cards first by their first label, the rest under Other.
+With none of these headers shown, no card is headed Other. Routes riding the
 same lines in turn but changing at a different stop are **cards of their own**, told apart by the
 stops their ride rows name (below) (maintainer, 2026-09-27). Routes whose first ride goes between the
 same two stops by the same mode and then ride the same lines — the 43 or the 134 to Highgate
@@ -1702,7 +1708,10 @@ not running; then live, estimated, withheld — stricter than the list's order, 
 unchecked route a live train times among the checked, so a route checked open is never left off for
 one that couldn't be checked), is left off the list, and of two arriving together the one with fewer changes comes first.
 An arrival that is withheld is never compared, and a route already open stays open, as does the bus
-found asking via a stop towards the destination (*Buses towards the destination*, below).
+found asking via a stop towards the destination (*Buses towards the destination*, below), and the
+first route at the lowest fare where it costs less than the first card (maintainer, 2026-10-16): two
+buses on one fare are a change more than the train and arrive later, yet they're what *Cheapest* is
+for.
 Tapping the card opens its best route. **Every route looks alike** — no
 route is expanded — as a card whose top row is its **duration · arrival** ("22 min · 08:24"); the
 duration is from now to that arrival, so it takes in the same walks, waits and legs. Where waiting
@@ -4446,7 +4455,7 @@ also: each screen as it comes up (Analytics' own `screen_view`, named by the app
 draws them all), what opened the app (its icon on a cold start, the widget, a notification or a
 shortcut), each trip plan (how it went: routes, none, partly or wholly failed and why; its route
 count in ranges; from here or a stop, to a stop or a place; first or again), each route opened from
-its card and each started (by the card's label: Fastest, Simplest, Least walking, a combination,
+its card and each started (by the card's label: Fastest, Simplest, Least walking, Cheapest, a combination,
 Other, or none; its rank or its changes in ranges), and each setting changed with its new value as a
 category or band (a line or stop avoided, hidden or added to the disruptions row counts only that one was).
 And **user properties**, sent as the opt-in lands, when a setting changes and each time the app

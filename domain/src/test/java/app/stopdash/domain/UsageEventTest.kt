@@ -174,6 +174,9 @@ class UsageEventTest {
         assertEquals(UsageEvent.RouteChoice.FASTEST, UsageEvent.RouteChoice.of(fastest, fastest))
         assertEquals(UsageEvent.RouteChoice.FASTEST_LEAST_WALKING, UsageEvent.RouteChoice.of(listOf(RouteLabel.FASTEST, RouteLabel.LEAST_WALKING), fastest))
         assertEquals(UsageEvent.RouteChoice.SIMPLEST, UsageEvent.RouteChoice.of(listOf(RouteLabel.SIMPLEST), fastest))
+        assertEquals(UsageEvent.RouteChoice.CHEAPEST, UsageEvent.RouteChoice.of(listOf(RouteLabel.CHEAPEST), fastest))
+        assertEquals(UsageEvent.RouteChoice.FASTEST_CHEAPEST, UsageEvent.RouteChoice.of(listOf(RouteLabel.FASTEST, RouteLabel.CHEAPEST), fastest))
+        assertEquals("least_walking+cheapest", UsageEvent.RouteChoice.of(listOf(RouteLabel.LEAST_WALKING, RouteLabel.CHEAPEST), fastest).value)
         // Under Other, the header itself or a card below it with none.
         assertEquals(UsageEvent.RouteChoice.OTHER, UsageEvent.RouteChoice.of(listOf(RouteLabel.OTHER), fastest))
         assertEquals(UsageEvent.RouteChoice.OTHER, UsageEvent.RouteChoice.of(emptyList(), fastest))
@@ -185,9 +188,12 @@ class UsageEventTest {
         listOf(opened, started).forEach(::assertClosed)
         UsageEvent.RouteChoice.entries.forEach { assertClosed(UsageEvent.TripStarted(it, 1)) }
         // Every set of labels a card can carry names its own choice.
-        val labels = listOf(RouteLabel.FASTEST, RouteLabel.SIMPLEST, RouteLabel.LEAST_WALKING)
-        val choices = (1 until 8).map { mask -> UsageEvent.RouteChoice.of(labels.filterIndexed { i, _ -> mask and (1 shl i) != 0 }, fastest) }
-        assertEquals(7, choices.distinct().size)
+        val labels = listOf(RouteLabel.FASTEST, RouteLabel.SIMPLEST, RouteLabel.LEAST_WALKING, RouteLabel.CHEAPEST)
+        val choices = (1 until 16).map { mask -> UsageEvent.RouteChoice.of(labels.filterIndexed { i, _ -> mask and (1 shl i) != 0 }, fastest) }
+        assertEquals(15, choices.distinct().size)
+        assertTrue(choices.none { it == UsageEvent.RouteChoice.OTHER || it == UsageEvent.RouteChoice.UNLABELED })
+        // Each named for its labels, in the order a header reads them.
+        assertEquals("fastest+simplest+least_walking+cheapest", choices.last().value)
     }
 
     @Test

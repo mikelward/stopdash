@@ -372,9 +372,12 @@ object TripTiming {
      * faster or walks clearly less. A withheld arrival can't be compared, so it neither beats nor is
      * beaten. The route walking least is always kept when it walks clearly less than the first
      * ([walksLess]): a chain of routes each walking a little less than the last would otherwise drop
-     * it, though it's the one the *Least walking* header is for. So is a route found via a bus stop
-     * towards the destination ([TripRoute.towardStop]; maintainer, 2026-10-15): the bus the Planner's own
-     * requests passed over is offered whatever it saves, in its place by arrival. [found] says which those
+     * it, though it's the one the *Least walking* header is for. So is the route costing least when it
+     * costs less than the first ([costsLess]; maintainer, 2026-10-16): two buses on one Hopper fare are
+     * a change more than the train and arrive later, yet they're what the *Cheapest* header is for. So
+     * is a route found via a bus stop towards the destination ([TripRoute.towardStop]; maintainer,
+     * 2026-10-15): the bus the Planner's own requests passed over is offered whatever it saves, in its
+     * place by arrival. [found] says which those
      * are: the route's own mark by default, but a caller standing one timetable variant in for a route's
      * others asks by the route's identity, as the one standing in may be the Planner's own unmarked copy
      * (Codex, #870). Arrivals compare as [rank] orders them, a severely delayed route's [DELAYED_BY] later,
@@ -384,8 +387,11 @@ object TripTiming {
         // Of routes walking as little, the first: the one ranked best.
         val leastWalking = estimates.minByOrNull { it.route.walking }
             ?.takeIf { walksLess(it.route, estimates.first().route) }
+        // Of routes costing least, the first, the same way.
+        val cheapest = estimates.filter { it.route.fare != null }.minByOrNull { checkNotNull(it.route.fare).pence }
+            ?.takeIf { costsLess(it.route, estimates.first().route) }
         return estimates.filter { route ->
-            if (route === leastWalking || found(route)) return@filter true
+            if (route === leastWalking || route === cheapest || found(route)) return@filter true
             val arrival = rankedArrival(route) ?: return@filter true
             estimates.none { other ->
                 other !== route &&
@@ -403,6 +409,13 @@ object TripTiming {
      */
     fun walksLess(route: TripRoute, than: TripRoute): Boolean =
         route.walking.plus(LESS_WALKING) <= than.walking
+
+    /** Whether [route] costs less than [than], both priced: by any amount, as the *Cheapest* header goes ([routeLabels]). */
+    fun costsLess(route: TripRoute, than: TripRoute): Boolean {
+        val fare = route.fare ?: return false
+        val other = than.fare ?: return false
+        return fare.pence < other.pence
+    }
 
     /**
      * The least walking a route has to save to be worth a change of its own ([withoutSlowerChanges])

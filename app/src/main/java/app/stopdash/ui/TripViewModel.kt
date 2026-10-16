@@ -2179,9 +2179,11 @@ class TripViewModel(
          * to the station that spares the walk there arrives later, and would otherwise be cut before
          * its *Least walking* card could show (maintainer, 2026-10-03). The header goes on whichever
          * cards walk least on the live ranking ([routeLabels]), with no threshold, so it's kept
-         * whatever it saves. One route more at most for it, and one for each bus stop towards the
-         * destination the plan asked via ([TripRoute.towardStop], at most [TowardStops.MAX_ASKS]), which
-         * is listed whatever, so the cap still bounds the requests.
+         * whatever it saves. So is the route costing least, where the fares differ: the bus the whole
+         * way arrives later than the train, and would otherwise be cut before its *Cheapest* card could
+         * show (maintainer, 2026-10-16). One route more at most for each of those two, and one for each
+         * bus stop towards the destination the plan asked via ([TripRoute.towardStop], at most
+         * [TowardStops.MAX_ASKS]), which is listed whatever, so the cap still bounds the requests.
          */
         internal fun bestOf(
             routes: List<TripRoute>,
@@ -2204,8 +2206,13 @@ class TripViewModel(
             }
             // Of routes walking as little, the soonest: so a plan with no walks adds none past the cap.
             val leastWalking = soonest.minByOrNull { it.walking }
+            // Of the priced routes costing least, the soonest; none where every fare is alike, so the
+            // unpriced crowding the cap never pull a priced one past it for a label no card can carry.
+            val priced = soonest.mapNotNull { route -> route.fare?.let { route to it.pence } }
+            val cheapest = priced.minByOrNull { it.second }?.takeIf { (_, least) -> priced.any { it.second > least } }?.first
             val toward = candidates.filter { it.towardStop }.map(::routeKey)
-            val keys = soonest.map(::routeKey).distinct().take(MAX_ROUTES).toSet() + keep + listOfNotNull(leastWalking?.let(::routeKey)) + toward
+            val keys = soonest.map(::routeKey).distinct().take(MAX_ROUTES).toSet() + keep +
+                listOfNotNull(leastWalking?.let(::routeKey), cheapest?.let(::routeKey)) + toward
             return routes.filter { routeKey(it) in keys }
         }
 

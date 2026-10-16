@@ -2392,8 +2392,8 @@ internal fun CardHeader(header: List<RouteLabel>) {
 }
 
 /**
- * The bold header over a card: "Fastest", "Simplest", "Least walking", several of them ("Fastest ·
- * Simplest"), or "Other" ([headedCards]), read as a heading.
+ * The bold header over a card: "Fastest", "Simplest", "Least walking", "Cheapest", several of them
+ * ("Fastest · Simplest"), or "Other" ([headedCards]), read as a heading.
  */
 @Composable
 private fun RouteLabelHeader(labels: List<RouteLabel>) {
@@ -2403,6 +2403,7 @@ private fun RouteLabelHeader(labels: List<RouteLabel>) {
                 RouteLabel.FASTEST -> R.string.trip_label_fastest
                 RouteLabel.SIMPLEST -> R.string.trip_label_simplest
                 RouteLabel.LEAST_WALKING -> R.string.trip_label_least_walking
+                RouteLabel.CHEAPEST -> R.string.trip_label_cheapest
                 RouteLabel.OTHER -> R.string.trip_label_other
             },
         )

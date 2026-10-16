@@ -19,12 +19,12 @@ class RouteLabelsTest {
     )
 
     // A card's best route riding [rides] times after [walk] minutes on foot, arriving [inMinutes] from
-    // now (null: withheld).
-    private fun card(rides: Int, inMinutes: Long?, walk: Long = 5): TripTiming.Estimate {
+    // now (null: withheld), costing [pence] (null: unpriced).
+    private fun card(rides: Int, inMinutes: Long?, walk: Long = 5, pence: Int? = null): TripTiming.Estimate {
         val legs = listOf(walk("X", "A", walk)) + (0 until rides).map { ride("line$it", "S$it", "S${it + 1}") }
         val arrival = inMinutes?.let { t.plusSeconds(it * 60) }
         return TripTiming.Estimate(
-            route = TripRoute(legs),
+            route = TripRoute(legs, pence?.let { TripFare(it) }),
             basis = if (arrival == null) TripTiming.Basis.UNKNOWN else TripTiming.Basis.LIVE,
             arrival = arrival,
             legs = emptyList(),
@@ -37,6 +37,7 @@ class RouteLabelsTest {
     private val fastest = listOf(RouteLabel.FASTEST)
     private val simplest = listOf(RouteLabel.SIMPLEST)
     private val leastWalking = listOf(RouteLabel.LEAST_WALKING)
+    private val cheapest = listOf(RouteLabel.CHEAPEST)
 
     @Test
     fun `the first card is fastest and the one with fewest rides simplest`() {
@@ -180,6 +181,69 @@ class RouteLabelsTest {
         assertEquals(
             listOf(HeadedCard(0, listOf(RouteLabel.FASTEST)), HeadedCard(1, listOf(RouteLabel.SIMPLEST))),
             headedCards(listOf(card(2, 25), card(0, 32))),
+        )
+    }
+
+    @Test
+    fun `every card at the lowest fare is cheapest`() {
+        // The bus the whole way for a bus fare, beside the tube for more.
+        assertEquals(
+            listOf(fastest, none, cheapest),
+            routeLabels(listOf(card(2, 30, pence = 290), card(2, 34, pence = 340), card(2, 41, pence = 175))),
+        )
+        // Two buses at the bus fare: both.
+        assertEquals(
+            listOf(fastest, cheapest, cheapest),
+            routeLabels(listOf(card(2, 30, pence = 290), card(2, 38, pence = 175), card(2, 41, pence = 175))),
+        )
+        // However little less: ten pence saved still costs least.
+        assertEquals(listOf(fastest, cheapest), routeLabels(listOf(card(2, 30, pence = 290), card(2, 34, pence = 280))))
+    }
+
+    @Test
+    fun `the first card cheapest says so beside fastest and the others`() {
+        assertEquals(
+            listOf(listOf(RouteLabel.FASTEST, RouteLabel.CHEAPEST), none),
+            routeLabels(listOf(card(2, 30, pence = 175), card(2, 34, pence = 290))),
+        )
+        // Simplest, least walking and cheapest at once, read in that order.
+        assertEquals(
+            listOf(fastest, listOf(RouteLabel.SIMPLEST, RouteLabel.LEAST_WALKING, RouteLabel.CHEAPEST)),
+            routeLabels(listOf(card(2, 30, walk = 10, pence = 290), card(1, 40, walk = 2, pence = 175))),
+        )
+    }
+
+    @Test
+    fun `none is cheapest when every card costs as much or one has no fare`() {
+        assertEquals(listOf(fastest, none), routeLabels(listOf(card(2, 30, pence = 290), card(2, 34, pence = 290))))
+        // A card with no fare could cost least, so none is called cheapest.
+        assertEquals(listOf(fastest, none, none), routeLabels(listOf(card(2, 30, pence = 290), card(2, 34), card(2, 41, pence = 175))))
+        // None priced: nothing to compare.
+        assertEquals(listOf(fastest, none), routeLabels(listOf(card(2, 30), card(2, 34))))
+        // A lone card, however cheap, isn't called cheapest.
+        assertEquals(listOf(none), routeLabels(listOf(card(1, 30, pence = 175))))
+    }
+
+    @Test
+    fun `cheapest follows least walking and other keeps the rest in order`() {
+        // Sorting stays as it was: labeled cards first, by their first label, the rest under Other.
+        assertEquals(
+            listOf(
+                HeadedCard(0, fastest),
+                HeadedCard(3, simplest),
+                HeadedCard(2, leastWalking),
+                HeadedCard(4, cheapest),
+                HeadedCard(1, listOf(RouteLabel.OTHER)),
+            ),
+            headedCards(
+                listOf(
+                    card(2, 30, walk = 10, pence = 290),
+                    card(2, 34, walk = 10, pence = 290),
+                    card(2, 36, walk = 2, pence = 290),
+                    card(1, 40, walk = 10, pence = 290),
+                    card(2, 45, walk = 10, pence = 175),
+                ),
+            ),
         )
     }
 }
