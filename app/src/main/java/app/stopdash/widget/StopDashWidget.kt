@@ -301,9 +301,10 @@ open class StopDashWidget internal constructor(
         // process died), so the redraw is due by then too.
         val elapsed = SystemClock.elapsedRealtime()
         val (tap, tapExpiry) = WidgetTapRefresh.noteAndExpiry(elapsed, snapshot?.fetchedAt)
-        // A widget render means a widget exists, so resume the opt-in live-refresh chain if the
-        // setting is on and it isn't already running — the worker retires the chain when the last
-        // widget is removed, and this restarts it after one is re-added (SPEC D5, Codex P1 on #56).
+        // A widget render means a widget exists, so bring the opt-in live-refresh chain back to every
+        // minute if the setting is on — it waits on a five-minute check while no widget is placed and
+        // no watch is in reach, and this ends the wait as soon as one is re-added (SPEC D5, Codex P1
+        // on #56).
         // Wrapped: this is an optional scheduler-recovery step, so a settings/WorkManager I/O error
         // here must not fail the render — the snapshot is already loaded and must still paint
         // (SPEC jank-free UI, Codex P2 on #56).
@@ -377,10 +378,9 @@ open class StopDashWidget internal constructor(
         try {
             if (placedWidgetIds(context).isEmpty()) {
                 cancelWidgetStalenessRedraw(context)
-                // Also retire the opt-in live-refresh chain — a widgetless user isn't left with a
-                // ~1/min fetch loop (Codex P1 on #56). The worker's own installed-widget guard is
-                // the backstop; this catches the removed-while-app-closed case promptly.
-                cancelWidgetRefresh(context)
+                // The opt-in live-refresh chain isn't cancelled here: its next tick asks before it
+                // fetches and waits with no widget placed and no watch in reach (SPEC D5).
+                // A cancel here could take a tick a watch's resume had just queued (Codex on #918).
             }
         } catch (e: CancellationException) {
             throw e

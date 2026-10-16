@@ -13,6 +13,7 @@ import android.content.Context
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.Data
+import androidx.work.ListenableWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
@@ -119,16 +120,22 @@ internal suspend fun AppSettings.liveWidgetRefreshNow(
  * A true screen-on-only scope (and the exact minute with the screen off) is the deferred
  * foreground-service option (mechanism A, SPEC D5, *Widget follow-ups*).
  */
-internal suspend fun scheduleWidgetRefresh(context: Context) {
+internal suspend fun scheduleWidgetRefresh(
+    context: Context,
+    delayMillis: Long = WIDGET_REFRESH_INTERVAL_MILLIS,
+    policy: ExistingWorkPolicy = ExistingWorkPolicy.REPLACE,
+    parked: Boolean = false,
+) {
     // await() surfaces a WorkManager DB-write failure to the caller (all of which wrap this in a
     // try/catch) instead of discarding the Operation, which would leave the setting on with no
     // tick enqueued and nothing logged (Codex P2 on #56).
     WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
         WIDGET_REFRESH_WORK,
-        ExistingWorkPolicy.REPLACE,
+        policy,
         OneTimeWorkRequestBuilder<WidgetRefreshWorker>()
-            .setInitialDelay(WIDGET_REFRESH_INTERVAL_MILLIS, TimeUnit.MILLISECONDS)
-            .setInputData(liveRefreshInput())
+            .apply { if (parked) addTag(LIVE_REFRESH_PARKED_TAG) }
+            .setInitialDelay(delayMillis, TimeUnit.MILLISECONDS)
+            .setInputData(liveRefreshInput(delayMillis = delayMillis))
             // Only wake when there's a network path — offline, the tick defers instead of
             // building a client and failing every persisted stop each minute (Codex P2 on #56).
             .setConstraints(
@@ -142,61 +149,126 @@ internal suspend fun scheduleWidgetRefresh(context: Context) {
 internal fun liveRefreshInput(
     uptimeMillis: Long = android.os.SystemClock.elapsedRealtime(),
     wallMillis: Long = System.currentTimeMillis(),
-): Data = workDataOf(*RunLateness.dueIn(WIDGET_REFRESH_INTERVAL_MILLIS, uptimeMillis, wallMillis))
+    delayMillis: Long = WIDGET_REFRESH_INTERVAL_MILLIS,
+): Data = workDataOf(*RunLateness.dueIn(delayMillis, uptimeMillis, wallMillis))
 
-/** Cancels the pending refresh tick — called when the setting is turned off, and when the last
- *  widget is removed ([StopDashWidget.onDelete]). Awaited for the same reason as the enqueue. */
+/** Cancels the pending refresh tick when the setting is turned off. Awaited for the same reason as
+ *  the enqueue. Removing the last widget doesn't cancel it: the next tick asks before it fetches and
+ *  waits ([parkLiveRefresh]) with nothing to update, since a cancel there could take a tick a watch's
+ *  resume had just queued (Codex on #918). */
 internal suspend fun cancelWidgetRefresh(context: Context) {
     WorkManager.getInstance(context.applicationContext).cancelUniqueWork(WIDGET_REFRESH_WORK).await()
 }
 
 /**
- * Schedules the next tick only when no tick is already enqueued or running — the idempotent
- * entry point used by everything except the worker's own end-of-cycle reschedule. Startup sync
- * and the enable toggle re-run on activity recreation (a rotation re-runs the startup
- * `LaunchedEffect`), and an unconditional [scheduleWidgetRefresh] there REPLACEs — resetting a
- * pending tick's delay and cancelling a currently-running worker, so repeated config changes could
- * postpone refresh indefinitely or abort an in-flight fetch (Codex P2 on #56). Retaining existing
- * pending/running work keeps the chain alive across recreation. The worker's own reschedule must
- * NOT use this: it is itself RUNNING when it enqueues the next tick, so an "already running" guard
- * would see itself and kill the chain — it keeps the REPLACE [scheduleWidgetRefresh]. */
+ * Schedules the next tick only when no tick is already waiting — the idempotent entry point used by
+ * everything except the worker's own end-of-cycle reschedule. Startup sync and the enable toggle
+ * re-run on activity recreation (a rotation re-runs the startup `LaunchedEffect`), and an
+ * unconditional [scheduleWidgetRefresh] there REPLACEs — resetting a pending tick's delay and
+ * cancelling a currently-running worker, so repeated config changes could postpone refresh
+ * indefinitely or abort an in-flight fetch (Codex P2 on #56). So a waiting tick is kept, and a
+ * running one is followed rather than replaced ([liveRefreshResumePolicy]). The worker's own
+ * reschedule must NOT use this: it is itself RUNNING when it enqueues the next tick — it keeps the
+ * REPLACE [scheduleWidgetRefresh], which also drops a successor appended behind it. */
 private suspend fun scheduleWidgetRefreshIfNotPending(context: Context) {
-    val alreadyPending = WorkManager.getInstance(context.applicationContext)
+    val work = WorkManager.getInstance(context.applicationContext)
         .getWorkInfosForUniqueWorkFlow(WIDGET_REFRESH_WORK).first()
-        .any { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.RUNNING }
-    if (!alreadyPending) {
-        // With the setting on, the chain should already be going: say when it wasn't, so a widget
-        // left without updates shows here (bug report, 2026-10-16).
+    val queued = work.map { it.state }
+    val parked = work.any { it.state == WorkInfo.State.ENQUEUED && LIVE_REFRESH_PARKED_TAG in it.tags }
+    val policy = liveRefreshResumePolicy(queued, parked) ?: return
+    if (parked) {
+        StopdashDebugLog.info("widget: live refresh: a minute tick replaces the waiting check")
+    } else if (WorkInfo.State.RUNNING !in queued) {
+        // With the setting on, the chain should already be going, every minute or waiting: say when it
+        // wasn't, so a widget left without updates shows here (bug report, 2026-10-16).
         StopdashDebugLog.info("widget: live refresh wasn't scheduled; starting it")
-        scheduleWidgetRefresh(context)
     }
+    scheduleWidgetRefresh(context, policy = policy)
 }
 
-/** True when at least one [StopDashWidget] is installed on a host. A refresh cycle with none
- *  installed would fetch every persisted stop each minute with no surface to update, so the
- *  chain must neither run nor reschedule without one (Codex P1 on #56). */
-private fun anyWidgetInstalled(context: Context): Boolean =
-    placedWidgetIds(context.applicationContext).isNotEmpty()
+/**
+ * How a resume joins the chain, or null to leave it be: a tick waiting to run already is the
+ * chain going on. A tick running may already have decided to wait, there being nothing to update
+ * when it asked, so the resume goes after it, where it asks again (Codex on #918): without that, a
+ * widget placed or a watch coming back in that moment waited up to [LIVE_REFRESH_RECHECK_MILLIS]. A
+ * running tick that goes on replaces the successor with its own next tick, so there is still only
+ * one; one that waits leaves it ([parkLiveRefresh]). A [parkedWaiting] check, minutes out, is replaced
+ * by a minute tick, since a resume means a widget placed or a watch asking (Codex on #918).
+ */
+internal fun liveRefreshResumePolicy(
+    queued: List<WorkInfo.State>,
+    parkedWaiting: Boolean = false,
+): ExistingWorkPolicy? = when {
+    parkedWaiting && WorkInfo.State.RUNNING !in queued -> ExistingWorkPolicy.REPLACE
+    WorkInfo.State.ENQUEUED in queued || WorkInfo.State.BLOCKED in queued -> null
+    else -> ExistingWorkPolicy.APPEND_OR_REPLACE
+}
 
 /**
- * Restarts the live-refresh chain when a widget render shows a widget now exists (an add, or a
- * host rebind) and the setting is on — but only when no tick is already pending, so an active
- * chain isn't pushed back on every render. Armed from [StopDashWidget.provideGlance] (the render
- * path, like the staleness redraw): the worker retires the chain when the last widget is removed,
- * so this is what resumes it after one is re-added (Codex P1 on #56).
+ * Whether this tick fetches (SPEC D5): the setting still on, and something for a refresh to update, a
+ * widget placed or a watch in reach ([LiveRefreshSurfaces]). Asked at the start of each tick and again
+ * before the next minute's is scheduled. With nothing to update it waits ([parkLiveRefresh]) rather
+ * than stops; only the setting turned off ends the chain.
+ */
+internal suspend fun liveRefreshGoesOn(context: Context, settings: AppSettings): Boolean {
+    // A plain read, not the bounded liveWidgetRefreshNow the render path and startup sync use:
+    // this is background work WorkManager already bounds by its own execution timeout, so an
+    // unbounded read on a persistent storage error stalls one background tick (then WorkManager
+    // retries) rather than hanging anything user-facing. If it can't be read at all the worker's
+    // catch turns the throw into Result.retry(); an actual retry read here never spuriously times
+    // out under the test's virtual clock either.
+    if (!settings.liveWidgetRefresh().first()) return false // toggled off → chain ends
+    val none = LiveRefreshSurfaces.whyNone(context) ?: return true
+    parkLiveRefresh(context, none)
+    return false
+}
+
+/**
+ * The minute updates wait for [why], with the setting on: no fetch, and the next tick
+ * [LIVE_REFRESH_RECHECK_MILLIS] out, to ask again (maintainer, 2026-10-17). They never stop on their
+ * own, because nothing reliably says when there's something to update again: a watch coming home was
+ * reachable all along, a watch is told nothing of a first snapshot, and the events that do say so (a
+ * widget's render, a watch coming back or asking) can each be lost to a process torn down or a tick
+ * deciding at the same moment. When the chain stopped, every one of those was the only way back
+ * (Codex on #918, eleven findings); now they only make the way back quicker, replacing the waiting
+ * check with a minute tick, and the check is what makes sure of it. Its cost, with the setting on and
+ * nothing to update: a wake and two local questions every five minutes, deferred by Doze, no fetch.
+ *
+ * A resume queued behind this tick ([liveRefreshResumePolicy]) is left to run a minute out instead,
+ * since parking replaces the whole chain. One that lands between the look and the park waits for the
+ * check, five minutes at most.
+ */
+internal suspend fun parkLiveRefresh(context: Context, why: String) {
+    LiveRefreshSurfaces.waiting(why)
+    val queued = WorkManager.getInstance(context.applicationContext)
+        .getWorkInfosForUniqueWorkFlow(WIDGET_REFRESH_WORK).first()
+    if (queued.any { it.state == WorkInfo.State.BLOCKED }) return
+    scheduleWidgetRefresh(context, LIVE_REFRESH_RECHECK_MILLIS, parked = true)
+}
+
+/**
+ * Restarts the live-refresh chain when the setting is on — but only when no tick is already
+ * pending, so an active chain isn't pushed back on every call. Armed from
+ * [StopDashWidget.provideGlance] when a render shows a widget now exists (an add, or a host rebind;
+ * the render path, like the staleness redraw), and by a watch in reach asking for a refresh or
+ * coming back ([app.stopdash.watch.resumeLiveRefreshForWatch]): the chain waits on a five-minute check
+ * while no widget is placed and no watch is in reach ([parkLiveRefresh]), and these bring back the
+ * minute at once (Codex P1 on #56, SPEC D5). False when the setting couldn't be read, so a caller
+ * that can try again later may.
  */
 suspend fun resumeWidgetRefreshIfEnabled(
     context: Context,
     settings: AppSettings =
         DataStoreAppSettings.from(context.applicationContext, warn = ::logAppSettingsWarning),
-) {
+): Boolean {
     // Bounded one-shot read (see liveWidgetRefreshNow). This runs on the widget render path —
     // provideGlance awaits it before provideContent — so an unbounded read would hang the frame.
     // Resume is best-effort scheduler recovery, so on a slow/failing read (null) skip it and let
     // the snapshot paint; the next render retries (SPEC jank-free UI / principle 5). null is never
-    // read as "off", which would wrongly retire the chain.
-    if (settings.liveWidgetRefreshNow() != true) return
-    scheduleWidgetRefreshIfNotPending(context)
+    // read as "off", which would wrongly end the chain.
+    val enabled = settings.liveWidgetRefreshNow() ?: return false
+    if (enabled) scheduleWidgetRefreshIfNotPending(context)
+    return true
 }
 
 /**
@@ -220,10 +292,13 @@ suspend fun applyWidgetRefreshSetting(context: Context, enabled: Boolean) {
  * Its stops' line statuses are re-checked in the same cycle, so the widget's disruption marks stay
  * as fresh as its countdowns (SPEC D3).
  *
+ * Each save also reaches a watch with the app through the watch sync, which is how the watch, which
+ * never fetches on its own, stays current with no widget placed.
+ *
  * Best-effort throughout: a failed cycle keeps the last-good on the widget and still reschedules,
- * so a transient TfL error doesn't break the chain; cancellation propagates. The chain stops only
- * when the setting reads off — checked at the start (so a toggle-off retires the loop) and again
- * before rescheduling.
+ * so a transient TfL error doesn't break the chain; cancellation propagates. The chain ends when the
+ * setting reads off, and waits on a five-minute check, fetching nothing, when no widget is placed and
+ * no watch is in reach ([liveRefreshGoesOn]), checked at the start and again before rescheduling.
  */
 class WidgetRefreshWorker(appContext: Context, params: WorkerParameters) :
     CoroutineWorker(appContext, params) {
@@ -255,45 +330,44 @@ class WidgetRefreshWorker(appContext: Context, params: WorkerParameters) :
 
     private suspend fun runRefreshCycle(): Result {
         val settings = DataStoreAppSettings.from(applicationContext, warn = ::logAppSettingsWarning)
-        // A plain read, not the bounded liveWidgetRefreshNow the render path and startup sync use:
-        // this is background work WorkManager already bounds by its own execution timeout, so an
-        // unbounded read on a persistent storage error stalls one background tick (then WorkManager
-        // retries) rather than hanging anything user-facing. If it can't be read at all the outer
-        // catch turns the throw into Result.retry(); an actual retry read here never spuriously
-        // times out under the test's virtual clock either.
-        if (!settings.liveWidgetRefresh().first()) return Result.success() // toggled off → chain ends
-        // No widget installed → nothing to refresh; retire the chain rather than fetch every
-        // persisted stop each minute with no surface to update (Codex P1). A widget added later
-        // resumes it via resumeWidgetRefreshIfEnabled from the render path.
-        if (!anyWidgetInstalled(applicationContext)) return retired("no widget placed")
+        // Toggled off → the chain ends. No widget placed and no watch in reach → it waits, rather than
+        // fetch every persisted stop each minute with nothing to update (Codex P1 on #56). A widget
+        // added later brings the minute back from the render path; a watch asking for a refresh, or
+        // coming back in reach, does too.
+        if (!liveRefreshGoesOn(applicationContext, settings)) return Result.success()
         val store = DataStoreSnapshotStore.from(applicationContext, warn = ::logWidgetSnapshotWarning)
         // No snapshot yet (before the first fetch, or after a corrupt one was discarded) → there
-        // are no stops to refresh, so retire the chain rather than wake every minute doing nothing
-        // (Codex P2 on #56). A later snapshot save pokes the widget (updateAll → provideGlance →
-        // resumeWidgetRefreshIfEnabled), which restarts the chain. A load failure throws and the
-        // outer catch turns it into Result.retry().
+        // are no stops to refresh ([nothingStoredYet]). A load failure throws and the outer catch
+        // turns it into Result.retry().
         // The keys first, outside the lock: a stalled read (storage errors retry forever) then
         // stalls this background tick alone, never a watch's refresh waiting on the lock.
         val keys = readRefreshKeys(applicationContext, settings)
-        StoredSnapshotRefresh.lock.withLock {
-            val prior = store.load() ?: return retired("nothing stored to refresh")
+        val stored = StoredSnapshotRefresh.lock.withLock {
+            val prior = store.load() ?: return@withLock false
             StoredSnapshotRefresh.refresh(applicationContext, prior, keys, automatic = true)
+            true
         }
-        // Reschedule the next tick unless the setting was turned off or the last widget was removed
-        // during this cycle. Best-effort even after a failure above, so a transient error doesn't
-        // retire the loop. Plain read, same as the top of the cycle (background, WorkManager-bounded).
-        if (!settings.liveWidgetRefresh().first()) return Result.success()
-        if (!anyWidgetInstalled(applicationContext)) return retired("no widget placed")
+        if (!stored) return nothingStoredYet(applicationContext)
+        LiveRefreshSurfaces.updating()
+        // Reschedule the next tick unless the setting was turned off, or the last widget was removed
+        // with no watch in reach, during this cycle. Best-effort even after a failure above, so a
+        // transient error doesn't end the loop.
+        if (!liveRefreshGoesOn(applicationContext, settings)) return Result.success()
         scheduleWidgetRefresh(applicationContext)
         return Result.success()
     }
 
-    // Ends the chain with the setting still on, and says why: until a render restarts it, the widget
-    // gets no updates.
-    private fun retired(why: String): Result {
-        StopdashDebugLog.info("widget: live refresh stopped: %s", why)
-        return Result.success()
-    }
+}
+
+/**
+ * A tick with nothing stored to refresh (before the first fetch, or after a corrupt snapshot was
+ * discarded): no fetch, rather than wake every minute doing nothing (Codex P2 on #56). It waits like
+ * any other ([parkLiveRefresh]): a widget is poked when the first snapshot is saved, and its render
+ * brings the minute back, but a watch is told nothing (Codex on #918).
+ */
+internal suspend fun nothingStoredYet(context: Context): ListenableWorker.Result {
+    parkLiveRefresh(context, NOTHING_STORED)
+    return ListenableWorker.Result.success()
 }
 
 /**
