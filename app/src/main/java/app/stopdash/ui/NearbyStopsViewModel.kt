@@ -105,6 +105,10 @@ class NearbyStopsViewModel(
     // started when the surface is, stopped with it, so they never outlive the foreground. None by
     // default (tests, a searched station's area, which stands where the station is).
     private val moves: () -> Flow<LocationFix> = { emptyFlow() },
+    // Returns once the app is in front, so a fix is never asked for while Android would refuse it
+    // ([app.stopdash.domain.InFront]). Called on [io]. At once by default (tests, a searched station's
+    // area, which takes no fix).
+    private val awaitInFront: suspend () -> Unit = {},
 ) : ViewModel() {
     sealed interface State {
         /** The location permission isn't held yet — the screen asks for it. */
@@ -660,7 +664,7 @@ class NearbyStopsViewModel(
 
     /** A fresh precise fix for a move that waited too long on its own, or null with none. */
     private suspend fun freshFix(): LocationFix? = try {
-        withContext(io) { location.preciseWithAccuracy() }
+        preciseFix()
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -729,7 +733,7 @@ class NearbyStopsViewModel(
         if (!surfaceActive) return
         refineJob = viewModelScope.launch {
             val preciseFix = try {
-                withContext(io) { location.preciseWithAccuracy() }
+                preciseFix()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -774,12 +778,27 @@ class NearbyStopsViewModel(
     }
 
     /**
+     * A precise fix, taken only with the app in front as [currentFix] is (SPEC *Finding stops*): the
+     * follow-up owed to a coarse outcome is asked for as the surface comes back, which can be before
+     * Android counts the app in front, and GPS then answers nothing (Codex). Every fix the model asks
+     * for goes through here or [currentFix].
+     */
+    private suspend fun preciseFix(): LocationFix? = withContext(io) {
+        awaitInFront()
+        location.preciseWithAccuracy()
+    }
+
+    /**
      * The device fix (with its [LocationFix.isFallback] confidence), or `null` — the "couldn't get
      * your location" outcome — with cancellation rethrown and any other failure logged coarsely
      * (never a coordinate, SPEC *Privacy*). Shared by [locate] and [relocate], which then decide
      * what a fallback fix means (label vs. don't-jump).
      */
     private suspend fun currentFix(forceFresh: Boolean): LocationFix? {
+        // Only with the app in front: one asked for while it's away waits for its return, the list it
+        // would re-pick left as it is meanwhile, rather than coming back as no fix (SPEC *Finding
+        // stops*). Before the clock starts, so the wait isn't timed as the fix.
+        withContext(io) { awaitInFront() }
         val started = elapsedMillis()
         val fix = try {
             withContext(io) { location.current(forceFresh) }

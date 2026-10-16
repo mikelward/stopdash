@@ -23,6 +23,8 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -1465,6 +1467,135 @@ class NearbyStopsViewModelTest {
         model.leftForeground()
         assertFalse(model.locateAfterLeftBehind())
         assertEquals(NearbyStopsViewModel.State.NoLocation, model.state.value)
+    }
+
+    @Test
+    fun `a re-locate asked for while the app isn't in front leaves the list up and takes its fix once it is`() = runTest {
+        // Android gives an app it doesn't count in front no fix at all, and that read as "couldn't get
+        // your location" with location working: the list replaced, and still up on return (bug report,
+        // 2026-10-16).
+        var away: CompletableDeferred<Unit>? = null
+        var clock = 0L
+        val events = mutableListOf<UsageEvent>()
+        val location = MutableLocation(origin)
+        var asked = 0
+        val counted = object : LocationProvider {
+            override suspend fun current(forceFresh: Boolean): LocationFix? {
+                asked++
+                return location.current(forceFresh)
+            }
+        }
+        val model = NearbyStopsViewModel(
+            location = counted,
+            finder = FakeFinder { listOf(stop("b1", 50.0, "bus")) },
+            io = dispatcher,
+            usage = { events += it },
+            elapsedMillis = { clock },
+            awaitInFront = { away?.await() },
+        )
+        model.locate()
+        advanceUntilIdle()
+        val shown = model.state.value as NearbyStopsViewModel.State.Ready
+        asked = 0
+        events.clear()
+        model.leftForeground()
+        away = CompletableDeferred()
+        model.relocate()
+        advanceUntilIdle()
+        // No fix asked for while away, and the list stands meanwhile.
+        assertEquals(0, asked)
+        assertSame(shown, model.state.value)
+        assertTrue(model.relocating.value)
+        // Asked for since the app left, its fix is taken after the return: the return waits on it.
+        assertTrue(model.relocatingSinceLeft())
+        // Back in front an hour later: the fix is taken then, and only it is timed.
+        clock += 60 * 60_000L
+        location.fix = Coordinates(0.0002, 0.0)
+        away!!.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(1, asked)
+        assertEquals(Coordinates(0.0002, 0.0), (model.state.value as NearbyStopsViewModel.State.Ready).location)
+        assertFalse(model.relocating.value)
+        assertEquals("0-1s", events.first { it.name == "location_fix" }.params["time_to_fix"])
+    }
+
+    @Test
+    fun `whether the app is in front is asked off the main thread`() = runTest(dispatcher) {
+        // It asks Android (AGENTS.md *Main thread: read and dispatch only*).
+        val onIo = ThreadLocal<Boolean>()
+        val io = object : kotlinx.coroutines.CoroutineDispatcher() {
+            override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) {
+                dispatcher.dispatch(context) {
+                    onIo.set(true)
+                    try {
+                        block.run()
+                    } finally {
+                        onIo.set(false)
+                    }
+                }
+            }
+        }
+        val asked = mutableListOf<Boolean>()
+        val model = NearbyStopsViewModel(
+            location = FakeLocation(origin),
+            finder = FakeFinder { listOf(stop("b1", 50.0, "bus")) },
+            io = io,
+            awaitInFront = { asked += onIo.get() == true },
+        )
+        model.locate()
+        advanceUntilIdle()
+        assertTrue(model.state.value is NearbyStopsViewModel.State.Ready)
+        assertEquals(listOf(true), asked)
+    }
+
+    @Test
+    fun `the precise follow-up owed on return waits until the app is in front`() = runTest {
+        // Asked for as the surface comes back, which can be before Android counts the app in front,
+        // and GPS then answers nothing (Codex).
+        var away: CompletableDeferred<Unit>? = null
+        val location = CoarseThenPrecise(coarse = origin, precise = null)
+        val model = NearbyStopsViewModel(
+            location = location,
+            finder = FakeFinder { listOf(stop("b1", 80.0, "bus")) },
+            io = dispatcher,
+            awaitInFront = { away?.await() },
+        )
+        model.resumeRefining()
+        model.locate()
+        model.pauseRefining()
+        advanceUntilIdle()
+        assertEquals(LocationBanner.COARSE, model.locationBanner.value)
+        assertEquals(0, location.preciseAsked)
+        // Back on screen just after an unlock, before Android counts the app in front: not asked yet.
+        away = CompletableDeferred()
+        model.resumeRefining()
+        advanceUntilIdle()
+        assertEquals(0, location.preciseAsked)
+        away!!.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(1, location.preciseAsked)
+    }
+
+    @Test
+    fun `a locate asked for while the app isn't in front stays locating rather than finding no location`() = runTest {
+        val away = CompletableDeferred<Unit>()
+        val location = MutableLocation(origin)
+        val model = NearbyStopsViewModel(
+            location = location,
+            finder = FakeFinder { listOf(stop("b1", 50.0, "bus")) },
+            io = dispatcher,
+            awaitInFront = { away.await() },
+        )
+        model.leftForeground()
+        model.locate()
+        advanceUntilIdle()
+        assertEquals(NearbyStopsViewModel.State.Locating, model.state.value)
+        assertNull(location.lastForceFresh)
+        // The return finds nothing owed: the locate under way takes its fix now the app is in front.
+        assertFalse(model.locateAfterLeftBehind())
+        away.complete(Unit)
+        advanceUntilIdle()
+        assertTrue(model.state.value is NearbyStopsViewModel.State.Ready)
     }
 
     @Test
