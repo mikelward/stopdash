@@ -393,7 +393,7 @@ class WidgetModelTest {
 
     @Test
     fun `a stop header and a status under a row cost their own drawn heights, not a line's`() {
-        assertEquals("4dp above and below a 12sp line", 25, widgetHeaderHeight(1f))
+        assertEquals("4dp above and below a 13sp line", 25, widgetHeaderHeight(1f))
         assertEquals("4dp above a 12sp line", 21, widgetStatusLineHeight(1f))
         assertEquals(31, widgetHeaderHeight(1.33f))
         // Neither is taller than a departure line, at any font.
