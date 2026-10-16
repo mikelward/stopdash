@@ -3931,6 +3931,15 @@ and these carry the rest as their own PRs:
         lacked them from a nearby set that dropped them.
       - [ ] **Boundary redraws Android defers** — if the log shows them running long after due, an
         inexact `AlarmManager` alarm allowed while idle may hold the time better than WorkManager.
+        A wall tablet's report (2026-10-16) showed one 4 h late, with "Automatically update widget"
+        on and no update in those hours either. The log now says how late a live-refresh tick runs,
+        why the chain stopped or restarted, and what Android holds the app to (standby bucket,
+        battery optimization, battery saver), so the next report tells sleep from a dead chain.
+      - [ ] **Offer to exempt the app from battery optimization** where the widget updates itself
+        (maintainer, 2026-10-16): asked on the device when "Automatically update widget" is turned
+        on, a choice rather than a default, since it suits a passive wall display and not a phone
+        in a pocket; the state shown in Settings to change later. Open: the one-tap system dialog
+        (a Play-restricted permission) or the app's own battery settings.
       - [x] **The trip on the widget** (maintainer, 2026-10-05): while On the way follows a trip,
         the widget shows the departures at the next change, and the next step above them where
         there's room, from the summary

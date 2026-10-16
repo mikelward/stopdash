@@ -441,9 +441,11 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
 - for each **widget render**, how many stored stops it kept against the nearby set (and that
   set's size), how many rows it drew and how old its data was, and the sizes your home screen
   reported for the widget (in dp) with how many rows each fitted, and the text size it was drawn
-  at (your phone's font scale times StopDash's own); and for each **scheduled widget
-  redraw**, how many seconds after it was due Android ran it — counts and seconds only, no stop or
-  place,
+  at (your phone's font scale times StopDash's own); for each **scheduled widget
+  redraw**, and each **automatic widget update** that ran over two minutes late, how many seconds
+  after it was due Android ran it (by the time since the device started, and by the clock too where
+  the two differ); and when automatic updates stopped with the setting on, or were found not
+  scheduled and started again, and why — counts and seconds only, no stop or place,
 - **per-refresh request counts and timing**: how many TfL requests a refresh made, of which
   kinds, how long it took, and how long it waited on the app's own rate limit — counts and
   milliseconds only, no stop or place,
@@ -507,6 +509,10 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
 - a **favorite-place storage failure**: that reading, saving, or deleting a saved place, or
   searching for one, failed — by the caught exception's class name (e.g. `IOException`) —
   never the place's label, its coordinate, or the typed search text.
+- **what Android holds the app's background work to**, at startup and with an automatic widget
+  update that ran late: the app's standby bucket, whether its background use is restricted,
+  whether it's exempt from battery optimization, whether battery saver is on, and whether the
+  device is charging, plugged in but not charging, or on battery — no battery level, no other app,
 - **why the app's previous processes ended**, read once at startup from Android's own record:
   for the last five, the reason (e.g. `crash`, `anr`, `lowMemory`), how important Android
   counted the app at the time, the exit status and when it happened, plus when the app was

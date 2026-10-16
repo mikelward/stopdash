@@ -202,12 +202,16 @@ open class StopdashApp : Application() {
     }
 
     /**
-     * Records why the previous processes ended ([logRecentProcessExits]), off the main thread and
-     * after [installDiagnosticLog], so the file sink keeps the lines. `open` so the test
-     * [Application] skips it: the singleton log would otherwise carry lines no test wrote.
+     * Records why the previous processes ended ([logRecentProcessExits]) and what Android is holding
+     * this run's background work to ([logBackgroundLimits]), off the main thread and after
+     * [installDiagnosticLog], so the file sink keeps the lines. `open` so the test [Application]
+     * skips it: the singleton log would otherwise carry lines no test wrote.
      */
     protected open fun logProcessExits() {
-        logRecentProcessExitsInBackground(applicationScope) { logRecentProcessExits(this) }
+        logRecentProcessExitsInBackground(applicationScope) {
+            logRecentProcessExits(this)
+            logBackgroundLimits(this)
+        }
     }
 
     /**

@@ -12,6 +12,7 @@ import app.stopdash.domain.RailAwareTflClient
 import android.content.Context
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
+import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
@@ -19,7 +20,10 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.await
+import androidx.work.workDataOf
 import app.stopdash.MainActivity
+import app.stopdash.StopdashDebugLog
+import app.stopdash.backgroundLimits
 import app.stopdash.data.DataStoreAlertsBehindStore
 import app.stopdash.data.DataStoreAppSettings
 import app.stopdash.data.DataStoreDismissedAlertsStore
@@ -73,6 +77,13 @@ internal const val WIDGET_REFRESH_WORK = "stopdash-widget-refresh"
  *  auto-refresh (D6) and TfL's ~30 s prediction cadence, at a tiny fraction of the rate budget. */
 internal const val WIDGET_REFRESH_INTERVAL_MILLIS = 60_000L
 
+/**
+ * How late a tick runs before the log says so, with what Android is holding the app to: the widget
+ * showed its last refresh all that while. A tick on time, or Doze's usual nudge, logs nothing, since
+ * the chain runs every minute and would push the rest of the log out.
+ */
+internal const val LIVE_REFRESH_LATE_LOG_MILLIS = 2 * WIDGET_REFRESH_INTERVAL_MILLIS
+
 /** Ceiling on a one-shot settings read (see [liveWidgetRefreshNow]). Normal reads are instant;
  *  this only bites on a persistent storage error (Codex P2 on #56). */
 internal const val SETTINGS_READ_BOUND_MILLIS = 2_000L
@@ -117,6 +128,7 @@ internal suspend fun scheduleWidgetRefresh(context: Context) {
         ExistingWorkPolicy.REPLACE,
         OneTimeWorkRequestBuilder<WidgetRefreshWorker>()
             .setInitialDelay(WIDGET_REFRESH_INTERVAL_MILLIS, TimeUnit.MILLISECONDS)
+            .setInputData(liveRefreshInput())
             // Only wake when there's a network path — offline, the tick defers instead of
             // building a client and failing every persisted stop each minute (Codex P2 on #56).
             .setConstraints(
@@ -125,6 +137,12 @@ internal suspend fun scheduleWidgetRefresh(context: Context) {
             .build(),
     ).await()
 }
+
+/** A tick's input: when it falls due ([RunLateness]), for [WidgetRefreshWorker] to measure. Clocks as of now by default. */
+internal fun liveRefreshInput(
+    uptimeMillis: Long = android.os.SystemClock.elapsedRealtime(),
+    wallMillis: Long = System.currentTimeMillis(),
+): Data = workDataOf(*RunLateness.dueIn(WIDGET_REFRESH_INTERVAL_MILLIS, uptimeMillis, wallMillis))
 
 /** Cancels the pending refresh tick — called when the setting is turned off, and when the last
  *  widget is removed ([StopDashWidget.onDelete]). Awaited for the same reason as the enqueue. */
@@ -146,7 +164,12 @@ private suspend fun scheduleWidgetRefreshIfNotPending(context: Context) {
     val alreadyPending = WorkManager.getInstance(context.applicationContext)
         .getWorkInfosForUniqueWorkFlow(WIDGET_REFRESH_WORK).first()
         .any { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.RUNNING }
-    if (!alreadyPending) scheduleWidgetRefresh(context)
+    if (!alreadyPending) {
+        // With the setting on, the chain should already be going: say when it wasn't, so a widget
+        // left without updates shows here (bug report, 2026-10-16).
+        StopdashDebugLog.info("widget: live refresh wasn't scheduled; starting it")
+        scheduleWidgetRefresh(context)
+    }
 }
 
 /** True when at least one [StopDashWidget] is installed on a host. A refresh cycle with none
@@ -205,6 +228,7 @@ suspend fun applyWidgetRefreshSetting(context: Context, enabled: Boolean) {
 class WidgetRefreshWorker(appContext: Context, params: WorkerParameters) :
     CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result = try {
+        logIfLate()
         runRefreshCycle()
     } catch (e: CancellationException) {
         throw e
@@ -215,6 +239,18 @@ class WidgetRefreshWorker(appContext: Context, params: WorkerParameters) :
         // Ask WorkManager to retry so the chain survives (Codex P2 on #56).
         logWidgetSnapshotWarning("widget refresh worker failed: ${e::class.simpleName}")
         Result.retry()
+    }
+
+    // How late Android let this tick run, when that's long enough to matter (bug report, 2026-10-16:
+    // a widget 4 hours behind with this setting on, and nothing in the log to say why).
+    private fun logIfLate() {
+        val late = RunLateness.of(inputData) ?: return
+        if (!late.atLeast(LIVE_REFRESH_LATE_LOG_MILLIS)) return
+        StopdashDebugLog.info(
+            "widget: live refresh ran %s after due (%s)",
+            late.describe(),
+            backgroundLimits(applicationContext),
+        )
     }
 
     private suspend fun runRefreshCycle(): Result {
@@ -229,7 +265,7 @@ class WidgetRefreshWorker(appContext: Context, params: WorkerParameters) :
         // No widget installed → nothing to refresh; retire the chain rather than fetch every
         // persisted stop each minute with no surface to update (Codex P1). A widget added later
         // resumes it via resumeWidgetRefreshIfEnabled from the render path.
-        if (!anyWidgetInstalled(applicationContext)) return Result.success()
+        if (!anyWidgetInstalled(applicationContext)) return retired("no widget placed")
         val store = DataStoreSnapshotStore.from(applicationContext, warn = ::logWidgetSnapshotWarning)
         // No snapshot yet (before the first fetch, or after a corrupt one was discarded) → there
         // are no stops to refresh, so retire the chain rather than wake every minute doing nothing
@@ -240,15 +276,22 @@ class WidgetRefreshWorker(appContext: Context, params: WorkerParameters) :
         // stalls this background tick alone, never a watch's refresh waiting on the lock.
         val keys = readRefreshKeys(applicationContext, settings)
         StoredSnapshotRefresh.lock.withLock {
-            val prior = store.load() ?: return Result.success()
+            val prior = store.load() ?: return retired("nothing stored to refresh")
             StoredSnapshotRefresh.refresh(applicationContext, prior, keys, automatic = true)
         }
         // Reschedule the next tick unless the setting was turned off or the last widget was removed
         // during this cycle. Best-effort even after a failure above, so a transient error doesn't
         // retire the loop. Plain read, same as the top of the cycle (background, WorkManager-bounded).
-        if (settings.liveWidgetRefresh().first() && anyWidgetInstalled(applicationContext)) {
-            scheduleWidgetRefresh(applicationContext)
-        }
+        if (!settings.liveWidgetRefresh().first()) return Result.success()
+        if (!anyWidgetInstalled(applicationContext)) return retired("no widget placed")
+        scheduleWidgetRefresh(applicationContext)
+        return Result.success()
+    }
+
+    // Ends the chain with the setting still on, and says why: until a render restarts it, the widget
+    // gets no updates.
+    private fun retired(why: String): Result {
+        StopdashDebugLog.info("widget: live refresh stopped: %s", why)
         return Result.success()
     }
 }
