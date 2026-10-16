@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -91,6 +92,7 @@ import app.stopdash.domain.SpacedTrains
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopAreaSource
 import app.stopdash.domain.StopArrivals
+import app.stopdash.domain.StopQualifier
 import app.stopdash.domain.Workers
 import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.StopLocation
@@ -2370,6 +2372,30 @@ class MainScreenScreenshotTest {
         composeRule.onAllNodesWithText("(250 m)", substring = true, useUnmergedTree = true).onFirst().performClick()
         composeRule.waitForIdle()
         assertEquals("940GZZLUESQ" to "Euston Square", opened)
+    }
+
+    @Test
+    fun `a stop heading's long name takes the room a short platform leaves`() {
+        // The name is wider than half the line but fits beside "– Platform 1" and the distance, so it
+        // shows whole; an even split clipped it with half the line empty (maintainer, 2026-10-16).
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    StopGroupHeader(
+                        "Heathrow Terminals 2 & 3",
+                        StopQualifier.Platform("1", null),
+                        "120 m",
+                        firstOnScreen = true,
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        val name = composeRule.onNodeWithText("Heathrow Terminals 2 & 3", useUnmergedTree = true).fetchSemanticsNode()
+        val layouts = mutableListOf<TextLayoutResult>()
+        name.config[SemanticsActions.GetTextLayoutResult].action!!(layouts)
+        assertEquals(false, layouts.single().hasVisualOverflow)
+        composeRule.onNodeWithText(" – Platform 1", useUnmergedTree = true).assertExists()
     }
 
     @Test
