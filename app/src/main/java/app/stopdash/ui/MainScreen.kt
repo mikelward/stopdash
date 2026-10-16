@@ -6323,6 +6323,7 @@ internal fun RouteDetailScreen(
                     towards = DepartureLabels.destinationLabel(followed?.destination ?: row.destination, "").orEmpty(),
                     position = position,
                     boarding = if (at != null) at == 0 else loaded?.stops?.firstOrNull()?.id == stopId,
+                    ridden = ridden,
                     go = if (ridden && loaded != null && followed != null) {
                         RouteGo(loaded.stops, loaded.positions, sequence?.stopAreas.orEmpty(), followed.expectedArrival, at)
                     } else {

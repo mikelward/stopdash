@@ -713,6 +713,78 @@ class LinesOverlayTest {
         composeRule.onNodeWithTag("lineStopPole").assertTextContains("Southwest-bound")
     }
 
+    private fun showRouteStop(
+        repository: RouteStopsRepository,
+        stop: LineStopRef,
+        line: LineRef,
+        fromName: String,
+        towards: String,
+        alighting: Boolean = true,
+    ) {
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides Dispatchers.Unconfined, LocalRouteStops provides repository) {
+                    LineStopWindow(
+                        stop = stop,
+                        line = line,
+                        saveable = rememberSaveableStateHolder(),
+                        links = null,
+                        loadLinks = {},
+                        onStop = {},
+                        onStopClosed = {},
+                        distanceTo = { null },
+                        onPickLine = {},
+                        onFrom = {},
+                        onTo = null,
+                        onFavorite = null,
+                        onShowOnMap = null,
+                        onDepartures = {},
+                        route = RouteStopMode(line, fromName, towards, onGo = {}, goReady = true, journey = null, alighting = alighting),
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+    }
+
+    @Test
+    fun a_route_page_s_bus_stop_asks_for_no_poles_and_holds_no_line_for_one() {
+        // It shows no letter, the ride getting off there (maintainer, 2026-10-16): so no request for one.
+        val asked = ThreadRecorder()
+        val repository = poleRepository(
+            listOf(app.stopdash.domain.StopLocation("490X", "Somewhere Road", 51.5, -0.12, stopLetter = "H", towards = "North End")),
+            asked = asked,
+        )
+        showRouteStop(repository, LineStopRef("490X", "Somewhere Road"), LineRef("299", "299", "bus"), "South End", "North End")
+        composeRule.onNodeWithText("From South End, towards North End").assertIsDisplayed()
+        composeRule.onNodeWithTag("lineStopPole").assertDoesNotExist()
+        composeRule.onNodeWithTag("lineStopCueSlot").assertDoesNotExist()
+        assertEquals(emptyList<String>(), asked.threads())
+    }
+
+    @Test
+    fun a_route_page_s_boarding_bus_stop_still_shows_its_letter() {
+        // Boarded here, not got off: its letter says which pole to board at (Codex on #892).
+        val asked = ThreadRecorder()
+        val repository = poleRepository(
+            listOf(app.stopdash.domain.StopLocation("490X", "Somewhere Road", 51.5, -0.12, stopLetter = "H", towards = "North End")),
+            asked = asked,
+        )
+        showRouteStop(repository, LineStopRef("490X", "Somewhere Road"), LineRef("299", "299", "bus"), "Somewhere Road", "North End", alighting = false)
+        composeRule.onNodeWithTag("lineStopPole").assertTextContains("Stop H, towards North End")
+        assertEquals(1, asked.threads().size)
+    }
+
+    @Test
+    fun a_route_page_s_station_keeps_its_zone() {
+        // Warren Street, a public station, on the Victoria line from Victoria.
+        showRouteStop(
+            poleRepository(emptyList()), LineStopRef("940GZZLUWRR", "Warren Street"), LineRef("victoria", "Victoria", "tube"),
+            "Victoria", "Walthamstow Central",
+        )
+        composeRule.onNodeWithTag("lineStopZone").assertTextEquals("Zone 1")
+    }
+
     @Test
     fun a_bus_stop_s_pole_is_looked_up_on_the_worker() {
         val worker = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "test-worker") }

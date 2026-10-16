@@ -382,7 +382,11 @@ internal fun LineStopWindow(
     // Under From and To: a bus stop's letter and the way its buses go, from its stop area's poles,
     // else a station's fare zone and facilities, each one cached request. A bus stop asks for no zone (it has
     // none), a station for no poles (it has no letters), and a pier or cable car station for
-    // neither (Codex on #676).
+    // neither (Codex on #676). A route page's stop where the ride gets off shows no letter, so asks for no poles:
+    // the letter and way say where to board (maintainer, 2026-10-16). Its boarding stop, and a station off the
+    // train's path, keep theirs (Codex on #892).
+    val routeStop = route?.takeIf { stop.previous == null }
+    val alighting = routeStop?.alighting == true
     val routes = LocalRouteStops.current
     val worker = LocalWorker.current
     var pole by remember(stop.id) { mutableStateOf<StopQualifier?>(null) }
@@ -390,12 +394,12 @@ internal fun LineStopWindow(
     // The app's strings as the configuration now has them: a language change words the facilities
     // again (the station's record is cached, so that asks TfL nothing).
     val resources = LocalResources.current
-    LaunchedEffect(stop.id, routes, resources) {
+    LaunchedEffect(stop.id, routes, resources, alighting) {
         val repository = routes ?: return@LaunchedEffect
         // By the stop's own modes, not the line's: a station opened from another's details can be
         // of another mode (a tube station beside a pier) (Codex on #676).
         when (stop.cue ?: lineStopCue(line.mode)) {
-            StopCue.POLE -> pole = withContext(worker) { stopPole(repository, line.id, stop.id) }
+            StopCue.POLE -> if (!alighting) pole = withContext(worker) { stopPole(repository, line.id, stop.id) }
             StopCue.ZONE -> facts = withContext(worker) { stationDetails(repository, resources, stop.id) }
             StopCue.NONE -> Unit
         }
@@ -447,7 +451,8 @@ internal fun LineStopWindow(
                         pole = pole,
                         zone = facts?.zone,
                         facilities = facts?.facilities,
-                        cueSlot = true,
+                        // A bus stop the ride gets off at has no line to hold: it shows no letter.
+                        cueSlot = !alighting || isStation,
                         access = access,
                         accessSlot = isStation,
                         links = links,
@@ -478,7 +483,7 @@ internal fun LineStopWindow(
                             { links?.let { it.position ?: stop.position }?.let { at -> show(stop, at) } }
                         },
                         mapReady = links?.let { it.position ?: stop.position } != null,
-                        route = route?.takeIf { stop.previous == null },
+                        route = routeStop,
                         onBack = back,
                     )
                 }
@@ -529,7 +534,8 @@ internal fun LineStopPage(
     // Its line, under the lines here, kept for a station once they are worked out.
     accessSlot: Boolean = false,
     // Opened from a route page's stop list: headed by the departure tapped, with Go in place of From and To,
-    // its star the journey there ([RouteStopMode]); null for a stop opened from a line's map.
+    // its star the journey there ([RouteStopMode]), and, where the ride gets off ([RouteStopMode.alighting]), no
+    // [pole] line; null for a stop opened from a line's map.
     route: RouteStopMode? = null,
 ) {
     BackHandler(onBack = onBack)
@@ -625,8 +631,9 @@ internal fun LineStopPage(
             }
             // Under From and To, as it comes in after them, so they never move; its line held from the first
             // frame, so nothing under it moves either (Codex on #675). Held with a no-break space, as an empty
-            // Text is shorter than a line of text.
-            val poleCue = groupHeaderSpoken(pole)?.replaceFirstChar { it.uppercase() }
+            // Text is shorter than a line of text. No letter on a route page's stop where the ride gets off: the
+            // letter and the way say where to board (maintainer, 2026-10-16). A station's zone stays.
+            val poleCue = groupHeaderSpoken(pole.takeUnless { route?.alighting == true })?.replaceFirstChar { it.uppercase() }
             val cue = poleCue ?: zoneCue
             if (cueSlot || cue != null) {
                 item(key = "cue") {
@@ -685,8 +692,9 @@ internal fun LineStopPage(
 /**
  * A stop's details opened from a route page's stop list (SPEC *Route detail*): the departure
  * tapped, by [line] from [fromName] towards [towards]; **Go** ([onGo]), the ride there on the way, null
- * where it can't be followed, and waiting on [goReady]; and the [journey] there for the star, null where
- * the route page has none to offer (its boarding stop).
+ * where it can't be followed, and waiting on [goReady]; the [journey] there for the star, null where
+ * the route page has none to offer (its boarding stop); and whether the ride gets off there ([alighting]):
+ * false for the boarding stop and a station off the train's path, which then claim no ride there.
  */
 @Immutable
 class RouteStopMode(
@@ -696,6 +704,7 @@ class RouteStopMode(
     val onGo: (() -> Unit)?,
     val goReady: Boolean,
     val journey: StationJourneyState?,
+    val alighting: Boolean = false,
 )
 
 /** The departure a route stop's details were opened from: its line's pill, where it was boarded and where it goes. */

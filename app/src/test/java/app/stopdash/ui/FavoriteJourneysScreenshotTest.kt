@@ -203,15 +203,19 @@ class FavoriteJourneysScreenshotTest {
             fromName = "Victoria",
             towards = "Walthamstow Central",
             position = app.stopdash.domain.Coordinates(51.5308, -0.1238),
+            ridden = true,
         )
-        for (open in listOf(withJourney, bare, full, full.copy(journey = null, boarding = true))) {
+        for (open in listOf(withJourney, bare, full, full.copy(journey = null, boarding = true, ridden = false))) {
             val saved = with(RouteStopOpenSaver) { scope.save(open) }!!
             assertEquals(open, RouteStopOpenSaver.restore(saved))
         }
         // What Go rides isn't kept: the details brought back offer none until a route page opens them again.
         val withGo = full.copy(go = RouteGo(emptyList(), emptyMap(), emptyMap(), java.time.Instant.EPOCH))
         assertEquals(full, RouteStopOpenSaver.restore(with(RouteStopOpenSaver) { scope.save(withGo) }!!))
-        // A save from before this build (the station alone) still restores.
+        // A v2 save, from before the train's calls were kept: claims no ride there, its journey still read.
+        val v2 = with(RouteStopOpenSaver) { scope.save(full) }!! as List<*>
+        assertEquals(full.copy(ridden = false), RouteStopOpenSaver.restore(listOf("v2") + v2.subList(1, 13) + v2.subList(14, v2.size)))
+        // A save from before that (the station alone) still restores.
         assertEquals(bare, RouteStopOpenSaver.restore(arrayListOf<Any?>("940GZZLUKSX", "King's Cross St. Pancras", "HUBKGX")))
     }
 

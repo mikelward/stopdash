@@ -1519,6 +1519,8 @@ class RouteDetailScreenScreenshotTest {
                 line = LineRef("victoria", "Victoria", "tube"),
                 fromName = "Victoria",
                 towards = "Walthamstow Central",
+                // The train calls there after boarding: where the ride gets off.
+                ridden = true,
             ),
             greenPark.copy(go = null),
         )
