@@ -2,8 +2,10 @@ package app.stopdash.domain
 
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Synthetic stops and lines only: `490…` ids for London's, `210…` for one outside it. */
@@ -30,6 +32,32 @@ class BusFareTest {
         // The priced routes are as the Planner priced them.
         assertSame(priced, filled[0])
         assertSame(other, filled[1])
+    }
+
+    @Test
+    fun `a route riding a train costs more than a bus fare, priced or not`() {
+        val bus = bus("1", "490000001A", "490000002B")
+        for (mode in listOf("tube", "dlr", "overground", "elizabeth-line", "national-rail", "cable-car")) {
+            val rail = TripLeg(mode, "line", "line", "910GAAAAAAA", "A", "910GBBBBBBB", "B", at(15), at(30))
+            assertTrue(mode, BusFare.costsMoreThanABus(route(bus, rail)))
+            assertTrue(mode, BusFare.costsMoreThanABus(route(rail)))
+        }
+        // Buses, a tram and a replacement bus can cost a bus fare or less; a walk costs nothing.
+        assertFalse(BusFare.costsMoreThanABus(route(bus, bus("2", "490000002B", "490000003C", boards = 15))))
+        assertFalse(BusFare.costsMoreThanABus(route(bus("T", "940GZZCRAAA", "940GZZCRBBB", mode = "tram"))))
+        assertFalse(BusFare.costsMoreThanABus(route(bus("", "490000001A", "490000002B", mode = "replacement-bus"))))
+        assertFalse(BusFare.costsMoreThanABus(route(walk("X", "Y"))))
+        // A river boat may be the free Woolwich Ferry.
+        assertFalse(BusFare.costsMoreThanABus(route(bus("boat", "930GAAAAAAA", "930GBBBBBBB", mode = "river-bus"))))
+        // Trains between Heathrow's terminals and Hatton Cross are free; one leaving them isn't.
+        val terminals = TripLeg("elizabeth-line", "elizabeth", "elizabeth", "910GHTRWAPT", "T2&3", "910GHTRWTM4", "T4", at(0), at(5))
+        assertFalse(BusFare.costsMoreThanABus(route(terminals)))
+        assertFalse(BusFare.costsMoreThanABus(route(terminals.copy(mode = "tube", fromId = "940GZZLUHR5", toId = "940GZZLUHRC"))))
+        assertTrue(BusFare.costsMoreThanABus(route(terminals.copy(toId = "910GAAAAAAA"))))
+        // The Piccadilly line from Terminals 2 & 3 to Terminal 4 changes at Hatton Cross: both rides free.
+        val toHattonCross = terminals.copy(mode = "tube", fromId = "940GZZLUHRC", toId = "940GZZLUHNX")
+        assertFalse(BusFare.costsMoreThanABus(route(toHattonCross, toHattonCross.copy(fromId = "940GZZLUHNX", toId = "940GZZLUHR4"))))
+        assertTrue(BusFare.costsMoreThanABus(route(toHattonCross.copy(fromId = "940GZZLUHNX", toId = "940GZZLUHWT"))))
     }
 
     @Test

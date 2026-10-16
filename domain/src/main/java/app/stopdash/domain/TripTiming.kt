@@ -387,9 +387,11 @@ object TripTiming {
         // Of routes walking as little, the first: the one ranked best.
         val leastWalking = estimates.minByOrNull { it.route.walking }
             ?.takeIf { walksLess(it.route, estimates.first().route) }
-        // Of routes costing least, the first, the same way.
-        val cheapest = estimates.filter { it.route.fare != null }.minByOrNull { checkNotNull(it.route.fare).pence }
-            ?.takeIf { costsLess(it.route, estimates.first().route) }
+        // Of routes costing least, the first that costs less than the first route: against an unpriced
+        // one only a bus fare can, so a tram at that fare listed first doesn't hide the bus (Codex, #906).
+        val priced = estimates.filter { it.route.fare != null }
+        val lowest = priced.minOfOrNull { checkNotNull(it.route.fare).pence }
+        val cheapest = priced.firstOrNull { checkNotNull(it.route.fare).pence == lowest && costsLess(it.route, estimates.first().route) }
         return estimates.filter { route ->
             if (route === leastWalking || route === cheapest || found(route)) return@filter true
             val arrival = rankedArrival(route) ?: return@filter true
@@ -410,10 +412,14 @@ object TripTiming {
     fun walksLess(route: TripRoute, than: TripRoute): Boolean =
         route.walking.plus(LESS_WALKING) <= than.walking
 
-    /** Whether [route] costs less than [than], both priced: by any amount, as the *Cheapest* header goes ([routeLabels]). */
+    /**
+     * Whether [route] costs less than [than], as the *Cheapest* header goes ([routeLabels]): both priced,
+     * by any amount, or [route] on one bus fare and [than] unpriced but riding a train, which costs more
+     * ([BusFare.costsMoreThanABus]).
+     */
     fun costsLess(route: TripRoute, than: TripRoute): Boolean {
         val fare = route.fare ?: return false
-        val other = than.fare ?: return false
+        val other = than.fare ?: return BusFare.onOneBusFare(route) && BusFare.costsMoreThanABus(than)
         return fare.pence < other.pence
     }
 

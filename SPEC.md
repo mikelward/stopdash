@@ -1675,8 +1675,15 @@ Least walking"): each plan also asks the Planner for its least-walking routes be
 fewest changes, so the bus to the station is offered beside the long walk there. Such a route stays
 on the list though it changes more and arrives later (below), and is timed past the cap on routes
 timed. **Cheapest** (maintainer, 2026-10-16) heads **every** card at the lowest fare, the first card
-included, after Least walking and sharing a header the same way ("Fastest · Cheapest"), only when every
-card shows a fare (a card with none could cost least) and they don't all cost the same: each plan
+included, after Least walking and sharing a header the same way ("Fastest · Cheapest"), only when some
+card costs more and none could cost less. A card with no fare could cost least, so it holds the header
+back, unless the lowest fare is one bus fare (London buses within the hour) and that card rides a train
+or the cable car (maintainer, 2026-10-16, after the bus the whole way went unlabeled beside an unpriced
+Thameslink): a bus fare is the least any ride costs, and those charge more, so it costs more for sure.
+A card riding only buses, a tram, a replacement bus or a river boat (the Woolwich Ferry is free) could
+cost a bus fare or less, so it still holds the header back, and so does a train between Heathrow's
+terminals and Hatton Cross, which is free (Heathrow's free travel zone; TfL's Planner prices none of
+those rides). Each plan
 also asks the Planner for buses alone (below), so the bus the whole way, at a bus fare, is offered
 beside the train. Like Least walking, the route costing least is timed past the cap, and the list's
 order is as for every other header: labeled cards first by their first label, the rest under Other.
@@ -1723,7 +1730,8 @@ unchecked route a live train times among the checked, so a route checked open is
 one that couldn't be checked), is left off the list, and of two arriving together the one with fewer changes comes first.
 An arrival that is withheld is never compared, and a route already open stays open, as does the bus
 found asking via a stop towards the destination (*Buses towards the destination*, below), and the
-first route at the lowest fare where it costs less than the first card (maintainer, 2026-10-16): two
+first route at the lowest fare where it costs less than the first card, reckoned as for *Cheapest* (an
+unpriced first card riding a train costs more than one bus fare) (maintainer, 2026-10-16): two
 buses on one fare are a change more than the train and arrive later, yet they're what *Cheapest* is
 for.
 Tapping the card opens its best route. **Every route looks alike** — no
