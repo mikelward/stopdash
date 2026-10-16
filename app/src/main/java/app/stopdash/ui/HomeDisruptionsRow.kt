@@ -5,6 +5,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,53 +37,86 @@ import androidx.compose.ui.unit.dp
 import app.stopdash.R
 
 /**
- * The home screen's disruptions row ([HomeLines]), one line high whatever it says (maintainer,
- * 2026-10-05): "Disruptions:", each disrupted line's pill, then the check's word as a trip's row says it
- * ("Checking…", "Unknown:" and what couldn't be checked, else "None"); what doesn't fit is counted as
- * "+N". A tap opens every line it covers with its status ([TripLinesPage]); no chevron (maintainer,
- * 2026-10-05).
+ * The home screen's disruptions row ([HomeLines]), a card one line high whatever it says (maintainer,
+ * 2026-10-05): each disrupted line's pill, then "Unknown:" and what couldn't be checked, behind a ⚠ on a
+ * tinted card; with none of those, a plain card saying so beside its mark ("No disruptions" beside a ✓,
+ * "Checking for disruptions" beside a spinner; maintainer, 2026-10-16). What doesn't fit is counted as
+ * "+N". A tap opens every line it covers with its status ([TripLinesPage]), which its chevron says
+ * (maintainer, 2026-10-16).
  */
 @Composable
 internal fun HomeDisruptionsRow(row: TripRow, modifier: Modifier = Modifier) {
     val style = MaterialTheme.typography.bodyMedium
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    val error = MaterialTheme.colorScheme.error
+    val colors = MaterialTheme.colorScheme
+    val error = colors.error
     var open by rememberSaveable { mutableStateOf(false) }
     // The pills, worst first (the disrupted, then "Unknown:" and the unchecked), counted as "+N" where
-    // they don't fit; only pills are counted (Codex, #577). A word alone ("Checking…", "None") always
-    // shows, at the end.
+    // they don't fit; only pills are counted (Codex, #577). A word alone always shows, at the end.
     val disrupted = row.lines
     val unchecked = if (row.checking) emptyList() else row.unknownLines
+    val pills = disrupted.size + unchecked.size
+    // Anything disrupted, or anything that couldn't be checked, takes the warning and the tint: a check
+    // that failed is never shown as all clear. Lines already known disrupted keep it through a recheck.
+    val warn = disrupted.isNotEmpty() || (!row.checking && (unchecked.isNotEmpty() || row.unknown))
     val word = when {
-        row.checking -> R.string.trip_disruptions_checking
-        row.lines.isEmpty() && !row.unknown -> R.string.trip_disruptions_none
-        // Something couldn't be checked with no line to name for it (a stop's closure check, say): said
-        // all the same, as the list's banner did (maintainer, 2026-10-05).
+        // Said whole on its own; beside pills, the short form leaves them the room.
+        row.checking -> if (pills == 0) R.string.disruptions_checking else R.string.trip_disruptions_checking
+        warn && pills == 0 -> R.string.disruptions_unknown
+        row.lines.isEmpty() && !row.unknown -> R.string.home_disruptions_none
+        // Something couldn't be checked with no line to name for it (a stop's closure check, say),
+        // beside the lines that are disrupted: said all the same (maintainer, 2026-10-05).
         row.unknown && unchecked.isEmpty() -> R.string.trip_disruptions_unknown
         else -> null
     }
-    val wordColor = if (word == R.string.trip_disruptions_unknown) error else muted
-    // Heard whole, every line named, never only the pills that fit nor one measured and left out.
-    val spoken = listOfNotNull(
-        stringResource(R.string.trip_disruptions_label),
-        row.linesSpoken.ifBlank { null },
-        word?.let { stringResource(it) },
-        stringResource(R.string.trip_disruptions_unknown_label).takeIf { unchecked.isNotEmpty() },
-        row.unknownSpoken.takeIf { unchecked.isNotEmpty() },
-    ).joinToString(" ")
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier
-            .testTag("homeDisruptions")
-            .semantics { contentDescription = spoken }
-            .clickable(onClickLabel = stringResource(R.string.trip_lines_open)) { open = true },
+    val muted = if (warn) colors.onErrorContainer else colors.onSurfaceVariant
+    val wordColor = if (word == R.string.disruptions_unknown || word == R.string.trip_disruptions_unknown) error else muted
+    // Heard whole, every line named, never only the pills that fit nor one measured and left out. A
+    // word alone already says what it's about.
+    val spoken = if (pills == 0 && word != null) {
+        stringResource(word)
+    } else {
+        listOfNotNull(
+            stringResource(R.string.trip_disruptions_label),
+            row.linesSpoken.ifBlank { null },
+            word?.let { stringResource(it) },
+            stringResource(R.string.trip_disruptions_unknown_label).takeIf { unchecked.isNotEmpty() },
+            row.unknownSpoken.takeIf { unchecked.isNotEmpty() },
+        ).joinToString(" ")
+    }
+    // The card the departures sit in, its border theirs whatever it says, its fill tinted as the notices
+    // are where something's wrong (maintainer, 2026-10-16); the fill and the mark change, never the size,
+    // so nothing under it moves.
+    Surface(
+        shape = CardDefaults.outlinedShape,
+        color = if (warn) colors.errorContainer else colors.surface,
+        border = CardDefaults.outlinedCardBorder(),
+        modifier = modifier.fillMaxWidth(),
     ) {
-        Box(contentAlignment = Alignment.CenterStart, modifier = Modifier.weight(1f).padding(vertical = 4.dp).clearAndSetSemantics {}) {
-            // A pill nobody sees sets the height, so a word turning into a pill never moves the list.
-            LinePill("", "", "bus", Modifier.alpha(0f).clearAndSetSemantics {})
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .testTag("homeDisruptions")
+                .semantics { contentDescription = spoken }
+                .clickable(onClickLabel = stringResource(R.string.trip_lines_open)) { open = true }
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(20.dp).clearAndSetSemantics {}) {
+                when {
+                    row.checking -> CircularProgressIndicator(strokeWidth = 2.dp, color = colors.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                    warn -> Icon(Icons.Filled.Warning, contentDescription = null, tint = error)
+                    else -> Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = colors.onSurfaceVariant)
+                }
+            }
+            Box(
+                contentAlignment = Alignment.CenterStart,
+                modifier = Modifier.weight(1f).padding(start = 12.dp).clearAndSetSemantics {},
+            ) {
+                // A pill nobody sees sets the height, so a word turning into a pill never moves the list.
+                LinePill("", "", "bus", Modifier.alpha(0f).clearAndSetSemantics {})
                 OneLine(
-                    pills = disrupted.size + unchecked.size,
+                    pills = pills,
                     pill = { i ->
                         // A refresh that drops pills recomposes the old ones' slots before the row is
                         // measured again and lets them go: a slot past the lists draws nothing.
@@ -85,12 +128,18 @@ internal fun HomeDisruptionsRow(row: TripRow, modifier: Modifier = Modifier) {
                     label = { Text(stringResource(R.string.trip_disruptions_unknown_label), style = style, color = error, maxLines = 1) },
                     word = word?.let { { Text(stringResource(it), style = style, color = wordColor, maxLines = 1) } },
                     modifier = Modifier.fillMaxWidth(),
-                    lead = { Text(stringResource(R.string.trip_disruptions_label), style = style, color = muted, maxLines = 1) },
                 ) { more ->
                     // The unchecked come last, so a count that hides any of them is red, as "Unknown:" is.
                     Text(stringResource(R.string.home_disruptions_more, more), style = style, color = if (unchecked.isNotEmpty()) error else muted, maxLines = 1)
                 }
             }
+            // The card always opens the lines page, so it says it goes somewhere (maintainer, 2026-10-16).
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = colors.onSurfaceVariant,
+                modifier = Modifier.padding(start = 8.dp),
+            )
         }
     }
     if (open) TripLinesPage(row, onClose = { open = false }, gone = R.string.home_lines_gone, dismissal = LocalDismissLineAlert.current)

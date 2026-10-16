@@ -344,6 +344,49 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `with nothing disrupted the disruptions row says so on a plain card`() {
+        val stops = stops(now.minusSeconds(60))
+        val ids = stops.flatMap { stop -> stop.departures.map { it.lineId } + stop.lines.map { it.id } }.toSet()
+        capture("main-disruptions-none.png") {
+            MainScreen(
+                DeparturesUiState.Loaded(
+                    stops, now.minusSeconds(60),
+                    lineStatuses = ids.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") },
+                    determinedLineIds = ids,
+                ),
+                now,
+                {},
+                favoritePlaces = places,
+                showDisruptionsRow = true,
+                always = HomeLines.Always(HomeLines.TUBE_IDS.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") }, now.minusSeconds(60)),
+                alwaysNetworks = setOf("tube"),
+            )
+        }
+        composeRule.onNodeWithContentDescription("No disruptions").assertExists()
+    }
+
+    @Test
+    fun `the disruptions row, dark`() {
+        // The tint has to hold up on the dark scheme too.
+        val stops = stops(now.minusSeconds(60))
+        capture("main-disruptions-row-dark.png", dark = true) {
+            MainScreen(
+                DeparturesUiState.Loaded(
+                    stops, now.minusSeconds(60), lineStatuses = statuses(),
+                    determinedLineIds = stops.flatMap { stop -> stop.departures.map { it.lineId } + stop.lines.map { it.id } }.toSet(),
+                ),
+                now,
+                {},
+                favoritePlaces = places,
+                showDisruptionsRow = true,
+                always = HomeLines.Always(HomeLines.TUBE_IDS.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") }, now.minusSeconds(60)),
+                alwaysNetworks = setOf("tube"),
+            )
+        }
+        composeRule.onNodeWithContentDescription("Disruptions: Elizabeth line", substring = true).assertExists()
+    }
+
+    @Test
     fun `the disruptions row waits for the favorites it ranks by, never reshuffling as they land`() {
         val stops = stops(now.minusSeconds(60))
         capture("main-disruptions-favorites-loading.png") {
@@ -359,7 +402,7 @@ class MainScreenScreenshotTest {
                 starredKnown = false,
             )
         }
-        composeRule.onNodeWithContentDescription("Disruptions: Checking", substring = true).assertExists()
+        composeRule.onNodeWithContentDescription("Checking for disruptions").assertExists()
     }
 
     @Test
@@ -381,7 +424,7 @@ class MainScreenScreenshotTest {
                 journeysSettled = true,
             )
         }
-        composeRule.onNodeWithContentDescription("Disruptions: Checking", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Checking for disruptions").assertDoesNotExist()
         composeRule.onNodeWithTag("homeDisruptions").assertExists()
     }
 

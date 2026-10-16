@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import app.stopdash.domain.TripLeg
 import java.time.Instant
 import org.junit.Assert.assertEquals
@@ -38,7 +39,7 @@ class HomeDisruptionsRowTest {
     fun a_word_alone_is_never_counted_and_the_row_is_heard_whole() {
         var row by mutableStateOf(TripRow(checking = true))
         composeRule.setContent { HomeDisruptionsRow(row) }
-        composeRule.onNodeWithContentDescription("Disruptions: Checking…").assertExists()
+        composeRule.onNodeWithContentDescription("Checking for disruptions").assertExists()
         val lines = (1..50).map { leg("$it") }
         row = TripRow(checking = false, unknown = true, unknownLines = lines)
         // Every line named, not only the pills that fit.
@@ -53,17 +54,35 @@ class HomeDisruptionsRowTest {
         composeRule.setContent { HomeDisruptionsRow(row) }
         composeRule.waitForIdle()
         row = TripRow(checking = true)
-        composeRule.onNodeWithContentDescription("Disruptions: Checking…").assertExists()
+        composeRule.onNodeWithContentDescription("Checking for disruptions").assertExists()
         row = TripRow(checking = false, lines = listOf(leg("3")))
         composeRule.onNodeWithContentDescription("Disruptions: 3").assertExists()
         row = TripRow(checking = false)
-        composeRule.onNodeWithContentDescription("Disruptions: None").assertExists()
+        composeRule.onNodeWithContentDescription("No disruptions").assertExists()
     }
 
     @Test
     fun something_unchecked_with_no_line_to_name_still_reads_unknown() {
         composeRule.setContent { HomeDisruptionsRow(TripRow(checking = false, unknown = true, unknownStops = "Bank")) }
-        composeRule.onNodeWithContentDescription("Disruptions: Unknown").assertExists()
+        composeRule.onNodeWithContentDescription("Couldn't check for disruptions").assertExists()
+        // A check that failed is never shown as all clear. The words are drawn under the row's one spoken
+        // description, so they're looked for in the unmerged tree.
+        composeRule.onNodeWithText("Couldn't check for disruptions", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("No disruptions", useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun unknown_beside_disrupted_lines_is_still_said_after_their_pills() {
+        composeRule.setContent { HomeDisruptionsRow(TripRow(checking = false, lines = listOf(leg("1")), unknown = true, unknownStops = "Bank")) }
+        composeRule.onNodeWithContentDescription("Disruptions: 1 Unknown").assertExists()
+        composeRule.onNodeWithText("Unknown", useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun all_clear_says_so_in_words() {
+        composeRule.setContent { HomeDisruptionsRow(TripRow(checking = false)) }
+        composeRule.onNodeWithText("No disruptions", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithContentDescription("No disruptions").assertExists()
     }
 
     @Test
