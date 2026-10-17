@@ -2339,6 +2339,40 @@ class TripScreenScreenshotTest {
         assertEquals(FontWeight.Bold, header.fontWeight)
     }
 
+    // What the Direct section says beside or in place of its rows is as large as the rows (maintainer,
+    // 2026-10-17): its checking note, that some lines went unchecked, and a row's line status.
+    @Test
+    fun the_direct_sections_notes_are_as_large_as_its_rows() {
+        showDirect(
+            PlaceDirectViewModel.State.Ready(
+                listOf(directRow("jubilee", "Jubilee", "tube", "Bond Street", 2, 5, 9, disruption = "Minor Delays")),
+                checking = false,
+                uncertain = true,
+                retryable = false,
+            ),
+        )
+        val row = textLayoutOf(composeRule.onNodeWithTag("placeDirectStop-jubilee", useUnmergedTree = true)).layoutInput.style.fontSize
+        assertEquals(row, textLayoutOf(composeRule.onNodeWithTag("placeDirectPartial")).layoutInput.style.fontSize)
+        assertEquals(row, textLayoutOf(composeRule.onNodeWithTag("placeDirectStatus-jubilee", useUnmergedTree = true)).layoutInput.style.fontSize)
+    }
+
+    @Test
+    fun the_direct_sections_checking_note_is_as_large_as_a_route_cards_stops() {
+        showDirect(PlaceDirectViewModel.State.Checking)
+        val note = textLayoutOf(composeRule.onNode(hasText("Checking…") and hasAnyAncestor(hasTestTag("placeDirect")), useUnmergedTree = true))
+        val stop = textLayoutOf(composeRule.onAllNodesWithTag("rideStopName", useUnmergedTree = true).onFirst())
+        assertEquals(stop.layoutInput.style.fontSize, note.layoutInput.style.fontSize)
+    }
+
+    // A plan's notice is as large as the routes it's over, as the main screen's notices are (maintainer, 2026-10-17).
+    @Test
+    fun a_plan_notice_is_as_large_as_a_route_cards_stops() {
+        show(planned.copy(planError = DeparturesUiState.Error.Kind.OFFLINE))
+        val notice = textLayoutOf(composeRule.onNodeWithText("Couldn't plan the trip: You're offline", useUnmergedTree = true))
+        val stop = textLayoutOf(composeRule.onAllNodesWithTag("rideStopName", useUnmergedTree = true).onFirst())
+        assertEquals(stop.layoutInput.style.fontSize, notice.layoutInput.style.fontSize)
+    }
+
     private fun textLayoutOf(node: SemanticsNodeInteraction): TextLayoutResult {
         // A name with a shorter form is measured in a box around its text ([ShortenedText]): its child.
         val text = node.fetchSemanticsNode().takeIf { SemanticsActions.GetTextLayoutResult in it.config }

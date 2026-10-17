@@ -71,9 +71,10 @@ internal fun PlaceDirectSection(
                 modifier = Modifier.semantics { heading() },
             )
             if (unchecked) {
+                // As large as the rows under it (maintainer, 2026-10-17): smaller, it read as a footnote.
                 Text(
                     stringResource(R.string.trip_direct_partial),
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.error,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -154,7 +155,7 @@ private fun DirectRow(shown: PlaceDirectViewModel.ShownRow, onOpen: ((PlaceDirec
             shown.disruption?.let { disruption ->
                 Text(
                     stringResource(R.string.trip_line_status, row.lineName, disruption),
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(bottom = 4.dp).testTag("placeDirectStatus-${row.lineId}"),
                 )
@@ -163,7 +164,7 @@ private fun DirectRow(shown: PlaceDirectViewModel.ShownRow, onOpen: ((PlaceDirec
             shown.notice?.let { notice ->
                 Text(
                     notice,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.error,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -198,11 +199,12 @@ private fun DirectRow(shown: PlaceDirectViewModel.ShownRow, onOpen: ((PlaceDirec
     }
 }
 
+// "Checking…", "None", "Couldn't check": as large as the rows they stand in for (maintainer, 2026-10-17).
 @Composable
 private fun DirectNote(text: String, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
     Text(
         text,
-        style = MaterialTheme.typography.bodyMedium,
+        style = MaterialTheme.typography.bodyLarge,
         color = color,
         modifier = Modifier.heightIn(min = 40.dp).padding(vertical = 8.dp),
     )
