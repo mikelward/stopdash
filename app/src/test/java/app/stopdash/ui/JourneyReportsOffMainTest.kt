@@ -472,6 +472,42 @@ class JourneyReportsOffMainTest {
         assertFalse("the farther cards were read off the worker", farther.readElsewhere)
     }
 
+    @Test
+    fun the_farther_cards_lines_are_reported_while_the_row_shows_and_none_once_it_is_off() {
+        // The lines only a farther card shows go to the model for the row's check (maintainer, 2026-10-17); with
+        // the row turned off, none, so the check stops asking about them (Codex, #930).
+        val scheduler = TestCoroutineScheduler()
+        val held = StandardTestDispatcher(scheduler)
+        val listWork = ListWork()
+        var rowShown by mutableStateOf(true)
+        val heard = mutableListOf<Set<String>>()
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides held) {
+                    MainScreen(
+                        state = DeparturesUiState.Loaded(stops = listOf(victoria), fetchedAt = now),
+                        now = now,
+                        onRefresh = {},
+                        stopDistanceMeters = mapOf("940GZZLUVIC" to 40.0),
+                        listKey = "victoria",
+                        listWork = listWork,
+                        farther = listOf(FartherCard(busPlace("490G00000009", "Farther Road", 650.0, "73"))),
+                        showDisruptionsRow = rowShown,
+                        onScreenLines = { heard += it },
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        // Worked out on the worker before anything is told.
+        assertEquals(emptyList<Set<String>>(), heard)
+        settle(scheduler)
+        assertEquals(setOf("73"), heard.last())
+        rowShown = false
+        settle(scheduler)
+        assertEquals(emptySet<String>(), heard.last())
+    }
+
     private fun busPlace(id: String, name: String, meters: Double, vararg routes: String) =
         CollapsedPlaces.Place(
             key = "bus:$id",

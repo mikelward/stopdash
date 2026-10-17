@@ -3472,15 +3472,11 @@ Builds on Phase 1's minimal line-status marking.
         Host the row's line-status source above the Ready/Empty split and draw the row in the empty
         state too.
   - [ ] **Name the walking reach's closed stops on the row**, as a trip's row names its closed stops.
-  - [ ] **List every line on the lines page, with its status** (maintainer, 2026-10-17). The page is
-        what the summary surfaces as most relevant: watched lines first, then **Other**. Other holds
-        only lines a farther stop's check couldn't answer, so it rarely shows; broaden it so it lists
-        every line, each with its correct status. Undecided, and for the plan to settle: which lines
-        (every line near the rider, or every line on the tube, DLR, Elizabeth, Overground and tram
-        networks); how Other groups (by mode, as Settings' chips do, or not at all) and sorts (worst
-        first, by name, or by distance); and the extra status checks' cost and reliability, as
-        AGENTS.md's *Cost and reliability* asks: requests, rate limits, and what Other shows when a check
-        fails (Codex, #925).
+  - [x] **List every line on the lines page, with its status** (maintainer, 2026-10-17). *Watched* is every
+        line the home screen shows, a farther card's included, with the favorites', the trip's and the chosen
+        lines; *Other* is every other rail line (tube, DLR, Elizabeth, Overground, tram), worst first, then in
+        the chips' order, asked about only while the page is open (one request, verdicts reused), "Checking…"
+        until answered and couldn't-check where TfL gives none. No bus beyond the screen's.
   - [x] **Fold the list's "couldn't check for disruptions" banner into the row** (maintainer,
         2026-10-05): where the row shows, its "Unknown" says what the banner did, naming what it can.
   - [ ] **Check a bug report sent from the lines page** on a device: the report's screenshot is taken

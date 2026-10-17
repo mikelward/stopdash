@@ -19,7 +19,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The home screen's disruptions row: every tube line, and the lines of the stops within the walking reach. */
+/** The home screen's disruptions row: every line the screen shows, and the lines the rider chose; every other rail line under *Other*. */
 class HomeLinesTest {
     private val now = Instant.parse("2026-10-05T08:00:00Z")
 
@@ -34,7 +34,7 @@ class HomeLinesTest {
     private val severe = LineStatus("73", 6, "Severe Delays", fullText = "Roadworks")
 
     @Test
-    fun `every tube line and the lines within the walking reach, never one beyond`() {
+    fun `every tube line and every listed stop's lines however far, the other rail lines under Other`() {
         val loaded = DeparturesUiState.Loaded(
             stops = listOf(stop("near", "73" to "bus"), stop("far", "38" to "bus")),
             fetchedAt = now,
@@ -42,10 +42,15 @@ class HomeLinesTest {
             determinedLineIds = setOf("73", "38"),
         )
         val row = tubeRow(loaded, mapOf("near" to 120.0, "far" to 900.0), tube(), emptySet(), now)
-        assertEquals(HomeLines.TUBE_IDS + "73", row.every.mapTo(HashSet()) { it.leg.lineId })
+        // The far stop is on the screen too, so its line is watched (maintainer, 2026-10-17).
+        assertEquals(HomeLines.TUBE_IDS + "73" + "38", row.watchedIds.toSet())
         // The disrupted one leads the pills and the page; the rest are good services, checked.
         assertEquals(listOf("73"), row.lines.map { it.lineId })
         assertEquals("73", row.every.first().leg.lineId)
+        // Every other rail line follows under Other, in Settings' order, checking until the page asks about them,
+        // which the card never waits on.
+        assertEquals((HomeLines.RAIL_IDS - HomeLines.TUBE_IDS).toList(), row.otherIds)
+        assertTrue(row.every.filter { it.watched != true }.all { it.checking })
         assertFalse(row.checking)
         assertFalse(row.unknown)
     }
@@ -79,7 +84,7 @@ class HomeLinesTest {
         // Both the rider's own and as bad as each other: by name, the 73 before the Central. Every line here is
         // watched (near the rider, starred, or on the network they chose), so the page lists the pills in their order.
         assertTrue(fav.lines.map { it.lineId }.let { it.indexOf("73") < it.indexOf("central") })
-        assertTrue(fav.every.all { it.watched == true })
+        assertEquals(HomeLines.RAIL_IDS - HomeLines.TUBE_IDS, fav.otherIds.toSet())
         assertEquals(fav.lines.map { it.lineId }, fav.every.filter { it.disrupted }.map { it.leg.lineId })
         // A star whose stop has left the list ranks nothing: its line goes with the network's (Codex, #640).
         val goneStar = setOf(app.stopdash.domain.StarredRow("elsewhere", "central", "outbound"))
@@ -177,10 +182,10 @@ class HomeLinesTest {
         val loaded = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus")), now, determinedLineIds = setOf("73"))
         val asked = HomeLines.idsOf(setOf("overground"))
         val checked = HomeLines.Always(asked.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") }, now)
-        val ids = tubeRow(loaded, mapOf("near" to 50.0), checked, emptySet(), now, networks = setOf("overground")).every.map { it.leg.lineId }
+        val ids = tubeRow(loaded, mapOf("near" to 50.0), checked, emptySet(), now, networks = setOf("overground")).watchedIds
         assertEquals(asked + "73", ids.toSet())
         // None chosen: the nearby lines alone.
-        assertEquals(listOf("73"), tubeRow(loaded, mapOf("near" to 50.0), null, emptySet(), now, networks = emptySet()).every.map { it.leg.lineId })
+        assertEquals(listOf("73"), tubeRow(loaded, mapOf("near" to 50.0), null, emptySet(), now, networks = emptySet()).watchedIds)
         // One just chosen that no check has asked about yet is being checked, not unchecked.
         val tubeOnly = HomeLines.Always(good, now, askedFor = HomeLines.TUBE_IDS)
         val justChosen = tubeRow(loaded, mapOf("near" to 50.0), tubeOnly, emptySet(), now, networks = setOf("tube", "dlr"))
@@ -309,6 +314,11 @@ class HomeLinesTest {
 
     private fun row(row: TripRow, id: String) = row.every.single { it.leg.lineId == id }
 
+    // The lines under *Watched*, in the page's order, and under *Other*, which every rail line the rider doesn't
+    // watch is (maintainer, 2026-10-17).
+    private val TripRow.watchedIds: List<String> get() = every.filter { it.watched == true }.map { it.leg.lineId }
+    private val TripRow.otherIds: List<String> get() = every.filter { it.watched != true }.map { it.leg.lineId }
+
     // The row as most of these read it: the tube always covered, unless a test chooses otherwise.
     private fun tubeRow(
         loaded: DeparturesUiState.Loaded?,
@@ -366,15 +376,15 @@ class HomeLinesTest {
         val starred = setOf(app.stopdash.domain.StarredRow("pole", "38", "outbound"))
         val far = mapOf("origin" to 3000.0, "pole" to 2000.0, "other" to 2500.0)
         val row = HomeLines.row(loaded, far, null, emptySet(), now, starred = starred, journeyLines = setOf("victoria"), journeys = listOf(journey))
-        // The favorites' lines, checked by the list; never a line no favorite rides, nor a whole network.
-        assertEquals(setOf("victoria", "38"), row.every.mapTo(HashSet()) { it.leg.lineId })
+        // The favorites' lines, and every other line the list shows, checked by the list; never a whole network.
+        assertEquals(setOf("victoria", "38", "73"), row.watchedIds.toSet())
         assertEquals(listOf("victoria"), row.lines.map { it.lineId })
         assertFalse(row.checking)
         assertFalse(row.unknown)
         // Before the list is in, the journey's line still shows, as checking.
         val cold = HomeLines.row(null, emptyMap(), null, emptySet(), now, journeyLines = setOf("victoria"), journeys = listOf(journey))
-        assertEquals(listOf("victoria"), cold.every.map { it.leg.lineId })
-        assertTrue(cold.every.single().checking)
+        assertEquals(listOf("victoria"), cold.watchedIds)
+        assertTrue(row(cold, "victoria").checking)
     }
 
     @Test
@@ -389,7 +399,7 @@ class HomeLinesTest {
         )
         val near = mapOf("near" to 50.0)
         val waiting = HomeLines.row(loaded, near, null, emptySet(), now, starred = starred, journeyLines = setOf("elizabeth"), journeys = listOf(journey))
-        assertEquals(setOf("73", "elizabeth"), waiting.every.mapTo(HashSet()) { it.leg.lineId })
+        assertEquals(setOf("73", "elizabeth"), waiting.watchedIds.toSet())
         assertTrue(row(waiting, "elizabeth").checking)
         assertFalse(waiting.unknown)
         val part = LineStatus("elizabeth", 3, "Part Suspended")
@@ -425,17 +435,18 @@ class HomeLinesTest {
             tripLines = listOf(LineRef("victoria", "Victoria", "tube")),
         )
         assertEquals(listOf("73", "northern", "central"), judged.lines.map { it.lineId })
-        assertEquals(setOf("73", "northern", "victoria", "central"), judged.everyWatched.orEmpty().toSet())
-        // A farther stop's bus the list couldn't check is listed, not watched.
-        assertEquals(false, row(judged, "38").watched)
+        assertEquals(setOf("73", "38", "northern", "victoria", "central"), judged.everyWatched.orEmpty().toSet())
+        // A farther stop's bus the list couldn't check is on the screen, so watched, and named unchecked.
+        assertEquals(true, row(judged, "38").watched)
+        assertTrue(row(judged, "38").unknown)
         assertFalse(row(judged, "northern").checking)
     }
 
     @Test
     fun `the page lists the watched lines first, the pills still worst first`() {
         // A minor delay on the bus near the rider, a severe one on a favorite ride's line, and a suspension far
-        // away on a line the rider chose to watch; the only line not watched is a farther stop's the list couldn't
-        // check (maintainer, 2026-10-17).
+        // away on a line the rider chose to watch; a farther stop's bus the list couldn't check is on the screen,
+        // so watched too, and the lines not watched are every other rail line (maintainer, 2026-10-17).
         val minor = LineStatus("73", 9, "Minor Delays")
         val loaded = DeparturesUiState.Loaded(
             listOf(stop("near", "73" to "bus"), stop("far", "38" to "bus")), now,
@@ -451,10 +462,107 @@ class HomeLinesTest {
         )
         // The pills as before: the worst first, wherever it is.
         assertEquals(listOf("central", "northern", "73"), judged.lines.map { it.lineId })
-        // The page: the watched lines first, the chosen one among them, in that order, then the rest.
-        assertEquals(listOf("central", "northern", "73", "38"), judged.every.map { it.leg.lineId })
-        assertEquals(listOf(true, true, true, false), judged.every.map { it.watched })
-        assertEquals(listOf("central", "northern", "73"), judged.everyWatched)
+        // The page: the watched lines first, the chosen one among them, in that order, then the rest of the rail
+        // lines, as Settings' chips go, none asked about yet.
+        assertEquals(listOf("central", "northern", "73", "38"), judged.watchedIds)
+        assertEquals(listOf("central", "northern", "73", "38"), judged.everyWatched)
+        assertEquals(HomeLines.RAIL.map { it.id } - setOf("central", "northern"), judged.otherIds)
+        assertEquals(judged.watchedIds + judged.otherIds, judged.every.map { it.leg.lineId })
+    }
+
+    @Test
+    fun `the other rail lines are judged once asked, worst first then as the chips go, never on the card`() {
+        // The page asked about every rail line (maintainer, 2026-10-17): the Jubilee's suspended and the DLR's
+        // delayed under Other, the rest good; none of them the rider's, so none is a pill.
+        val loaded = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus")), now, determinedLineIds = setOf("73"))
+        val statuses = HomeLines.RAIL_IDS.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") } +
+            ("jubilee" to LineStatus("jubilee", 16, "Suspended")) + ("dlr" to LineStatus("dlr", 9, "Minor Delays"))
+        val asked = HomeLines.row(loaded, mapOf("near" to 50.0), HomeLines.Always(statuses, now), emptySet(), now)
+        assertEquals(listOf("73"), asked.watchedIds)
+        assertEquals(listOf("jubilee", "dlr") + (HomeLines.RAIL.map { it.id } - setOf("jubilee", "dlr")), asked.otherIds)
+        assertTrue(asked.every.none { it.checking || it.unknown })
+        assertTrue(asked.lines.isEmpty())
+        assertFalse(asked.checking)
+        assertFalse(asked.unknown)
+        // The card says there's something to see (its ⓘ), not that no line is disrupted.
+        assertTrue(asked.linesDisrupted)
+        // Not answered for: couldn't be checked, said on the page, never on the card.
+        val missed = HomeLines.row(loaded, mapOf("near" to 50.0), HomeLines.Always(emptyMap(), now, askedFor = HomeLines.RAIL_IDS), emptySet(), now)
+        assertTrue(row(missed, "jubilee").unknown)
+        assertTrue(missed.linesUnknown)
+        assertFalse(missed.unknown)
+        assertTrue(missed.unknownLines.isEmpty())
+        // Being asked again (a refresh under way): checking, and still not the card's "Checking…".
+        val again = HomeLines.row(loaded, mapOf("near" to 50.0), HomeLines.Always(emptyMap(), now, askedFor = HomeLines.RAIL_IDS), emptySet(), now, refreshing = true)
+        assertTrue(row(again, "jubilee").checking)
+        assertFalse(again.checking)
+    }
+
+    @Test
+    fun `a farther card's line is watched, checking until the screen's check asks about it, then a pill`() {
+        // The Elizabeth line on a farther station's card, its stop not fetched (maintainer, 2026-10-17).
+        val loaded = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus")), now, determinedLineIds = setOf("73"))
+        val screen = HomeLines.ScreenLines(listOf(LineRef("73", "73", "bus"), LineRef("elizabeth", "Elizabeth line", "elizabeth-line")), farIds = setOf("elizabeth"))
+        val waiting = HomeLines.row(loaded, mapOf("near" to 50.0), null, emptySet(), now, screen = screen)
+        assertEquals(setOf("73", "elizabeth"), waiting.watchedIds.toSet())
+        assertTrue(row(waiting, "elizabeth").checking)
+        assertTrue(waiting.checking)
+        val part = LineStatus("elizabeth", 3, "Part Suspended")
+        val judged = HomeLines.row(loaded, mapOf("near" to 50.0), HomeLines.Always(mapOf("elizabeth" to part), now), emptySet(), now, screen = screen)
+        assertEquals(listOf("elizabeth"), judged.lines.map { it.lineId })
+        assertFalse(judged.checking)
+        // A line the screen doesn't show (a hidden mode's) isn't watched, though the list fetched it.
+        val hidden = HomeLines.row(
+            DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus"), stop("rail", "thameslink" to "national-rail")), now, determinedLineIds = setOf("73", "thameslink")),
+            mapOf("near" to 50.0, "rail" to 80.0), null, emptySet(), now, screen = HomeLines.ScreenLines(listOf(LineRef("73", "73", "bus"))),
+        )
+        assertEquals(listOf("73"), hidden.watchedIds)
+        assertTrue(hidden.every.none { it.leg.lineId == "thameslink" })
+        // Nor does the card say it couldn't check, when that hidden line is all the list couldn't (Codex, #930).
+        val stops = listOf(stop("near", "73" to "bus"), stop("rail", "thameslink" to "national-rail"))
+        val unchecked = DeparturesUiState.Loaded(stops, now, determinedLineIds = setOf("73"), disruptionUnknown = true)
+        val distances = mapOf("near" to 50.0, "rail" to 80.0)
+        val shownBus = HomeLines.ScreenLines(listOf(LineRef("73", "73", "bus")))
+        assertFalse(HomeLines.row(unchecked, distances, null, emptySet(), now, screen = shownBus).unknown)
+        // A drawn row with no line to check, or a stop whose closure check failed, still does.
+        val lineless = HomeLines.ScreenLines(listOf(LineRef("73", "73", "bus")), lineless = true)
+        assertTrue(HomeLines.row(unchecked, distances, null, emptySet(), now, screen = lineless).unknown)
+        val closure = DeparturesUiState.Loaded(stops, now, determinedLineIds = setOf("73", "thameslink"), disruptionUnknown = true, stopsDisruptionUnknown = setOf("near"))
+        assertTrue(HomeLines.row(closure, distances, null, emptySet(), now, screen = shownBus).unknown)
+    }
+
+    @Test
+    fun `the screen's lines are its rows', its journey cards' and its farther cards', each card's line by the nearest card`() {
+        fun departureRow(stopId: String, lineId: String, mode: String) = app.stopdash.domain.DepartureRow(
+            stopId = stopId, stopName = stopId, lineId = lineId, lineName = lineId.uppercase(), direction = "outbound",
+            directionKey = "outbound", destination = "Somewhere", mode = mode, upcoming = emptyList(), fetchedAt = now,
+        )
+        fun card(key: String, meters: Double, vararg lines: LineRef) =
+            FartherCard(app.stopdash.domain.CollapsedPlaces.Place(key, key, key, meters, lines.toList()))
+        val victoria = LineRef("victoria", "Victoria", "tube")
+        val screen = HomeLines.ScreenLines.of(
+            rows = listOf(departureRow("a", "73", "bus"), departureRow("b", "73", "bus")),
+            cardRows = listOf(departureRow("c", "northern", "tube")),
+            farther = listOf(card("far", 2000.0, victoria), card("near", 900.0, victoria, LineRef("dlr", "DLR", "dlr"))),
+        )
+        assertEquals(listOf("73", "northern", "victoria", "dlr"), screen.lines.map { it.id })
+        assertFalse(screen.lineless)
+        assertTrue(HomeLines.ScreenLines.of(listOf(departureRow("a", "", "bus")), emptyList(), emptyList()).lineless)
+        // Only the cards' own are asked about beside the list's: the rows' lines are the list's to check.
+        assertEquals(setOf("victoria", "dlr"), screen.farIds)
+        // An opened card shows its departures as rows, not its lines (Codex, #930): only the rows' lines count.
+        // Opened with nothing listed, it still stands as its card, its lines with it.
+        val station = app.stopdash.domain.StopLocation("940GZZLUKSX", "King's Cross", 0.0, 0.0, listOf(victoria, LineRef("northern", "Northern", "tube")))
+        val opened = FartherCard(
+            app.stopdash.domain.CollapsedPlaces.Place("station:kx", "kx", "King's Cross", 1200.0, listOf(victoria, LineRef("northern", "Northern", "tube"))),
+            FartherLoad.Open(listOf(station), mapOf(station.id to 1200.0)),
+        )
+        val withRows = HomeLines.ScreenLines.of(listOf(departureRow("940GZZLUKSX", "victoria", "tube")), emptyList(), listOf(opened))
+        assertEquals(listOf("victoria"), withRows.lines.map { it.id })
+        assertTrue(withRows.farIds.isEmpty())
+        val nothingListed = HomeLines.ScreenLines.of(emptyList(), emptyList(), listOf(opened))
+        assertEquals(listOf("victoria", "northern"), nothingListed.lines.map { it.id })
+        assertEquals(mapOf("victoria" to 900.0, "dlr" to 900.0), screen.meters)
     }
 
     @Test
@@ -480,7 +588,7 @@ class HomeLinesTest {
         val trip = listOf(LineRef("victoria", "Victoria", "tube"), LineRef("elizabeth", "Elizabeth line", "elizabeth-line"))
         val chosen = setOf("northern")
         val waiting = HomeLines.row(loaded, near, null, emptySet(), now, networks = chosen, tripLines = trip)
-        assertEquals(setOf("73", "victoria", "elizabeth", "northern"), waiting.every.mapTo(HashSet()) { it.leg.lineId })
+        assertEquals(setOf("73", "victoria", "elizabeth", "northern"), waiting.watchedIds.toSet())
         assertTrue(row(waiting, "victoria").checking)
         assertFalse(waiting.unknown)
         // Once asked: as bad as the near bus, the trip's lines rank with it as the rider's own, ahead of a
@@ -567,19 +675,31 @@ class HomeLinesTest {
             loaded, distances, HomeLines.Always(closed, now), emptySet(), now,
             networks = chosen, lineMeters = mapOf("circle" to 900.0, "metropolitan" to 1200.0),
         )
-        assertEquals(listOf("circle", "northern", "metropolitan", "hammersmith-city"), unfetched.lines.map { it.lineId })
+        assertEquals(listOf("northern", "circle", "metropolitan", "hammersmith-city"), unfetched.lines.map { it.lineId })
+        // On the screen, a card's line is the rider's own too (maintainer, 2026-10-17), by the card's distance: the
+        // Circle's at 900 m goes first, then the Northern's listed stop, then the Metropolitan's card.
+        val circle = LineRef("circle", "Circle", "tube")
+        val metropolitan = LineRef("metropolitan", "Metropolitan", "tube")
+        val screen = HomeLines.ScreenLines(
+            listOf(LineRef("73", "73", "bus"), LineRef("northern", "Northern", "tube"), circle, metropolitan),
+            meters = mapOf("circle" to 900.0, "metropolitan" to 1200.0),
+        )
+        val onScreen = HomeLines.row(loaded, distances, HomeLines.Always(closed, now), emptySet(), now, networks = chosen, screen = screen)
+        assertEquals(listOf("circle", "northern", "metropolitan", "hammersmith-city"), onScreen.lines.map { it.lineId })
     }
 
     @Test
     fun `a star counts at its own stop, not at another fetched stop the line serves`() {
-        // The 38 starred at a stop gone from the list; another far stop, fetched, also serves it: that stop
-        // doesn't stand in for the star (Codex, #640). Starred at the fetched stop, it does.
+        // The 38 starred at a stop gone from the list; another far stop, fetched, also serves it, though the screen
+        // doesn't show it there (a hidden mode, say): that stop doesn't stand in for the star (Codex, #640).
+        // Starred at the fetched stop, it does.
         val loaded = DeparturesUiState.Loaded(listOf(stop("other", "38" to "bus")), now, determinedLineIds = setOf("38"))
         val far = mapOf("other" to 2000.0)
-        val elsewhere = HomeLines.row(loaded, far, null, emptySet(), now, starred = setOf(app.stopdash.domain.StarredRow("gone", "38", "outbound")))
+        val none = HomeLines.ScreenLines(emptyList())
+        val elsewhere = HomeLines.row(loaded, far, null, emptySet(), now, starred = setOf(app.stopdash.domain.StarredRow("gone", "38", "outbound")), screen = none)
         assertTrue(elsewhere.every.none { it.leg.lineId == "38" })
-        val here = HomeLines.row(loaded, far, null, emptySet(), now, starred = setOf(app.stopdash.domain.StarredRow("other", "38", "outbound")))
-        assertEquals(listOf("38"), here.every.map { it.leg.lineId })
+        val here = HomeLines.row(loaded, far, null, emptySet(), now, starred = setOf(app.stopdash.domain.StarredRow("other", "38", "outbound")), screen = none)
+        assertEquals(listOf("38"), here.watchedIds)
     }
 
     @Test

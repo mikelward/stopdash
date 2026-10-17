@@ -4908,8 +4908,8 @@ class TripScreenScreenshotTest {
     fun home_lines_in_sections() {
         // The home screen's page: the watched lines under one heading, the rest under another, each in the
         // pills' order (maintainer, 2026-10-17). A trip's page, with no sections, has neither. Under *Watched*, a
-        // line the rider chose (the Central, far away) with those near them; under *Other*, a farther stop's
-        // lines the list couldn't check.
+        // line the rider chose (the Central, far away) with those on the screen; under *Other*, every other rail
+        // line, worst first, then as Settings' chips go, one still being asked about.
         fun line(mode: String, id: String, name: String) = leg(mode, id, name, "A" to "King's Cross", "B" to "Euston", 0, 10, 2)
         val row = TripRow(
             checking = false,
@@ -4917,8 +4917,10 @@ class TripScreenScreenshotTest {
                 TripLine(line("tube", "central", "Central"), LineStatus("central", 2, "Suspended"), watched = true),
                 TripLine(line("tube", "victoria", "Victoria"), LineStatus("victoria", 9, "Minor Delays"), watched = true),
                 TripLine(line("bus", "73", "73"), LineStatus("73", LineStatus.GOOD_SERVICE, "Good Service"), watched = true),
-                TripLine(line("bus", "38", "38"), status = null, unknown = true, watched = false),
-                TripLine(line("bus", "390", "390"), status = null, unknown = true, watched = false),
+                TripLine(line("tube", "jubilee", "Jubilee"), LineStatus("jubilee", 6, "Severe Delays"), watched = false),
+                TripLine(line("dlr", "dlr", "DLR"), LineStatus("dlr", 9, "Minor Delays"), watched = false),
+                TripLine(line("tube", "bakerloo", "Bakerloo"), LineStatus("bakerloo", LineStatus.GOOD_SERVICE, "Good Service"), watched = false),
+                TripLine(line("elizabeth-line", "elizabeth", "Elizabeth line"), status = null, checking = true, watched = false),
             ),
         )
         composeRule.setContent { StopDashTheme { Surface { TripLinesContent(row, modifier = Modifier.padding(vertical = 16.dp), watchedCount = 3) } } }
@@ -4928,7 +4930,7 @@ class TripScreenScreenshotTest {
         headings[1].assertTextEquals("Other")
         val top = { name: String -> composeRule.onNode(hasContentDescription(name), useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top }
         val otherTop = headings[1].fetchSemanticsNode().boundsInRoot.top
-        assertTrue(top("73") < otherTop && otherTop < top("38"))
+        assertTrue(top("73") < otherTop && otherTop < top("Jubilee"))
         captureSnapshot("home-lines.png")
     }
 

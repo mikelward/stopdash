@@ -3539,8 +3539,8 @@ internal class TripRow(
     val linesUnknown: Boolean = every.any { it.unknown }
 
     /**
-     * Whether a line in [every] has a disruption at all, counted among the pills or not: dismissed, or
-     * left beside a milder one. With no pill, the home card says "No watched disruptions" beside an ⓘ for
+     * Whether a line in [every] has a disruption at all, counted among the pills or not: dismissed, left
+     * beside a milder one, or under *Other*, as its check last found it. With no pill, the home card says "No watched disruptions" beside an ⓘ for
      * it, else "No line disruptions" (maintainer, 2026-10-17). Worked out with the row, on the worker.
      */
     val linesDisrupted: Boolean = every.any { it.disrupted || it.quieted != null }
@@ -4118,6 +4118,12 @@ internal class LineWatch(
 )
 
 internal val LocalLineWatch = compositionLocalOf<LineWatch?> { null }
+
+/**
+ * Told when the home screen's lines page opens (true) and closes (false), for its *Other* to be asked about
+ * meanwhile ([MainViewModel.linesPage]); null tells nothing.
+ */
+internal val LocalLinesPage = compositionLocalOf<((Boolean) -> Unit)?> { null }
 
 /**
  * The rider's own stops ([HomeLines.riderStops]) where a lines page's row carries none (a trip's, which

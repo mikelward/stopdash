@@ -62,6 +62,12 @@ internal class JourneySegments(val segments: Map<String, JourneySegment?>, val u
  * worked out with [of] on the worker, which hands back the last one when the value is the same, so the
  * main thread never walks a collection to tell (AGENTS.md *Main thread: read and dispatch only*).
  */
+/**
+ * The lines the home screen shows ([lines]), worked out from the rows [from] holds, and those only its farther cards
+ * show, as told to the model ([ids], the last report's while unchanged).
+ */
+internal class ScreenLinesWorked(val from: Any, val lines: HomeLines.ScreenLines, val ids: Reported<Set<String>>)
+
 internal class Reported<T>(val value: T) {
     companion object {
         /** [value], as [last] when that holds the same (compared by equals, on the worker). */
@@ -106,6 +112,7 @@ internal class CardReports(
  */
 @Stable
 class ListWork {
+    internal val screenLines: MutableState<Worked<Inputs, ScreenLinesWorked>?> = mutableStateOf(null)
     internal val alertLines: MutableState<Worked<Inputs, Set<String>>?> = mutableStateOf(null)
     internal val alertVerdicts: MutableState<Worked<Inputs, AlertPlacement?>?> = mutableStateOf(null)
     internal val rows: MutableState<Worked<ListInputs, ListRows?>?> = mutableStateOf(null)

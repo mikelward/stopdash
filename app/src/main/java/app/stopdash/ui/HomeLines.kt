@@ -3,12 +3,12 @@ package app.stopdash.ui
 import androidx.annotation.WorkerThread
 import androidx.compose.ui.graphics.Color
 import app.stopdash.domain.ActiveTrip
+import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.LineMap
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.ModeGroups
-import app.stopdash.domain.NearbySelection
 import app.stopdash.domain.NearestByLine
 import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.FavoriteJourney
@@ -28,10 +28,11 @@ import kotlinx.coroutines.flow.map
 
 /**
  * The home screen's disruptions row (maintainer, 2026-10-05): the trip's one-row summary ([TripRow])
- * over the lines a rider near here may take: every line of the networks they chose ([Network], none
- * by default), their favorites' lines (a journey's wherever it is, a starred row's in the list), and each line with a departure (or the
- * list's status row for one with an alert and none) from a stop within the walking reach ([NEARBY_METERS], the list's eager radius). A tap opens the same lines
- * page as a trip's ([TripLinesPage]).
+ * over the lines the rider watches: every line the home screen shows (maintainer, 2026-10-17: its rows'
+ * and its farther cards', [ScreenLines]), their favorites' lines (a journey's wherever it is, a starred
+ * row's in the list), the trip's on the way, and every line they chose ([Network], none by default). A
+ * tap opens the same lines page as a trip's ([TripLinesPage]), which lists every other rail line too,
+ * under *Other* ([RAIL]).
  */
 object HomeLines {
     /**
@@ -107,6 +108,19 @@ object HomeLines {
         ModeGroups.of("overground") to Network.OVERGROUND.lines,
         ModeGroups.of("tram") to Network.TRAM.lines,
     )
+
+    /**
+     * Every rail line (maintainer, 2026-10-17): the tube's, the DLR, the Elizabeth line, the Overground's and
+     * the tram, in [PICKER]'s order. The lines page lists each the rider doesn't watch under *Other*, asked
+     * about only while the page is open ([MainViewModel.linesPage]).
+     */
+    val RAIL: List<LineRef> = PICKER.flatMap { it.second }
+
+    /** [RAIL]'s ids. */
+    val RAIL_IDS: Set<String> = RAIL.mapTo(LinkedHashSet()) { it.id }
+
+    // Each rail line's place in [RAIL], which orders *Other*'s lines as bad as each other as the chips are.
+    private val RAIL_ORDER: Map<String, Int> = RAIL.withIndex().associate { (i, line) -> line.id to i }
 
     /** Each [PICKER] chip's network, by line id, for a choice an older build stored by network key. */
     private val NETWORK_KEYS: Map<String, String> = Network.entries.flatMap { network -> network.lines.map { it.id to network.key } }.toMap()
@@ -270,8 +284,49 @@ object HomeLines {
         return k
     }
 
-    /** How near a stop counts: the near-me list's walking reach (maintainer, 2026-10-05). */
-    const val NEARBY_METERS: Int = NearbySelection.EAGER_RADIUS_METERS
+    /**
+     * The lines the home screen shows (maintainer, 2026-10-17: what it shows is what the rider watches): its
+     * rows' and its farther cards', each once, and how far each card is ([meters], by line, the nearest card's).
+     */
+    class ScreenLines(
+        val lines: List<LineRef>,
+        val meters: Map<String, Double> = emptyMap(),
+        // The lines only a farther card shows, whose stop isn't fetched, so the list's own check never asks about
+        // them: asked about with the always-covered lines ([MainViewModel.screenLines]).
+        val farIds: Set<String> = emptySet(),
+        // Whether a drawn row has no line to check: the row's "Unknown" says so, not for a hidden row's.
+        val lineless: Boolean = false,
+    ) {
+        companion object {
+            /**
+             * From the [rows] the list draws, its journey cards' [cardRows] and its [farther] cards: a line with a
+             * departure or a status row, and every line a card names while it shows them, collapsed. An opened card
+             * shows its departures as the list's own rows instead (Codex, #930), so its lines are those rows';
+             * one opened with nothing to list still stands as its card. On a worker only.
+             */
+            @WorkerThread
+            fun of(rows: List<DepartureRow>, cardRows: List<DepartureRow>, farther: List<FartherCard>): ScreenLines {
+                val lines = LinkedHashMap<String, LineRef>()
+                var lineless = false
+                for (row in rows + cardRows) {
+                    if (row.lineId.isNotBlank()) lines.putIfAbsent(row.lineId, LineRef(row.lineId, row.lineName, row.mode)) else lineless = true
+                }
+                val listed = lines.keys.toSet()
+                val drawnStops = (rows + cardRows).mapTo(HashSet()) { it.stopId }
+                val meters = HashMap<String, Double>()
+                for (card in farther) {
+                    val open = card.load as? FartherLoad.Open
+                    if (open != null && open.stops.any { it.id in drawnStops }) continue
+                    card.place.lines.forEach { line ->
+                        if (line.id.isBlank()) return@forEach
+                        lines.putIfAbsent(line.id, line)
+                        if (card.place.meters < (meters[line.id] ?: Double.MAX_VALUE)) meters[line.id] = card.place.meters
+                    }
+                }
+                return ScreenLines(lines.values.toList(), meters, lines.keys - listed, lineless)
+            }
+        }
+    }
 
     /**
      * The always-covered lines as the list's last check found them: the [statuses] TfL gave (good or not;
@@ -293,9 +348,11 @@ object HomeLines {
 
     /**
      * The row for the list as it stands ([loaded], null while none is), the stops' distances ([distances],
-     * empty for the watched list, whose every stop counts), the [networks] the rider chose to cover (by key) and
-     * their check ([always]), and what the rider [dismissed]. A line both lists is judged by the list's
-     * own check where it has one. Walks every stop's departures: on a worker only.
+     * empty for the watched list), the [networks] the rider chose to cover (by key) and the check of every line
+     * the list doesn't check itself ([always]), and what the rider [dismissed]. A line both lists is judged by
+     * the list's own check where it has one. The lines the screen shows ([screen]) are watched, wherever they
+     * are (maintainer, 2026-10-17); with none given, every stop's are. Walks every stop's departures: on a
+     * worker only.
      */
     @WorkerThread
     internal fun row(
@@ -324,29 +381,36 @@ object HomeLines {
         tripLines: List<LineRef> = emptyList(),
         // The kept trip can't be read ([TripLines.unread]): its lines can't be named, so the row says "Unknown".
         tripUnread: Boolean = false,
+        // The lines the home screen shows ([ScreenLines]), every one watched; null for every stop's in the list.
+        screen: ScreenLines? = null,
     ): TripRow {
         val alwaysLines = linesOf(networks)
         val refs = LinkedHashMap<String, LineRef>()
         alwaysLines.forEach { refs[it.id] = it }
-        val near = loaded?.stops.orEmpty().filter { stop ->
-            distances.isEmpty() || distances[stop.stopId]?.let { it <= NEARBY_METERS } == true
-        }
-        // A line with a departure; a declared one only with an alert, the status row the list shows for a
-        // line with none (a suspended one), never every route a stop could serve (Codex, #577).
-        val alerts = loaded?.lineStatuses.orEmpty()
-        // The lines near the rider, an always-covered one among them: ranked ahead of the rest within a severity.
+        // The lines on the screen, an always-covered one among them: watched wherever they are (maintainer,
+        // 2026-10-17), and ranked ahead of the rest within a severity.
         val nearby = HashSet<String>()
-        for (stop in near) {
-            stop.departures.forEach {
-                if (it.lineId.isNotBlank()) {
-                    refs.putIfAbsent(it.lineId, LineRef(it.lineId, it.lineName, it.mode))
-                    nearby += it.lineId
-                }
+        if (screen != null) {
+            screen.lines.forEach {
+                refs.putIfAbsent(it.id, it)
+                nearby += it.id
             }
-            stop.lines.forEach {
-                if (it.id.isNotBlank() && alerts[it.id]?.hasAlerts == true) {
-                    refs.putIfAbsent(it.id, it)
-                    nearby += it.id
+        } else {
+            // A line with a departure; a declared one only with an alert, the status row the list shows for a
+            // line with none (a suspended one), never every route a stop could serve (Codex, #577).
+            val alerts = loaded?.lineStatuses.orEmpty()
+            for (stop in loaded?.stops.orEmpty()) {
+                stop.departures.forEach {
+                    if (it.lineId.isNotBlank()) {
+                        refs.putIfAbsent(it.lineId, LineRef(it.lineId, it.lineName, it.mode))
+                        nearby += it.lineId
+                    }
+                }
+                stop.lines.forEach {
+                    if (it.id.isNotBlank() && alerts[it.id]?.hasAlerts == true) {
+                        refs.putIfAbsent(it.id, it)
+                        nearby += it.id
+                    }
                 }
             }
         }
@@ -372,29 +436,35 @@ object HomeLines {
         }
         journeys.forEach { if (it.lineId.isNotBlank()) refs.putIfAbsent(it.lineId, it.line) }
         tripLines.forEach { refs.putIfAbsent(it.id, it) }
+        // Asked about with the always-covered lines: a farther card's line too, whose stop isn't fetched.
         val alwaysIds = alwaysLines.mapTo(HashSet()) { it.id }.apply {
             journeys.forEach { if (it.lineId.isNotBlank()) add(it.lineId) }
             tripLines.forEach { add(it.id) }
+            screen?.farIds?.let { addAll(it) }
         }
         // Each line's stop nearest the rider within reach, which its map keeps on the page.
         val nearest = NearestByLine.merged(loaded?.stops.orEmpty(), nearestStops, distances)
         val listChecked = loaded?.determinedLineIds.orEmpty()
         // What the list couldn't check, said here in place of its banner (maintainer, 2026-10-05): its line
-        // whose check didn't answer, a farther stop's too, named among the unchecked; a stop whose closure
-        // check failed, named on the page; and anything else (a departure with no line to check) as the
-        // row's "Unknown" alone, never left unsaid.
-        val listUnknown = loaded != null && loaded.disruptionUnknown && !loaded.checkingDisruptions
-        if (listUnknown) {
-            for (stop in loaded.stops) {
-                stop.departures.forEach {
-                    if (it.lineId.isNotBlank() && it.lineId !in listChecked) refs.putIfAbsent(it.lineId, LineRef(it.lineId, it.lineName, it.mode))
-                }
-            }
-        }
+        // whose check didn't answer, a farther stop's too, named among the unchecked (every line it shows is
+        // watched); a stop whose closure check failed, named on the page; and anything else (a departure with
+        // no line to check) as the row's "Unknown" alone, never left unsaid. With the screen's lines, only what
+        // the screen shows: a hidden mode's line the list couldn't check never makes the card say so (Codex, #930).
+        val listUnknown = loaded != null && loaded.disruptionUnknown && !loaded.checkingDisruptions &&
+            (screen == null || loaded.stopsDisruptionUnknown.isNotEmpty() || screen.lineless)
         val unknownStops = if (listUnknown) {
             loaded.stops.filter { it.stopId in loaded.stopsDisruptionUnknown }.map { it.stopName }.distinct().joinToString(", ")
         } else {
             ""
+        }
+        // Every other rail line, listed under *Other* (maintainer, 2026-10-17) and asked about only while the
+        // lines page is open: never a pill, nor the card's "Checking…" or "Unknown".
+        val otherIds = HashSet<String>()
+        for (line in RAIL) {
+            if (line.id !in refs) {
+                refs[line.id] = line
+                otherIds += line.id
+            }
         }
         // Each line's status as checked (good or not), and whether it's checked at all.
         val raw = HashMap<String, LineStatus>()
@@ -410,6 +480,8 @@ object HomeLines {
                     known += id
                     always.statuses.getValue(id).takeIf { it.hasAlerts }?.let { raw[id] = it }
                 }
+                // Asked about once the page opens, so "Checking…" until a check that asked about it is in.
+                id in otherIds -> if (always == null || refreshing || id !in always.askedFor) checking += id
                 // Still being asked: a cold load's line not back yet, an always-covered line before its
                 // first check, or while a refresh is under way, its last check too old to stand (back from
                 // the background, say), or one just chosen that no check has asked about yet: "Checking…",
@@ -436,6 +508,7 @@ object HomeLines {
         // Each line's nearest stop, however far, the list's or the near-me lookup's (Codex, #710): as bad and
         // as much the rider's own, the nearer goes first.
         val closest = HashMap<String, Double>(lineMeters)
+        screen?.meters?.forEach { (id, d) -> if (d < (closest[id] ?: Double.MAX_VALUE)) closest[id] = d }
         for (stop in loaded?.stops.orEmpty()) {
             val d = distances[stop.stopId] ?: continue
             fun note(id: String) {
@@ -465,27 +538,33 @@ object HomeLines {
                 unknown = id !in known && id !in checking,
                 nearby = nearest[id]?.let { setOf(it) }.orEmpty(),
                 planned = plannedShown(id, was ?: status, dismissed),
-                // Watched (maintainer, 2026-10-17): the rider's own lines and every line they chose to watch.
-                watched = id in mine || id in alwaysIds,
+                // Watched (maintainer, 2026-10-17): the lines on the screen, the rider's own and every line they
+                // chose to watch, which is every line but *Other*'s.
+                watched = id !in otherIds,
             )
-        // The pills' order, and the page's within each of its sections: worst first as a trip's orders them,
-        // then, as bad as each other, the rider's own lines ahead of a network's far away (maintainer,
-        // 2026-10-05), the nearer first, then by name.
-        }.sortedWith(
+        }
+        // The pills' order, and *Watched*'s on the page: worst first as a trip's orders them, then, as bad as
+        // each other, the rider's own lines ahead of a network's far away (maintainer, 2026-10-05), the nearer
+        // first, then by name.
+        val watched = every.filter { it.watched == true }.sortedWith(
             tripLineOrder.thenBy<TripLine> { if (it.leg.lineId in mine) 0 else 1 }
                 .thenBy { closest[it.leg.lineId] ?: Double.MAX_VALUE }
                 .then(byName),
         )
+        // *Other*'s: worst first too, then as Settings' chips go (maintainer, 2026-10-17).
+        val other = every.filter { it.watched != true }.sortedWith(
+            tripLineOrder.thenBy<TripLine> { RAIL_ORDER[it.leg.lineId] ?: Int.MAX_VALUE }.then(byName),
+        )
         // The pills: in that order, worst first, the rider's own ahead of the rest when as bad, so "+N"
         // takes the mildest first (maintainer, 2026-10-07: a far suspension outranks a near minor delay); a
         // dismissed one is never a pill.
-        val disrupted = every.filter { it.disrupted && !it.dismissed }.map { it.leg }
-        val unknown = every.filter { it.unknown }.map { it.leg }
-        // The page in two sections (maintainer, 2026-10-17): the watched lines under *Watched*,
-        // then the rest under *Other*, each in the pills' order.
-        val sectioned = every.filter { it.watched == true } + every.filter { it.watched != true }
+        val disrupted = watched.filter { it.disrupted && !it.dismissed }.map { it.leg }
+        val unknown = watched.filter { it.unknown }.map { it.leg }
+        // The page in two sections (maintainer, 2026-10-17): the watched lines under *Watched*, then every
+        // other rail line under *Other*.
+        val sectioned = watched + other
         return TripRow(
-            checking = checking.isNotEmpty(),
+            checking = (checking - otherIds).isNotEmpty(),
             lines = disrupted,
             unknown = unknown.isNotEmpty() || listUnknown || tripUnread,
             unknownLines = unknown,
