@@ -134,4 +134,25 @@ class CountdownTest {
         // Past its schedule a delayed train hasn't left, which is when it's delayed.
         assertTrue(Countdown.stillShown(delayed, now.plusSeconds(600)))
     }
+
+    @Test
+    fun `a board keeps a tube train a minute past its time, grayed, then drops it`() {
+        val late = departure(offsetSeconds = -30)
+        val next = departure(offsetSeconds = 120)
+        val kept = Countdown.upcoming(listOf(next, late), now, grace = true)
+        assertEquals(listOf(late.copy(overdue = true), next), kept)
+        assertTrue(kept.first().grayed)
+        assertEquals(listOf(Countdown.Part(0, doubtful = false, overdue = true), Countdown.Part(2, doubtful = false)), Countdown.parts(kept, now))
+        // Its grace over, it goes.
+        assertEquals(listOf(next), Countdown.upcoming(listOf(next, departure(offsetSeconds = -60)), now, grace = true))
+    }
+
+    @Test
+    fun `without the grace, or off the tube, a train goes at its time`() {
+        val late = departure(offsetSeconds = -30)
+        assertEquals(emptyList<Departure>(), Countdown.upcoming(listOf(late), now))
+        assertEquals(emptyList<Departure>(), Countdown.upcoming(listOf(late.copy(mode = "bus")), now, grace = true))
+        assertEquals(emptyList<Departure>(), Countdown.upcoming(listOf(late.copy(mode = "elizabeth-line")), now, grace = true))
+        assertFalse(Countdown.inGrace(departure(offsetSeconds = 10), now))
+    }
 }

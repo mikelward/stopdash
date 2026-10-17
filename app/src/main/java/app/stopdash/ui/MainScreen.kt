@@ -5956,7 +5956,8 @@ internal fun RouteDetailScreen(
     val alertStretchIds = alertMarks.stretch
     val alertPlaces = alertMarks.places
     val workForRow = routeWork?.takeIf { it.first === routeAsk }?.second
-    val departures = workForRow?.departures.orEmpty().filterNot { Countdown.hasDeparted(it, now) }
+    // A tube train the board kept past its time stays while its grace lasts ([Countdown.inGrace]).
+    val departures = workForRow?.departures.orEmpty().filter { !Countdown.hasDeparted(it, now) || (it.overdue && Countdown.inGrace(it, now)) }
     // The route's trains its board lists with no time, among its countdowns in their place; a
     // canceled one gone at its time, as a timed one is ([Countdown.stillShown]).
     val untimed = workForRow?.untimed.orEmpty().filter { Countdown.stillShown(it, now) }
@@ -6816,8 +6817,9 @@ internal fun doubtfulTimes(parts: List<Countdown.Part>): Pair<AnnotatedString, S
     val gray = MaterialTheme.colorScheme.outline
     val plain = stringResource(R.string.countdown_time_description)
     val doubtful = stringResource(R.string.countdown_time_doubtful_description)
+    val overdue = stringResource(R.string.countdown_time_overdue_description)
     // Built once per change of the times, not on every recomposition.
-    return remember(parts, gray, plain, doubtful) {
+    return remember(parts, gray, plain, doubtful, overdue) {
         val text = buildAnnotatedString {
             parts.forEachIndexed { i, part ->
                 if (i > 0) append(" · ")
@@ -6826,7 +6828,13 @@ internal fun doubtfulTimes(parts: List<Countdown.Part>): Pair<AnnotatedString, S
             if (parts.isNotEmpty()) append(" min")
         }
         val spoken = if (parts.none { it.grayed }) null
-        else parts.joinToString(", ") { (if (it.doubtful) doubtful else plain).format(it.minutes.toString()) }
+        else parts.joinToString(", ") {
+            when {
+                it.overdue -> overdue.format(it.minutes.toString())
+                it.doubtful -> doubtful.format(it.minutes.toString())
+                else -> plain.format(it.minutes.toString())
+            }
+        }
         text to spoken
     }
 }
@@ -6840,7 +6848,9 @@ internal fun doubtfulTimes(parts: List<Countdown.Part>): Pair<AnnotatedString, S
 internal fun spokenCountdown(entries: List<Countdown.Entry>, now: Instant, early: List<Boolean>? = null): String =
     entries.mapIndexed { i, entry ->
         when (entry) {
-            is Countdown.Entry.Timed -> stringResource(
+            is Countdown.Entry.Timed -> if (entry.departure.overdue && early?.getOrNull(i) != true) {
+                stringResource(R.string.countdown_time_overdue_description, Countdown.minutes(entry.departure.expectedArrival, now).toString())
+            } else stringResource(
                 when {
                     early?.getOrNull(i) == true -> R.string.countdown_time_unusable_description
                     entry.departure.mayNotRun -> R.string.countdown_time_doubtful_description

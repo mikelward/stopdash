@@ -241,11 +241,11 @@ internal fun listRowsOf(
 ): ListRows {
     val stops = source.stops
     val lineStatuses = source.lineStatuses
-    val all = DepartureRows.withAlertsBehind(DepartureRows.withoutDismissed(DepartureRows.across(stops, now, lineStatuses), dismissed), alertSequences)
+    val all = DepartureRows.withAlertsBehind(DepartureRows.withoutDismissed(DepartureRows.across(stops, now, lineStatuses, grace = true), dismissed), alertSequences)
     // A near-me list shows its nearby stops only: a journey's farther origin, fetched for its card,
     // isn't one of them (SPEC *Journeys*).
     val shownStops = if (stopDistanceMeters.isEmpty()) stops else stops.filter { it.stopId in stopDistanceMeters }
-    val across = HiddenModes.rows(DepartureRows.across(shownStops, now, lineStatuses), hiddenModes)
+    val across = HiddenModes.rows(DepartureRows.across(shownStops, now, lineStatuses, grace = true), hiddenModes)
     // A "near me now" list (distances present) shows a line once, from its nearest stop, then orders
     // closest-stop-first (soonest breaks a same-stop tie). A location-free list keeps across's
     // soonest-first order (D1).
@@ -353,7 +353,7 @@ internal fun platformViewOf(
         else stops.filter { it.stopId in ids }
     val stopRows = DepartureRows.pinStarred(
         DepartureRows.withAlertsBehind(
-            DepartureRows.withoutDismissed(HiddenModes.rows(DepartureRows.across(platformStops, now, lineStatuses), hiddenModes), dismissed),
+            DepartureRows.withoutDismissed(HiddenModes.rows(DepartureRows.across(platformStops, now, lineStatuses, grace = true), hiddenModes), dismissed),
             alertSequences,
         ),
         starred,

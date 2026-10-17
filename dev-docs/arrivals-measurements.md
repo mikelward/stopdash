@@ -31,6 +31,7 @@ Recordings stay outside the repository (AGENTS.md *Privacy*). All of these stops
 | Evening | Tue 19:01 – 20:31 | 15 below |
 | End of morning peak | Wed 2026-10-14, 09:14 – 10:14 | Camden Town, Euston, King's Cross, Tottenham Court Road |
 | End of morning peak | Fri 2026-10-16, 09:17 – 11:14 | 15 below |
+| Saturday afternoon | Sat 2026-10-17, 15:09 – 16:39 | 15 below |
 
 The 15: King's Cross, Bond Street, Liverpool Street, Stratford, Waterloo, Camden Town,
 Stockwell, Baker Street, Farringdon, Paddington (both tube stations), and the Elizabeth line at
@@ -230,9 +231,25 @@ feed: in 3, one train left the board near its due time without being placed at t
 Numbers only: one hour at four stations at the end of a peak, judged by TfL's own record, which
 settles neither signal. A station display, watched alongside, is what would.
 
+## Lateness past the shown time
+
+How long after its last shown time a tube train reached the platform, for trains last shown a
+minute or less away. Arrival is halfway between the poll that first had it "At Platform" and the
+one before, so each is good to about ±10 s.
+
+| Window | Trains | Median late | 75th | 90th | Over 30 s | Over 60 s |
+|---|---|---|---|---|---|---|
+| Tue morning peak | 706 | 20 s | 40 s | 64 s | 38% | 11% |
+| Tue midday | 412 | 13 s | 38 s | 56 s | 33% | 8% |
+| Tue evening | 312 | 19 s | 39 s | 68 s | 37% | 12% |
+| Sat afternoon | 457 | 10 s | 34 s | 54 s | 31% | 8% |
+
+By line, the Northern is latest every time (median 25–31 s, 16–23% over a minute), the Hammersmith
+& City and Circle near it; the Jubilee and Bakerloo run about on time (median 0–14 s). So the boards
+keep a tube train 60 s past its time, grayed: 30 s would drop about a third of trains still coming.
+
 ## Not yet measured
 
 - A weekend morning.
-- The 30 s grace: how late trains in their last minute arrive, per line.
 - Platforms two lines share (Circle and District at Victoria, say). Spacing treats each line
   separately, though the trains share one track.

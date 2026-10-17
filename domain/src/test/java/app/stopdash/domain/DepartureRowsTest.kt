@@ -2951,4 +2951,15 @@ class DepartureRowsTest {
         assertEquals(listOf("victoria", "bakerloo"), sorted.map { it.lineId })
         assertTrue(sorted.last().quiet)
     }
+
+    @Test
+    fun `the in-app list keeps a tube train in its grace, grayed, and a glance surface drops it on time`() {
+        val late = departure("victoria", "Victoria", "outbound", "Brixton", -20, platform = "Southbound - Platform 5")
+        val next = departure("victoria", "Victoria", "outbound", "Brixton", 150, platform = "Southbound - Platform 5")
+        val stop = StopArrivals("940GZZLUEUS", "Euston", listOf(late, next), fetchedAt = now)
+        val listed = DepartureRows.across(listOf(stop), now, grace = true).single()
+        assertEquals(listOf(late.copy(overdue = true), next), listed.upcoming)
+        assertTrue(listed.upcoming.first().grayed)
+        assertEquals(listOf(next), DepartureRows.across(listOf(stop), now).single().upcoming)
+    }
 }

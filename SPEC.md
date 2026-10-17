@@ -717,6 +717,15 @@ shown stay until they go stale, as after any failed refresh; and a widget or wat
 list behind it may keep its saved times until they're past reuse (under a minute) before fetching
 under the new choice.
 
+**A tube train stays a minute past its time, grayed** (maintainer, 2026-10-17). Recordings at hubs
+found tube trains shown a minute or less away reaching the platform a median 10–28 seconds after their
+last shown time, a third over 30 seconds after it, and about one in ten over a minute
+(`dev-docs/arrivals-measurements.md`). Dropped at its time, a train often vanishes while the rider
+watches it pull in, so the in-app boards keep a tube train for **60 seconds** past its time, its "0"
+grayed and read aloud as "0 min, running late", then drop it. Only the tube was measured, so other modes
+still go at their time; the widget and watch, which don't gray, drop it at its time too, as does
+anything that counts on a train (a trip).
+
 **The unit of display is one card per platform or pole** (maintainer, 2026-09-22) — a
 group of same-cluster stops split by platform / stop letter (see below). Each card is
 headed by a **single title-case line** naming the place and that platform/pole, and holds
@@ -4893,7 +4902,8 @@ Mirrors the sibling fleet:
   "quietly wrong" failure; the disruption is what makes the number trustworthy or not.
 - **D4 — No surface presents stale data as live.** Data is stamped with its fetch age;
   countdowns recompute from the fetch time client-side; an expired prediction drops off
-  the list rather than sticking at "0 min"; and a single shared staleness threshold (one
+  the list rather than sticking at "0 min" (a tube train grayed for a minute's grace first, *A tube
+  train stays a minute past its time*); and a single shared staleness threshold (one
   tuned constant, not a per-surface number) decides when numbers are withheld for "tap
   to refresh".
   - **The stale stand-in is a marked guess (maintainer, 2026-10-04).** Past the threshold, a

@@ -46,13 +46,16 @@ object DepartureRows {
         // Each line's mode as the stop advertises it: a row whose predictions all leave the mode
         // blank (TfL can omit `modeName`) takes it from here, so hidden modes and line colors hold.
         lineModes: Map<String, String> = emptyMap(),
+        // Keep a tube train past its time for [Countdown.OVERDUE_GRACE], grayed: the in-app boards do,
+        // where a rider may be watching it pull in; a glance surface, which doesn't gray, drops it on time.
+        grace: Boolean = false,
     ): List<DepartureRow> =
         // upcoming() drops departed services and sorts soonest-first. Directions are inferred over the
         // whole snapshot, before departed services drop, so a blank train keeps its inferred row (and a
         // star pinned to it) after the tagged ones leave. The client already infers at fetch time; this
         // covers a snapshot saved before it did.
         rowsOf(
-            stopId, stopName, Countdown.upcoming(inferDirections(departures), now), lineStatuses, fetchedAt,
+            stopId, stopName, Countdown.upcoming(inferDirections(departures), now, grace), lineStatuses, fetchedAt,
             clusterId, stopLetter, bearing, towards, splitPlatforms, lineModes,
         )
 
@@ -139,6 +142,8 @@ object DepartureRows {
         // Only the in-app near-me list asks: it decides from the timetable which to show, and a glance
         // surface has no timetable to decide with.
         quietRows: Boolean = false,
+        // [forStop]'s grace for a tube train past its time; the in-app list asks.
+        grace: Boolean = false,
     ): List<DepartureRow> {
         // Planned work whose day has come shows as under way, however long ago it was fetched.
         val lineStatuses = LineStatus.asOf(lineStatuses, now)
@@ -160,7 +165,7 @@ object DepartureRows {
                 forStop(
                     stop.stopId, stop.stopName, shown, now, lineStatuses, stop.fetchedAt,
                     stop.clusterId, stop.stopLetter, stop.bearing, stop.towards, splitPlatforms,
-                    lineModes = lineModes,
+                    lineModes = lineModes, grace = grace,
                 ),
                 untimed,
             ) { alone ->

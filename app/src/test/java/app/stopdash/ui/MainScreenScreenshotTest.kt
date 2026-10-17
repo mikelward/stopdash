@@ -3245,8 +3245,8 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithText("Edgware", substring = true).assertExists()
         composeRule.onNodeWithText("High Barnet", substring = true).assertExists()
         // The screen's clock moves on, the data and the minute tick don't: the train that has left goes
-        // at once, and the "?" row stays.
-        composeRule.runOnIdle { screenNow = now.plusSeconds(60) }
+        // at once once its grace is over ([Countdown.OVERDUE_GRACE]), and the "?" row stays.
+        composeRule.runOnIdle { screenNow = now.plusSeconds(90) }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("High Barnet", substring = true).assertDoesNotExist()
         composeRule.onNodeWithContentDescription("Times unknown").assertExists()

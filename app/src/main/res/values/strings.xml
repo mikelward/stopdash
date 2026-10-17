@@ -542,6 +542,9 @@
     <string name="countdown_time_description">%1$s min</string>
     <string name="countdown_time_unusable_description">%1$s min, can\'t catch</string>
     <string name="countdown_time_doubtful_description">%1$s min, may not be running</string>
+    <!-- TODO: translate -->
+    <!-- A tube train whose time has passed but which may still come, grayed for a minute. -->
+    <string name="countdown_time_overdue_description" tools:ignore="MissingTranslation">%1$s min, running late</string>
     <!-- A National Rail train its board lists as canceled, in a countdown in place of its minutes. -->
     <string name="countdown_canceled">Canceled</string>
     <!-- A National Rail train its board lists as delayed with no estimate, in a countdown in place of

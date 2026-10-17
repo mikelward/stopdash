@@ -61,9 +61,12 @@ object Countdown {
         return departures.joinToString(" · ") { minutes(it.expectedArrival, now).toString() } + " min"
     }
 
-    /** One train's minutes in a merged countdown ([minutes]), and whether it may not run ([Departure.mayNotRun]). */
-    data class Part(val minutes: Long, val doubtful: Boolean) {
-        val grayed: Boolean get() = doubtful
+    /**
+     * One train's minutes in a merged countdown ([minutes]), whether it may not run ([Departure.mayNotRun]),
+     * and whether its time has passed in its grace ([Departure.overdue]).
+     */
+    data class Part(val minutes: Long, val doubtful: Boolean, val overdue: Boolean = false) {
+        val grayed: Boolean get() = doubtful || overdue
     }
 
     /**
@@ -71,7 +74,7 @@ object Countdown {
      * not; read as [mergedLabel] reads them.
      */
     fun parts(departures: List<Departure>, now: Instant): List<Part> =
-        departures.map { Part(minutes(it.expectedArrival, now), it.mayNotRun) }
+        departures.map { Part(minutes(it.expectedArrival, now), it.mayNotRun, it.overdue) }
 
     /**
      * One time in a merged countdown: a train's [Timed] minutes, or a train its board lists with no
@@ -128,8 +131,31 @@ object Countdown {
     private val LONDON: ZoneId = ZoneId.of("Europe/London")
     private val STALE_CLOCK: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
-    /** [departures] that have not yet gone, soonest-first (ties broken by line for stability). */
-    fun upcoming(departures: List<Departure>, now: Instant): List<Departure> =
-        departures.filterNot { hasDeparted(it, now) }
-            .sortedWith(compareBy({ it.expectedArrival }, { it.lineName }))
+    /**
+     * How long a board keeps a tube train past its time, grayed ([Departure.overdue]). Recordings at hubs
+     * (`dev-docs/arrivals-measurements.md`) found a third of tube trains shown a minute or less away reached
+     * the platform over 30 seconds after their last shown time, and about one in ten over 60.
+     */
+    val OVERDUE_GRACE: Duration = Duration.ofSeconds(60)
+
+    /** Whether [departure], a tube train, is past its time but inside [OVERDUE_GRACE] at [now]. */
+    fun inGrace(departure: Departure, now: Instant): Boolean =
+        departure.mode.equals(TUBE, ignoreCase = true) && hasDeparted(departure, now) &&
+            departure.expectedArrival.plus(OVERDUE_GRACE).isAfter(now)
+
+    /**
+     * [departures] that have not yet gone, soonest-first (ties broken by line for stability). With
+     * [grace], a tube train past its time is kept for [OVERDUE_GRACE], marked [Departure.overdue], as
+     * a board shows it; everything else that counts on a train (a trip, the widget) leaves it out.
+     */
+    fun upcoming(departures: List<Departure>, now: Instant, grace: Boolean = false): List<Departure> =
+        departures.mapNotNull {
+            when {
+                !hasDeparted(it, now) -> it
+                grace && inGrace(it, now) -> it.copy(overdue = true)
+                else -> null
+            }
+        }.sortedWith(compareBy({ it.expectedArrival }, { it.lineName }))
+
+    private const val TUBE = "tube"
 }
