@@ -167,8 +167,8 @@ interface AppSettings {
     suspend fun setRideGrouping(grouping: RideGrouping) {}
 
     /**
-     * The networks the disruptions row always covers, by key (maintainer, 2026-10-05), on top of the
-     * lines near the rider; null until chosen, read as the default (the tube).
+     * The lines the disruptions row always covers (maintainer, 2026-10-05), on top of the rider's own, by
+     * id; null until chosen, read as the default (none).
      */
     fun summaryNetworks(): Flow<Set<String>?> = flowOf(null)
 
