@@ -117,7 +117,6 @@
     <string name="settings_disruptions_row_summary">Uma barra com o status das linhas acima da lista</string>
     <string name="settings_disruptions_row_show">Mostrar na tela inicial</string>
     <string name="settings_disruptions_row_description">Mostrar alertas e atrasos na tela inicial</string>
-    <string name="settings_summary_networks_summary">Os locais favoritos e as linhas perto de você são sempre incluídos</string>
     <string name="settings_disruptions_row_write_failed">Não foi possível salvar; será revertido quando o StopDash reiniciar</string>
     <string name="favorite_places_loading">Carregando…</string>
     <string name="favorite_places_empty">Nada salvo ainda</string>

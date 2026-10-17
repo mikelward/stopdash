@@ -362,7 +362,7 @@ class MainScreenScreenshotTest {
                 alwaysNetworks = setOf("tube"),
             )
         }
-        composeRule.onNodeWithContentDescription("No disruptions").assertExists()
+        composeRule.onNodeWithContentDescription("No watched disruptions").assertExists()
     }
 
     @Test

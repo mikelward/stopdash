@@ -397,8 +397,6 @@
     <string name="settings_disruptions_row_show">Auf der Startseite anzeigen</string>
     <string name="settings_disruptions_row_off">Aus</string>
     <string name="settings_disruptions_row_description">Meldungen und Verspätungen auf der Startseite anzeigen</string>
-    <string name="settings_summary_networks_title">Immer einbeziehen</string>
-    <string name="settings_summary_networks_summary">Lieblingsorte und Linien in deiner Nähe sind immer dabei</string>
     <string name="settings_disruptions_row_write_failed">Nicht gespeichert – wird beim Neustart von StopDash zurückgesetzt</string>
     <string name="settings_hidden_title">Ausgeblendet</string>
     <string name="settings_hidden_summary">Nicht in Liste, Fahrten, Widget und Smartwatch</string>

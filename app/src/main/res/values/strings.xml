@@ -123,7 +123,7 @@
     <string name="home_disruptions_more">+%1$d</string>
     <!-- TODO: translate -->
     <!-- The home screen's disruptions card when every line it covers is checked and none is disrupted. -->
-    <string name="home_disruptions_none" tools:ignore="MissingTranslation">No disruptions</string>
+    <string name="home_disruptions_none" tools:ignore="MissingTranslation">No watched disruptions</string>
     <!-- On the home screen's lines page, a line whose stops are no longer near since it opened. -->
     <string name="home_lines_gone">No longer nearby</string>
     <!-- TODO: translate -->
@@ -784,9 +784,14 @@
     <string name="settings_disruptions_row_off">Off</string>
     <!-- Under "Disruptions summary" in Settings while the row shows: what it does. -->
     <string name="settings_disruptions_row_description">Show alerts and delays on the home screen</string>
-    <!-- Under the Disruptions summary switch: the networks it always covers, one chip each. -->
-    <string name="settings_summary_networks_title">Always include</string>
-    <string name="settings_summary_networks_summary">Favorite places and lines near you are always included</string>
+    <!-- TODO: translate -->
+    <!-- Under the Disruptions summary switch: what the summary always watches, whatever's chosen below. -->
+    <string name="settings_summary_networks_title" tools:ignore="MissingTranslation">Always watch</string>
+    <!-- TODO: translate -->
+    <string name="settings_summary_networks_summary" tools:ignore="MissingTranslation">Favorite places and lines near you are always watched</string>
+    <!-- TODO: translate -->
+    <!-- The heading over the line chips: lines the summary watches by choice, wherever the rider is. -->
+    <string name="settings_summary_lines_title" tools:ignore="MissingTranslation">Also watch</string>
     <!-- The header over the networks of one line each (Elizabeth line, DLR, Tram). -->
     <string name="settings_disruptions_row_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
     <!-- Settings' list of the modes and lines hidden from the near-me list, shown only while

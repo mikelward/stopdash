@@ -59,7 +59,7 @@ class HomeDisruptionsRowTest {
         row = TripRow(checking = false, lines = listOf(leg("3")))
         composeRule.onNodeWithContentDescription("Disruptions: 3").assertExists()
         row = TripRow(checking = false)
-        composeRule.onNodeWithContentDescription("No disruptions").assertExists()
+        composeRule.onNodeWithContentDescription("No watched disruptions").assertExists()
     }
 
     @Test
@@ -69,7 +69,7 @@ class HomeDisruptionsRowTest {
         // A check that failed is never shown as all clear. The words are drawn under the row's one spoken
         // description, so they're looked for in the unmerged tree.
         composeRule.onNodeWithText("Couldn't check for disruptions", useUnmergedTree = true).assertExists()
-        composeRule.onNodeWithText("No disruptions", useUnmergedTree = true).assertDoesNotExist()
+        composeRule.onNodeWithText("No watched disruptions", useUnmergedTree = true).assertDoesNotExist()
     }
 
     @Test
@@ -114,8 +114,8 @@ class HomeDisruptionsRowTest {
     @Test
     fun all_clear_says_so_in_words() {
         composeRule.setContent { HomeDisruptionsRow(TripRow(checking = false)) }
-        composeRule.onNodeWithText("No disruptions", useUnmergedTree = true).assertExists()
-        composeRule.onNodeWithContentDescription("No disruptions").assertExists()
+        composeRule.onNodeWithText("No watched disruptions", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithContentDescription("No watched disruptions").assertExists()
     }
 
     @Test
