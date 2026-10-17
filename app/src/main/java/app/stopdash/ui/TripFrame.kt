@@ -150,6 +150,10 @@ internal fun tripFrame(
     }
     val open = estimates?.firstOrNull { routeKey(it.route) == openKey }
     val hubOf: (String) -> String? = { routeStops?.hubOf(it) }
+    // Each bus leg's alerts placed on its ride ([legStatuses]), for the open route's rows and the line
+    // pages they open, which the page builds as it draws.
+    val legs = estimates.orEmpty().flatMap { it.route.rides }.flatMap { rideLines[it]?.legs ?: listOf(it) }.distinct()
+    val state = state.copy(legStatuses = legStatuses(state.statuses, legs, sequences))
     // The list even with a route open: closed again, the list shows at once from the frame in hand.
     val list = cards?.let { listView(it, state, now, access, sequences, rideLines, dismissed, loading, hubOf, openRoutesOf(it.flatten().map { e -> e.route }, poled, sequences, excluded), previousOrder) }
     val openView = open?.let { openView(it, state, now, sequences, rideLines, dismissed, loading, originUnconfirmed, hubOf, topology) }

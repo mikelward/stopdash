@@ -318,6 +318,10 @@ class TripViewModel(
         val planError: DeparturesUiState.Error.Kind? = null,
         val live: Map<String, StopLive> = emptyMap(),
         val statuses: Map<String, LineStatus> = emptyMap(),
+        // A bus leg's line status where its alerts were placed on the leg's ride and that changed it
+        // ([onBusRides]), by [tripLegKey]: worked out with the page's frame ([tripFrame]), so a row or
+        // page built in composition only looks it up ([legStatus]).
+        val legStatuses: Map<String, LineStatus> = emptyMap(),
         // The last line-status check failed: the statuses shown (if any) are older, so the trip
         // says it couldn't check for disruptions rather than pass its lines off as running normally.
         val statusFailed: Boolean = false,

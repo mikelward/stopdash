@@ -654,7 +654,7 @@ class RouteDisruptionTest {
 
     @Test
     fun `a bus diverted at the far end of its route is off a ride at the near end`() {
-        // A 390 trip from its north end flagged a diversion in the West End (maintainer, 2026-10-17).
+        // A trip at one end of a bus route flagged a diversion at the other (maintainer, 2026-10-17).
         // TfL's wording, the roads and the ride's stops made up.
         val route = LineSequence(
             listOf(LineRoute("North End - Victoria", listOf("n1", "n2", "n3", "g", "w1", "w2", "w3", "w4"))),

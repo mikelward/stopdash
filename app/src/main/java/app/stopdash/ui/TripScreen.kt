@@ -139,6 +139,7 @@ import app.stopdash.domain.Headway
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineMap
 import app.stopdash.domain.LineRef
+import app.stopdash.domain.JourneyAlerts
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.AlertStart
 import app.stopdash.domain.AroundDelays
@@ -4894,7 +4895,7 @@ internal fun legRows(
         leg.fromName,
         trains,
         now,
-        lineStatuses = state.statuses,
+        lineStatuses = state.legStatuses.takeIf { it.isNotEmpty() }?.get(tripLegKey(leg))?.let { WithLine(state.statuses, leg.lineId, it) } ?: state.statuses,
         fetchedAt = state.live[leg.fromId]?.fetchedAt ?: SteadyClock.stamp(now),
     )
 }
@@ -4957,9 +4958,11 @@ internal fun rememberLegRouteStops(leg: TripLeg, retry: Int): RouteStopsUi {
 
 /**
  * [state]'s line statuses as [card]'s rides travel them ([LineStatus.alongRides]), by the trains seen
- * along each ride of every line on it ([legTrains]). Display only, like [shownStatuses], which goes
- * after it: a direction's own alerts are what a dismissal made from its row names.
+ * along each ride of every line on it ([legTrains]), then each bus line's alerts as they bear on its
+ * rides ([onBusRides]). Display only, like [shownStatuses], which goes after it: a direction's own
+ * alerts are what a dismissal made from its row names.
  */
+@WorkerThread
 internal fun cardStatuses(
     card: List<TripTiming.Estimate>,
     rideLines: Map<TripLeg, RideLines>,
@@ -4967,10 +4970,66 @@ internal fun cardStatuses(
     now: Instant,
     sequences: Map<String, LineSequence?>,
 ): Map<String, LineStatus> {
-    if (state.statuses.values.none { it.byDirection.isNotEmpty() }) return state.statuses
     val legs = card.flatMap { it.route.rides }.flatMap { rideLines[it]?.legs ?: listOf(it) }.distinct()
-    val rides = legs.groupBy { it.lineId }.mapValues { (_, byLine) -> byLine.map { legTrains(state, it, now, sequences).orEmpty() } }
-    return LineStatus.alongRides(state.statuses, rides)
+    val along = if (state.statuses.values.none { it.byDirection.isNotEmpty() }) {
+        state.statuses
+    } else {
+        val rides = legs.groupBy { it.lineId }.mapValues { (_, byLine) -> byLine.map { legTrains(state, it, now, sequences).orEmpty() } }
+        LineStatus.alongRides(state.statuses, rides)
+    }
+    return onBusRides(along, legs, sequences)
+}
+
+/**
+ * The statuses of [legs]' lines that placing a bus line's alerts on one leg's ride changes ([onBusRides]),
+ * by the leg ([tripLegKey]): [TripViewModel.State.legStatuses].
+ */
+@WorkerThread
+internal fun legStatuses(statuses: Map<String, LineStatus>, legs: List<TripLeg>, sequences: Map<String, LineSequence?>): Map<String, LineStatus> =
+    legs.mapNotNull { leg ->
+        val status = statuses[leg.lineId] ?: return@mapNotNull null
+        onBusRides(mapOf(leg.lineId to status), listOf(leg), sequences).getValue(leg.lineId)
+            .takeIf { it !== status }?.let { tripLegKey(leg) to it }
+    }.toMap()
+
+/**
+ * [base] with [lineId]'s status read as [status], without copying it: [legRows] runs as the page draws
+ * (Codex, #941). Only [get] is overridden, as [DepartureRows.forStop] only looks statuses up.
+ */
+private class WithLine(private val base: Map<String, LineStatus>, private val lineId: String, private val status: LineStatus) :
+    Map<String, LineStatus> by base {
+    override fun get(key: String): LineStatus? = if (key == lineId) status else base[key]
+}
+
+/** [leg]'s line status as its ride sees it ([TripViewModel.State.legStatuses]), else its line's. */
+internal fun TripViewModel.State.legStatus(leg: TripLeg): LineStatus? =
+    if (legStatuses.isEmpty()) statuses[leg.lineId] else legStatuses[tripLegKey(leg)] ?: statuses[leg.lineId]
+
+/**
+ * [statuses] with each bus line's alerts weighed on [legs]' rides of it, by its route ([sequences]), as a
+ * saved journey's are ([JourneyAlerts.onRide]): a diversion at the far end of a long route doesn't flag
+ * a ride at the near end (maintainer, 2026-10-17: a ride at one end of a route warned of a diversion at
+ * the other). An alert off every ride leaves the line a good service, its work to come kept. Unknown is
+ * on: no route yet, a ride it doesn't run, or a line also ridden by another mode.
+ */
+@WorkerThread
+internal fun onBusRides(statuses: Map<String, LineStatus>, legs: List<TripLeg>, sequences: Map<String, LineSequence?>): Map<String, LineStatus> {
+    val byLine = legs.filter { it.lineId.isNotBlank() }.groupBy { it.lineId }
+    if (byLine.isEmpty()) return statuses
+    return statuses.mapValues { (line, status) ->
+        val rides = byLine[line]
+        val sequence = sequences[line]
+        if (rides == null || sequence == null || !status.disrupted || rides.any { !it.mode.equals("bus", ignoreCase = true) }) return@mapValues status
+        // Off every ride, the line is a good service; otherwise TfL's status stands whole, its closures,
+        // directions and work to come with it. Not the one of several alerts that reaches the ride, as a
+        // saved journey shows: that's rebuilt bare, without them (Codex, #941). Each ride its own way,
+        // so one the route doesn't run keeps the alert rather than being left out of the rest.
+        if (JourneyAlerts.onRide(status, rides.map { listOf(it) }, sequence) == null) {
+            LineStatus(status.lineId, LineStatus.GOOD_SERVICE, GOOD_SERVICE_LABEL, planned = status.planned)
+        } else {
+            status
+        }
+    }
 }
 
 /**
@@ -5051,9 +5110,9 @@ internal fun legStatusRow(state: TripViewModel.State, leg: TripLeg, now: Instant
     upcoming = emptyList(),
     fetchedAt = state.live[leg.fromId]?.fetchedAt ?: SteadyClock.stamp(now),
     // Only a disruption, as a row's status always is: a good service is no alert.
-    status = state.statuses[leg.lineId]?.takeIf { it.disrupted },
+    status = state.legStatus(leg)?.takeIf { it.disrupted },
     // Its page lists the line's work still to come, as a list row's does (Codex, PR #337).
-    plannedAlerts = state.statuses[leg.lineId]?.planned.orEmpty(),
+    plannedAlerts = state.legStatus(leg)?.planned.orEmpty(),
 )
 
 /**
