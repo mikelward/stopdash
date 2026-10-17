@@ -2914,7 +2914,8 @@ as it was.
   like every one, stands only while the trip's answer is live, and is back with the next refresh that works. Only a change is watched so:
   arriving ends the trip, so the last stop isn't yet (`TODO.md`). Minor delays and the like never alert. A **bus** line's alert
   that names stops only off the rider's part of the route is left out, and the debug log says so
-  (maintainer, 2026-10-01): TfL gives a bus diversion's stretch only as prose ("not serving stops
+  (maintainer, 2026-10-01); a trip's cards, lines and disruptions row leave it out the same way, the
+  line then reading as a good service with its work to come (maintainer, 2026-10-17): TfL gives a bus diversion's stretch only as prose ("not serving stops
   between 'Bank Station' and 'Moorgate Station'"), read as the route page marks it, and a diversion at
   the far end of a long route says nothing of the ride. It's left out only where every route that runs
   the ride has stops the alert says won't be served and the ride calls at none of them. Only the words
@@ -2922,7 +2923,8 @@ as it was.
   between 'A' and 'B'", "the stops from 'A' (E) to 'B' will not be served", "missing stops from A 'F'
   to B 'T'", a later notice's "continue to miss the same stops from A 'L' to B 'G'" (maintainer, 2026-10-16),
   "bus stops from 'A' to 'B' will be missed", "the 'Hail & Ride' section from A to B are not being
-  served"), stops one by one ("missing the stop 'A'",
+  served", "diverted from A to B via C Street", "diverted between A and B" (maintainer, 2026-10-17), the
+  roads after "via" being where buses run instead), stops one by one ("missing the stop 'A'",
   "will not serve stops 'A' and 'B'", "will miss stops A and B", "bus stop 'A' will not be served"), or a curtailment ("curtailed to
   A", "will terminate at 'A'" leave out the stops after it; "will start from stop at 'B'" those
   before it, on every route of the line, so it can only keep an alert). A stop is named as the route
