@@ -272,9 +272,9 @@ accent) since their colors collide with tube lines. Confirmed TfL hexes only (`S
 
 ## Talking to the user
 
-- **One question at a time** — in plain chat in Claude Code (never `AskUserQuestion`,
-  which breaks on mobile clients), or via `ask_question` in Antigravity. Stop and wait
-  after asking; acknowledge the answer before acting. Never ask while the user is typing.
+- **One question at a time** — in plain chat or the client's question tool
+  (`AskUserQuestion` in Claude Code, `ask_question` in Antigravity). Stop and wait after
+  asking; acknowledge the answer before acting. Never ask while the user is typing.
 - **Ask only a real product trade-off** (maintainer, 2026-09-30). Fix clear bugs and fetch
   feature data through existing caches without asking. Check a question's premise in code
   first.
