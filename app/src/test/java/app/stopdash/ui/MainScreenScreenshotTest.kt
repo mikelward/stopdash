@@ -344,7 +344,7 @@ class MainScreenScreenshotTest {
     }
 
     @Test
-    fun `with nothing disrupted the disruptions row says so on a plain card`() {
+    fun `with no line disrupted the disruptions row says so on a plain card`() {
         val stops = stops(now.minusSeconds(60))
         val ids = stops.flatMap { stop -> stop.departures.map { it.lineId } + stop.lines.map { it.id } }.toSet()
         capture("main-disruptions-none.png") {
@@ -362,6 +362,35 @@ class MainScreenScreenshotTest {
                 alwaysNetworks = setOf("tube"),
             )
         }
+        // Said of the lines alone: Whitechapel's lift notice below has its own card (maintainer, 2026-10-17).
+        composeRule.onNodeWithContentDescription("No line disruptions").assertExists()
+    }
+
+    @Test
+    fun `with only a dismissed disruption the disruptions row says none are watched beside an info mark`() {
+        val stops = stops(now.minusSeconds(60))
+        val ids = stops.flatMap { stop -> stop.departures.map { it.lineId } + stop.lines.map { it.id } }.toSet()
+        val central = LineStatus("central", 6, "Minor Delays")
+        capture("main-disruptions-not-counted.png") {
+            MainScreen(
+                DeparturesUiState.Loaded(
+                    stops, now.minusSeconds(60),
+                    lineStatuses = ids.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") },
+                    determinedLineIds = ids,
+                ),
+                now,
+                {},
+                favoritePlaces = places,
+                showDisruptionsRow = true,
+                always = HomeLines.Always(
+                    HomeLines.TUBE_IDS.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") } + ("central" to central),
+                    now.minusSeconds(60),
+                ),
+                alwaysNetworks = setOf("tube"),
+                dismissed = setOf(DismissedAlert.ofLineStatus(central)),
+            )
+        }
+        // A dismissed disruption is still one, so not "No line disruptions" (maintainer, 2026-10-17).
         composeRule.onNodeWithContentDescription("No watched disruptions").assertExists()
     }
 

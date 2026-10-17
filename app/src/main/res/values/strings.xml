@@ -122,7 +122,10 @@
     <!-- The home screen's disruptions row, counting what doesn't fit on its one line: "+3". -->
     <string name="home_disruptions_more">+%1$d</string>
     <!-- TODO: translate -->
-    <!-- The home screen's disruptions card when every line it covers is checked and none is disrupted. -->
+    <!-- The home screen's disruptions card when every line it covers is checked and none is disrupted at all; a stop's closure has its own card. -->
+    <string name="home_disruptions_no_line" tools:ignore="MissingTranslation">No line disruptions</string>
+    <!-- TODO: translate -->
+    <!-- The home screen's disruptions card when every line it covers is checked and the only disruptions are ones it doesn't count: dismissed, say. -->
     <string name="home_disruptions_none" tools:ignore="MissingTranslation">No watched disruptions</string>
     <!-- On the home screen's lines page, a line under Other whose stops are no longer near since it opened. -->
     <string name="home_lines_gone">No longer nearby</string>

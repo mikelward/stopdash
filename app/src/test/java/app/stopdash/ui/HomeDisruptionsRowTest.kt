@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import app.stopdash.domain.LineStatus
 import app.stopdash.domain.TripLeg
 import java.time.Instant
 import org.junit.Assert.assertEquals
@@ -35,6 +36,11 @@ class HomeDisruptionsRowTest {
     val composeRule = createComposeRule()
 
     private fun leg(id: String) = TripLeg("bus", id, id, "", "", "", "", Instant.EPOCH, Instant.EPOCH)
+    private val good = LineStatus("1", LineStatus.GOOD_SERVICE, "Good Service")
+    private val severe = LineStatus("1", 6, "Severe Delays")
+
+    // A line whose disruption the rider dismissed, as the home row lists it.
+    private fun dismissedLine() = TripLine(leg("1"), severe, dismissed = true)
 
     @Test
     fun a_word_alone_is_never_counted_and_the_row_is_heard_whole() {
@@ -59,7 +65,7 @@ class HomeDisruptionsRowTest {
         row = TripRow(checking = false, lines = listOf(leg("3")))
         composeRule.onNodeWithContentDescription("Disruptions: 3").assertExists()
         row = TripRow(checking = false)
-        composeRule.onNodeWithContentDescription("No watched disruptions").assertExists()
+        composeRule.onNodeWithContentDescription("No line disruptions").assertExists()
     }
 
     @Test
@@ -69,6 +75,7 @@ class HomeDisruptionsRowTest {
         // A check that failed is never shown as all clear. The words are drawn under the row's one spoken
         // description, so they're looked for in the unmerged tree.
         composeRule.onNodeWithText("Couldn't check for disruptions", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("No line disruptions", useUnmergedTree = true).assertDoesNotExist()
         composeRule.onNodeWithText("No watched disruptions", useUnmergedTree = true).assertDoesNotExist()
     }
 
@@ -88,6 +95,12 @@ class HomeDisruptionsRowTest {
         // A failed check with no line to name is never all clear.
         assertEquals(DisruptionsMark.UNKNOWN, disruptionsMark(TripRow(checking = false, unknown = true)))
         assertEquals(DisruptionsMark.CLEAR, disruptionsMark(TripRow(checking = false)))
+        // A disruption it doesn't count, dismissed or left beside a milder one, is a step above all clear.
+        assertEquals(DisruptionsMark.NOT_COUNTED, disruptionsMark(TripRow(checking = false, every = listOf(dismissedLine()))))
+        assertEquals(DisruptionsMark.NOT_COUNTED, disruptionsMark(TripRow(checking = false, every = listOf(TripLine(leg("1"), good, quieted = severe)))))
+        assertEquals(DisruptionsMark.CLEAR, disruptionsMark(TripRow(checking = false, every = listOf(TripLine(leg("1"), good)))))
+        // A failed check still outranks it.
+        assertEquals(DisruptionsMark.UNKNOWN, disruptionsMark(TripRow(checking = false, unknown = true, every = listOf(dismissedLine()))))
     }
 
     @Test
@@ -113,9 +126,16 @@ class HomeDisruptionsRowTest {
 
     @Test
     fun all_clear_says_so_in_words() {
-        composeRule.setContent { HomeDisruptionsRow(TripRow(checking = false)) }
+        var row by mutableStateOf(TripRow(checking = false))
+        composeRule.setContent { HomeDisruptionsRow(row) }
+        // Said of the lines alone: a stop's closure has its own card (maintainer, 2026-10-17).
+        composeRule.onNodeWithText("No line disruptions", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithContentDescription("No line disruptions").assertExists()
+        // Only a dismissed disruption: not "No line disruptions", which says there are none at all.
+        row = TripRow(checking = false, every = listOf(dismissedLine()))
         composeRule.onNodeWithText("No watched disruptions", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithContentDescription("No watched disruptions").assertExists()
+        composeRule.onNodeWithText("No line disruptions", useUnmergedTree = true).assertDoesNotExist()
     }
 
     @Test

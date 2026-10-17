@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -40,19 +41,23 @@ import app.stopdash.R
 /**
  * The home screen's disruptions row ([HomeLines]), a card one line high whatever it says (maintainer,
  * 2026-10-05): each disrupted line's pill behind a ⚠, then a ? in a circle and what couldn't be checked,
- * on a tinted card, the ? shown once ([DisruptionsMark], [unknownMarkAt]); with none of those, a plain card saying so beside its mark ("No watched disruptions" beside a ✓,
- * "Checking for disruptions" beside a spinner; maintainer, 2026-10-16). What doesn't fit is counted as
+ * on a tinted card, the ? shown once ([DisruptionsMark], [unknownMarkAt]); with none of those, a plain card saying so beside its mark ("No line disruptions" beside a ✓,
+ * "No watched disruptions" beside an ⓘ where a line it covers has one it doesn't count, "Checking for
+ * disruptions" beside a spinner; maintainer, 2026-10-16, 2026-10-17). What doesn't fit is counted as
  * "+N". A tap opens every line it covers with its status ([TripLinesPage]), which its chevron says
  * (maintainer, 2026-10-16).
  */
 /** What leads the home screen's disruptions card: one mark for what it says as a whole. */
-internal enum class DisruptionsMark { CHECKING, DISRUPTED, UNKNOWN, CLEAR }
+internal enum class DisruptionsMark { CHECKING, DISRUPTED, UNKNOWN, NOT_COUNTED, CLEAR }
 
 internal fun disruptionsMark(row: TripRow): DisruptionsMark = when {
     row.checking -> DisruptionsMark.CHECKING
     row.lines.isNotEmpty() -> DisruptionsMark.DISRUPTED
     // A check that failed is never shown as all clear.
     row.unknown || row.unknownLines.isNotEmpty() -> DisruptionsMark.UNKNOWN
+    // A disruption it doesn't count (dismissed, say): a step above all clear, and a hint that a tap says
+    // more (maintainer, 2026-10-17).
+    row.linesDisrupted -> DisruptionsMark.NOT_COUNTED
     else -> DisruptionsMark.CLEAR
 }
 
@@ -96,7 +101,9 @@ internal fun HomeDisruptionsRow(row: TripRow, modifier: Modifier = Modifier) {
         // Said whole on its own; beside pills, the short form leaves them the room.
         row.checking -> if (pills == 0) R.string.disruptions_checking else R.string.trip_disruptions_checking
         warn && pills == 0 -> R.string.disruptions_unknown
-        row.lines.isEmpty() && !row.unknown -> R.string.home_disruptions_none
+        // Said of its lines alone: a stop's closure has its own card, so all clear here is never more than
+        // the lines' (maintainer, 2026-10-17; Codex, #927).
+        row.lines.isEmpty() && !row.unknown -> if (row.linesDisrupted) R.string.home_disruptions_none else R.string.home_disruptions_no_line
         // Something couldn't be checked with no line to name for it (a stop's closure check, say),
         // beside the lines that are disrupted: said all the same (maintainer, 2026-10-05).
         row.unknown && unchecked.isEmpty() -> R.string.trip_disruptions_unknown
@@ -141,6 +148,7 @@ internal fun HomeDisruptionsRow(row: TripRow, modifier: Modifier = Modifier) {
                     DisruptionsMark.CHECKING -> CircularProgressIndicator(strokeWidth = 2.dp, color = colors.onSurfaceVariant, modifier = Modifier.size(16.dp))
                     DisruptionsMark.DISRUPTED -> Icon(Icons.Filled.Warning, contentDescription = null, tint = error)
                     DisruptionsMark.UNKNOWN -> UnknownMark()
+                    DisruptionsMark.NOT_COUNTED -> Icon(Icons.Outlined.Info, contentDescription = null, tint = colors.onSurfaceVariant)
                     DisruptionsMark.CLEAR -> Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = colors.onSurfaceVariant)
                 }
             }
