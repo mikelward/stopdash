@@ -1956,7 +1956,7 @@ private fun DisruptionCard(signal: RouteDisruption.Signal, leg: TripLeg?) {
     Card(colors = colors, modifier = Modifier.fillMaxWidth().testTag("onTheWayDisruption")) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(RouteDisruptionAlert.text(context, signal), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            (signal as? RouteDisruption.Signal.Line)?.status?.fullText?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            (signal as? RouteDisruption.Signal.Line)?.status?.shownText?.trim()?.takeIf { it.isNotEmpty() }?.let {
                 LinkedText(it, style = MaterialTheme.typography.bodyMedium)
             }
             if (leg != null && !leg.isWalk) {

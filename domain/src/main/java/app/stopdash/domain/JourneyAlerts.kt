@@ -146,6 +146,10 @@ data class JourneyLineAlert(
     val lineName: String,
     val description: String,
     val fullText: String?,
+    // The words the notification shows ([LineStatus.shownText]): National Rail's where TfL's are only a
+    // link to its page. Not part of [fingerprint], so the same alert isn't announced again when they
+    // couldn't be fetched one time and could the next.
+    val shownText: String? = fullText,
 ) {
     val fingerprint: String get() = "$lineId|$description|${fullText.orEmpty()}"
 }
@@ -462,7 +466,7 @@ object JourneyAlerts {
                 val name = names[status.lineId]?.takeIf { it.isNotBlank() }
                     ?: journey.lineName.takeIf { status.lineId == journey.lineId && it.isNotBlank() }
                     ?: status.lineId
-                JourneyLineAlert(status.lineId, name, status.description, status.fullText)
+                JourneyLineAlert(status.lineId, name, status.description, status.fullText, status.shownText)
             }
         JourneyAlertResult(journey.key, alerts, unanswered, directions[journey.key].orEmpty(), until[journey.key])
     }

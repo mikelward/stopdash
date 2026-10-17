@@ -148,7 +148,7 @@ internal object RouteDisruptionAlert {
      * title but their own words are each said (Codex on #519), as each is heard once.
      */
     internal fun content(context: Context, signals: List<RouteDisruption.Signal>): Pair<String, String?> {
-        val items = signals.map { text(context, it) to (it as? RouteDisruption.Signal.Line)?.status?.fullText?.trim()?.ifEmpty { null } }.distinct()
+        val items = signals.map { text(context, it) to (it as? RouteDisruption.Signal.Line)?.status?.shownText?.trim()?.ifEmpty { null } }.distinct()
         val (title, detail) = items.first()
         val rest = items.drop(1).map { (heading, words) -> listOfNotNull(heading, words).joinToString("\n") }
         return title to (listOfNotNull(detail) + rest).joinToString("\n\n").ifEmpty { null }
