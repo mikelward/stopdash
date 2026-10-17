@@ -99,15 +99,16 @@
     <string name="widget_refresh_key_rejected">Couldn\'t refresh: API key rejected</string>
     <!-- The compact widget's short form of any of the three above. -->
     <string name="widget_refresh_failed_short">Couldn\'t refresh</string>
-    <!-- A trip's disruptions row, always shown over its routes; the line pills, "None", or the check's state follow. -->
+    <!-- Heard (not drawn) before a disruptions card's line pills and stops, on a trip and the home screen. -->
     <string name="trip_disruptions_label">Disruptions:</string>
-    <!-- After "Disruptions:" on a trip once every line and stop shown is checked and none is disrupted. -->
-    <string name="trip_disruptions_none">None</string>
-    <!-- After "Disruptions:" on a trip while its lines and stops are being checked. -->
+    <!-- TODO: translate -->
+    <!-- A trip's disruptions card once every line and stop shown is checked and none is disrupted. -->
+    <string name="trip_disruptions_clear" tools:ignore="MissingTranslation">No disruptions</string>
+    <!-- After a disruptions card's line pills while its lines and stops are being checked. -->
     <string name="trip_disruptions_checking">Checking…</string>
-    <!-- After "Disruptions:" on a trip when a check failed, with nothing to name. -->
+    <!-- Heard (drawn as a ? in a circle) on a disruptions card when a check failed, with nothing to name. -->
     <string name="trip_disruptions_unknown">Unknown</string>
-    <!-- After "Disruptions:" on a trip, before the line pills and stops that couldn't be checked. -->
+    <!-- Heard (drawn as a ? in a circle) on a disruptions card, before the lines and stops that couldn't be checked. -->
     <string name="trip_disruptions_unknown_label">Unknown:</string>
     <!-- Click label of a trip's disruptions row: it opens every line the trip rides with its status. -->
     <string name="trip_lines_open">Show every line</string>

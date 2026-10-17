@@ -1977,11 +1977,13 @@ train that can take the ride. A line whose latest status check failed stands in 
 kept from before is the last one known, not a current one. The trip still says it couldn't check the
 Planner's line.
 
-**A trip's disruptions have a row of their own, always there over its routes** (maintainer,
-2026-10-04): "Disruptions:" then each disrupted line's pill (as the cards' ⚠s judge them, less what
-was dismissed) and each stop with a closure notice in force, then the check's word — "Checking…"
-while one runs, "Unknown:" and the pills and stops it couldn't check when one couldn't (in red), else
-"None" once there's nothing to show. A line whose trains couldn't be followed to where the rider gets
+**A trip's disruptions have a card of their own, always there over its routes** (maintainer,
+2026-10-04), the home screen's disruptions card in every way but what it covers (maintainer, 2026-10-17):
+each disrupted line's pill (as the cards' ⚠s judge them, less what was dismissed) and each stop with a
+closure notice in force behind a ⚠, then a ? in a circle and the pills and stops it couldn't check when
+one couldn't (the stops in red), on the card's tint; "Checking for disruptions" beside a spinner while a
+check runs; else "No disruptions" once there's nothing to show (a trip's stops are its own, so never "No
+line disruptions"), beside an ⓘ where a line it rides has a disruption the card doesn't count. A line whose trains couldn't be followed to where the rider gets
 off (its route failed to load, or a train's path couldn't be told) is named there too, but only while such
 a train could be the one the rider catches: one leaving after the train a route is timed from can't change
 its times, so it leaves nothing unchecked: the row took the place of the "Some routes couldn't
@@ -1991,9 +1993,9 @@ lines page says what an unchecked line means for its times. The row is one line 
 wrapped onto a second line that would push the routes down, and it's heard whole, every line and stop
 named; the lines page lists everything. It replaced a note that came and went as the page's loads landed one after another, moving
 every card under it for the first few seconds. A new check says so at once; any other word waits
-until it has held for a moment (1.5 s), so a gap between two loads never reads as "None" or as
+until it has held for a moment (1.5 s), so a gap between two loads never reads as "No disruptions" or as
 "couldn't check". While the row's lines are still being worked out for newer cards it shows the last
-ones a moment longer, as a card shows its last times, then "Checking…": never a "None" the current
+ones a moment longer, as a card shows its last times, then that it is checking: never a "No disruptions" the current
 cards may not bear out. The "Checking trips…" banner over the list is held the same way.
 
 **A tap on the disruptions row opens every line the trip rides with its status** (maintainer,
@@ -3259,8 +3261,8 @@ quality bar*). So stopdash surfaces, for watched stops and their lines:
 **The home screen has a disruptions row** (maintainer, 2026-10-05) under the favorite places' chips,
 so Home and the favorites keep the top, scrolling with the list as they do. It is a card, as the
 departures are, with their border whatever it says (maintainer, 2026-10-16). Anything disrupted, or
-anything that couldn't be checked, tints its fill. Disrupted lines go behind a ⚠ where the trip's row
-says "Disruptions:"; what couldn't be checked is marked by a ? in a circle (outlined; maintainer,
+anything that couldn't be checked, tints its fill. Disrupted lines go behind a ⚠, as on a trip's card
+(this card, naming its stops too); what couldn't be checked is marked by a ? in a circle (outlined; maintainer,
 2026-10-17), once: as the card's own mark when nothing is disrupted ("Couldn't check for disruptions"
 beside it with no line to name), else before the lines it couldn't check (before "+N" when those are
 all counted in it), or after the disrupted ones alone with no line to name. With nothing to show

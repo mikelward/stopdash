@@ -52,7 +52,6 @@
     <string name="widget_refresh_key_rejected">Yenilenemedi: API anahtarı reddedildi</string>
     <string name="widget_refresh_failed_short">Yenilenemedi</string>
     <string name="trip_disruptions_label">Aksaklıklar:</string>
-    <string name="trip_disruptions_none">Yok</string>
     <string name="trip_disruptions_checking">Kontrol ediliyor…</string>
     <string name="trip_disruptions_unknown">Bilinmiyor</string>
     <string name="trip_disruptions_unknown_label">Bilinmeyen:</string>

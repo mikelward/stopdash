@@ -4101,30 +4101,30 @@ class TripScreenScreenshotTest {
         // The worker inline, so the row's lines and stops are never behind the cards here: what's held
         // is the check's word alone.
         show(checking, held = held, worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
-        inRow("Checking…").assertExists()
+        inRow("Checking").assertExists()
         composeRule.mainClock.autoAdvance = false
 
         // A moment between two checks: still checking, never "couldn't check".
         held.value = between
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(500)
-        inRow("Checking…").assertExists()
+        inRow("Checking").assertExists()
         inRow("Unknown").assertDoesNotExist()
         held.value = checking
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(2_000)
-        inRow("Checking…").assertExists()
+        inRow("Checking").assertExists()
         inRow("Unknown").assertDoesNotExist()
 
-        // Every line checked: "None" once that holds, not the moment it reads so, in the same row.
+        // Every line checked: "No disruptions" once that holds, not the moment it reads so, in the same row.
         val rowTop = composeRule.onNodeWithTag("tripDisruptions").fetchSemanticsNode().boundsInRoot.top
         held.value = running
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(500)
-        inRow("Checking…").assertExists()
+        inRow("Checking").assertExists()
         composeRule.mainClock.advanceTimeBy(2_000)
-        inRow("None").assertExists()
-        inRow("Checking…").assertDoesNotExist()
+        inRow("No disruptions").assertExists()
+        inRow("Checking").assertDoesNotExist()
         inRow("Unknown").assertDoesNotExist()
         assertEquals(rowTop, composeRule.onNodeWithTag("tripDisruptions").fetchSemanticsNode().boundsInRoot.top)
 
@@ -4132,14 +4132,14 @@ class TripScreenScreenshotTest {
         held.value = checking
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(100)
-        inRow("Checking…").assertExists()
+        inRow("Checking").assertExists()
 
         // And one that couldn't check says so once that holds.
         held.value = between
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(2_000)
         inRow("Unknown").assertIsDisplayed()
-        inRow("Checking…").assertDoesNotExist()
+        inRow("Checking").assertDoesNotExist()
     }
 
     @Test
@@ -4154,23 +4154,23 @@ class TripScreenScreenshotTest {
         val held = mutableStateOf(running)
         try {
             show(running, worker = worker, held = held)
-            composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodes(hasTestTag("tripDisruptions") and hasContentDescription("None", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+            composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodes(hasTestTag("tripDisruptions") and hasContentDescription("No disruptions", substring = true)).fetchSemanticsNodes().isNotEmpty() }
 
-            // The Jubilee turns disrupted while the worker is held: the row's "None" is from the cards
+            // The Jubilee turns disrupted while the worker is held: the row's "No disruptions" is from the cards
             // before. It may stand a moment, as a card's last times do, but then says it's checking.
             threads.execute { gate.await() }
             composeRule.mainClock.autoAdvance = false
             held.value = running.copy(statuses = running.statuses + ("jubilee" to LineStatus("jubilee", 9, "Minor Delays")))
             composeRule.waitForIdle()
             composeRule.mainClock.advanceTimeBy(2_000)
-            inRow("Checking…").assertExists()
-            inRow("None").assertDoesNotExist()
+            inRow("Checking").assertExists()
+            inRow("No disruptions").assertDoesNotExist()
 
-            // Released, the worker catches up: the Jubilee's pill, and no "None".
+            // Released, the worker catches up: the Jubilee's pill, and no "No disruptions".
             gate.countDown()
             composeRule.mainClock.autoAdvance = true
-            composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodes(hasTestTag("tripDisruptions") and hasContentDescription("Checking…", substring = true)).fetchSemanticsNodes().isEmpty() }
-            inRow("None").assertDoesNotExist()
+            composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodes(hasTestTag("tripDisruptions") and hasContentDescription("Checking", substring = true)).fetchSemanticsNodes().isEmpty() }
+            inRow("No disruptions").assertDoesNotExist()
             inRow("Jubilee").assertExists()
 
             // Back to running with the worker held again: the Jubilee's pill is for the cards before, so
@@ -4182,7 +4182,7 @@ class TripScreenScreenshotTest {
                 held.value = running
                 composeRule.waitForIdle()
                 composeRule.mainClock.advanceTimeBy(2_000)
-                inRow("Checking…").assertExists()
+                inRow("Checking").assertExists()
                 inRow("Jubilee").assertDoesNotExist()
             } finally {
                 gate2.countDown()
@@ -4206,16 +4206,16 @@ class TripScreenScreenshotTest {
         show(disrupted, held = held, worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
         inRow("Jubilee").assertExists()
 
-        // The Jubilee clears: its pill stays a moment, and "None" waits out the hold (Codex, #543).
+        // The Jubilee clears: its pill stays a moment, and "No disruptions" waits out the hold (Codex, #543).
         composeRule.mainClock.autoAdvance = false
         held.value = running
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(500)
         inRow("Jubilee").assertExists()
-        inRow("None").assertDoesNotExist()
+        inRow("No disruptions").assertDoesNotExist()
         composeRule.mainClock.advanceTimeBy(2_000)
         inRow("Jubilee").assertDoesNotExist()
-        inRow("None").assertExists()
+        inRow("No disruptions").assertExists()
     }
 
     @Test
@@ -4412,7 +4412,7 @@ class TripScreenScreenshotTest {
         held.value = running
         composeRule.waitForIdle()
         settleNote()
-        inRow("None").assertExists()
+        inRow("No disruptions").assertExists()
         // A pill coming or going never moves the cards under the row (Codex, #543).
         assertEquals(withPill, composeRule.onNodeWithTag("tripDisruptions").fetchSemanticsNode().size.height)
     }
@@ -5744,7 +5744,7 @@ class TripScreenScreenshotTest {
         composeRule.mainClock.advanceTimeBy(100)
         composeRule.onAllNodes(hasTestTag("tripRoutes")).assertCountEquals(0)
         composeRule.onNodeWithTag("tripDisruptions").assertExists()
-        inRow("Checking…").assertDoesNotExist()
+        inRow("Checking").assertDoesNotExist()
     }
 
     @Test
@@ -5801,7 +5801,7 @@ class TripScreenScreenshotTest {
         composeRule.mainClock.advanceTimeByFrame()
         composeRule.onNodeWithTag("tripRoutes").assertExists()
         inRow("Jubilee").assertExists()
-        inRow("Checking…").assertDoesNotExist()
+        inRow("Checking").assertDoesNotExist()
     }
 
     @Test
@@ -5841,7 +5841,7 @@ class TripScreenScreenshotTest {
         // that gives way to pills under the rider a moment later (Codex, #543).
         composeRule.onNodeWithTag("tripRoutes").assertExists()
         inRow("Jubilee").assertExists()
-        inRow("Checking…").assertDoesNotExist()
+        inRow("Checking").assertDoesNotExist()
     }
 
     @Test

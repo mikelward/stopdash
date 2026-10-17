@@ -52,7 +52,6 @@
     <string name="widget_refresh_key_rejected">Impossibile aggiornare: chiave API rifiutata</string>
     <string name="widget_refresh_failed_short">Impossibile aggiornare</string>
     <string name="trip_disruptions_label">Disservizi:</string>
-    <string name="trip_disruptions_none">Nessuno</string>
     <string name="trip_disruptions_checking">Verifica…</string>
     <string name="trip_disruptions_unknown">Sconosciuti</string>
     <string name="trip_disruptions_unknown_label">Non verificati:</string>

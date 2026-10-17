@@ -52,7 +52,6 @@
     <string name="widget_refresh_key_rejected">রিফ্রেশ হয়নি: API কী প্রত্যাখ্যাত</string>
     <string name="widget_refresh_failed_short">রিফ্রেশ হয়নি</string>
     <string name="trip_disruptions_label">বিঘ্ন:</string>
-    <string name="trip_disruptions_none">নেই</string>
     <string name="trip_disruptions_checking">যাচাই হচ্ছে…</string>
     <string name="trip_disruptions_unknown">অজানা</string>
     <string name="trip_disruptions_unknown_label">অজানা:</string>

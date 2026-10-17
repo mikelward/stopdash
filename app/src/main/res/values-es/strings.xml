@@ -52,7 +52,6 @@
     <string name="widget_refresh_key_rejected">No se pudo actualizar: clave de API rechazada</string>
     <string name="widget_refresh_failed_short">No se pudo actualizar</string>
     <string name="trip_disruptions_label">Incidencias:</string>
-    <string name="trip_disruptions_none">Ninguna</string>
     <string name="trip_disruptions_checking">Comprobando…</string>
     <string name="trip_disruptions_unknown">Sin comprobar</string>
     <string name="trip_disruptions_unknown_label">Sin comprobar:</string>

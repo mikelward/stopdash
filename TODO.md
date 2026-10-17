@@ -3415,6 +3415,9 @@ Builds on Phase 1's minimal line-status marking.
       (Codex on #618), so a refresh adding or dropping enough of them can wrap it until this lands.
       Done: the row is laid out by the home row's `OneLine`, its closed and unchecked stops counted
       among the pills, and heard whole.
+  - [x] **A trip's disruptions row matches the home screen's card** (maintainer, 2026-10-17): one
+        `DisruptionsCard` for both, its ⚠/?/✓/ⓘ mark, tint and → in place of "Disruptions:", "Unknown:"
+        and ↑; a trip's names its stops too, so all clear says "No disruptions".
 - [x] **Every line a trip rides, with its status, a tap on the disruptions row away** (maintainer,
       2026-10-04). Done as a page of its own (`TripLinesPage`, worked out with the row on the worker:
       `tripLines`): one row per line with its worst-severity status, disruptions first, dismissed ones

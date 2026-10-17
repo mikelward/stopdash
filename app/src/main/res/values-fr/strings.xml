@@ -52,7 +52,6 @@
     <string name="widget_refresh_key_rejected">Non actualisé : clé API refusée</string>
     <string name="widget_refresh_failed_short">Non actualisé</string>
     <string name="trip_disruptions_label">Perturbations :</string>
-    <string name="trip_disruptions_none">Aucune</string>
     <string name="trip_disruptions_checking">Vérification…</string>
     <string name="trip_disruptions_unknown">Inconnues</string>
     <string name="trip_disruptions_unknown_label">Non vérifiés :</string>
