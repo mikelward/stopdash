@@ -52,7 +52,6 @@
     <string name="widget_refresh_key_rejected">Falha ao atualizar: chave de API rejeitada</string>
     <string name="widget_refresh_failed_short">Falha ao atualizar</string>
     <string name="trip_disruptions_label">Perturbações:</string>
-    <string name="trip_disruptions_none">Nenhuma</string>
     <string name="trip_disruptions_checking">A verificar…</string>
     <string name="trip_disruptions_unknown">Desconhecidas</string>
     <string name="trip_disruptions_unknown_label">Não verificadas:</string>

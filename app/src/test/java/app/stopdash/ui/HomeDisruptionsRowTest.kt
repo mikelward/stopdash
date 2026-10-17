@@ -28,7 +28,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** The home screen's disruptions row keeps to one line, counting only the pills it leaves out. */
+/** The disruptions card, the home screen's and a trip's, keeps to one line, counting only the pills it leaves out. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36], qualifiers = "en-rGB")
 class HomeDisruptionsRowTest {
@@ -101,6 +101,8 @@ class HomeDisruptionsRowTest {
         assertEquals(DisruptionsMark.CLEAR, disruptionsMark(TripRow(checking = false, every = listOf(TripLine(leg("1"), good)))))
         // A failed check still outranks it.
         assertEquals(DisruptionsMark.UNKNOWN, disruptionsMark(TripRow(checking = false, unknown = true, every = listOf(dismissedLine()))))
+        // A trip's closed stop is a disruption, with no line disrupted.
+        assertEquals(DisruptionsMark.DISRUPTED, disruptionsMark(TripRow(checking = false, stops = "Euston")))
     }
 
     @Test
@@ -270,5 +272,40 @@ class HomeDisruptionsRowTest {
         // No pill fits beside the word, nor the count: the word shows whole, inside the row.
         assertFalse(counted)
         assertTrue("word ends at $wordRight of $rowWidth", wordRight in 0f..rowWidth.toFloat())
+    }
+
+    @Test
+    fun a_trip_card_says_no_disruptions_of_its_lines_and_stops() {
+        // A trip's card covers its stops too, so all clear is "No disruptions", not the home card's "No line
+        // disruptions" (maintainer, 2026-10-17).
+        var row by mutableStateOf(TripRow(checking = false))
+        composeRule.setContent { DisruptionsRow(row) }
+        composeRule.onNodeWithText("No disruptions", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithContentDescription("No disruptions").assertExists()
+        composeRule.onNodeWithText("No line disruptions", useUnmergedTree = true).assertDoesNotExist()
+        // Only a dismissed disruption: still "No disruptions", beside the ⓘ.
+        row = TripRow(checking = false, every = listOf(dismissedLine()))
+        composeRule.onNodeWithText("No disruptions", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("No watched disruptions", useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun a_trip_card_names_its_closed_and_unchecked_stops_and_never_all_clear_beside_them() {
+        // A closed stop with no line disrupted: named, never beside "No disruptions".
+        var row by mutableStateOf(TripRow(checking = false, stops = "Euston"))
+        composeRule.setContent { DisruptionsRow(row) }
+        composeRule.onNodeWithText("Euston", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("No disruptions", useUnmergedTree = true).assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Disruptions: Euston").assertExists()
+        // A stop that couldn't be checked: named after the ?, and heard after "Unknown:".
+        row = TripRow(checking = false, lines = listOf(leg("1")), unknown = true, unknownStops = "Euston")
+        composeRule.onNodeWithText("Euston", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithContentDescription("Disruptions: 1 Unknown: Euston").assertExists()
+    }
+
+    @Test
+    fun the_home_card_leaves_a_stop_it_couldnt_check_to_its_own_card() {
+        composeRule.setContent { HomeDisruptionsRow(TripRow(checking = false, lines = listOf(leg("1")), unknown = true, unknownStops = "Euston")) }
+        composeRule.onNodeWithText("Euston", useUnmergedTree = true).assertDoesNotExist()
     }
 }

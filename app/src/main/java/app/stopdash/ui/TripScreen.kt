@@ -54,7 +54,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
@@ -3999,84 +3998,23 @@ private fun rememberTripRow(
 }
 
 /**
- * The row over a trip's routes, always there so nothing under it moves as the checks land
- * (maintainer, 2026-10-04): "Disruptions:", then each disrupted line's pill and the closed stops,
- * then the check's word: "Checking…" while it runs, "Unknown:" and what it couldn't check (in red,
- * lines as their pills) when it couldn't, else "None" when there's nothing to show. One line high
- * whatever it says (maintainer, 2026-10-04), as the home screen's row is ([OneLine]): what doesn't fit
- * is counted as "+N", and the lines page lists it all. A tap, with its chevron always there, opens
- * every line the trip rides with its status ([TripLinesPage]).
+ * The card over a trip's routes, always there so nothing under it moves as the checks land
+ * (maintainer, 2026-10-04): the home screen's disruptions card ([DisruptionsCard]; maintainer, 2026-10-17),
+ * each disrupted line's pill and the closed stops behind a ⚠, then a ? and what it couldn't check (in red,
+ * lines as their pills), else "No disruptions" when there's nothing to show. One line high whatever it
+ * says (maintainer, 2026-10-04): what doesn't fit is counted as "+N", and the lines page lists it all. A
+ * tap, with its chevron always there, opens every line the trip rides with its status ([TripLinesPage]).
  */
 @Composable
-private fun DisruptionsRow(row: TripRow) {
-    val style = MaterialTheme.typography.bodyMedium
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    val error = MaterialTheme.colorScheme.error
-    var open by rememberSaveable { mutableStateOf(false) }
-    // Worst first: the disrupted lines and the closed stops, then "Unknown:" and what couldn't be
-    // checked. A word alone ("Checking…", "None", a plain "Unknown") always shows, at the end.
-    val unknownLines = if (row.checking) emptyList() else row.unknownLines
-    val unknownStops = if (row.checking) "" else row.unknownStops
-    val disrupted = row.lines.size + (if (row.stops.isNotEmpty()) 1 else 0)
-    val unchecked = unknownLines.size + (if (unknownStops.isNotEmpty()) 1 else 0)
-    val word = when {
-        row.checking -> R.string.trip_disruptions_checking
-        row.unknown && unchecked == 0 -> R.string.trip_disruptions_unknown
-        !row.unknown && disrupted == 0 -> R.string.trip_disruptions_none
-        else -> null
-    }
-    val wordColor = if (word == R.string.trip_disruptions_unknown) error else muted
-    // Heard whole, every line and stop named, never only what fits.
-    val spoken = listOfNotNull(
-        stringResource(R.string.trip_disruptions_label),
-        row.linesSpoken.ifBlank { null },
-        row.stops.ifBlank { null },
-        word?.let { stringResource(it) },
-        stringResource(R.string.trip_disruptions_unknown_label).takeIf { unchecked > 0 },
-        row.unknownSpoken.takeIf { unknownLines.isNotEmpty() },
-        unknownStops.ifBlank { null },
-    ).joinToString(" ")
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .testTag("tripDisruptions")
-            .semantics { contentDescription = spoken }
-            .clickable(onClickLabel = stringResource(R.string.trip_lines_open)) { open = true },
-    ) {
-        Box(contentAlignment = Alignment.CenterStart, modifier = Modifier.weight(1f).padding(vertical = 4.dp).clearAndSetSemantics {}) {
-            // The row is a pill tall, whatever it says, so "Checking…" or "None" turning into a pill
-            // never pushes the cards down (Codex, #543): a pill nobody sees sets the height.
-            LinePill("", "", "bus", Modifier.alpha(0f).clearAndSetSemantics {})
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OneLine(
-                    pills = disrupted + unchecked,
-                    pill = { i ->
-                        // A slot past what's held now (a refresh dropped some) draws nothing.
-                        val unknownAt = i - disrupted
-                        when {
-                            i < row.lines.size -> LinePill(row.lines[i].lineName, row.lines[i].lineId, row.lines[i].mode)
-                            i < disrupted -> Text(row.stops, style = style, maxLines = 1)
-                            unknownAt < unknownLines.size -> unknownLines[unknownAt].let { LinePill(it.lineName, it.lineId, it.mode) }
-                            unknownAt < unchecked -> Text(unknownStops, style = style, color = error, maxLines = 1)
-                        }
-                    },
-                    // "Unknown:" before the first of what couldn't be checked, as part of it, so it goes with it.
-                    labelAt = disrupted.takeIf { unchecked > 0 },
-                    label = { Text(stringResource(R.string.trip_disruptions_unknown_label), style = style, color = error, maxLines = 1) },
-                    word = word?.let { { Text(stringResource(it), style = style, color = wordColor, maxLines = 1) } },
-                    modifier = Modifier.fillMaxWidth(),
-                    lead = { Text(stringResource(R.string.trip_disruptions_label), style = style, color = muted, maxLines = 1) },
-                ) { more ->
-                    // What couldn't be checked comes last, so a count with any of it to show hides some of it:
-                    // red then, as "Unknown:" is, so it never reads as only more disruptions.
-                    Text(stringResource(R.string.home_disruptions_more, more), style = style, color = if (unchecked > 0) error else muted, maxLines = 1)
-                }
-            }
-        }
-        // Read out by the row's click label, so it says nothing of its own.
-        Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null, tint = muted, modifier = Modifier.padding(start = 8.dp))
-    }
-    if (open) TripLinesPage(row, onClose = { open = false }, dismissal = LocalDismissLineAlert.current)
+internal fun DisruptionsRow(row: TripRow) {
+    DisruptionsCard(
+        row,
+        tag = "tripDisruptions",
+        clear = R.string.trip_disruptions_clear,
+        // A line the cards don't count, dismissed or disrupted off the rides: the ⓘ says a tap tells more.
+        notCounted = R.string.trip_disruptions_clear,
+        stops = true,
+    ) { close -> TripLinesPage(row, onClose = close, dismissal = LocalDismissLineAlert.current) }
 }
 
 /**

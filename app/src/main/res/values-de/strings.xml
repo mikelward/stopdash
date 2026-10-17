@@ -52,7 +52,6 @@
     <string name="widget_refresh_key_rejected">Nicht aktualisiert: API-Schlüssel abgelehnt</string>
     <string name="widget_refresh_failed_short">Nicht aktualisiert</string>
     <string name="trip_disruptions_label">Störungen:</string>
-    <string name="trip_disruptions_none">Keine</string>
     <string name="trip_disruptions_checking">Wird geprüft…</string>
     <string name="trip_disruptions_unknown">Unbekannt</string>
     <string name="trip_disruptions_unknown_label">Unbekannt:</string>

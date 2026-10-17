@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,21 +40,13 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
 
-/**
- * The home screen's disruptions row ([HomeLines]), a card one line high whatever it says (maintainer,
- * 2026-10-05): each disrupted line's pill behind a ⚠, then a ? in a circle and what couldn't be checked,
- * on a tinted card, the ? shown once ([DisruptionsMark], [unknownMarkAt]); with none of those, a plain card saying so beside its mark ("No line disruptions" beside a ✓,
- * "No watched disruptions" beside an ⓘ where a line it covers has one it doesn't count, "Checking for
- * disruptions" beside a spinner; maintainer, 2026-10-16, 2026-10-17). What doesn't fit is counted as
- * "+N". A tap opens every line it covers with its status ([TripLinesPage]), which its chevron says
- * (maintainer, 2026-10-16).
- */
-/** What leads the home screen's disruptions card: one mark for what it says as a whole. */
+/** What leads a disruptions card ([DisruptionsCard]): one mark for what it says as a whole. */
 internal enum class DisruptionsMark { CHECKING, DISRUPTED, UNKNOWN, NOT_COUNTED, CLEAR }
 
 internal fun disruptionsMark(row: TripRow): DisruptionsMark = when {
     row.checking -> DisruptionsMark.CHECKING
-    row.lines.isNotEmpty() -> DisruptionsMark.DISRUPTED
+    // A trip's closed stops are disruptions too; the home screen's row names none.
+    row.lines.isNotEmpty() || row.stops.isNotEmpty() -> DisruptionsMark.DISRUPTED
     // A check that failed is never shown as all clear.
     row.unknown || row.unknownLines.isNotEmpty() -> DisruptionsMark.UNKNOWN
     // A disruption it doesn't count (dismissed, say): a step above all clear, and a hint that a tap says
@@ -84,8 +77,54 @@ private fun UnknownMark() {
     Icon(HelpOutlineIcon, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
 }
 
+/**
+ * The home screen's disruptions card ([HomeLines], [DisruptionsCard]): its lines alone, a stop's closure
+ * having its own card, so all clear is "No line disruptions" beside a ✓, or "No watched disruptions" beside
+ * an ⓘ where a line it covers has one it doesn't count (maintainer, 2026-10-17). Its lines page has the
+ * home screen's sections, and offers watching a line.
+ */
 @Composable
 internal fun HomeDisruptionsRow(row: TripRow, modifier: Modifier = Modifier) {
+    DisruptionsCard(
+        row,
+        tag = "homeDisruptions",
+        clear = R.string.home_disruptions_no_line,
+        notCounted = R.string.home_disruptions_none,
+        stops = false,
+        modifier = modifier,
+    ) { close ->
+        // *Other*'s lines are asked about while the page is open, and no longer once it closes.
+        val onPage = LocalLinesPage.current
+        DisposableEffect(onPage) {
+            onPage?.invoke(true)
+            onDispose { onPage?.invoke(false) }
+        }
+        TripLinesPage(row, onClose = close, gone = R.string.home_lines_gone, goneWatched = R.string.home_lines_unwatched, dismissal = LocalDismissLineAlert.current, watch = LocalLineWatch.current)
+    }
+}
+
+/**
+ * A disruptions card, the home screen's ([HomeDisruptionsRow]) and a trip's alike (maintainer, 2026-10-17:
+ * a trip's matches the home screen's), one line high whatever it says (maintainer, 2026-10-05): each
+ * disrupted line's pill behind a ⚠, then a ? in a circle and what couldn't be checked, on a tinted card,
+ * the ? shown once ([DisruptionsMark], [unknownMarkAt]); with none of those, a plain card saying so beside
+ * its mark ([clear] beside a ✓, [notCounted] beside an ⓘ where a line it covers has a disruption it doesn't
+ * count, "Checking for disruptions" beside a spinner; maintainer, 2026-10-16, 2026-10-17). With [stops], the
+ * closed stops follow the disrupted lines, and the stops that couldn't be checked the unchecked lines, as
+ * text: a trip names them, the home screen gives a closure a card of its own. What doesn't fit is counted
+ * as "+N". A tap opens every line it covers with its status ([page], told how to close), which its chevron
+ * says (maintainer, 2026-10-16).
+ */
+@Composable
+internal fun DisruptionsCard(
+    row: TripRow,
+    tag: String,
+    @StringRes clear: Int,
+    @StringRes notCounted: Int,
+    stops: Boolean,
+    modifier: Modifier = Modifier,
+    page: @Composable (close: () -> Unit) -> Unit,
+) {
     val style = MaterialTheme.typography.bodyMedium
     val colors = MaterialTheme.colorScheme
     val error = colors.error
@@ -93,36 +132,43 @@ internal fun HomeDisruptionsRow(row: TripRow, modifier: Modifier = Modifier) {
     // The pills, worst first (the disrupted, then the ? and the unchecked), counted as "+N" where
     // they don't fit; only pills are counted (Codex, #577). A word alone always shows, at the end.
     val disrupted = row.lines
+    val closed = if (stops) row.stops else ""
     val unchecked = if (row.checking) emptyList() else row.unknownLines
-    val pills = disrupted.size + unchecked.size
+    val uncheckedStops = if (stops && !row.checking) row.unknownStops else ""
+    // The disrupted lines, then the closed stops as one; the unchecked lines, then the unchecked stops.
+    val disruptedCount = disrupted.size + (if (closed.isNotEmpty()) 1 else 0)
+    val uncheckedCount = unchecked.size + (if (uncheckedStops.isNotEmpty()) 1 else 0)
+    val pills = disruptedCount + uncheckedCount
     // Anything disrupted, or anything that couldn't be checked, takes the warning and the tint: a check
     // that failed is never shown as all clear. Lines already known disrupted keep it through a recheck.
-    val warn = disrupted.isNotEmpty() || (!row.checking && (unchecked.isNotEmpty() || row.unknown))
+    val warn = disruptedCount > 0 || (!row.checking && (uncheckedCount > 0 || row.unknown))
     val word = when {
         // Said whole on its own; beside pills, the short form leaves them the room.
         row.checking -> if (pills == 0) R.string.disruptions_checking else R.string.trip_disruptions_checking
         warn && pills == 0 -> R.string.disruptions_unknown
-        // Said of its lines alone: a stop's closure has its own card, so all clear here is never more than
-        // the lines' (maintainer, 2026-10-17; Codex, #927).
-        row.lines.isEmpty() && !row.unknown -> if (row.linesDisrupted) R.string.home_disruptions_none else R.string.home_disruptions_no_line
+        // On the home screen, said of its lines alone: a stop's closure has its own card, so all clear there
+        // is never more than the lines' (maintainer, 2026-10-17; Codex, #927).
+        disruptedCount == 0 && !row.unknown -> if (row.linesDisrupted) notCounted else clear
         // Something couldn't be checked with no line to name for it (a stop's closure check, say),
         // beside the lines that are disrupted: said all the same (maintainer, 2026-10-05).
-        row.unknown && unchecked.isEmpty() -> R.string.trip_disruptions_unknown
+        row.unknown && uncheckedCount == 0 -> R.string.trip_disruptions_unknown
         else -> null
     }
     val muted = if (warn) colors.onErrorContainer else colors.onSurfaceVariant
     val wordColor = if (word == R.string.disruptions_unknown) error else muted
-    // Heard whole, every line named, never only the pills that fit nor one measured and left out. A
-    // word alone already says what it's about.
+    // Heard whole, every line and stop named, never only the pills that fit nor one measured and left
+    // out. A word alone already says what it's about.
     val spoken = if (pills == 0 && word != null) {
         stringResource(word)
     } else {
         listOfNotNull(
             stringResource(R.string.trip_disruptions_label),
             row.linesSpoken.ifBlank { null },
+            closed.ifBlank { null },
             word?.let { stringResource(it) },
-            stringResource(R.string.trip_disruptions_unknown_label).takeIf { unchecked.isNotEmpty() },
+            stringResource(R.string.trip_disruptions_unknown_label).takeIf { uncheckedCount > 0 },
             row.unknownSpoken.takeIf { unchecked.isNotEmpty() },
+            uncheckedStops.ifBlank { null },
         ).joinToString(" ")
     }
     // The card the departures sit in, its border theirs whatever it says, its fill tinted as the notices
@@ -137,7 +183,7 @@ internal fun HomeDisruptionsRow(row: TripRow, modifier: Modifier = Modifier) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
-                .testTag("homeDisruptions")
+                .testTag(tag)
                 .semantics { contentDescription = spoken }
                 .clickable(onClickLabel = stringResource(R.string.trip_lines_open)) { open = true }
                 .fillMaxWidth()
@@ -164,11 +210,16 @@ internal fun HomeDisruptionsRow(row: TripRow, modifier: Modifier = Modifier) {
                     pill = { i ->
                         // A refresh that drops pills recomposes the old ones' slots before the row is
                         // measured again and lets them go: a slot past the lists draws nothing.
-                        val leg = disrupted.getOrNull(i) ?: unchecked.getOrNull(i - disrupted.size) ?: return@OneLine
-                        LinePill(leg.lineName, leg.lineId, leg.mode)
+                        val uncheckedAt = i - disruptedCount
+                        when {
+                            i < disrupted.size -> disrupted[i].let { LinePill(it.lineName, it.lineId, it.mode) }
+                            i < disruptedCount -> Text(closed, style = style, maxLines = 1)
+                            uncheckedAt < unchecked.size -> unchecked[uncheckedAt].let { LinePill(it.lineName, it.lineId, it.mode) }
+                            uncheckedAt < uncheckedCount -> Text(uncheckedStops, style = style, color = error, maxLines = 1)
+                        }
                     },
                     // The ? before the first unchecked pill, as part of it, so it goes with it.
-                    labelAt = unknownMarkAt(disrupted.size, unchecked.size),
+                    labelAt = unknownMarkAt(disruptedCount, uncheckedCount),
                     label = { UnknownMark() },
                     word = word?.let {
                         {
@@ -182,8 +233,8 @@ internal fun HomeDisruptionsRow(row: TripRow, modifier: Modifier = Modifier) {
                 ) { more ->
                     // The unchecked come last, so a count that hides any of them is red, as the ? is.
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (unknownMarkOnCount(disrupted.size, unchecked.size, more)) UnknownMark()
-                        Text(stringResource(R.string.home_disruptions_more, more), style = style, color = if (unchecked.isNotEmpty()) error else muted, maxLines = 1)
+                        if (unknownMarkOnCount(disruptedCount, uncheckedCount, more)) UnknownMark()
+                        Text(stringResource(R.string.home_disruptions_more, more), style = style, color = if (uncheckedCount > 0) error else muted, maxLines = 1)
                     }
                 }
             }
@@ -196,15 +247,7 @@ internal fun HomeDisruptionsRow(row: TripRow, modifier: Modifier = Modifier) {
             )
         }
     }
-    if (open) {
-        // *Other*'s lines are asked about while the page is open, and no longer once it closes.
-        val onPage = LocalLinesPage.current
-        DisposableEffect(onPage) {
-            onPage?.invoke(true)
-            onDispose { onPage?.invoke(false) }
-        }
-        TripLinesPage(row, onClose = { open = false }, gone = R.string.home_lines_gone, goneWatched = R.string.home_lines_unwatched, dismissal = LocalDismissLineAlert.current, watch = LocalLineWatch.current)
-    }
+    if (open) page { open = false }
 }
 
 /**

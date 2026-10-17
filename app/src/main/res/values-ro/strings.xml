@@ -52,7 +52,6 @@
     <string name="widget_refresh_key_rejected">Nu s-a putut actualiza: cheie API respinsă</string>
     <string name="widget_refresh_failed_short">Actualizare eșuată</string>
     <string name="trip_disruptions_label">Perturbări:</string>
-    <string name="trip_disruptions_none">Niciuna</string>
     <string name="trip_disruptions_checking">Se verifică…</string>
     <string name="trip_disruptions_unknown">Necunoscute</string>
     <string name="trip_disruptions_unknown_label">Neverificate:</string>

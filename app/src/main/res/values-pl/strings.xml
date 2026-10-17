@@ -53,7 +53,6 @@
     <string name="widget_refresh_key_rejected">Nie odświeżono: klucz API odrzucony</string>
     <string name="widget_refresh_failed_short">Nie odświeżono</string>
     <string name="trip_disruptions_label">Utrudnienia:</string>
-    <string name="trip_disruptions_none">Brak</string>
     <string name="trip_disruptions_checking">Sprawdzam…</string>
     <string name="trip_disruptions_unknown">Nieznane</string>
     <string name="trip_disruptions_unknown_label">Nieznane:</string>
