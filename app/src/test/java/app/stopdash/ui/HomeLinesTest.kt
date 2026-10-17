@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import androidx.compose.ui.graphics.Color
 import app.stopdash.ThreadRecorder
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DismissedAlert
@@ -441,6 +442,21 @@ class HomeLinesTest {
         assertEquals(listOf("central", "northern", "73", "38"), judged.every.map { it.leg.lineId })
         assertEquals(listOf(true, true, true, false), judged.every.map { it.watched })
         assertEquals(listOf("central", "northern", "73"), judged.everyWatched)
+    }
+
+    @Test
+    fun `each picker chip's colors are its line's pill's, in the picker's order`() {
+        // Worked out with which chips are on, off the main thread (Codex, #923): a tube line solid, a named
+        // Overground line hollow, as its pill is.
+        val surface = Color(0xFFFFFBFE)
+        val pills = HomeLines.pickerPills(surface)
+        assertEquals(HomeLines.PICKER.map { it.second.size }, pills.map { it.size })
+        HomeLines.PICKER.forEachIndexed { g, (_, lines) ->
+            lines.forEachIndexed { i, line -> assertEquals(pillColors(line.name, line.id, line.mode, surface), pills[g][i]) }
+        }
+        val victoria = HomeLines.PICKER[0].second.indexOfFirst { it.id == "victoria" }
+        assertTrue(pills[0][victoria] is PillColors.Solid)
+        assertTrue(pills[1].all { it is PillColors.Hollow })
     }
 
     @Test

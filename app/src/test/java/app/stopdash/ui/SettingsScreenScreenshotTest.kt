@@ -35,6 +35,11 @@ import app.stopdash.domain.StepFree
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.TextUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -339,6 +344,62 @@ class SettingsScreenScreenshotTest {
         // A tap names its line; the setting works out the choice ([SummaryNetworksSetting.toggle]).
         composeRule.onNodeWithTag("summaryLine-dlr").performScrollTo().performClick()
         org.junit.Assert.assertEquals(listOf("dlr"), tapped)
+    }
+
+    @Test
+    fun an_included_line_is_ticked_and_filled_in_its_own_color() {
+        // On reads at a glance (maintainer, 2026-10-17): a tick on the chip, none on one left off.
+        var chosen by mutableStateOf(setOf("victoria"))
+        var chipLabel: TextUnit? = null
+        composeRule.setContent {
+            StopDashTheme {
+                chipLabel = MaterialTheme.typography.labelLarge.fontSize
+                DisruptionsSummaryPage(
+                    show = true, onShowChange = {}, showLoaded = true, showWriteFailed = false, onDismissShowError = {},
+                    networks = chosen, onToggleLine = { chosen = HomeLines.toggle(chosen, it) }, networksLoaded = true, networksWriteFailed = false,
+                    onDismissNetworksError = {}, onBack = {},
+                )
+            }
+        }
+        waitForSelected("summaryLine-victoria")
+        composeRule.onNodeWithTag("summaryLineOn-victoria", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithTag("summaryLineOn-central", useUnmergedTree = true).assertDoesNotExist()
+        // Off, a + where the tick goes (maintainer, 2026-10-17), so the chip is as wide either way and turning
+        // it on never moves the chips after it (Codex, #923).
+        composeRule.onNodeWithTag("summaryLineOff-central", useUnmergedTree = true).assertExists()
+        val offWidth = composeRule.onNodeWithTag("summaryLine-central").getUnclippedBoundsInRoot().let { it.right - it.left }
+        val nextLeft = composeRule.onNodeWithTag("summaryLine-circle").getUnclippedBoundsInRoot().left
+        composeRule.onNodeWithTag("summaryLine-central").performClick()
+        waitForSelected("summaryLine-central")
+        composeRule.onNodeWithTag("summaryLineOn-central", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithTag("summaryLineOff-central", useUnmergedTree = true).assertDoesNotExist()
+        assertEquals(offWidth, composeRule.onNodeWithTag("summaryLine-central").getUnclippedBoundsInRoot().let { it.right - it.left })
+        assertEquals(nextLeft, composeRule.onNodeWithTag("summaryLine-circle").getUnclippedBoundsInRoot().left)
+        // Every label keeps the chip's own type, on or off, so the halo never widens a chip (Codex, #923).
+        fun labelSize(name: String): TextUnit {
+            val layouts = mutableListOf<TextLayoutResult>()
+            composeRule.onNodeWithText(name, useUnmergedTree = true).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+            return layouts.single().layoutInput.style.fontSize
+        }
+        assertEquals(chipLabel, labelSize("Victoria"))
+        assertEquals(chipLabel, labelSize("Bakerloo"))
+        captureSnapshot("settings-summary-lines-on.png", heightPx = 2400)
+    }
+
+    @Test
+    fun an_included_line_is_ticked_in_the_dark_too() {
+        composeRule.setContent {
+            StopDashTheme(darkTheme = true) {
+                DisruptionsSummaryPage(
+                    show = true, onShowChange = {}, showLoaded = true, showWriteFailed = false, onDismissShowError = {},
+                    networks = setOf("victoria", "elizabeth", "windrush", "tram"), onToggleLine = {}, networksLoaded = true, networksWriteFailed = false,
+                    onDismissNetworksError = {}, onBack = {},
+                )
+            }
+        }
+        waitForSelected("summaryLine-windrush")
+        composeRule.onNodeWithTag("summaryLineOn-windrush", useUnmergedTree = true).assertExists()
+        captureSnapshot("settings-summary-lines-on-dark.png", heightPx = 2400)
     }
 
     @Test
