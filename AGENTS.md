@@ -240,12 +240,13 @@ accent) since their colors collide with tube lines. Confirmed TfL hexes only (`S
 
 - Prefer `mcp__github__*` tools where mounted (Claude Code requires them); otherwise fall
   back to `gh`.
-- **Codex is the automated reviewer** (not Copilot). Address every comment — fix and fold
-  into its commit, or reply declining with reasons — then resolve the thread
-  (`resolve_review_thread` or `gh api graphql` `resolveReviewThread` takes `PRRT_*`, not
+- **Codex and Claude review every PR automatically** (not Copilot; Claude posts as
+  github-actions[bot], marking findings 🔴 blocking, 🟡 nit, 🟣 pre-existing). Address every
+  comment — fix and fold into its commit, or reply declining with reasons — then resolve the
+  thread (`resolve_review_thread` or `gh api graphql` `resolveReviewThread` takes `PRRT_*`, not
   `PRRC_*`; push fix, reply citing sha, resolve). Never silently dismiss. Codex's +1 gates
-  merge (a decline can still earn it with a rebuttal or `TODO.md` entry, though fixing is
-  often quicker).
+  merge, Claude's review doesn't (a decline can still earn it with a rebuttal or `TODO.md`
+  entry, though fixing is often quicker).
 - **Defer out-of-scope findings** by pushing a `TODO.md` entry, replying with that sha, and
   resolving.
 - **Judge comments on merit.** Check what a cited rule actually says; over-strict privacy
