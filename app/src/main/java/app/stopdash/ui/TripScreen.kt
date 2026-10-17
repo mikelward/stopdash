@@ -4096,6 +4096,23 @@ internal class LineAlertDismissal(
 internal val LocalDismissLineAlert = compositionLocalOf<LineAlertDismissal?> { null }
 
 /**
+ * The lines the home screen's summary watches by choice ([chosen]: line ids, or an older build's network
+ * keys) and [toggle] to watch one or stop: its lines page offers that on a long press (maintainer,
+ * 2026-10-17), as Settings' chips do; a choice that didn't save ([failed], acknowledged by [onFailureShown])
+ * is said there too (Codex, #924). Null where no page offers it (a trip's), or before the choice is read.
+ * Only the home screen's lines page takes it ([TripLinesPage]'s `watch`): every other page shadows it with
+ * none, so a trip's page neither offers it nor says, and so acknowledges, a home page's failure (Codex, #924).
+ */
+internal class LineWatch(
+    val chosen: Set<String>,
+    val toggle: (String) -> Unit,
+    val failed: Boolean = false,
+    val onFailureShown: () -> Unit = {},
+)
+
+internal val LocalLineWatch = compositionLocalOf<LineWatch?> { null }
+
+/**
  * The rider's own stops ([HomeLines.riderStops]) where a lines page's row carries none (a trip's, which
  * rides its own): a line's map keeps them on the page too. Worked out on the worker; empty for none.
  */
@@ -4115,12 +4132,16 @@ internal fun TripLinesPage(
     row: TripRow,
     onClose: () -> Unit,
     @StringRes gone: Int = R.string.trip_lines_gone,
+    // What a gone line under *Watched* says ([TripLinesContent]).
+    @StringRes goneWatched: Int = gone,
     // Dismisses a line's alert from its page (maintainer, 2026-10-06), as a departure's line page does;
     // null offers none.
     dismissal: LineAlertDismissal? = null,
     // Opened on the page of [row]'s one line alone, as a route page's "View line" opens it: Back closes
     // the page rather than going to the lines.
     alone: Boolean = false,
+    // The home screen's page only: watching a line on a long press, and a watch that didn't save ([LineWatch]).
+    watch: LineWatch? = null,
 ) {
     val onDismiss = dismissal?.dismiss
     // Open: the screen under it holds its word on a dismiss that didn't save, which this page says.
@@ -4133,12 +4154,29 @@ internal fun TripLinesPage(
     val snackbarHostState = remember { SnackbarHostState() }
     val failedMessage = stringResource(R.string.dismiss_write_failed)
     val failed = dismissal?.failed == true
-    // Shown in the page's own scope: acknowledging it turns [failed] back, which would cancel it here.
+    // Shown in the page's own scope: acknowledging it turns [failed] back, which would cancel it here. Acknowledged
+    // only once it has shown, so one queued behind another snackbar, and dropped with the page closing first, is
+    // still there to say (Codex, #924).
     val scope = rememberCoroutineScope()
     LaunchedEffect(failed) {
         if (failed) {
-            scope.launch { snackbarHostState.showSnackbar(failedMessage) }
-            dismissal?.onFailureShown?.invoke()
+            val acknowledge = dismissal?.onFailureShown
+            scope.launch {
+                snackbarHostState.showSnackbar(failedMessage)
+                acknowledge?.invoke()
+            }
+        }
+    }
+    // A line watched or unwatched here that didn't save, said here as Settings would (Codex, #924).
+    val watchFailedMessage = stringResource(R.string.settings_disruptions_row_write_failed)
+    val watchFailed = watch?.failed == true
+    LaunchedEffect(watchFailed) {
+        if (watchFailed) {
+            val acknowledge = watch?.onFailureShown
+            scope.launch {
+                snackbarHostState.showSnackbar(watchFailedMessage)
+                acknowledge?.invoke()
+            }
         }
     }
     val held = rememberOpenedOrder(row)
@@ -4290,20 +4328,24 @@ internal fun TripLinesPage(
                     )
                 }
             } else {
-                TripLinesContent(
-                    row,
-                    Modifier.fillMaxSize().padding(padding),
-                    lines,
-                    pending = held.pending,
-                    state = listState,
-                    gone = gone,
-                    watchedCount = held.watchedCount,
-                    onOpenLine = { index, line ->
-                        reasonId = line.leg.lineId
-                        reasonName = line.leg.lineName
-                        reasonAt = index
-                    },
-                )
+                // Only the page given a [watch] offers one, whatever an outer page provides.
+                CompositionLocalProvider(LocalLineWatch provides watch) {
+                    TripLinesContent(
+                        row,
+                        Modifier.fillMaxSize().padding(padding),
+                        lines,
+                        pending = held.pending,
+                        state = listState,
+                        gone = gone,
+                        goneWatched = goneWatched,
+                        watchedCount = held.watchedCount,
+                        onOpenLine = { index, line ->
+                            reasonId = line.leg.lineId
+                            reasonName = line.leg.lineName
+                            reasonAt = index
+                        },
+                    )
+                }
             }
         }
     }
@@ -4641,42 +4683,75 @@ private fun TripLineRow(
     line: TripLine,
     onOpen: (() -> Unit)? = null,
     @StringRes gone: Int = R.string.trip_lines_gone,
+    // The home screen's page: whether the rider chose to watch the line, and how to turn that the other way,
+    // offered on a long press ([LineWatch]); null where the line can't be chosen so.
+    chosen: Boolean? = null,
+    onWatch: (() -> Unit)? = null,
 ) {
     val style = MaterialTheme.typography.bodyMedium
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val status = line.status
     // Every line has a page, its map on it whatever its status; a stand-in or a line gone has nothing to open.
     val opens = onOpen.takeIf { !line.restoring && !line.gone }
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.fillMaxWidth()
-            .then(if (opens != null) Modifier.clickable(onClickLabel = stringResource(R.string.trip_lines_line)) { opens() } else Modifier),
-    ) {
-        LinePill(line.leg.lineName, line.leg.lineId, line.leg.mode)
-        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            when {
-                // The chip takes what's left after the word beside it, so "Couldn't check" always shows
-                // (Codex, #559); a long one ellipsizes.
-                status != null && line.disrupted && line.dismissed ->
-                    DisruptionChip(stringResource(R.string.trip_lines_dismissed, status.description), Modifier.weight(1f, fill = false), muted = true)
-                status != null && line.disrupted -> DisruptionChip(status.description, Modifier.weight(1f, fill = false))
+    // A line gone since the page opened keeps it, so a line just unwatched can be watched again (Codex, #924).
+    val watch = onWatch.takeIf { chosen != null && !line.restoring }
+    var menu by remember { mutableStateOf(false) }
+    val watchLabel = stringResource(if (chosen == true) R.string.lines_unwatch else R.string.lines_watch)
+    Box {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+                .then(
+                    when {
+                        watch != null -> Modifier.combinedClickable(
+                            onClickLabel = opens?.let { stringResource(R.string.trip_lines_line) },
+                            onLongClickLabel = watchLabel,
+                            onLongClick = { menu = true },
+                            onClick = { opens?.invoke() },
+                        )
+                        opens != null -> Modifier.clickable(onClickLabel = stringResource(R.string.trip_lines_line)) { opens() }
+                        else -> Modifier
+                    },
+                ),
+        ) {
+            LinePill(line.leg.lineName, line.leg.lineId, line.leg.mode)
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                when {
+                    // The chip takes what's left after the word beside it, so "Couldn't check" always shows
+                    // (Codex, #559); a long one ellipsizes.
+                    status != null && line.disrupted && line.dismissed ->
+                        DisruptionChip(stringResource(R.string.trip_lines_dismissed, status.description), Modifier.weight(1f, fill = false), muted = true)
+                    status != null && line.disrupted -> DisruptionChip(status.description, Modifier.weight(1f, fill = false))
+                }
+                line.quieted?.let { DisruptionChip(stringResource(R.string.trip_lines_dismissed, it.description), Modifier.weight(1f, fill = false), muted = true) }
+                when {
+                    // Restoring after a rotation: the pill alone, in its place, no word for a status not back yet.
+                    line.restoring -> Unit
+                    line.gone -> Text(stringResource(gone), style = style, color = muted, maxLines = 1)
+                    line.unknown -> Text(stringResource(R.string.trip_lines_unknown), style = style, color = MaterialTheme.colorScheme.error, maxLines = 1)
+                    line.checking -> Text(stringResource(R.string.trip_disruptions_checking), style = style, color = muted, maxLines = 1)
+                    // Dismissed with no alert to name, as a route page's line is: never "Good service".
+                    !line.disrupted && line.dismissed -> Text(stringResource(R.string.route_detail_alert_dismissed), style = style, color = muted, maxLines = 1)
+                    !line.disrupted -> Text(stringResource(R.string.trip_lines_good), style = style, color = muted, maxLines = 1)
+                }
             }
-            line.quieted?.let { DisruptionChip(stringResource(R.string.trip_lines_dismissed, it.description), Modifier.weight(1f, fill = false), muted = true) }
-            when {
-                // Restoring after a rotation: the pill alone, in its place, no word for a status not back yet.
-                line.restoring -> Unit
-                line.gone -> Text(stringResource(gone), style = style, color = muted, maxLines = 1)
-                line.unknown -> Text(stringResource(R.string.trip_lines_unknown), style = style, color = MaterialTheme.colorScheme.error, maxLines = 1)
-                line.checking -> Text(stringResource(R.string.trip_disruptions_checking), style = style, color = muted, maxLines = 1)
-                // Dismissed with no alert to name, as a route page's line is: never "Good service".
-                !line.disrupted && line.dismissed -> Text(stringResource(R.string.route_detail_alert_dismissed), style = style, color = muted, maxLines = 1)
-                !line.disrupted -> Text(stringResource(R.string.trip_lines_good), style = style, color = muted, maxLines = 1)
+            if (opens != null) {
+                // Read out by the row's click label.
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = muted)
             }
         }
-        if (opens != null) {
-            // Read out by the row's click label.
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = muted)
+        if (watch != null) {
+            StopDashMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                DropdownMenuItem(
+                    text = { Text(watchLabel) },
+                    onClick = {
+                        menu = false
+                        watch()
+                    },
+                    modifier = Modifier.testTag("lineWatch-${line.leg.lineId}"),
+                )
+            }
         }
     }
 }
@@ -4697,6 +4772,8 @@ internal fun TripLinesContent(
     onOpenLine: ((Int, TripLine) -> Unit)? = null,
     // What a line no longer among the row's says: off the trip, or (home) no longer near.
     @StringRes gone: Int = R.string.trip_lines_gone,
+    // What one says under *Watched*: no longer watched, whether no longer near or unwatched (Codex, #924).
+    @StringRes goneWatched: Int = gone,
     // The home screen's page: how many of the lines lead under *Watched*, the rest under *Other*
     // ([OpenedLines.watchedCount]); null for no sections, as a trip's page has.
     watchedCount: Int? = null,
@@ -4737,7 +4814,15 @@ internal fun TripLinesContent(
             items(count, key = { lines[from + it].leg.lineId }) { i ->
                 val index = from + i
                 val line = lines[index]
-                TripLineRow(line, onOpenLine?.let { open -> { open(index, line) } }, gone)
+                // The home screen's page only: its lines are sectioned, and it offers watching one, a line gone
+                // since it opened included.
+                val watching = LocalLineWatch.current?.takeIf { watchedCount != null }
+                TripLineRow(
+                    line, onOpenLine?.let { open -> { open(index, line) } },
+                    if (watchedCount != null && index < watchedCount) goneWatched else gone,
+                    chosen = watching?.let { HomeLines.watching(it.chosen, line.leg.lineId) },
+                    onWatch = watching?.let { w -> { w.toggle(line.leg.lineId) } },
+                )
             }
         }
         if (row.stops.isNotEmpty()) {

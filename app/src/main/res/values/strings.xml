@@ -124,14 +124,23 @@
     <!-- TODO: translate -->
     <!-- The home screen's disruptions card when every line it covers is checked and none is disrupted. -->
     <string name="home_disruptions_none" tools:ignore="MissingTranslation">No watched disruptions</string>
-    <!-- On the home screen's lines page, a line whose stops are no longer near since it opened. -->
+    <!-- On the home screen's lines page, a line under Other whose stops are no longer near since it opened. -->
     <string name="home_lines_gone">No longer nearby</string>
+    <!-- TODO: translate -->
+    <!-- On the home screen's lines page, a line under Watched the summary no longer watches since the page opened: no longer near, unwatched, or off a favorite ride. -->
+    <string name="home_lines_unwatched" tools:ignore="MissingTranslation">No longer watched</string>
     <!-- TODO: translate -->
     <!-- Heading on the home screen's lines page over the lines the summary watches: near the rider, their favorites', the trip they're on, and the lines they chose. -->
     <string name="home_lines_watched" tools:ignore="MissingTranslation">Watched</string>
     <!-- TODO: translate -->
     <!-- Heading on the home screen's lines page over the rest of the lines it covers. -->
     <string name="home_lines_other" tools:ignore="MissingTranslation">Other</string>
+    <!-- TODO: translate -->
+    <!-- A line's long-press menu on the home screen's lines page: the summary watches it wherever the rider is. -->
+    <string name="lines_watch" tools:ignore="MissingTranslation">Watch</string>
+    <!-- TODO: translate -->
+    <!-- The long-press menu of a line the rider chose to watch, on the home screen's lines page: stops watching it. -->
+    <string name="lines_unwatch" tools:ignore="MissingTranslation">Unwatch</string>
     <!-- Click label of a line on the lines page: it opens the line's own page, with its map. -->
     <string name="trip_lines_line">Open line</string>
     <!-- Heading of a line's map on its page (SPEC *Line page → Map*). -->
