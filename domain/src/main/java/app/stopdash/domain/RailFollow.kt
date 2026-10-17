@@ -41,6 +41,12 @@ data class RailRun(
 )
 
 /**
+ * A board's [runs] and how old the board already was when it arrived ([age]: the relay's `Age`, zero
+ * straight from National Rail), kept with the list so a board listing none is dated too ([RailBoard.age]).
+ */
+data class RailRuns(val runs: List<RailRun>, val age: Duration = Duration.ZERO)
+
+/**
  * A stop on a [RailRun]: its station code and cleaned name, when it was due there, and when it's expected.
  * One before the board's station is [left] where the board gives when it was there (Darwin's actual time,
  * [expected] being that time, or null for "No report"): the only word that the train has gone from it.
@@ -222,7 +228,7 @@ class RailVehicles(
     private val tfl: VehicleSource,
     // A station's board with calling points toward a terminus, by their codes, from so many minutes on
     // ([RailFollow.offsetMinutes]); null with no key.
-    private val runs: suspend (String, String, Int) -> List<RailRun>?,
+    private val runs: suspend (String, String, Int) -> RailRuns?,
     // Every TfL stop id of a station code, as a trip names its stops.
     private val stopIdsFor: (String) -> Set<String>,
     private val clock: () -> Instant = Instant::now,
@@ -346,7 +352,8 @@ class RailVehicles(
             throw TflException.Unreachable("no national rail key", null)
         }
         reads.entries.removeIf { !now.isBefore(it.value.at.plus(REUSE_FOR)) }
-        return Read(now, runs).also { reads[key] = it }
+        // Dated by the board's own age, not the ask, listing trains or none (Codex, #944).
+        return Read(now.minus(runs.age), runs.runs).also { reads[key] = it }
     }
 
     companion object {

@@ -8,17 +8,17 @@ truth those answers are built from.
 
 ## What leaves the device
 
-StopDash is a **client-only** app. By default it makes network calls to just two places, plus a
-third only if you add a National Rail key: **Transport for London's Unified API**, the calls that
-*are* the product; — on a release build only — **Google Play**, to ask whether an app update is
-available (detailed below; it carries nothing about you); and, with a National Rail key, **National
-Rail's live departure boards** (the Rail Data Marketplace, detailed below). **Google** is asked only
+StopDash is a **client-only** app. Its network calls go to: **Transport for London's Unified API**,
+the calls that *are* the product; — on a release build only — **Google Play**, to ask whether an app
+update is available (detailed below; it carries nothing about you); and **National Rail's live
+departure boards** (the Rail Data Marketplace), with a National Rail key of your own, or without one
+through stopdash's own relay (both detailed below). **Google** is asked only
 when you share a Google Maps short link into the app, to learn the place it points to (see *Find a
 station*). **stopdash's own relay** is asked for National Rail's disruption notices, a request that
 carries nothing about you (see *National Rail disruption notices*). **Firebase** is added
 only if you turn on *Help make StopDash better* (off by default; see *Crash reports and usage stats*
 below). Your **location, the stops and lines you look up, and your API keys** go only to TfL, or
-with a National Rail key also to National Rail (if you opt in, Firebase sees only the rough region
+with National Rail times also to National Rail, directly or through the relay (if you opt in, Firebase sees only the rough region
 Google infers from your IP address), and only ever what a request needs to answer your question
 about departures: the details of what you're looking up (your location for "near me now" and for
 a trip you plan from it —
@@ -36,8 +36,8 @@ use beyond that is a trip you start: it's checked on the phone while you walk to
 boarding at, while you wait there, just after you board, and as your train nears the station you get
 off at, app open or closed, and never sent (see *On the way*, below).
 
-**National Rail times (optional).** If you paste a National Rail API key (from the Rail Data
-Marketplace) in Settings, stopdash also asks **National Rail's live departure boards** for the
+**National Rail times.** With a National Rail API key of your own (from the Rail Data
+Marketplace, pasted in Settings), or through stopdash's own proxy without one (below), stopdash also asks **National Rail's live departure boards** for the
 departures at a railway station you're looking at. That request carries only the station's
 three-letter National Rail code (e.g. `WAT` for Waterloo) and your key, never your location. While a
 trip on the way has a National Rail ride, it also asks, about every 30 seconds, for the boards at
@@ -50,8 +50,12 @@ checked in all each refresh, one board each; and, while it follows your train, t
 next, the one after it and one it may be held at, at most three a refresh. For a train more than about
 25 minutes away from where you board, the board there is asked from a later time, in quarter hours,
 which says roughly when your train is due. Usually that's one or two boards a refresh. Your
-key is your own credential, sent only with those requests, never logged. Without a key, no
-request goes there. The station codes themselves come bundled with the app, built from NaPTAN,
+key is your own credential, sent only with those requests, never logged. Without a key of your
+own, the same requests go to **stopdash's own relay** instead, which asks National Rail with
+stopdash's key: it sees the same station codes and your connection's IP address, passes on only
+the codes, and logs nothing. To protect National Rail's limits it counts, for one minute, the
+requests it couldn't answer from its cache, under a key your IP address can't be recovered from,
+and keeps nothing else about you. The station codes themselves come bundled with the app, built from NaPTAN,
 the Department for Transport's public stop list.
 
 **National Rail disruption notices.** Where TfL's status for a National Rail line is only a link to
@@ -64,8 +68,9 @@ address, for about a month, as any web host does.
 
 Nothing else leaves the device *to stopdash* unless you turn on **Help make StopDash better**
 in Settings, which is **off by default** (see *Crash reports and usage stats* below): no
-third-party tracker, no ads, and no server of stopdash's own beyond that relay, which keeps no
-record of you (its host's sampled request records aside).
+third-party tracker, no ads, and no server of stopdash's own beyond that relay, which keeps
+nothing about you beyond the one-minute count of National Rail board requests described above (its
+host's sampled request records aside).
 
 On a release build, stopdash makes **one** other kind of network call — to **Google
 Play**, asking whether an app update is available (this drives the "update available" dot
@@ -89,8 +94,9 @@ location and a screenshot of the screen you sent it from** — but only after a 
 that says so, and then to your clipboard and the app you pick (the clipboard copy happens as
 soon as you confirm — detailed below).
 So the guarantee is precise rather than absolute: **without your opt-in, the only user data
-stopdash itself sends off the device goes in its TfL requests, and its National Rail requests if
-you've added a key** (the Play update check carries none), **plus, if a paired watch has the
+stopdash itself sends off the device goes in its TfL requests, and its National Rail requests,
+to National Rail with a key of your own or otherwise through stopdash's relay** (the Play update
+check carries none), **plus, if a paired watch has the
 StopDash watch app, the widget's stops and departures, and any trip on the way, to that watch** (above); with it, the crash reports and usage
 stats above go to Firebase too. Android's backup
 carries your saved data under your control, and a bug report carries what you consent to share.
@@ -217,7 +223,8 @@ open or closed, stopdash asks TfL about every 30 seconds (with the app open, as 
 seconds while you're moving) where the followed train will call next, by TfL's own id for that
 train, and for the departures at a stop where the next leg boards; neither says anything about you
 that the trip's departures don't already. A National Rail train, which TfL has no times for, is
-followed with your National Rail key from National Rail's own boards at up to three stations on its way
+followed from National Rail's own boards, with your National Rail key or, without one, through
+stopdash's proxy (which passes on the station codes alone), at up to three stations on its way
 from where you boarded (usually one: the one it's due at next), asked for only trains to its terminus:
 stations along the train's way, which can include where you board or get off, and where the train ends,
 and, for a train still a while away, roughly when it's due where you board. Until it has found your

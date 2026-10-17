@@ -292,11 +292,14 @@ class RailFollowTest {
         // Each station's board from so many minutes on, past the ten [at] lists from now.
         var later: Map<Int, Map<String, List<RailRun>>> = emptyMap()
 
-        suspend fun runs(crs: String, towards: String, offset: Int): List<RailRun>? {
+        // How old each board already was, as the relay's `Age` says.
+        var age: Duration = Duration.ZERO
+
+        suspend fun runs(crs: String, towards: String, offset: Int): RailRuns? {
             asked += "$crs>$towards" + if (offset == 0) "" else "+$offset"
             failing?.let { throw it }
             failingAt[crs]?.let { throw it }
-            return if (offset == 0) at[crs].orEmpty() else later[offset]?.get(crs).orEmpty()
+            return RailRuns(if (offset == 0) at[crs].orEmpty() else later[offset]?.get(crs).orEmpty(), age)
         }
     }
 
@@ -364,6 +367,25 @@ class RailFollowTest {
         assertEquals(at(1), vehicles.readAt(id))
         // A TfL train's are TfL's to date.
         assertNull(vehicles.readAt("162"))
+    }
+
+    @Test
+    fun `a train read from an already-old board is dated by the board's age, not the ask (Codex, #944)`() = runTest {
+        val now = at(-5)
+        val boards = Boards(mapOf("STP" to listOf(run("STP"))))
+        boards.age = Duration.ofSeconds(29)
+        val vehicles = RailVehicles(tfl, boards::runs, idsOf, clock = { now })
+        vehicles.vehicleCalls(id, "thameslink")
+        assertEquals(now.minusSeconds(29), vehicles.readAt(id))
+        // A board that lists none is as old too: reused only for what's left of its own 20 s, so a train
+        // appearing on it is seen once the board is (Codex, #944).
+        val bare = Boards(mapOf("STP" to emptyList()))
+        bare.age = Duration.ofSeconds(29)
+        val empty = RailVehicles(tfl, bare::runs, idsOf, clock = { now })
+        assertTrue(runCatching { empty.vehicleCalls(id, "thameslink") }.isFailure)
+        bare.at = mapOf("STP" to listOf(run("STP")))
+        assertTrue(empty.vehicleCalls(id, "thameslink").isNotEmpty())
+        assertEquals(listOf("STP>BTN", "STP>BTN"), bare.asked)
     }
 
     @Test

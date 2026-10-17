@@ -388,7 +388,7 @@ object HiddenModesSetting {
     )
 
     private fun railDefault(choice: HiddenModesChoice, key: String?): Boolean =
-        RailKeyDefault.applies(keySet = key != null, chosen = choice.railChosen, stored = choice.modes)
+        RailKeyDefault.applies(keySet = RailRelay.timesWith(key), chosen = choice.railChosen, stored = choice.modes)
 
     @WorkerThread
     private fun effective(choice: HiddenModesChoice, key: String?): Set<String> =
@@ -405,7 +405,7 @@ object HiddenModesSetting {
      * it came to be hidden.
      */
     val railKeyMissing: StateFlow<Boolean> =
-        combine(RailApiKeySetting.changes, RailApiKeySetting.isLoaded) { key, loaded -> loaded && key == null }
+        combine(RailApiKeySetting.changes, RailApiKeySetting.isLoaded) { key, loaded -> loaded && !RailRelay.timesWith(key) }
             .stateIn(scope, SharingStarted.Eagerly, false)
 
     /** The hidden modes right now, as [changes] last worked them out: a read, no work. */
@@ -860,12 +860,21 @@ object RideGroupingSetting {
  * change to either, so arrivals fetched under the old ones are dropped and fetched again.
  */
 object DepartureSourceSettings {
-    val changes: Flow<Any?> get() = departureSourceChanges(RailApiKeySetting.changes, TrainSpacingSetting.changes)
+    val changes: Flow<Any?> get() =
+        departureSourceChanges(RailApiKeySetting.changes, TrainSpacingSetting.changes, RailApiKeySetting.isLoaded)
 }
 
-/** [railKey] and [trainSpacing] together: the current pair first, then one on each change to either. */
-internal fun departureSourceChanges(railKey: Flow<String?>, trainSpacing: Flow<Boolean>): Flow<Any?> =
-    combine(railKey, trainSpacing, ::Pair)
+/**
+ * [railKey] and [trainSpacing] together: the current pair first, then one on each change to either.
+ * The key being read back ([railKeyLoaded]) is a change too, though a rider with none reads back the
+ * same null: the relay is asked only once it's known, so boards skipped until then are asked for at
+ * once rather than at the next refresh (Codex, #944).
+ */
+internal fun departureSourceChanges(
+    railKey: Flow<String?>,
+    trainSpacing: Flow<Boolean>,
+    railKeyLoaded: Flow<Boolean> = kotlinx.coroutines.flow.flowOf(true),
+): Flow<Any?> = combine(railKey, trainSpacing, railKeyLoaded, ::Triple)
 
 /**
  * The networks the home screen's disruptions row always covers (maintainer, 2026-10-05), by

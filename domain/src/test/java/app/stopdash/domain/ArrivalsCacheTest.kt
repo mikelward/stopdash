@@ -103,6 +103,18 @@ class ArrivalsCacheTest {
     }
 
     @Test
+    fun `a board that arrives already old is dated by when it was fetched, and goes stale that much sooner`() = runBlocking {
+        val cache = ArrivalsCache()
+        val aged = RailBoard(listOf(departure(3)), age = java.time.Duration.ofSeconds(25))
+        val entry = cache.fetchBoardOnce("national-rail:EXA", now, null) { aged }
+        assertEquals(SteadyClock.stamp(now).minusSeconds(25), entry?.fetchedAt)
+        assertEquals(entry?.fetchedAt, cache.get("national-rail:EXA", now)?.fetchedAt)
+        // Within the shared bound counted from the relay's fetch, not from this ask.
+        val bound = Staleness.THRESHOLD.inWholeSeconds
+        assertNull(cache.get("national-rail:EXA", now.plusSeconds(bound - 25)))
+    }
+
+    @Test
     fun `an entry dated after the clock, set back since, is never handed out`() {
         val cache = ArrivalsCache()
         cache.put("940GZZLUOXC", listOf(departure(3)), now)

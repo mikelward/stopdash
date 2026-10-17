@@ -3,6 +3,7 @@ package app.stopdash.widget
 import app.stopdash.BuildConfig
 import app.stopdash.data.KtorDarwinClient
 import app.stopdash.data.logNetworkWarning
+import app.stopdash.data.RailRelay
 import app.stopdash.data.RailStationCodesStore
 import app.stopdash.data.StationIndexStore
 import app.stopdash.data.RejectedApiKey
@@ -566,6 +567,8 @@ internal suspend fun refreshStoredSnapshot(
                         apiKey = { railKey },
                         warn = ::logWidgetSnapshotWarning,
                         stopIdFor = { RailStationCodesStore.load(context).stopIdFor(it) },
+                        // As in the app: without a key of the rider's own, the boards come through the relay.
+                        relayUrl = { RailRelay.url },
                     ),
                     codes = { RailStationCodesStore.load(context) },
                     warn = ::logWidgetSnapshotWarning,

@@ -31,4 +31,18 @@ class DepartureSourceSettingsTest {
         spacing.value = true
         assertEquals(4, seen.size)
     }
+
+    @Test
+    fun `the key being read back is a change, even when there's none (Codex, #944)`() = runTest {
+        val key = MutableStateFlow<String?>(null)
+        val loaded = MutableStateFlow(false)
+        val seen = mutableListOf<Any?>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            departureSourceChanges(key, MutableStateFlow(true), loaded).collect { seen += it }
+        }
+        assertEquals(1, seen.size)
+        // Read back as no key at all: the same null, but the relay may now be asked.
+        loaded.value = true
+        assertEquals(2, seen.size)
+    }
 }
