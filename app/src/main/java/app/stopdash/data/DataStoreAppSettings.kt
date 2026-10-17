@@ -173,10 +173,10 @@ class DataStoreAppSettings internal constructor(
     }
 
     override fun summaryNetworks(): Flow<Set<String>?> =
-        persisted().map { it?.summaryNetworks }
+        persisted().map { it?.summaryLines }
 
     override suspend fun setSummaryNetworks(networks: Set<String>) {
-        dataStore.updateData { (it ?: PersistedSettings()).copy(summaryNetworks = networks) }
+        dataStore.updateData { (it ?: PersistedSettings()).copy(summaryLines = networks) }
     }
 
     override fun distanceUnits(): Flow<DistanceUnits> =
@@ -334,8 +334,11 @@ data class PersistedSettings(
     val distanceUnits: String? = null,
     // Whether the home screen shows its disruptions row; null (an older file) for the default, shown.
     val showDisruptionsRow: Boolean? = null,
-    // The networks the disruptions row always covers, by key; null (never chosen) for the default.
-    val summaryNetworks: Set<String>? = null,
+    // The lines the disruptions row always covers on top of the rider's own, by id; null (never chosen) for
+    // none. Stored under a new key so every choice an older build saved was cleared once (maintainer,
+    // 2026-10-17): those were whole networks, from when the row covered the tube by default, and kept the
+    // row full of lines far from the rider's own. The old key is ignored, and dropped by the next write.
+    val summaryLines: Set<String>? = null,
     // The walking-speed choice by enum name, or null for the Planner's average; a string for the same
     // reason as [distanceUnits].
     val walkingSpeed: String? = null,

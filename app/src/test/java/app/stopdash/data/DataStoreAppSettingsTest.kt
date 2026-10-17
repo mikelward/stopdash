@@ -8,6 +8,7 @@ import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.RideGrouping
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripModes
+import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -150,6 +151,29 @@ class DataStoreAppSettingsTest {
         val older = SettingsSerializer.readFrom("""{"liveWidgetRefresh":true}""".byteInputStream())
         assertNull(checkNotNull(older).trainSpacing)
         assertTrue(DataStoreAppSettings(FakeDataStore(older)).trainSpacing().first())
+    }
+
+    @Test
+    fun `the summary's lines read none by default and persist a choice`() = runTest {
+        val store = DataStoreAppSettings(FakeDataStore(null))
+        assertNull(store.summaryNetworks().first())
+        store.setSummaryNetworks(setOf("victoria"))
+        assertEquals(setOf("victoria"), store.summaryNetworks().first())
+    }
+
+    @Test
+    fun `a summary choice an older build saved is cleared once`() = runTest {
+        // Whole networks, saved when the row covered the tube by default (maintainer, 2026-10-17).
+        val older = SettingsSerializer.readFrom("""{"liveWidgetRefresh":true,"summaryNetworks":["tube","victoria"]}""".byteInputStream())
+        val file = FakeDataStore(older)
+        val store = DataStoreAppSettings(file)
+        assertNull(store.summaryNetworks().first())
+        // The next write drops the old key, so it never comes back.
+        store.setSummaryNetworks(setOf("central"))
+        val written = ByteArrayOutputStream().also { SettingsSerializer.writeTo(file.data.first(), it) }.toString()
+        assertFalse(written, "summaryNetworks" in written)
+        val again = DataStoreAppSettings(FakeDataStore(SettingsSerializer.readFrom(written.byteInputStream())))
+        assertEquals(setOf("central"), again.summaryNetworks().first())
     }
 
     @Test
