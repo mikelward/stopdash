@@ -2323,6 +2323,22 @@ class TripScreenScreenshotTest {
         assertEquals(FontWeight.Bold, label.fontWeight)
     }
 
+    // The Direct header is as large as the route labels under it (maintainer, 2026-10-17), and as bold.
+    @Test
+    fun the_direct_header_is_as_large_as_a_route_cards_label() {
+        showDirect(
+            PlaceDirectViewModel.State.Ready(
+                listOf(directRow("elizabeth", "Elizabeth line", "elizabeth-line", "Bond Street", 3, 8, 13)),
+                checking = false,
+                uncertain = false,
+            ),
+        )
+        val header = textLayoutOf(composeRule.onNodeWithText("Direct", useUnmergedTree = true)).layoutInput.style
+        val label = textLayoutOf(composeRule.onAllNodesWithTag("routeLabel", useUnmergedTree = true).onFirst()).layoutInput.style
+        assertEquals(label.fontSize, header.fontSize)
+        assertEquals(FontWeight.Bold, header.fontWeight)
+    }
+
     private fun textLayoutOf(node: SemanticsNodeInteraction): TextLayoutResult {
         // A name with a shorter form is measured in a box around its text ([ShortenedText]): its child.
         val text = node.fetchSemanticsNode().takeIf { SemanticsActions.GetTextLayoutResult in it.config }

@@ -42,7 +42,7 @@ private val DIRECT_EXPANDED_MAX = 200.dp
 
 /**
  * The *Direct* section atop a trip to a place (SPEC *Direct to a place*; maintainer, 2026-10-07): a bold
- * "Direct" header like the routes' "Fastest", then a row per line going straight there — its pill, the
+ * "Direct" header as large as the routes' "Fastest", then a row per line going straight there — its pill, the
  * stop it gets the rider off at, its next trains ("3 · 8 · 13 min") — up to [DIRECT_ROWS], then "+N more". With
  * none, one line says so: "Checking…", "None", or "Couldn't check" with a Retry, never a blank, and the
  * header shows from the first frame so the routes under it don't jump when the rows land.
@@ -65,7 +65,8 @@ internal fun PlaceDirectSection(
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 text = stringResource(R.string.trip_direct_title),
-                style = MaterialTheme.typography.titleSmall,
+                // The routes' labels' size (maintainer, 2026-10-17): a size smaller, it read as lesser than them.
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.semantics { heading() },
             )
