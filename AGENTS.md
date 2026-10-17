@@ -1,417 +1,332 @@
 ---
 trigger: always_on
 alwaysApply: true
-last_modified: 2026-10-16
+last_modified: 2026-10-17
 ---
 
 # AGENTS.md
 
-Conventions for AI agents working in this repository.
-
-`CLAUDE.md` and `GEMINI.md` are symlinks to this file, so every agent reads the same
-conventions. Edit `AGENTS.md`. Bump `last_modified` in the front matter whenever you edit it.
+`CLAUDE.md` and `GEMINI.md` are symlinks to this file. Edit `AGENTS.md` and bump `last_modified`.
 
 **At the start of every session, print the full absolute path of the `AGENTS.md` you
-loaded and its `last_modified` date**, so a stale or wrong copy is caught before it
-steers the work.
+loaded and its `last_modified` date**, so a stale or wrong copy is caught first.
 
-StopDash is an Android app (Kotlin + Compose; `:app`, a pure-Kotlin `:domain`, `:shared`,
-and a Wear OS `:wear`) that shows live TfL departures for watched stops on the lock screen,
-the home screen, the watch, and in the app.
-Product and architecture decisions live in `SPEC.md`; the phased plan lives in
-`TODO.md`. This repo mirrors the engineering conventions of the sibling Android repos —
-`mikelward/simmo`, `mikelward/snoozemo`, and `mikelward/typelauncher`; when a convention
-is underspecified here, Simmo's `AGENTS.md` is the tiebreaker.
+StopDash is an Android app (Kotlin + Compose; `:app`, pure-Kotlin `:domain`, `:shared`,
+Wear OS `:wear`) showing live TfL departures on lock screen, home screen, watch, and app.
+Product/architecture decisions live in `SPEC.md`, phased plan in `TODO.md`. Mirrors
+`mikelward/simmo` (tiebreaker), `snoozemo`, and `typelauncher`.
 
-**Prefer a shared `mikelward/*` library over hand-rolling an app-local copy** (unless the
-maintainer says otherwise), so the fleet doesn't carry divergent implementations of one thing.
+**Prefer a shared `mikelward/*` library over an app-local copy** (unless told otherwise).
 
 **`./gradlew test` and `./gradlew lint` must pass before every push.**
 
-Keep this file short — one-liners over essays. Every rule here loads into every agent's
-context at the start of every session, so a paragraph where a sentence would do taxes
-every future task. State the rule and the failure it prevents; the incident narrative
-belongs in the commit message. Add a rule the first time something bites, rewrite or
-trim an existing one rather than appending beside it, and delete one that has stopped
-biting.
+Keep this file short — one-liners over essays, **under 24,000 bytes** (`wc -c AGENTS.md`):
+Antigravity caps rule files at 24 KB and silently truncates the tail. State the rule and
+the failure it prevents; incident narratives belong in commits. Add a rule the first time
+something bites, rewrite/trim rather than append, and delete rules that stopped biting.
 
 ## Project documentation
 
-- Keep `SPEC.md` current when changing product behavior, architecture, persistence,
-  permissions, navigation, or testing strategy. `SPEC.md` records *what* stopdash does
-  and *why* a design was chosen — not low-level implementation detail. Ask "would this
-  still be true if the implementation were rewritten?"; if not, it's a code comment, not
-  spec.
-- Keep `TODO.md` current: check items off as they land, add newly discovered work to the
-  right phase.
-- Developer-facing detail (state models, refresh-timing notes, dev diagrams) lives in
-  `dev-docs/`; `docs/` is user/store-facing.
+- Keep `SPEC.md` current when changing behavior, architecture, persistence, permissions,
+  navigation, or testing. Records *what* and *why*, not low-level detail ("still true if
+  rewritten?"; if not, code comment).
+- Keep `TODO.md` current: check items off as they land, add new work to the right phase.
+- Developer detail (state models, refresh timing, diagrams) lives in `dev-docs/`; `docs/`
+  is user/store-facing.
 
 ## Engineering quality bar
 
-The `SPEC.md` *Engineering quality bar* is the source of truth; in priority order:
-never show a departure stopdash doesn't stand behind, never fail silently, do the work
-ahead of time, hold still (never move what the user is reading or about to tap), jank-free UI,
-respect the battery, say why. Where a rule below conflicts
-with a principle, the principle wins.
+`SPEC.md` *Engineering quality bar* is source of truth (in priority order: never show a
+departure stopdash doesn't stand behind, never fail silently, do the work ahead of time,
+hold still — never move what the user is reading or about to tap — jank-free UI, respect
+the battery, say why); principles win over rules below:
 
-Concretely, every change holds the line on **correctness, the refresh/staleness
-contract, and jank-free UI**:
+- **Correctness**: matches `SPEC.md` and intent; handles edge cases (no watched stops, TfL
+  unreachable/rate-limited, location denied, no predictions, config change, process death);
+  preserves invariants. New behavior gets a unit test; bug fixes get a test failing before
+  and passing after.
+- **Staleness contract**: never present stale data as live (SPEC D4). Network is never on
+  a render path — render from persisted snapshot and refresh in background. Surface PRs
+  state what they render from and when they refresh.
+- **Jank-free UI**: render from snapshot/in-memory state; no I/O in composition; standard
+  Compose discipline (`remember`/`derivedStateOf`/stable types). Screens appear at once
+  with a stamp/placeholder if not ready, never a delayed first frame.
+- **Main thread: read and dispatch only.** Composition, `remember`/`LaunchedEffect`, click
+  handlers, and UI-called data/domain functions do no I/O and no work scaling with input
+  (loop, filter, map, sort, parse, decode) before hopping to an injectable dispatcher:
+  read precomputed state and hand off, hop first ("usually fast" is no exemption: #483,
+  #502). Test each from a single-thread caller that checks the work ran elsewhere. Mark
+  data-scaling domain work `@WorkerThread` (enforced by lint's `WorkerThreadCall`;
+  `app/lint-baseline.xml` only shrinks).
 
-- **Correctness**: matches `SPEC.md` and the user's intent; handles the obvious edge
-  cases (no watched stops, TfL unreachable, rate-limited, location denied, no
-  predictions, configuration change, process death); preserves invariants. New behavior
-  gets a unit test; a bug fix gets a test that fails before and passes after.
-- **Staleness contract**: no surface presents stale data as live (SPEC D4). The network
-  is never on a render path — surfaces render from the persisted snapshot and refresh in
-  the background. Any change touching a surface states in the PR what it renders from and
-  when it refreshes.
-- **Jank-free UI**: render from snapshot/in-memory state; no I/O in composition; usual
-  Compose discipline (`remember`/`derivedStateOf`/stable types). A screen appears at
-  once, with a stamp/placeholder if content isn't ready, never a delayed first frame.
-- **Main thread: read and dispatch only.** Composition, `remember`/`LaunchedEffect` bodies,
-  click handlers, and any data or domain function the UI calls do no I/O and no work that
-  grows with input (a loop, filter, map, sort, parse or decode over a collection) before
-  hopping to an injectable dispatcher: they read precomputed state and hand off, the hop
-  first in the function. "It's usually fast" is no exemption (a 600 KB route froze the
-  screen, #483; per-board work crept into composition, #502). Each such function gets a test
-  calling it from a single-thread caller that checks the work ran elsewhere. Mark domain work that
-  grows with the data `@WorkerThread`; lint's `WorkerThreadCall` fails a call to it from composition,
-  and `app/lint-baseline.xml` only ever shrinks.
-
-When you can't verify something locally (no emulator, no lock-screen host, no real
-device), say so in the chat update — "verified by unit test; the lock-screen placement
-needs a device check" — rather than implying it was all checked.
+When unable to verify locally (no emulator/device), say so in chat ("verified by unit test;
+lock-screen placement needs a device check").
 
 ## Spacing
 
-Stick to a 4dp grid for every padding/margin/spacing value (`4`, `8`, `12`, `16`, `24`,
-…); reuse values already used by sibling composables; symmetry by default, any asymmetry
-justified in one sentence in the PR. Flag off-grid or inconsistent spacing you notice
-even outside the diff (file, line, proposed fix) without silently fixing it in the same
-commit.
+4dp grid (`4`, `8`, `12`, `16`, `24`, …); reuse sibling values; symmetry by default
+(justify asymmetry in one PR sentence). Flag off-grid or inconsistent spacing outside the
+diff (file, line, fix) without fixing it in the same commit.
 
 ## Concise copy
 
-Keep user-facing text short — a label carries only the words the user needs. "3 min",
-not "3 minutes until departure"; "Victoria line: severe delays", not a paragraph. Prefer
-the shortest phrasing that stays unambiguous; justify a longer form in the PR.
+Shortest unambiguous user-facing text ("3 min", not "3 minutes until departure";
+"Victoria line: severe delays", not a paragraph); justify longer phrasing in the PR.
 
 ## Icons
 
-- **Use a standard Material icon by default** (Material Icons or Material Symbols), not a
-  hand-drawn one: users already know what they mean. If no Material icon clearly fits, or
-  two do, ask before picking or drawing one.
+- **Use a standard Material icon by default** (Material Icons/Symbols), not hand-drawn;
+  ask if none or two fit.
 
 ## Line pill colors
 
-Line pills take the official TfL line color (tube by id, other single-color modes by mode)
-and pick the label's black-or-white color with APCA, not the WCAG-2 ratio — a failing WCAG-2
-AA number on a pill is a flag, not a veto. The six named Overground lines resolve by id too
-but render as a **hollow** pill (surface fill, line-color border + label, accent nudged for
-contrast on the surface), since their colors collide with tube lines. Add a line color only
-as a confirmed TfL hex. SPEC has the full scheme and rationale.
+Official TfL line color (tube by id, other single-color modes by mode) with APCA
+black/white text (WCAG-2 AA is a flag, not a veto). The six named Overground lines resolve
+by id as a **hollow** pill (surface fill, line-color border + label, contrast-nudged
+accent) since their colors collide with tube lines. Confirmed TfL hexes only (`SPEC.md`).
 
 ## Privacy
 
-- **Never put user data in any artifact that leaves this machine** — commit subjects and
-  bodies, PR titles/descriptions/comments, review replies, issue text, branch names, code
-  comments, test fixtures, screenshots, or logs. For stopdash that means **coordinates, the
-  set of stops a user watches, a home/work stop, and the user's TfL `app_key`** — together
-  they reveal where someone lives and travels. Use stock stand-ins for the user's own values
-  (`app_key=EXAMPLE`, a synthetic position like `(51.5, -0.12)` for "where the rider is").
-- **Never include anyone's location without asking** (maintainer, 2026-09-27). Big stations
-  and interchanges — King's Cross, Euston, Victoria, Waterloo, Tottenham Court Road and the
-  like — are always fine to name, with their public TfL data and the distances between them,
-  **even when a bug report came from one** (maintainer, 2026-09-30): crowds pass through them,
-  nobody lives there. Check with the maintainer before adding a bus stop or anything else
-  neighborhood-level. Never add data that points to where the maintainer or a user lives:
-  nothing else from anyone's device, location, starred stops, bug reports or screenshots
-  (paraphrase a bug report, don't quote it; never a coordinate), and no examples that keep
-  returning to one neighborhood. This governs new work; existing data isn't rewritten to fit
-  it. When unsure, ask in chat, never on GitHub.
-- **The on-device debug log is one exception, and narrow**: coarse diagnostics only —
-  a stop ID, a line id, an HTTP status, a vehicle's TfL destination (its terminus, never where the
-  rider gets off) — never a raw coordinate or the API key. Log what a failure needs to be
-  explained and no more: no field without a failure it makes diagnosable. `docs/
-  PRIVACY.md` must describe what the log carries about the **user** (their stops, trips, places,
-  position, devices) before it ships; app internals — a count, a duration, an error kind, a read
-  of data the app ships — need no line there (maintainer, 2026-10-13).
-- **A user-initiated, consent-gated bug report is the other exception** (maintainer,
-  2026-09-20): it may carry the **exact location**, per-stop distances, and a **screenshot
-  of the reporting screen** off the device — a routing/location bug is diagnosed from where
-  the user was and what they saw, so it discloses that on a consent screen the user can
-  decline, rather than pretending a stripped report is location-safe (knowing the nearest
-  stops already reveals about the same). Nothing leaves without that consent; `SPEC.md` and
-  `docs/PRIVACY.md` describe the channel, and the location-redacted export stays a separate
-  tool. Its recent positions come from a bounded in-memory window (`RecentPositions`: 15 min,
-  20 entries), never the persisted log — the aim is diagnosis, not a movement history.
+- **Never put user data in any artifact leaving this machine** (commits, PRs, replies,
+  issues, branches, comments, fixtures, screenshots, logs): **coordinates, watched stops,
+  home/work stops, and the user's TfL `app_key`**. Use stand-ins (`app_key=EXAMPLE`,
+  synthetic `(51.5, -0.12)` for rider position).
+- **Never include anyone's location without asking** (maintainer, 2026-09-27). Major
+  stations/interchanges (King's Cross, Euston, Victoria, Waterloo, Tottenham Court Road,
+  etc.) are fine with public TfL data/distances, **even from a bug report** (maintainer,
+  2026-09-30). Ask before adding a bus stop or neighborhood place. Never add data pointing
+  to where the maintainer or a user lives: nothing else from anyone's device, location,
+  starred stops, bug reports or screenshots (paraphrase; never a coordinate), and no
+  recurring neighborhood examples. Governs new work (existing data isn't rewritten); ask in
+  chat when unsure, never on GitHub.
+- **On-device debug log (narrow exception)**: coarse diagnostics only — stop ID, line id,
+  HTTP status, vehicle TfL terminus (never where the rider alights) — never coordinates or
+  API keys, and no field without a failure it diagnoses. `docs/PRIVACY.md` must list what
+  the log carries about the **user** (stops, trips, places, position, devices) before
+  shipping; app internals (counts, durations, error kinds, shipped-data reads) need no
+  line (maintainer, 2026-10-13).
+- **User-initiated, consent-gated bug report (second exception)** (maintainer, 2026-09-20):
+  may carry **exact location**, per-stop distances, and a **reporting-screen screenshot**
+  off-device, disclosed on a consent screen the user can decline (`SPEC.md`,
+  `docs/PRIVACY.md`; nothing leaves without consent); the location-redacted export stays
+  separate. Recent positions come from bounded in-memory `RecentPositions` (15 min, 20
+  entries), never the persisted log.
 
 ## Error handling
 
-- **Don't silently swallow exceptions.** No bare `catch (_: Throwable) {}`. Every catch:
-  **logs** the failure with sanitized context (the *Privacy* rule applies to logs —
-  "arrivals fetch failed: 429 for stop <id>", never a coordinate or key); **cleans up**
-  what the `try` acquired (closeables, in-flight requests, partial UI state); and
-  **handles the edge case explicitly** (a typed error result the surface can render
-  honestly, per SPEC principle 2 — never a fall-through that blanks the screen). Narrow
-  the type or rethrow `CancellationException` first, so structured concurrency isn't
-  broken. To ignore a specific failure on purpose, say why in a one-line comment and still
-  log it at debug.
+- **Don't silently swallow exceptions.** No bare `catch (_: Throwable) {}`. Every catch
+  **logs** with sanitized context (*Privacy* applies — "arrivals fetch failed: 429 for stop
+  <id>", never a coordinate/key), **cleans up** what `try` acquired (closeables, in-flight
+  requests, partial UI state), and **handles the edge case explicitly** (a typed error the
+  surface renders honestly, per SPEC principle 2 — never blanking the screen). Narrow the
+  type or rethrow `CancellationException` first. To ignore a failure on purpose, state why
+  in a one-line comment and still log at debug.
 
 ## Testing expectations
 
-- Product logic belongs in the pure `:domain` module (`app.stopdash.domain`), JVM-testable
-  without Android; test it against **recorded TfL fixtures**, never the live API and never a
-  user's location; a hub or interchange position is fine, a bus stop or anything
-  neighborhood-level needs the maintainer's OK first (*Privacy*).
-- Compose screens and Glance widget layouts get Robolectric + Roborazzi screenshot tests
-  wired into `.github/workflows/ci.yml` — a new `*ScreenshotTest` class needs its own
-  step in the CI `--tests` allow-list or it records nothing. They render under `en-rGB` (in
-  every `qualifiers`, a method's too, since it replaces the class's), as the app's users see it.
-- The screenshot job commits recording drift back to same-repo PR branches (`ci: refresh
-  recorded screenshots`) and posts a before/after comment: there, `git pull` after a UI
-  push before pushing again, and don't hand-commit recorded PNGs (a fork PR must).
+- Product logic lives in pure `:domain` (`app.stopdash.domain`), JVM-tested against
+  **recorded TfL fixtures**, never the live API or a user's location (hubs/interchanges are
+  fine; bus stops or neighborhood places need the maintainer's OK, per *Privacy*).
+- Compose screens and Glance widgets get Robolectric + Roborazzi screenshot tests in
+  `.github/workflows/ci.yml` (add each new `*ScreenshotTest` class to CI's `--tests`
+  allow-list). Render under `en-rGB` in every class and method `qualifiers`.
+- CI commits screenshot drift back to same-repo PRs (`ci: refresh recorded screenshots`) and
+  posts a before/after comment: `git pull` after a UI push before pushing again; don't
+  hand-commit PNGs (fork PRs must).
 - Run `./gradlew test` and `./gradlew lint` before pushing when the environment can;
-  otherwise say clearly what was verified by inspection only.
-- **Fix any preexisting test failure as the first commit of the series.** Don't stack new
-  work on a red baseline; if it's genuinely unrelated and out of scope, say so and
-  confirm before skipping it.
-- **Don't paper over flaky/racy tests** with sleeps, retries, or bumped timeouts — drive
-  time-dependent behavior (staleness, refresh) from an injected clock and a test
-  dispatcher. **Don't disable a failing check** to make it pass.
+  otherwise state what was verified by inspection only.
+- **Fix preexisting test failures as the first commit** (confirm before skipping if
+  genuinely unrelated).
+- **No sleeps, retries, or bumped timeouts** for flaky/racy tests — use an injected clock
+  and test dispatcher. **Never disable a failing check.**
 
 ## Git workflow
 
-- These rules assume an `origin` remote; a sandbox without remote Git (Codex cloud)
-  commits locally and says nothing was pushed. Feature branches are `<agent>/<short-topic>`
-  (`claude/…` for Claude Code, `codex/…` for Codex). One topic per branch; never commit
-  to `main`. The placeholder `<agent>` is whichever prefix you use.
-- **Branches under your own `<agent>/` prefix are yours** — create, push,
-  `--force-with-lease`, rename, delete the ones this session created or was assigned,
-  freely, no permission needed (this file is the standing grant); don't fold unrelated work
-  into a pinned branch to avoid a new one. Any other branch, or `main`, is a conversation.
-- **Sync before you start**: fetch main if the sandbox can (`git fetch origin
-  +refs/heads/main:refs/remotes/origin/main`; `git fetch origin main` alone leaves
-  `origin/main` stale in a single-branch clone) and rebase the working branch onto it
-  before the first commit. Resolve conflicts rather than abandoning the rebase. Where
-  the sandbox can't fetch, say the tree may be behind rather than pretending you synced.
-- **Use `git worktree` when it's available**, one per branch.
-- **One commit per logical change**, each green on its own. Rewrite unmerged commits
-  freely — amend, `--fixup` + autosquash, squash, reorder, split — so each commit that
-  lands is coherent, with review responses folded into the commit they belong to and no
-  `fix CI`/`wip` churn left. `--force-with-lease` after a rebase, never a bare `--force`.
-  `main` is never force-pushed.
-- **Merge cue (`merged` / `I merged` / `landed` / merge webhook) runs hygiene *before*
-  engaging with the rest of the message:** fetch main if the sandbox can (`git fetch
-  origin +refs/heads/main:refs/remotes/origin/main`), cut a fresh
-  `<agent>/<short-topic>` branch off `origin/main` rather than resetting the merged name
-  onto it (unless the sandbox pins the name), and announce the switch. Where it can't
-  fetch, say the follow-up needs a synced checkout rather than branching off a stale
-  `origin/main`.
-- **The agent authors; whoever merges takes over the committer line.** A rebase/squash
-  merge rewrites the committer — expected either way; never re-author or amend merged
-  commits to "fix" authorship or signing, and don't narrate it. It is not a finding.
-- **Unshallow before answering anything depending on history depth** (`git rev-list
-  --count`, versionCode): the session-start hook runs `scripts/unshallow.sh`, but it
-  is best-effort and Claude-only, so check anyway: if `git rev-parse
-  --is-shallow-repository` is `true`, run `git fetch --unshallow origin
-  +refs/heads/main:refs/remotes/origin/main` first (by refspec, so `origin/main`
-  itself moves in a single-branch clone). It exits 0 even when it deepened nothing: if the
-  clone is still shallow, say the history is truncated rather than quote a versionCode.
+- Assumes `origin` (without remote Git, commit locally and state nothing was pushed).
+  Feature branches: `<agent>/<short-topic>` (`claude/…` Claude Code, `gemini/…` Gemini /
+  Antigravity, `codex/…` Codex); one topic per branch, never `main`.
+- **Your `<agent>/` branches are yours** — create, push, `--force-with-lease`, rename, or
+  delete the ones this session created or was assigned, freely (this file is the standing
+  grant); don't fold unrelated work into a pinned branch. Any other branch or `main`
+  requires asking.
+- **Sync before you start**: `git fetch origin +refs/heads/main:refs/remotes/origin/main`
+  (`git fetch origin main` leaves single-branch `origin/main` stale) and rebase before the
+  first commit, resolving conflicts rather than abandoning the rebase. If unable to fetch,
+  say the tree may be behind.
+- **Use `git worktree` when available**, one per branch.
+- **One commit per logical change**, each green. Rewrite unmerged commits freely (amend,
+  `--fixup` + autosquash, squash, reorder, split) so review fixes fold into their commit
+  with no `fix CI`/`wip` churn. `--force-with-lease` after rebase; never bare `--force` or
+  force-pushing `main`.
+- **Merge cue (`merged` / `I merged` / `landed` / merge webhook) runs hygiene first:**
+  fetch main by refspec, cut a fresh `<agent>/<short-topic>` off `origin/main` (unless
+  sandbox-pinned), and announce the switch; if unable to fetch, say follow-up needs a
+  synced checkout rather than branching off a stale `origin/main`.
+- **Committer line**: rebase/squash merges rewrite the committer to the merger — expected;
+  never re-author or amend merged commits to "fix" authorship or signing, or narrate it. It
+  is not a finding.
+- **Unshallow before history-depth queries** (`git rev-list --count`, versionCode):
+  `.claude/hooks/session-start.sh` runs `scripts/unshallow.sh`, but is best-effort and
+  Claude-only (not auto-run by Gemini / Antigravity or Codex). If `git rev-parse
+  --is-shallow-repository` is `true`, run `scripts/unshallow.sh` (or `git fetch --unshallow
+  origin +refs/heads/main:refs/remotes/origin/main`) and re-check; if still `true`, say
+  history is truncated rather than quote a versionCode.
 
 ## Commit messages
 
-- Sentence case, plain English, no internal symbol names, ≤ ~70 chars; engineering
-  detail goes in the body. Because the repo rebase-merges, each commit's own subject
-  lands on `main` and ships in the release notes (Play "What's new" and the GitHub
-  prerelease `v<versionCode>`) — so title **every** commit on the branch for end users,
-  not just the PR.
-- **Prefix a subject that has no user-visible effect**, used precisely: `ci:`, `docs:`
-  (docs/`*.md`, including `docs/PRIVACY.md`), `todo:` (`TODO.md` bookkeeping alone),
-  `internal:` (build/plumbing; a shipped dependency is bare), `refactor:`,
-  `test:`/`tests:`. A bare subject means a user could notice the difference. `docs` and
-  `todo` are the two prefixes the docs lane accepts (`.github/lanes.conf`).
-- **Play caps "What's new" at 500 characters**, and `deploy` drops subjects past it, so
-  squash supporting commits into the one that tells the user-facing story. A commit
-  touching only `.md` files or root dot-paths (`.github/`, `.gitignore`, …) never ships a
-  bullet, prefixed or not.
-- **`scripts/publish-github-release.sh` is byte-identical across the four sibling
-  Android repos**; change it in all four.
-- **No model identifier** — never put a model name or version (e.g. `Opus 4.8`,
-  `Sonnet`, a `claude-*` id) in a commit message, PR title/body, code comment, or any
-  other pushed artifact; keep it to chat. This targets the model *name/version* only —
-  the standard Claude Code attribution (`Co-Authored-By: Claude`, a `Claude-Session:`
-  trailer, a "Generated with Claude Code" footer) carries no model name or version and
-  is not covered by this rule.
+- Sentence case, plain English, no internal symbols, ≤ ~70 chars; engineering detail in
+  the body. Rebase-merges land every commit subject on `main` and in release notes (Play
+  "What's new", GitHub prerelease `v<versionCode>`), so title **every** commit for end users.
+- **Prefix a subject with no user-visible effect**: `ci:`, `docs:` (docs/`*.md`, including
+  `docs/PRIVACY.md`), `todo:` (`TODO.md` alone), `internal:` (build/plumbing; a shipped
+  dependency is bare), `refactor:`, `test:`/`tests:`. A bare subject means a user could
+  notice. `docs` and `todo` are the two prefixes the docs lane accepts (`.github/lanes.conf`).
+- **Play caps "What's new" at 500 characters** (`deploy` drops subjects past it), so squash
+  supporting commits into the one telling the user-facing story. Commits touching only
+  `.md` files or root dot-paths (`.github/`, `.gitignore`, …) never ship a bullet.
+- **`scripts/publish-github-release.sh` is byte-identical across the four sibling Android
+  repos**; change it in all four.
+- **No model identifier** — never put a model name/version (`Opus 4.8`, `Sonnet`,
+  `Gemini …`, `claude-*`, `gemini-*`) in a commit, PR, comment, or pushed artifact; keep it
+  to chat. Generic agent attribution (`Co-Authored-By: Claude` / `Gemini`,
+  `Claude-Session:`, "Generated with Claude Code") has no model name/version and is fine.
 
 ## Autonomy
 
-- **Open the PR without being asked.** Pushing a finished branch and opening its pull
-  request are one step; this file is the repo owner's standing request for that PR. The
-  exception is an explicit "just commit / no PR yet".
-- **Watch your own PRs by subscription, plus one scheduled check.** Claude Code
-  subscribes on PR open; otherwise call `subscribe_pr_activity`. The subscription
-  delivers reviews, comments, and CI failures; it can't deliver CI success, the merge, or
-  Codex's clean verdict, so keep exactly one scheduled check armed while the PR is open.
-  Prefer a relative delay. **Read `mergeable_state` at every scheduled check, PR-event
-  wake and drive step**: `dirty` or `behind` (where the ruleset requires up-to-date
-  branches) → fetch main by refspec (*Sync before you start*), rebase onto the fresh
-  `origin/main`, and lease-guarded force-push at once, unasked, a +1'd head included: the
-  merge needs it (*Working with PRs*). A base move sends no event, so this read is the only
-  signal. Before that push, confirm you hold every commit on the remote head and it hasn't
-  moved; if you can't tell, ask. Settle a fired check first and end each turn with exactly
-  one, naming the PR, not a SHA. Merged/closed → one last reply-and-resolve pass (real
-  work on a merged PR goes to a follow-up PR), then cancel the check and unsubscribe.
-- **A scheduler, GitHub or `git push` prompt is said once, then carry on.**
-- **"Drive"** runs the loop automatically: pick the next actionable `TODO.md` item (not
-  deferred, not awaiting a product decision), implement it, open the PR, wait for the
-  automatic Codex review, address every comment, merge once CI is green and Codex's
-  verdict for the current head is in, then go around again until the work runs out or the
-  user says stop. **"Autopilot"** is drive without blocking on the user: take the best
-  reversible guess and record it under `TODO.md`'s *Decisions needing review*; the loop's
-  own steps never wait, but destructive or irreversible actions outside the loop, and
-  privacy uncertainty (is this a coordinate? a watched stop?), still wait for a real answer.
-- **A paragraph that orders a new work item after the item before it — "next", "then",
-  "after that", "follow-up" — must be merged in order, after every earlier item this
-  session was given and any other PR the paragraph names.** Its PR may open in parallel
-  but merges only once each of those is finished, with its PRs merged, in any repo, with
-  no time cap; if one won't finish, hold it and ask, autopilot included. Arm no
-  auto-merge on it until then: auto-merge cannot see the order. Read the list from the
-  session's record, not memory.
-- **Wake the PRs a merge leaves behind.** A merge can leave other open PRs on its base
-  needing a rebase (`dirty`, or `behind` where branches must be up to date), and nothing
-  tells them. So at your first turn after one of your PRs merges, by hand or by
-  auto-merge, send every other open PR on that base that another session drives one
-  message — the session URL ends its body, where your client can message sessions — naming
-  that PR and saying only that its base now points at `<sha>`, the base's tip after your
-  merge. Send it whatever the PR's state reads: right after a merge GitHub can still be
-  computing mergeability, so a PR about to need a rebase can look clean. Name no merge and
-  no other PR: a receiver on an older copy of these rules reads either as its own merge
-  cue. Receiving one, fetch the base and your PR's head by refspec, unshallowing a shallow
-  clone, and check that head against the fetched base tip, not `<sha>`, which a later
-  merge may already have passed. Answered from your own clone, neither question can be
-  stale the way `mergeable_state` can: the head is `behind` if it doesn't contain the tip
-  (`git merge-base --is-ancestor`), and `dirty` if it doesn't merge cleanly with it
-  (`git merge-tree --write-tree`, Git 2.38 or later, exits 1). Any exit but 0 or 1 from
-  either is a failure to report, not an answer. Your own rules decide the rebase from
-  there. Skip a PR with no session URL, and don't retry a failed send; its own scheduled
-  check is the fallback.
-- **A red baseline is the next task** — get `./gradlew test`/`lint` green before pulling
-  new work from `TODO.md`; stepping past it as "unrelated" needs the user's real answer,
-  never an autopilot guess.
+- **Open the PR without being asked** when a branch is ready (this file is the repo owner's
+  standing request for that PR), unless told "just commit / no PR yet".
+- **Watch your own PRs by subscription + one scheduled check.** Subscribe on open
+  (automatic in Claude Code, or `subscribe_pr_activity` where exposed). Because
+  subscriptions miss CI pass, merges, and Codex `+1` (and are only exposed in
+  `claude-code-remote`), keep one relative-delay check armed while open (`send_later` in
+  Claude Code; `schedule` with `DurationSeconds` in Antigravity, canceled via `manage_task`
+  `kill`). **Read `mergeable_state` at every check, wake, and drive step**: if `dirty` or
+  required `behind`, fetch `origin/main` by refspec, confirm you hold every remote head
+  commit, rebase, confirm the head hasn't moved (ask if unsure), and `--force-with-lease`
+  push unasked (+1'd head included). Settle a fired check first and end each turn with one
+  check naming the PR (not a SHA). On merge/close, do one last reply-and-resolve pass
+  (follow-up PR for real work), then cancel the check and unsubscribe.
+- **A scheduler, GitHub, or `git push` prompt is said once, then carry on.**
+- **"Drive"**: loop through actionable `TODO.md` items (not deferred or awaiting a product
+  decision) — implement, open PR, wait for Codex, address comments, merge when CI is green
+  and Codex +1s the head, repeat until done or stopped. **"Autopilot"**: drive without
+  blocking, taking the best reversible guess and logging it under `TODO.md` *Decisions
+  needing review*; still wait for a real answer on destructive/irreversible actions outside
+  the loop or privacy uncertainty.
+- **Ordered work ("next", "then", "after that", "follow-up")** may open in parallel but
+  merges in order after every earlier session item and named PR merges (any repo, no time
+  cap; hold and ask if one stalls, autopilot included; no auto-merge until its turn; check
+  the session record).
+- **Wake PRs a merge leaves behind.** First turn after your PR merges, message every other
+  open PR on that base whose body ends with a reachable session URL: name only that PR and
+  say its base now points at `<sha>`, whatever its state reads (name no merge or other PR).
+  On receipt, fetch base and PR head by refspec (unshallow if needed) and test against the
+  fetched base tip, not `<sha>`: `behind` if `git merge-base --is-ancestor` exits 1,
+  `dirty` if `git merge-tree --write-tree` (Git 2.38+) exits 1 (report any other exit);
+  rebase per your rules. Skip if no session URL or local-only messaging; don't retry failed
+  sends.
+- **A red baseline is the next task** — fix `./gradlew test`/`lint` before pulling from
+  `TODO.md` (confirm with the user before skipping as unrelated, never an autopilot guess).
 
 ## Working with PRs
 
-- Prefer the `mcp__github__*` MCP tools; the `gh` CLI is not installed in the sandbox.
-- **Codex is the automated reviewer** on this repo (not Copilot); its reviews are
-  triggered automatically. Address every comment — fix it and fold the fix into the
-  commit it belongs to, or reply on the thread saying why you decline — then resolve the
-  thread (`resolve_review_thread` takes the `PRRT_*` thread id, not a `PRRC_*` comment
-  id; push the fix, then reply citing the sha, then resolve). Never leave a thread
-  silently dismissed. Codex's +1 gates the merge; a decline can still earn it with a
-  convincing rebuttal or a `TODO.md` entry for the gap, though a fix is often the quicker path.
-- **Defer a real but out-of-scope finding** by pushing its `TODO.md` entry, then replying
-  with that sha and resolving.
-- **Judge every comment on merit, whoever wrote it.** A comment citing a rule is a
-  *reading* of that rule — check what the rule actually says; an over-strict privacy
-  reading quietly costs capability the product needs. A genuine rule-vs-need conflict is
-  the maintainer's call.
+- Prefer `mcp__github__*` tools where mounted (Claude Code requires them); otherwise fall
+  back to `gh`.
+- **Codex is the automated reviewer** (not Copilot). Address every comment — fix and fold
+  into its commit, or reply declining with reasons — then resolve the thread
+  (`resolve_review_thread` or `gh api graphql` `resolveReviewThread` takes `PRRT_*`, not
+  `PRRC_*`; push fix, reply citing sha, resolve). Never silently dismiss. Codex's +1 gates
+  merge (a decline can still earn it with a rebuttal or `TODO.md` entry, though fixing is
+  often quicker).
+- **Defer out-of-scope findings** by pushing a `TODO.md` entry, replying with that sha, and
+  resolving.
+- **Judge comments on merit.** Check what a cited rule actually says; over-strict privacy
+  readings quietly cost needed capability. Genuine rule-vs-need conflicts go to the
+  maintainer.
 - **A second verified finding in the same mechanism is a design question**, not another
   bug: ask whether a different design deletes the class; a design change is the
   maintainer's call.
-- **Read the Codex verdict, don't infer it**: it reacts to the PR body (`eyes` = reading,
-  `+1` = clean, revoked on push). `+1` with green CI is a merge. Read `get_review_comments`,
-  `get_comments`, and `get_reviews` to the last page. A pending `codex` status with nothing
-  left to address gets one `@codex review` poke five minutes after the last review,
-  rebuttal or push; escalate rather than poke twice.
-- **Once Codex has +1'd a PR's head, never make an unnecessary change to it without asking
-  first** (maintainer, 2026-10-13): a to-do, tidy-up or extra fix re-runs CI and Codex for
-  nothing, so it waits for a yes or goes in a follow-up PR. A necessary change goes ahead
-  unasked — a rebase for a `dirty` branch, or a `behind` one where the ruleset requires it up
-  to date, a fix for red CI — and so does drive or autopilot, where in effect.
-- **Report each review in the next message you send** (*Talking to the user*) — the commit it
-  read, the finding count, one bullet per finding, most blocking first (what it claims, where,
-  what you did). Refresh the PR title/body with each push (body first, then push) to describe
-  the branch's latest state.
-- **Link every open PR in the stack, one URL per line** (the "View PR" chip shows only the
-  first link).
-- **Report the versionCode after every merge to `main`** (`git rev-list --count
-  origin/main` after fetching main by refspec), as `Need versionCode 72 (b81c23d) or
-  higher to test PR #52's fix`.
-- **"Release notes since N"** = at most five `• ` bullets in one code block: the
-  user-visible changes in commits N+1 to a freshly fetched `origin/main`'s tip, ranked by
-  what a user would notice most, one feature per bullet, as end-user copy (bodies read
-  where a subject is unclear). Skip prefixed, docs and CI commits, dependency bumps (unless
-  nothing else is left: then one bullet says the libraries were updated), and anything the
-  range itself added then undid. The range goes above the block; one line naming what was
-  left out goes below.
-- **On a CI failure**, read the failed step's log first (the report artifacts hold `:app`'s
-  only); the PR build is the branch merged with `main`, so reproduce that merge in a
-  throwaway `git worktree`, and check whether the base is already red.
+- **Read the Codex verdict on the PR body** (`eyes` = reading, `+1` = clean, revoked on
+  push; `+1` + green CI = merge). Read `get_review_comments`, `get_comments`, and
+  `get_reviews` to the last page. A pending `codex` status with nothing left to address
+  gets one `@codex review` poke 5 min after the last review/rebuttal/push; escalate rather
+  than poke twice.
+- **Once Codex +1s a head, make no unnecessary change without asking** (maintainer,
+  2026-10-13): tidy-ups wait for a yes or a follow-up PR; required rebases (`dirty`/`behind`),
+  red-CI fixes, and drive/autopilot steps proceed unasked.
+- **Report each review in your next message** (*Talking to the user*): commit read, finding
+  count, one bullet per finding (most blocking first: claim, location, action). Update PR
+  title/body before each push (body first, then push) to match the full branch diff.
+- **Link every open PR in the stack, one URL per line.**
+- **After every merge to `main`, report versionCode** (`git rev-list --count origin/main`
+  after refspec fetch): `Need versionCode 72 (b81c23d) or higher to test PR #52's fix`.
+- **"Release notes since N"**: up to five `• ` end-user bullets (one feature per bullet;
+  read bodies where a subject is unclear) in one code block for commits N+1..`origin/main`
+  (freshly fetched) ranked by impact (skip prefixed/docs/CI commits, dependency bumps
+  unless nothing else changed — then one bullet says libraries were updated — and anything
+  the range itself added then undid); range above, one line below naming what was omitted.
+- **On CI failure**, read the failed step log first (artifacts only hold `:app`); reproduce
+  the PR merge with `main` (what CI builds) in a throwaway `git worktree`, and check
+  whether `main` is already red.
 - Skip your own webhook echoes silently.
 
 ## Talking to the user
 
-- **One question at a time**, asked as a plain chat message — never `AskUserQuestion`
-  (its multiple-choice prompt is broken in the Claude mobile app). After asking, stop and
-  wait; acknowledge the answer before acting on it. Never ask while the user is still typing.
-- **Ask only a real product trade-off** (maintainer, 2026-09-30). A clear bug gets fixed, and
-  a feature fetches everything it needs through the same caches as everything else; don't
-  ask about either. Check a question's premise in the code before asking it.
-- **Answer a mid-turn message first**, before any further tool call (a merge cue is the
-  exception — its hygiene runs first).
-- **Message only when the user needs to see it** (maintainer, 2026-10-15): each one notifies
-  their phone. Work and listen in silence; speak up for a question or blocker, something to
-  merge or act on, a merge, an autopilot decision (to review when seen, never waited on), or a
-  change from the plan, `SPEC.md` or their instructions, a review-prompted one included. Never
-  for progress (a client's nudge doesn't count), a review alone (its report rides the next
-  message), routine machinery, or a mistake caught and fixed before it reached the repo. The
+- **One question at a time** — in plain chat in Claude Code (never `AskUserQuestion`,
+  which breaks on mobile clients), or via `ask_question` in Antigravity. Stop and wait
+  after asking; acknowledge the answer before acting. Never ask while the user is typing.
+- **Ask only a real product trade-off** (maintainer, 2026-09-30). Fix clear bugs and fetch
+  feature data through existing caches without asking. Check a question's premise in code
+  first.
+- **Answer a mid-turn message first**, before any further tool call (except merge cues,
+  whose hygiene runs first).
+- **Message only when the user needs to see it** (maintainer, 2026-10-15): each notifies
+  their phone. Work in silence; speak up for a question/blocker, something to merge or act
+  on, a merge, an autopilot decision (to review when seen, never waited on), or a change
+  from the plan, `SPEC.md` or their instructions (review-prompted included). Never for
+  progress (a client's nudge doesn't count), a review alone (rides the next message),
+  routine machinery, or a mistake caught and fixed before reaching the repo. The
   session-start `AGENTS.md` line still opens every session.
 - **Keep replies short**; lead with the single most important point.
 - **End the turn by restating any pending decision** — the last line is the question you
-  are waiting on, written out, every turn until it's answered. Nothing pending, no line.
+  are waiting on, written out, every turn until answered. Nothing pending, no line.
 
 ## Language and spelling
 
-US English everywhere people read English — base user-facing strings, commit subjects/bodies,
-PR text, comments, KDoc, identifiers, docs — for tooling and parity with the sibling repos. But
-the app's users are in the UK, so **en-GB is first-tier**: a user-facing string whose British
-spelling or usage differs ("favorites", "licenses", "percent") gets its override in
-`values-en-rGB/strings.xml` in the same change; `EnGbStringsTest` fails one that's missing. Watch the forms this fleet gets wrong:
-`gray` (not "grey"; `grayed`, `grays` too), `canceled`/`canceling` (one `l`), `color`,
-`behavior`, `dialog`, `-ize` over `-ise`, `license`, `center`, `labeled`, `traveling`.
-Platform/third-party API spellings stay as the framework spells them
-(`CancellationException` keeps its double `l`). TfL's own line and place names stay as
-TfL spells them.
+US English everywhere (base strings, commits, PRs, comments, KDoc, identifiers, docs).
+Because users are in the UK, **en-GB is first-tier**: any user-facing string whose British
+spelling/usage differs ("favorites", "licenses", "percent") gets its
+`values-en-rGB/strings.xml` override in the same change (`EnGbStringsTest`). Watch:
+`gray`/`grayed`/`grays`, `canceled`/`canceling` (one `l`), `color`, `behavior`, `dialog`,
+`-ize` over `-ise`, `license`, `center`, `labeled`, `traveling`. Framework
+(`CancellationException`) and TfL line/place names keep their own spellings.
 
 ## Remote build environments
 
-- `.claude/hooks/session-start.sh` provisions the Android SDK at `/opt/android-sdk`; if
-  it's empty mid-session, rerun the hook with `CLAUDE_CODE_REMOTE=true`, don't hand-install.
+- `.claude/hooks/session-start.sh` provisions the Android SDK at `/opt/android-sdk` (only
+  auto-invoked in Claude Code); if `/opt/android-sdk` is empty in a remote container, run
+  `CLAUDE_CODE_REMOTE=true .claude/hooks/session-start.sh`, don't hand-install.
 - No KVM, so no emulator: lock-screen, widget, watch and location behavior needs a device.
 - Check before concluding the sandbox can't build: `ls /opt/android-sdk` and an HTTP probe
   of `https://maven.google.com/` (403 = blocked).
 
 **Translations** (SPEC *Language*): a new user-facing string ships in English only, under a
-`<!-- TODO: translate -->` comment and `tools:ignore="MissingTranslation"`, for the maintainer to
-confirm on a device; the translations pass (`TODO.md`) then fills every `values-<lang>` with the
-terms in `dev-docs/translations.md` and drops both marks. A string whose meaning changes deletes
-its now-stale translations and takes the same marks.
+`<!-- TODO: translate -->` comment and `tools:ignore="MissingTranslation"`, for the
+maintainer to confirm on a device; the translations pass (`TODO.md`) then fills every
+`values-<lang>` using `dev-docs/translations.md` and drops both marks. A string whose
+meaning changes deletes its now-stale translations and takes the same marks.
 
 ## Cost and reliability
 
-Call out cost and reliability up front when adding infrastructure or an external call:
-the dollar figure, new failure modes and rate limits, and what the user sees when it's
-down — and say so when the impact is nil.
-StopDash's one dependency (TfL Unified API) is free (£0; ~50 req/min keyless, ~500 with a
-user key) — anything new that leaves the device is a distribution/privacy decision, named
-alongside its dollar figure and its Play Data Safety consequence. Battery is the user's
-running cost: a new wakeup, location request, or refresh interval is a battery change and
-is stated as one.
+Call out cost and reliability up front when adding infrastructure or an external call
+(dollar figure, failure modes, rate limits, user-visible fallback; say so if nil).
+StopDash's one dependency (TfL Unified API) is free (£0; ~50 req/min keyless, ~500 with
+user key) — anything new leaving the device is a distribution/privacy decision, named with
+its dollar figure and Play Data Safety consequence. Battery is the running cost: state any
+new wakeup, location request, or refresh interval as one.
 
 ## CI timing
 
 Report a significant CI slowdown (>25% or >30 s on a job under ~5 min) with its likely
 cause, comparing the same job on the same kind of ref — PR against PR, `main` against
-`main` (a `main` run does release work a PR run skips).
+`main` (`main` does release work a PR skips).
