@@ -1,0 +1,23 @@
+# stopdash's National Rail relay (dev-docs/national-rail-proxy.md). Deployed by hand from this directory:
+# `npx wrangler@4 deploy` (see README.md).
+name = "stopdash-rail"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+# One address, the maintainer's own (dev-docs/national-rail-proxy.md *Domain*). Set `pattern` to it.
+workers_dev = false
+routes = [{ pattern = "REPLACE_WITH_RELAY_HOSTNAME", custom_domain = true }]
+
+# No request logs: Workers Logs and its traces stay off, so nothing about a caller is recorded. The cron
+# job's last failure (type and stack frames) is kept in KV instead and shown by /v1/health.
+[observability]
+enabled = false
+
+[triggers]
+crons = ["*/2 * * * *"]
+
+[[kv_namespaces]]
+binding = "RAIL"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# Secret, set with `npx wrangler@4 secret put DISRUPTIONS_API_KEY`, never written here.
