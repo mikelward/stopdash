@@ -48,7 +48,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -3546,6 +3546,13 @@ internal class TripRow(
     val everyIds: ArrayList<String> = every.mapTo(ArrayList(every.size)) { it.leg.lineId }
     val everyPills: ArrayList<String> = ArrayList<String>(every.size * 3).apply { every.forEach { add(it.leg.lineId); add(it.leg.lineName); add(it.leg.mode) } }
 
+    /**
+     * The watched lines among [every] ([TripLine.watched]), by id, saved with the order as the page opens; null
+     * on a page with no sections.
+     */
+    val everyWatched: ArrayList<String>? = every.takeIf { lines -> lines.any { it.watched != null } }
+        ?.mapNotNullTo(ArrayList()) { line -> line.leg.lineId.takeIf { line.watched == true } }
+
     /** Whether [other] draws the same: on the worker only, as it walks both. */
     @WorkerThread
     fun sameAs(other: TripRow?): Boolean = other != null && checking == other.checking && unknown == other.unknown &&
@@ -3659,6 +3666,10 @@ internal data class TripLine(
     val planned: List<PlannedAlert> = status?.planned.orEmpty(),
     // The line's week ahead couldn't be asked, so its *Coming up* may be missing work: the page says so.
     val aheadUnknown: Boolean = false,
+    // The home screen's page only: whether it's watched (near the rider, a favorite's, a favorite place's, the
+    // trip on the way's, or one the rider chose), listed under *Watched*, else under *Other* (maintainer,
+    // 2026-10-17). Null on a trip's page, which has no sections.
+    val watched: Boolean? = null,
 ) {
     /** Whether the page shows [status]'s disruption: a line kept from before still warns of it. */
     val disrupted: Boolean get() = status?.disrupted == true
@@ -4157,7 +4168,8 @@ internal fun TripLinesPage(
     val listed = if (alone) {
         row.every.firstOrNull()?.takeIf { it.leg.lineId == reasonId }
     } else {
-        reasonAt?.let { lines?.getOrNull(it) }?.takeIf { it.leg.lineId == reasonId }
+        // Found by id where the worker has placed it: a line coming in above it moves it down (Codex, #921).
+        reasonAt?.let { at -> lines?.getOrNull(reasonId?.let { held.positions?.get(it) } ?: at) }?.takeIf { it.leg.lineId == reasonId }
     }
     // Its week ahead added, from TfL's own date-range status (SPEC *Line page*). Alone, the page lists the
     // work to come its route page does, so nothing more.
@@ -4285,6 +4297,7 @@ internal fun TripLinesPage(
                     pending = held.pending,
                     state = listState,
                     gone = gone,
+                    watchedCount = held.watchedCount,
                     onOpenLine = { index, line ->
                         reasonId = line.leg.lineId
                         reasonName = line.leg.lineName
@@ -4482,6 +4495,10 @@ internal fun rememberOpenedOrder(row: TripRow): OpenedLines {
     // Each line's pill as seen while the page is open ([OpenedOrder.pills]), saved with the order, so a
     // line gone before a rotation keeps its placeholder after it (Codex, #559).
     var savedPills by rememberSaveable { mutableStateOf<List<String>?>(row.everyPills) }
+    // In sections (the home screen's page), the lines under *Watched* and how many lead the page,
+    // saved with the order, so each line keeps its section and a restored page draws its headers in place.
+    var savedWatched by rememberSaveable { mutableStateOf<List<String>?>(row.everyWatched) }
+    var savedWatchedCount by rememberSaveable { mutableStateOf(row.everyWatched?.size) }
     // Whether the page was open before: restored (a rotation), not just opened.
     var wasOpen by rememberSaveable { mutableStateOf(false) }
     val restored = remember { wasOpen }
@@ -4489,12 +4506,13 @@ internal fun rememberOpenedOrder(row: TripRow): OpenedLines {
     val slot = remember { mutableStateOf<Worked<Inputs, OpenedOrder>?>(null) }
     val ids = saved
     val pills = savedPills
-    val worked = rememberWorked(slot, Inputs(every, opened, ids, settled), keep = { _, _ -> true }) {
+    val watched = savedWatched
+    val worked = rememberWorked(slot, Inputs(every, opened, ids, settled, watched), keep = { _, _ -> true }) {
         // Every line seen while the page is open, with its pill, from the last answer, else as saved (in
         // the saved order, then any line the page opened with): one that came after the page opened and
         // went again keeps its place too (Codex, #559).
         val seen = slot.value?.value?.seen ?: (seenFrom(pills) + inOpenedOrder(opened, emptyList()).seen)
-        inOpenedOrder(every, ids ?: inOpenedOrder(opened, emptyList()).ids, seen, settled)
+        inOpenedOrder(every, ids ?: inOpenedOrder(opened, emptyList()).ids, seen, settled, watched)
     }
     // The order as it now stands, a line first seen since included: kept, so it holds from here on.
     // The worker hands back the same ids and pills while nothing is new, so these compare by identity.
@@ -4502,24 +4520,45 @@ internal fun rememberOpenedOrder(row: TripRow): OpenedLines {
     LaunchedEffect(order) { if (order != null && order !== saved) saved = order }
     val seenPills = worked?.pills
     LaunchedEffect(seenPills) { if (seenPills != null && seenPills !== savedPills) savedPills = seenPills }
+    val seenWatched = worked?.watched
+    LaunchedEffect(seenWatched) { if (seenWatched != null && seenWatched !== savedWatched) savedWatched = seenWatched }
+    val watchedCount = worked?.watchedCount
+    LaunchedEffect(watchedCount) { if (worked != null && watchedCount != savedWatchedCount) savedWatchedCount = watchedCount }
     // Restored (a rotation with the page open), the order is the saved ids, which only the worker
     // applies: until it has, the saved pills stand in, in the saved order, each "Checking…", rather than
     // a frame in another order or a blank page (Codex, #559).
     val lines = worked?.lines ?: opened.takeUnless { restored }
-    return OpenedLines(lines, if (lines == null) pills else null)
+    return OpenedLines(lines, if (lines == null) pills else null, if (worked != null) watchedCount else savedWatchedCount, worked?.positions)
 }
 
 /**
  * The lines page's [lines] in their held order ([rememberOpenedOrder]); null while a restored order is
  * applied, when [pending] holds the saved pills ([OpenedOrder.pills]) to stand in for them.
  */
-internal class OpenedLines(val lines: List<TripLine>?, val pending: List<String>? = null)
+internal class OpenedLines(
+    val lines: List<TripLine>?,
+    val pending: List<String>? = null,
+    // In sections: how many of the lines (or the pending pills) lead under *Watched*, the rest
+    // under *Other*; null on a page with no sections.
+    val watchedCount: Int? = null,
+    // Each line's place in [lines], by id, as the worker last worked it out; null before it has.
+    val positions: Map<String, Int>? = null,
+)
 
 /**
  * The page's [lines] in their held order, that order's line [ids], and every line [seen] while it's
  * been open, by id, for a gone line's placeholder ([inOpenedOrder]).
  */
-internal class OpenedOrder(val lines: List<TripLine>, val ids: List<String>, val seen: Map<String, TripLeg>) {
+internal class OpenedOrder(
+    val lines: List<TripLine>,
+    val ids: List<String>,
+    val seen: Map<String, TripLeg>,
+    // In sections: the lines under *Watched*, by id, and how many of [lines] lead under it.
+    val watched: List<String>? = null,
+    val watchedCount: Int? = null,
+    // Each line's place in [lines], by id.
+    val positions: Map<String, Int> = emptyMap(),
+) {
     /** [seen] as it's saved: each line's id, name and mode in turn, in a list a Bundle holds. */
     val pills: List<String> = ArrayList<String>(seen.size * 3).apply { seen.forEach { (id, leg) -> add(id); add(leg.lineName); add(leg.mode) } }
 }
@@ -4545,20 +4584,51 @@ internal fun inOpenedOrder(
     seen: Map<String, TripLeg> = emptyMap(),
     // Whether a line missing from [lines] is gone, or only not back yet while the trip checks.
     settled: Boolean = true,
+    // The home screen's page: the lines listed under *Watched* so far, by id ([TripLine.watched]);
+    // null on a page with no sections, unless [lines] brings them.
+    watched: List<String>? = null,
 ): OpenedOrder {
     val known = HashSet(opened)
     val added = lines.map { it.leg.lineId }.filter { it !in known }.distinct()
-    val ids = if (added.isEmpty()) opened else ArrayList<String>(opened.size + added.size).apply { addAll(opened); addAll(added) }
     val now = HashMap<String, TripLine>()
     lines.forEach { now.putIfAbsent(it.leg.lineId, it) }
-    // Each line's pill as last seen, kept for as long as the page is open.
-    // In the order first seen, which is [ids]' order, so the saved pills stand in for the lines in place.
-    val legs = if (now.keys.all { it in seen }) seen else LinkedHashMap(seen).apply { ids.forEach { id -> now[id]?.let { put(id, it.leg) } } }
+    // In sections, each line stays in the one it was first seen in, a line first seen since at the end of its
+    // own: the watched ones first, so a line coming in never lands under the wrong header.
+    val sectioned = watched != null || lines.any { it.watched != null }
+    val watchedBefore = watched.orEmpty().toHashSet()
+    // A line seen under it before keeps it, whatever it is now; a new one goes by what it is now.
+    val addedWatched = if (sectioned) added.filter { it in watchedBefore || now[it]?.watched == true } else emptyList()
+    val newWatched = addedWatched.filter { it !in watchedBefore }
+    val watchedIds = if (!sectioned) null else if (newWatched.isEmpty() && watched != null) watched else watched.orEmpty() + newWatched
+    val watchedSet = watchedIds.orEmpty().toHashSet()
+    val ids = when {
+        added.isEmpty() -> opened
+        !sectioned -> ArrayList<String>(opened.size + added.size).apply { addAll(opened); addAll(added) }
+        else -> ArrayList<String>(opened.size + added.size).apply {
+            opened.filterTo(this) { it in watchedSet }
+            addAll(addedWatched)
+            opened.filterTo(this) { it !in watchedSet }
+            added.filterTo(this) { it !in watchedSet }
+        }
+    }
+    // Each line's pill as last seen, kept for as long as the page is open, in [ids]' order, so the saved pills
+    // stand in for the lines in place.
+    val legs = if (added.isEmpty() && now.keys.all { it in seen }) {
+        seen
+    } else {
+        LinkedHashMap<String, TripLeg>().apply {
+            ids.forEach { id -> (now[id]?.leg ?: seen[id])?.let { put(id, it) } }
+            seen.forEach { (id, leg) -> putIfAbsent(id, leg) }
+        }
+    }
     val placed = HashSet<String>()
     val ordered = ids.mapNotNull { id ->
         if (!placed.add(id)) null else now[id] ?: legs[id]?.let { TripLine(it, status = null, gone = settled, checking = !settled) }
     }
-    return OpenedOrder(ordered, ids, legs)
+    // Each line's place, for a line's page open by id: a line coming in under the first heading moves the ones
+    // below it down (Codex, #921).
+    val positions = HashMap<String, Int>(ordered.size).apply { ordered.forEachIndexed { i, line -> put(line.leg.lineId, i) } }
+    return OpenedOrder(ordered, ids, legs, watchedIds, if (sectioned) ordered.count { it.leg.lineId in watchedSet } else null, positions)
 }
 
 /**
@@ -4627,6 +4697,9 @@ internal fun TripLinesContent(
     onOpenLine: ((Int, TripLine) -> Unit)? = null,
     // What a line no longer among the row's says: off the trip, or (home) no longer near.
     @StringRes gone: Int = R.string.trip_lines_gone,
+    // The home screen's page: how many of the lines lead under *Watched*, the rest under *Other*
+    // ([OpenedLines.watchedCount]); null for no sections, as a trip's page has.
+    watchedCount: Int? = null,
 ) {
     val style = MaterialTheme.typography.bodyMedium
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
@@ -4642,12 +4715,15 @@ internal fun TripLinesContent(
         // lines come back and the page is never blank (Codex, #559). Each row reads only its own entry.
         if (lines == null) {
             if (pending != null) {
-                items(pending.size / 3, key = { pending[it * 3] }) { at ->
-                    val leg = TripLeg(
-                        mode = pending[at * 3 + 2], lineId = pending[at * 3], lineName = pending[at * 3 + 1],
-                        fromId = "", fromName = "", toId = "", toName = "", departure = Instant.EPOCH, arrival = Instant.EPOCH,
-                    )
-                    TripLineRow(TripLine(leg, status = null, restoring = true))
+                sections(pending.size / 3, watchedCount) { from, count ->
+                    items(count, key = { pending[(from + it) * 3] }) { i ->
+                        val at = from + i
+                        val leg = TripLeg(
+                            mode = pending[at * 3 + 2], lineId = pending[at * 3], lineName = pending[at * 3 + 1],
+                            fromId = "", fromName = "", toId = "", toName = "", departure = Instant.EPOCH, arrival = Instant.EPOCH,
+                        )
+                        TripLineRow(TripLine(leg, status = null, restoring = true))
+                    }
                 }
             }
             return@LazyColumn
@@ -4657,8 +4733,12 @@ internal fun TripLinesContent(
             val none = if (row.checking) R.string.trip_disruptions_checking else R.string.trip_lines_none
             item(key = "none") { Text(stringResource(none), style = style, color = muted) }
         }
-        itemsIndexed(lines, key = { _, line -> line.leg.lineId }) { index, line ->
-            TripLineRow(line, onOpenLine?.let { open -> { open(index, line) } }, gone)
+        sections(lines.size, watchedCount) { from, count ->
+            items(count, key = { lines[from + it].leg.lineId }) { i ->
+                val index = from + i
+                val line = lines[index]
+                TripLineRow(line, onOpenLine?.let { open -> { open(index, line) } }, gone)
+            }
         }
         if (row.stops.isNotEmpty()) {
             item(key = "stops") { Text(stringResource(R.string.trip_lines_stops, row.stops), style = style) }
@@ -4672,6 +4752,34 @@ internal fun TripLinesContent(
             item(key = "unknown") { Text(stringResource(R.string.trip_lines_unknown_note), style = style, color = error) }
         }
     }
+}
+
+/**
+ * [size] rows in sections ([TripLinesContent]): with no [watchedCount], one run of them as they are; else the first
+ * [watchedCount] under *Watched* and the rest under *Other*, each heading only over rows it has
+ * (maintainer, 2026-10-17). [rows] adds the rows from one index for a count.
+ */
+private fun LazyListScope.sections(size: Int, watchedCount: Int?, rows: LazyListScope.(from: Int, count: Int) -> Unit) {
+    if (watchedCount == null) {
+        rows(0, size)
+        return
+    }
+    val split = watchedCount.coerceIn(0, size)
+    if (split > 0) item(key = "section:watched") { LinesHeading(R.string.home_lines_watched) }
+    rows(0, split)
+    if (split < size) item(key = "section:other") { LinesHeading(R.string.home_lines_other) }
+    rows(split, size - split)
+}
+
+/** A section's heading on the home screen's lines page ([sections]). */
+@Composable
+private fun LinesHeading(@StringRes text: Int) {
+    Text(
+        stringResource(text),
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.semantics { heading() }.testTag("linesHeading"),
+    )
 }
 
 /**

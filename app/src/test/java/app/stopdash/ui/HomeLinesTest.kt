@@ -50,7 +50,7 @@ class HomeLinesTest {
     }
 
     @Test
-    fun `the pills go worst first, the rider's own ahead of the rest when as bad, as the page does`() {
+    fun `the pills go worst first, the rider's own ahead of the rest when as bad`() {
         // The tube's Central and a bus at a near stop, both with severe delays; the tube's lines come first
         // in TfL's order, the bus only after them.
         val central = LineStatus("central", 6, "Severe Delays")
@@ -60,8 +60,9 @@ class HomeLinesTest {
         val row = HomeLines.row(loaded, mapOf("near" to 50.0), tube(good + ("central" to central)), emptySet(), now, networks = setOf("tube"))
         assertEquals(listOf("73", "central"), row.lines.map { it.lineId })
         assertEquals(listOf("73", "central"), row.every.take(2).map { it.leg.lineId })
-        // A worse one far away leads the pills as it leads the page (maintainer, 2026-10-07): the near one,
-        // milder, goes after it, and "+N" takes the mildest first.
+        // A worse one far away leads the pills (maintainer, 2026-10-07): the near one, milder, goes after it,
+        // and "+N" takes the mildest first. The page lists them the same way: a line on a network the rider
+        // chose is watched too (2026-10-17).
         val suspended = LineStatus("central", 16, "Suspended")
         val worse = HomeLines.row(loaded, mapOf("near" to 50.0), tube(good + ("central" to suspended)), emptySet(), now, networks = setOf("tube"))
         assertEquals(listOf("central", "73"), worse.lines.map { it.lineId })
@@ -74,9 +75,11 @@ class HomeLinesTest {
         )
         val starred = setOf(app.stopdash.domain.StarredRow("far", "central", "outbound"))
         val fav = HomeLines.row(withFar, mapOf("near" to 50.0, "far" to 2000.0), tube(good + ("central" to central) + ("victoria" to victoria)), emptySet(), now, networks = setOf("tube"), starred = starred)
-        // Both the rider's own and as bad as each other: by name, the 73 before the Central; the pills in the page's order.
+        // Both the rider's own and as bad as each other: by name, the 73 before the Central. Every line here is
+        // watched (near the rider, starred, or on the network they chose), so the page lists the pills in their order.
         assertTrue(fav.lines.map { it.lineId }.let { it.indexOf("73") < it.indexOf("central") })
-        assertEquals(fav.every.filter { it.disrupted }.map { it.leg.lineId }, fav.lines.map { it.lineId })
+        assertTrue(fav.every.all { it.watched == true })
+        assertEquals(fav.lines.map { it.lineId }, fav.every.filter { it.disrupted }.map { it.leg.lineId })
         // A star whose stop has left the list ranks nothing: its line goes with the network's (Codex, #640).
         val goneStar = setOf(app.stopdash.domain.StarredRow("elsewhere", "central", "outbound"))
         val left = HomeLines.row(loaded, mapOf("near" to 50.0), tube(good + ("central" to central) + ("victoria" to victoria)), emptySet(), now, networks = setOf("tube"), starred = goneStar)
@@ -85,7 +88,7 @@ class HomeLinesTest {
         // So does any line a favorite journey rides, not only the one it was starred from.
         val ridden = HomeLines.row(loaded, mapOf("near" to 50.0), tube(good + ("central" to central) + ("victoria" to victoria)), emptySet(), now, networks = setOf("tube"), journeyLines = setOf("central"))
         assertTrue(ridden.lines.map { it.lineId }.let { it.indexOf("73") < it.indexOf("central") })
-        assertEquals(ridden.every.filter { it.disrupted }.map { it.leg.lineId }, ridden.lines.map { it.lineId })
+        assertEquals(ridden.lines.map { it.lineId }, ridden.every.filter { it.disrupted && it.watched == true }.map { it.leg.lineId })
         // A dismissed one is never a pill, however near.
         val gone = HomeLines.row(loaded, mapOf("near" to 50.0), tube(good + ("central" to central)), setOf(DismissedAlert.ofLineStatus(severe)), now, networks = setOf("tube"))
         assertEquals(listOf("central"), gone.lines.map { it.lineId })
@@ -414,6 +417,30 @@ class HomeLinesTest {
         assertEquals(listOf("73", "northern", "central"), judged.lines.map { it.lineId })
         assertEquals("Northern", row(judged, "northern").leg.lineName)
         assertFalse(judged.checking)
+    }
+
+    @Test
+    fun `the page lists the watched lines first, the pills still worst first`() {
+        // A minor delay on the bus near the rider, a severe one by a favorite place, and a suspension far away on a
+        // line the rider chose to watch; the only line not watched is a farther stop's the list couldn't check
+        // (maintainer, 2026-10-17).
+        val minor = LineStatus("73", 9, "Minor Delays")
+        val loaded = DeparturesUiState.Loaded(
+            listOf(stop("near", "73" to "bus"), stop("far", "38" to "bus")), now,
+            lineStatuses = mapOf("73" to minor), determinedLineIds = setOf("73"), disruptionUnknown = true,
+        )
+        val place = listOf(LineRef("northern", "Northern", "tube"))
+        val statuses = mapOf("northern" to LineStatus("northern", 6, "Severe Delays"), "central" to LineStatus("central", 2, "Suspended"))
+        val judged = HomeLines.row(
+            loaded, mapOf("near" to 50.0, "far" to 900.0), HomeLines.Always(statuses, now), emptySet(), now,
+            networks = setOf("central"), placeLines = place,
+        )
+        // The pills as before: the worst first, wherever it is.
+        assertEquals(listOf("central", "northern", "73"), judged.lines.map { it.lineId })
+        // The page: the watched lines first, the chosen one among them, in that order, then the rest.
+        assertEquals(listOf("central", "northern", "73", "38"), judged.every.map { it.leg.lineId })
+        assertEquals(listOf(true, true, true, false), judged.every.map { it.watched })
+        assertEquals(listOf("central", "northern", "73"), judged.everyWatched)
     }
 
     @Test
