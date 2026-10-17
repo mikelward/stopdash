@@ -11,6 +11,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.layout.boundsInParent
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Box
@@ -75,7 +76,39 @@ class HomeDisruptionsRowTest {
     fun unknown_beside_disrupted_lines_is_still_said_after_their_pills() {
         composeRule.setContent { HomeDisruptionsRow(TripRow(checking = false, lines = listOf(leg("1")), unknown = true, unknownStops = "Bank")) }
         composeRule.onNodeWithContentDescription("Disruptions: 1 Unknown").assertExists()
-        composeRule.onNodeWithText("Unknown", useUnmergedTree = true).assertExists()
+        // Drawn as the circled ?, not the word (maintainer, 2026-10-17).
+        composeRule.onNodeWithText("Unknown", useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun the_card_leads_with_one_mark_for_what_it_says() {
+        assertEquals(DisruptionsMark.CHECKING, disruptionsMark(TripRow(checking = true, lines = listOf(leg("1")))))
+        assertEquals(DisruptionsMark.DISRUPTED, disruptionsMark(TripRow(checking = false, lines = listOf(leg("1")), unknown = true, unknownLines = listOf(leg("2")))))
+        assertEquals(DisruptionsMark.UNKNOWN, disruptionsMark(TripRow(checking = false, unknown = true, unknownLines = listOf(leg("2")))))
+        // A failed check with no line to name is never all clear.
+        assertEquals(DisruptionsMark.UNKNOWN, disruptionsMark(TripRow(checking = false, unknown = true)))
+        assertEquals(DisruptionsMark.CLEAR, disruptionsMark(TripRow(checking = false)))
+    }
+
+    @Test
+    fun the_question_mark_shows_once() {
+        // Nothing disrupted: the card's own mark is the ?, so none goes among the pills.
+        assertNull(unknownMarkAt(disrupted = 0, unchecked = 2))
+        // Behind disrupted lines it sets the unchecked apart, before the first of them.
+        assertEquals(3, unknownMarkAt(disrupted = 3, unchecked = 1))
+        assertNull(unknownMarkAt(disrupted = 3, unchecked = 0))
+    }
+
+    @Test
+    fun the_question_mark_stands_before_the_count_that_hides_every_unchecked_line() {
+        // Disrupted lines fill the card and the unchecked one is counted: the ? goes with the count.
+        assertTrue(unknownMarkOnCount(disrupted = 8, unchecked = 1, hidden = 6))
+        assertTrue(unknownMarkOnCount(disrupted = 8, unchecked = 2, hidden = 2))
+        // An unchecked pill still shows, with its ? before it: not a second one on the count.
+        assertFalse(unknownMarkOnCount(disrupted = 2, unchecked = 3, hidden = 2))
+        // Nothing unchecked, or nothing disrupted for the card's own ? to be told apart from.
+        assertFalse(unknownMarkOnCount(disrupted = 8, unchecked = 0, hidden = 5))
+        assertFalse(unknownMarkOnCount(disrupted = 0, unchecked = 4, hidden = 3))
     }
 
     @Test
