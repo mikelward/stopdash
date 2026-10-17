@@ -206,6 +206,9 @@ class HomeLinesTest {
         val row = tubeRow(loaded, mapOf("near" to 50.0), tube(), setOf(DismissedAlert.ofLineStatus(severe)), now)
         assertEquals(emptyList<String>(), row.lines.map { it.lineId })
         assertTrue(row.every.single { it.leg.lineId == "73" }.dismissed)
+        // Still a disruption, one the card doesn't count: it says "No watched disruptions", not "No line disruptions".
+        assertTrue(row.linesDisrupted)
+        assertFalse(tubeRow(loaded.copy(lineStatuses = emptyMap()), mapOf("near" to 50.0), tube(), emptySet(), now).linesDisrupted)
     }
 
     @Test

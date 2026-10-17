@@ -3264,8 +3264,11 @@ says "Disruptions:"; what couldn't be checked is marked by a ? in a circle (outl
 2026-10-17), once: as the card's own mark when nothing is disrupted ("Couldn't check for disruptions"
 beside it with no line to name), else before the lines it couldn't check (before "+N" when those are
 all counted in it), or after the disrupted ones alone with no line to name. With nothing to show
-it is a plain card saying "No watched disruptions" beside a ✓ (maintainer, 2026-10-17: what the row covers is what it watches), so all clear is said rather than left to a blank
-word; while it checks, "Checking for disruptions" beside a spinner, and a failed check is never shown as
+it is a plain card saying so, rather than leaving all clear to a blank: "No line disruptions" beside a ✓
+when no line it covers is disrupted at all, said of its lines alone since a stop's closure has its own card
+(maintainer, 2026-10-17); and "No watched disruptions" beside an ⓘ (outlined) when the only line disruptions
+are ones it doesn't count, a dismissed one say (maintainer, 2026-10-17: a step above all clear, and a hint
+that a tap says more); while it checks, "Checking for disruptions" beside a spinner, and a failed check is never shown as
 all clear. It is always one line high whatever it says, the tint and the mark changing and never its
 size, with the pills that don't fit counted as "+N", and a chevron, since a tap always opens its lines
 (maintainer, 2026-10-16). The pills go worst first, the rider's own lines ahead of the rest when as bad (those near them, those of their starred rows

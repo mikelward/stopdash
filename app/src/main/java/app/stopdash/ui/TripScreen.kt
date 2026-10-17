@@ -3539,6 +3539,13 @@ internal class TripRow(
     val linesUnknown: Boolean = every.any { it.unknown }
 
     /**
+     * Whether a line in [every] has a disruption at all, counted among the pills or not: dismissed, or
+     * left beside a milder one. With no pill, the home card says "No watched disruptions" beside an ⓘ for
+     * it, else "No line disruptions" (maintainer, 2026-10-17). Worked out with the row, on the worker.
+     */
+    val linesDisrupted: Boolean = every.any { it.disrupted || it.quieted != null }
+
+    /**
      * [every]'s line ids, in order, and each line's pill (id, name, mode in turn): what the lines page
      * saves as it opens, worked out with the row, so a rotation before its own worker answers keeps the
      * order it opened with (Codex, #559).
