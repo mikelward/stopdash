@@ -366,6 +366,59 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `a line that couldn't be checked keeps its question mark when the count takes it`() {
+        // More disrupted lines than fit, and the Overground's check didn't answer: its pill is counted in
+        // "+N", and the ? goes with the count rather than vanishing with the pill (Codex, #919).
+        val troubled = setOf("central", "jubilee", "northern", "piccadilly", "victoria", "bakerloo")
+        val always = HomeLines.Always(
+            HomeLines.TUBE_IDS.associateWith {
+                if (it in troubled) LineStatus(it, 6, "Severe Delays", fullText = "Signal failure") else LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service")
+            },
+            now.minusSeconds(60),
+        )
+        val stops = stops(now.minusSeconds(60))
+        capture("main-disruptions-overflow-unknown.png") {
+            MainScreen(
+                DeparturesUiState.Loaded(
+                    stops, now.minusSeconds(60), lineStatuses = statuses(), disruptionUnknown = true,
+                    determinedLineIds = stops.flatMap { stop -> stop.departures.map { it.lineId } + stop.lines.map { it.id } }.toSet() - "windrush",
+                ),
+                now,
+                {},
+                favoritePlaces = places,
+                showDisruptionsRow = true,
+                always = always,
+                alwaysNetworks = setOf("tube"),
+            )
+        }
+        composeRule.onNodeWithContentDescription("Unknown:", substring = true).assertExists()
+    }
+
+    @Test
+    fun `a line that couldn't be checked takes the question mark, once`() {
+        val stops = stops(now.minusSeconds(60))
+        val ids = stops.flatMap { stop -> stop.departures.map { it.lineId } + stop.lines.map { it.id } }.toSet()
+        capture("main-disruptions-unknown-only.png") {
+            MainScreen(
+                // Nothing disrupted, but the Overground's check didn't answer.
+                DeparturesUiState.Loaded(
+                    stops, now.minusSeconds(60),
+                    lineStatuses = ids.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") },
+                    disruptionUnknown = true,
+                    determinedLineIds = ids - "windrush",
+                ),
+                now,
+                {},
+                favoritePlaces = places,
+                showDisruptionsRow = true,
+                always = HomeLines.Always(HomeLines.TUBE_IDS.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") }, now.minusSeconds(60)),
+                alwaysNetworks = setOf("tube"),
+            )
+        }
+        composeRule.onNodeWithContentDescription("Disruptions: Unknown:", substring = true).assertExists()
+    }
+
+    @Test
     fun `the disruptions row, dark`() {
         // The tint has to hold up on the dark scheme too.
         val stops = stops(now.minusSeconds(60))

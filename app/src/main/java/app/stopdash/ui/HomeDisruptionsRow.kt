@@ -1,6 +1,7 @@
 package app.stopdash.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -38,19 +39,52 @@ import app.stopdash.R
 
 /**
  * The home screen's disruptions row ([HomeLines]), a card one line high whatever it says (maintainer,
- * 2026-10-05): each disrupted line's pill, then "Unknown:" and what couldn't be checked, behind a ⚠ on a
- * tinted card; with none of those, a plain card saying so beside its mark ("No disruptions" beside a ✓,
+ * 2026-10-05): each disrupted line's pill behind a ⚠, then a ? in a circle and what couldn't be checked,
+ * on a tinted card, the ? shown once ([DisruptionsMark], [unknownMarkAt]); with none of those, a plain card saying so beside its mark ("No disruptions" beside a ✓,
  * "Checking for disruptions" beside a spinner; maintainer, 2026-10-16). What doesn't fit is counted as
  * "+N". A tap opens every line it covers with its status ([TripLinesPage]), which its chevron says
  * (maintainer, 2026-10-16).
  */
+/** What leads the home screen's disruptions card: one mark for what it says as a whole. */
+internal enum class DisruptionsMark { CHECKING, DISRUPTED, UNKNOWN, CLEAR }
+
+internal fun disruptionsMark(row: TripRow): DisruptionsMark = when {
+    row.checking -> DisruptionsMark.CHECKING
+    row.lines.isNotEmpty() -> DisruptionsMark.DISRUPTED
+    // A check that failed is never shown as all clear.
+    row.unknown || row.unknownLines.isNotEmpty() -> DisruptionsMark.UNKNOWN
+    else -> DisruptionsMark.CLEAR
+}
+
+/**
+ * Where the ? goes among the pills: before the first of [unchecked] lines, only behind [disrupted] ones
+ * it has to be told apart from. With none disrupted, the card's own mark is that ?, and one is enough
+ * (maintainer, 2026-10-17); null leaves it out.
+ */
+internal fun unknownMarkAt(disrupted: Int, unchecked: Int): Int? = disrupted.takeIf { it > 0 && unchecked > 0 }
+
+/**
+ * Whether the ? goes before the "+N" count instead: every one of [unchecked] lines is among the [hidden]
+ * pills it counts (they come last), so the ? [unknownMarkAt] places has no pill left to stand before,
+ * and the unchecked must still be marked (Codex, #919). Behind no [disrupted] lines the card's own mark
+ * is the ?, so it is never needed there.
+ */
+internal fun unknownMarkOnCount(disrupted: Int, unchecked: Int, hidden: Int): Boolean =
+    disrupted > 0 && unchecked > 0 && hidden >= unchecked
+
+/** A ? in a circle: something couldn't be checked. Heard through the card's own description. */
+@Composable
+private fun UnknownMark() {
+    Icon(HelpOutlineIcon, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+}
+
 @Composable
 internal fun HomeDisruptionsRow(row: TripRow, modifier: Modifier = Modifier) {
     val style = MaterialTheme.typography.bodyMedium
     val colors = MaterialTheme.colorScheme
     val error = colors.error
     var open by rememberSaveable { mutableStateOf(false) }
-    // The pills, worst first (the disrupted, then "Unknown:" and the unchecked), counted as "+N" where
+    // The pills, worst first (the disrupted, then the ? and the unchecked), counted as "+N" where
     // they don't fit; only pills are counted (Codex, #577). A word alone always shows, at the end.
     val disrupted = row.lines
     val unchecked = if (row.checking) emptyList() else row.unknownLines
@@ -69,7 +103,7 @@ internal fun HomeDisruptionsRow(row: TripRow, modifier: Modifier = Modifier) {
         else -> null
     }
     val muted = if (warn) colors.onErrorContainer else colors.onSurfaceVariant
-    val wordColor = if (word == R.string.disruptions_unknown || word == R.string.trip_disruptions_unknown) error else muted
+    val wordColor = if (word == R.string.disruptions_unknown) error else muted
     // Heard whole, every line named, never only the pills that fit nor one measured and left out. A
     // word alone already says what it's about.
     val spoken = if (pills == 0 && word != null) {
@@ -103,10 +137,11 @@ internal fun HomeDisruptionsRow(row: TripRow, modifier: Modifier = Modifier) {
                 .padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
             Box(contentAlignment = Alignment.Center, modifier = Modifier.size(20.dp).clearAndSetSemantics {}) {
-                when {
-                    row.checking -> CircularProgressIndicator(strokeWidth = 2.dp, color = colors.onSurfaceVariant, modifier = Modifier.size(16.dp))
-                    warn -> Icon(Icons.Filled.Warning, contentDescription = null, tint = error)
-                    else -> Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = colors.onSurfaceVariant)
+                when (disruptionsMark(row)) {
+                    DisruptionsMark.CHECKING -> CircularProgressIndicator(strokeWidth = 2.dp, color = colors.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                    DisruptionsMark.DISRUPTED -> Icon(Icons.Filled.Warning, contentDescription = null, tint = error)
+                    DisruptionsMark.UNKNOWN -> UnknownMark()
+                    DisruptionsMark.CLEAR -> Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = colors.onSurfaceVariant)
                 }
             }
             Box(
@@ -123,14 +158,24 @@ internal fun HomeDisruptionsRow(row: TripRow, modifier: Modifier = Modifier) {
                         val leg = disrupted.getOrNull(i) ?: unchecked.getOrNull(i - disrupted.size) ?: return@OneLine
                         LinePill(leg.lineName, leg.lineId, leg.mode)
                     },
-                    // "Unknown:" before the first unchecked pill, as part of it, so it goes with it.
-                    labelAt = disrupted.size.takeIf { unchecked.isNotEmpty() },
-                    label = { Text(stringResource(R.string.trip_disruptions_unknown_label), style = style, color = error, maxLines = 1) },
-                    word = word?.let { { Text(stringResource(it), style = style, color = wordColor, maxLines = 1) } },
+                    // The ? before the first unchecked pill, as part of it, so it goes with it.
+                    labelAt = unknownMarkAt(disrupted.size, unchecked.size),
+                    label = { UnknownMark() },
+                    word = word?.let {
+                        {
+                            // Beside the disrupted lines, what couldn't be checked with no line to name is
+                            // the same ?, never the word.
+                            if (it == R.string.trip_disruptions_unknown) UnknownMark()
+                            else Text(stringResource(it), style = style, color = wordColor, maxLines = 1)
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth(),
                 ) { more ->
-                    // The unchecked come last, so a count that hides any of them is red, as "Unknown:" is.
-                    Text(stringResource(R.string.home_disruptions_more, more), style = style, color = if (unchecked.isNotEmpty()) error else muted, maxLines = 1)
+                    // The unchecked come last, so a count that hides any of them is red, as the ? is.
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (unknownMarkOnCount(disrupted.size, unchecked.size, more)) UnknownMark()
+                        Text(stringResource(R.string.home_disruptions_more, more), style = style, color = if (unchecked.isNotEmpty()) error else muted, maxLines = 1)
+                    }
                 }
             }
             // The card always opens the lines page, so it says it goes somewhere (maintainer, 2026-10-16).

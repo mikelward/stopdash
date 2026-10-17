@@ -3259,8 +3259,11 @@ quality bar*). So stopdash surfaces, for watched stops and their lines:
 **The home screen has a disruptions row** (maintainer, 2026-10-05) under the favorite places' chips,
 so Home and the favorites keep the top, scrolling with the list as they do. It is a card, as the
 departures are, with their border whatever it says (maintainer, 2026-10-16). Anything disrupted, or
-anything that couldn't be checked, tints its fill and puts a ⚠ where the trip's row says "Disruptions:": each disrupted line's pill, then "Unknown:" with
-what couldn't be checked, or "Couldn't check for disruptions" with no line to name. With nothing to show
+anything that couldn't be checked, tints its fill. Disrupted lines go behind a ⚠ where the trip's row
+says "Disruptions:"; what couldn't be checked is marked by a ? in a circle (outlined; maintainer,
+2026-10-17), once: as the card's own mark when nothing is disrupted ("Couldn't check for disruptions"
+beside it with no line to name), else before the lines it couldn't check (before "+N" when those are
+all counted in it), or after the disrupted ones alone with no line to name. With nothing to show
 it is a plain card saying "No disruptions" beside a ✓, so all clear is said rather than left to a blank
 word; while it checks, "Checking for disruptions" beside a spinner, and a failed check is never shown as
 all clear. It is always one line high whatever it says, the tint and the mark changing and never its
