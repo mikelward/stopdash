@@ -34,3 +34,8 @@ rules:
     ignore:
       - codex-review.yml
       - codex-review-check.yml
+      # The Claude review: pull_request_target so the job holding the token
+      # is the base branch's, never one a pull request rewrote. It fetches
+      # the head as git objects for Claude to read, never checks it out or
+      # runs it, and skips fork pull requests -- see the file's own header.
+      - claude-review.yml
