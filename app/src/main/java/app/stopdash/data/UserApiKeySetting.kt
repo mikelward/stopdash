@@ -388,7 +388,7 @@ object HiddenModesSetting {
     )
 
     private fun railDefault(choice: HiddenModesChoice, key: String?): Boolean =
-        RailKeyDefault.applies(keySet = key != null, chosen = choice.railChosen, stored = choice.modes)
+        RailKeyDefault.applies(keySet = RailRelay.timesWith(key), chosen = choice.railChosen, stored = choice.modes)
 
     @WorkerThread
     private fun effective(choice: HiddenModesChoice, key: String?): Set<String> =
@@ -405,7 +405,7 @@ object HiddenModesSetting {
      * it came to be hidden.
      */
     val railKeyMissing: StateFlow<Boolean> =
-        combine(RailApiKeySetting.changes, RailApiKeySetting.isLoaded) { key, loaded -> loaded && key == null }
+        combine(RailApiKeySetting.changes, RailApiKeySetting.isLoaded) { key, loaded -> loaded && !RailRelay.timesWith(key) }
             .stateIn(scope, SharingStarted.Eagerly, false)
 
     /** The hidden modes right now, as [changes] last worked them out: a read, no work. */

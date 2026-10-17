@@ -98,6 +98,68 @@ class KtorDarwinClientTest {
     }
 
     @Test
+    fun `without a key of the rider's own, boards come through the relay, carrying nothing of theirs`() {
+        val board = checkNotNull(javaClass.getResource("/fixtures/darwin_board_example.json")).readText()
+        val details = checkNotNull(javaClass.getResource("/fixtures/darwin_board_details_st_pancras.json")).readText()
+        val asked = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            asked += "${request.url.host}${request.url.encodedPath}${request.url.encodedQuery.takeIf { it.isNotEmpty() }?.let { "?$it" }.orEmpty()} ${request.headers["x-apikey"]}"
+            val body = if (request.url.encodedPath.contains("details", ignoreCase = true)) details else board
+            respond(ByteReadChannel(body), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(json) }
+        }
+        var key: String? = null
+        val client = KtorDarwinClient(http, apiKey = { key }, baseUrl = "https://darwin.example/api", relayUrl = { "https://relay.example/" })
+        assertTrue(client.available)
+        runBlocking {
+            client.board("WAT")
+            client.boardWithDetails("WAT")
+            client.runs("STP", "BTN")
+            client.runs("STP", "BTN", offsetMinutes = 45)
+        }
+        assertEquals(
+            listOf(
+                "relay.example/v1/board/WAT null",
+                "relay.example/v1/board/WAT/details null",
+                "relay.example/v1/board/STP/details?to=BTN null",
+                "relay.example/v1/board/STP/details?to=BTN&offset=45 null",
+            ),
+            asked,
+        )
+        // A key of the rider's own goes straight to National Rail, as before the relay.
+        key = "EXAMPLE"
+        runBlocking { client.board("WAT") }
+        assertEquals("darwin.example/api/GetDepartureBoard/WAT?numRows=20 EXAMPLE", asked.last())
+        // Neither: nothing to ask.
+        key = null
+        assertTrue(!KtorDarwinClient(http, apiKey = { key }, relayUrl = { null }).available)
+    }
+
+    @Test
+    fun `a relay board carries the age the relay gave it`() {
+        val board = checkNotNull(javaClass.getResource("/fixtures/darwin_board_example.json")).readText()
+        var age: String? = "17"
+        val engine = MockEngine {
+            val headers = listOfNotNull(HttpHeaders.ContentType to listOf("application/json"), age?.let { HttpHeaders.Age to listOf(it) })
+            respond(ByteReadChannel(board), HttpStatusCode.OK, headersOf(*headers.toTypedArray()))
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(json) }
+        }
+        val client = KtorDarwinClient(http, apiKey = { null }, relayUrl = { "https://relay.example" })
+        assertEquals(java.time.Duration.ofSeconds(17), runBlocking { client.board("WAT") }.age)
+        // None, or one that can't be read, is no age at all.
+        age = null
+        assertEquals(java.time.Duration.ZERO, runBlocking { client.board("WAT") }.age)
+        age = "soon"
+        assertEquals(java.time.Duration.ZERO, runBlocking { client.board("WAT") }.age)
+    }
+
+    @Test
     fun `a followed train's board is asked toward its terminus, with each train's calls and times`() {
         val body = checkNotNull(javaClass.getResource("/fixtures/darwin_board_details_st_pancras.json")).readText()
         val asked = mutableListOf<String>()
