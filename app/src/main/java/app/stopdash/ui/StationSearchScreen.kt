@@ -365,7 +365,7 @@ fun StationSearchScreen(
                             removeRecentFailed = state.removeRecentFailed,
                             areas = state.yourAreas,
                             chipsStart = chipsStart,
-                            chipsTop = if (onChangeFrom != null) 0.dp else 8.dp,
+                            chipsTop = if (onChangeFrom != null) 8.dp else 16.dp,
                         )
                     else -> Message(stringResource(R.string.station_search_prompt))
                 }
@@ -484,9 +484,9 @@ private fun YourStopsList(
     removeRecentFailed: Boolean = false,
     // Where the chips start: the screen's margin, or the To field's edge under the From/To bar.
     chipsStart: Dp = 16.dp,
-    // Space above the chips: none right under the From/To bar, so they sit close to the To field
-    // they serve.
-    chipsTop: Dp = 8.dp,
+    // Space above the chips' outline: the least, 8dp, right under the From/To bar, so they sit close
+    // to the To field they serve. Their touch target reaches 8dp past the outline into it.
+    chipsTop: Dp = 16.dp,
     // Each row's postcode district, by [SearchEntry.key] ([StationSearchViewModel.State.yourAreas]).
     areas: Map<String, String> = emptyMap(),
 ) {
@@ -509,7 +509,7 @@ private fun YourStopsList(
                     places = places,
                     onRouteTo = { onPlace?.invoke(it) },
                     onPickPlace = onPickPlace,
-                    modifier = Modifier.padding(top = chipsTop, bottom = 8.dp),
+                    modifier = Modifier.padding(top = chipsTop, bottom = 16.dp),
                     contentPadding = PaddingValues(start = chipsStart, end = 16.dp),
                     onEditPlaces = onEditPlaces,
                     onHere = onPickHere,

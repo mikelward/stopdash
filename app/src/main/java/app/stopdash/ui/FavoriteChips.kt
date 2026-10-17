@@ -19,7 +19,6 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Text
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
@@ -135,7 +134,10 @@ internal fun FavoriteChips(
  * An outlined chip drawn to Material's assist-chip measures (at least 32dp tall, 8dp corners, a 1dp
  * outline, 16dp end padding, 8dp start padding before an icon and 16dp without one, 8dp between icon
  * and label), built here because Material's own chip takes no long press. The icon takes the label's
- * color rather than an accent. Its touch target is 48dp tall, as Material's is.
+ * color rather than an accent. Its touch target is 48dp tall, as Material's is, but takes no layout
+ * space: Compose stretches a clickable under 48dp to the minimum touch target when hit testing, and
+ * for TalkBack, so the 8dp above and below the outline isn't spent as blank space around the row
+ * (maintainer, 2026-10-17).
  */
 @Composable
 private fun PlaceChip(
@@ -149,7 +151,6 @@ private fun PlaceChip(
     val shape = RoundedCornerShape(8.dp)
     Box(
         modifier = modifier
-            .minimumInteractiveComponentSize()
             // At least 32dp, growing with the text at a large font scale rather than clipping it.
             .heightIn(min = 32.dp)
             .clip(shape)
