@@ -498,8 +498,14 @@ object RouteDisruption {
         else (listOf(leg.fromId) + leg.path + listOf(leg.toId).filterNot { it == leg.path.last() }).filter { it.isNotBlank() }
 
     /** The coming legs' lines ([rideLine]): the ones whose status the alert needs, in route order. */
-    fun comingLines(trip: ActiveTrip): List<String> =
-        comingRides(trip).map { (i, leg) -> rideLine(trip, i, leg).id }.filter { it.isNotBlank() }.distinct()
+    fun comingLines(trip: ActiveTrip): List<String> = comingLineRefs(trip).map { it.id }
+
+    /**
+     * [comingLines] with each line's name and mode, the first leg's where two ride one line: for the home
+     * screen's disruptions row, which covers the trip on the way (maintainer, 2026-10-17).
+     */
+    fun comingLineRefs(trip: ActiveTrip): List<LineRef> =
+        comingRides(trip).map { (i, leg) -> rideLine(trip, i, leg) }.filter { it.id.isNotBlank() }.distinctBy { it.id }
 
     /**
      * The line coming leg [index] ([leg]) of [trip] goes by, as its id and name: the line of the train
