@@ -423,6 +423,13 @@ object AlertStops {
         """\bmissing\s+(?:the\s+)?(?:stops\s+from\s+)?FROM\s+to\s+TO""",
         """\bmissing\s+(?:the\s+)?stops\s+between\s+FROM\s+and\s+TO""",
         """\bcontinue\s+to\s+miss\s+the\s+same\s+stops\s+from\s+FROM\s+to\s+TO""",
+        // A diversion off the route between two of its stops: "Buses towards North End are diverted from
+        // A to B via C Street and D Street" (TfL's wording, 2026-10-17). The roads it goes by are read
+        // with it, through the clause's end: they're where buses run instead, not stops left out. Not past
+        // a word for service changed ("… via C Street and cannot serve D", "… and buses are diverted from
+        // E to F"), which is left to be read, or not, on its own (Codex, #941).
+        """\b(?:divert(?:s|ed|ing)?|on\s+diversion)\s+(?:from\s+FROM\s+to\s+TO|between\s+FROM\s+and\s+TO)""" +
+            """(?:\s+via\b(?:(?!\b(?:divert\w*|diversion|serv\w*|miss\w*|skip\w*|bypass\w*|not|no|never|cannot|unable|terminat\w*|curtail\w*|call\w*|stop(?:s|ping)?)\b|n't\b)[^.;:?!])*)?""",
         // A later segment of the same list: "missing the stops from A 'CA' to B 'T' northbound, and from
         // C 'U' to D 'CB' southbound", "… and stops from C to D towards South End".
         """\bmissing\s+(?:the\s+)?stops\s+from\s+[^.;:?!]*?\band\s+(?:the\s+)?(?:stops\s+)?from\s+FROM\s+to\s+TO""",
@@ -466,7 +473,13 @@ object AlertStops {
     // "skip", "bypass" — but not "serving" ("via Example Road (serving Bus Stop J)"), nor a negated
     // miss ("Routes 98 and 99 also follow the diversion but do not miss any stops").
     private fun unreadSkip(clause: String): Boolean =
-        (NEGATED.containsMatchIn(clause) && SERVICE_VERB.containsMatchIn(clause)) || MISSED_VERB.containsMatchIn(clause)
+        (NEGATED.containsMatchIn(clause) && SERVICE_VERB.containsMatchIn(clause)) || MISSED_VERB.containsMatchIn(clause) ||
+            UNREAD_DIVERSION.containsMatchIn(clause)
+
+    // A diversion from or between places, left over once those read are taken out: one whose ends aren't
+    // both on the route, so the stretch it leaves isn't known (Codex, #941). A diversion naming only the
+    // roads it takes ("on diversion via Example Street") gives no stretch, and isn't one.
+    private val UNREAD_DIVERSION = Regex("""\b(?:divert\w*|on\s+diversion)\b[^.;:?!]*?\b(?:from|between)\b""", RegexOption.IGNORE_CASE)
 
     // Serving, stopping or calling as a verb ("the stops" is a noun, and "do not miss any stops" says
     // nothing is missed).
