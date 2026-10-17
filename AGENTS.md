@@ -132,7 +132,8 @@ accent) since their colors collide with tube lines. Confirmed TfL hexes only (`S
   allow-list). Render under `en-rGB` in every class and method `qualifiers`.
 - CI commits screenshot drift back to same-repo PRs (`ci: refresh recorded screenshots`) and
   posts a before/after comment: `git pull` after a UI push before pushing again; don't
-  hand-commit PNGs (fork PRs must).
+  hand-commit PNGs (fork PRs must). A rebase that carries CI's refresh commit unchanged
+  (still authored by github-actions[bot]) isn't hand-committing; review it as CI's.
 - Run `./gradlew test` and `./gradlew lint` before pushing when the environment can;
   otherwise state what was verified by inspection only.
 - **Fix preexisting test failures as the first commit** (confirm before skipping if
