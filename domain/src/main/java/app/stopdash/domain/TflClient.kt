@@ -55,6 +55,12 @@ interface TflClient {
     fun untimed(stopId: String): List<UntimedTrain> = emptyList()
 
     /**
+     * [stopId]'s National Rail station notices from its last [arrivals] ([RailBoard.messages]); none when
+     * they carried no board. They share the arrivals' age, as [untimed] does (SPEC *National Rail*).
+     */
+    fun railNotices(stopId: String): List<String> = emptyList()
+
+    /**
      * Whether [stopId]'s [arrivals] are the same whichever client asked, so another screen may show
      * them ([ArrivalsCache]). Not so where a client decides between stops: two stops sharing one
      * National Rail station show its board under only the one that client picked ([RailAwareTflClient]).

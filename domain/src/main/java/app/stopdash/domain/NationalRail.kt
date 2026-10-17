@@ -59,8 +59,25 @@ data class CallingPortion(val stops: Set<String>, val complete: Boolean) {
 /**
  * A National Rail station's board: the trains with a time to count down ([departures]), and those it
  * lists with none ([untimed]), kept apart so only a surface that says what they are shows them.
+ * [messages] are National Rail's own notices for the station (Darwin's `nrccMessages`, as plain text:
+ * [railMessageText]), the words TfL's status for a National Rail line often leaves out for a link.
+ * [suppressed] is a board Darwin has suppressed ([SuppressedRailBoard]): no trains to stand behind, only
+ * its [messages], which often say why. It is never kept, and its station's times are a failure.
  */
-data class RailBoard(val departures: List<Departure>, val untimed: List<UntimedTrain> = emptyList())
+data class RailBoard(
+    val departures: List<Departure>,
+    val untimed: List<UntimedTrain> = emptyList(),
+    val messages: List<String> = emptyList(),
+    val suppressed: Boolean = false,
+)
+
+/**
+ * A board Darwin has suppressed (its station's access closed at short notice, say): a failure for its
+ * trains, which may still run though it lists none, but its station [messages] ([RailBoard.messages]) are
+ * still National Rail's word, often the one explaining why (Codex, #938). The cause of the
+ * [TflException] a [RailBoardSource] fails with.
+ */
+class SuppressedRailBoard(val messages: List<String>) : IllegalStateException("board suppressed")
 
 /**
  * A National Rail train its board lists with no time to count down: [canceled], or "Delayed" with no
@@ -231,6 +248,13 @@ class RailAwareTflClient(
 
     override fun untimed(stopId: String): List<UntimedTrain> = untimedByStop[stopId].orEmpty()
 
+    // Each stop's station notices from its last board ([RailBoard.messages]), a suppressed one's included;
+    // absent when its last arrivals carried no board. Read off the arrivals'
+    // own fetch, so they share its age, its key and a hidden mode's skipped board, and ask for nothing.
+    private val noticesByStop = ConcurrentHashMap<String, List<String>>()
+
+    override fun railNotices(stopId: String): List<String> = noticesByStop[stopId].orEmpty()
+
     // With National Rail times on, a station's board goes under whichever of its stops this client
     // picked, so its arrivals aren't another client's to reuse; with none, it's TfL's alone.
     override fun shareable(stopId: String): Boolean = !rail.available || codes().crsFor(stopId) == null
@@ -243,6 +267,7 @@ class RailAwareTflClient(
     override suspend fun arrivals(stopId: String): List<Departure> {
         boardTimes.remove(stopId)
         untimedByStop.remove(stopId)
+        noticesByStop.remove(stopId)
         val crs = codes().crsFor(stopId)
         if (crs == null || !rail.available) {
             // A station a key would give National Rail times says so; any other stop has none to give.
@@ -306,6 +331,7 @@ class RailAwareTflClient(
         if (railBoard || !hasRailBoard(stopId)) return arrivals(stopId)
         boardTimes.remove(stopId)
         untimedByStop.remove(stopId)
+        noticesByStop.remove(stopId)
         feeds.remove(stopId)
         codes().crsFor(stopId)?.let { crs -> ownersLock.withLock { if (owners[crs]?.first == stopId) owners.remove(crs) } }
         return tfl.arrivals(stopId)
@@ -324,15 +350,19 @@ class RailAwareTflClient(
     // [stopId]'s feed, board time and untimed trains once its arrivals carry [board], or would have
     // (null: it failed, or the key was cleared while it was asked for, Codex #883).
     private fun showed(stopId: String, board: ArrivalsCache.Entry?) {
+        // A suppressed board fails for its trains, but its notices are what explain it (Codex, #938).
+        board?.messages?.takeIf { it.isNotEmpty() }?.let { noticesByStop[stopId] = it }
+        val trains = board?.takeUnless { it.suppressed }
         feeds[stopId] = when {
-            board != null -> RailFeed.LIVE
+            trains != null -> RailFeed.LIVE
             !rail.available -> RailFeed.NO_KEY
             else -> RailFeed.UNAVAILABLE
         }
-        board?.let {
+        trains?.let {
             boardTimes[stopId] = it.fetchedAt
             untimedByStop[stopId] = it.untimed
         }
+
     }
 
     /**
@@ -344,9 +374,10 @@ class RailAwareTflClient(
     private suspend fun fetchBoard(crs: String, stopId: String): ArrivalsCache.Entry? = coroutineScope {
         val details = if (callingPoints) async { fetchOne(crs, stopId, DETAILS_KEY, "calling points") { rail.boardWithDetails(crs) } } else null
         val plain = fetchOne(crs, stopId, BOARD_KEY, "board") { rail.board(crs) }
-        val withDetails = details?.await()
+        // A suppressed one has no calling points to give.
+        val withDetails = details?.await()?.takeUnless { it.suppressed }
         val calling = withDetails?.departures.orEmpty()
-        if (plain == null || withDetails == null || calling.isEmpty()) {
+        if (plain == null || plain.suppressed || withDetails == null || calling.isEmpty()) {
             plain
         } else {
             // As old as its older half: calling points kept from before stand for no fresher a board (Codex, #650).
@@ -364,9 +395,11 @@ class RailAwareTflClient(
                 throw e
             } catch (e: TflException) {
                 warn("national rail $what failed for stop $stopId: ${e.message}")
-                null
+                // A suppressed board's notices are its answer, handed to every asker of this one fetch with
+                // it (Codex, #938); it is never kept.
+                (e.cause as? SuppressedRailBoard)?.let { RailBoard(emptyList(), messages = it.messages, suppressed = true) }
             }
-        val cache = boards ?: return asked()?.let { ArrivalsCache.Entry(it.departures, SteadyClock.stamp(clock()), untimed = it.untimed) }
+        val cache = boards ?: return asked()?.let { ArrivalsCache.Entry(it.departures, SteadyClock.stamp(clock()), untimed = it.untimed, messages = it.messages, suppressed = it.suppressed) }
         return cache.fetchBoardOnce(key + crs, clock(), BOARD_SOURCE) { asked() }
     }
 

@@ -1,8 +1,11 @@
 package app.stopdash.data
 
 import app.stopdash.domain.CallingPortion
+import app.stopdash.domain.SuppressedRailBoard
 import java.time.Instant
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -266,5 +269,44 @@ class DarwinBoardDtoTest {
         }
         // A board with no trains at all has nothing to date.
         assertTrue(board().copy(generatedAt = null, trainServices = emptyList()).toDepartures().isEmpty())
+    }
+
+    @Test
+    fun `a board's station messages come as plain text, even with no trains`() {
+        val board = json.decodeFromString<DarwinBoardDto>(
+            checkNotNull(javaClass.getResource("/fixtures/darwin_board_messages_waterloo.json")).readText(),
+        ).toBoard()
+        assertTrue(board.departures.isEmpty())
+        // Said once, its link kept beside its words, the blank one dropped.
+        assertEquals(
+            listOf(
+                "Disruption between Clapham Junction and Woking is expected until 10:00. More details can be found in " +
+                    "Latest Travel News (https://www.nationalrail.co.uk/service-disruptions/example-20261017/).",
+            ),
+            board.messages,
+        )
+        // A board with trains carries them too; one with none has none.
+        // ("Value" as well as "value", either case the service might write.)
+        val withTrains = board().copy(nrccMessages = listOf(JsonObject(mapOf("Value" to JsonPrimitive("<p>Trains are delayed.</p>"))))).toBoard()
+        assertTrue(withTrains.departures.isNotEmpty())
+        assertEquals(listOf("Trains are delayed."), withTrains.messages)
+        assertTrue(board().toBoard().messages.isEmpty())
+    }
+
+    @Test
+    fun `a station message in a shape it doesn't know costs only that message`() {
+        val odd = json.decodeFromString<DarwinBoardDto>("""{"generatedAt": "2026-10-17T08:00:00+01:00", "nrccMessages": [{"text": "x"}, 3, "<b>Plain</b> words"]}""")
+        assertEquals(listOf("Plain words"), odd.toBoard().messages)
+    }
+
+    @Test
+    fun `a suppressed board fails with its station messages, which often say why (Codex, #938)`() {
+        val suppressed = json.decodeFromString<DarwinBoardDto>(
+            checkNotNull(javaClass.getResource("/fixtures/darwin_board_messages_waterloo.json")).readText(),
+        ).copy(areServicesAvailable = false)
+        val failure = runCatching { suppressed.toBoard() }.exceptionOrNull()
+        assertTrue(failure is SuppressedRailBoard)
+        assertEquals(1, (failure as SuppressedRailBoard).messages.size)
+        assertTrue(failure.messages.single().startsWith("Disruption between Clapham Junction and Woking"))
     }
 }

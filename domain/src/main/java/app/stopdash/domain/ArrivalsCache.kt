@@ -25,6 +25,12 @@ class ArrivalsCache {
         val railFeed: RailFeed? = null,
         val source: Any? = null,
         val untimed: List<UntimedTrain> = emptyList(),
+        // A National Rail board's station notices ([RailBoard.messages]), or a stop's from its board
+        // ([TflClient.railNotices]): they share the arrivals' age.
+        val messages: List<String> = emptyList(),
+        // A suppressed board's answer ([RailBoard.suppressed]): its notices, no trains. Handed to every
+        // asker of the one fetch, never kept.
+        val suppressed: Boolean = false,
     )
 
     private val entries = LinkedHashMap<String, Entry>()
@@ -66,12 +72,13 @@ class ArrivalsCache {
         generation: Long = this.generation,
         source: Any? = null,
         untimed: List<UntimedTrain> = emptyList(),
+        messages: List<String> = emptyList(),
     ) {
         if (generation != this.generation) return
         val held = entries[stopId]
         if (held != null && held.source == source && held.fetchedAt.isAfter(at)) return
         entries.remove(stopId)
-        entries[stopId] = Entry(departures, at, railFeed, source, untimed)
+        entries[stopId] = Entry(departures, at, railFeed, source, untimed, messages)
         while (entries.size > MAX) entries.remove(entries.keys.first())
     }
 
@@ -103,7 +110,7 @@ class ArrivalsCache {
     suspend fun fetchOnce(key: String, now: Instant, source: Any?, fetch: suspend () -> List<Departure>?): Entry? =
         fetchBoardOnce(key, now, source) { fetch()?.let(::RailBoard) }
 
-    /** [fetchOnce] for a National Rail board, its trains with no time ([RailBoard.untimed]) kept with it. */
+    /** [fetchOnce] for a National Rail board, its trains with no time ([RailBoard.untimed]) and notices ([RailBoard.messages]) kept with it. */
     suspend fun fetchBoardOnce(key: String, now: Instant, source: Any?, fetch: suspend () -> RailBoard?): Entry? {
         val pending = CompletableDeferred<Fetch>()
         val (askedIn, running) = synchronized(this) {
@@ -125,8 +132,8 @@ class ArrivalsCache {
         try {
             // Stamped when asked, as [CachingTflClient] stamps a stop's.
             val askedAt = SteadyClock.stamp(now)
-            val entry = fetch()?.let { Entry(it.departures, askedAt, source = source, untimed = it.untimed) }
-            if (entry != null) put(key, entry.departures, askedAt, generation = askedIn, source = source, untimed = entry.untimed)
+            val entry = fetch()?.let { Entry(it.departures, askedAt, source = source, untimed = it.untimed, messages = it.messages, suppressed = it.suppressed) }
+            if (entry != null && !entry.suppressed) put(key, entry.departures, askedAt, generation = askedIn, source = source, untimed = entry.untimed, messages = entry.messages)
             outcome = Fetch.Done(entry)
             return entry
         } finally {
@@ -179,7 +186,7 @@ class CachingTflClient(
         val source = tfl.arrivalsSource()
         return fetch().also {
             if (shareable && tfl.shareable(stopId) && tfl.arrivalsSource() == source) {
-                cache.put(stopId, it, tfl.stampOf(stopId, askedAt), tfl.railFeed(stopId), generation, source, tfl.untimed(stopId))
+                cache.put(stopId, it, tfl.stampOf(stopId, askedAt), tfl.railFeed(stopId), generation, source, tfl.untimed(stopId), tfl.railNotices(stopId))
             }
         }
     }

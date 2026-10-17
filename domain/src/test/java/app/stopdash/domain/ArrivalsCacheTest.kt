@@ -4,6 +4,7 @@ import java.time.Instant
 import org.junit.Test
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
@@ -68,12 +69,13 @@ class ArrivalsCacheTest {
     }
 
     @Test
-    fun `a stop's trains with no time are kept with its arrivals`() = runBlocking {
+    fun `a stop's trains with no time and its board's notices are kept with its arrivals`() = runBlocking {
         val cache = ArrivalsCache()
         val canceled = UntimedTrain(departure(4), canceled = true)
         val tfl = object : TflClient {
             override suspend fun arrivals(stopId: String): List<Departure> = listOf(departure(3))
             override fun untimed(stopId: String): List<UntimedTrain> = listOf(canceled)
+            override fun railNotices(stopId: String): List<String> = listOf("Disruption between Here and There.")
             override suspend fun lineStatuses(lineIds: Collection<String>): List<LineStatus> = emptyList()
             override suspend fun stopDisruptions(stopId: String): List<StopDisruption> = emptyList()
         }
@@ -81,7 +83,23 @@ class ArrivalsCacheTest {
         assertEquals(listOf(departure(3)), client.arrivals("910GEXAMPLE"))
         assertEquals(listOf(canceled), client.untimed("910GEXAMPLE"))
         assertEquals(listOf(canceled), cache.get("910GEXAMPLE", now)?.untimed)
+        // Its board's notices too: another screen taking these arrivals shows them.
+        assertEquals(listOf("Disruption between Here and There."), cache.get("910GEXAMPLE", now)?.messages)
         assertEquals(listOf(departure(3)), cache.get("910GEXAMPLE", now)?.departures)
+    }
+
+    @Test
+    fun `a suppressed board's answer reaches its fetch's askers but is never kept (Codex, #938)`() = runBlocking {
+        val cache = ArrivalsCache()
+        var asked = 0
+        val suppressed = RailBoard(emptyList(), messages = listOf("Station closed."), suppressed = true)
+        val entry = cache.fetchBoardOnce("national-rail:EXA", now, null) { asked++; suppressed }
+        assertEquals(listOf("Station closed."), entry?.messages)
+        assertTrue(entry!!.suppressed)
+        assertNull(cache.get("national-rail:EXA", now))
+        // So the next ask asks again, rather than read a suppressed board as one with no trains.
+        cache.fetchBoardOnce("national-rail:EXA", now, null) { asked++; suppressed }
+        assertEquals(2, asked)
     }
 
     @Test

@@ -577,4 +577,108 @@ class RailAwareTflClientTest {
         val client = RailAwareTflClient(failing, Board(), { codes }, boardAtEveryStop = true, boards = ArrivalsCache(), clock = { now })
         assertThrows(TflException.Unreachable::class.java) { runBlocking { client.arrivals("910GEXAMPLE") } }
     }
+
+    @Test
+    fun `a station's board notices come with its arrivals, asking for nothing more`() = runTest {
+        var asked = 0
+        var fail = false
+        var key = true
+        val board = object : RailBoardSource {
+            override val available get() = key
+            override suspend fun departures(crs: String) = error("the whole board is asked for")
+            override suspend fun board(crs: String): RailBoard {
+                asked++
+                if (fail) throw TflException.Unreachable("HTTP 500", null)
+                return RailBoard(emptyList(), messages = listOf("Disruption between Here and There."))
+            }
+        }
+        val warned = mutableListOf<String>()
+        val boards = ArrivalsCache()
+        val client = RailAwareTflClient(tfl, board, { codes }, warn = { warned += it }, boards = boards, clock = { now })
+        client.arrivals("910GEXAMPLE")
+        assertEquals(listOf("Disruption between Here and There."), client.railNotices("910GEXAMPLE"))
+        // The stop's closure check is TfL's alone: it asks for no board.
+        assertEquals(emptyList<StopDisruption>(), client.stopDisruptions("910GEXAMPLE"))
+        assertEquals(1, asked)
+        // A kept board keeps them; a stop with no station code has none.
+        client.arrivals("910GEXAMPLE")
+        assertEquals(1, asked)
+        assertEquals(listOf("Disruption between Here and There."), client.railNotices("910GEXAMPLE"))
+        client.arrivals("940GZZLUEXA")
+        assertEquals(emptyList<String>(), client.railNotices("940GZZLUEXA"))
+        // A board left out (National Rail hidden there) leaves none, and isn't asked for.
+        client.arrivals("910GEXAMPLE", railBoard = false)
+        assertEquals(emptyList<String>(), client.railNotices("910GEXAMPLE"))
+        assertEquals(1, asked)
+        // A failed board leaves none, said so in the log.
+        boards.clear()
+        fail = true
+        client.arrivals("910GEXAMPLE")
+        assertEquals(emptyList<String>(), client.railNotices("910GEXAMPLE"))
+        assertTrue(warned.single().startsWith("national rail board failed for stop 910GEXAMPLE"))
+        // With no key, no board and no notices.
+        fail = false
+        key = false
+        client.arrivals("910GEXAMPLE")
+        assertEquals(emptyList<String>(), client.railNotices("910GEXAMPLE"))
+        assertEquals(2, asked)
+    }
+
+    @Test
+    fun `a suppressed board's notices still come with its arrivals (Codex, #938)`() = runTest {
+        var suppressedNow = true
+        val board = object : RailBoardSource {
+            override val available = true
+            override suspend fun departures(crs: String) = error("the whole board is asked for")
+            override suspend fun board(crs: String): RailBoard {
+                if (suppressedNow) throw TflException.Unreachable("board suppressed", SuppressedRailBoard(listOf("Station closed due to a fire alert.")))
+                throw TflException.Unreachable("HTTP 500", null)
+            }
+        }
+        // With the app's cache and without one.
+        for (boards in listOf(ArrivalsCache(), null)) {
+            suppressedNow = true
+            val client = RailAwareTflClient(tfl, board, { codes }, boards = boards, clock = { now })
+            // The trains are a failure ("No data"), the notice stands.
+            client.arrivals("910GEXAMPLE")
+            assertEquals(RailFeed.UNAVAILABLE, client.railFeed("910GEXAMPLE"))
+            assertEquals(listOf("Station closed due to a fire alert."), client.railNotices("910GEXAMPLE"))
+            // A board failing otherwise since has none: the older notice never comes back.
+            suppressedNow = false
+            client.arrivals("910GEXAMPLE")
+            assertEquals(emptyList<String>(), client.railNotices("910GEXAMPLE"))
+        }
+    }
+
+    @Test
+    fun `clients sharing a suppressed board's fetch share its notices (Codex, #938)`() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        val started = CompletableDeferred<Unit>()
+        var asked = 0
+        val board = object : RailBoardSource {
+            override val available = true
+            override suspend fun departures(crs: String) = error("the whole board is asked for")
+            override suspend fun board(crs: String): RailBoard {
+                asked++
+                started.complete(Unit)
+                gate.await()
+                throw TflException.Unreachable("board suppressed", SuppressedRailBoard(listOf("Station closed.")))
+            }
+        }
+        val boards = ArrivalsCache()
+        val list = RailAwareTflClient(tfl, board, { codes }, boards = boards, clock = { now })
+        val trip = RailAwareTflClient(tfl, board, { codes }, boardAtEveryStop = true, boards = boards, clock = { now })
+        // Asked together: one request, whose notices both read.
+        coroutineScope {
+            val first = async { list.arrivals("910GEXAMPLE") }
+            val second = async { trip.arrivals("910GEXAMPLE") }
+            started.await()
+            gate.complete(Unit)
+            first.await()
+            second.await()
+        }
+        assertEquals(1, asked)
+        assertEquals(listOf("Station closed."), list.railNotices("910GEXAMPLE"))
+        assertEquals(listOf("Station closed."), trip.railNotices("910GEXAMPLE"))
+    }
 }

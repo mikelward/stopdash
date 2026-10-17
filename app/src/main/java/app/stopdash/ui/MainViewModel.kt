@@ -1260,6 +1260,13 @@ class MainViewModel(
         else -> client.untimed(stopId)
     }
 
+    // A stop's National Rail station notices after its arrivals ([TflClient.railNotices]), found as [railFeedOf] is.
+    private fun railNoticesOf(stopId: String, departures: List<Departure>?, shared: ArrivalsCache.Entry?): List<String> = when {
+        departures == null -> emptyList()
+        shared != null -> shared.messages
+        else -> client.railNotices(stopId)
+    }
+
     private suspend fun fetchBatch(
         stops: List<StopRef>,
         prior: Map<String, StopArrivals>,
@@ -1570,6 +1577,7 @@ class MainViewModel(
                             nearer = Terminating.nearer(stop.id, places),
                             freshRailFeed = railFeedOf(stop.id, departures, shared[i]),
                             freshUntimed = untimedOf(stop.id, departures, shared[i]),
+                            freshRailNotices = railNoticesOf(stop.id, departures, shared[i]),
                         )
                         val closureCheck = disruptions[i]
                         // Its departures in, the stop shows at once, its closure check pending, rather
@@ -1681,6 +1689,7 @@ class MainViewModel(
                         nearer = nearer,
                         freshRailFeed = railFeedOf(stop.id, departures, shared[i]),
                         freshUntimed = untimedOf(stop.id, departures, shared[i]),
+                        freshRailNotices = railNoticesOf(stop.id, departures, shared[i]),
                     ),
                     fetchedAt,
                 )

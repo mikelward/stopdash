@@ -1241,7 +1241,8 @@ object DepartureRows {
         // Only notices in effect at [now]: TfL lists a scheduled closure hours before it starts,
         // and one that isn't in force yet (or has ended) would contradict the live departures.
         // Deduplicated by normalized text, since one notice can be listed under several windows.
-        val inWindow = stop.disruptions.filter { it.isActiveAt(now) }
+        val all = stop.notices
+        val inWindow = all.filter { it.isActiveAt(now) }
         val active = inWindow.distinctBy { normalizeDisruptionText(it.description) }
         if (active.isEmpty()) return emptyList()
         return listOf(
@@ -1270,7 +1271,7 @@ object DepartureRows {
                     normalizeDisruptionText(it.description)
                 },
                 stopDisruptionWindows = stopDisruptionWindows(
-                    stop.disruptions, active.mapTo(HashSet()) { normalizeDisruptionText(it.description) }, now,
+                    all, active.mapTo(HashSet()) { normalizeDisruptionText(it.description) }, now,
                 ),
             ),
         )
@@ -1693,7 +1694,16 @@ data class StopArrivals(
     // their rows by the in-app list ([DepartureRow.untimed]); not persisted, so a surface drawing from
     // the saved snapshot (the widget, the watch) never has them.
     val untimed: List<UntimedTrain> = emptyList(),
-)
+    // National Rail's own notices for this station from the board its departures came with
+    // ([TflClient.railNotices]), shown after [disruptions] in its notice (SPEC *National Rail*). They
+    // share the departures' fetch, so a hidden mode's skipped board or a key removed leaves none, and
+    // go with a failed one ([Snapshot.withArrivals]); not persisted, as [disruptions] aren't.
+    val railNotices: List<String> = emptyList(),
+) {
+    /** [disruptions], then [railNotices] as undated notices: everything the stop's notice says. */
+    val notices: List<StopDisruption> get() =
+        if (railNotices.isEmpty()) disruptions else disruptions + railNotices.map { StopDisruption(it) }
+}
 
 /**
  * One rendered line of a (service, stop, direction) row (see [DepartureRows.destinationLines]):

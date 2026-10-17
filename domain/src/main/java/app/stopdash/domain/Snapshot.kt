@@ -80,6 +80,8 @@ object Snapshot {
         // The trains its board listed with no time ([TflClient.untimed]); kept from [prior] when the
         // arrivals are, as they share an age.
         freshUntimed: List<UntimedTrain> = emptyList(),
+        // Its board's station notices ([TflClient.railNotices]), as fresh as the arrivals they came with.
+        freshRailNotices: List<String> = emptyList(),
     ): StopArrivals? {
         // A failed disruption fetch drops the notice (no `?: prior`), rather than aging a
         // point-in-time closure the screen can't render as stale — see the KDoc.
@@ -115,7 +117,7 @@ object Snapshot {
             railFeed = prior?.railFeed,
             untimed = prior?.untimed.orEmpty(),
         )
-        return withArrivals(carried, freshDepartures, now, freshRailFeed, freshUntimed)
+        return withArrivals(carried, freshDepartures, now, freshRailFeed, freshUntimed, freshRailNotices)
     }
 
     /**
@@ -124,7 +126,9 @@ object Snapshot {
      * age but no longer count as fresh — a status row can't claim "No departures" on them, and they
      * are withheld once stale (SPEC D4). Otherwise [fresh] (possibly empty) replaces them, as of
      * [fetchedAt] (a fetch stamp, [SteadyClock.stamp]), with the National Rail feed and untimed trains
-     * that came with it, since those share the arrivals' age.
+     * that came with it, since those share the arrivals' age. Its board's station notices
+     * ([StopArrivals.railNotices]) go with a failed fetch rather than age with the departures: like a
+     * closure, a notice has no stale-safe rendering (see [mergeStop]).
      */
     fun withArrivals(
         stop: StopArrivals,
@@ -132,9 +136,10 @@ object Snapshot {
         fetchedAt: Instant,
         railFeed: RailFeed?,
         untimed: List<UntimedTrain> = emptyList(),
+        railNotices: List<String> = emptyList(),
     ): StopArrivals = if (fresh == null) {
-        stop.copy(arrivalsFresh = false)
+        stop.copy(arrivalsFresh = false, railNotices = emptyList())
     } else {
-        stop.copy(departures = fresh, fetchedAt = fetchedAt, arrivalsFresh = true, railFeed = railFeed, untimed = untimed)
+        stop.copy(departures = fresh, fetchedAt = fetchedAt, arrivalsFresh = true, railFeed = railFeed, untimed = untimed, railNotices = railNotices)
     }
 }

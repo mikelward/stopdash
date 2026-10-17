@@ -1,0 +1,13 @@
+{
+  "_note": "Hand-written in the shape of the Rail Data Marketplace's LDBWS GetDepartureBoard response, its station messages as the service writes them (an HTML fragment under \"value\"); wording synthetic, not from a live response. Public example station, no user data.",
+  "generatedAt": "2026-10-17T08:00:00.0000000+01:00",
+  "locationName": "London Waterloo",
+  "crs": "WAT",
+  "platformAvailable": true,
+  "areServicesAvailable": true,
+  "nrccMessages": [
+    {"value": "<p>Disruption between Clapham Junction and Woking is expected until 10:00. More details can be found in <a href=\"https://www.nationalrail.co.uk/service-disruptions/example-20261017/\">Latest Travel News</a>.</p>"},
+    {"value": "<p>Disruption between Clapham Junction and Woking is expected until 10:00. More details can be found in <a href=\"https://www.nationalrail.co.uk/service-disruptions/example-20261017/\">Latest Travel News</a>.</p>"},
+    {"value": "   "}
+  ]
+}

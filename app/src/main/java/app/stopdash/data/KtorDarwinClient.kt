@@ -1,9 +1,11 @@
 package app.stopdash.data
 
+import androidx.annotation.WorkerThread
 import app.stopdash.domain.Departure
 import app.stopdash.domain.RailBoard
 import app.stopdash.domain.RailBoardSource
 import app.stopdash.domain.RailRun
+import app.stopdash.domain.SuppressedRailBoard
 import app.stopdash.domain.TflException
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -87,7 +89,8 @@ class KtorDarwinClient(
         crs: String,
         rows: Int,
         filters: Map<String, String> = emptyMap(),
-        read: (DarwinBoardDto) -> T,
+        // Run on [decodeDispatcher], never the caller's thread: it reads the whole board.
+        @WorkerThread read: (DarwinBoardDto) -> T,
     ): T {
         return try {
             withContext(decodeDispatcher) {
@@ -113,6 +116,9 @@ class KtorDarwinClient(
             throw TflException.Offline(e)
         } catch (e: IOException) {
             throw TflException.Network("transport: ${e::class.simpleName}", e)
+        } catch (e: SuppressedRailBoard) {
+            // Its notices ride along as the cause ([SuppressedRailBoard.messages]).
+            throw TflException.Unreachable("board suppressed", e)
         } catch (e: Exception) {
             throw TflException.Unreachable("unexpected: ${e::class.simpleName}", e)
         }
