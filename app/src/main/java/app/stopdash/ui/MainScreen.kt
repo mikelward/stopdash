@@ -373,6 +373,9 @@ fun MainScreen(
     // when true, with the tube's lines as the list's checks found them ([tube]).
     showDisruptionsRow: Boolean = false,
     always: HomeLines.Always? = null,
+    // Told the lines only the screen's farther cards show as they change ([HomeLines.ScreenLines.farIds]), for the
+    // row's check to ask about.
+    onScreenLines: (Set<String>) -> Unit = {},
     // The lines the row always covers, the networks the rider chose ([HomeLines.Network]).
     alwaysNetworks: Set<String> = HomeLines.DEFAULT_NETWORKS,
     // The lines the trip on the way still rides, which the row covers as the rider's own; none with no trip,
@@ -987,41 +990,6 @@ fun MainScreen(
     }?.takeIf { listRows != null }
     val journeyCards = shown?.cards.orEmpty()
     val journeyRowsShown = shown?.cardRows.orEmpty()
-    // The disruptions row, worked out off the main thread, the last one standing while the next is
-    // (a moment's old row over a "Checking…" that blinks); "Checking…" until the first is in. Its pills
-    // lead with the rider's own lines, so it waits for the starred rows and journeys to be read: ranked
-    // on a store still loading, they would reshuffle as it lands (Codex, #598).
-    val homeWork = remember { mutableStateOf<Worked<Inputs, TripRow>?>(null) }
-    val disruptionsRow = when {
-        !showDisruptionsRow -> null
-        !journeysSettled || !starredKnown || tripLines == null -> homeWork.value?.value ?: TripRow.CHECKING
-        else -> {
-            val held = homeWork.value?.value
-            rememberWorked(
-                homeWork,
-                // Compared part by part, a snapshot by identity, never by its contents (Codex, #598).
-                Inputs(loaded, stopDistanceMeters, always, alwaysNetworks, dismissed, now, refreshing, starred, journeys, shown, cardJourneys, nearestStops, lineMeters, tripLines),
-                keep = { _, _ -> true },
-            ) {
-                // A journey card still checking may yet show another line it rides: the last row (or
-                // "Checking…") stands until the cards are in, so the pills never reorder as one lands (Codex, #598).
-                // Nor cards judged for another set of journeys, one just added or removed, held meanwhile (Codex, #598).
-                // Nor cards from an older snapshot than the statuses ranked here, held while a refresh's are
-                // worked out (Codex, #598).
-                if (shown == null || shown.journeys !== cardJourneys || shown.from.source !== loaded ||
-                    journeyCards.any { it.state is JourneyCardState.Checking }
-                ) {
-                    return@rememberWorked held ?: TripRow.CHECKING
-                }
-                // A journey's lines: the one it was starred from, and every line its card shows reaching the
-                // far end, another pole's bus included (Codex, #598).
-                val journeyLines = HashSet<String>()
-                journeys.forEach { journeyLines += it.lineId }
-                journeyCards.forEach { card -> (card.state as? JourneyCardState.Trains)?.rows?.forEach { journeyLines += it.lineId } }
-                HomeLines.row(loaded, stopDistanceMeters, always, dismissed, now, refreshing, alwaysNetworks, starred, journeyLines, journeys, nearestStops, lineMeters, tripLines?.lines.orEmpty(), tripLines?.unread == true)
-            } ?: TripRow.CHECKING
-        }
-    }
     val rows = shown?.rows.orEmpty()
     val dismissedClosures = shown?.dismissedClosures.orEmpty()
     val listPending = rowsPending || loaded != null && (shown == null || favoritePlacesPending)
@@ -1071,6 +1039,59 @@ fun MainScreen(
     val fartherShown = rememberWorked(listWork.farther, Inputs(farther, shown, drawnLoaded), keep = { _, _ -> true }) {
         fartherShownOf(farther, shown?.rows.orEmpty(), shown?.cardRows.orEmpty(), drawnLoaded?.pendingStops.orEmpty())
     }.orEmpty()
+    // The lines the screen shows, its rows' and its farther cards' ([HomeLines.ScreenLines]), every one
+    // watched (maintainer, 2026-10-17): worked out on the list's worker for the disruptions row, and told to
+    // the model as they change, which asks about a card's line its stop isn't fetched for.
+    val screenLines = if (!showDisruptionsRow || shown == null) {
+        null
+    } else {
+        rememberWorked(listWork.screenLines, Inputs(shown, fartherShown), keep = { _, _ -> true }) {
+            val lines = HomeLines.ScreenLines.of(shown.rows, shown.cardRows, fartherShown)
+            ScreenLinesWorked(shown, lines, Reported.of(lines.farIds, listWork.screenLines.value?.value?.ids))
+        }
+    }
+    // With the row off, none: its check stops asking about them (Codex, #930).
+    val noScreenLines = remember { Reported<Set<String>>(emptySet()) }
+    ReportChanges(if (showDisruptionsRow) screenLines?.ids else noScreenLines, listWork, onScreenLines)
+    // The disruptions row, worked out off the main thread, the last one standing while the next is
+    // (a moment's old row over a "Checking…" that blinks); "Checking…" until the first is in. Its pills
+    // lead with the rider's own lines, so it waits for the starred rows and journeys to be read: ranked
+    // on a store still loading, they would reshuffle as it lands (Codex, #598).
+    val homeWork = remember { mutableStateOf<Worked<Inputs, TripRow>?>(null) }
+    val disruptionsRow = when {
+        !showDisruptionsRow -> null
+        !journeysSettled || !starredKnown || tripLines == null -> homeWork.value?.value ?: TripRow.CHECKING
+        else -> {
+            val held = homeWork.value?.value
+            rememberWorked(
+                homeWork,
+                // Compared part by part, a snapshot by identity, never by its contents (Codex, #598).
+                Inputs(loaded, stopDistanceMeters, always, alwaysNetworks, dismissed, now, refreshing, starred, journeys, shown, cardJourneys, nearestStops, lineMeters, tripLines, screenLines),
+                keep = { _, _ -> true },
+            ) {
+                // A journey card still checking may yet show another line it rides: the last row (or
+                // "Checking…") stands until the cards are in, so the pills never reorder as one lands (Codex, #598).
+                // Nor cards judged for another set of journeys, one just added or removed, held meanwhile (Codex, #598).
+                // Nor cards from an older snapshot than the statuses ranked here, held while a refresh's are
+                // worked out (Codex, #598).
+                // Nor before the lines the screen shows are worked out from the rows it draws.
+                if (shown == null || shown.journeys !== cardJourneys || shown.from.source !== loaded || screenLines == null || screenLines.from !== shown ||
+                    journeyCards.any { it.state is JourneyCardState.Checking }
+                ) {
+                    return@rememberWorked held ?: TripRow.CHECKING
+                }
+                // A journey's lines: the one it was starred from, and every line its card shows reaching the
+                // far end, another pole's bus included (Codex, #598).
+                val journeyLines = HashSet<String>()
+                journeys.forEach { journeyLines += it.lineId }
+                journeyCards.forEach { card -> (card.state as? JourneyCardState.Trains)?.rows?.forEach { journeyLines += it.lineId } }
+                HomeLines.row(
+                    loaded, stopDistanceMeters, always, dismissed, now, refreshing, alwaysNetworks, starred, journeyLines, journeys, nearestStops, lineMeters,
+                    tripLines?.lines.orEmpty(), tripLines?.unread == true, screen = screenLines.lines,
+                )
+            } ?: TripRow.CHECKING
+        }
+    }
 
     // The platform/pole the user drilled into by tapping its group header, or null for the full list
     // (SPEC D8): its stop ids (comma-joined; for a whole-station view, its cluster keys instead), its [StopGroup.splitKey], and its header text (the

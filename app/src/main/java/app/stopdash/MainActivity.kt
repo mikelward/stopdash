@@ -193,6 +193,7 @@ import app.stopdash.ui.LinePageWorkHolder
 import app.stopdash.ui.LineRefSaver
 import app.stopdash.ui.LineWatch
 import app.stopdash.ui.LocalLineWatch
+import app.stopdash.ui.LocalLinesPage
 import app.stopdash.ui.LineStopRefSaver
 import app.stopdash.ui.StationMatchSaver
 import app.stopdash.ui.LineStopRef
@@ -4020,6 +4021,8 @@ class MainActivity : ComponentActivity() {
                     SummaryNetworksSetting.changes.collectByIdentityWithLifecycle().value, SummaryNetworksSetting::toggle,
                     SummaryNetworksSetting.writeFailed.collectAsStateWithLifecycle().value, SummaryNetworksSetting::writeFailureShown,
                 ).takeIf { SummaryNetworksSetting.isLoaded.collectAsStateWithLifecycle().value },
+                // And asks about every other rail line while it's open, for its *Other* (maintainer, 2026-10-17).
+                LocalLinesPage provides remember(viewModel) { viewModel::linesPage },
             ) {
                 MainScreen(
                     usageScreen = if (stationTitle != null) UsageEvent.Screen.STATION else UsageEvent.Screen.HOME,
@@ -4034,6 +4037,8 @@ class MainActivity : ComponentActivity() {
                         SummaryNetworksSetting.isLoaded.collectAsStateWithLifecycle().value &&
                         DisruptionsRowSetting.changes.collectAsStateWithLifecycle().value,
                     always = viewModel.always.collectAsStateWithLifecycle().value,
+                    // The lines it shows, each watched: a farther card's are asked about though its stop isn't fetched.
+                    onScreenLines = viewModel::screenLines,
                     // The keys alone: expanded to lines on the row's worker (Codex, #592).
                     alwaysNetworks = SummaryNetworksSetting.changes.collectByIdentityWithLifecycle().value,
                     now = tickingNow(),

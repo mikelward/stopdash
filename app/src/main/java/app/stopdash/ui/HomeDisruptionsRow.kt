@@ -20,6 +20,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -195,7 +196,15 @@ internal fun HomeDisruptionsRow(row: TripRow, modifier: Modifier = Modifier) {
             )
         }
     }
-    if (open) TripLinesPage(row, onClose = { open = false }, gone = R.string.home_lines_gone, goneWatched = R.string.home_lines_unwatched, dismissal = LocalDismissLineAlert.current, watch = LocalLineWatch.current)
+    if (open) {
+        // *Other*'s lines are asked about while the page is open, and no longer once it closes.
+        val onPage = LocalLinesPage.current
+        DisposableEffect(onPage) {
+            onPage?.invoke(true)
+            onDispose { onPage?.invoke(false) }
+        }
+        TripLinesPage(row, onClose = { open = false }, gone = R.string.home_lines_gone, goneWatched = R.string.home_lines_unwatched, dismissal = LocalDismissLineAlert.current, watch = LocalLineWatch.current)
+    }
 }
 
 /**

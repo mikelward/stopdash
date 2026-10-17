@@ -1166,6 +1166,94 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `the lines page asks about every rail line while it's open, and the screen's lines with every refresh`() = runTest(dispatcher) {
+        // The home screen's lines page lists every rail line (maintainer, 2026-10-17): asked about once it opens,
+        // with each refresh while it stays open, and no more once it closes. A farther card's line, its stop not
+        // fetched, is asked about as soon as the screen shows it, then with every refresh.
+        val client = object : HubLinesClient() {
+            override fun answer(lineIds: Collection<String>): List<LineStatus> = lineIds.map { LineStatus(it, 10, "Good Service") }
+        }
+        val vm = MainViewModel(
+            client, listOf(seeds[0].copy(lines = listOf(LineRef("victoria", "Victoria", "tube")))), clock = { now }, io = dispatcher,
+            alwaysNetworks = { emptySet() },
+        )
+        advanceUntilIdle()
+        assertTrue(client.statusCalls.none { "dlr" in it })
+        // Opened: one request at once, every rail line in it.
+        val before = client.statusCalls.size
+        vm.linesPage(true)
+        advanceUntilIdle()
+        assertEquals(1, client.statusCalls.size - before)
+        assertEquals(HomeLines.RAIL_IDS, client.statusCalls.last().toSet() intersect HomeLines.RAIL_IDS)
+        assertTrue(checkNotNull(vm.always.value).askedFor.containsAll(HomeLines.RAIL_IDS))
+        // A refresh while it's open asks again (a test reuses no verdict).
+        fun askedSince(from: Int, id: String) = client.statusCalls.drop(from).count { id in it }
+        val open = client.statusCalls.size
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(1, askedSince(open, "tram"))
+        // Closed: a refresh asks about them no more.
+        vm.linesPage(false)
+        val closed = client.statusCalls.size
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(0, askedSince(closed, "tram"))
+        assertFalse("tram" in checkNotNull(vm.always.value).askedFor)
+        // A farther card's line shown: asked about at once, then with every refresh.
+        val shown = client.statusCalls.size
+        vm.screenLines(setOf("victoria", "38"))
+        advanceUntilIdle()
+        assertEquals(1, askedSince(shown, "38"))
+        val refreshed = client.statusCalls.size
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(1, askedSince(refreshed, "38"))
+        assertEquals(LineStatus.GOOD_SERVICE, checkNotNull(vm.always.value).statuses.getValue("38").severity)
+        // None any more (the row turned off): nothing is sent for it, and a refresh no longer asks about them.
+        val off = client.statusCalls.size
+        vm.screenLines(emptySet())
+        advanceUntilIdle()
+        assertEquals(off, client.statusCalls.size)
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(0, askedSince(off, "38"))
+    }
+
+    @Test
+    fun `an other line's verdict stands after the lines page closes, until it ages`() = runTest(dispatcher) {
+        // Closed, the page's lines are asked about no more, but what it found stands while current: the card keeps
+        // its ⓘ for a disrupted Other line rather than a ✓ no newer check found (Codex, #930).
+        val client = object : HubLinesClient() {
+            override fun answer(lineIds: Collection<String>): List<LineStatus> = lineIds.map {
+                if (it == "jubilee") LineStatus(it, 6, "Severe Delays") else LineStatus(it, 10, "Good Service")
+            }
+        }
+        var at = now
+        val vm = MainViewModel(
+            client, listOf(seeds[0].copy(lines = listOf(LineRef("victoria", "Victoria", "tube")))), clock = { at }, io = dispatcher,
+            alwaysNetworks = { emptySet() },
+        )
+        advanceUntilIdle()
+        vm.linesPage(true)
+        advanceUntilIdle()
+        assertEquals(6, checkNotNull(vm.always.value).statuses.getValue("jubilee").severity)
+        vm.linesPage(false)
+        val closed = client.statusCalls.size
+        vm.refresh()
+        advanceUntilIdle()
+        assertTrue(client.statusCalls.drop(closed).none { "jubilee" in it })
+        val kept = checkNotNull(vm.always.value)
+        assertFalse("jubilee" in kept.askedFor)
+        assertEquals(6, kept.statuses.getValue("jubilee").severity)
+        assertTrue(kept.current("jubilee", at))
+        // Aged, it goes: nothing stands past its check.
+        at = now.plusSeconds(Staleness.THRESHOLD.inWholeSeconds + 60)
+        vm.refresh()
+        advanceUntilIdle()
+        assertFalse("jubilee" in checkNotNull(vm.always.value).statuses)
+    }
+
+    @Test
     fun `a cold load vouches for the declared lines while a stop is still out`() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
         val client = LinedClient(lined[1].id, gate)

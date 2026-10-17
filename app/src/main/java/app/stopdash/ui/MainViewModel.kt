@@ -805,14 +805,31 @@ class MainViewModel(
 
     // [check]'s verdicts on the tube's lines, kept unless a newer check's are already held.
     // Each verdict is stamped as the cache stamped it (a reused one as old as it is); the check as of
-    // its oldest, so the row doesn't call a reused verdict newer than it is.
-    private fun publishAlways(check: LineCheck, now: Instant, askedFor: Set<String>) {
+    // its oldest, so the row doesn't call a reused verdict newer than it is. A held verdict still current on a
+    // line this check didn't ask about stands until it ages, with its own stamp: the lines page just closed, an
+    // *Other* line's disruption still makes the card's ⓘ, never a ✓ no newer check found (Codex, #930). Worked
+    // out on the worker; set only over the check it was worked out from.
+    private suspend fun publishAlways(check: LineCheck, now: Instant, askedFor: Set<String>) {
         val asked = SteadyClock.stamp(now)
-        if (_always.value?.let { asked.isBefore(it.asked) } == true) return
-        val statuses = check.statuses.filter { it.lineId in askedFor }.associateBy { it.lineId }
-        val stamps = statuses.keys.mapNotNull { id -> (heldLines[id] as? LineStatusCache.Held.Verdict)?.at?.let { id to it } }.toMap()
-        val at = stamps.values.minOrNull() ?: asked
-        _always.value = HomeLines.Always(statuses, at, asked, askedFor, stamps)
+        while (true) {
+            val held = _always.value
+            if (held != null && asked.isBefore(held.asked)) return
+            val next = withContext(compute) {
+                val statuses = check.statuses.filter { it.lineId in askedFor }.associateByTo(HashMap()) { it.lineId }
+                val stamps = statuses.keys.mapNotNull { id -> (heldLines[id] as? LineStatusCache.Held.Verdict)?.at?.let { id to it } }.toMap(HashMap())
+                val at = stamps.values.minOrNull() ?: asked
+                if (held != null) {
+                    for ((id, status) in held.statuses) {
+                        if (id !in askedFor && held.current(id, now)) {
+                            statuses[id] = status
+                            stamps[id] = held.stamps[id] ?: held.at
+                        }
+                    }
+                }
+                HomeLines.Always(statuses, at, asked, askedFor, stamps)
+            }
+            if (_always.compareAndSet(held, next)) return
+        }
     }
     // The dismissed alerts' count ([DismissedAlertsStore.mark]) each cached status was asked at: a
     // refresh settling dismissals on a reused verdict is as old as it. In-memory, touched only under
@@ -1413,7 +1430,7 @@ class MainViewModel(
             // 2026-10-05).
             // The lines the row always covers, as chosen: the stored choice once it's read, never the
             // default in its place on a cold start (Codex, #592), worked out while the arrivals are out.
-            val alwaysAsked = async(compute) { HomeLines.idsOf(alwaysNetworks()) + favoriteLines() }
+            val alwaysAsked = async(compute) { alwaysLineIds() }
             // The list's own lines once a stop's arrivals are in; the always-covered ones (a far favorite's, a chosen
             // network's) whatever the arrivals did, as nothing else renews them: no line declared, no stop at all,
             // or every stop's arrivals failed alike (Codex, #640). A line the list shows that isn't asked here is
@@ -2069,7 +2086,7 @@ class MainViewModel(
             val now = clock()
             // The chosen lines, and those of them whose verdict is missing or aged: those being asked about.
             val (asked, stale) = withContext(compute) {
-                val ids = HomeLines.idsOf(alwaysNetworks()) + favoriteLines()
+                val ids = alwaysLineIds()
                 ids to ids.filterTo(HashSet()) { held == null || !held.current(it, now) }
             }
             if (asked.isEmpty() || stale.isEmpty()) return@launch
@@ -2084,6 +2101,41 @@ class MainViewModel(
 
     // The last [checkAlways], which the next waits for. Main thread.
     private var alwaysCheck: Job? = null
+
+    // The lines only the home screen's farther cards show ([HomeLines.ScreenLines.farIds]), every one watched:
+    // asked about with the always-covered ones, since their stops aren't fetched (maintainer, 2026-10-17). Set
+    // on the main thread, read on the worker.
+    @Volatile private var screenLineIds: Set<String> = emptySet()
+
+    // Whether the home screen's lines page is open, which lists every other rail line under *Other*: asked
+    // about only meanwhile ([linesPage]). Set on the main thread, read on the worker.
+    @Volatile private var linesPageOpen = false
+
+    // Every line the row and its page are judged on beyond the list's own: the chosen networks', the
+    // favorites', the screen's, and every rail line while the page is open. On a worker only.
+    private suspend fun alwaysLineIds(): Set<String> =
+        HomeLines.idsOf(alwaysNetworks()) + favoriteLines() + screenLineIds + if (linesPageOpen) HomeLines.RAIL_IDS else emptySet()
+
+    /**
+     * The lines only the home screen's farther cards show changed ([HomeLines.ScreenLines.farIds], reported only
+     * as they change): asks about any not checked yet now, as [checkAlways] does, then with every refresh. None
+     * (the row turned off, say) asks about nothing new, so it starts no check (Codex, #930).
+     */
+    fun screenLines(ids: Set<String>) {
+        screenLineIds = ids
+        if (ids.isNotEmpty()) checkAlways()
+    }
+
+    /**
+     * The home screen's lines page opened, or closed (maintainer, 2026-10-17): open, every rail line is asked
+     * about at once, a current verdict reused ([checkAlways]), and with every refresh while it stays open, so
+     * *Other* has each line's status; closed, they're asked about no more. One request for them at most,
+     * none for lines a recent check answered.
+     */
+    fun linesPage(open: Boolean) {
+        linesPageOpen = open
+        if (open) checkAlways()
+    }
 
     fun refresh(automatic: Boolean = false) {
         // A same-set reconcile on its way refreshes once it lands, with the new tiers; one now would
