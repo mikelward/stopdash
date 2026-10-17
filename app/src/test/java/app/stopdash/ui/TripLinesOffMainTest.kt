@@ -6,16 +6,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
+import app.stopdash.domain.IncidentDetail
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.TripLeg
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.time.Duration
 import java.time.Instant
 
 /**
@@ -34,6 +38,27 @@ class TripLinesOffMainTest {
         TripLeg(mode = "tube", lineId = id, lineName = id, fromId = "A", fromName = "A", toId = "B", toName = "B", departure = at, arrival = at),
         LineStatus(id, severity, if (severity == LineStatus.GOOD_SERVICE) "Good Service" else "Severe Delays"),
     )
+
+    @Test
+    fun a_row_whose_national_rail_words_expired_is_not_kept_as_the_same() {
+        val link = "https://www.nationalrail.co.uk/service-disruptions/example-20261018/"
+        val leg = line("c2c", 6).leg
+        // Words good for a minute: the row worked out now reads them, the one worked out once steady time
+        // has moved past them doesn't, though the status is the same.
+        val status = LineStatus("c2c", 6, "Special Service", link, incidentWords = mapOf(link to IncidentDetail(link, "Disruption at Example\n\n$link", until = Instant.now().plusSeconds(60))))
+        val before = TripRow(checking = false, every = listOf(TripLine(leg, status)))
+        SteadyClock.source = object : SteadyClock.Source {
+            override val frame: SteadyClock.Frame? = null
+            override fun offset(): Duration = Duration.ofMinutes(2)
+        }
+        try {
+            val after = TripRow(checking = false, every = listOf(TripLine(leg, status)))
+            assertEquals(link, after.every.single().reason)
+            assertFalse(after.sameAs(before))
+        } finally {
+            SteadyClock.source = null
+        }
+    }
 
     @Test
     fun a_line_holds_its_place_while_the_page_is_open() {

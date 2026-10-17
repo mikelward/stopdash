@@ -153,6 +153,12 @@ android {
         } else {
             "${gitCommitCount ?: 1}+${gitShortSha ?: "unknown"}"
         }
+        // stopdash's National Rail relay (dev-docs/national-rail-proxy.md), a public address, not a
+        // secret: set in gradle.properties once it's deployed. Empty leaves TfL's link-only National
+        // Rail statuses as they are.
+        val railRelayUrl = providers.gradleProperty("stopdash.railRelayUrl").getOrElse("").trim()
+        require(railRelayUrl.isEmpty() || railRelayUrl.startsWith("https://")) { "stopdash.railRelayUrl must be an https:// address" }
+        buildConfigField("String", "RAIL_RELAY_URL", "\"$railRelayUrl\"")
     }
 
     signingConfigs {

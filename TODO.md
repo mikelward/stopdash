@@ -1045,9 +1045,18 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         a National Rail line is often only a link; the board's `nrccMessages` now join the stop's notices.
     - [ ] **Check the `nrccMessages` shape against a live board**: the fixture is hand-written in the
           documented shape (`{"value": "<p>…</p>"}`); either key case and a bare string are read.
-    - [ ] **Per-line National Rail incidents** from the Knowledgebase Incidents feed (Rail Data
-          Marketplace, open, XML; a separate subscription): structured text for a line's status where
-          TfL gives only a link, matched by its link. Needs a product call on a second key.
+    - [x] **Per-line National Rail incidents** (maintainer, 2026-10-17): a line whose TfL status is only
+          a link shows the matching incident's words, from the Disruptions API through stopdash's own
+          relay (`proxy/`, `dev-docs/national-rail-proxy.md`), so no rider needs a second key.
+      - [ ] **Deploy the relay** (maintainer): Cloudflare account and domain, KV namespace, the
+            Disruptions key as a secret, `wrangler deploy` (`proxy/README.md`); then set
+            `stopdash.railRelayUrl` in `gradle.properties`. Until then the app shows TfL's link as before.
+      - [ ] **Confirm the Disruptions API's quota and terms** allow serving it to the app's users.
+      - [ ] **Planned work's link-only text** (a line page's *Coming up*): words for those too.
+      - [ ] **Log the relay's failures with their redacted stack**, not only a status or class:
+            `KtorTflClient`'s `warn` takes a string, as every catch in it does, so this needs a
+            throwable-taking sink for the whole client (Codex, #943).
+      - [ ] **Boards through the relay**, so National Rail times need no key either (design's second half).
   - [x] **National Rail unticked until a key is set** (maintainer, 2026-10-08): ticking it with no
         key asks for one (Get a key / Add key / Show anyway); a key added shows it by itself; the
         rider's own choice outranks the default. Not stored, so it lifts with no write.
@@ -4684,6 +4693,18 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
       before implementation, per *Cost and reliability*.
 
 ## Decisions needing review
+
+- [ ] **National Rail's words expire on their own, not by dating the status by its older half**
+  (autopilot, 2026-10-18; Codex, #943). The maintainer leaned towards dating a line status by the
+  earlier of TfL's fetch and the relay's, but that is stamped separately by eight callers, each of
+  which would have to change. Instead `IncidentDetail` carries `until` (the relay's fetch plus the
+  shared staleness bound, in the steady frame) and `LineStatus.shownText`, which every surface reads,
+  stops showing the words past it. Same effect, one place, and TfL's own status keeps its own age.
+  Alternative: the older-half stamp at each caller. Reversible in `LineStatus.kt` and `RailIncidents.kt`.
+  Notifications, which stay up without being redrawn, show the words only if they're still current
+  when the notification comes down (`shownTextThrough`); otherwise TfL's link (Codex, #943). A journey
+  alert lasts up to 35 minutes and the words 5, so in practice it shows the link. Alternative: show the
+  words and take the alert down when they expire, which leaves no alert until the next check (15 min).
 
 - [ ] **"Couldn't plan every route" on a later list (autopilot, 2026-10-15; Codex, #875).** A later plan
   that reached every station but lost a request for more routes (via a bus stop towards the destination,

@@ -77,7 +77,7 @@ internal object RouteDisruptionAlert {
             log("on the way: route disruption alert not shown, notifications off")
             return false
         }
-        val (title, body) = content(context, signals)
+        val (title, body) = content(context, signals, until)
         // Said in the trip's own notification where it's up, so it's the only one (maintainer, 2026-10-09).
         // Something new a more pressing alert would hide waits for a later refresh, to be heard when it
         // shows, not counted as heard unshown (Codex on #723).
@@ -145,10 +145,11 @@ internal object RouteDisruptionAlert {
      * it (where the line is diverted or shut, which a bare "Diversion" doesn't say; maintainer,
      * 2026-10-01), then each other thing known, titled, with TfL's words for it too. Each is said once:
      * two legs on one line with the same words read as one, while two alerts of a line with the same
-     * title but their own words are each said (Codex on #519), as each is heard once.
+     * title but their own words are each said (Codex on #519), as each is heard once. National Rail's
+     * words are said only if still current at [through], when the alert comes down unless renewed.
      */
-    internal fun content(context: Context, signals: List<RouteDisruption.Signal>): Pair<String, String?> {
-        val items = signals.map { text(context, it) to (it as? RouteDisruption.Signal.Line)?.status?.fullText?.trim()?.ifEmpty { null } }.distinct()
+    internal fun content(context: Context, signals: List<RouteDisruption.Signal>, through: Instant = Instant.now()): Pair<String, String?> {
+        val items = signals.map { text(context, it) to (it as? RouteDisruption.Signal.Line)?.status?.shownTextThrough(through)?.trim()?.ifEmpty { null } }.distinct()
         val (title, detail) = items.first()
         val rest = items.drop(1).map { (heading, words) -> listOfNotNull(heading, words).joinToString("\n") }
         return title to (listOfNotNull(detail) + rest).joinToString("\n\n").ifEmpty { null }

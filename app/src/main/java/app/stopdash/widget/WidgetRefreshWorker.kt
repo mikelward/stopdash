@@ -1,5 +1,6 @@
 package app.stopdash.widget
 
+import app.stopdash.BuildConfig
 import app.stopdash.data.KtorDarwinClient
 import app.stopdash.data.logNetworkWarning
 import app.stopdash.data.RailStationCodesStore
@@ -554,6 +555,9 @@ internal suspend fun refreshStoredSnapshot(
                     alertDirectionScope = directionLookups,
                     // A terminus's arriving trains relabeled as the departures they become, as in the app.
                     stationIndex = { StationIndexStore.load(context) },
+                    // The statuses it fetches fill the shared line-status cache the app reuses, so
+                    // they carry National Rail's words too, though the widget shows no reasons.
+                    railRelayUrl = { BuildConfig.RAIL_RELAY_URL },
                 )
                 val client = CachingTflClient(RailAwareTflClient(
                     tfl = tfl,
