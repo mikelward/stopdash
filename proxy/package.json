@@ -1,0 +1,9 @@
+{
+  "name": "stopdash-rail-relay",
+  "private": true,
+  "type": "module",
+  "description": "stopdash's National Rail relay, a Cloudflare Worker (dev-docs/national-rail-proxy.md)",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}
