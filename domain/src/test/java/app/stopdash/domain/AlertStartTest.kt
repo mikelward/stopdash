@@ -24,6 +24,19 @@ class AlertStartTest {
     }
 
     @Test
+    fun `a start in figures or after a time without its colon reads as that day`() {
+        // TfL's wording on a bus route's planned diversions (maintainer, 2026-10-17), the place made up.
+        assertEquals(LocalDate.of(2026, 10, 25), start("Street A (PED): Route 99: From 25/10 20:00 until 26/10 05:00 Buses towards X are diverted."))
+        assertEquals(LocalDate.of(2026, 10, 25), start("Route 99: From 2000 Sunday 25 October, buses will be rerouted away from Street A."))
+        assertEquals(LocalDate.of(2027, 1, 3), start("Closed from 3/1/2027 for works."))
+        // Only as a start: an end, or a month that isn't one, is under way.
+        assertNull(start("Diverted until 26/10 05:00."))
+        assertNull(start("From 25/13 buses divert."))
+        // A dot is a time's, never a date's.
+        assertNull(start("From 08.30 buses divert."))
+    }
+
+    @Test
     fun `a single day, a list and a range start on their first day`() {
         assertEquals(LocalDate.of(2026, 10, 10), start("Road will be closed on 10 October 05:30-19:00 for filming."))
         assertEquals(LocalDate.of(2026, 10, 8), start("ROUTES 1 2: Road will be closed due to resurfacing works on 8 October 08:00-16:00."))
