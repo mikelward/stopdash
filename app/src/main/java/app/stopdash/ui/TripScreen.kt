@@ -1984,7 +1984,7 @@ internal fun failedStops(estimates: List<TripTiming.Estimate>, state: TripViewMo
 private fun OpenRouteNotice(text: String) {
     Text(
         text,
-        style = MaterialTheme.typography.bodyMedium,
+        style = MaterialTheme.typography.bodyLarge,
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).testTag("openRouteNotice"),
     )
@@ -2242,9 +2242,10 @@ private fun PlanIncomplete(planning: Boolean, onRetry: () -> Unit) =
 @Composable
 private fun PlanNotice(text: String, planning: Boolean, onRetry: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        // As large as the routes it's over, as the main screen's notices are (maintainer, 2026-10-17).
         Text(
             text,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.error,
             modifier = Modifier.weight(1f),
         )
