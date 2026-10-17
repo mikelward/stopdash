@@ -226,4 +226,81 @@ class TripLinesOffMainTest {
         val lineToo = TripRow(checking = false, unknown = true, every = listOf(line("red", LineStatus.GOOD_SERVICE).copy(unknown = true)))
         assertEquals(true, lineToo.linesUnknown)
     }
+
+    @Test
+    fun in_sections_each_line_comes_in_under_its_heading_and_stays_there() {
+        // The home screen's page (maintainer, 2026-10-17): the watched lines first, then the rest.
+        fun watched(id: String, severity: Int, watched: Boolean) = line(id, severity).copy(watched = watched)
+        val scheduler = TestCoroutineScheduler()
+        val held = StandardTestDispatcher(scheduler)
+        var row by mutableStateOf(TripRow(checking = false, every = listOf(watched("red", 6, true), watched("blue", 6, false))))
+        var shown: OpenedLines? = null
+        composeRule.setContent {
+            CompositionLocalProvider(LocalWorker provides held) { shown = rememberOpenedOrder(row) }
+        }
+        fun settle() {
+            composeRule.waitForIdle()
+            scheduler.advanceUntilIdle()
+            composeRule.waitForIdle()
+        }
+        settle()
+        assertEquals(listOf("red", "blue"), shown?.lines.orEmpty().map { it.leg.lineId })
+        assertEquals(1, shown?.watchedCount)
+        // A watched line comes in: it goes at the end of the watched ones, never under *Other*. The red is
+        // no longer near, but stays where it was first seen while the page is open.
+        row = TripRow(checking = false, every = listOf(watched("green", 6, true), watched("blue", 6, false), watched("red", 6, false)))
+        settle()
+        assertEquals(listOf("red", "green", "blue"), shown?.lines.orEmpty().map { it.leg.lineId })
+        assertEquals(2, shown?.watchedCount)
+        // One of neither comes in after the rest.
+        row = TripRow(checking = false, every = listOf(watched("green", 6, true), watched("blue", 6, false), watched("red", 6, false), watched("pink", 6, false)))
+        settle()
+        assertEquals(listOf("red", "green", "blue", "pink"), shown?.lines.orEmpty().map { it.leg.lineId })
+        assertEquals(2, shown?.watchedCount)
+    }
+
+    @Test
+    fun a_rotation_keeps_the_sections() {
+        fun watched(id: String, watched: Boolean) = line(id, 6).copy(watched = watched)
+        val scheduler = TestCoroutineScheduler()
+        val held = StandardTestDispatcher(scheduler)
+        var row by mutableStateOf(TripRow(checking = false, every = listOf(watched("red", true), watched("blue", false))))
+        var shown: OpenedLines? = null
+        val restoration = StateRestorationTester(composeRule)
+        restoration.setContent {
+            CompositionLocalProvider(LocalWorker provides held) { shown = rememberOpenedOrder(row) }
+        }
+        fun settle() {
+            composeRule.waitForIdle()
+            scheduler.advanceUntilIdle()
+            composeRule.waitForIdle()
+        }
+        settle()
+        row = TripRow(checking = false, every = listOf(watched("green", true), watched("red", true), watched("blue", false)))
+        settle()
+        assertEquals(listOf("red", "green", "blue"), shown?.lines.orEmpty().map { it.leg.lineId })
+        restoration.emulateSavedInstanceStateRestore()
+        composeRule.waitForIdle()
+        // The saved pills stand in, in the held order, under their headings.
+        assertEquals(null, shown?.lines)
+        assertEquals(listOf("red", "green", "blue"), shown?.pending.orEmpty().chunked(3).map { it[0] })
+        assertEquals(2, shown?.watchedCount)
+        scheduler.advanceUntilIdle()
+        composeRule.waitForIdle()
+        assertEquals(listOf("red", "green", "blue"), shown?.lines.orEmpty().map { it.leg.lineId })
+        assertEquals(2, shown?.watchedCount)
+    }
+
+    @Test
+    fun a_trips_page_has_no_sections() {
+        val held = StandardTestDispatcher(TestCoroutineScheduler())
+        val row = TripRow(checking = false, every = listOf(line("red", 6), line("blue", 6)))
+        var shown: OpenedLines? = null
+        composeRule.setContent {
+            CompositionLocalProvider(LocalWorker provides held) { shown = rememberOpenedOrder(row) }
+        }
+        composeRule.waitForIdle()
+        assertEquals(null, shown?.watchedCount)
+        assertEquals(null, inOpenedOrder(row.every, listOf("red", "blue")).watchedCount)
+    }
 }

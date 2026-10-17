@@ -126,6 +126,12 @@
     <string name="home_disruptions_none" tools:ignore="MissingTranslation">No disruptions</string>
     <!-- On the home screen's lines page, a line whose stops are no longer near since it opened. -->
     <string name="home_lines_gone">No longer nearby</string>
+    <!-- TODO: translate -->
+    <!-- Heading on the home screen's lines page over the lines the summary watches: near the rider, their favorites', the trip they're on, and the lines they chose. -->
+    <string name="home_lines_watched" tools:ignore="MissingTranslation">Watched</string>
+    <!-- TODO: translate -->
+    <!-- Heading on the home screen's lines page over the rest of the lines it covers. -->
+    <string name="home_lines_other" tools:ignore="MissingTranslation">Other</string>
     <!-- Click label of a line on the lines page: it opens the line's own page, with its map. -->
     <string name="trip_lines_line">Open line</string>
     <!-- Heading of a line's map on its page (SPEC *Line page → Map*). -->

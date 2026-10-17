@@ -514,26 +514,32 @@ object HomeLines {
                 unknown = id !in known && id !in checking,
                 nearby = nearest[id]?.let { setOf(it) }.orEmpty(),
                 planned = plannedShown(id, was ?: status, dismissed),
+                // Watched (maintainer, 2026-10-17): the rider's own lines and every line they chose to watch.
+                watched = tier(id) < 2 || id in alwaysIds,
             )
-        // The page: worst first as a trip's orders them, then, as bad as each other, the rider's own lines
-        // ahead of a network's far away (maintainer, 2026-10-05), the nearer first, then by name.
+        // The pills' order, and the page's within each of its sections: worst first as a trip's orders them,
+        // then, as bad as each other, the rider's own lines ahead of a network's far away (maintainer,
+        // 2026-10-05), the nearer first, then by name.
         }.sortedWith(
             tripLineOrder.thenBy<TripLine> { tier(it.leg.lineId) }
                 .thenBy { closest[it.leg.lineId] ?: Double.MAX_VALUE }
                 .then(byName),
         )
-        // The pills: in the page's order, worst first, the rider's own ahead of the rest when as bad, so "+N"
+        // The pills: in that order, worst first, the rider's own ahead of the rest when as bad, so "+N"
         // takes the mildest first (maintainer, 2026-10-07: a far suspension outranks a near minor delay); a
         // dismissed one is never a pill.
         val disrupted = every.filter { it.disrupted && !it.dismissed }.map { it.leg }
         val unknown = every.filter { it.unknown }.map { it.leg }
+        // The page in two sections (maintainer, 2026-10-17): the watched lines under *Watched*,
+        // then the rest under *Other*, each in the pills' order.
+        val sectioned = every.filter { it.watched == true } + every.filter { it.watched != true }
         return TripRow(
             checking = checking.isNotEmpty(),
             lines = disrupted,
             unknown = unknown.isNotEmpty() || listUnknown || placesUnread || tripUnread,
             unknownLines = unknown,
             unknownStops = unknownStops,
-            every = every,
+            every = sectioned,
             starredStops = riderStopIds(starred, journeys),
         )
     }

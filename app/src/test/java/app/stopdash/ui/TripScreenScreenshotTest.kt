@@ -4828,6 +4828,28 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun a_line_open_under_other_stays_open_when_one_of_the_riders_own_comes_in_above_it() {
+        // A line coming in under *Watched* moves the *Other* lines down (Codex, #921).
+        fun line(id: String, name: String, status: LineStatus, watched: Boolean) =
+            TripLine(leg("tube", id, name, "A" to "King's Cross", "B" to "Euston", 0, 10, 2), status, watched = watched)
+        val jubilee = line("jubilee", "Jubilee", LineStatus("jubilee", 6, "Severe Delays", fullText = "Jubilee line: Severe delays while we fix a signal failure."), watched = false)
+        val victoria = line("victoria", "Victoria", LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service"), watched = true)
+        var row by mutableStateOf(TripRow(checking = false, every = listOf(victoria, jubilee)))
+        val inline = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher()
+        composeRule.setContent { StopDashTheme { CompositionLocalProvider(LocalWorker provides inline) { TripLinesPage(row, onClose = {}) } } }
+        composeRule.onNodeWithText("Severe Delays").performClick()
+        composeRule.onNodeWithText("Jubilee line: Severe delays while we fix a signal failure.").assertExists()
+        val central = line("central", "Central", LineStatus("central", LineStatus.GOOD_SERVICE, "Good Service"), watched = true)
+        row = TripRow(checking = false, every = listOf(victoria, central, jubilee))
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Jubilee line: Severe delays while we fix a signal failure.").assertExists()
+        // Back still goes to the lines.
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        composeRule.onNodeWithText("Line status").assertExists()
+        composeRule.onNodeWithText("Jubilee line: Severe delays while we fix a signal failure.").assertDoesNotExist()
+    }
+
+    @Test
     fun a_reason_page_stays_up_through_a_rotation() {
         fun line(id: String, name: String, status: LineStatus) =
             TripLine(leg("tube", id, name, "A" to "King's Cross", "B" to "Euston", 0, 10, 2), status)
@@ -4875,6 +4897,65 @@ class TripScreenScreenshotTest {
         composeRule.setContent { StopDashTheme { Surface { TripLinesContent(row, modifier = Modifier.padding(vertical = 16.dp)) } } }
         composeRule.onNodeWithText("Couldn't check").assertIsDisplayed()
         captureSnapshot("trip-lines.png")
+    }
+
+    @Test
+    fun home_lines_in_sections() {
+        // The home screen's page: the watched lines under one heading, the rest under another, each in the
+        // pills' order (maintainer, 2026-10-17). A trip's page, with no sections, has neither. Under *Watched*, a
+        // line the rider chose (the Central, far away) with those near them; under *Other*, a farther stop's
+        // lines the list couldn't check.
+        fun line(mode: String, id: String, name: String) = leg(mode, id, name, "A" to "King's Cross", "B" to "Euston", 0, 10, 2)
+        val row = TripRow(
+            checking = false,
+            every = listOf(
+                TripLine(line("tube", "central", "Central"), LineStatus("central", 2, "Suspended"), watched = true),
+                TripLine(line("tube", "victoria", "Victoria"), LineStatus("victoria", 9, "Minor Delays"), watched = true),
+                TripLine(line("bus", "73", "73"), LineStatus("73", LineStatus.GOOD_SERVICE, "Good Service"), watched = true),
+                TripLine(line("bus", "38", "38"), status = null, unknown = true, watched = false),
+                TripLine(line("bus", "390", "390"), status = null, unknown = true, watched = false),
+            ),
+        )
+        composeRule.setContent { StopDashTheme { Surface { TripLinesContent(row, modifier = Modifier.padding(vertical = 16.dp), watchedCount = 3) } } }
+        val headings = composeRule.onAllNodesWithTag("linesHeading")
+        headings.assertCountEquals(2)
+        headings[0].assertTextEquals("Watched")
+        headings[1].assertTextEquals("Other")
+        val top = { name: String -> composeRule.onNode(hasContentDescription(name), useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top }
+        val otherTop = headings[1].fetchSemanticsNode().boundsInRoot.top
+        assertTrue(top("73") < otherTop && otherTop < top("38"))
+        captureSnapshot("home-lines.png")
+    }
+
+    @Test
+    fun home_lines_head_only_the_sections_they_have() {
+        fun line(id: String, watched: Boolean) =
+            TripLine(leg("tube", id, id, "A" to "King's Cross", "B" to "Euston", 0, 10, 2), LineStatus(id, LineStatus.GOOD_SERVICE, "Good Service"), watched = watched)
+        var row by mutableStateOf(TripRow(checking = false, every = listOf(line("victoria", false))))
+        var watched by mutableStateOf<Int?>(0)
+        composeRule.setContent { StopDashTheme { Surface { TripLinesContent(row, watchedCount = watched) } } }
+        composeRule.onAllNodesWithTag("linesHeading").assertCountEquals(1)
+        composeRule.onNodeWithTag("linesHeading").assertTextEquals("Other")
+        row = TripRow(checking = false, every = listOf(line("victoria", true)))
+        watched = 1
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("linesHeading").assertTextEquals("Watched")
+        // A trip's page, with no sections, heads none.
+        watched = null
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("linesHeading").assertCountEquals(0)
+    }
+
+    @Test
+    fun a_restored_home_lines_page_heads_its_saved_lines_in_place() {
+        val row = TripRow(checking = false, every = emptyList())
+        val pills = listOf("victoria", "Victoria", "tube", "central", "Central", "tube")
+        composeRule.setContent { StopDashTheme { Surface { TripLinesContent(row, lines = null, pending = pills, watchedCount = 1) } } }
+        val headings = composeRule.onAllNodesWithTag("linesHeading")
+        headings.assertCountEquals(2)
+        val top = { name: String -> composeRule.onNode(hasContentDescription(name), useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top }
+        assertTrue(top("Victoria") < headings[1].fetchSemanticsNode().boundsInRoot.top)
+        assertTrue(headings[1].fetchSemanticsNode().boundsInRoot.top < top("Central"))
     }
 
     // The real Northern line from a recorded TfL sequence, with its ends' positions as TfL gives them
