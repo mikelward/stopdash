@@ -3453,18 +3453,22 @@ Builds on Phase 1's minimal line-status marking.
         every pill should read precomputed colors (a table per line and surface) is an app-wide design
         question for the maintainer.
   - [x] **Point to favorite places** on the picker (maintainer, 2026-10-07): its line reads "Favorite
-        places and lines near you are always included", with a **Favorite places** button.
+        places and lines near you are always included", with a **Favorite places** button. Reversed
+        2026-10-17: it reads "Lines near you and your favorite rides are always watched", with a
+        **Favorite rides** button.
   - [x] **Cover the lines near favorite places** (maintainer, 2026-10-06): every line of each station
         within walking reach of a place joins the rider's own, from the bundled station index (no
         request), recomputed as the places change (maintainer, 2026-10-07: stations only to start).
-  - [ ] **Include buses near favorite places** (maintainer, 2026-10-07: a setting, off by default): a
-        switch on the Disruptions summary page adding the bus routes at each place's stops within walking
-        reach, from TfL's stops-near-a-point lookup (one cached request per place, shared with the place
-        chips).
-  - [ ] **Maybe the closures of the stations near favorite places** too (maintainer, 2026-10-06).
+        Reversed 2026-10-17 (maintainer: at home, the rides to work matter, not everything near work):
+        the watched lines are those near the rider, their favorite rides', the trip's on the way and the
+        chosen ones.
+  - [x] ~~**Include buses near favorite places**~~ (maintainer, 2026-10-07: a setting, off by default):
+        moot since the places' lines stopped counting (2026-10-17).
+  - [x] ~~**Maybe the closures of the stations near favorite places** too~~ (maintainer, 2026-10-06):
+        moot for the same reason.
   - [ ] **Show the row with no stops nearby** (Codex, #657): when location works but finds no stop
         (`NearbyStopsViewModel.State.Empty`), the home screen shows the location gate, not the list, so
-        the disruptions row (chosen lines, favorite journeys' and places' lines) never shows there.
+        the disruptions row (chosen lines, favorite journeys' lines) never shows there.
         Host the row's line-status source above the Ready/Empty split and draw the row in the empty
         state too.
   - [ ] **Name the walking reach's closed stops on the row**, as a trip's row names its closed stops.

@@ -325,18 +325,23 @@ class SettingsScreenScreenshotTest {
     @Test
     fun the_summary_always_includes_the_chosen_networks() {
         val tapped = mutableListOf<String>()
+        var ridesOpened = 0
         composeRule.setContent {
             StopDashTheme {
                 SettingsScreen(
                     liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = {},
                     summaryNetworks = setOf("tube"), onToggleSummaryLine = { tapped += it },
+                    onOpenFavoriteJourneysFromDisruptions = { ridesOpened++ },
                 )
             }
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("disruptionsSummaryRow").performClick()
         composeRule.onNodeWithText("Always watch").assertIsDisplayed()
-        composeRule.onNodeWithText("Favourite places and lines near you are always watched").assertIsDisplayed()
+        // The rider's favorite rides are watched, not their places (maintainer, 2026-10-17), a tap away.
+        composeRule.onNodeWithText("Lines near you and your favourite rides are always watched").assertIsDisplayed()
+        composeRule.onNodeWithTag("summaryFavoriteRides").assertTextEquals("Favourite rides").performClick()
+        org.junit.Assert.assertEquals(1, ridesOpened)
         // The lines chosen one by one go under their own heading (maintainer, 2026-10-17).
         composeRule.onNodeWithTag("summaryAlsoWatch").assertTextEquals("Also watch")
         waitForSelected("summaryLine-victoria")

@@ -2850,9 +2850,9 @@ class MainActivity : ComponentActivity() {
                                     startOnRailKey = settingsOnRailKey,
                                     onRailKeyShown = { settingsOnRailKey = false },
                                     onDisruptionsClosed = { settingsOnDisruptions = false },
-                                    onOpenFavoritePlacesFromDisruptions = {
+                                    onOpenFavoriteJourneysFromDisruptions = {
                                         settingsOnDisruptions = true
-                                        favoritePlacesOpen = true
+                                        favoriteJourneysOpen = true
                                     },
                                     onBack = {
                                         settingsOpen = false
@@ -3661,15 +3661,14 @@ class MainActivity : ComponentActivity() {
                             // The networks the disruptions row always covers, asked about with the list's own lines.
                             // None while the row is off: nothing shows them, so they're not asked about (Codex, #592).
                             alwaysNetworks = { if (DisruptionsRowSetting.loaded()) SummaryNetworksSetting.loaded() else emptySet() },
-                            // The favorites' lines, covered wherever their stop is, the lines of the stations near each
-                            // favorite place (maintainer, 2026-10-07) and the trip's on the way (2026-10-17); none while
-                            // the row is off.
+                            // The favorites' lines, covered wherever their stop is, and the trip's on the way
+                            // (maintainer, 2026-10-17: not a favorite place's, whose lines are far from the rider);
+                            // none while the row is off.
                             favoriteLines = {
                                 if (DisruptionsRowSetting.loaded()) {
                                     // The trip's as read so far: none while the kept trip is still read, so the
                                     // refresh never waits on it; the check on a change asks once it's in.
-                                    favoriteLineIds(appContext) + placeLinesOf(appContext).filterNotNull().first().lines.map { it.id } +
-                                        tripLinesOf(appContext).value?.lines.orEmpty().map { it.id }
+                                    favoriteLineIds(appContext) + tripLinesOf(appContext).value?.lines.orEmpty().map { it.id }
                                 } else {
                                     emptySet()
                                 }
@@ -3704,21 +3703,19 @@ class MainActivity : ComponentActivity() {
                     DataStoreFavoriteJourneysStore.from(appContext, warn = ::logStarWarning).journeys(),
                     Workers.compute,
                 )
-                // A favorite place added or moved brings its stations' lines in at once too, and so does a trip
-                // started, or one moving on to a line it hadn't ridden yet.
+                // A trip started, or one moving on to a line it hadn't ridden yet, brings its lines in at once too.
                 combine(
                     DisruptionsRowSetting.changes,
                     SummaryNetworksSetting.changes,
                     journeyLines,
-                    placeLinesOf(appContext).filterNotNull(),
                     tripLinesOf(appContext),
-                ) { on, networks, lines, near, trip ->
-                    listOf(on, networks, lines, near.lines, trip?.lines)
+                ) { on, networks, lines, trip ->
+                    listOf(on, networks, lines, trip?.lines)
                 }
                     .distinctUntilChanged()
                     // Combined and compared on the worker: the lists grow with the rider's favorites (Codex, #657).
                     .flowOn(Workers.compute)
-                    .collect { (on, _, _, _, _) -> if (on == true) viewModel.checkAlways() }
+                    .collect { (on, _, _, _) -> if (on == true) viewModel.checkAlways() }
             }
             // A relocate holds the indicator on for the whole fresh fix, not just the departures
             // fetch that follows a same-set confirmation.
@@ -4070,8 +4067,6 @@ class MainActivity : ComponentActivity() {
                     // (its trains held) in the rare start where they come first.
                     rideGrouping = RideGroupingSetting.changes.collectAsStateWithLifecycle().value
                         .takeIf { RideGroupingSetting.isLoaded.collectAsStateWithLifecycle().value },
-                    // Null until worked out: the row holds meanwhile.
-                    placeLines = placeLinesOf(applicationContext).collectAsStateWithLifecycle().value,
                     tripLines = tripLinesOf(applicationContext).collectByIdentityWithLifecycle().value,
                     farJourneyMeters = farJourneyMeters,
                     nearbyKey = stopsKey,
@@ -7445,29 +7440,9 @@ internal fun savedPlacesOf(set: FavoritePlacesSet): List<FavoritePlace>? = when 
 }
 
 /**
- * The lines near the favorite places as they change ([HomeLines.placeLines]), from the stored places: one
- * process-wide source, so the refresh, the row and the check on a change all read the same lines, the last
- * standing for each while the places can't be read (Codex, #657). Null until first worked out.
- */
-private fun placeLinesOf(context: Context): StateFlow<HomeLines.PlaceLines?> =
-    sharedPlaceLines ?: synchronized(PlaceLinesLock) {
-        sharedPlaceLines ?: HomeLines.placeLines(
-            DataStoreFavoritePlacesStore.from(context.applicationContext, warn = ::logStarWarning).places(),
-            index = { StationIndexStore.load(context.applicationContext) },
-            compute = Workers.compute,
-            warn = ::logStarWarning,
-        ).stateIn(CoroutineScope(SupervisorJob() + Workers.compute), SharingStarted.Eagerly, null).also { sharedPlaceLines = it }
-    }
-
-private object PlaceLinesLock
-
-@Volatile
-private var sharedPlaceLines: StateFlow<HomeLines.PlaceLines?>? = null
-
-/**
  * The lines the trip on the way still rides ([HomeLines.tripLines]), for the disruptions row: one process-wide
- * source like [placeLinesOf], so the refresh, the row and the check on a change all read the same lines. Null
- * until the kept trip has been read.
+ * source, so the refresh, the row and the check on a change all read the same lines. Null until the kept trip
+ * has been read.
  */
 private fun tripLinesOf(context: Context): StateFlow<HomeLines.TripLines?> =
     sharedTripLines ?: synchronized(TripLinesLock) {

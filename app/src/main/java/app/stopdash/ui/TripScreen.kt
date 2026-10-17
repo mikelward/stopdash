@@ -3666,9 +3666,9 @@ internal data class TripLine(
     val planned: List<PlannedAlert> = status?.planned.orEmpty(),
     // The line's week ahead couldn't be asked, so its *Coming up* may be missing work: the page says so.
     val aheadUnknown: Boolean = false,
-    // The home screen's page only: whether it's watched (near the rider, a favorite's, a favorite place's, the
-    // trip on the way's, or one the rider chose), listed under *Watched*, else under *Other* (maintainer,
-    // 2026-10-17). Null on a trip's page, which has no sections.
+    // The home screen's page only: whether it's watched (near the rider, a favorite's, the trip on the way's,
+    // or one the rider chose), listed under *Watched*, else under *Other* (maintainer, 2026-10-17). Null on a
+    // trip's page, which has no sections.
     val watched: Boolean? = null,
 ) {
     /** Whether the page shows [status]'s disruption: a line kept from before still warns of it. */
