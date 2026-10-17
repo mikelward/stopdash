@@ -20,4 +20,20 @@ crons = ["*/2 * * * *"]
 binding = "RAIL"
 id = "REPLACE_WITH_KV_NAMESPACE_ID"
 
-# Secret, set with `npx wrangler@4 secret put DISRUPTIONS_API_KEY`, never written here.
+# Cold board requests only (those reaching National Rail): per caller, under a key the IP can't be
+# recovered from (src/index.js callerKey), and the relay's own budget across every caller, set under
+# the Live Departure Board product's quota. Cloudflare counts each per location, so the budget bounds
+# each data center, not the relay as a whole: size it at about half the quota while London's riders
+# land on one or two, and move to a Durable Object if that stops holding (dev-docs/national-rail-proxy.md).
+[[ratelimits]]
+name = "COLD_PER_CALLER"
+namespace_id = "1001"
+simple = { limit = 20, period = 60 }
+
+[[ratelimits]]
+name = "UPSTREAM_BUDGET"
+namespace_id = "1002"
+simple = { limit = 60, period = 60 }
+
+# Secrets, set with `npx wrangler@4 secret put DISRUPTIONS_API_KEY` and `… LDB_API_KEY`, never
+# written here.
