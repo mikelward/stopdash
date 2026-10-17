@@ -115,12 +115,13 @@ accent) since their colors collide with tube lines. Confirmed TfL hexes only (`S
 ## Error handling
 
 - **Don't silently swallow exceptions.** No bare `catch (_: Throwable) {}`. Every catch
-  **logs** with sanitized context (*Privacy* applies — "arrivals fetch failed: 429 for stop
-  <id>", never a coordinate/key), **cleans up** what `try` acquired (closeables, in-flight
-  requests, partial UI state), and **handles the edge case explicitly** (a typed error the
-  surface renders honestly, per SPEC principle 2 — never blanking the screen). Narrow the
-  type or rethrow `CancellationException` first. To ignore a failure on purpose, state why
-  in a one-line comment and still log at debug.
+  **logs** the exception, redacted to its type and stack (a request URL in its message
+  carries coordinates and the `app_key`), with sanitized context (*Privacy* applies —
+  "arrivals fetch failed: 429 for stop <id>", never a coordinate/key), **cleans up** what
+  `try` acquired (closeables, in-flight requests, partial UI state), and **handles the
+  edge case explicitly** (a typed error the surface renders honestly, per SPEC principle 2
+  — never blanking the screen). Narrow the type or rethrow `CancellationException` first.
+  To ignore a failure on purpose, state why in a one-line comment and still log at debug.
 
 ## Testing expectations
 
@@ -187,9 +188,9 @@ accent) since their colors collide with tube lines. Confirmed TfL hexes only (`S
   `.md` files or root dot-paths (`.github/`, `.gitignore`, …) never ship a bullet.
 - **`scripts/publish-github-release.sh` is byte-identical across the four sibling Android
   repos**; change it in all four.
-- **No model identifier** — never put a model name/version (`Opus 4.8`, `Sonnet`,
-  `Gemini …`, `claude-*`, `gemini-*`) in a commit, PR, comment, or pushed artifact; keep it
-  to chat. Generic agent attribution (`Co-Authored-By: Claude` / `Gemini`,
+- **No model identifier** — never name the coding agent's model or version (`Opus 4.8`,
+  `Sonnet`, `Gemini …`, `claude-*`, `gemini-*`) in a commit, PR, comment, or pushed
+  artifact; keep it to chat. Generic agent attribution (`Co-Authored-By: Claude` / `Gemini`,
   `Claude-Session:`, "Generated with Claude Code") has no model name/version and is fine.
 
 ## Autonomy
@@ -197,23 +198,25 @@ accent) since their colors collide with tube lines. Confirmed TfL hexes only (`S
 - **Open the PR without being asked** when a branch is ready (this file is the repo owner's
   standing request for that PR), unless told "just commit / no PR yet".
 - **Watch your own PRs by subscription + one scheduled check.** Subscribe on open
-  (automatic in Claude Code, or `subscribe_pr_activity` where exposed). Because
-  subscriptions miss CI pass, merges, and Codex `+1` (and are only exposed in
-  `claude-code-remote`), keep one relative-delay check armed while open (`send_later` in
-  Claude Code; `schedule` with `DurationSeconds` in Antigravity, canceled via `manage_task`
-  `kill`). **Read `mergeable_state` at every check, wake, and drive step**: if `dirty` or
-  required `behind`, fetch `origin/main` by refspec, confirm you hold every remote head
-  commit, rebase, confirm the head hasn't moved (ask if unsure), and `--force-with-lease`
-  push unasked (+1'd head included). Settle a fired check first and end each turn with one
-  check naming the PR (not a SHA). On merge/close, do one last reply-and-resolve pass
-  (follow-up PR for real work), then cancel the check and unsubscribe.
+  (automatic in Claude Code, or `subscribe_pr_activity` where `claude-code-remote` exposes
+  it; a client with neither, like Antigravity, relies on the scheduled check alone).
+  Because subscriptions miss CI pass, merges, and Codex `+1`, keep one relative-delay
+  check armed while open (`send_later` in Claude Code; `schedule` with `DurationSeconds`
+  in Antigravity, canceled via `manage_task` `kill`). **Read `mergeable_state` at every
+  check, wake, and drive step**: if `dirty` or required `behind`, fetch base and head by
+  refspec (unshallowing), confirm your branch has every remote head commit, rebase,
+  confirm the head hasn't moved since the tip you noted before fetching (ask if unsure),
+  and `--force-with-lease` push unasked (+1'd head included). Settle a fired check first
+  and end each turn with one check naming the PR (not a SHA). On merge/close, do one last
+  reply-and-resolve pass (follow-up PR for real work), then cancel the check and
+  unsubscribe, if subscribed.
 - **A scheduler, GitHub, or `git push` prompt is said once, then carry on.**
 - **"Drive"**: loop through actionable `TODO.md` items (not deferred or awaiting a product
   decision) — implement, open PR, wait for Codex, address comments, merge when CI is green
   and Codex +1s the head, repeat until done or stopped. **"Autopilot"**: drive without
   blocking, taking the best reversible guess and logging it under `TODO.md` *Decisions
-  needing review*; still wait for a real answer on destructive/irreversible actions outside
-  the loop or privacy uncertainty.
+  needing review*; still wait for a real answer on destructive or irreversible actions
+  outside the loop, anything reaching beyond this repo, or privacy uncertainty.
 - **Ordered work ("next", "then", "after that", "follow-up")** may open in parallel but
   merges in order after every earlier session item and named PR merges (any repo, no time
   cap; hold and ask if one stalls, autopilot included; no auto-merge until its turn; check
@@ -222,10 +225,10 @@ accent) since their colors collide with tube lines. Confirmed TfL hexes only (`S
   open PR on that base whose body ends with a reachable session URL: name only that PR and
   say its base now points at `<sha>`, whatever its state reads (name no merge or other PR).
   On receipt, fetch base and PR head by refspec (unshallow if needed) and test against the
-  fetched base tip, not `<sha>`: `behind` if `git merge-base --is-ancestor` exits 1,
-  `dirty` if `git merge-tree --write-tree` (Git 2.38+) exits 1 (report any other exit);
-  rebase per your rules. Skip if no session URL or local-only messaging; don't retry failed
-  sends.
+  fetched base tip, not `<sha>`: `behind` if `git merge-base --is-ancestor <tip> <head>`
+  exits 1, `dirty` if `git merge-tree --write-tree` (Git 2.38+) exits 1 (report any other
+  exit); rebase per your rules. Skip if no session URL or local-only messaging; don't retry
+  failed sends.
 - **A red baseline is the next task** — fix `./gradlew test`/`lint` before pulling from
   `TODO.md` (confirm with the user before skipping as unrelated, never an autopilot guess).
 
@@ -257,7 +260,8 @@ accent) since their colors collide with tube lines. Confirmed TfL hexes only (`S
   red-CI fixes, and drive/autopilot steps proceed unasked.
 - **Report each review in your next message** (*Talking to the user*): commit read, finding
   count, one bullet per finding (most blocking first: claim, location, action). Update PR
-  title/body before each push (body first, then push) to match the full branch diff.
+  title/body before each push (body first, then push) to match the full branch diff; with
+  no PR yet, push, then do it as soon as one is opened.
 - **Link every open PR in the stack, one URL per line.**
 - **After every merge to `main`, report versionCode** (`git rev-list --count origin/main`
   after refspec fetch): `Need versionCode 72 (b81c23d) or higher to test PR #52's fix`.
@@ -306,7 +310,9 @@ spelling/usage differs ("favorites", "licenses", "percent") gets its
 
 - `.claude/hooks/session-start.sh` provisions the Android SDK at `/opt/android-sdk` (only
   auto-invoked in Claude Code); if `/opt/android-sdk` is empty in a remote container, run
-  `CLAUDE_CODE_REMOTE=true .claude/hooks/session-start.sh`, don't hand-install.
+  `CLAUDE_CODE_REMOTE=true .claude/hooks/session-start.sh` (then export `ANDROID_HOME` and
+  `ANDROID_SDK_ROOT` as the path it reports ready: only Claude Code keeps the hook's
+  environment), don't hand-install.
 - No KVM, so no emulator: lock-screen, widget, watch and location behavior needs a device.
 - Check before concluding the sandbox can't build: `ls /opt/android-sdk` and an HTTP probe
   of `https://maven.google.com/` (403 = blocked).
