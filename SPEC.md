@@ -3264,7 +3264,7 @@ says "Disruptions:"; what couldn't be checked is marked by a ? in a circle (outl
 2026-10-17), once: as the card's own mark when nothing is disrupted ("Couldn't check for disruptions"
 beside it with no line to name), else before the lines it couldn't check (before "+N" when those are
 all counted in it), or after the disrupted ones alone with no line to name. With nothing to show
-it is a plain card saying "No disruptions" beside a ✓, so all clear is said rather than left to a blank
+it is a plain card saying "No watched disruptions" beside a ✓ (maintainer, 2026-10-17: what the row covers is what it watches), so all clear is said rather than left to a blank
 word; while it checks, "Checking for disruptions" beside a spinner, and a failed check is never shown as
 all clear. It is always one line high whatever it says, the tint and the mark changing and never its
 size, with the pills that don't fit counted as "+N", and a chevron, since a tap always opens its lines
@@ -3293,11 +3293,11 @@ and opens its own page, since its settings control only the row (maintainer, 202
 covers is set and seen there. The lines page's menu opens Settings on that page too, its Back going up
 to Settings. There a **Show on home screen** switch turns the row off (on by default;
 the banner comes back with it off); the row waits for the stored choice, so one turned off never
-flashes up. Under it, **Always include** picks the lines
-covered whatever's near (maintainer, 2026-10-05; lines one by one 2026-10-06): a chip per line, under the near-me list's mode groups (maintainer, 2026-10-08): **Underground** (the Tube's lines,
+flashes up. Under it, **Always watch** says what the row always watches, and **Also watch** picks the lines
+watched whatever's near (maintainer, 2026-10-05; lines one by one 2026-10-06; named for watching 2026-10-17): a chip per line, under the near-me list's mode groups (maintainer, 2026-10-08): **Underground** (the Tube's lines,
 the DLR and the Elizabeth line), **Overground** and **Tram**; no chip picks a whole network (maintainer, 2026-10-07: the row leans on the lines near the rider and their favorites', so nobody should need every line), and none on by default (maintainer, 2026-10-06: every one was, which filled the row with lines far from the rider's own); every choice an older build saved, whole networks from when the tube was covered by default, was cleared once (maintainer, 2026-10-17), so everyone starts from the lines near them and their favorites (the chosen lines ride the list's one status request, splitting it
-only when many nearby lines push it past TfL's length limit); the lines near the rider and near their favorite places are always included, a choice of none leaving them alone, and the page says so
-("Favorite places and lines near you are always included") with a **Favorite places** button that opens them, Back returning to this page. A
+only when many nearby lines push it past TfL's length limit); the lines near the rider and near their favorite places are always watched, a choice of none leaving them alone, and the page says so
+("Favorite places and lines near you are always watched") with a **Favorite places** button that opens them, Back returning to this page. A
 line chosen with no current check reads "Checking…" while it's asked about, at once
 on the choice (or on turning the row on), not at the next refresh: one line-status request at most,
 current verdicts reused (maintainer, 2026-10-05); never a verdict it can't stand behind; one chosen again before any refresh since may show the

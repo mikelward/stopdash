@@ -400,8 +400,6 @@
     <string name="settings_disruptions_row_show">Mostrar no ecrã principal</string>
     <string name="settings_disruptions_row_off">Desativado</string>
     <string name="settings_disruptions_row_description">Mostrar alertas e atrasos no ecrã principal</string>
-    <string name="settings_summary_networks_title">Incluir sempre</string>
-    <string name="settings_summary_networks_summary">Os locais favoritos e as linhas perto de si são sempre incluídos</string>
     <string name="settings_disruptions_row_write_failed">Não foi possível guardar; será revertido quando o StopDash reiniciar</string>
     <string name="settings_hidden_title">Ocultos</string>
     <string name="settings_hidden_summary">Excluídos da lista, das viagens, do widget e do relógio</string>

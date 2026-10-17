@@ -12,6 +12,7 @@ import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -329,7 +330,10 @@ class SettingsScreenScreenshotTest {
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("disruptionsSummaryRow").performClick()
-        composeRule.onNodeWithText("Always include").assertIsDisplayed()
+        composeRule.onNodeWithText("Always watch").assertIsDisplayed()
+        composeRule.onNodeWithText("Favourite places and lines near you are always watched").assertIsDisplayed()
+        // The lines chosen one by one go under their own heading (maintainer, 2026-10-17).
+        composeRule.onNodeWithTag("summaryAlsoWatch").assertTextEquals("Also watch")
         waitForSelected("summaryLine-victoria")
         captureSnapshot("settings-summary-networks.png")
         // A tap names its line; the setting works out the choice ([SummaryNetworksSetting.toggle]).

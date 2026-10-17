@@ -397,8 +397,6 @@
     <string name="settings_disruptions_row_show">Ana ekranda göster</string>
     <string name="settings_disruptions_row_off">Kapalı</string>
     <string name="settings_disruptions_row_description">Uyarıları ve gecikmeleri ana ekranda göster</string>
-    <string name="settings_summary_networks_title">Her zaman dahil et</string>
-    <string name="settings_summary_networks_summary">Favori yerler ve yakınınızdaki hatlar her zaman dahil edilir</string>
     <string name="settings_disruptions_row_write_failed">Kaydedilemedi; StopDash yeniden başlatılınca sıfırlanır</string>
     <string name="settings_hidden_title">Gizli</string>
     <string name="settings_hidden_summary">Liste, yolculuklar, widget ve saatte gösterilmez</string>

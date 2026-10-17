@@ -40,7 +40,7 @@ import app.stopdash.R
 /**
  * The home screen's disruptions row ([HomeLines]), a card one line high whatever it says (maintainer,
  * 2026-10-05): each disrupted line's pill behind a ⚠, then a ? in a circle and what couldn't be checked,
- * on a tinted card, the ? shown once ([DisruptionsMark], [unknownMarkAt]); with none of those, a plain card saying so beside its mark ("No disruptions" beside a ✓,
+ * on a tinted card, the ? shown once ([DisruptionsMark], [unknownMarkAt]); with none of those, a plain card saying so beside its mark ("No watched disruptions" beside a ✓,
  * "Checking for disruptions" beside a spinner; maintainer, 2026-10-16). What doesn't fit is counted as
  * "+N". A tap opens every line it covers with its status ([TripLinesPage]), which its chevron says
  * (maintainer, 2026-10-16).

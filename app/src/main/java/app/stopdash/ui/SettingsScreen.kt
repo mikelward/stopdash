@@ -1185,6 +1185,12 @@ private fun SummaryNetworksRow(selected: Set<String>, onToggle: (String) -> Unit
         TextButton(onClick = onOpenFavoritePlaces, modifier = Modifier.testTag("summaryFavoritePlaces")) {
             Text(stringResource(R.string.settings_favorite_places_title))
         }
+        // The lines watched by choice, under a heading of their own (maintainer, 2026-10-17).
+        Text(
+            stringResource(R.string.settings_summary_lines_title),
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(top = 16.dp).testTag("summaryAlsoWatch"),
+        )
         // Every chip is drawn from the first frame, none selected or tappable until which are selected is
         // worked out (Codex, #642).
         HomeLines.PICKER.forEachIndexed { g, (group, lines) ->

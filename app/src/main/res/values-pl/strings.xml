@@ -411,8 +411,6 @@
     <string name="settings_disruptions_row_show">Pokaż na ekranie głównym</string>
     <string name="settings_disruptions_row_off">Wyłączone</string>
     <string name="settings_disruptions_row_description">Pokazuj komunikaty i opóźnienia na ekranie głównym</string>
-    <string name="settings_summary_networks_title">Zawsze uwzględniaj</string>
-    <string name="settings_summary_networks_summary">Ulubione miejsca i linie w pobliżu są zawsze uwzględniane</string>
     <string name="settings_disruptions_row_write_failed">Nie udało się zapisać. Zmiana zostanie cofnięta po ponownym uruchomieniu StopDash.</string>
     <string name="settings_hidden_title">Ukryte</string>
     <string name="settings_hidden_summary">Pomijane na liście, w podróżach, na widżecie i na zegarku</string>
