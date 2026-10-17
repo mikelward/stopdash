@@ -124,8 +124,8 @@ out. The code's `hubId` fields hold TfL's interchange id, not a hub in this desi
 
 | Rule today | Asked by | Fate |
 |---|---|---|
-| `clusterId`: TfL's `stationNaptan`, else the stop's display name | everything below | **Replaced** by the model's stop (phase 3): a real stop area, the poles joined to it, or a station's own id. The name fallback stays a display key only (`StopGrouping`), never a stop |
-| Whether a cluster is real, tested four ways (differs from the name; has no space; starts `490G`; any value): `stopPlaceKey`, `NoticePlacement`, `YourStops.stopPlace`, `MainScreen`, `JourneyPair.end`, `BundledStops.positions`, `TowardStops.key`, `BusStopIndex`, `NearbySelection`, `MainScreen.placeOf`, `destinationIds` | alert placement, starred places, search, near-me, trips | **Replaced** by one `Hubs.stopOf` (phase 3). The display grouping (`StopGrouping.clusterKeyOf`) keeps its own key, since it only groups what's drawn |
+| `clusterId`: TfL's `stationNaptan`, else the stop's display name | everything below | **Replaced** by the model's stop (search's rows in phase 2, the rest in phase 3): a real stop area, the poles joined to it, or a station's own id. The name fallback stays a display key only (`StopGrouping`), never a stop |
+| Whether a cluster is real, tested four ways (differs from the name; has no space; starts `490G`; any value): `stopPlaceKey`, `NoticePlacement`, `YourStops.stopPlace`, `MainScreen`, `JourneyPair.end`, `BundledStops.positions`, `TowardStops.key`, `BusStopIndex`, `NearbySelection`, `MainScreen.placeOf`, `destinationIds` | alert placement, starred places, search, near-me, trips | **Replaced** by one `Hubs.stopOf` (`YourStops.stopPlace` and `BusStopIndex` in phase 2, the rest in phase 3). The display grouping (`StopGrouping.clusterKeyOf`) keeps its own key, since it only groups what's drawn |
 | Stop-area equality: `RouteStops.endsAt` / `forLeg`, `FavoriteJourney.matches` tier 1, on the way, `BusPlacement`, `RideLines`, `LineMap.oneWay`, `TripPlan.passedAt`, `Terminating.nearer` | ends, placing a bus, the route map, termini | **Kept** as "the same stop", asked of `Hubs.stopOf` (phase 3), so the pole across the road in another area, or in none, matches too |
 | Stop-area equality in closures: `TripClosures`, `TripViewModel.closureStops` / `areaPoles` | which poles a trip asks about, and how it stands by them | **Kept per pole**. The model's stop says which poles to ask, every pole of it, so the one a bus is placed on is asked whichever area TfL files it in (phase 3). But a closure stays the pole's it was filed against: a trip's standing is judged at the pole its bus uses (`TripClosures.judge`), never by a sibling's notice, as `TflClient.poleDisruptions` keeps each pole's own notices today, and a notice filed against one pole alone still sits under that pole's heading (SPEC *Disruptions*), wherever `NoticePlacement` now takes the place from |
 | `BusPlacement`'s `sameStopName` fallback, for a stand the planner gives no area | placing a bus leg on its route | **Kept**: it finds a stand on a route from a name, which is not a membership question |
@@ -171,7 +171,7 @@ out. The code's `hubId` fields hold TfL's interchange id, not a hub in this desi
 |---|---|---|
 | `PlanTargets.of`: each member that isn't a bus stop, plus the first bus stop | trips to an interchange | **Kept per record** (maintainer, 2026-10-16: no merge). What changes is the level (phases 2 and 3): every record of the station or hub picked, plus one bus stop it owns |
 | `PlanTargets.via` / `viaStops`: every station record, bus stops only where there's no station | a trip via a stop (SPEC *Going via a stop*) | **Kept per record, never merged**. The Planner counts a route as passing only the exact id it was asked via, so merging St Pancras's three records would drop a route through the one not named. What changes is the level the via resolves at (phases 2 and 3): a station picked as via is every record of that station, a hub every record of its stations, a bus stop that stop |
-| `destinationIds`: a member's id and cluster to the trip's end | a trip's arrivals | **Replaced** by the ids of the level the rider picked (the station level in phase 2, with the bus target that phase adds, and the hub and stop levels in phase 3): a hub's every station record and bus pole, a station's records plus the bus stops it owns, or a stop's poles, the same ends the trip is planned to (*The rider picks a level*). Each bus stop counts with its poles' TfL stop areas (`490G…`) too, as today's member cluster does, since the Planner names a bus call by its pole or its area, but only an area kept whole: a split area's poles lie in several stops, so its id maps to none of them (Codex on #890), and a leg named by it is placed at one of its poles instead (*A TfL stop area's id resolves too*). One `Hubs.idsOf(level)` gives it, so no caller rebuilds it: a map from every id TfL can name the level by, its stands as well as its records, poles and stop areas, to the stop or station that id belongs to, the shape `destinationIds` has today. A platform maps to its station, since the Planner can name a train's end by its platform alone (*A platform TfL lists under several records*, below); one `Unresolved` between two stations is in neither map. The map holds only bundled ids, so an id it doesn't hold is resolved on the way through `Hubs.stationOf`, the same prefix step that places a platform the bundle doesn't hold (`9400…` to `940G…`), and counts when that station is one of the level's: a platform TfL adds after the bundle was built still arrives, replans and compares as its station. Its keys say when a trip has arrived and where it replans to, so a trip to St Pancras arrives only there, never at King's Cross. Its values are what `withoutDetours` compares (its `stopOf`), so a call at one pole or its stop area and an end at a sibling pole are one stop, as today, and a call at one of St Pancras's records and an end at another are one station |
+| `destinationIds`: a member's id and cluster to the trip's end | a trip's arrivals | **Replaced** by the ids of the level the rider picked (the station and stop levels in phase 2, with the bus target that phase adds, and the hub level in phase 3): a hub's every station record and bus pole, a station's records plus the bus stops it owns, or a stop's poles, the same ends the trip is planned to (*The rider picks a level*). Each bus stop counts with its poles' TfL stop areas (`490G…`) too, as today's member cluster does, since the Planner names a bus call by its pole or its area, but only an area kept whole: a split area's poles lie in several stops, so its id maps to none of them (Codex on #890), and a leg named by it is placed at one of its poles instead (*A TfL stop area's id resolves too*). One `Hubs.idsOf(level)` gives it, so no caller rebuilds it: a map from every id TfL can name the level by, its stands as well as its records, poles and stop areas, to the stop or station that id belongs to, the shape `destinationIds` has today. A platform maps to its station, since the Planner can name a train's end by its platform alone (*A platform TfL lists under several records*, below); one `Unresolved` between two stations is in neither map. The map holds only bundled ids, so an id it doesn't hold is resolved on the way through `Hubs.stationOf`, the same prefix step that places a platform the bundle doesn't hold (`9400…` to `940G…`), and counts when that station is one of the level's: a platform TfL adds after the bundle was built still arrives, replans and compares as its station. Its keys say when a trip has arrived and where it replans to, so a trip to St Pancras arrives only there, never at King's Cross. Its values are what `withoutDetours` compares (its `stopOf`), so a call at one pole or its stop area and an end at a sibling pole are one stop, as today, and a call at one of St Pancras's records and an end at another are one station |
 | `AvoidedLines.drops`: an exact id against from, to, area and planned ids | avoided stops | **Replaced** by the station's every record, or the stop (phase 2). Stored avoids keep their ids |
 
 ### Not membership, kept
@@ -258,9 +258,13 @@ gains that an older build would drop takes the same bump.
 
 **A picked place is never a bare id** (Codex on #890: the fourth and fifth holders found keeping
 only an id, so the fix moved from listing holders to the type). The pick becomes one value, `Pick`:
-id, name and level. Phase 2 replaces the `String` id with a `Pick` everywhere a picked stop,
-station or hub is held, so a holder that drops the level fails to compile instead of waiting
-for a review to find it, and one codec saves and restores it for all of them. The search row
+id, name, level, and an optional `extraStopId: String? = null` (a TfL pole id, omitted when null by
+the `Pick` codec and ignored when matching two picks for `PendingEnd` or recent replacement, set
+only when `Hubs.picked` restores an ambiguous pre-phase-2 `id`+`name` station-record pick that also
+needs its same-name `cluster`-linked bus stop; *A TfL stop area's id resolves too*). Phase 2
+replaces the `String` id with a `Pick` everywhere a picked stop, station or hub is held, so a
+holder that drops the level fails to compile instead of waiting for a review to find it, and one
+codec saves and restores it (including `extraStopId` when present) for all of them. The search row
 itself, `StationMatch`, carries the same `Pick` from phase 2, its level a required parameter
 (Codex on #890: the place editor's `placeToAdd` and `pendingStop`, the sixth and seventh holders,
 keep a picked match as its id and name). So a holder that keeps a match whole
@@ -306,12 +310,20 @@ phase 2, which has no level, is read by the pair rule above.
 **A stop is picked by a pole** (Codex on #890: TfL areas split across several stops, 110 of
 today's into stops that all carry one name, so an area id and a name can't say which stop was
 meant). From phase 2 a stop-level pick stores the TfL id of one of the picked stop's poles, never
-a stop area's: the pole the picked row was built from, else the stop's anchor pole. A row is a
-model stop by then, so which stop was picked is known when it is picked. A match built from saved
-data that knows a pole uses it: `YourStops` builds a favorite ride end's from its
-`JourneyEnd.stopId`, not its `areaId`. So a refresh that splits an area never makes a pick made
-from phase 2 on ambiguous; only one saved before it can be (*A TfL stop area's id resolves
-too*).
+a stop area's: the pole the picked row was built from, else the stop's anchor pole, and a missed
+bus stop's avoid (`RouteDisruption.missed`) stores the leg's pole (`toId`, falling back to
+`toArea` only when `toId` is blank) the same way, with `TflJourneyPointDto.stopId` returning
+`individualStopId` when it is a bundled `B` pole (or, when `Unbundled` or `Unavailable`, a NaPTAN
+bus pole matching `^[0-8]\d{2}` with index 3 != `'G'`, covering both `490…` and regional `037…`
+poles), whatever parent `naptanId` (`490G…`, `037G…`, or a colliding station record) the Planner
+pairs it with, and otherwise retaining a non-blank `naptanId` (such as a `4900…` pole `naptanId`
+paired with a non-pole `9000…` `individualStopId` in
+`journey_results_euston_to_st_pauls_via.json`) before falling back to `stationOf(individualStopId)`. A row is a
+model stop by then (`BusStopIndex` and `YourStops.stopPlace` move to `Hubs.stopOf` in phase 2), so
+which stop was picked is known when it is picked, and a ride's end (`YourStops.journeyEnds`, built
+from `JourneyEnd.stopId`) and a starred place at the same stop still share one stop key and open
+all of the stop's poles. So a refresh that splits an area never makes a pick or avoid made from
+phase 2 on ambiguous; only one saved before it can be (*A TfL stop area's id resolves too*).
 
 ## The model
 
@@ -327,16 +339,17 @@ Three levels, in TfL's own terms where TfL has them.
   - the DLR (`940GZZDL…`);
   - tram (`940GZZCR…`);
   - cable car (`940GZZAL…`: Greenwich Peninsula and Royal Docks);
-  - the Underground: every other `940G…`, which is `940GZZLU…` and the Northern line extension's
-    Battersea Power Station and Nine Elms, filed under their own prefixes;
+  - the Underground (`940GZZLU…`, plus the Northern line extension's Battersea Power Station
+    `940GZZBPSUST` and Nine Elms `940GZZNEUGST`);
   - pier (`930G…`).
 
-  The builder checks each record's family against the modes TfL lists for it and refuses to write
-  on a mismatch, so a new prefix TfL brings in is classified by hand before it ships rather than
-  falling into the wrong family. Only station records are checked: the `HUB…`
-  rows `build_station_index.py` writes into the same `stations` array (96 today, each an
-  interchange's name and modes, often from several families) are interchange metadata, the hub
-  level's TfL id, never a station. The builder skips them and the model reads them as hubs.
+  `build_station_index.py` checks each `station_index.json` record's family against the modes TfL
+  lists for it and refuses to write on an unrecognized prefix or a mode mismatch, so a new prefix
+  TfL brings in is classified by hand before it ships rather than falling into the wrong family.
+  Only station records are checked: the `HUB…` rows `build_station_index.py` writes into the same
+  `stations` array (96 today, each an interchange's name and modes, often from several families) are
+  interchange metadata, the hub level's TfL id, never a station. The builder skips them and the
+  model reads them as hubs.
 
   Pairs of mode lists would let a record listing two modes join two records that share none.
 
@@ -405,16 +418,23 @@ join. So junctions are built in two steps:
 **One grouping rule, for every grouping**. Poles into a stop, and stops into a
 junction in each of its two steps, are grouped the same way, so no member ever qualifies for two
 groups without a winner:
-- **The members.** Grouping poles into stops, a member is a whole TfL stop area, all its poles
-  together, when the area passes the stop test on its own: its poles share one name, compared as
-  the test compares names, and each lies within 250 m of every other. Otherwise its poles are
-  members one by one, as a pole TfL files in no area is. TfL's areas aren't clean enough to be
-  trusted whole (Codex on #890): today's bundle has 164 bus areas whose poles carry more than one
-  name, 133 of them still after case and punctuation are ignored, and 117 whose poles span more
-  than 250 m, one of them about 15 km. So an area is kept whole only where our own tests would
-  have put its poles together anyway, which keeps today's area-as-a-place for the rest, and two
-  areas of one name merge by one joining the other's group. Grouping stops into a junction, a
-  member is a stop. A member's names are all its poles' names.
+- **The members.** Grouping poles into stops runs over the bundle's bus poles (`type == "B"` in
+  `stops.tsv`; non-`B` rows are station records or parent areas whose `B` poles are already
+  present, so none is retyped to `B`). A pole's parent `cluster` (`stationNaptan`) is a TfL stop
+  area when it is not a station record (in `station_index.json` or an `M`, `R` or `F` row in
+  `stops.tsv` carrying a `station` column, not one of the 4 all-bus parent `M`, `R` and `F` rows;
+  18 station records in today's bundle, such as Liverpool Street, appear as the `cluster` of
+  forecourt bus poles because TfL also nests those poles under the station's tree; those poles are
+  individual members here, as a pole TfL files in no area is).
+  A member is a whole TfL stop area, all its poles together, when the area passes the stop test on
+  its own: its poles share one name, compared as the test compares names, and each lies within
+  250 m of every other. Otherwise its poles are members one by one, as a pole TfL files in no area
+  is. TfL's areas aren't clean enough to be trusted whole (Codex on #890): today's bundle has 164
+  bus areas whose poles carry more than one name, 133 of them still after case and punctuation are
+  ignored, and 117 whose poles span more than 250 m, one of them about 15 km. So an area is kept
+  whole only where our own tests would have put its poles together anyway, which keeps today's
+  area-as-a-place for the rest, and two areas of one name merge by one joining the other's group.
+  Grouping stops into a junction, a member is a stop. A member's names are all its poles' names.
 - Members are taken in order of their lowest-id pole.
 - A member qualifies for a group when any of its names passes that grouping's test (the same name
   for a stop; the junction tests above for a junction) and every one of its poles is within
@@ -422,7 +442,8 @@ groups without a winner:
   250 m apart, whichever member sorts first (Codex on #890: an anchor-only test let a middle
   member that sorted first join two outer ones 400 m apart; then a test between members'
   nearest poles let two clean areas of 240 m that meet end to end make one stop 480 m long). A
-  stop whose poles carry several names uses them all.
+  stop whose poles carry several names uses them all (tested directly on synthetic multi-name
+  `Stop` inputs, since stop grouping splits multi-name areas first).
 - It joins the nearest group it qualifies for, measured to the group's anchor, ties going to the
   group with the lower anchor id. With none in reach, it starts a group of its own.
 - A group's **anchor** is one pole: the lowest-id pole of its first member. It picks the nearest
@@ -447,8 +468,10 @@ by construction: two features can't group St Pancras's records differently.
 never into saved data:
 - a stand: its TfL id;
 - a station: its ICS code and mode family (`1001276:rail`), or with no ICS code its one record's id;
-- a stop: its TfL stop area where its poles are exactly one whole area, otherwise its anchor
-  pole's id (*One grouping rule*), so no two stops share an id when an area is split;
+- a stop: its TfL stop area where its poles are exactly one whole area (not a station record in
+  `station_index.json` or an `M`, `R` or `F` row in `stops.tsv` carrying a `station` column),
+  otherwise its anchor pole's id (*One grouping rule*), so no two stops share an id when an area is
+  split and no bus stop collides with a station record;
 - a hub: its TfL interchange id, otherwise its one station's id, or for a junction its anchor
   stop's id.
 
@@ -477,9 +500,10 @@ can move when TfL adds a lower id. So nothing is kept keyed by a model id alone:
   boarded and got off each way round, and its candidate cursor (*Deriving every line between two hubs*: a fallback, never the answer), is
   stored with the saved ride itself, beside its TfL ids, so it is keyed by no model id. It
   records the bundle's content revision it was last placed against. The
-  bundle's own versions (`station_index.json`'s, the `v1` in `stops.tsv`'s header) name its
-  format, not its content, so the weekly build writes a revision too: a hash over the lines and
-  membership columns, the same in both files. A refresh that changes it keeps the ride's lines,
+  bundle's own versions (`station_index.json`'s, the `v2` in `stops.tsv`'s header, bumped from `v1`
+  when the four membership columns are added) name its format, not its content, so the weekly build
+  writes a revision too: a hash over the lines and membership columns, the same in both files. A
+  refresh that changes it keeps the ride's lines,
   TfL's line ids, which mean the same whatever the grouping, as candidates and unchecked
   fallbacks until a route re-confirms them (Codex on #890: a change anywhere in the bundle used
   to drop every ride's fallback, so a refresh during a TfL outage lost lines the ride still
@@ -532,12 +556,15 @@ test, so it can say yes for two stations at once. In the bundle, 52 bus stops si
 stations in two hubs. A typical one is named for the station about 70 m away and stands about 125 m
 from another. The first rule that applies decides the owner:
 
-1. The interchange TfL files the stop under, if any, narrows the choice to that interchange's
-   stations, and rules 2 to 5 pick among them. Within an interchange, rule 4's reach
-   doesn't apply: the stop is the interchange's whichever station is nearest. So each of King's
-   Cross & St Pancras's bus stops belongs to one of its stations, never just to the interchange.
-2. The station whose ICS code the stop carries. TfL gives some poles named for a station that
-   station's own code. Where several stations share the code, the nearest.
+1. The interchange TfL files the stop under, if any (including the interchange of any station
+   record in `cluster`), narrows the choice to that interchange's stations, and rules 2 to 5 pick
+   among them. Within an interchange, rule 4's reach doesn't apply: the stop is the interchange's
+   whichever station is nearest. So each of King's Cross & St Pancras's bus stops belongs to one of
+   its stations, never just to the interchange.
+2. The station whose record the stop is filed under (`cluster` is one of the station's records), or
+   if none, the station whose ICS code the stop carries. TfL nests forecourt bus poles directly
+   under a station record and gives some poles named for a station that station's own code. Where
+   several stations qualify, the nearest.
 3. The station it's named for, within 250 m, on **either side** of a "/" (maintainer, 2026-10-16).
    "Hill Station / High Road" and "Vale Road / Hill Station" both count. Today's rule reads only the
    part before the slash, so it misses a stop named cross street first, which TfL gives its own ICS
@@ -548,8 +575,10 @@ from another. The first rule that applies decides the owner:
 
 **A stop reads all of its poles**. Its poles can come from several stop areas and
 disagree on interchange, ICS code or name. Each rule then reads every pole, blanks ignored:
-- rule 1 narrows to the stations of every interchange any pole is filed under;
-- rule 2 takes every station whose code any pole carries;
+- rule 1 narrows to the stations of every interchange any pole is filed under (including the
+  interchange of any station record in `cluster`);
+- rule 2 takes every station whose record (`cluster`) any pole is filed under, or if none, whose
+  code any pole carries;
 - rule 3 takes every station any pole is named for.
 
 Within each, the nearest station wins and a tie goes to the lower id, as above. So a stop has one
@@ -574,8 +603,8 @@ and platforms as they do now. The model says what they belong to; it doesn't mer
 
 - A ride, or a trip picked to a hub (an interchange's search row, a hub's page), ends at any of its
   stations or bus stops.
-- A trip picked to a station (a station's own row or page) ends at any of that station's records
-  or the bus stops it owns, never at another station of its hub: King's Cross is not St Pancras.
+- A trip picked to a station (a station's own row or page) ends at any of that station's records or
+  the bus stops it owns, never at another station of its hub: King's Cross is not St Pancras.
 - One picked to a bus stop ends at its stop, and only its stop. Its namesakes within
   reach are already in it (*The model*), and one outside it is another stop, so a stop between two
   groups is never accepted by both.
@@ -593,7 +622,7 @@ and platforms as they do now. The model says what they belong to; it doesn't mer
 | A favorite ride: its ends, its card and its alerts | hub (maintainer, 2026-10-16) | every line between the two hubs, from the rider's nearest station first; a train reaching St Pancras counts for a ride to King's Cross & St Pancras |
 | Telling trip options and Direct rows apart | station at each end | routes that start and end at the same stations are one route |
 | Off-plan branch detection, passing a stop on the way | station | by membership, not by name with no interchange check |
-| Trip planner ends | the level picked: a hub's every station, or one station, each record of it, plus one bus stop it owns | one plan per record, as today (St Pancras's three); one bus stop as well, the first by id of those the picked station owns, or of the hub's own when a hub is picked, so a hub never gains bus targets; a hub with no station, a junction of bus stops, plans to the stop picked, or its first stop by id when picked as a whole; From and To on a station's page plan to that station, not its interchange |
+| Trip planner ends | the level picked: a hub's every station, or one station, each record of it, plus one bus stop it owns | one plan per record, as today (St Pancras's three); one bus stop as well, the first by id of those the picked station owns (preferring one filed under a record of the station in `cluster`), or of the hub's own when a hub is picked, so a hub never gains bus targets; a hub with no station, a junction of bus stops, plans to the stop picked, or its first stop by id when picked as a whole; From and To on a station's page plan to that station, not its interchange |
 | Direct section ends | the stops within the rider's walk of the place picked, as today (SPEC *Direct to a place*); membership only says which of them are one stop | none in reach: a stop in walking reach outside the hub still counts and a hub member out of reach doesn't. A station's records, and a bus stop's poles, are one off stop by membership rather than by name (`PlaceDirect.oneStation`, phase 2), and the place picked is the model's for its level (*Each level's place*): a hub at the middle of its stations' records, as an interchange is today, and a junction, which has none, at the middle of its stops' poles |
 | Adding a favorite ride (the same hub at both ends) | hub | two poles of one hub are refused |
 | Avoiding a stop | station (a bus stop: its stop) | every record of the station is avoided |
@@ -621,18 +650,39 @@ the batch").
   - each station's and stop's hub;
 
   and a content revision over the lines and membership columns (*Each level's id*).
+  `build_stops.py` takes `--stations` (`build/stations/station_index.json` in `station-index.yml`,
+  `"$INDEX"` in `station-index-refresh.yml`), writes the four columns on `B` rows in `stops.tsv`
+  and `icsCode`, `station` and the model's `hub` on the `M`, `R` and `F` rows in `stops.tsv` that
+  `station_index.json` omits and that are not all-bus stop-area parents of `B` poles (19 `910G…`
+  nested rail sub-station records, 26 `930G…` piers, and 3 `940GZZRL…` unsupported
+  miniature-railway rows, omitted from `station_index.json` because 47 carry no lines and `930GGVS`
+  lists only rail lines on a ferry record: `build_stops.py` classifies `910G…` as `rail` and
+  `930G…` as `pier` by prefix to group with `station_index.json`'s stations by `(icsCode, family)`
+  without running `build_station_index.py`'s `modes` check, excludes the 3 unsupported `940GZZRL…`
+  rows from `tube` grouping so each stays a single-record station of its own, refuses any other
+  unrecognized `M`, `R` or `F` prefix, leaves `stops.tsv`'s existing interchange column intact, and
+  leaves the 857 `M`, `R` and `F` rows already in `station_index.json` and the 4 all-bus parent
+  areas blank so none has two sources), stamps the shared content revision into both
+  `station_index.json` and `stops.tsv`, and bumps `stops.tsv`'s header from `v1` to `v2`
+  (`FORMAT_VERSION = 2` and `STOP_FIELDS = 16` in `build_stops.py` and `BundledStops`, with
+  `build_stops_test.py` and `BundledStopsTest` updated together).
 
-  The weekly refresh (`station-index-refresh.yml`, Sundays) already runs the builders.
+  The weekly refresh (`station-index-refresh.yml`, Sundays) and the PR builder check
+  (`station-index.yml`) pass `--stations` to `build_stops.py`.
   - The rules exist only in the Python builders, tested by `build_station_index_test.py` and
     `build_stops_test.py`. There is one copy, and the device never recomputes it.
   - The refresh's pull request lists every id whose station, stop, owning station or hub
-    changed, so a regrouping is reviewed before it ships. A hub change alone isn't enough (Codex
-    on #890): a pole moving between two stops of one hub, or a bus stop changing owner between
-    two stations of one interchange, changes matching, planning and closures without moving
-    either hub. The builders refuse to write, as they already do on short data,
-    when a membership column is missing or a stop or station comes out with no hub.
-  - The cost is four columns for about 22,200 bus poles and three fields for about 1,400 station
-    records, estimated from today's bundle:
+    changed (updating an already-open refresh PR's branch and body as well as creating one, and
+    capping the listed ids per category with total counts so the body stays within GitHub's
+    65,536-character limit), so a regrouping is reviewed before it ships. A hub change alone isn't
+    enough (Codex on #890): a pole moving between two stops of one hub, or a bus stop changing
+    owner between two stations of one interchange, changes matching, planning and closures without
+    moving either hub. The builders refuse to write, as they already do on short data,
+    when a membership column is missing or a bus stop or station comes out with no hub.
+  - The cost is four columns for about 21,300 bus poles (`B` rows; the 48 unmatched non-bus
+    `M`/`R`/`F` rows carry `icsCode`, `station` and `hub`, and the remaining 861 `M`/`R`/`F` rows
+    leave them blank) and three fields for about 1,400 station records, estimated from today's
+    bundle:
     - each pole's ICS code, about 180 KB;
     - each pole's stop, about 245 KB, or about 120 KB left blank on a stop's anchor pole;
     - each pole's owning station, about 60 KB, since only about 4,000 poles are within 200 m of a
@@ -650,25 +700,54 @@ the batch").
 - **A TfL stop area's id resolves too**. Saved rides, avoids, pending ends and
   dismissal keys can hold an area id (`490G…`, `037G…`) rather than a pole's, and a stop joined
   from several areas takes its anchor pole's id, not theirs. So `Hubs` also keys each area id
-  in the bundle's existing area column to the poles that carry it, and resolves it to their stop
-  and its hub. An area kept whole is in one stop (*One grouping rule*), so the lookup has one
-  answer. An area split into its poles has no single stop, and what its id then means depends
-  on what holds it:
+  in the bundle's existing area column (excluding ids that are station records in
+  `station_index.json` or one of the 48 non-bus `M`, `R` and `F` rows carrying a `station` column
+  in `stops.tsv`, which are stations for `stationOf`, `hubOf` and any id handed to the app, with
+  `TflJourneyPointDto.stopId` returning `individualStopId` when it is a bundled `B` pole or, when
+  `Unbundled` or `Unavailable`, a NaPTAN bus pole matching `^[0-8]\d{2}` with index 3 != `'G'`, so a
+  Planner bus point with a colliding station-record or `037G…` `naptanId` keeps its pole id across
+  both `490…` and regional `037…` prefixes while a bus point whose `individualStopId` is a non-pole
+  `9000…` code retains its pole `naptanId`;
+  the 4 all-bus parent `M`, `R` and `F` rows have blank `station` columns and stay in the area
+  lookup) to the bus poles that carry it, and resolves it to their stop and its
+  hub. An area kept whole is in one stop (*One grouping rule*), so the lookup has one answer. An
+  area split into its poles has no single stop, and what its id then means depends on what holds it:
   - **A pick resolves to one of its stops** (Codex on #890: a `Pick` needs one level and one
     place, and taking all the area's stops together would rebuild the grouping the split undid).
-    Only a pick saved before phase 2 can hold an area id, since every later one stores a pole
-    (*A stop is picked by a pole*). It keeps a name as well as an id (*Saved data*), so it
-    resolves to the stop whose poles carry that name, the name the rider saw when picking. Where
-    two stops carry it, as for an area split only by distance, it goes to the one holding the
+    Only a pick saved before phase 2 can hold an area id (or a station record id that `stopPlace`
+    took from a bus pole's `cluster`), since every later stop pick stores a pole
+    (*A stop is picked by a pole*). It keeps a name as well as an id (*Saved data*), and in
+    starred places (`PersistedStarredPlace.stopId`) and recents (`PersistedRecentStation.modes`)
+    the starred pole or bus mode too. For an id that is a station record also carried in `cluster`
+    by bus poles, `Hubs` keeps those bus poles for `Hubs.picked`, which resolves a pre-phase-2
+    pick from that entry's own saved fields alone: to the bus stop when the entry carries one of
+    those bus poles (`stopId`), a bus-only mode (`modes == ["bus"]`), or a cleaned saved name
+    (`cleanStopName`) that matches one of those bus poles' cleaned names (such as a cross-street
+    pole `"Hill/High Road"`) and not the station record's cleaned name (`"Hill"`), and to the
+    station when the entry kept only `id` and `name` (`PendingEnd`, `PersistedActiveTrip`) and the
+    cleaned names match, setting `Pick.extraStopId` to the lowest-id pole of that same-name
+    `cluster`-linked bus stop (persisted by the `Pick` codec when rewritten so a later bundle
+    refresh that changes the stop's owner or first owned bus target still keeps it, and included
+    and deduplicated by `PlanTargets` and `Hubs.idsOf(pick)` alongside the station's records and
+    owned bus target, while ordinary station picks have `extraStopId = null` and stay at one bus
+    target). Within
+    the bus poles, it resolves to the stop whose poles carry the saved name.
+    Where two stops carry it, as for an area split only by distance, it goes to the one holding the
     lowest-id pole that carries it; where none does, since TfL renamed it, to the stop of the
-    area's lowest-id pole. That tie-break is a guess, since nothing saved says which stop the
-    rider meant, but it is the same on every build, and a rider who meant the other picks it
-    once more, after which the pick stores a pole. It is a lookup over the bundled poles' names,
-    no grouping on the device, and that stop's level, place and hub are the pick's. This holds
-    for every holder of a pick, a pending end, a recent search, a starred place and the active
-    trip included, so a refresh that splits an area never leaves a pick without one stop.
+    area's lowest-id pole (or to the station when the id is a station record and the entry carries
+    neither a bus pole nor a bus-only mode). That tie-break is a guess, since nothing saved says
+    which stop the rider meant, but it is the same on every build, and a rider who meant the other
+    picks it once more, after which the pick stores a pole. It is a lookup over the bundled poles'
+    names, no grouping on the device, and that stop's level, place and hub are the pick's. This
+    holds for every holder of a pick, a pending end, a recent search, a starred place and the
+    active trip included, so a refresh that splits an area never leaves a pick without one stop.
   - **An id the app was handed names the area's poles**, exactly as TfL's id does today: an avoid
-    or a closure check acts on them; a trip leg named by it is placed at one of them (Codex on
+    or a closure check acts on them (from phase 2 on, `RouteDisruption.missed` keys a missed bus
+    stop's avoid by its pole `toId`, falling back to `toArea` only when `toId` is blank, and a
+    pre-phase-2 `stop:<id>=<name>` avoid whose `<id>` is a station record also carried in `cluster`
+    by bus poles resolves to those bus poles' stops when `<name>` matches one of their cleaned
+    names and not the station record's, and to both the station's records and those bus poles'
+    stops when the cleaned names match); a trip leg named by it is placed at one of them (Codex on
     #890: a leg ending at one child stop must not arrive at another), the pole the Planner names
     with it (`individualStopId`, which `TflJourneyPointDto.stopId` already prefers), else the
     area's pole nearest the leg's own point, which the Planner gives with each leg, else none,
@@ -1133,9 +1212,12 @@ PR (AGENTS.md *Project documentation*), so `SPEC.md` is never behind a merged ph
 #890).
 
 1. **Bundle the model, unused** (`internal:`). The builders bundle the ICS codes and work out each
-   record's station and each station's and stop's hub (*Where it's built*). Add `Hubs` to
-   `:domain`, reading those columns, with `stationOf`, `hubOf`, `sameStation`, `sameHub` and
-   `placeOf` (*Each level's place*).
+   record's station and each station's and stop's hub (*Where it's built*), and
+   `station-index.yml` and `station-index-refresh.yml` pass the stations file to
+   `build_stops.py`, the refresh workflow updating an already-open refresh pull request with a
+   capped diff body rather than exiting early. Add `Hubs` to `:domain`, reading those columns, with
+   `stationOf`, `stopOf`, `hubOf`, `sameStation`, `sameStop`, `sameHub` and `placeOf` (*Each
+   level's place*).
    Rename the code's existing `hubId` fields to say interchange, so a TfL interchange and a hub
    never share a name. Only the Kotlin name changes: a field written to or read from disk keeps
    its serialized key (`@SerialName("hubId")`), the persisted stores' (`PersistedNearbyStop`,
@@ -1166,11 +1248,19 @@ PR (AGENTS.md *Project documentation*), so `SPEC.md` is never behind a merged ph
      the stop that carries its saved name, else the stop of the area's lowest-id pole; a stop
      picked from phase 2 on stored by a pole of it, never its area, and a ride end's match built
      from its pole, so a later split leaves both resolving to the stop picked;
+   - a bus pole whose `cluster` is a station record's id, grouped as an individual pole into a
+     stop named by its anchor pole rather than the station record's id and owned by that station;
+     `M`, `R` and `F` rows in `stops.tsv`, all-bus stop areas mis-typed as `M`, `R` or `F`
+     included, left out of pole grouping, with `icsCode`, `station` and `hub` written on the
+     non-bus `M`, `R` and `F` rows omitted from `station_index.json` (`940GZZRL…` kept as
+     single-record stations of their own rather than grouped as `tube`) and blank on the rows
+     already in `station_index.json` or acting as all-bus parent areas;
    - a bus stop filed under an interchange, owned by one of its stations;
    - records of one ICS code in two mode families, which stay two stations;
    - a record of each family, the cable car and the Underground's own prefixes at Battersea
-     Power Station and Nine Elms included, and a builder that refuses a record whose prefix's
-     family none of its TfL modes match;
+     Power Station and Nine Elms included, and a builder that refuses a `station_index.json` record
+     whose prefix is unrecognized or whose prefix's family none of its TfL modes match, or an
+     omitted `stops.tsv` station row with an unrecognized prefix;
    - an interchange row whose modes span two families, which builds, and is read as a hub and
      never as a station;
    - two records of one family with no ICS code, which stay two stations;
@@ -1193,7 +1283,9 @@ PR (AGENTS.md *Project documentation*), so `SPEC.md` is never behind a merged ph
      by that station and in its one hub;
    - each level's id, the same whatever order the bundle lists its members in;
    - a refresh that moves a pole between two stops of one hub, a bus stop between two owning
-     stations of one interchange, and a stop to another hub, each listed in its pull request;
+     stations of one interchange, and a stop to another hub, each listed in its pull request, and
+     a refresh with more changes than the pull request body cap listing the first ids in each
+     category with the total count;
    - a builder that refuses to write when a membership column is missing;
    - the content revision, the same in both files, changed by a change to lines or membership
      and by nothing else.
@@ -1201,6 +1293,24 @@ PR (AGENTS.md *Project documentation*), so `SPEC.md` is never behind a merged ph
    And on the device, in Kotlin:
    - a bus stop's owning station read from its column, so a station picked on its own plans to
      its own bus stop, not another station's in the same hub;
+   - a pre-phase-2 pick whose id is a station record also carried in `cluster` by bus poles (in a
+     synthetic fixture), resolved by `Hubs.picked` from that entry's own saved fields alone: to the
+     bus stop when the entry carries one of those poles (`stopId`), a bus-only mode
+     (`modes == ["bus"]`), or a cleaned bus-pole name (`"Hill/High Road"`) that differs from the
+     station record's cleaned name (`"Hill"`), to the station with `Pick.extraStopId` set to that
+     same-name `cluster`-linked bus stop's lowest-id pole (persisted across save and restore and
+     deduplicated by `PlanTargets` and `Hubs.idsOf(pick)` against the station's single owned bus
+     target so a later refresh that changes ownership still keeps that stop alongside the station)
+     when the entry kept only `id` and `name` with matching cleaned names (`"Hill"`), even if
+     another saved store holds the bus stop, and always resolved as the station record by
+     `stationOf`, `stopOf` and `hubOf` (with `TflJourneyPointDto.stopId` returning
+     `individualStopId` when it is a bundled `B` pole or, when `Unbundled` or `Unavailable`, a
+     NaPTAN bus pole matching `^[0-8]\d{2}` with index 3 != `'G'`, across both `490…` and regional
+     `037…` poles, over a colliding station-record or `037G…` parent `naptanId`, while retaining a
+     valid pole `naptanId` when `individualStopId` is a non-pole `9000…` code as in
+     `journey_results_euston_to_st_pauls_via.json`); and a
+     non-bus `M`, `R` or `F` row in `stops.tsv` omitted from `station_index.json` resolved to its
+     station and hub from `stops.tsv`;
    - a stop the bundle doesn't hold, `Unbundled`, matched by its exact id and never grouped;
    - a saved area id absorbed into a stop joined from several areas, restored to that stop and
      its hub rather than `Unbundled`;
@@ -1218,18 +1328,26 @@ PR (AGENTS.md *Project documentation*), so `SPEC.md` is never behind a merged ph
 2. **Station identity** (`refactor:` where behavior holds). Point these at `Hubs.sameStation`,
    keeping the named-record-first order:
    - stop details' `ownIds`, `linesById` and From and To (`openId`), which resolve to the station
-     picked. The planner then plans to that station's records plus one of the bus stops it owns,
-     so narrowing From and To from the interchange to the station keeps their bus journeys (Codex
-     on #890). The trip's arrival map moves with it, in the same phase (Codex on #890: a bus
-     target added in phase 2 with the map left for phase 3 would be a route the trip couldn't
-     arrive by): `Hubs.idsOf` at the station level, its records and platforms and the bus stops
-     it owns with their poles' stop areas, each to its station or stop, so a route ending at the
-     new bus target arrives, replans and compares there. Phase 3 adds the hub and stop levels;
+     or stop picked. The planner then plans to that station's records plus one of the bus stops it
+     owns, or to a picked stop, so narrowing From and To from the interchange to the station keeps
+     their bus journeys (Codex on #890). The trip's arrival map moves with it, in the same phase
+     (Codex on #890: a bus target added in phase 2 with the map left for phase 3 would be a route
+     the trip couldn't arrive by): `Hubs.idsOf` at the station and stop levels, a station's records
+     and platforms and the bus stops it owns with their poles' stop areas, or a stop's poles and
+     whole stop areas, each to its station or stop, so a route ending at the new bus target or at
+     any pole of a picked stop arrives, replans and compares there. Phase 3 adds the hub level;
    - getting off, far ends and Direct;
    - off-plan detection and passing a stop;
    - the board's ids and search's twin fold;
    - search's member rows, which carry their station's lead record instead of the interchange id,
      except a row folded from two stations' names, which keeps the interchange;
+   - search's bus-stop rows (`BusStopIndex`, `YourStops.stopPlace` and `YourStops.journeyEnds`,
+     pointed at `Hubs.stopOf` so every bus-stop row is a model stop and picks by a pole in phase
+     2), with `StationStopsViewModel`, `addFavoriteJourneyPair` and `FavoritePlacesViewModel.onPick`
+     expanding a picked stop through `Hubs.sameStop` (`Hubs.stopOf`) and a picked station through
+     `Hubs.sameStation` before calling `StationFinder.stationStops` so opening a stop, adding a
+     favorite ride or resolving a positionless pick queries every pole of the model stop or every
+     record of the station before phase 3 moves favorite rides to hubs;
    - every store that saved a member row's pick before this phase (pending ends, the From, To and
      Via recents), which reads it through `Hubs.picked` and from now on holds a `Pick`, as every
      other holder of a picked place does: an open trip's To, Via and changed From, and the open
@@ -1239,14 +1357,24 @@ PR (AGENTS.md *Project documentation*), so `SPEC.md` is never behind a merged ph
 
    An id outside the bundle is `Unbundled` (*Where it's built*). Each behavior change
    gets a regression test:
-   - avoiding takes in every record;
+   - avoiding takes in every record of a station, keys a missed bus stop's avoid by its pole
+     (`toId`), and resolves a pre-phase-2 `stop:<id>=<name>` avoid whose `<id>` is a station record
+     also carried in `cluster` by bus poles to those bus poles' stops when `<name>` matches one of
+     their cleaned names and not the station record's, and to both the station's records and those
+     bus poles' stops when the cleaned names match;
    - St Pancras's low level joins its board and search row;
+   - a favorite ride's end and a starred place at the same bus stop collapse into one search row
+     and open every pole of the stop, and `addFavoriteJourneyPair` on a bus stop row (including one
+     joined from two stop areas) queries every pole of the model stop via `Hubs.sameStop` so a
+     direct line served only from a sibling pole is found rather than saved grayed as unsupported;
    - From and To on St Pancras's page plan to St Pancras and one of its own bus stops, not its
      interchange;
-   - a trip's destination ids (`destinationIds`) at the station level: a trip to St Pancras
-     counts as arrived only at St Pancras's records or the bus stops it owns, and replans to them,
-     never to King's Cross or its Underground; a route ending at the bus target this phase adds
-     arrives; a planned leg ending at a platform id alone arrives at the station picked,
+   - a trip's destination ids (`destinationIds`) at the station and stop levels: a trip to St
+     Pancras counts as arrived only at St Pancras's records or the bus stops it owns, and replans
+     to them, never to King's Cross or its Underground; a route ending at the bus target this phase
+     adds arrives; a trip to a bus stop joined from two areas arrives and replans at either pole or
+     whole stop area, and drops a route riding on past one pole for one ending at its sibling pole
+     no later; a planned leg ending at a platform id alone arrives at the station picked,
      replanning there and counting for detours, a platform the bundle doesn't hold included,
      through the prefix step; and a route riding on past one of a station's records is dropped
      for one ending at another no later;
@@ -1423,8 +1551,8 @@ PR (AGENTS.md *Project documentation*), so `SPEC.md` is never behind a merged ph
      picked hub's or station's place, for a fixture hub whose first target sits apart from it,
      and at the middle of a fixture junction's stops' poles when the junction is picked whole as
      To;
-   - a trip's destination ids (`destinationIds`) at the hub and stop levels, phase 2 having
-     built the station's: one to the hub arrives at any of its members, and a planned bus call
+   - a trip's destination ids (`destinationIds`) at the hub level, phase 2 having built the
+     station's and stop's: one to the hub arrives at any of its members, and a planned bus call
      named by its stop area rather than its pole counts as reaching that stop, with a regression
      test for each, a trip to a fixture stop area the bundle doesn't hold arriving at a leg that
      ends at one of its looked-up poles, and a detour test: a route riding on past one pole of the
