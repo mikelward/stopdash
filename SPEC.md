@@ -3393,7 +3393,8 @@ does say is the alert's kind, and only one TfL files as **planned work** is read
 real-time or information alert is happening now whatever dates its text mentions ("suspended until
 further notice; replacement buses from 13 October"), and one with no kind counts the same. For
 planned work the start is read from the alert's own text — its **first** date, and only when the text affirmatively
-makes it a start: a start word before it ("from 13 Oct", "on 10 October") or the first of a range
+makes it a start: a start word before it ("from 13 Oct", "on 10 October", "From 2000 Sunday 25
+October", or in figures "From 25/10 20:00"; maintainer, 2026-10-17) or the first of a range
 ("12-17 October"). Any other first date — "until 23 November", "expected to finish by 13 October",
 wording not foreseen — is work already under way. A year TfL leaves out is the one nearest the day it posted the alert — work is
 announced around when it starts, often just after it has. When the start is a later day, the row carries a muted calendar icon instead of the ⚠ (a date to come; the circled "i" it replaced read as a clock, maintainer 2026-09-30) and keeps its

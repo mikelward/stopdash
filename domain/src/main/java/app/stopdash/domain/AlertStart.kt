@@ -33,7 +33,18 @@ object AlertStart {
      */
     fun startDate(text: String?, now: Instant, postedAt: Instant? = null): LocalDate? {
         if (text.isNullOrBlank()) return null
-        val match = DATE.find(text) ?: return null
+        val worded = DATE.find(text)
+        // A first date in figures, day then month ("From 25/10 20:00 until 26/10 05:00"; maintainer,
+        // 2026-10-17), read as a worded one is: only as a start, else under way.
+        val figures = FIGURES.find(text)
+        if (figures != null && (worded == null || figures.range.first < worded.range.first)) {
+            val before = text.substring(0, figures.range.first)
+            if (NUMERIC_DATE.containsMatchIn(before) || !startsHere(before, isRange = false)) return null
+            val month = figures.groupValues[2].toInt().takeIf { it in 1..12 }?.let(Month::of) ?: return null
+            val year = figures.groupValues[3].toIntOrNull()?.let { if (it < 100) 2000 + it else it }
+            return dated(figures.groupValues[1].toInt(), month, year, now, postedAt)
+        }
+        val match = worded ?: return null
         // A numeric date before it ("until 12/10/2026") is a first date this can't read: its role is
         // unknown, so the alert stays under way rather than trusting a later one (Codex, PR #337).
         if (NUMERIC_DATE.containsMatchIn(text.substring(0, match.range.first))) return null
@@ -42,9 +53,12 @@ object AlertStart {
         // "until", "expected to finish by", wording not foreseen here — is left as under way
         // (Codex, PR #337): a missed start keeps the ⚠, a misread end would hide it.
         if (!startsHere(text.substring(0, match.range.first), isRange = match.groupValues[2].isNotBlank())) return null
-        val day = match.groupValues[1].toInt()
         val month = monthOf(match.groupValues[3]) ?: return null
-        val year = match.groupValues[4].toIntOrNull()
+        return dated(match.groupValues[1].toInt(), month, match.groupValues[4].toIntOrNull(), now, postedAt)
+    }
+
+    // [day] of [month] in [year], or where none is written, the year [startDate] says.
+    private fun dated(day: Int, month: Month, year: Int?, now: Instant, postedAt: Instant?): LocalDate? {
         val today = now.atZone(ZONE).toLocalDate()
         if (year != null) return dateOrNull(year, month, day)
         val candidates = listOf(today.year - 1, today.year, today.year + 1).mapNotNull { dateOrNull(it, month, day) }
@@ -94,7 +108,8 @@ object AlertStart {
         "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may(?=\\s*(?:$|[.,;:)!?]|-|–|\\d|(?:and|until|till|to|from|at|between|for|onwards|inclusive)\\b))|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?"
     // Not the minutes of a time ("08:00, Monday 20 July" starts on the 20th, not the "00").
     private const val DAY = "(?<![:.\\d])(\\d{1,2})(?:st|nd|rd|th)?"
-    private const val TIME = "\\d{1,2}[:.]\\d{2}"
+    // "20:00", "20.00", or a 24-hour time without its colon ("From 2000 Sunday 25 October").
+    private const val TIME = "(?:\\d{1,2}[:.]\\d{2}|\\b(?:[01]\\d|2[0-3])[0-5]\\d\\b)"
 
     // A day, or the first of a list or range of days ("12-17", "12 to 17", "28, 29 and 30", "3 and Sunday 4"),
     // then its month and an optional year: groups day, the rest of the list or range, month, year.
@@ -110,6 +125,10 @@ object AlertStart {
         "(?:\\s|,|\\bat\\b|\\bthe\\b|\\b$WEEKDAY\\b|$TIME(?:\\s*(?:-|–|to)\\s*$TIME)?)*$",
         RegexOption.IGNORE_CASE,
     )
+
+    // A day and month in figures with a slash, its year optional ("25/10", "25/10/2026"): groups day,
+    // month, year. Not with a dot, which a time can be ("08.30").
+    private val FIGURES = Regex("(?<![\\d:/])(\\d{1,2})/(\\d{1,2})(?:/(\\d{4}|\\d{2}))?(?![\\d:/])")
 
     // "12/10", "12/10/2026", "12.10.26": a day and month in figures.
     private val NUMERIC_DATE = Regex("(?<![\\d:])\\d{1,2}[/.]\\d{1,2}(?:[/.]\\d{2,4})?(?![\\d:])")
