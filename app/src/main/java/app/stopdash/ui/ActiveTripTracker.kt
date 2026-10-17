@@ -507,6 +507,12 @@ class ActiveTripTracker(
         }
     }
     private var restored = false
+
+    /** How far the kept trip has been read ([restore]), for a screen that must not take "not read yet" for no trip. */
+    enum class KeptTrip { UNREAD, UNREADABLE, READ }
+
+    private val _keptRead = MutableStateFlow(KeptTrip.UNREAD)
+    val keptRead: StateFlow<KeptTrip> = _keptRead.asStateFlow()
     // Whether the trip shown isn't yet known to be on the device ([keep]).
     private var unsaved = false
 
@@ -538,6 +544,7 @@ class ActiveTripTracker(
         } catch (e: IOException) {
             warn("on the way: kept trip unreadable: ${e::class.simpleName}")
             _failed.value = true
+            _keptRead.value = KeptTrip.UNREADABLE
             return false
         }
         restored = true
@@ -547,6 +554,7 @@ class ActiveTripTracker(
             onGetOffSoonDone()
             onBoardSoonDone()
             onDisruptionDone()
+            _keptRead.value = KeptTrip.READ
             return true
         }
         if (_trip.value == null) {
@@ -579,6 +587,8 @@ class ActiveTripTracker(
             _progress.value = withAhead(trip, standing(trip, clock()))
             settleBoard()
         }
+        // Read once the trip is in place, so nothing reads the kept trip as none in between.
+        _keptRead.value = KeptTrip.READ
         return true
     }
 

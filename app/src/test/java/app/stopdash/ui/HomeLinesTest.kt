@@ -417,6 +417,82 @@ class HomeLinesTest {
     }
 
     @Test
+    fun `the trip on the way's lines are covered wherever it runs, checking until asked, then the rider's own`() {
+        // The rider at a bus stop, on the way by two lines no stop near them serves (maintainer, 2026-10-17).
+        val loaded = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus")), now, lineStatuses = mapOf("73" to severe), determinedLineIds = setOf("73"))
+        val near = mapOf("near" to 50.0)
+        val trip = listOf(LineRef("victoria", "Victoria", "tube"), LineRef("elizabeth", "Elizabeth line", "elizabeth-line"))
+        val place = listOf(LineRef("northern", "Northern", "tube"))
+        val waiting = HomeLines.row(loaded, near, null, emptySet(), now, placeLines = place, tripLines = trip)
+        assertEquals(setOf("73", "victoria", "elizabeth", "northern"), waiting.every.mapTo(HashSet()) { it.leg.lineId })
+        assertTrue(row(waiting, "victoria").checking)
+        assertFalse(waiting.unknown)
+        // Once asked: as bad as the near bus, the trip's lines rank with it as the rider's own, ahead of a
+        // favorite place's line just as bad.
+        val statuses = listOf("victoria", "elizabeth", "northern").associateWith { LineStatus(it, 6, "Severe Delays") }
+        val judged = HomeLines.row(loaded, near, HomeLines.Always(statuses, now), emptySet(), now, placeLines = place, tripLines = trip)
+        assertEquals(listOf("73", "elizabeth", "victoria", "northern"), judged.lines.map { it.lineId })
+        assertEquals("Elizabeth line", row(judged, "elizabeth").leg.lineName)
+        assertFalse(judged.checking)
+        // With no trip on the way they're not covered at all.
+        val none = HomeLines.row(loaded, near, HomeLines.Always(statuses, now), emptySet(), now, placeLines = place)
+        assertEquals(listOf("73", "northern"), none.lines.map { it.lineId })
+    }
+
+    @Test
+    fun `the trip on the way's lines are walked on the worker, and no trip covers none`() {
+        // The screen collects this; the walk over the trip's legs runs on the worker (AGENTS.md *Main thread*).
+        val readOn = ThreadRecorder()
+        val leg = app.stopdash.domain.TripLeg("tube", "victoria", "Victoria", "a", "A", "b", "B", now, now.plusSeconds(600))
+        val legs = object : AbstractList<app.stopdash.domain.TripLeg>() {
+            override val size get() = 1
+            override fun get(index: Int) = leg.also { readOn.note() }
+        }
+        val trip = app.stopdash.domain.ActiveTrip(app.stopdash.domain.TripRoute(legs), "B", startedAt = now)
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }
+        try {
+            val lines = kotlinx.coroutines.runBlocking {
+                val read = flowOf(ActiveTripTracker.KeptTrip.READ)
+                HomeLines.tripLines(flowOf(trip), flowOf(null), read, executor.asCoroutineDispatcher()).toList() +
+                    HomeLines.tripLines(flowOf(null), flowOf(null), read, executor.asCoroutineDispatcher()).toList()
+            }
+            assertEquals(listOf(HomeLines.TripLines(listOf(LineRef("victoria", "Victoria", "tube"))), HomeLines.TripLines.NONE), lines)
+            assertTrue(readOn.threads().isNotEmpty())
+            assertTrue(readOn.threads().all { it.startsWith("worker") })
+        } finally {
+            executor.shutdown()
+        }
+    }
+
+    @Test
+    fun `a trip that has arrived covers no line, though it's kept until it can be forgotten`() {
+        // Arrived, the tracker keeps the trip while forgetting it on the device fails, to try again (Codex, #920).
+        val leg = app.stopdash.domain.TripLeg("tube", "victoria", "Victoria", "a", "A", "b", "B", now, now.plusSeconds(600))
+        val trip = app.stopdash.domain.ActiveTrip(app.stopdash.domain.TripRoute(listOf(leg)), "B", startedAt = now)
+        fun linesWhen(progress: app.stopdash.domain.TripProgress?) = kotlinx.coroutines.runBlocking {
+            HomeLines.tripLines(flowOf(trip), flowOf(progress), flowOf(ActiveTripTracker.KeptTrip.READ), kotlinx.coroutines.Dispatchers.Unconfined)
+                .toList().single()
+        }
+        assertEquals(listOf("victoria"), linesWhen(null)?.lines?.map { it.id })
+        assertEquals(HomeLines.TripLines.NONE, linesWhen(app.stopdash.domain.TripProgress.Arrived))
+    }
+
+    @Test
+    fun `the trip on the way isn't taken for none before it's read, and a trip that can't be read is unknown`() {
+        // On a restart the tracker's trip reads null until the kept trip is read (Codex, #920).
+        fun linesWhen(kept: ActiveTripTracker.KeptTrip) = kotlinx.coroutines.runBlocking {
+            HomeLines.tripLines(flowOf(null), flowOf(null), flowOf(kept), kotlinx.coroutines.Dispatchers.Unconfined).toList().single()
+        }
+        assertNull(linesWhen(ActiveTripTracker.KeptTrip.UNREAD))
+        assertEquals(HomeLines.TripLines(emptyList(), unread = true), linesWhen(ActiveTripTracker.KeptTrip.UNREADABLE))
+        assertEquals(HomeLines.TripLines.NONE, linesWhen(ActiveTripTracker.KeptTrip.READ))
+        // The row says it couldn't check, never a clean none, while the trip can't be read.
+        val loaded = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus")), now, lineStatuses = mapOf("73" to LineStatus("73", LineStatus.GOOD_SERVICE, "Good Service")), determinedLineIds = setOf("73"))
+        assertFalse(HomeLines.row(loaded, mapOf("near" to 50.0), null, emptySet(), now).unknown)
+        assertTrue(HomeLines.row(loaded, mapOf("near" to 50.0), null, emptySet(), now, tripUnread = true).unknown)
+    }
+
+    @Test
     fun `a favorite journey's line, nearest first, leads a favorite place's lines as bad`() {
         // A favorite place by King's Cross covers its every line; all closed overnight. The rider's favorite
         // journey rides the Northern from a listed station 1 km off: it leads, not Circle by name (maintainer,

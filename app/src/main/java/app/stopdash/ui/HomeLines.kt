@@ -1,6 +1,7 @@
 package app.stopdash.ui
 
 import androidx.annotation.WorkerThread
+import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.LineMap
@@ -9,11 +10,13 @@ import app.stopdash.domain.LineStatus
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.NearbySelection
 import app.stopdash.domain.NearestByLine
+import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StarredRowSet
 import app.stopdash.domain.StationIndex
 import app.stopdash.domain.TripLeg
+import app.stopdash.domain.TripProgress
 import app.stopdash.domain.UsageEvent
 import app.stopdash.domain.riderStopIds
 import java.time.Instant
@@ -155,6 +158,42 @@ object HomeLines {
      */
     fun journeyLineIds(journeys: Flow<List<FavoriteJourney>?>, compute: CoroutineDispatcher): Flow<Set<String>> =
         journeys.map { list -> list.orEmpty().mapNotNullTo(HashSet()) { it.lineId.takeIf(String::isNotBlank) } }.flowOn(compute)
+
+    /**
+     * The lines the trip on the way still rides ([RouteDisruption.comingLineRefs]), for the row to cover as the
+     * rider's own: [unread] while the kept trip can't be read, so the row says it couldn't check rather than
+     * leaving them unsaid.
+     */
+    data class TripLines(val lines: List<LineRef>, val unread: Boolean = false) {
+        companion object {
+            /** No trip on the way. */
+            val NONE = TripLines(emptyList())
+        }
+    }
+
+    /**
+     * The [trip] on the way's lines as it goes (maintainer, 2026-10-17), by how far the kept trip has been
+     * [read]: null until it has, so "not read yet" is never taken for no trip (Codex, #920); [TripLines.unread]
+     * while it can't be; then the trip's, none with no trip, or once it has arrived ([progress]): one kept only
+     * because it couldn't be forgotten yet has no line left to ride (Codex, #920). Walked on [compute], never
+     * the collector's thread.
+     */
+    fun tripLines(
+        trip: Flow<ActiveTrip?>,
+        progress: Flow<TripProgress?>,
+        read: Flow<ActiveTripTracker.KeptTrip>,
+        compute: CoroutineDispatcher,
+    ): Flow<TripLines?> =
+        combine(trip, progress, read) { now, step, kept ->
+            when (kept) {
+                ActiveTripTracker.KeptTrip.UNREAD -> null
+                ActiveTripTracker.KeptTrip.UNREADABLE -> TripLines(emptyList(), unread = true)
+                ActiveTripTracker.KeptTrip.READ ->
+                    now?.takeIf { step != TripProgress.Arrived }?.let { TripLines(RouteDisruption.comingLineRefs(it)) } ?: TripLines.NONE
+            }
+        }
+            .distinctUntilChanged()
+            .flowOn(compute)
 
     /**
      * The rider's own stops ([riderStopIds]) as the [starred] rows and favorite [journeys] change, for a lines
@@ -321,6 +360,11 @@ object HomeLines {
         // How far each line's nearest stop is, both tiers of the near-me lookup however far, a stop whose
         // times aren't fetched included ([NearbyStopsViewModel.State.Ready.nearestMetersByLine]).
         lineMeters: Map<String, Double> = emptyMap(),
+        // The lines the trip on the way still rides ([RouteDisruption.comingLineRefs]), wherever they run:
+        // asked about with the always-covered lines and ranked as the rider's own (maintainer, 2026-10-17).
+        tripLines: List<LineRef> = emptyList(),
+        // The kept trip can't be read ([TripLines.unread]): its lines can't be named, so the row says "Unknown".
+        tripUnread: Boolean = false,
     ): TripRow {
         val alwaysLines = linesOf(networks)
         val refs = LinkedHashMap<String, LineRef>()
@@ -369,9 +413,11 @@ object HomeLines {
         }
         journeys.forEach { if (it.lineId.isNotBlank()) refs.putIfAbsent(it.lineId, it.line) }
         placeLines.forEach { refs.putIfAbsent(it.id, it) }
+        tripLines.forEach { refs.putIfAbsent(it.id, it) }
         val alwaysIds = alwaysLines.mapTo(HashSet()) { it.id }.apply {
             journeys.forEach { if (it.lineId.isNotBlank()) add(it.lineId) }
             placeLines.forEach { add(it.id) }
+            tripLines.forEach { add(it.id) }
         }
         // Each line's stop nearest the rider within reach, which its map keeps on the page.
         val nearest = NearestByLine.merged(loaded?.stops.orEmpty(), nearestStops, distances)
@@ -423,12 +469,13 @@ object HomeLines {
         // 2026-10-05: what's dismissed stays off it).
         fun everyWayDismissed(status: LineStatus) = status.byDirection.values.filter { it.disrupted }
             .let { ways -> ways.isNotEmpty() && ways.all { DismissedAlert.ofLineStatus(it) in dismissed } }
-        // The lines that matter most to the rider, in two tiers (maintainer, 2026-10-09): near them or a
-        // favorite's (a starred row's, a journey's) first, then a favorite place's, so a busy interchange by
-        // a place doesn't bury the rider's own line under its others by name.
+        // The lines that matter most to the rider, in two tiers (maintainer, 2026-10-09): near them, a
+        // favorite's (a starred row's, a journey's) or the trip's on the way first, then a favorite place's,
+        // so a busy interchange by a place doesn't bury the rider's own line under its others by name.
         val mine = HashSet<String>(nearby)
         mine += starredHere
         mine += journeyLines
+        tripLines.forEach { mine += it.id }
         val places = placeLines.mapTo(HashSet()) { it.id }
         fun tier(id: String) = when (id) {
             in mine -> 0
@@ -483,7 +530,7 @@ object HomeLines {
         return TripRow(
             checking = checking.isNotEmpty(),
             lines = disrupted,
-            unknown = unknown.isNotEmpty() || listUnknown || placesUnread,
+            unknown = unknown.isNotEmpty() || listUnknown || placesUnread || tripUnread,
             unknownLines = unknown,
             unknownStops = unknownStops,
             every = every,

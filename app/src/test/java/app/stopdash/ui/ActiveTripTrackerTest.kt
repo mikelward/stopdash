@@ -4529,7 +4529,10 @@ class ActiveTripTrackerTest {
             if (unreadable) throw java.io.IOException("storage busy")
             saved
         })
+        assertEquals(ActiveTripTracker.KeptTrip.UNREAD, tracker.keptRead.value)
         assertFalse(tracker.restore())
+        // Said as unreadable, so the home screen's row doesn't take it for no trip (Codex, #920).
+        assertEquals(ActiveTripTracker.KeptTrip.UNREADABLE, tracker.keptRead.value)
         // Start can't tell whether a trip is already on the way, so it doesn't replace one, and says so.
         tracker.start(route, "C", readyAt = now)
         assertNull(tracker.trip.value)
@@ -4537,6 +4540,16 @@ class ActiveTripTrackerTest {
         unreadable = false
         assertTrue(tracker.restore())
         assertEquals(saved, tracker.trip.value)
+        assertEquals(ActiveTripTracker.KeptTrip.READ, tracker.keptRead.value)
+    }
+
+    @Test
+    fun `with nothing kept, the kept trip reads as read and none is on the way`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        assertEquals(ActiveTripTracker.KeptTrip.UNREAD, tracker.keptRead.value)
+        assertTrue(tracker.restore())
+        assertEquals(ActiveTripTracker.KeptTrip.READ, tracker.keptRead.value)
+        assertNull(tracker.trip.value)
     }
 
     @Test

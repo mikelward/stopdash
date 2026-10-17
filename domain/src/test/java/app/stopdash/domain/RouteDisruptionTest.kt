@@ -168,6 +168,19 @@ class RouteDisruptionTest {
     }
 
     @Test
+    fun `the coming lines are named for the home screen's row`() {
+        // Each by its name and mode, a ride followed on another of its lines by that line (maintainer, 2026-10-17).
+        assertEquals(listOf(LineRef("red", "Red", "tube"), LineRef("blue", "Blue", "tube")), RouteDisruption.comingLineRefs(trip))
+        val green = Departure("green", "Green", "outbound", "C", null, at(5), "tube", vehicleId = "4")
+        val following = OnTheWay.follow(trip, green, ride.copy(lineId = "green", lineName = "Green"))
+        assertEquals(listOf("green" to "Green", "blue" to "Blue"), RouteDisruption.comingLineRefs(following).map { it.id to it.name })
+        // A ride done with is no longer one of them, and a line ridden twice is named once.
+        assertEquals(listOf("blue"), RouteDisruption.comingLineRefs(trip.copy(legIndex = 1)).map { it.id })
+        val twice = ActiveTrip(TripRoute(listOf(ride, walk, ride.copy(fromId = "D", toId = "E"))), "E", startedAt = t0)
+        assertEquals(listOf("red"), RouteDisruption.comingLineRefs(twice).map { it.id })
+    }
+
+    @Test
     fun `the line being ridden counts, a line already done with doesn't`() {
         val statuses = mapOf("red" to status("red", 6, "Severe Delays"), "blue" to good("blue"))
         assertEquals(listOf("red"), signals(progress = riding, statuses = statuses).map { (it as Signal.Line).lineId })

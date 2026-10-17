@@ -3268,14 +3268,14 @@ it is a plain card saying "No disruptions" beside a ✓, so all clear is said ra
 word; while it checks, "Checking for disruptions" beside a spinner, and a failed check is never shown as
 all clear. It is always one line high whatever it says, the tint and the mark changing and never its
 size, with the pills that don't fit counted as "+N", and a chevron, since a tap always opens its lines
-(maintainer, 2026-10-16). The pills go worst first, the rider's own lines ahead of the rest when as bad (those near them and those of their starred rows
-and journeys first, then those near their favorite places, so an interchange by a place never buries the rider's own line among its others;
+(maintainer, 2026-10-16). The pills go worst first, the rider's own lines ahead of the rest when as bad (those near them, those of their starred rows
+and journeys and those of the trip on the way first, then those near their favorite places, so an interchange by a place never buries the rider's own line among its others;
 maintainer, 2026-10-09), the line with the nearer stop first (any stop the list or the near-me lookup found, however far), then by name, a route by its number (the 43 before the 134),
 so "+N" takes the mildest first (maintainer, 2026-10-07:
 it put the rider's own first whatever their severity, a far suspension behind a near minor delay); a
 dismissed line is never a pill. Its page goes in the same order (maintainer, 2026-10-05). It covers the rider's own lines (maintainer, 2026-10-06: any other line only by choice) — each line of their favorite journeys wherever its stop, asked about in the list's same line-status request whatever the stops' departures did, so a far journey not yet fetched is judged too, and each starred row's line while its stop is in the list, since a star ranks only there (Codex, #640) — every line of each station within the walking reach of a favorite place, wherever the rider is (maintainer, 2026-10-07: the lines of
 home, work and the rest, so a disruption there shows before setting out; stations only, from the bundled station index, so it costs no
-request; bus routes there are a planned setting, off by default), every line the rider chose (below; none by default) and each line with a departure from a stop within the walking
+request; bus routes there are a planned setting, off by default), every line the trip on the way still rides, wherever it runs, so a disruption ahead shows on the home screen too (maintainer, 2026-10-17; the row waits for a kept trip to be read after a restart, and says "Unknown" while it can't be, never leaving the trip's lines unsaid), every line the rider chose (below; none by default) and each line with a departure from a stop within the walking
 reach (500 m, the near-me list's eager radius); on the watched list, which has no distances, every
 watched stop's lines. A line the list shows goes by the list's own check; the other chosen lines are
 asked in the list's same line-status request and share its reuse window, so the row costs no request
