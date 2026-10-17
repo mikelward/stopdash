@@ -1,6 +1,7 @@
 package app.stopdash.ui
 
 import androidx.annotation.WorkerThread
+import androidx.compose.ui.graphics.Color
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.FavoritePlacesSet
@@ -122,6 +123,16 @@ object HomeLines {
     @WorkerThread
     fun covered(chosen: Set<String>): List<List<Boolean>> = PICKER.map { (_, lines) ->
         lines.map { line -> line.id in chosen || NETWORK_KEYS[line.id] in chosen }
+    }
+
+    /**
+     * Each [PICKER] chip's colors on [surface], in its order, as its line's pill takes them ([pillColors]), for a
+     * chip turned on. Worked out with [covered], so the picker's first frame does none of the contrast work
+     * (Codex, #923). On a worker only.
+     */
+    @WorkerThread
+    fun pickerPills(surface: Color): List<List<PillColors>> = PICKER.map { (_, lines) ->
+        lines.map { line -> pillColors(line.name, line.id, line.mode, surface) }
     }
 
     /**

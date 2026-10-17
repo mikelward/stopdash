@@ -3447,6 +3447,11 @@ Builds on Phase 1's minimal line-status marking.
         any worker hop. Every screen that takes a collection does this, so it is an app-wide design
         question, not one picker's: wrap stored snapshots in identity holders at the source, or accept it
         for small settings sets. The picker's own holds and keys compare by identity.
+  - [ ] **Pill colors are worked out as each pill composes** (Codex, #923): `LinePill` calls `pillColors`
+        (APCA contrast, and a contrast search for an Overground line) on the main thread, on every list.
+        The Settings picker now works its chips' colors out on the worker with which chips are on. Whether
+        every pill should read precomputed colors (a table per line and surface) is an app-wide design
+        question for the maintainer.
   - [x] **Point to favorite places** on the picker (maintainer, 2026-10-07): its line reads "Favorite
         places and lines near you are always included", with a **Favorite places** button.
   - [x] **Cover the lines near favorite places** (maintainer, 2026-10-06): every line of each station

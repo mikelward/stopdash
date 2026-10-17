@@ -5,8 +5,10 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.rememberScrollState
@@ -23,7 +25,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.SelectableChipColors
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -44,9 +53,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -1157,6 +1170,46 @@ internal fun DisruptionsSummaryPage(
 }
 
 /**
+ * A line's "Also watch" chip when on (maintainer, 2026-10-17): colored as the line's pill is everywhere
+ * else ([LinePill], [pillColors]), so on reads at a glance and the line looks the same here as on the main
+ * screen. A tube line's fill, border and halo-lifted label; a named Overground line hollow, its border and
+ * label in the line's accent; a line with no color of its own the neutral pill's. Off, the plain outlined chip.
+ */
+private class LineChipStyle(val colors: SelectableChipColors, val border: BorderStroke, val halo: Shadow?)
+
+/** Which of the picker's chips are on ([HomeLines.covered]) and each one's colors ([HomeLines.pickerPills]). */
+private class PickerChips(val covered: List<List<Boolean>>, val pills: List<List<PillColors>>)
+
+@Composable
+private fun lineChipStyle(pill: PillColors?, on: Boolean, enabled: Boolean): LineChipStyle {
+    val scheme = MaterialTheme.colorScheme
+    // The pill's colors come from the worker ([HomeLines.pickerPills]); a chip is on only once they have.
+    val (fill, label, edge) = when (pill) {
+        is PillColors.Solid -> Triple(pill.fill, pill.label, pill.border)
+        is PillColors.Hollow -> Triple(Color.Transparent, pill.label, pill.border)
+        PillColors.Neutral, null -> Triple(scheme.surfaceVariant, scheme.onSurfaceVariant, scheme.outlineVariant)
+    }
+    // The pill's halo, lifting the label off a mid-tone fill; the hollow and neutral ones need none.
+    val haloBlur = with(LocalDensity.current) { 2.dp.toPx() }
+    val halo = if (on && pill is PillColors.Solid) Shadow(pill.halo, Offset.Zero, haloBlur) else null
+    return LineChipStyle(
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = fill,
+            selectedLabelColor = label,
+            selectedLeadingIconColor = label,
+        ),
+        border = FilterChipDefaults.filterChipBorder(
+            enabled = enabled,
+            selected = on,
+            selectedBorderColor = edge,
+            // The pill's own border width.
+            selectedBorderWidth = 1.5.dp,
+        ),
+        halo = halo,
+    )
+}
+
+/**
  * What the disruptions summary always covers: a chip per line, the Tube's and the Overground's each under
  * the network's name and the single-line networks' under "Other" (maintainer, 2026-10-06: lines picked
  * one by one, in groups; 2026-10-07: no chip for a whole network, the row leans on the rider's own). A chip shows
@@ -1170,10 +1223,15 @@ internal fun DisruptionsSummaryPage(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SummaryNetworksRow(selected: Set<String>, onToggle: (String) -> Unit, enabled: Boolean, onOpenFavoritePlaces: () -> Unit) {
-    val slot = remember { mutableStateOf<Worked<Inputs, List<List<Boolean>>>?>(null) }
+    val slot = remember { mutableStateOf<Worked<Inputs, PickerChips>?>(null) }
     // The last chips stand while a tap's are worked out, so nothing blinks out under the finger. Keyed by
-    // the choice's identity ([Inputs]), so nothing compares the set's contents on this thread (Codex, #642).
-    val covered = rememberWorked(slot, Inputs(selected), keep = { _, _ -> true }) { HomeLines.covered(selected) }
+    // the choice's identity ([Inputs]), so nothing compares the set's contents on this thread (Codex, #642),
+    // and by the surface, whose pill colors are worked out with it (Codex, #923).
+    val surface = MaterialTheme.colorScheme.surface
+    val chips = rememberWorked(slot, Inputs(selected, surface.value.toLong()), keep = { _, _ -> true }) {
+        PickerChips(HomeLines.covered(selected), HomeLines.pickerPills(surface))
+    }
+    val covered = chips?.covered
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).testTag("summaryNetworks")) {
         Text(stringResource(R.string.settings_summary_networks_title), style = MaterialTheme.typography.bodyLarge)
         Text(
@@ -1202,13 +1260,26 @@ private fun SummaryNetworksRow(selected: Set<String>, onToggle: (String) -> Unit
             )
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
                 lines.forEachIndexed { i, line ->
+                    val on = enabled && covered?.get(g)?.get(i) == true
+                    val tappable = enabled && covered != null
+                    val style = lineChipStyle(chips?.pills?.get(g)?.get(i), on, tappable)
                     FilterChip(
-                        selected = enabled && covered?.get(g)?.get(i) == true,
+                        selected = on,
                         onClick = { onToggle(line.id) },
-                        label = { Text(line.name, maxLines = 1) },
+                        // The chip's own label style, read inside the chip, with the halo added on a solid fill.
+                        label = { Text(line.name, maxLines = 1, style = LocalTextStyle.current.let { s -> style.halo?.let { s.copy(shadow = it) } ?: s }) },
+                        // On reads at a glance (maintainer, 2026-10-17): a tick, and the line's own color. Off, a +
+                        // in the tick's place, so a chip keeps its width and a tap never reflows the row (Codex, #923).
+                        leadingIcon = if (on) {
+                            { Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize).testTag("summaryLineOn-${line.id}")) }
+                        } else {
+                            { Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize).testTag("summaryLineOff-${line.id}")) }
+                        },
+                        colors = style.colors,
+                        border = style.border,
                         // Not before which are selected is in: a chip shown off that is on would turn off
                         // when tapped to turn it on (Codex, #642).
-                        enabled = enabled && covered != null,
+                        enabled = tappable,
                         modifier = Modifier.testTag("summaryLine-${line.id}"),
                     )
                 }
