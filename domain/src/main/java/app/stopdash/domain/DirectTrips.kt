@@ -87,7 +87,7 @@ object DirectTrips {
                 reaches(sequence, stop.stopId, destinationIds, byStation)
             }
             stop.copy(departures = departures, lines = lines)
-        }.filter { it.departures.isNotEmpty() || it.lines.isNotEmpty() || it.disruptions.isNotEmpty() }
+        }.filter { it.departures.isNotEmpty() || it.lines.isNotEmpty() || it.notices.isNotEmpty() }
         return Result(kept, pending, unresolved, misses)
     }
 

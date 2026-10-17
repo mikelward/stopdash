@@ -1283,6 +1283,20 @@ class DepartureRowsTest {
     }
 
     @Test
+    fun `a station's National Rail notices follow TfL's in its notice, one TfL already says left out`() {
+        val stop = StopArrivals(
+            "910GEXAMPLE", "Example", departures = emptyList(), fetchedAt = now,
+            disruptions = listOf(StopDisruption("Lift out of service")),
+            railNotices = listOf("Disruption between Here and There.", "Lift out of service"),
+        )
+        val rows = DepartureRows.across(listOf(stop), now)
+        assertEquals("Lift out of service\n\nDisruption between Here and There.", rows.single().stopDisruption)
+        // National Rail's alone make the notice too.
+        val alone = DepartureRows.across(listOf(stop.copy(disruptions = emptyList())), now)
+        assertEquals("Disruption between Here and There.\n\nLift out of service", alone.single().stopDisruption)
+    }
+
+    @Test
     fun `an undated or in-window stop disruption is shown`() {
         val stop = StopArrivals(
             "490000001A", "Example Road", departures = emptyList(), fetchedAt = now,

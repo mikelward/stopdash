@@ -4202,6 +4202,16 @@ surface.)
   key" and opens Settings at the key (*Departures*). Like D7, stopdash ships no key. TfL's `910G` ids end in the station's TIPLOC, and
   NaPTAN (DfT, Open Government Licence v3.0) pairs each TIPLOC with its CRS, so the app bundles
   that table (rebuilt weekly with the station list) and the two join exactly, never by name.
+  **The board's station messages are station notices** (maintainer, 2026-10-17): TfL's status for a
+  National Rail line is often only a link to National Rail's disruption page, so the notices Darwin's
+  board carries for the station (`nrccMessages`, "Disruption between X and Y…") join the stop's notice,
+  after TfL's own, as plain text with a link kept as its words and its address, tappable as an alert's
+  are. They come with the stop's departures, from the board those read, so they ask for nothing more,
+  are as fresh as the board, and go with it: with no key, with National Rail hidden there, or once the
+  departures fetch fails, the stop has TfL's notices alone. A board Darwin has suppressed still fails
+  for its trains ("No data"), but its notices, which often say why, still show. A stop whose notices
+  are checked without its departures (a favorite journey's destination) gets TfL's alone (maintainer,
+  2026-10-17).
   Where TfL lists one station under two National Rail ids, a list shows its board under one of
   them, the first whose own TfL fetch works, which keeps it while it keeps asking; a trip times a
   train from the board whichever of them it boards at. A trip also asks for each station's board

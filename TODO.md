@@ -1028,6 +1028,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
   - [x] **Regroup the trains as Underground, Overground, National Rail** (maintainer, 2026-10-08):
         Underground is the Tube, the DLR and the Elizabeth line; Eurostar goes with National Rail;
         the menu says what a name doesn't in a short subtitle. The Disruptions page's chips follow.
+  - [x] **National Rail station messages as station notices** (maintainer, 2026-10-17): TfL's status for
+        a National Rail line is often only a link; the board's `nrccMessages` now join the stop's notices.
+    - [ ] **Check the `nrccMessages` shape against a live board**: the fixture is hand-written in the
+          documented shape (`{"value": "<p>…</p>"}`); either key case and a bare string are read.
+    - [ ] **Per-line National Rail incidents** from the Knowledgebase Incidents feed (Rail Data
+          Marketplace, open, XML; a separate subscription): structured text for a line's status where
+          TfL gives only a link, matched by its link. Needs a product call on a second key.
   - [x] **National Rail unticked until a key is set** (maintainer, 2026-10-08): ticking it with no
         key asks for one (Get a key / Add key / Show anyway); a key added shows it by itself; the
         rider's own choice outranks the default. Not stored, so it lifts with no write.

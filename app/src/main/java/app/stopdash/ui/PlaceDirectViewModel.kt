@@ -525,7 +525,7 @@ class PlaceDirectViewModel(
                 client.arrivals(stop.id).let { it to (before && client.shareable(stop.id) && client.arrivalsSource() == source) }
             }
             val fetchedAt = client.fetchedAt(stop.id) ?: at
-            if (shared) arrivals.put(stop.id, departures, fetchedAt, client.railFeed(stop.id), generation, source, client.untimed(stop.id))
+            if (shared) arrivals.put(stop.id, departures, fetchedAt, client.railFeed(stop.id), generation, source, client.untimed(stop.id), client.railNotices(stop.id))
             StopArrivals(stop.id, stop.name, departures, fetchedAt, clusterId = stop.clusterId, hubId = stop.hubId)
         } catch (e: CancellationException) {
             throw e

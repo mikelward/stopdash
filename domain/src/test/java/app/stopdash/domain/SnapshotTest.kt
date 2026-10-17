@@ -85,6 +85,21 @@ class SnapshotTest {
     }
 
     @Test
+    fun `a station's National Rail notices come with its arrivals and go with a failed fetch`() {
+        val fresh = Snapshot.mergeStop(
+            "910GEXAMPLE", "Example", "", emptyList(), emptyList(), emptyList(), prior = null, now = now,
+            freshRailNotices = listOf("Disruption between Here and There."),
+        )
+        assertEquals(listOf("Disruption between Here and There."), fresh?.railNotices)
+        // Arrivals failed: the departures stand aged, the notice doesn't (no stale-safe rendering).
+        val failed = Snapshot.mergeStop("910GEXAMPLE", "Example", "", emptyList(), null, emptyList(), prior = fresh, now = now)
+        assertEquals(emptyList<String>(), failed?.railNotices)
+        // Fresh arrivals with none clear them.
+        val cleared = Snapshot.mergeStop("910GEXAMPLE", "Example", "", emptyList(), emptyList(), emptyList(), prior = fresh, now = now)
+        assertEquals(emptyList<String>(), cleared?.railNotices)
+    }
+
+    @Test
     fun `fresh arrivals and disruptions are stamped now`() {
         val result = merge(
             freshDepartures = listOf(departure("victoria", 120)),

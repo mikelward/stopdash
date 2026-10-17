@@ -1,5 +1,6 @@
 package app.stopdash.data
 
+import androidx.annotation.WorkerThread
 import app.stopdash.domain.CallingPortion
 import app.stopdash.domain.Departure
 import app.stopdash.domain.NATIONAL_RAIL_MODE
@@ -7,9 +8,11 @@ import app.stopdash.domain.RailBoard
 import app.stopdash.domain.RailFollow
 import app.stopdash.domain.RailPoint
 import app.stopdash.domain.RailRun
+import app.stopdash.domain.SuppressedRailBoard
 import app.stopdash.domain.TFL_RUN_OPERATORS
 import app.stopdash.domain.UntimedTrain
 import app.stopdash.domain.cleanStopName
+import app.stopdash.domain.railMessageText
 import app.stopdash.domain.railLineId
 import app.stopdash.domain.railVia
 import app.stopdash.domain.riderLineName
@@ -22,6 +25,9 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeParseException
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * A National Rail departure board as Darwin's Live Departure Board service returns it (the Rail
@@ -37,12 +43,27 @@ data class DarwinBoardDto(
     // False when Darwin has suppressed the station's board (its access closed at short notice, say): its
     // trains are left out though they may still run, so an empty board says nothing about them.
     val areServicesAvailable: Boolean = true,
+    // National Rail's notices for the station, each an HTML fragment: `{"value": "<p>…</p>"}` as the
+    // service writes them, read leniently ([messages]) so a changed shape costs the notices, not the board.
+    val nrccMessages: List<JsonElement>? = null,
 )
+
+/** The board's station notices as plain text ([railMessageText]), in Darwin's order, each once. */
+@WorkerThread
+fun DarwinBoardDto.messages(): List<String> =
+    nrccMessages.orEmpty().mapNotNull { message ->
+        val html = when (message) {
+            is JsonObject -> message["value"] ?: message["Value"]
+            else -> message
+        }.let { it as? JsonPrimitive }?.takeIf { it.isString }?.content
+        html?.let(::railMessageText)
+    }.distinct()
 
 // A suppressed board ([DarwinBoardDto.areServicesAvailable] false) is a failure the client reports, never
 // a board with no trains (Codex, #883): a train followed isn't gone for its station's board going blank.
+// Its notices go with the failure, as they often say why (Codex, #938).
 private fun DarwinBoardDto.checkAvailable() {
-    if (!areServicesAvailable) throw IllegalStateException("board suppressed")
+    if (!areServicesAvailable) throw SuppressedRailBoard(messages())
 }
 
 @Serializable
@@ -127,8 +148,10 @@ fun DarwinBoardDto.toBoard(
     warn: (String) -> Unit = {},
 ): RailBoard {
     checkAvailable()
+    // Read whether or not trains run: a disruption that empties the board is when its notice matters most.
+    val messages = messages()
     val services = trainServices.orEmpty()
-    if (services.isEmpty()) return RailBoard(emptyList())
+    if (services.isEmpty()) return RailBoard(emptyList(), messages = messages)
     // A board with trains but no readable time it was made at can't date them: a failure (the
     // client reports it), not a quiet "no departures".
     val generated = generatedAt?.let {
@@ -218,7 +241,7 @@ fun DarwinBoardDto.toBoard(
     // a trip that picked a later train can be explained (maintainer, 2026-10-16).
     if (unfollowable > 0) warn("national rail board: $unfollowable train(s) with no readable schedule can't be followed")
     if (unknownTerminus > 0) warn("national rail board: $unknownTerminus train(s) to a terminus with no known code can't be followed")
-    return RailBoard(departures, untimed)
+    return RailBoard(departures, untimed, messages)
 }
 
 /**
