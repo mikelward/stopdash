@@ -67,7 +67,7 @@ this directory. **Category:** Maps & Navigation.
 ## Data Safety
 
 - **Collects or shares any required user data types:** Yes
-- **Encrypted in transit:** Yes (TfL, National Rail, Firebase and Google Maps' short links are all HTTPS)
+- **Encrypted in transit:** Yes (TfL, National Rail, stopdash's relay, Firebase and Google Maps' short links are all HTTPS)
 - **Account creation:** the app doesn't let users create an account
 - **Deletion request:** No (everything else is stored on the device, and clearing the app's data removes it)
 
@@ -79,7 +79,7 @@ this directory. **Category:** Maps & Navigation.
 | App activity → App interactions | Yes | No | No | Optional | Analytics |
 | App info and performance → Crash logs | Yes | No | No | Optional | Analytics |
 | App info and performance → Diagnostics | Yes | No | No | Optional | Analytics |
-| Device or other IDs | Yes | No | No | Optional | Analytics |
+| Device or other IDs | Yes | No | No | Optional | Analytics, Fraud prevention, security, and compliance |
 | Personal info → User IDs | Yes | No | No | Optional | App functionality |
 
 Why:
@@ -99,6 +99,12 @@ Why:
   through the nearby stops instead. A Google Maps link shared into StopDash is followed with Google to
   find the place's exact spot, which tells Google the shared place, your IP address and the
   app's user agent.
+- **Device or other IDs** is Analytics for the opt-in Firebase, and **Fraud prevention,
+  security, and compliance** for stopdash's National Rail relay: without a key of your own, it
+  counts for one minute the board requests it couldn't answer from its cache, under a key made
+  from your IP address with a secret it changes daily, so the IP can't be recovered from it. It's
+  **Optional**: that key is made only for National Rail times fetched without your own key, which
+  the app works without and which your own key avoids.
 - **User IDs** covers the optional API keys you paste in Settings: your TfL `app_key`, sent
   with your TfL requests, and your Rail Data Marketplace key, sent with National Rail
   requests. Each goes only to the service that issued it, and ties those requests to your

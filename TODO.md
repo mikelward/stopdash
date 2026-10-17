@@ -1043,7 +1043,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [ ] **Log the relay's failures with their redacted stack**, not only a status or class:
             `KtorTflClient`'s `warn` takes a string, as every catch in it does, so this needs a
             throwable-taking sink for the whole client (Codex, #943).
-      - [ ] **Boards through the relay**, so National Rail times need no key either (design's second half).
+      - [x] **Boards through the relay**, so National Rail times need no key either; a pasted key still
+            goes straight to National Rail. Needs the Live Departure Board key on the relay too.
+      - [ ] **Update the Play Data Safety form** before the release that sets `stopdash.railRelayUrl`
+            (maintainer): *Device or other IDs* gains *Fraud prevention, security, and compliance*, as
+            `docs/play-store/listing.md` now says, for the relay's per-caller count (maintainer,
+            2026-10-17, over a product-only budget).
+      - [ ] **Settings' National Rail key copy** once the relay is live: the row and its summary still
+            read as if a key were needed for times (see *Decisions needing review*).
   - [x] **National Rail unticked until a key is set** (maintainer, 2026-10-08): ticking it with no
         key asks for one (Get a key / Add key / Show anyway); a key added shows it by itself; the
         rider's own choice outranks the default. Not stored, so it lifts with no write.
@@ -4680,6 +4687,24 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
       before implementation, per *Cost and reliability*.
 
 ## Decisions needing review
+
+- **The relay serves a board only while it's under 30 s old, with no stale-while-revalidate**
+  (autopilot, 2026-10-17). The design proposed serving one up to 60 s old while refreshing. The app now
+  dates a relay board by its `Age` (`RailBoard.age`), so a longer window wouldn't show one as fresher
+  than it is; 30 s keeps boards as fresh as asking National Rail directly, inside the app's own 50 s
+  arrivals reuse. Alternative: the 60 s window, half the upstream calls. Reversible in
+  `proxy/src/index.js` (`BOARD_SECONDS`) alone.
+- **The relay's upstream budget starts at 60 cold board requests a minute** (autopilot, 2026-10-17):
+  the Live Departure Board product's quota isn't known. Alternative: the design's 300. Reversible in
+  `proxy/wrangler.toml`.
+- **The relay's caller key counts as Optional on the Data Safety form** (autopilot, 2026-10-17): it's
+  made only for National Rail times fetched without your own key, which the app works without and
+  which a key of your own avoids, and *Device or other IDs* is already Optional for Firebase.
+  Alternative: mark the row Required. Reversible in `docs/play-store/listing.md` and the Console.
+- **Settings' National Rail key copy is unchanged for now** (autopilot, 2026-10-17): with the relay
+  live the key is optional, and the summary ("Paste your free Rail Data Marketplace key to show
+  National Rail times") overstates it. New copy needs the maintainer's wording and a translation
+  pass. Alternative: reword now under the translation markers.
 
 - [ ] **"Couldn't plan every route" on a later list (autopilot, 2026-10-15; Codex, #875).** A later plan
   that reached every station but lost a request for more routes (via a bus stop towards the destination,

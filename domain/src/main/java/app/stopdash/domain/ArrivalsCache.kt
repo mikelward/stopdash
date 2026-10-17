@@ -130,10 +130,13 @@ class ArrivalsCache {
         }
         var outcome: Fetch = Fetch.Abandoned
         try {
-            // Stamped when asked, as [CachingTflClient] stamps a stop's.
+            // Stamped when asked, as [CachingTflClient] stamps a stop's, less the age it already had
+            // ([RailBoard.age]), so a relay's cached board is dated by when National Rail gave it.
             val askedAt = SteadyClock.stamp(now)
-            val entry = fetch()?.let { Entry(it.departures, askedAt, source = source, untimed = it.untimed, messages = it.messages, suppressed = it.suppressed) }
-            if (entry != null && !entry.suppressed) put(key, entry.departures, askedAt, generation = askedIn, source = source, untimed = entry.untimed, messages = entry.messages)
+            val entry = fetch()?.let {
+                Entry(it.departures, askedAt.minus(it.age), source = source, untimed = it.untimed, messages = it.messages, suppressed = it.suppressed)
+            }
+            if (entry != null && !entry.suppressed) put(key, entry.departures, entry.fetchedAt, generation = askedIn, source = source, untimed = entry.untimed, messages = entry.messages)
             outcome = Fetch.Done(entry)
             return entry
         } finally {

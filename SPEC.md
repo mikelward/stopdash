@@ -4227,6 +4227,14 @@ surface.)
   gives, never by comparing clocks. What an alert is stays TfL's text: a dismissal or a journey's alert holds whether the
   words could be fetched or not, and the stations an alert names are read from TfL's words alone. A
   relay that can't be reached leaves TfL's link, which still opens the page.
+  **Boards need no key either** (maintainer, 2026-10-17): without a key of the rider's own, every
+  board (a station's, one with calling points, a followed train's) comes through the same relay,
+  which holds a Live Departure Board key and answers in Darwin's own shape. The relay counts as a
+  key wherever this spec says one: National Rail starts shown, there's no "No key", and a trip
+  follows National Rail trains. A key the rider pastes still goes straight to National Rail, as
+  before, and a build with no relay behaves as before it. The relay keeps a board for 30 seconds,
+  inside what the app already treats as live, and only a request it can't answer from that copy
+  reaches National Rail or counts against a caller.
   Where TfL lists one station under two National Rail ids, a list shows its board under one of
   them, the first whose own TfL fetch works, which keeps it while it keeps asking; a trip times a
   train from the board whichever of them it boards at. A trip also asks for each station's board
@@ -4668,6 +4676,10 @@ nothing about the rider, no location, station, line or key. The relay sees the I
 does, logs no request, keeps nothing about the caller and forwards nothing about them; Cloudflare,
 its host, keeps its own sampled request records, which can include the IP, for about a month, and
 `docs/PRIVACY.md` says so (`dev-docs/national-rail-proxy.md`).
+
+Without a key of the rider's own, those board requests go to stopdash's relay instead, carrying the
+same station codes and nothing else; it passes on only the codes, logs nothing, and counts for a
+minute the requests that miss its cache under a key the caller's IP can't be recovered from.
 
 With a National Rail key set (*Data source*), a rail station's departures request also goes to
 the Rail Data Marketplace, carrying that station's CRS code and the user's own key, never a

@@ -14,21 +14,25 @@ import io.ktor.client.plugins.ServerResponseException
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import java.io.IOException
 import java.net.UnknownHostException
+import java.time.Duration
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * National Rail's live departure boards (Darwin) from the Rail Data Marketplace, with the user's
- * own key ([apiKey], read per request so a key pasted in Settings applies on the next refresh).
- * With no key it's unavailable and asks nothing: stopdash ships no key of its own. A board asked for
- * with none (a key cleared since [available] was read) fails, never reading as one with no trains.
+ * National Rail's live departure boards (Darwin) from the Rail Data Marketplace: with the user's own
+ * key ([apiKey], read per request so a key pasted in Settings applies on the next refresh) straight
+ * from National Rail, else through stopdash's relay ([relayUrl]), which holds a key of its own and
+ * answers the same boards. With neither it's unavailable and asks nothing. A board asked for with
+ * neither (a key cleared since [available] was read) fails, never reading as one with no trains.
  *
- * Only the station's CRS code and the key are sent: never a location (SPEC *Privacy*). Failures map
+ * Only the station's CRS code (and, following a train, its terminus's and an offset) is sent, with the
+ * key where it's the rider's: never a location (SPEC *Privacy*). Failures map
  * to the same [TflException] kinds as TfL's client (offline, rate-limited, unreachable), sanitized to
  * a status or class name; the key is never logged.
  */
@@ -46,15 +50,18 @@ class KtorDarwinClient(
     private val stopIdFor: (String) -> String? = { null },
     // Every TfL stop id of a station code (RailStationCodes.stopIdsFor): a train's calling points.
     private val stopIdsFor: (String) -> Set<String> = { emptySet() },
+    // stopdash's relay ([RailRelay]), for a rider with no key of their own. Null (tests, a build with
+    // none) leaves a keyless rider without National Rail times, as before it.
+    private val relayUrl: () -> String? = { null },
 ) : RailBoardSource {
-    override val available: Boolean get() = !apiKey().isNullOrBlank()
+    override val available: Boolean get() = route() != null
 
     override suspend fun departures(crs: String): List<Departure> = board(crs).departures
 
     override suspend fun board(crs: String): RailBoard {
         // Cleared since the caller checked [available]: no answer, never a board with no trains (Codex, #883).
-        val key = key() ?: throw TflException.Unreachable("no national rail key", null)
-        return fetch(key, BOARD, crs, ROWS) { it.toBoard(stopIdFor, stopIdsFor, warn) }
+        val route = route() ?: throw TflException.Unreachable("no national rail key", null)
+        return fetch(route, BOARD, crs, ROWS) { board, age -> board.toBoard(stopIdFor, stopIdsFor, warn).copy(age = age) }
     }
 
     /**
@@ -63,8 +70,8 @@ class KtorDarwinClient(
      * the plain [board]'s trains by service id. Failures as [board]'s.
      */
     override suspend fun boardWithDetails(crs: String): RailBoard? {
-        val key = key() ?: return null
-        return fetch(key, DETAILS, crs, DETAIL_ROWS) { it.toBoard(stopIdFor, stopIdsFor, warn) }
+        val route = route() ?: return null
+        return fetch(route, DETAILS, crs, DETAIL_ROWS) { board, age -> board.toBoard(stopIdFor, stopIdsFor, warn).copy(age = age) }
     }
 
     /**
@@ -74,33 +81,53 @@ class KtorDarwinClient(
      * it lists. Failures as [board]'s.
      */
     override suspend fun runs(crs: String, towards: String, offsetMinutes: Int): List<RailRun>? {
-        val key = key() ?: return null
+        val route = route() ?: return null
         val from = if (offsetMinutes == 0) emptyMap() else mapOf("timeOffset" to offsetMinutes.toString())
-        return fetch(key, DETAILS, crs, DETAIL_ROWS, mapOf("filterCrs" to towards, "filterType" to "to") + from) { it.toRuns() }
+        return fetch(route, DETAILS, crs, DETAIL_ROWS, mapOf("filterCrs" to towards, "filterType" to "to") + from, towards, offsetMinutes) { board, _ -> board.toRuns() }
     }
 
-    private fun key(): String? = apiKey()?.trim()?.ifBlank { null }
+    // Where a board is asked: straight from National Rail with the rider's key, else through the relay.
+    private sealed interface Route {
+        data class Direct(val key: String) : Route
+        data class Relay(val url: String) : Route
+    }
 
-    // [crs]'s board from [operation], [rows] long and narrowed by [filters], read by [read]; failures as
-    // [TflException]s.
+    private fun route(): Route? =
+        apiKey()?.trim()?.ifBlank { null }?.let(Route::Direct)
+            ?: relayUrl()?.trim()?.trimEnd('/')?.ifEmpty { null }?.let(Route::Relay)
+
+    // [crs]'s board from [operation], [rows] long and narrowed by [filters], read by [read] with how old it
+    // already was (the relay's `Age`, zero straight from National Rail); failures as [TflException]s.
     private suspend fun <T> fetch(
-        key: String,
+        route: Route,
         operation: String,
         crs: String,
         rows: Int,
         filters: Map<String, String> = emptyMap(),
+        // The relay's form of [filters] (a followed train's terminus and offset): it sets the rows itself.
+        towards: String? = null,
+        offsetMinutes: Int = 0,
         // Run on [decodeDispatcher], never the caller's thread: it reads the whole board.
-        @WorkerThread read: (DarwinBoardDto) -> T,
+        @WorkerThread read: (DarwinBoardDto, Duration) -> T,
     ): T {
         return try {
             withContext(decodeDispatcher) {
-                read(
-                    httpClient.get("$baseUrl/$operation/$crs") {
-                        header("x-apikey", key)
-                        parameter("numRows", rows)
-                        filters.forEach { (name, value) -> parameter(name, value) }
-                    }.body<DarwinBoardDto>(),
-                )
+                val response =
+                    when (route) {
+                        is Route.Direct -> httpClient.get("$baseUrl/$operation/$crs") {
+                            header("x-apikey", route.key)
+                            parameter("numRows", rows)
+                            filters.forEach { (name, value) -> parameter(name, value) }
+                        }
+                        // The relay's own shape, with nothing of the rider's: no key, the board's codes alone.
+                        is Route.Relay -> httpClient.get("${route.url}/v1/board/$crs${if (operation == DETAILS) "/details" else ""}") {
+                            towards?.let { parameter("to", it) }
+                            if (towards != null && offsetMinutes != 0) parameter("offset", offsetMinutes)
+                        }
+                    }
+                // Seconds the relay counted itself, so the board is dated by its real age, never by clocks.
+                val age = response.headers[HttpHeaders.Age]?.trim()?.toLongOrNull()?.takeIf { it > 0 }?.let(Duration::ofSeconds) ?: Duration.ZERO
+                read(response.body<DarwinBoardDto>(), age)
             }
         } catch (e: CancellationException) {
             throw e
