@@ -397,44 +397,54 @@ class HomeLinesTest {
     }
 
     @Test
-    fun `a favorite place's station lines are covered wherever the rider is, checking until asked, then the rider's own`() {
-        // The rider at a bus stop; a favorite place by Euston, whose stations' lines the row covers though no
-        // stop near the rider serves them (maintainer, 2026-10-07).
-        val loaded = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus")), now, lineStatuses = mapOf("73" to severe), determinedLineIds = setOf("73"))
-        val near = mapOf("near" to 50.0)
-        val place = listOf(LineRef("northern", "Northern", "tube"), LineRef("london-northwestern", "London Northwestern Railway", "national-rail"))
-        val waiting = HomeLines.row(loaded, near, null, emptySet(), now, placeLines = place)
-        assertEquals(setOf("73", "northern", "london-northwestern"), waiting.every.mapTo(HashSet()) { it.leg.lineId })
+    fun `a favorite ride's line is watched wherever the rider is, checking until asked, then the rider's own`() {
+        // The rider at a bus stop; a favorite ride on the Northern from a station far away, whose line is watched
+        // though no stop near the rider serves it. The watched lines are those near the rider, their rides', the
+        // trip's on the way and the ones they chose, no longer a favorite place's (maintainer, 2026-10-17).
+        val loaded = DeparturesUiState.Loaded(
+            listOf(stop("near", "73" to "bus"), stop("far", "38" to "bus")), now,
+            lineStatuses = mapOf("73" to severe), determinedLineIds = setOf("73"), disruptionUnknown = true,
+        )
+        val distances = mapOf("near" to 50.0, "far" to 900.0)
+        val ride = app.stopdash.domain.FavoriteJourney(
+            app.stopdash.domain.JourneyEnd("a", "A"), app.stopdash.domain.JourneyEnd("b", "B"), "northern", "Northern", "tube",
+        )
+        val waiting = HomeLines.row(loaded, distances, null, emptySet(), now, journeyLines = setOf("northern"), journeys = listOf(ride))
         assertTrue(row(waiting, "northern").checking)
-        assertFalse(waiting.unknown)
-        // Once asked: as bad as the near bus, a place's line ranks with it as the rider's own, by name, ahead of a
-        // network's line far away just as bad.
+        assertEquals(true, row(waiting, "northern").watched)
+        // Once asked: as bad as the near bus, the ride's line ranks with it as the rider's own, ahead of a chosen
+        // line far away just as bad.
         val northern = LineStatus("northern", 6, "Severe Delays")
         val central = LineStatus("central", 6, "Severe Delays")
         val judged = HomeLines.row(
-            loaded, near, HomeLines.Always(mapOf("northern" to northern, "london-northwestern" to LineStatus("london-northwestern", LineStatus.GOOD_SERVICE, "Good Service"), "central" to central), now),
-            emptySet(), now, networks = setOf("central"), placeLines = place,
+            loaded, distances, HomeLines.Always(mapOf("northern" to northern, "central" to central), now), emptySet(), now,
+            networks = setOf("central"), journeyLines = setOf("northern"), journeys = listOf(ride),
+            tripLines = listOf(LineRef("victoria", "Victoria", "tube")),
         )
         assertEquals(listOf("73", "northern", "central"), judged.lines.map { it.lineId })
-        assertEquals("Northern", row(judged, "northern").leg.lineName)
-        assertFalse(judged.checking)
+        assertEquals(setOf("73", "northern", "victoria", "central"), judged.everyWatched.orEmpty().toSet())
+        // A farther stop's bus the list couldn't check is listed, not watched.
+        assertEquals(false, row(judged, "38").watched)
+        assertFalse(row(judged, "northern").checking)
     }
 
     @Test
     fun `the page lists the watched lines first, the pills still worst first`() {
-        // A minor delay on the bus near the rider, a severe one by a favorite place, and a suspension far away on a
-        // line the rider chose to watch; the only line not watched is a farther stop's the list couldn't check
-        // (maintainer, 2026-10-17).
+        // A minor delay on the bus near the rider, a severe one on a favorite ride's line, and a suspension far
+        // away on a line the rider chose to watch; the only line not watched is a farther stop's the list couldn't
+        // check (maintainer, 2026-10-17).
         val minor = LineStatus("73", 9, "Minor Delays")
         val loaded = DeparturesUiState.Loaded(
             listOf(stop("near", "73" to "bus"), stop("far", "38" to "bus")), now,
             lineStatuses = mapOf("73" to minor), determinedLineIds = setOf("73"), disruptionUnknown = true,
         )
-        val place = listOf(LineRef("northern", "Northern", "tube"))
+        val ride = app.stopdash.domain.FavoriteJourney(
+            app.stopdash.domain.JourneyEnd("a", "A"), app.stopdash.domain.JourneyEnd("b", "B"), "northern", "Northern", "tube",
+        )
         val statuses = mapOf("northern" to LineStatus("northern", 6, "Severe Delays"), "central" to LineStatus("central", 2, "Suspended"))
         val judged = HomeLines.row(
             loaded, mapOf("near" to 50.0, "far" to 900.0), HomeLines.Always(statuses, now), emptySet(), now,
-            networks = setOf("central"), placeLines = place,
+            networks = setOf("central"), journeyLines = setOf("northern"), journeys = listOf(ride),
         )
         // The pills as before: the worst first, wherever it is.
         assertEquals(listOf("central", "northern", "73"), judged.lines.map { it.lineId })
@@ -465,20 +475,20 @@ class HomeLinesTest {
         val loaded = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus")), now, lineStatuses = mapOf("73" to severe), determinedLineIds = setOf("73"))
         val near = mapOf("near" to 50.0)
         val trip = listOf(LineRef("victoria", "Victoria", "tube"), LineRef("elizabeth", "Elizabeth line", "elizabeth-line"))
-        val place = listOf(LineRef("northern", "Northern", "tube"))
-        val waiting = HomeLines.row(loaded, near, null, emptySet(), now, placeLines = place, tripLines = trip)
+        val chosen = setOf("northern")
+        val waiting = HomeLines.row(loaded, near, null, emptySet(), now, networks = chosen, tripLines = trip)
         assertEquals(setOf("73", "victoria", "elizabeth", "northern"), waiting.every.mapTo(HashSet()) { it.leg.lineId })
         assertTrue(row(waiting, "victoria").checking)
         assertFalse(waiting.unknown)
         // Once asked: as bad as the near bus, the trip's lines rank with it as the rider's own, ahead of a
-        // favorite place's line just as bad.
+        // chosen line far away just as bad.
         val statuses = listOf("victoria", "elizabeth", "northern").associateWith { LineStatus(it, 6, "Severe Delays") }
-        val judged = HomeLines.row(loaded, near, HomeLines.Always(statuses, now), emptySet(), now, placeLines = place, tripLines = trip)
+        val judged = HomeLines.row(loaded, near, HomeLines.Always(statuses, now), emptySet(), now, networks = chosen, tripLines = trip)
         assertEquals(listOf("73", "elizabeth", "victoria", "northern"), judged.lines.map { it.lineId })
         assertEquals("Elizabeth line", row(judged, "elizabeth").leg.lineName)
         assertFalse(judged.checking)
         // With no trip on the way they're not covered at all.
-        val none = HomeLines.row(loaded, near, HomeLines.Always(statuses, now), emptySet(), now, placeLines = place)
+        val none = HomeLines.row(loaded, near, HomeLines.Always(statuses, now), emptySet(), now, networks = chosen)
         assertEquals(listOf("73", "northern"), none.lines.map { it.lineId })
     }
 
@@ -536,35 +546,25 @@ class HomeLinesTest {
     }
 
     @Test
-    fun `a favorite journey's line, nearest first, leads a favorite place's lines as bad`() {
-        // A favorite place by King's Cross covers its every line; all closed overnight. The rider's favorite
-        // journey rides the Northern from a listed station 1 km off: it leads, not Circle by name (maintainer,
-        // 2026-10-09).
+    fun `a favorite journey's line, nearest first, leads chosen lines as bad`() {
+        // The rider watches King's Cross's tube lines by choice; all closed overnight. Their favorite journey rides
+        // the Northern from a listed station 1 km off: it leads, not Circle by name (maintainer, 2026-10-09).
         val loaded = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus"), stop("far", "northern" to "tube")), now, determinedLineIds = setOf("73"))
         val distances = mapOf("near" to 50.0, "far" to 1000.0)
-        val place = listOf("circle", "hammersmith-city", "metropolitan", "northern").map { LineRef(it, it, "tube") }
-        val closed = place.associate { it.id to LineStatus(it.id, 20, "Service Closed") }
-        val judged = HomeLines.row(loaded, distances, HomeLines.Always(closed, now), emptySet(), now, journeyLines = setOf("northern"), placeLines = place)
+        val chosen = setOf("circle", "hammersmith-city", "metropolitan", "northern")
+        val closed = chosen.associateWith { LineStatus(it, 20, "Service Closed") }
+        val judged = HomeLines.row(loaded, distances, HomeLines.Always(closed, now), emptySet(), now, networks = chosen, journeyLines = setOf("northern"))
         assertEquals(listOf("northern", "circle", "hammersmith-city", "metropolitan"), judged.lines.map { it.lineId })
-        // With no journey, the place's lines rank by their nearest listed stop: the Northern's still first.
-        val nearest = HomeLines.row(loaded, distances, HomeLines.Always(closed, now), emptySet(), now, placeLines = place)
+        // With no journey, the chosen lines rank by their nearest listed stop: the Northern's still first.
+        val nearest = HomeLines.row(loaded, distances, HomeLines.Always(closed, now), emptySet(), now, networks = chosen)
         assertEquals(listOf("northern", "circle", "hammersmith-city", "metropolitan"), nearest.lines.map { it.lineId })
         // A nearer stop whose times aren't fetched counts too, however far (Codex, #710): the Circle's, 900 m off
         // on a farther card, puts it first; the Metropolitan's at 1.2 km, after the Northern.
         val unfetched = HomeLines.row(
             loaded, distances, HomeLines.Always(closed, now), emptySet(), now,
-            placeLines = place, lineMeters = mapOf("circle" to 900.0, "metropolitan" to 1200.0),
+            networks = chosen, lineMeters = mapOf("circle" to 900.0, "metropolitan" to 1200.0),
         )
         assertEquals(listOf("circle", "northern", "metropolitan", "hammersmith-city"), unfetched.lines.map { it.lineId })
-    }
-
-    @Test
-    fun `favorite places never read leave the row unknown, never a clean none`() {
-        val loaded = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus")), now, determinedLineIds = setOf("73"))
-        val good = HomeLines.row(loaded, mapOf("near" to 50.0), null, emptySet(), now)
-        assertFalse(good.unknown)
-        val unread = HomeLines.row(loaded, mapOf("near" to 50.0), null, emptySet(), now, placesUnread = true)
-        assertTrue(unread.unknown)
     }
 
     @Test
@@ -577,52 +577,6 @@ class HomeLinesTest {
         assertTrue(elsewhere.every.none { it.leg.lineId == "38" })
         val here = HomeLines.row(loaded, far, null, emptySet(), now, starred = setOf(app.stopdash.domain.StarredRow("other", "38", "outbound")))
         assertEquals(listOf("38"), here.every.map { it.leg.lineId })
-    }
-
-    @Test
-    fun `a place's station lines follow the places, the last standing while they can't be read, worked on the worker`() {
-        // A place at King's Cross (a stock stand-in: a station, not anyone's home); Victoria's line far from it.
-        val index = app.stopdash.domain.StationIndex(
-            listOf(
-                app.stopdash.domain.IndexedStation("940GZZLUKSX", "King's Cross St. Pancras", latitude = 51.5308, longitude = -0.1238, lines = mapOf("tube" to listOf("northern"))),
-                app.stopdash.domain.IndexedStation("940GZZLUVIC", "Victoria", latitude = 51.4965, longitude = -0.1447, lines = mapOf("tube" to listOf("district"))),
-            ),
-            lineNames = mapOf("northern" to "Northern"),
-        )
-        val place = app.stopdash.domain.FavoritePlace("p", app.stopdash.domain.FavoriteKind.CUSTOM, "Place", app.stopdash.domain.Coordinates(51.5308, -0.1238))
-        val readOn = ThreadRecorder()
-        val warned = mutableListOf<String>()
-        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }
-        try {
-            val sets = flowOf(
-                app.stopdash.domain.FavoritePlacesSet.Unavailable,
-                app.stopdash.domain.FavoritePlacesSet.Loaded(listOf(place)),
-                app.stopdash.domain.FavoritePlacesSet.Unavailable,
-                app.stopdash.domain.FavoritePlacesSet.Loaded(emptyList()),
-                app.stopdash.domain.FavoritePlacesSet.Loaded(listOf(place)),
-                app.stopdash.domain.FavoritePlacesSet.Discarded,
-            )
-            val lines = kotlinx.coroutines.runBlocking {
-                HomeLines.placeLines(sets, { index.also { readOn.note() } }, executor.asCoroutineDispatcher(), warned::add).toList()
-            }
-            val northern = listOf(LineRef("northern", "Northern", "tube"))
-            // Unreadable before any were read: none, marked unread. Read: the station's line. Unreadable again: the
-            // last stands. No places, then one again, then a discarded file: what each says.
-            assertEquals(listOf(emptyList(), northern, northern, emptyList(), northern, emptyList()), lines.map { it.lines })
-            assertEquals(listOf(true, false, false, false, false, false), lines.map { it.unread })
-            // No station index to read: the places' lines can't be named, so unread, never "no lines there".
-            val noIndex = kotlinx.coroutines.runBlocking {
-                HomeLines.placeLines(
-                    flowOf(app.stopdash.domain.FavoritePlacesSet.Loaded(listOf(place))), { app.stopdash.domain.StationIndex.EMPTY }, executor.asCoroutineDispatcher(),
-                ).toList()
-            }
-            assertEquals(listOf(true), noIndex.map { it.unread })
-            assertEquals(2, warned.size) // the two unreadable reads
-            assertTrue(readOn.threads().isNotEmpty())
-            assertTrue(readOn.threads().all { it.startsWith("worker") })
-        } finally {
-            executor.shutdown()
-        }
     }
 
     @Test

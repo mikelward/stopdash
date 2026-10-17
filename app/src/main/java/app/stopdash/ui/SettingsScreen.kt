@@ -237,9 +237,9 @@ fun SettingsScreen(
     // afresh (back from a page opened over it) opens at its top and doesn't flash again.
     startOnRailKey: Boolean = false,
     onRailKeyShown: () -> Unit = {},
-    // Favorite places opened from the Disruptions summary page, whose lines it includes: back from them
+    // Favorite rides opened from the Disruptions summary page, whose lines it always watches: back from them
     // returns to that page, not Settings' top.
-    onOpenFavoritePlacesFromDisruptions: () -> Unit = onOpenFavoritePlaces,
+    onOpenFavoriteJourneysFromDisruptions: () -> Unit = onOpenFavoriteJourneys,
 ) {
     // Counts the overflow's openings: each re-masks both keys ([ApiKeyRow]) before "Send bug report"
     // can be picked, since the report's screenshot is of this screen and a revealed key would be
@@ -599,7 +599,7 @@ fun SettingsScreen(
             networksLoaded = summaryNetworksLoaded,
             networksWriteFailed = summaryNetworksWriteFailed,
             onDismissNetworksError = onDismissSummaryNetworksError,
-            onOpenFavoritePlaces = onOpenFavoritePlacesFromDisruptions,
+            onOpenFavoriteJourneys = onOpenFavoriteJourneysFromDisruptions,
             onBack = {
                 disruptionsOpen = false
                 onDisruptionsClosed()
@@ -1109,7 +1109,7 @@ internal fun DisruptionsSummaryPage(
     networksWriteFailed: Boolean,
     onDismissNetworksError: () -> Unit,
     onBack: () -> Unit,
-    onOpenFavoritePlaces: () -> Unit = {},
+    onOpenFavoriteJourneys: () -> Unit = {},
 ) {
     BackHandler(onBack = onBack)
     Surface(modifier = Modifier.fillMaxSize().testTag("disruptionsSummaryPage")) {
@@ -1163,7 +1163,7 @@ internal fun DisruptionsSummaryPage(
                     )
                 }
                 // Which lines it always covers: only while the row shows, as it says nothing otherwise.
-                if (show) SummaryNetworksRow(networks, onToggleLine, enabled = networksLoaded, onOpenFavoritePlaces = onOpenFavoritePlaces)
+                if (show) SummaryNetworksRow(networks, onToggleLine, enabled = networksLoaded, onOpenFavoriteJourneys = onOpenFavoriteJourneys)
             }
         }
     }
@@ -1222,7 +1222,7 @@ private fun lineChipStyle(pill: PillColors?, on: Boolean, enabled: Boolean): Lin
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SummaryNetworksRow(selected: Set<String>, onToggle: (String) -> Unit, enabled: Boolean, onOpenFavoritePlaces: () -> Unit) {
+private fun SummaryNetworksRow(selected: Set<String>, onToggle: (String) -> Unit, enabled: Boolean, onOpenFavoriteJourneys: () -> Unit) {
     val slot = remember { mutableStateOf<Worked<Inputs, PickerChips>?>(null) }
     // The last chips stand while a tap's are worked out, so nothing blinks out under the finger. Keyed by
     // the choice's identity ([Inputs]), so nothing compares the set's contents on this thread (Codex, #642),
@@ -1239,9 +1239,9 @@ private fun SummaryNetworksRow(selected: Set<String>, onToggle: (String) -> Unit
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        // The places whose stations' lines it includes, a tap away (maintainer, 2026-10-07).
-        TextButton(onClick = onOpenFavoritePlaces, modifier = Modifier.testTag("summaryFavoritePlaces")) {
-            Text(stringResource(R.string.settings_favorite_places_title))
+        // The rides whose lines it always watches, a tap away (maintainer, 2026-10-17).
+        TextButton(onClick = onOpenFavoriteJourneys, modifier = Modifier.testTag("summaryFavoriteRides")) {
+            Text(stringResource(R.string.settings_favorite_journeys_title))
         }
         // The lines watched by choice, under a heading of their own (maintainer, 2026-10-17).
         Text(

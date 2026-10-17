@@ -4,7 +4,6 @@ import androidx.annotation.WorkerThread
 import androidx.compose.ui.graphics.Color
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.DismissedAlert
-import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.LineMap
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
@@ -15,7 +14,6 @@ import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StarredRowSet
-import app.stopdash.domain.StationIndex
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripProgress
 import app.stopdash.domain.UsageEvent
@@ -25,7 +23,6 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 
@@ -226,59 +223,6 @@ object HomeLines {
             .distinctUntilChanged()
             .flowOn(compute)
 
-    /**
-     * The lines near the favorite places ([placeLines]): [lines], and [unread] while they can't be named, the
-     * places never read (a newer build's file, or a read outage the store retries) or the bundled station index
-     * missing, so the row says it couldn't check rather than reading as if there were no places (Codex, #657).
-     */
-    class PlaceLines(val lines: List<LineRef>, val unread: Boolean = false) {
-        companion object {
-            /** No favorite places. */
-            val NONE = PlaceLines(emptyList())
-        }
-    }
-
-    /**
-     * The lines of every station within walking reach ([NEARBY_METERS]) of a favorite place, as the [places]
-     * change, for the row to cover wherever the rider is (maintainer, 2026-10-07): stations only, from the
-     * bundled [index], so it costs no request. Worked out on [compute], never the collector's thread. While the
-     * places can't be read the last lines stand rather than vanishing, so a place's line is never dropped
-     * unasked (Codex, #657); before any were read, none, marked [PlaceLines.unread]. A discarded file means the
-     * places are gone: none.
-     */
-    fun placeLines(
-        places: Flow<FavoritePlacesSet>,
-        index: () -> StationIndex,
-        compute: CoroutineDispatcher,
-        warn: (String) -> Unit = {},
-    ): Flow<PlaceLines> = flow {
-        var last: PlaceLines? = null
-        places.collect { set ->
-            val lines = when (set) {
-                is FavoritePlacesSet.Loaded -> if (set.places.isEmpty()) {
-                    PlaceLines.NONE
-                } else {
-                    val stations = index()
-                    // No bundled index to read (missing, corrupt, a newer format: [StationIndex.EMPTY]) names no line
-                    // near any place: unread, not "no lines there" (Codex, #657).
-                    if (stations.stations.isEmpty()) {
-                        warn("disruptions row: no station index, the favorite places' lines can't be named")
-                        PlaceLines(emptyList(), unread = true)
-                    } else {
-                        PlaceLines(stations.linesNear(set.places.map { it.coordinate }, NEARBY_METERS))
-                    }
-                }
-                FavoritePlacesSet.Discarded -> PlaceLines(emptyList())
-                FavoritePlacesSet.Unavailable -> {
-                    warn("disruptions row: favorite places unavailable, keeping their last lines")
-                    last ?: PlaceLines(emptyList(), unread = true)
-                }
-            }
-            last = lines
-            emit(lines)
-        }
-    }.flowOn(compute)
-
     /** Their ids, for the list's status request to ask about. On a worker only. */
     @WorkerThread
     fun idsOf(networks: Set<String>): Set<String> = linesOf(networks).mapTo(LinkedHashSet()) { it.id }
@@ -372,12 +316,6 @@ object HomeLines {
         // Each line's stop nearest the rider within reach by the nearby stops' own data, both tiers, a
         // stop whose times aren't fetched included ([NearbyStopsViewModel.State.Ready.nearestStopByLine]).
         nearestStops: Map<String, String> = emptyMap(),
-        // The lines of the stations near each favorite place (maintainer, 2026-10-07), asked about with the
-        // always-covered lines and ranked as the rider's own.
-        placeLines: List<LineRef> = emptyList(),
-        // The favorite places never read ([PlaceLines.unread]): their lines can't be named, so the row says
-        // "Unknown" rather than leaving them unsaid.
-        placesUnread: Boolean = false,
         // How far each line's nearest stop is, both tiers of the near-me lookup however far, a stop whose
         // times aren't fetched included ([NearbyStopsViewModel.State.Ready.nearestMetersByLine]).
         lineMeters: Map<String, Double> = emptyMap(),
@@ -433,11 +371,9 @@ object HomeLines {
             stop.lines.forEach { if (wanted(it.id)) refs.putIfAbsent(it.id, it) }
         }
         journeys.forEach { if (it.lineId.isNotBlank()) refs.putIfAbsent(it.lineId, it.line) }
-        placeLines.forEach { refs.putIfAbsent(it.id, it) }
         tripLines.forEach { refs.putIfAbsent(it.id, it) }
         val alwaysIds = alwaysLines.mapTo(HashSet()) { it.id }.apply {
             journeys.forEach { if (it.lineId.isNotBlank()) add(it.lineId) }
-            placeLines.forEach { add(it.id) }
             tripLines.forEach { add(it.id) }
         }
         // Each line's stop nearest the rider within reach, which its map keeps on the page.
@@ -490,19 +426,13 @@ object HomeLines {
         // 2026-10-05: what's dismissed stays off it).
         fun everyWayDismissed(status: LineStatus) = status.byDirection.values.filter { it.disrupted }
             .let { ways -> ways.isNotEmpty() && ways.all { DismissedAlert.ofLineStatus(it) in dismissed } }
-        // The lines that matter most to the rider, in two tiers (maintainer, 2026-10-09): near them, a
-        // favorite's (a starred row's, a journey's) or the trip's on the way first, then a favorite place's,
-        // so a busy interchange by a place doesn't bury the rider's own line under its others by name.
+        // The lines that matter most to the rider: near them, a favorite's (a starred row's, a journey's) or
+        // the trip's on the way. A favorite place's no longer count (maintainer, 2026-10-17: at home, the
+        // rides to work matter, not everything near work).
         val mine = HashSet<String>(nearby)
         mine += starredHere
         mine += journeyLines
         tripLines.forEach { mine += it.id }
-        val places = placeLines.mapTo(HashSet()) { it.id }
-        fun tier(id: String) = when (id) {
-            in mine -> 0
-            in places -> 1
-            else -> 2
-        }
         // Each line's nearest stop, however far, the list's or the near-me lookup's (Codex, #710): as bad and
         // as much the rider's own, the nearer goes first.
         val closest = HashMap<String, Double>(lineMeters)
@@ -536,13 +466,13 @@ object HomeLines {
                 nearby = nearest[id]?.let { setOf(it) }.orEmpty(),
                 planned = plannedShown(id, was ?: status, dismissed),
                 // Watched (maintainer, 2026-10-17): the rider's own lines and every line they chose to watch.
-                watched = tier(id) < 2 || id in alwaysIds,
+                watched = id in mine || id in alwaysIds,
             )
         // The pills' order, and the page's within each of its sections: worst first as a trip's orders them,
         // then, as bad as each other, the rider's own lines ahead of a network's far away (maintainer,
         // 2026-10-05), the nearer first, then by name.
         }.sortedWith(
-            tripLineOrder.thenBy<TripLine> { tier(it.leg.lineId) }
+            tripLineOrder.thenBy<TripLine> { if (it.leg.lineId in mine) 0 else 1 }
                 .thenBy { closest[it.leg.lineId] ?: Double.MAX_VALUE }
                 .then(byName),
         )
@@ -557,7 +487,7 @@ object HomeLines {
         return TripRow(
             checking = checking.isNotEmpty(),
             lines = disrupted,
-            unknown = unknown.isNotEmpty() || listUnknown || placesUnread || tripUnread,
+            unknown = unknown.isNotEmpty() || listUnknown || tripUnread,
             unknownLines = unknown,
             unknownStops = unknownStops,
             every = sectioned,

@@ -797,7 +797,7 @@
     <!-- Under the Disruptions summary switch: what the summary always watches, whatever's chosen below. -->
     <string name="settings_summary_networks_title" tools:ignore="MissingTranslation">Always watch</string>
     <!-- TODO: translate -->
-    <string name="settings_summary_networks_summary" tools:ignore="MissingTranslation">Favorite places and lines near you are always watched</string>
+    <string name="settings_summary_networks_summary" tools:ignore="MissingTranslation">Lines near you and your favorite rides are always watched</string>
     <!-- TODO: translate -->
     <!-- The heading over the line chips: lines the summary watches by choice, wherever the rider is. -->
     <string name="settings_summary_lines_title" tools:ignore="MissingTranslation">Also watch</string>
