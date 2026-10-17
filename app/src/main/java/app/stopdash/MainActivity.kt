@@ -191,6 +191,8 @@ import app.stopdash.ui.LineDismissalsViewModel
 import app.stopdash.ui.LinesOverlay
 import app.stopdash.ui.LinePageWorkHolder
 import app.stopdash.ui.LineRefSaver
+import app.stopdash.ui.LineWatch
+import app.stopdash.ui.LocalLineWatch
 import app.stopdash.ui.LineStopRefSaver
 import app.stopdash.ui.StationMatchSaver
 import app.stopdash.ui.LineStopRef
@@ -4016,6 +4018,11 @@ class MainActivity : ComponentActivity() {
                     viewModel::dismissLineAlert, dismissWriteFailed, viewModel::dismissWriteFailureShown, linesPagesOpen,
                     viewModel::dismissPlannedAlert, viewModel.dismissed.collectByIdentityWithLifecycle().value,
                 ),
+                // And watches a line, or stops, on a long press (maintainer, 2026-10-17); not before the choice is read.
+                LocalLineWatch provides LineWatch(
+                    SummaryNetworksSetting.changes.collectByIdentityWithLifecycle().value, SummaryNetworksSetting::toggle,
+                    SummaryNetworksSetting.writeFailed.collectAsStateWithLifecycle().value, SummaryNetworksSetting::writeFailureShown,
+                ).takeIf { SummaryNetworksSetting.isLoaded.collectAsStateWithLifecycle().value },
             ) {
                 MainScreen(
                     usageScreen = if (stationTitle != null) UsageEvent.Screen.STATION else UsageEvent.Screen.HOME,

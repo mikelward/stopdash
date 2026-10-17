@@ -27,6 +27,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
@@ -4576,6 +4577,10 @@ class TripScreenScreenshotTest {
         failed = true
         composeRule.waitForIdle()
         composeRule.onNodeWithText(composeRule.activity.getString(R.string.dismiss_write_failed)).assertExists()
+        // Acknowledged once it has shown, not as it's queued (Codex, #924).
+        assertEquals(0, acknowledged)
+        composeRule.mainClock.advanceTimeBy(10_000)
+        composeRule.waitForIdle()
         assertEquals(1, acknowledged)
     }
 
@@ -4925,6 +4930,138 @@ class TripScreenScreenshotTest {
         val otherTop = headings[1].fetchSemanticsNode().boundsInRoot.top
         assertTrue(top("73") < otherTop && otherTop < top("38"))
         captureSnapshot("home-lines.png")
+    }
+
+    @Test
+    fun a_line_on_the_home_lines_page_is_watched_on_a_long_press() {
+        // Long-press a line to watch it wherever the rider is, or to stop (maintainer, 2026-10-17); a bus, which
+        // no network covers, can't be watched so and offers nothing.
+        fun line(mode: String, id: String, name: String, watched: Boolean) =
+            TripLine(leg(mode, id, name, "A" to "King's Cross", "B" to "Euston", 0, 10, 2), LineStatus(id, LineStatus.GOOD_SERVICE, "Good Service"), watched = watched)
+        val row = TripRow(
+            checking = false,
+            every = listOf(line("tube", "victoria", "Victoria", true), line("bus", "73", "73", true), line("tube", "central", "Central", true)),
+        )
+        var chosen by mutableStateOf(setOf("central"))
+        val toggled = mutableListOf<String>()
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalLineWatch provides LineWatch(chosen, toggle = { toggled += it; chosen = HomeLines.toggle(chosen, it) })) {
+                    Surface { TripLinesContent(row, watchedCount = 3) }
+                }
+            }
+        }
+        composeRule.onNode(hasContentDescription("Victoria"), useUnmergedTree = true).performTouchInput { longClick() }
+        composeRule.onNodeWithTag("lineWatch-victoria").assertTextEquals("Watch")
+        // The menu draws in a window of its own, which only a whole-screen capture takes in.
+        if (capturing()) com.github.takahirom.roborazzi.captureScreenRoboImage("src/test/snapshots/images/home-lines-watch.png")
+        composeRule.onNodeWithTag("lineWatch-victoria").performClick()
+        assertEquals(listOf("victoria"), toggled)
+        composeRule.onNodeWithTag("lineWatch-victoria").assertDoesNotExist()
+        // A line the rider chose offers to stop.
+        composeRule.onNode(hasContentDescription("Central"), useUnmergedTree = true).performTouchInput { longClick() }
+        composeRule.onNodeWithTag("lineWatch-central").assertTextEquals("Unwatch")
+        composeRule.onNodeWithTag("lineWatch-central").performClick()
+        assertEquals(listOf("victoria", "central"), toggled)
+        // A bus offers nothing.
+        composeRule.onNode(hasContentDescription("73"), useUnmergedTree = true).performTouchInput { longClick() }
+        composeRule.onNodeWithTag("lineWatch-73").assertDoesNotExist()
+    }
+
+    @Test
+    fun a_trips_lines_page_offers_no_watching() {
+        fun line(id: String) = TripLine(leg("tube", id, id, "A" to "King's Cross", "B" to "Euston", 0, 10, 2), LineStatus(id, LineStatus.GOOD_SERVICE, "Good Service"))
+        val row = TripRow(checking = false, every = listOf(line("victoria")))
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalLineWatch provides LineWatch(emptySet(), toggle = {})) { Surface { TripLinesContent(row) } }
+            }
+        }
+        composeRule.onNode(hasContentDescription("victoria"), useUnmergedTree = true).performTouchInput { longClick() }
+        composeRule.onNodeWithTag("lineWatch-victoria").assertDoesNotExist()
+    }
+
+    @Test
+    fun a_line_no_longer_watched_says_so_and_can_be_watched_again() {
+        // Unwatched with its page open, a line far from the rider keeps its row under *Watched*, saying so, and its
+        // menu, so the tap can be undone there (Codex, #924). One under *Other* that's gone was never watched, so
+        // it says it's no longer nearby.
+        fun gone(id: String, name: String) =
+            TripLine(leg("tube", id, name, "A" to "King's Cross", "B" to "Euston", 0, 10, 2), status = null, gone = true)
+        val row = TripRow(checking = false, every = listOf(gone("central", "Central"), gone("victoria", "Victoria")))
+        val toggled = mutableListOf<String>()
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalLineWatch provides LineWatch(emptySet(), toggle = { toggled += it })) {
+                    Surface {
+                        TripLinesContent(row, gone = R.string.home_lines_gone, goneWatched = R.string.home_lines_unwatched, watchedCount = 1)
+                    }
+                }
+            }
+        }
+        composeRule.onNodeWithText("No longer watched").assertExists()
+        composeRule.onNodeWithText("No longer nearby").assertExists()
+        val headings = composeRule.onAllNodesWithTag("linesHeading")
+        val otherTop = headings[1].fetchSemanticsNode().boundsInRoot.top
+        assertTrue(composeRule.onNodeWithText("No longer watched").fetchSemanticsNode().boundsInRoot.top < otherTop)
+        assertTrue(composeRule.onNodeWithText("No longer nearby").fetchSemanticsNode().boundsInRoot.top > otherTop)
+        composeRule.onNode(hasContentDescription("Central"), useUnmergedTree = true).performTouchInput { longClick() }
+        composeRule.onNodeWithTag("lineWatch-central").assertTextEquals("Watch").performClick()
+        assertEquals(listOf("central"), toggled)
+    }
+
+    @Test
+    fun a_watch_that_didn_t_save_is_said_on_the_lines_page() {
+        // The page covers the screen whose snackbar would say it, so it says it itself (Codex, #924), and says
+        // it once.
+        var failed by mutableStateOf(false)
+        var acknowledged = 0
+        val inline = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher()
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides inline) {
+                    TripLinesPage(
+                        TripRow(checking = false),
+                        onClose = {},
+                        watch = LineWatch(emptySet(), toggle = {}, failed = failed, onFailureShown = { acknowledged++; failed = false }),
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        assertEquals(0, acknowledged)
+        failed = true
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.settings_disruptions_row_write_failed)).assertExists()
+        // Acknowledged once it has shown, not as it's queued (Codex, #924).
+        assertEquals(0, acknowledged)
+        composeRule.mainClock.advanceTimeBy(10_000)
+        composeRule.waitForIdle()
+        assertEquals(1, acknowledged)
+    }
+
+    @Test
+    fun a_trips_lines_page_leaves_a_watch_failure_to_the_home_page() {
+        // A trip's page offers no watching, so it neither says nor acknowledges a failed watch from the home page,
+        // which the screen around it still provides (Codex, #924): that stays for the home page to say.
+        var acknowledged = 0
+        val inline = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher()
+        val line = TripLine(leg("tube", "victoria", "Victoria", "A" to "King's Cross", "B" to "Euston", 0, 10, 2), LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service"))
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(
+                    LocalWorker provides inline,
+                    LocalLineWatch provides LineWatch(emptySet(), toggle = {}, failed = true, onFailureShown = { acknowledged++ }),
+                ) {
+                    TripLinesPage(TripRow(checking = false, every = listOf(line)), onClose = {})
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.settings_disruptions_row_write_failed)).assertDoesNotExist()
+        assertEquals(0, acknowledged)
+        composeRule.onNode(hasContentDescription("Victoria"), useUnmergedTree = true).performTouchInput { longClick() }
+        composeRule.onNodeWithTag("lineWatch-victoria").assertDoesNotExist()
     }
 
     @Test

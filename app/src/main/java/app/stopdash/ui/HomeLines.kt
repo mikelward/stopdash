@@ -115,6 +115,16 @@ object HomeLines {
     private val NETWORK_KEYS: Map<String, String> = Network.entries.flatMap { network -> network.lines.map { it.id to network.key } }.toMap()
 
     /**
+     * Whether [chosen] watches the line [lineId], by its own id or its network's key, for one line's long press
+     * on the lines page ([LineWatch]); null for a line no network has (a bus), which can't be watched so. A
+     * lookup, no walk: fine on the main thread.
+     */
+    fun watching(chosen: Set<String>, lineId: String): Boolean? {
+        val network = NETWORK_KEYS[lineId] ?: return null
+        return lineId in chosen || network in chosen
+    }
+
+    /**
      * Which of [PICKER]'s chips show selected for what's [chosen], group by group in its order: a line
      * covered by its network's key (an older build's choice) or picked on its own (maintainer,
      * 2026-10-06). No chip picks a whole network (2026-10-07: the row leans on the lines near the rider

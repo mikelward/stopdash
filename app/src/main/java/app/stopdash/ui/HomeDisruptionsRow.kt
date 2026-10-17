@@ -187,7 +187,7 @@ internal fun HomeDisruptionsRow(row: TripRow, modifier: Modifier = Modifier) {
             )
         }
     }
-    if (open) TripLinesPage(row, onClose = { open = false }, gone = R.string.home_lines_gone, dismissal = LocalDismissLineAlert.current)
+    if (open) TripLinesPage(row, onClose = { open = false }, gone = R.string.home_lines_gone, goneWatched = R.string.home_lines_unwatched, dismissal = LocalDismissLineAlert.current, watch = LocalLineWatch.current)
 }
 
 /**
