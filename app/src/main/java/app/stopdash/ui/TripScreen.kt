@@ -3561,11 +3561,16 @@ internal class TripRow(
     val everyWatched: ArrayList<String>? = every.takeIf { lines -> lines.any { it.watched != null } }
         ?.mapNotNullTo(ArrayList()) { line -> line.leg.lineId.takeIf { line.watched == true } }
 
-    /** Whether [other] draws the same: on the worker only, as it walks both. */
+    /**
+     * Whether [other] draws the same: on the worker only, as it walks both. Each line's reasons are
+     * compared too: they're worked out when the row is, and National Rail's words in them expire with no
+     * change to the status (Codex, #943).
+     */
     @WorkerThread
     fun sameAs(other: TripRow?): Boolean = other != null && checking == other.checking && unknown == other.unknown &&
         stops == other.stops && unknownStops == other.unknownStops && lines == other.lines && unknownLines == other.unknownLines &&
-        every == other.every && starredStops == other.starredStops
+        every == other.every && starredStops == other.starredStops &&
+        every.indices.all { every[it].reason == other.every[it].reason && every[it].quietedReason == other.every[it].quietedReason }
 
     companion object {
         /** "Checking…" alone: before the first row is worked out, or once the last is too old to show. */
@@ -3686,13 +3691,13 @@ internal data class TripLine(
      * TfL's reason for the disruption shown, null when there's none to show: worked out once, with the
      * line, on the worker, so the page only reads it (Codex, #559).
      */
-    val reason: String? = status?.takeIf { it.disrupted }?.fullText?.takeIf { it.isNotBlank() }
+    val reason: String? = status?.takeIf { it.disrupted }?.shownText?.takeIf { it.isNotBlank() }
 
     /** Whether its alert can be dismissed: a disruption shown, not one already dismissed or gone. */
     val dismissable: Boolean get() = disrupted && !dismissed && !gone && !restoring
 
     /** TfL's reason for the [quieted] alert, null when there's none to show. */
-    val quietedReason: String? = quieted?.fullText?.takeIf { it.isNotBlank() }
+    val quietedReason: String? = quieted?.shownText?.takeIf { it.isNotBlank() }
 
     /**
      * [planned] as a restored page shows it until the line is back ([SavedPlanned]). Worked out with the

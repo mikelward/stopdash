@@ -146,8 +146,15 @@ data class JourneyLineAlert(
     val lineName: String,
     val description: String,
     val fullText: String?,
+    // National Rail's words for [fullText] where TfL's are only a link to its page ([LineStatus.detail]).
+    // Not part of [fingerprint], so the same alert isn't announced again when they couldn't be fetched
+    // one time and could the next.
+    val detail: IncidentDetail? = null,
 ) {
     val fingerprint: String get() = "$lineId|$description|${fullText.orEmpty()}"
+
+    /** The words a notification up until [end] shows ([LineStatus.shownTextThrough]). */
+    fun shownTextThrough(end: java.time.Instant): String? = detail?.wordsFor(fullText, end) ?: fullText
 }
 
 /**
@@ -462,7 +469,7 @@ object JourneyAlerts {
                 val name = names[status.lineId]?.takeIf { it.isNotBlank() }
                     ?: journey.lineName.takeIf { status.lineId == journey.lineId && it.isNotBlank() }
                     ?: status.lineId
-                JourneyLineAlert(status.lineId, name, status.description, status.fullText)
+                JourneyLineAlert(status.lineId, name, status.description, status.fullText, status.detail)
             }
         JourneyAlertResult(journey.key, alerts, unanswered, directions[journey.key].orEmpty(), until[journey.key])
     }

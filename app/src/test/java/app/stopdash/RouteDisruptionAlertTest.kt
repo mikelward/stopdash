@@ -2,8 +2,11 @@ package app.stopdash
 
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
+import app.stopdash.domain.IncidentDetail
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.RouteDisruption
+import java.time.Duration
+import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -40,5 +43,19 @@ class RouteDisruptionAlertTest {
         assertEquals("None direct to Morden · Change at Kennington" to null, RouteDisruptionAlert.content(app, listOf(named)))
         // TfL's route names no stop where the branch turns off: no "Change at" with nothing after it (Codex, #633).
         assertEquals("None direct to Morden" to null, RouteDisruptionAlert.content(app, listOf(named.copy(forkName = ""))))
+    }
+
+    @Test
+    fun `National Rail's words are said only if they're still current when the alert comes down`() {
+        val now = Instant.now()
+        val link = "https://www.nationalrail.co.uk/service-disruptions/example-20261018/"
+        val words = "Disruption at Example\n\n$link"
+        val line = RouteDisruption.Signal.Line(
+            0, "c2c", "c2c",
+            LineStatus("c2c", 6, "Special Service", link, soleAlert = true, incidentWords = mapOf(link to IncidentDetail(link, words, until = now.plusSeconds(300)))),
+            RouteDisruption.Tier.MEDIUM,
+        )
+        assertEquals(words, RouteDisruptionAlert.content(app, listOf(line), through = now.plusSeconds(60)).second)
+        assertEquals(link, RouteDisruptionAlert.content(app, listOf(line), through = now.plus(Duration.ofMinutes(10))).second)
     }
 }

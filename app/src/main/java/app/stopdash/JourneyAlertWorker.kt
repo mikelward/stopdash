@@ -838,6 +838,8 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
                 // widget, and waited for, as no later refresh would split this check's answer.
                 alertDirections = LineAlertDirections.shared,
                 awaitAlertDirections = true,
+                // National Rail's words for a line whose TfL status is only a link, for the notification.
+                railRelayUrl = { BuildConfig.RAIL_RELAY_URL },
             )
             JourneyAlertChecks.answered(lineIds) { chunk -> client.lineStatuses(chunk) }
         } catch (e: CancellationException) {
@@ -1105,7 +1107,7 @@ internal object JourneyAlertNotification {
         val pending = PendingIntent.getActivity(context, 3, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val heading = result.alerts.joinToString("\n") { context.getString(R.string.route_disruption_line, it.lineName, it.description) }
         val body = result.alerts.joinToString("\n\n") { alert ->
-            listOfNotNull(context.getString(R.string.route_disruption_line, alert.lineName, alert.description), alert.fullText?.trim()?.ifEmpty { null })
+            listOfNotNull(context.getString(R.string.route_disruption_line, alert.lineName, alert.description), alert.shownTextThrough(now.plus(lasts))?.trim()?.ifEmpty { null })
                 .joinToString("\n")
         }
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)

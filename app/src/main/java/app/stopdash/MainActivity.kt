@@ -6037,6 +6037,8 @@ class MainActivity : ComponentActivity() {
                 alertDirections = LineAlertDirections.shared,
                 alertDirectionScope = (context.applicationContext as? StopdashApp)?.applicationScope,
                 stationIndex = { StationIndexStore.load(context.applicationContext) },
+                // National Rail's words where TfL's status is only a link to its page (SPEC *National Rail*).
+                railRelayUrl = { BuildConfig.RAIL_RELAY_URL },
             ),
             rail = railBoards(context),
             codes = { RailStationCodesStore.load(context.applicationContext) },
@@ -6078,6 +6080,7 @@ class MainActivity : ComponentActivity() {
                 requestPool = SharedTflRequestPool.pool,
                 keyAnswered = RejectedApiKey.SHARED::record,
                 warn = ::logDepartureWarning,
+                railRelayUrl = { BuildConfig.RAIL_RELAY_URL },
             )
         }
         private val lineCatalogLock = Any()

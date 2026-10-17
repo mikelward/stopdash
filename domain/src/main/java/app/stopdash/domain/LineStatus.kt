@@ -70,7 +70,29 @@ data class LineStatus(
     // though several are under way ([RouteDisruption.offRide], maintainer 2026-10-03). Empty where not
     // known, or nothing is under way.
     val underWay: List<LineAlert> = emptyList(),
+    // National Rail's own words for each of the line's alerts whose TfL text is only a link to its page
+    // ([RailIncidents]), keyed by that text. Every status made from this one (a direction's, a placed
+    // closure's, an alert under way) keeps the map, so whichever alert ends up shown finds its words by
+    // its own text, and never another's (Codex, #943). Not part of what an alert is: a dismissal and a
+    // journey's alert are keyed on [fullText], so they hold whether the words could be fetched or not.
+    val incidentWords: Map<String, IncidentDetail> = emptyMap(),
 ) {
+    /** National Rail's words for the shown alert ([incidentWords]), shown in its place ([shownText]). */
+    val detail: IncidentDetail? get() = fullText?.let(incidentWords::get)
+
+    /**
+     * The words to show for the shown disruption: National Rail's ([detail]) for TfL's link while they're
+     * current ([IncidentDetail.current]), else [fullText]. Checked here, where every surface reads them,
+     * so words kept on a status past their own age give way to TfL's link without any surface having to
+     * date them (SPEC D4; Codex, #943).
+     */
+    val shownText: String? get() = shownTextThrough(java.time.Instant.now())
+
+    /**
+     * [shownText] for something that stays up until [end] without being redrawn, a notification: National
+     * Rail's words only if they're still current then, so they're never left showing past their age.
+     */
+    fun shownTextThrough(end: java.time.Instant): String? = detail?.wordsFor(fullText, end) ?: fullText
 
     /** True when TfL reports anything other than a good service on this line. */
     val disrupted: Boolean get() = severity != GOOD_SERVICE
@@ -329,4 +351,22 @@ data class PlannedAlert(
  * One alert under way on a line, in its own words ([LineStatus.underWay]), as [LineStatus] words the one
  * shown, with the [directions] (TfL's `inbound`/`outbound`) it was found to affect; null where not known.
  */
-data class LineAlert(val severity: Int, val description: String, val fullText: String?, val directions: Set<String>? = null)
+data class LineAlert(
+    val severity: Int,
+    val description: String,
+    val fullText: String?,
+    val directions: Set<String>? = null,
+)
+
+/**
+ * National Rail's [words] for a disruption whose TfL text, [forText], is only a link to its page, used
+ * until [until] (in the steady frame, [SteadyClock]): the shared staleness bound counted from when the
+ * relay fetched them, not from when the status carrying them was. Null: no limit of its own.
+ */
+data class IncidentDetail(val forText: String, val words: String, val until: java.time.Instant? = null) {
+    /** Whether the words are still young enough to show at the wall time [now]. */
+    fun current(now: java.time.Instant = java.time.Instant.now()): Boolean = until == null || SteadyClock.stamp(now).isBefore(until)
+
+    /** The words to show in place of [text] through the wall time [end]: none if they stand for other words or are too old then. */
+    fun wordsFor(text: String?, end: java.time.Instant): String? = words.takeIf { forText == text && current(end) }
+}

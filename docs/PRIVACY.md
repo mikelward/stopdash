@@ -14,7 +14,8 @@ third only if you add a National Rail key: **Transport for London's Unified API*
 available (detailed below; it carries nothing about you); and, with a National Rail key, **National
 Rail's live departure boards** (the Rail Data Marketplace, detailed below). **Google** is asked only
 when you share a Google Maps short link into the app, to learn the place it points to (see *Find a
-station*). **Firebase** is added
+station*). **stopdash's own relay** is asked for National Rail's disruption notices, a request that
+carries nothing about you (see *National Rail disruption notices*). **Firebase** is added
 only if you turn on *Help make StopDash better* (off by default; see *Crash reports and usage stats*
 below). Your **location, the stops and lines you look up, and your API keys** go only to TfL, or
 with a National Rail key also to National Rail (if you opt in, Firebase sees only the rough region
@@ -53,9 +54,18 @@ key is your own credential, sent only with those requests, never logged. Without
 request goes there. The station codes themselves come bundled with the app, built from NaPTAN,
 the Department for Transport's public stop list.
 
+**National Rail disruption notices.** Where TfL's status for a National Rail line is only a link to
+National Rail's disruption page, stopdash asks **its own small relay** for National Rail's current
+notices, to show their words instead. That request carries nothing about you: no location, station,
+line or key. Like any server, the relay sees your connection's IP address. It keeps no log of
+requests and no record of who asked, and passes nothing about you on to National Rail. Cloudflare,
+which hosts the relay, keeps its own sampled records of requests to it, which can include your IP
+address, for about a month, as any web host does.
+
 Nothing else leaves the device *to stopdash* unless you turn on **Help make StopDash better**
 in Settings, which is **off by default** (see *Crash reports and usage stats* below): no
-third-party tracker, no ads, and no server of stopdash's own.
+third-party tracker, no ads, and no server of stopdash's own beyond that relay, which keeps no
+record of you (its host's sampled request records aside).
 
 On a release build, stopdash makes **one** other kind of network call — to **Google
 Play**, asking whether an app update is available (this drives the "update available" dot

@@ -339,7 +339,7 @@ object RouteDisruption {
 
     // Each alert under way on [status]'s line ([LineStatus.underWay]) as a status of its own.
     private fun underWayOf(status: LineStatus): List<LineStatus> =
-        status.underWay.map { LineStatus(status.lineId, it.severity, it.description, it.fullText, soleAlert = true) }
+        status.underWay.map { LineStatus(status.lineId, it.severity, it.description, it.fullText, soleAlert = true, incidentWords = status.incidentWords) }
 
     // [Signal.Line.dismissKey]: the leg and the alert as a dismissal knows it.
     private fun lineDismissKey(legIndex: Int, status: LineStatus): String =

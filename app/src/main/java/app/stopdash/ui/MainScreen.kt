@@ -5720,7 +5720,7 @@ internal fun sameVerdict(held: Inputs, wanted: Inputs): Boolean {
  */
 internal fun sameAlert(a: LineStatus?, b: LineStatus?): Boolean =
     a === b || (a != null && b != null && a.severity == b.severity && a.description == b.description &&
-        a.fullText == b.fullText && a.closures.size == b.closures.size)
+        a.fullText == b.fullText && a.shownText == b.shownText && a.closures.size == b.closures.size)
 
 /**
  * A line as its page ([OneLinePage]) stands in for it while its row is worked out: its pill alone, no
@@ -6172,7 +6172,7 @@ internal fun RouteDetailScreen(
                         }
                     }
                 }
-                status.fullText?.let { fullText ->
+                status.shownText?.let { fullText ->
                     CollapsibleStatus(
                         text = fullText,
                         title = null,
@@ -6194,7 +6194,7 @@ internal fun RouteDetailScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 12.dp),
                 )
-                behind.fullText?.let { fullText ->
+                behind.shownText?.let { fullText ->
                     CollapsibleStatus(
                         text = fullText,
                         title = null,
