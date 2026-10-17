@@ -21,6 +21,10 @@ import io.ktor.serialization.kotlinx.json.json
 import io.ktor.utils.io.ByteReadChannel
 import java.util.concurrent.Executors
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -98,6 +102,198 @@ class KtorDarwinClientTest {
     }
 
     @Test
+    fun `without a key of the rider's own, boards come through the relay, carrying nothing of theirs`() {
+        val board = checkNotNull(javaClass.getResource("/fixtures/darwin_board_example.json")).readText()
+        val details = checkNotNull(javaClass.getResource("/fixtures/darwin_board_details_st_pancras.json")).readText()
+        val asked = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            asked += "${request.url.host}${request.url.encodedPath}${request.url.encodedQuery.takeIf { it.isNotEmpty() }?.let { "?$it" }.orEmpty()} ${request.headers["x-apikey"]}"
+            val body = if (request.url.encodedPath.contains("details", ignoreCase = true)) details else board
+            respond(ByteReadChannel(body), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(json) }
+        }
+        var key: String? = null
+        val client = KtorDarwinClient(http, apiKey = { key }, baseUrl = "https://darwin.example/api", relayUrl = { "https://relay.example/" })
+        assertTrue(client.available)
+        runBlocking {
+            client.board("WAT")
+            client.boardWithDetails("WAT")
+            client.runs("STP", "BTN")
+            client.runs("STP", "BTN", offsetMinutes = 45)
+        }
+        assertEquals(
+            listOf(
+                "relay.example/v1/board/WAT null",
+                "relay.example/v1/board/WAT/details null",
+                "relay.example/v1/board/STP/details?to=BTN null",
+                "relay.example/v1/board/STP/details?to=BTN&offset=45 null",
+            ),
+            asked,
+        )
+        // A key of the rider's own goes straight to National Rail, as before the relay.
+        key = "EXAMPLE"
+        runBlocking { client.board("WAT") }
+        assertEquals("darwin.example/api/GetDepartureBoard/WAT?numRows=20 EXAMPLE", asked.last())
+        // Neither: nothing to ask.
+        key = null
+        assertTrue(!KtorDarwinClient(http, apiKey = { key }, relayUrl = { null }).available)
+    }
+
+    @Test
+    fun `a board asked for before the saved key is read back waits for it, and goes the way the key says`() = kotlinx.coroutines.test.runTest {
+        val board = checkNotNull(javaClass.getResource("/fixtures/darwin_board_example.json")).readText()
+        val asked = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            asked += "${request.url.host} ${request.headers["x-apikey"]}"
+            respond(ByteReadChannel(board), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(json) }
+        }
+        val loaded = kotlinx.coroutines.flow.MutableStateFlow(false)
+        var key: String? = null
+        val client = KtorDarwinClient(
+            http, apiKey = { key }, baseUrl = "https://darwin.example/api", relayUrl = { "https://relay.example" },
+            keyLoaded = { loaded.first { it } },
+        )
+        // Not refused while the key is read back: a restored trip's first board isn't a failure (Codex, #944).
+        assertTrue(client.available)
+        val read = async { client.board("WAT") }
+        runCurrent()
+        assertEquals(emptyList<String>(), asked)
+        // The saved key turns out to be the rider's own: straight to National Rail, never the relay.
+        key = "EXAMPLE"
+        loaded.value = true
+        read.await()
+        assertEquals(listOf("darwin.example EXAMPLE"), asked)
+    }
+
+    @Test
+    fun `a key never read back gives no board, and the relay isn't asked in its place`() = kotlinx.coroutines.test.runTest {
+        val asked = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            asked += request.url.host
+            respond(ByteReadChannel("{}"), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(json) }
+        }
+        val client = KtorDarwinClient(http, apiKey = { null }, relayUrl = { "https://relay.example" }, keyLoaded = { awaitCancellation() })
+        val failed = try {
+            client.board("WAT")
+            null
+        } catch (e: TflException.Unreachable) {
+            e.message
+        }
+        assertEquals("national rail key not read yet", failed)
+        assertEquals(emptyList<String>(), asked)
+    }
+
+    @Test
+    fun `a relay board carries the age the relay gave it`() {
+        val board = checkNotNull(javaClass.getResource("/fixtures/darwin_board_example.json")).readText()
+        var age: String? = "17"
+        val engine = MockEngine {
+            val headers = listOfNotNull(HttpHeaders.ContentType to listOf("application/json"), age?.let { HttpHeaders.Age to listOf(it) })
+            respond(ByteReadChannel(board), HttpStatusCode.OK, headersOf(*headers.toTypedArray()))
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(json) }
+        }
+        val client = KtorDarwinClient(http, apiKey = { null }, relayUrl = { "https://relay.example" })
+        assertEquals(java.time.Duration.ofSeconds(17), runBlocking { client.board("WAT") }.age)
+        // None, or one that can't be read, is no age at all.
+        age = null
+        assertEquals(java.time.Duration.ZERO, runBlocking { client.board("WAT") }.age)
+        age = "soon"
+        assertEquals(java.time.Duration.ZERO, runBlocking { client.board("WAT") }.age)
+    }
+
+    @Test
+    fun `a followed train's relay board carries its age, as a plain board does`() {
+        val body = checkNotNull(javaClass.getResource("/fixtures/darwin_board_details_st_pancras.json")).readText()
+        val engine = MockEngine {
+            respond(ByteReadChannel(body), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType to listOf("application/json"), HttpHeaders.Age to listOf("23")))
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(json) }
+        }
+        val runs = runBlocking { KtorDarwinClient(http, apiKey = { null }, relayUrl = { "https://relay.example" }).runs("STP", "BTN", 0) }
+        assertTrue(runs!!.runs.isNotEmpty())
+        assertEquals(java.time.Duration.ofSeconds(23), runs.age)
+    }
+
+    @Test
+    fun `a relay's failure names what went wrong upstream, and nothing else from its body`() {
+        var body = """{"error":"national rail unreachable: TimeoutError"}"""
+        val engine = MockEngine {
+            respond(ByteReadChannel(body), HttpStatusCode.BadGateway, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(json) }
+        }
+        val client = KtorDarwinClient(http, apiKey = { null }, relayUrl = { "https://relay.example" })
+        fun failure() = try {
+            runBlocking { client.board("WAT") }
+            null
+        } catch (e: TflException.Unreachable) {
+            e.message
+        }
+        assertEquals("HTTP 502 (national rail unreachable: TimeoutError)", failure())
+        body = """{"error":"national rail answered 500"}"""
+        assertEquals("HTTP 502 (national rail answered 500)", failure())
+        // Anything else the body says is never repeated.
+        body = """{"error":"national rail unreachable: see https://example.com/?key=EXAMPLE"}"""
+        assertEquals("HTTP 502", failure())
+    }
+
+    @Test
+    fun `a relay's failure body is read off the thread that asked for it`() {
+        val engine = MockEngine {
+            respond(ByteReadChannel("""{"error":"national rail unreachable: TimeoutError"}"""), HttpStatusCode.BadGateway, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(json) }
+        }
+        // The decode dispatcher, noting which work it was handed.
+        val decoder = Executors.newSingleThreadExecutor()
+        val handed = java.util.Collections.synchronizedList(mutableListOf<String?>())
+        val decode = object : kotlinx.coroutines.CoroutineDispatcher() {
+            override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) {
+                handed += context[kotlinx.coroutines.CoroutineName]?.name
+                decoder.execute(block)
+            }
+        }
+        val client = KtorDarwinClient(http, apiKey = { null }, relayUrl = { "https://relay.example" }, decodeDispatcher = decode)
+        // The caller's own single thread, as a screen's main thread is.
+        val caller = Executors.newSingleThreadExecutor()
+        try {
+            val failed = runBlocking(caller.asCoroutineDispatcher()) {
+                try {
+                    client.board("WAT")
+                    null
+                } catch (e: TflException.Unreachable) {
+                    e.message
+                }
+            }
+            assertEquals("HTTP 502 (national rail unreachable: TimeoutError)", failed)
+            assertTrue(KtorDarwinClient.FAILURE_BODY.name in handed)
+        } finally {
+            caller.shutdown()
+            decoder.shutdown()
+        }
+    }
+
+    @Test
     fun `a followed train's board is asked toward its terminus, with each train's calls and times`() {
         val body = checkNotNull(javaClass.getResource("/fixtures/darwin_board_details_st_pancras.json")).readText()
         val asked = mutableListOf<String>()
@@ -113,7 +309,7 @@ class KtorDarwinClientTest {
         val client = KtorDarwinClient(http, apiKey = { "EXAMPLE" }, baseUrl = "https://darwin.example/api/20220120")
         val runs = checkNotNull(runBlocking { client.runs("STP", "BTN") })
         assertEquals(listOf("GetDepBoardWithDetails/STP 10 BTN to null EXAMPLE"), asked)
-        assertEquals(listOf("ZFD", "CTK", "BFR", "LBG", "GTW", "BTN"), runs.first().next.map { it.crs })
+        assertEquals(listOf("ZFD", "CTK", "BFR", "LBG", "GTW", "BTN"), runs.runs.first().next.map { it.crs })
         // From so many minutes on, for a train further out than the first ten (Codex, #883).
         runBlocking { client.runs("STP", "BTN", offsetMinutes = 45) }
         assertEquals("GetDepBoardWithDetails/STP 10 BTN to 45 EXAMPLE", asked.last())

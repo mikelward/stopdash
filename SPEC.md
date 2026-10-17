@@ -590,14 +590,15 @@ The app finds stops two ways:
   National Rail. A coach counts as a **Bus**: TfL lists no coach routes
   or stops, and riders don't tell the two apart (maintainer, 2026-10-08; until then Coach was a sixth
   group, empty in practice). The overflow menu lists all six, always the
-  same, each with a checkbox ticked while it shows. **National Rail starts unticked while no
-  National Rail key is set** (maintainer, 2026-10-08): without one its rows have no times and flood a
-  big station. Ticking it while no key is set, however it came to be hidden, opens a dialog saying a free Rail Data Marketplace key gives its
+  same, each with a checkbox ticked while it shows. **National Rail starts unticked while its times can't be had** — no
+  National Rail key set and no relay in the build (*National Rail*) (maintainer, 2026-10-08): without
+  times its rows flood a big station. A build with the relay has its times keyless, so there it
+  starts shown and none of this applies. Ticking it while its times can't be had, however it came to be hidden, opens a dialog saying a free Rail Data Marketplace key gives its
   times, with **Get a key** (the sign-up page), **Add key** (Settings, at the key) and **Show anyway**. Adding a
   key shows it by itself. The default is never stored: once the rider shows or hides National Rail
   themselves, their choice stands, key or none. The near-me banner and Settings' Hidden list leave
   the default out (an empty list still names it). A trip follows it like any hide (maintainer,
-  2026-10-08): no routes riding National Rail without a key, its banner naming National Rail, whose
+  2026-10-08): no routes riding National Rail without its times, its banner naming National Rail, whose
   Show all shows it. Exempting trips meant a stop pick of their own, since the near-me pick leaves out
   a station only National Rail serves. A long press on a near-me
   row opens a small menu, pinning or unpinning it and **"Hide all ‹group› services"** (a bare "Hide
@@ -994,7 +995,7 @@ Where its countdown would be, the status row says what is known (maintainer, 202
 **dash** only when StopDash is sure no train is coming, **"?"** (heard as "Times unknown") when one
 might be but its source hasn't said when, **"No data"** when no source answered for it (a National
 Rail line whose board failed, or that no board covers), and **"No key"** for a National Rail line at a
-station a key would cover when none is set — a tap on it opens Settings at the key. Opened at the key,
+station a key would cover when none is set and the build has no relay — a tap on it opens Settings at the key. Opened at the key,
 Settings starts scrolled to the National Rail key's row and flashes it twice, so the eye lands on
 the field to paste into rather than hunting the last row of a long screen.
 
@@ -1082,8 +1083,9 @@ and To. A bus stop the ride gets off at shows no letter or way, and asks for non
 keep them. Go starts the trip there on the way (*On the way*) on that line from the boarding stop,
 along the route page's own stop list, no Planner asked; the trip follows the soonest of the line's trains
 the rider can catch, as a planned ride does. A trip already on the way is replaced only once the rider says
-so. A National Rail line offers Go only with the rider's National Rail key, which following its trains needs
-(*On the way*), and again as soon as one is added. The top bar's star saves the journey there
+so. A National Rail line offers Go only where its trains can be followed (*On the way*): with the rider's
+National Rail key, or through stopdash's proxy in a build that has one; without either, it offers Go as
+soon as a key is added. The top bar's star saves the journey there
 (*Journeys*). Back returns to the route page. A trip's route pages leave their stations inert for now. The boarding stop is marked with a blue "you are here" dot (map-location blue, ringed to
 stand off a blue line's rail), announced to a screen reader as "Your stop"; every other stop, the terminus included, is hollow,
 so the one filled dot is the rider's (the terminus keeps a bold name). **A station step-free for the line
@@ -2724,9 +2726,10 @@ as it was.
   per refresh until the rider is seen there or the walk's estimated time is up. Below the next step
   the route's legs are listed, a ride by
   its pill and a walk by a walker in the pills' column, so every leg's stops line up. A route with a **National Rail** train offers Start
-  only with the rider's National Rail key (*Data source*), since its train is followed from National
-  Rail's own boards (*Following it*); without one it says "National Rail key needed" (maintainer,
-  2026-10-15), and offers Start as soon as one is added. **One trip at a time:** while one is on the way, a route offers **Open current
+  only where its train can be followed, from National Rail's own boards (*Following it*): with the
+  rider's National Rail key, or through stopdash's proxy in a build that has one (*Data source*). With
+  neither it says "National Rail key needed" (maintainer, 2026-10-15), and offers Start as soon as a key
+  is added. **One trip at a time:** while one is on the way, a route offers **Open current
   trip** beside Start, and Start asks "Replace current trip?" before ending that one and starting
   this route in its place (maintainer, 2026-10-04): ending a trip can't be undone. A route that
   can't be followed offers only the open.
@@ -2814,7 +2817,7 @@ as it was.
   have missed it, however late the train has been called since, which is left to the check for one
   left behind. Only the fixes the trip already takes count: none is asked for this.
 - **A National Rail train** (maintainer, 2026-10-15) is followed from National Rail's own boards,
-  with the rider's key, since TfL has no times for it and Darwin names no train the way TfL does. It's
+  with the rider's key or through stopdash's proxy (*National Rail*), since TfL has no times for it and Darwin names no train the way TfL does. It's
   known by the station it was picked at, when it was due to leave there, where it ends and the line it
   runs on (Codex, #883), which every later board names among the stops it has called at, by its
   departure there. Only that time is taken,
@@ -4200,7 +4203,8 @@ app may show its newest strings in English.
 ## Data source, cost, and reliability
 
 StopDash's one required **data** dependency is the **TfL Unified API** — free and public; National
-Rail's boards are an optional second one, used only with the user's key (below). (A
+Rail's boards are an optional second one, asked with the user's key or, without one, through
+stopdash's relay (below). (A
 release build also makes one non-data Play Services call to check for app updates — see
 *Update indicator* above; it is free, carries no user data, and adds no Data Safety
 surface.)
@@ -4226,12 +4230,13 @@ surface.)
   widget, which reads the stored key, would go on sending the old one. No request checks a key when it is
   pasted: the refusal surfaces on the next request that would have sent it anyway. A
   keyless refusal says nothing about a key and stays a plain failure.
-- **National Rail (optional, the user's own key).** TfL's arrivals feed has no times for
+- **National Rail (optional: the user's own key, or stopdash's relay).** TfL's arrivals feed has no times for
   National Rail services (Great Northern, Thameslink, Southern…). With a free Rail Data
   Marketplace key pasted in settings (maintainer, 2026-09-24), a rail station's departures also
   come from National Rail's own live departure boards (Darwin's `GetDepartureBoard`, by the
-  station's three-letter CRS code), alongside TfL's; without one, a disrupted line's status row there says "No
-  key" and opens Settings at the key (*Departures*). Like D7, stopdash ships no key. TfL's `910G` ids end in the station's TIPLOC, and
+  station's three-letter CRS code), alongside TfL's. Without one, a build with stopdash's relay asks it
+  for the same boards with the relay's own key (below); with neither, a disrupted line's status row there
+  says "No key" and opens Settings at the key (*Departures*). Like D7, the app ships no key. TfL's `910G` ids end in the station's TIPLOC, and
   NaPTAN (DfT, Open Government Licence v3.0) pairs each TIPLOC with its CRS, so the app bundles
   that table (rebuilt weekly with the station list) and the two join exactly, never by name.
   **The board's station messages are station notices** (maintainer, 2026-10-17): TfL's status for a
@@ -4257,6 +4262,14 @@ surface.)
   past it (its next refresh failed, say) shows TfL's link again, whenever TfL's own status was fetched. What an alert is stays TfL's text: a dismissal or a journey's alert holds whether the
   words could be fetched or not, and the stations an alert names are read from TfL's words alone. A
   relay that can't be reached leaves TfL's link, which still opens the page.
+  **Boards need no key either** (maintainer, 2026-10-17): without a key of the rider's own, every
+  board (a station's, one with calling points, a followed train's) comes through the same relay,
+  which holds a Live Departure Board key and answers in Darwin's own shape. The relay counts as a
+  key wherever this spec says one: National Rail starts shown, there's no "No key", and a trip
+  follows National Rail trains. A key the rider pastes still goes straight to National Rail, as
+  before, and a build with no relay behaves as before it. The relay keeps a board for 30 seconds,
+  inside what the app already treats as live, and only a request it can't answer from that copy
+  reaches National Rail or counts against a caller.
   Where TfL lists one station under two National Rail ids, a list shows its board under one of
   them, the first whose own TfL fetch works, which keeps it while it keeps asking; a trip times a
   train from the board whichever of them it boards at. A trip also asks for each station's board
@@ -4316,13 +4329,15 @@ surface.)
   a garbled answer, or one Darwin has suppressed, its trains withheld though they may still run,
   Codex, #883) leaves the station's TfL departures in place, its National Rail lines' status rows saying
   "No data", and is logged; it never fails the stop or blanks the list. **Cost:
-  £0**, against the user's own key's limit: the lists ask at most one request per rail station per
+  £0**, against the user's own key's limit, or through the relay against its own budget (below): the
+  lists ask at most one request per rail station per
   refresh, shared by every screen. An open trip adds one for each station it reads departures at, for
   that station's calling points, and the boards that follow its train and check which is the rider's,
   each toward a terminus, within the limits above (Codex, #883); one or two requests a refresh as a
   rule. A failed calling-points request leaves the plain board standing.
   **Play Data Safety:** no new data type — a request carries only a public station code and the
-  user's own key for that service, sent at their request; `docs/PRIVACY.md` names National Rail as
+  user's own key for that service (through the relay, the code alone; its per-caller count is
+  under *Privacy*), sent at their request; `docs/PRIVACY.md` names National Rail as
   a recipient, and the Data Safety form and privacy-policy link are re-checked before the release
   that ships it.
 - **Step-free access (bundled; maintainer, 2026-10-02).** How far each platform is step-free comes
@@ -4590,8 +4605,8 @@ the phone, and a phone with no watch (or no Wear OS app) never sees the offer.
 
 StopDash handles location and the set of stops the user watches — which together reveal
 where they live, work, and travel. StopDash itself sends none of it anywhere except the
-TfL requests that *are* the product (and, with the user's National Rail key, a rail station's
-code to National Rail, below): the in-app near-me list's lookup outside the bundled stops' area (in and around
+TfL requests that *are* the product (and a rail station's code to National Rail, with the user's National Rail key or, without
+one, through stopdash's proxy, below): the in-app near-me list's lookup outside the bundled stops' area (in and around
 London it is answered on the device, *Near me now*; the widget's background lookup never asks TfL, D1)
 necessarily sends coordinates
 to TfL — **precise** where the user granted precise and an accurate fix is available,
@@ -4634,7 +4649,8 @@ the user's own Google account, not an off-device channel stopdash adds: cost £0
 Play Data Safety change (Android Auto Backup is a platform feature, not data stopdash
 collects or transmits). The guarantee is therefore precise, not absolute — the only **user data**
 *stopdash* sends off the device on its own goes in its TfL requests, and its National Rail
-requests when the user has added a key (*Data source*) (its one other network
+requests, with the user's key or, without one, through stopdash's proxy (*Data source*), whose
+own incident request carries nothing about the user (its one other network
 call, the release-only Play update check, carries none — see *Update indicator*); the user's
 own backup/transfer carries their config under their control; and a **consent-gated bug
 report** (see below and `docs/PRIVACY.md`) carries the exact location, per-stop distances, and
@@ -4698,6 +4714,10 @@ nothing about the rider, no location, station, line or key. The relay sees the I
 does, logs no request, keeps nothing about the caller and forwards nothing about them; Cloudflare,
 its host, keeps its own sampled request records, which can include the IP, for about a month, and
 `docs/PRIVACY.md` says so (`dev-docs/national-rail-proxy.md`).
+
+Without a key of the rider's own, those board requests go to stopdash's relay instead, carrying the
+same station codes and nothing else; it passes on only the codes, logs nothing, and counts for a
+minute the requests that miss its cache under a key the caller's IP can't be recovered from.
 
 With a National Rail key set (*Data source*), a rail station's departures request also goes to
 the Rail Data Marketplace, carrying that station's CRS code and the user's own key, never a
@@ -4881,7 +4901,10 @@ Mirrors the sibling fleet:
   (keyless, or the user's own key), National Rail with the user's own key, optional Firebase (a
   managed service, on opt-in), and the platform services already documented under *Privacy* (the
   release-only Play update check, the Wearable Data Layer). A feature that would need a
-  StopDash-operated server, proxy, or datastore is out. This, not "door to door", is the real
+  StopDash-operated server, proxy, or datastore is out, with one exception the maintainer chose
+  (2026-10-17): the National Rail relay (`dev-docs/national-rail-proxy.md`), which the app never
+  needs. A build without one, or a relay that's down, shows TfL's text and asks National Rail with the
+  rider's own key, as before it. This, not "door to door", is the real
   constraint: a capability a third party already provides — routing to a coordinate, which TfL does —
   is in scope; door-to-door was only ever set aside because it looked hard, not on principle (D9).
 - **Maps and turn-by-turn walking directions.** Routing to a place is in scope — a saved favorite
@@ -4890,8 +4913,8 @@ Mirrors the sibling fleet:
   (stations and bus stops, not addresses; favorites are the door-to-door path). StopDash still leads
   with "what's next from here".
 - **Non-TfL operators** outside the Unified API (coach, etc.), National Rail aside: its
-  times come from National Rail's own feed once the user adds a key (*Data source*). Without
-  one, TfL gives no times for them, so a National Rail line TfL reports disrupted at a station
+  times come from National Rail's own feed, with the user's key or, without one, through stopdash's
+  relay where the build has it (*Data source*). With neither, TfL gives no times for them, so a National Rail line TfL reports disrupted at a station
   shows only as its status row, saying "No key" where times would be (*Departures*); one in good
   service isn't listed.
 - **Ticketing**, Oyster/contactless balances, and service maps.

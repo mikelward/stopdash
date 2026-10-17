@@ -1,6 +1,7 @@
 package app.stopdash.domain
 
 import androidx.annotation.WorkerThread
+import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
@@ -34,9 +35,9 @@ interface RailBoardSource {
      * [crs]'s next trains that call at [towards] (both station codes), each with its stops before and
      * after this one and their times ([RailRun]): what a followed train's calls are read from
      * ([RailVehicles]). From [offsetMinutes] on (Darwin's `timeOffset`), for a train further out than a
-     * board's first few. Null when this source has none to give.
+     * board's first few, with the board's own age ([RailRuns]). Null when this source has none to give.
      */
-    suspend fun runs(crs: String, towards: String, offsetMinutes: Int = 0): List<RailRun>? = null
+    suspend fun runs(crs: String, towards: String, offsetMinutes: Int = 0): RailRuns? = null
 }
 
 /**
@@ -63,12 +64,15 @@ data class CallingPortion(val stops: Set<String>, val complete: Boolean) {
  * [railMessageText]), the words TfL's status for a National Rail line often leaves out for a link.
  * [suppressed] is a board Darwin has suppressed ([SuppressedRailBoard]): no trains to stand behind, only
  * its [messages], which often say why. It is never kept, and its station's times are a failure.
+ * [age] is how old it already was when it arrived (stopdash's relay serves one from its cache), so it
+ * is dated by when National Rail gave it, not when it was asked for (SPEC D4).
  */
 data class RailBoard(
     val departures: List<Departure>,
     val untimed: List<UntimedTrain> = emptyList(),
     val messages: List<String> = emptyList(),
     val suppressed: Boolean = false,
+    val age: Duration = Duration.ZERO,
 )
 
 /**
@@ -399,7 +403,7 @@ class RailAwareTflClient(
                 // it (Codex, #938); it is never kept.
                 (e.cause as? SuppressedRailBoard)?.let { RailBoard(emptyList(), messages = it.messages, suppressed = true) }
             }
-        val cache = boards ?: return asked()?.let { ArrivalsCache.Entry(it.departures, SteadyClock.stamp(clock()), untimed = it.untimed, messages = it.messages, suppressed = it.suppressed) }
+        val cache = boards ?: return asked()?.let { ArrivalsCache.Entry(it.departures, SteadyClock.stamp(clock()).minus(it.age), untimed = it.untimed, messages = it.messages, suppressed = it.suppressed) }
         return cache.fetchBoardOnce(key + crs, clock(), BOARD_SOURCE) { asked() }
     }
 

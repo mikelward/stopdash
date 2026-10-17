@@ -15,8 +15,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.core.net.toUri
 import app.stopdash.R
 
-/** Where a rider signs up for the free Rail Data Marketplace key National Rail's times need. */
-internal const val RAIL_DATA_MARKETPLACE_URL = "https://raildata.org.uk/"
+/**
+ * Where a rider subscribes to the free Rail Data Marketplace product a key of their own is for: the Live
+ * Departure Board's page, which a key from any other product doesn't open.
+ */
+internal const val RAIL_DATA_MARKETPLACE_URL =
+    "https://raildata.org.uk/dashboard/dataProduct/P-d81d6eaf-8060-4467-a339-1c833e50cbbe/overview"
 
 /**
  * Asked when the rider ticks National Rail with no key set (SPEC *Finding stops → Hiding a mode*):

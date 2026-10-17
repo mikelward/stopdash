@@ -215,6 +215,7 @@ import app.stopdash.data.FileStarredPlacesStore
 import app.stopdash.data.HiddenModesSetting
 import app.stopdash.data.KtorDarwinClient
 import app.stopdash.data.KtorTflClient
+import app.stopdash.data.RailRelay
 import app.stopdash.data.LineAlertDirections
 import app.stopdash.data.MaxWalkSetting
 import app.stopdash.data.RailApiKeySetting
@@ -5789,7 +5790,7 @@ class MainActivity : ComponentActivity() {
         // decided by the line's mode and the key from the first frame, and again as the key's added or cleared.
         // Nor the boarding stop itself, which there's no riding to.
         val railKey by RailApiKeySetting.changes.collectAsStateWithLifecycle()
-        val followable = (!line.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) || !railKey.isNullOrBlank()) && !open.boarding
+        val followable = (!line.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) || RailRelay.timesWith(railKey)) && !open.boarding
         // What Go rides isn't saved with the tap, so a rotation would lose it: it's kept by the activity's
         // retained holder for the tap it came with, and given back here. Only after the process is gone is it lost.
         val goHolder = viewModel<RouteGoHolder>()
@@ -6056,6 +6057,10 @@ class MainActivity : ComponentActivity() {
             warn = ::logDepartureWarning,
             stopIdFor = { RailStationCodesStore.load(context.applicationContext).stopIdFor(it) },
             stopIdsFor = { RailStationCodesStore.load(context.applicationContext).stopIdsFor(it) },
+            // Without a key of the rider's own, the boards come through stopdash's relay. A board asked for
+            // before the saved key, if any, is read back waits for it, so it goes the right way.
+            relayUrl = { RailRelay.url },
+            keyLoaded = { RailApiKeySetting.isLoaded.first { it } },
         )
 
         // "Find a station": the name search and a station's stop lookup, both on demand from the
