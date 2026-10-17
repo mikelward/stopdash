@@ -653,6 +653,27 @@ class RouteDisruptionTest {
     }
 
     @Test
+    fun `a bus diverted at the far end of its route is off a ride at the near end`() {
+        // A 390 trip from its north end flagged a diversion in the West End (maintainer, 2026-10-17).
+        // TfL's wording, the roads and the ride's stops made up.
+        val route = LineSequence(
+            listOf(LineRoute("North End - Victoria", listOf("n1", "n2", "n3", "g", "w1", "w2", "w3", "w4"))),
+            mapOf(
+                "n1" to "North End", "n2" to "Alpha Road", "n3" to "Beta Road", "g" to "Goodge Street Station", "w1" to "Tottenham Court Road Station",
+                "w2" to "Gamma Street", "w3" to "Marble Arch", "w4" to "Victoria",
+            ),
+        )
+        val alert = "Oxford Street (PED): Route 99: From 25/10 20:00 until 26/10 05:00 Buses towards North End are diverted " +
+            "from Marble Arch to Goodge Street Station via Delta Square and Epsilon Street. Buses towards Victoria are " +
+            "diverted from Tottenham Court Road Station to Marble Arch via Zeta Road, Gamma Street and Eta Street."
+        assertTrue(RouteDisruption.offRide(bus("n1", "n3"), sole(alert), route))
+        assertFalse(RouteDisruption.offRide(bus("n1", "w2"), sole(alert), route))
+        // A route that doesn't list one diversion's end can't place it, so it's on (Codex, #941).
+        val short = route.copy(routes = listOf(LineRoute("North End - Victoria", listOf("n1", "n2", "n3", "w1", "w2", "w3", "w4"))))
+        assertFalse(RouteDisruption.offRide(bus("n1", "n3"), sole(alert), short))
+    }
+
+    @Test
     fun `a bus line's several alerts are off the ride only when each one is`() {
         // A route with several alerts under way, each about its far end, flagged a ride none of them
         // reached (maintainer, 2026-10-03). Made-up words.

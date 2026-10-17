@@ -32,6 +32,31 @@ class AlertStopsTest {
     }
 
     @Test
+    fun `a diversion from one stop to another is a stretch, the roads it goes by aren't`() {
+        // TfL's wording for a bus diverted off part of its route (2026-10-17), the roads made up.
+        val route = stops("North End", "Alpha Road", "Marble Arch", "Beta Street", "Goodge Street Station", "Tottenham Court Road")
+        val alert = "Oxford Street (PED): Route 99: From 25/10 20:00 until 26/10 05:00 Buses towards North End are diverted " +
+            "from Marble Arch to Goodge Street Station via Beta Street and Gamma Square."
+        assertEquals(setOf("S2", "S3", "S4"), AlertStops.stretched(alert, route))
+        assertEquals(setOf("S2", "S3", "S4"), AlertStops.stretched("Buses are diverted between Marble Arch and Goodge Street.", route))
+        // A second diversion the route can't place leaves where the alert applies unknown (Codex, #941).
+        assertEquals(
+            emptySet<String>(),
+            AlertStops.stretched("Buses are diverted from Marble Arch to Goodge Street via Gamma Square. Buses are diverted from North End to Waterloo via Delta Road.", route),
+        )
+        // Even joined on without a stop (Codex, #941).
+        assertEquals(
+            emptySet<String>(),
+            AlertStops.stretched("Buses are diverted from Marble Arch to Goodge Street via Gamma Square and buses are diverted from North End to Waterloo.", route),
+        )
+        // Another change said after the roads is read on its own: here, words it can't place (Codex, #941).
+        assertEquals(emptySet<String>(), AlertStops.stretched("Buses are diverted from Marble Arch to Goodge Street via Gamma Square and cannot serve North End.", route))
+        assertEquals(emptySet<String>(), AlertStops.stretched("Buses are diverted from Marble Arch to Goodge Street via Gamma Square and won't stop at North End.", route))
+        // Negated, it places nothing.
+        assertEquals(emptySet<String>(), AlertStops.stretched("Buses are no longer diverted from Marble Arch to Goodge Street.", route))
+    }
+
+    @Test
     fun `a stop quoted as its sign reads is the route's stop listed without "Station"`() {
         // A route lists its stops cleaned ("Bank / King William Street"), where the alert quotes the
         // sign: "Station" on the stop's part, no spaces round the slash (maintainer, 2026-10-02).
@@ -323,12 +348,14 @@ class AlertStopsTest {
                 listed,
             ),
         )
+        // A diversion off the route between two stops is TfL's wording for those between not served too
+        // (maintainer, 2026-10-17: it was left out, and a far-end diversion flagged a ride).
+        assertEquals(setOf("S0", "S1", "S2"), AlertStops.stretched("Buses diverted between Bank Station and Moorgate Station.", line))
+        assertEquals(setOf("S0", "S1", "S2"), AlertStops.stretched("Buses are diverted from Bank Station to Moorgate Station.", line))
         // Other wording, affected or not, places nothing.
         for (text in listOf(
             "Good service between Bank Station and Moorgate Station. Route diverted via Example Road.",
             "Buses run between Bank Station and Moorgate Station.",
-            "Buses diverted between Bank Station and Moorgate Station.",
-            "Buses are diverted from Bank Station to Moorgate Station.",
             "Route diverted via Example Road; buses will not be diverted between Bank Station and Moorgate Station.",
             "No buses are diverted between Bank Station and Moorgate Station.",
             "Buses are diverted except between Bank Station and Moorgate Station.",
