@@ -18,6 +18,9 @@ import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.PlaceSearch
 import app.stopdash.domain.PostcodeResolution
 import app.stopdash.domain.PostcodeResolver
+import app.stopdash.domain.FetchedIncidents
+import app.stopdash.domain.RailIncidentCache
+import app.stopdash.domain.RailIncidents
 import app.stopdash.domain.RouteSequenceSource
 import app.stopdash.domain.SpacedTrains
 import app.stopdash.domain.StationFacts
@@ -64,6 +67,7 @@ import io.ktor.client.plugins.timeout
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.encodeURLPathPart
 import io.ktor.serialization.kotlinx.json.json
@@ -164,6 +168,12 @@ class KtorTflClient(
     // The bus fare a route the Planner left unpriced can be sure of ([BusFare]). A test swaps in its own to see
     // where it ran.
     private val fillFares: (List<TripRoute>) -> List<TripRoute> = BusFare::filled,
+    // stopdash's National Rail relay (`dev-docs/national-rail-proxy.md`), for National Rail's own words
+    // where TfL's status for a line is only a link to its disruption page ([RailIncidents]). Read per
+    // request; null (tests, the other clients, a build with no relay) leaves TfL's text as it is.
+    private val railRelayUrl: () -> String? = { null },
+    // Where the relay's answer is kept, shared by every client so they ask it once between them.
+    private val railIncidents: RailIncidentCache = RailIncidentCache.SHARED,
 ) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, StopZoneSource, JourneyPlanner, PostcodeResolver, PlaceSearch, VehicleSource,
     LiftOutageSource, TimetableSource {
     override suspend fun journeys(
@@ -761,11 +771,12 @@ class KtorTflClient(
         // The detail places its own alerts: recorded into a cache of its own, so this one-off answer
         // neither waits on nor disturbs the refresh's lookups.
         val placed = LineAlertDirections().apply { record(listOf(line), listOf(line)) }
-        return line.toLineStatus(
+        val status = line.toLineStatus(
             clock(),
             onBadDate = { warn("line ${line.id}: unreadable alert posting date") },
             sectionsOf = { entry -> placed.sectionsOf(line.id, entry) },
-        ) { entry -> placed.directionsOf(line.id, entry) }
+        ) { entry -> placed.directionsOf(line.id, entry) } ?: return null
+        return withRailIncidents(listOf(status)).first()
     }
 
     /**
@@ -829,7 +840,7 @@ class KtorTflClient(
         val lines = results.answers.flatMap { it.value }
         lookUpAlertDirections(lines)
         val directions = alertDirections?.takeIf { alertDirectionScope != null || awaitAlertDirections }
-        return lines.mapNotNull { line ->
+        return withRailIncidents(lines.mapNotNull { line ->
             line.toLineStatus(
                 clock(),
                 onBadDate = { warn("line ${line.id}: unreadable alert posting date") },
@@ -838,6 +849,30 @@ class KtorTflClient(
                 // Marked while a lookup for it runs, so the caller asks again next refresh instead
                 // of reusing this unsplit answer for its whole reuse window (Codex, PR #334).
                 ?.let { if (directions?.anyUnknown(line) == true) it.copy(awaitingDirections = true) else it }
+        })
+    }
+
+    /**
+     * [statuses] with National Rail's own words where TfL's are only a link to its disruption page
+     * ([RailIncidents]), from the relay, asked only when one is. A relay that can't be reached leaves
+     * TfL's link, which still opens the page: the status itself is TfL's and stands either way.
+     */
+    private suspend fun withRailIncidents(statuses: List<LineStatus>): List<LineStatus> {
+        val relay = railRelayUrl()?.trimEnd('/')?.ifEmpty { null } ?: return statuses
+        return withContext(decodeDispatcher) {
+            if (!RailIncidents.wanted(statuses)) return@withContext statuses
+            val incidents = railIncidents.incidents(
+                onFailure = { warn("rail incidents: ${(it as? io.ktor.client.plugins.ResponseException)?.response?.status?.value ?: it::class.simpleName}") },
+            ) {
+                withOneRetryOnStall(retry = {}) {
+                    val response = httpClient.get("$relay/v1/incidents")
+                    // How old the relay's copy already was, in seconds, counted by the relay: never this
+                    // device's clock against its timestamp, which a wrong clock on either side would skew.
+                    val age = response.headers[HttpHeaders.Age]?.toLongOrNull()?.let(java.time.Duration::ofSeconds) ?: java.time.Duration.ZERO
+                    FetchedIncidents(response.body<List<RailIncidentDto>>().mapNotNull { it.toIncident() }, age)
+                }
+            } ?: return@withContext statuses
+            RailIncidents.withIncidents(statuses, incidents)
         }
     }
 

@@ -70,7 +70,16 @@ data class LineStatus(
     // though several are under way ([RouteDisruption.offRide], maintainer 2026-10-03). Empty where not
     // known, or nothing is under way.
     val underWay: List<LineAlert> = emptyList(),
+    // National Rail's own words for the disruption where TfL's [fullText] is only a link to its page
+    // ([RailIncidents]), shown in its place ([shownText]). Kept with the text it stands for, so a
+    // status whose shown alert changes (re-ranked, or one direction's) never shows another's words.
+    // Not part of what the alert is: a dismissal and a journey's alert are keyed on [fullText], so they
+    // hold whether the words could be fetched or not.
+    val detail: IncidentDetail? = null,
 ) {
+
+    /** The words to show for the shown disruption: National Rail's ([detail]) for TfL's link, else [fullText]. */
+    val shownText: String? get() = detail?.takeIf { it.forText == fullText }?.words ?: fullText
 
     /** True when TfL reports anything other than a good service on this line. */
     val disrupted: Boolean get() = severity != GOOD_SERVICE
@@ -330,3 +339,6 @@ data class PlannedAlert(
  * shown, with the [directions] (TfL's `inbound`/`outbound`) it was found to affect; null where not known.
  */
 data class LineAlert(val severity: Int, val description: String, val fullText: String?, val directions: Set<String>? = null)
+
+/** National Rail's [words] for a disruption whose TfL text, [forText], is only a link to its page. */
+data class IncidentDetail(val forText: String, val words: String)

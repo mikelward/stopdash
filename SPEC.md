@@ -4215,6 +4215,18 @@ surface.)
   for its trains ("No data"), but its notices, which often say why, still show. A stop whose notices
   are checked without its departures (a favorite journey's destination) gets TfL's alone (maintainer,
   2026-10-17).
+  **A line's link-only status gets National Rail's words** (maintainer, 2026-10-17): where TfL's
+  reason for a National Rail line is nothing but a link to a nationalrail.co.uk disruption page, the
+  incident National Rail lists with that same page (its Disruptions API) gives the words shown in its
+  place, its summary then its text, the link kept after them; matched on the page's address alone,
+  never guessed from the line. Every surface that shows a line's reason shows them (the line's page,
+  a row's detail, a trip, its notification). They come from stopdash's own relay
+  (`dev-docs/national-rail-proxy.md`), which holds the key, so no rider needs one; asked only when a
+  status is only such a link, at most every two minutes between every surface, and never shown once
+  older than the shared staleness bound (D4), counted from when the relay fetched them by the age it
+  gives, never by comparing clocks. What an alert is stays TfL's text: a dismissal or a journey's alert holds whether the
+  words could be fetched or not, and the stations an alert names are read from TfL's words alone. A
+  relay that can't be reached leaves TfL's link, which still opens the page.
   Where TfL lists one station under two National Rail ids, a list shows its board under one of
   them, the first whose own TfL fetch works, which keeps it while it keeps asking; a trip times a
   train from the board whichever of them it boards at. A trip also asks for each station's board
@@ -4649,6 +4661,13 @@ the app was last opened while the rider travels (maintainer, 2026-10-06). While 
 ongoing activity of its own (maintainer, 2026-10-06): a silent watch-only notification, one tap
 from the trip, saying the step the rider is at; the phone's ongoing notification stays quiet and
 on the phone.
+
+Where a National Rail line's TfL status is only a link to its disruption page, the app asks
+stopdash's own relay for National Rail's current incidents (*National Rail*): a bare request carrying
+nothing about the rider, no location, station, line or key. The relay sees the IP address any server
+does, logs no request, keeps nothing about the caller and forwards nothing about them; Cloudflare,
+its host, keeps its own sampled request records, which can include the IP, for about a month, and
+`docs/PRIVACY.md` says so (`dev-docs/national-rail-proxy.md`).
 
 With a National Rail key set (*Data source*), a rail station's departures request also goes to
 the Rail Data Marketplace, carrying that station's CRS code and the user's own key, never a

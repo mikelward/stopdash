@@ -3686,13 +3686,13 @@ internal data class TripLine(
      * TfL's reason for the disruption shown, null when there's none to show: worked out once, with the
      * line, on the worker, so the page only reads it (Codex, #559).
      */
-    val reason: String? = status?.takeIf { it.disrupted }?.fullText?.takeIf { it.isNotBlank() }
+    val reason: String? = status?.takeIf { it.disrupted }?.shownText?.takeIf { it.isNotBlank() }
 
     /** Whether its alert can be dismissed: a disruption shown, not one already dismissed or gone. */
     val dismissable: Boolean get() = disrupted && !dismissed && !gone && !restoring
 
     /** TfL's reason for the [quieted] alert, null when there's none to show. */
-    val quietedReason: String? = quieted?.fullText?.takeIf { it.isNotBlank() }
+    val quietedReason: String? = quieted?.shownText?.takeIf { it.isNotBlank() }
 
     /**
      * [planned] as a restored page shows it until the line is back ([SavedPlanned]). Worked out with the
