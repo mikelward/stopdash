@@ -49,8 +49,38 @@ jobs:
       # ubuntu-latest ships the Android SDK; AGP auto-installs the compileSdk
       # minor platform on the first build.
       - uses: gradle/actions/setup-gradle@4c125117fe7c5aed11272ec4213f602f012f89f2  # v5
+      # Robolectric's Android runtime (android-all-instrumented, ~200 MB) is fetched from Maven
+      # Central into ~/.m2 on first use, which setup-gradle's cache doesn't cover: every job
+      # downloaded it again, and a failed fetch failed the build before any test ran. Kept here
+      # by Robolectric's version, saved only from main pushes (PR-controlled code must not write
+      # the shared cache, as for Gradle's), restored everywhere. A miss just downloads it, as
+      # before. A new SDK level under the same version is fetched each run until the next bump.
+      - name: Robolectric version
+        id: robolectric
+        run: |
+          version=$(sed -n 's/^robolectric = "\(.*\)"$/\1/p' gradle/libs.versions.toml)
+          if [ -z "$version" ]; then
+            echo "::error::No robolectric version in gradle/libs.versions.toml; the runtime cache has no key."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Restore Robolectric's Android runtime
+        id: robolectric-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: robolectric-${{ runner.os }}-${{ steps.robolectric.outputs.version }}
       - name: Unit tests
         run: ./gradlew test
+      - name: Save Robolectric's Android runtime
+        # Only after the steps using it passed, so the runtime is whole: an entry can't be
+        # replaced, and one saved from a failed download would be restored, incomplete, until
+        # the next version bump.
+        if: success() && github.event_name == 'push' && steps.robolectric-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: robolectric-${{ runner.os }}-${{ steps.robolectric.outputs.version }}
       - name: Lint
         run: ./gradlew lint
       - name: A release build refuses a versionCode not from the full history
@@ -185,6 +215,22 @@ jobs:
           # PR-controlled code must not write the shared cache; only main
           # pushes do.
           cache-read-only: ${{ github.event_name != 'push' }}
+      # Robolectric's Android runtime, as in `build`.
+      - name: Robolectric version
+        id: robolectric
+        run: |
+          version=$(sed -n 's/^robolectric = "\(.*\)"$/\1/p' gradle/libs.versions.toml)
+          if [ -z "$version" ]; then
+            echo "::error::No robolectric version in gradle/libs.versions.toml; the runtime cache has no key."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Restore Robolectric's Android runtime
+        id: robolectric-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: robolectric-${{ runner.os }}-${{ steps.robolectric.outputs.version }}
       - name: Every screenshot class is on the allow-list
         # This job records against an explicit `--tests` allow-list, one step
         # per class, so a class nobody added a step for records NOTHING here —
@@ -270,6 +316,15 @@ jobs:
         run: ./gradlew :wear:testDebugUnitTest --tests "app.stopdash.wear.WatchHomeScreenshotTest" -Proborazzi.test.record=true
       - name: Run ComplicationPicker screenshot tests
         run: ./gradlew :wear:testDebugUnitTest --tests "app.stopdash.wear.ComplicationPickerScreenshotTest" -Proborazzi.test.record=true
+      - name: Save Robolectric's Android runtime
+        # Only after the steps using it passed, so the runtime is whole: an entry can't be
+        # replaced, and one saved from a failed download would be restored, incomplete, until
+        # the next version bump.
+        if: success() && github.event_name == 'push' && steps.robolectric-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: robolectric-${{ runner.os }}-${{ steps.robolectric.outputs.version }}
       - name: Print failing test details
         if: failure()
         run: |
