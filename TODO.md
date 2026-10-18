@@ -1081,7 +1081,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             read as if a key were needed for times (see *Decisions needing review*).
   - [x] **National Rail unticked until a key is set** (maintainer, 2026-10-08): ticking it with no
         key asks for one (Get a key / Add key / Show anyway); a key added shows it by itself; the
-        rider's own choice outranks the default. Not stored, so it lifts with no write.
+        rider's own choice outranks the default. Not stored, so it lifts with no write. Kept with the
+        proxy (maintainer, 2026-10-18): unticked without the rider's own key, and ticking it shows it at
+        once, with no key asked for.
     - [ ] **Step-by-step key help**: walk the rider through the Rail Data Marketplace sign-up
           (account, subscribing to the free live departure board product, copying the key). Check
           the site's current wording first, since it renames products.
