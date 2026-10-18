@@ -296,7 +296,7 @@ proxy in `functions/`:
 
 ## Domain
 
-**A subdomain of the maintainer's own domain** (maintainer, 2026-10-17), whose DNS is on Cloudflare
+**`proxy.stopdash.app`** (maintainer, 2026-10-18), a subdomain of the maintainer's own domain, whose DNS is on Cloudflare
 anyway, served as a Worker custom domain (`routes` with `custom_domain = true` in
 `proxy/wrangler.toml`): free, and the address every installed build carries stays the
 maintainer's, so the proxy can move host later without breaking old installs. `workers.dev` stays

@@ -25,13 +25,13 @@ From this directory, signed in with `npx wrangler@4 login`:
 
 1. **Storage:** `npx wrangler@4 kv namespace create PROXY`, and put the `id` it prints in
    `wrangler.toml`.
-2. **Address:** put the proxy's hostname (a subdomain of a domain on this Cloudflare account) in
-   `wrangler.toml`'s `routes`. Cloudflare creates its DNS record and certificate on deploy.
+2. **Address:** `proxy.stopdash.app`, already in `wrangler.toml`'s `routes` (`stopdash.app`'s DNS
+   must be on this Cloudflare account). Cloudflare creates its DNS record and certificate on deploy.
 3. **Keys:** `npx wrangler@4 secret put DISRUPTIONS_API_KEY`, pasting the NationalRail Disruptions
    API key, and `npx wrangler@4 secret put LDB_API_KEY`, pasting the Live Departure Board key, both
    from the Rail Data Marketplace. Never write either into a file here.
 4. **Deploy:** `npx wrangler@4 deploy`. Within two minutes `/v1/health` should say `current: true`.
-5. **App:** set `stopdash.proxyUrl=https://<hostname>` in the repo's `gradle.properties`.
+5. **App:** set `stopdash.proxyUrl=https://proxy.stopdash.app` in the repo's `gradle.properties`.
 
 Leave Workers Logs, Logpush and Analytics off for this Worker (`wrangler.toml` sets
 `observability.enabled = false`), and add no WAF rate-limit rule: those record callers' IPs.

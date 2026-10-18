@@ -4,9 +4,9 @@ name = "stopdash-proxy"
 main = "src/index.js"
 compatibility_date = "2026-10-01"
 
-# One address, the maintainer's own (dev-docs/proxy.md *Domain*). Set `pattern` to it.
+# One address, the maintainer's own (dev-docs/proxy.md *Domain*).
 workers_dev = false
-routes = [{ pattern = "REPLACE_WITH_PROXY_HOSTNAME", custom_domain = true }]
+routes = [{ pattern = "proxy.stopdash.app", custom_domain = true }]
 
 # No request logs: Workers Logs and its traces stay off, so nothing about a caller is recorded. The cron
 # job's last failure (type and stack frames) is kept in KV instead and shown by /v1/health.
