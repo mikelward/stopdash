@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
 import java.time.Instant
 import java.time.LocalDate
 import java.time.Month
@@ -55,6 +56,31 @@ object AlertStart {
         if (!startsHere(text.substring(0, match.range.first), isRange = match.groupValues[2].isNotBlank())) return null
         val month = monthOf(match.groupValues[3]) ?: return null
         return dated(match.groupValues[1].toInt(), month, match.groupValues[4].toIntOrNull(), now, postedAt)
+    }
+
+    /**
+     * Where [text] states a date or time, as [startDate] reads one: a worded date or range ("12-17
+     * October"), a day and month in figures ("25/10", its slash spaced or not), or a time ("23:55",
+     * "2000"), each with the weekdays and times leading into it ("2000 Sunday 25 October"). In
+     * order, overlapping spans merged. What it doesn't read ("Friday", "9am") isn't one: a caller
+     * telling a date from a place then takes it for a place (AlertStops, Codex on #967).
+     */
+    @WorkerThread
+    fun dateSpans(text: String): List<IntRange> {
+        val found = (DATE.findAll(text) + SPACED_FIGURES.findAll(text) + CLOCK.findAll(text))
+            // Not a month's full stop ("12 Oct."), which may end the sentence too.
+            .map { match ->
+                val lead = LEAD_IN.find(text.substring(0, match.range.first))?.range?.first ?: match.range.first
+                lead..(match.range.last - if (match.value.endsWith('.')) 1 else 0)
+            }
+            .sortedBy { it.first }
+        val merged = ArrayList<IntRange>()
+        for (span in found) {
+            val last = merged.lastOrNull()
+            if (last != null && span.first <= last.last + 1) merged[merged.size - 1] = last.first..maxOf(last.last, span.last)
+            else merged += span
+        }
+        return merged
     }
 
     // [day] of [month] in [year], or where none is written, the year [startDate] says.
@@ -129,6 +155,12 @@ object AlertStart {
     // A day and month in figures with a slash, its year optional ("25/10", "25/10/2026"): groups day,
     // month, year. Not with a dot, which a time can be ("08.30").
     private val FIGURES = Regex("(?<![\\d:/])(\\d{1,2})/(\\d{1,2})(?:/(\\d{4}|\\d{2}))?(?![\\d:/])")
+
+    // [FIGURES] as [dateSpans] finds it, in text whose slashes may be spaced ("25 / 10").
+    private val SPACED_FIGURES = Regex("(?<![\\d:/])\\d{1,2}\\s*/\\s*\\d{1,2}(?:\\s*/\\s*(?:\\d{4}|\\d{2}))?(?![\\d:/])")
+
+    // A [TIME] on its own.
+    private val CLOCK = Regex(TIME)
 
     // "12/10", "12/10/2026", "12.10.26": a day and month in figures.
     private val NUMERIC_DATE = Regex("(?<![\\d:])\\d{1,2}[/.]\\d{1,2}(?:[/.]\\d{2,4})?(?![\\d:])")

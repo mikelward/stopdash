@@ -674,6 +674,36 @@ class RouteDisruptionTest {
     }
 
     @Test
+    fun `a bus diversion dated from one time to another is off a ride far from it`() {
+        // Two notices of one diversion at the far end of a route (TfL's "Special Service", read as a
+        // diversion), the later one dated "from … to …", flagged a ride at the near end (maintainer,
+        // 2026-10-18). TfL's wording, the roads and the ride's stops made up.
+        val route = LineSequence(
+            listOf(LineRoute("North End - London Bridge", listOf("n1", "n2", "n3", "o", "m", "g", "k", "lb"))),
+            mapOf(
+                "n1" to "North End", "n2" to "Alpha Road", "n3" to "Beta Road", "o" to "Old Street Station",
+                "m" to "Finsbury Square / Moorgate", "g" to "Gamma Street", "k" to "Monument Station", "lb" to "London Bridge",
+            ),
+        )
+        val first = "KING WILLIAM STREET, City of London: Routes 98 and 99 are on diversion southbound only until 19:00 on " +
+            "1 February 2027 due to major roadworks. Buses are diverted via Delta Street and Epsilon Street, missing stops " +
+            "from Moorgate Station (L) to King William Street / Monument Station (G)."
+        val later = "EXAMPLE STREET, EC3V: Routes 98 99 are on diversion towards London Bridge from 23:55 on Monday 12 October " +
+            "to 18:00 on Saturday 31 October due to electrical works. In addition to the existing diversion from King William " +
+            "Street, buses are diverted via Zeta Street and Eta Street. Buses continue to miss the same stops from Moorgate " +
+            "Station 'L' to King William Street / Monument Station 'G'."
+        val status = LineStatus(
+            "99", 5, "Diversion", first, soleAlert = false,
+            underWay = listOf(LineAlert(5, "Diversion", first), LineAlert(5, "Diversion", later)),
+        )
+        assertTrue(RouteDisruption.offRide(bus("n1", "n3"), sole(later), route))
+        assertTrue(RouteDisruption.offRide(bus("n1", "n3"), status, route))
+        assertEquals(emptyList<LineStatus>(), RouteDisruption.alertsOnRide(bus("n1", "n3"), status, route))
+        // A ride into the stretch is on it.
+        assertFalse(RouteDisruption.offRide(bus("n1", "g"), sole(later), route))
+    }
+
+    @Test
     fun `a bus line's several alerts are off the ride only when each one is`() {
         // A route with several alerts under way, each about its far end, flagged a ride none of them
         // reached (maintainer, 2026-10-03). Made-up words.
