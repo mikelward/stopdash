@@ -4459,6 +4459,11 @@ and these carry the rest as their own PRs:
 - [ ] Finalize the store-facing privacy disclosure (location, watched stops, the TfL
       requests) and the Play Data Safety answers — building on the debug-log disclosure
       that landed in Phase 1.
+- [ ] **Reconsider the `0.1.` versionName prefix** (maintainer, 2026-10-18). Release names
+      read `0.1.<count>+<sha>`, but the `0.1` never changes and says nothing the commit count
+      doesn't. The sibling apps carry the same kind of fixed prefix (snoozemo and simmo `0.1.`,
+      typelauncher `1.0.`, clothescast `0.1.0+`), so decide it fleet-wide: drop it everywhere
+      for `<count>+<sha>`, or keep it as a marketing version that's actually bumped.
 
 ## Phase 6 — Wear OS
 
