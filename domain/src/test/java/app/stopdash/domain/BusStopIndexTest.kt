@@ -12,10 +12,10 @@ class BusStopIndexTest {
     private fun index(vararg stops: StopLocation) = BusStopIndex.of(stops.toList())
 
     @Test
-    fun `finds stops by name with TfL's id, the bus mode and their position`() {
+    fun `finds stops by name with TfL's id, the bus mode, their position, and the stop level`() {
         val stops = index(stop("4900A", "Zeta Road"), stop("4900B", "Alpha Lane"))
         assertEquals(2, stops.size)
-        assertEquals(listOf(StationMatch("4900A", "Zeta Road", listOf("bus"), 51.5, -0.12)), stops.search("zeta"))
+        assertEquals(listOf(StationMatch("4900A", "Zeta Road", listOf("bus"), 51.5, -0.12, level = Pick.Level.STOP)), stops.search("zeta"))
     }
 
     @Test

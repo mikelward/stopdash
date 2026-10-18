@@ -18,6 +18,7 @@ import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.PendingEnd
 import app.stopdash.domain.PendingJourney
 import app.stopdash.domain.PendingJourneys
+import app.stopdash.domain.Pick
 import app.stopdash.domain.SavedJourneys
 import app.stopdash.domain.Workers
 import app.stopdash.domain.riderLineName
@@ -217,8 +218,9 @@ internal data class PersistedFavoriteJourneys(
     val pending: List<PersistedPendingJourney> = emptyList(),
 ) {
     companion object {
-        /** The current on-disk format. Bump when a field's meaning changes incompatibly. */
-        const val CURRENT_VERSION = 1
+        /** The current on-disk format. Bump when a field an older build would drop or misread is added. */
+        // 2: a pending end's level ([PersistedPendingEnd.level]).
+        const val CURRENT_VERSION = 2
     }
 }
 
@@ -251,6 +253,9 @@ internal data class PersistedPendingEnd(
     // The station's id, or the favorite place's.
     val id: String,
     val name: String,
+    // A station end's level by its code ([PendingEnd.Station.level]); absent where its row didn't say,
+    // in a file written before levels were, or for a code this build doesn't know.
+    val level: String? = null,
 )
 
 @Serializable
@@ -309,12 +314,12 @@ internal fun PersistedFavoriteJourneys.alertsToDomain(): Map<String, JourneyAler
 }
 
 private fun PendingEnd.toPersisted() = when (this) {
-    is PendingEnd.Station -> PersistedPendingEnd("station", stationId, name)
+    is PendingEnd.Station -> PersistedPendingEnd("station", stationId, name, level?.code)
     is PendingEnd.Place -> PersistedPendingEnd("place", placeId, name)
 }
 
 private fun PersistedPendingEnd.toDomain(): PendingEnd? = when (kind) {
-    "station" -> PendingEnd.Station(id, name)
+    "station" -> PendingEnd.Station(id, name, Pick.Level.ofCode(level))
     "place" -> PendingEnd.Place(id, name)
     else -> null
 }

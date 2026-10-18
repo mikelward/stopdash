@@ -12,7 +12,10 @@ sealed interface PendingEnd {
     val key: String
 
     // Worked out once, when the end is made or read, so a list keyed by it reads a string.
-    data class Station(val stationId: String, override val name: String) : PendingEnd {
+    // [level]: the level its search row was a pick at ([StationMatch.level]), null where only the model
+    // can tell (an end saved before levels were, or an interchange's station name). Saved with the end;
+    // nothing reads it yet, and it's no part of [key].
+    data class Station(val stationId: String, override val name: String, val level: Pick.Level? = null) : PendingEnd {
         override val key: String = "station:$stationId"
     }
 

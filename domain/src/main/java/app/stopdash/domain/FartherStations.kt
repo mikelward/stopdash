@@ -154,7 +154,7 @@ object FartherStations {
             if (tube && reason.line !in tubeLines && tubeLines.size >= MAX_TUBE_LINES) continue
             if (place.id !in picked) {
                 if (picked.size >= MAX_BUTTONS) continue
-                picked[place.id] = Farther(StationMatch(place.id, place.name, place.modes), meters)
+                picked[place.id] = Farther(StationMatch(place.id, place.name, place.modes, level = StationIndex.levelOf(place.id, place.modes)), meters)
             }
             // Every unreached line one of whose offered stations stands for the place, whether or
             // not that line was the one that earned it (an interchange adds several).

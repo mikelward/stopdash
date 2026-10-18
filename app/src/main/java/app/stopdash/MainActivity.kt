@@ -62,6 +62,7 @@ import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.StarredRowSet
 import app.stopdash.domain.StationLead
 import app.stopdash.domain.PendingEnd
+import app.stopdash.domain.Pick
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.StepFreeAccess
@@ -2172,6 +2173,8 @@ class MainActivity : ComponentActivity() {
                                 var journeyFromName by rememberSaveable { mutableStateOf("") }
                                 // Whether the start is a favorite place (by its id) rather than a station.
                                 var journeyFromPlace by rememberSaveable { mutableStateOf(false) }
+                                // The level a station start was picked at, by its code ([Pick.Level]), kept with it.
+                                var journeyFromLevel by rememberSaveable { mutableStateOf<String?>(null) }
                                 val journeyAdding by JourneyAdds.note.collectAsStateWithLifecycle()
                                 // The journey whose alerts are open (SPEC *Journeys → Alerts*), the row's own copy, kept
                                 // over a rotation, so the screen draws at once rather than after a lookup (Codex on #700).
@@ -2387,11 +2390,12 @@ class MainActivity : ComponentActivity() {
                                         journeyFromId = null
                                         journeyFromName = ""
                                         journeyFromPlace = false
+                                        journeyFromLevel = null
                                     }
                                     FavoriteJourneyPicker(
                                         state = searchState,
                                         from = journeyFromId?.let { id ->
-                                            if (journeyFromPlace) PendingEnd.Place(id, journeyFromName) else PendingEnd.Station(id, journeyFromName)
+                                            if (journeyFromPlace) PendingEnd.Place(id, journeyFromName) else PendingEnd.Station(id, journeyFromName, Pick.Level.ofCode(journeyFromLevel))
                                         },
                                         onQueryChange = search::onQueryChange,
                                         onRetryPlaces = search::refreshYours,
@@ -2406,10 +2410,12 @@ class MainActivity : ComponentActivity() {
                                                 is PendingEnd.Station -> {
                                                     journeyFromId = end.stationId
                                                     journeyFromPlace = false
+                                                    journeyFromLevel = end.level?.code
                                                 }
                                                 is PendingEnd.Place -> {
                                                     journeyFromId = end.placeId
                                                     journeyFromPlace = true
+                                                    journeyFromLevel = null
                                                 }
                                             }
                                         },
@@ -2418,8 +2424,8 @@ class MainActivity : ComponentActivity() {
                                             JourneyAdds.attempt(removeScope, from.name, to.name) {
                                                 if (from is PendingEnd.Station && to is PendingEnd.Station) {
                                                     addFavoriteJourneyPair(
-                                                        StationMatch(from.stationId, from.name),
-                                                        StationMatch(to.stationId, to.name),
+                                                        StationMatch(from.stationId, from.name, level = from.level),
+                                                        StationMatch(to.stationId, to.name, level = to.level),
                                                         stationFinder,
                                                         // A station's own bus stops, by its public position.
                                                         stationAreaStopFinder,
@@ -2437,6 +2443,7 @@ class MainActivity : ComponentActivity() {
                                             journeyFromId = null
                                             journeyFromName = ""
                                             journeyFromPlace = false
+                                            journeyFromLevel = null
                                         },
                                         onBack = closePicker,
                                     )

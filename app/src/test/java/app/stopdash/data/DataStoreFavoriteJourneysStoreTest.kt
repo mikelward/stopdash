@@ -1,6 +1,7 @@
 package app.stopdash.data
 
 import androidx.datastore.core.DataStore
+import app.stopdash.domain.Pick
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.HiddenModes
@@ -275,6 +276,22 @@ class DataStoreFavoriteJourneysStoreTest {
         assertNull(store.pendingJourneys().first())
         store.addPending(fromHome)
         assertEquals(newer, data.data.first())
+    }
+
+    @Test
+    fun `a pending end keeps the level it was picked at, and one saved before levels has none`() = runTest {
+        val data = FakeDataStore(null)
+        val store = DataStoreFavoriteJourneysStore(data)
+        val picked = PendingJourney(PendingEnd.Place("h", "Home"), PendingEnd.Station("HUBEXX", "Example Cross", Pick.Level.HUB))
+        store.addPending(picked)
+        val out = ByteArrayOutputStream()
+        FavoriteJourneysSerializer.writeTo(data.data.first(), out)
+        val read = FavoriteJourneysSerializer.readFrom(ByteArrayInputStream(out.toByteArray()))!!.pendingToDomain()!!
+        assertEquals(Pick.Level.HUB, (read.single().to as PendingEnd.Station).level)
+        val older = """{"version":1,"pending":[{"from":{"kind":"place","id":"h","name":"Home"},"to":{"kind":"station","id":"HUBEXX","name":"Example Cross"}}]}"""
+        val before = FavoriteJourneysSerializer.readFrom(ByteArrayInputStream(older.toByteArray()))!!.pendingToDomain()!!
+        assertNull((before.single().to as PendingEnd.Station).level)
+        assertEquals("one end, picked again with its level, is the same end", picked.key, before.single().key)
     }
 
     @Test

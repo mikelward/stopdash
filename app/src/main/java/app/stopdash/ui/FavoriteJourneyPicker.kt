@@ -41,7 +41,7 @@ fun FavoriteJourneyPicker(
         StationSearchScreen(
             state = state,
             onQueryChange = onQueryChange,
-            onOpenStation = { onPickFrom(PendingEnd.Station(it.id, it.name)) },
+            onOpenStation = { onPickFrom(PendingEnd.Station(it.id, it.name, it.level)) },
             onBack = onBack,
             autoFocus = autoFocus,
             hint = stringResource(R.string.journey_pick_from_hint),
@@ -57,7 +57,7 @@ fun FavoriteJourneyPicker(
         StationSearchScreen(
             state = state,
             onQueryChange = onQueryChange,
-            onOpenStation = { onPickTo(from, PendingEnd.Station(it.id, it.name)) },
+            onOpenStation = { onPickTo(from, PendingEnd.Station(it.id, it.name, it.level)) },
             onBack = onChangeFrom,
             autoFocus = autoFocus,
             hint = stringResource(R.string.station_search_hint),

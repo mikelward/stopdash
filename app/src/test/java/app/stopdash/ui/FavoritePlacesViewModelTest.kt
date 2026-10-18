@@ -12,6 +12,7 @@ import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FavoritePlacesStore
 import app.stopdash.domain.IndexedStation
 import app.stopdash.domain.LineRef
+import app.stopdash.domain.Pick
 import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.PlaceIndex
 import app.stopdash.domain.SearchEntry
@@ -93,7 +94,7 @@ class FavoritePlacesViewModelTest {
         override suspend fun remove(id: String) {}
     }
 
-    private val oxford = StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"), 51.5, -0.12)
+    private val oxford = StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"), 51.5, -0.12, level = Pick.Level.STATION)
     private val positionless = StationMatch("490000000A", "Somewhere Road", listOf("bus"))
 
     // The bundled stations the editor's searches find on the device: two public TfL stations, and a
@@ -123,7 +124,7 @@ class FavoritePlacesViewModelTest {
         model.onQueryChange("oxf")
         advanceUntilIdle()
         val editor = model.state.value.editor!!
-        assertEquals(listOf(oxford, StationMatch("4900A", "Oxford Lane", listOf("bus"), 51.5, -0.12)), editor.results)
+        assertEquals(listOf(oxford, StationMatch("4900A", "Oxford Lane", listOf("bus"), 51.5, -0.12, level = Pick.Level.STOP)), editor.results)
         assertFalse(editor.searching)
         assertEquals(emptyList<String>(), finder.queries)
     }
@@ -573,7 +574,7 @@ class FavoritePlacesViewModelTest {
 
     @Test
     fun `bus stops read late go below the bundled places, not above them`() = runTest {
-        val road = StationMatch("490000000Z", "Zeta Road", listOf("bus"), 51.52, -0.14)
+        val road = StationMatch("490000000Z", "Zeta Road", listOf("bus"), 51.52, -0.14, level = Pick.Level.STOP)
         val busesRead = CompletableDeferred<BusStopIndex>()
         val model = FavoritePlacesViewModel(
             FakeStore(), FakeFinder(),

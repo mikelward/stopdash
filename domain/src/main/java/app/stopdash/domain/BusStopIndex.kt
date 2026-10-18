@@ -60,7 +60,7 @@ class BusStopIndex private constructor(
         }
         // A stable sort, so a name's stops keep TfL id order.
         hits.sortWith(compareBy<Hit>({ it.tier }, { it.inexact }, { it.partOnly }, { it.distance }, { it.name }))
-        return hits.take(limit).map { StationMatch(ids[it.stop], names[it.name], BUS, latitudes[it.stop], longitudes[it.stop]) }
+        return hits.take(limit).map { StationMatch(ids[it.stop], names[it.name], BUS, latitudes[it.stop], longitudes[it.stop], level = Pick.Level.STOP) }
     }
 
     companion object {

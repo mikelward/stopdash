@@ -1,5 +1,6 @@
 package app.stopdash.data
 
+import app.stopdash.domain.Pick
 import app.stopdash.domain.StationMatch
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -41,7 +42,7 @@ class FileStarredPlacesStoreTest {
     fun `a file says its version, and one from before versions reads as the first`() {
         val file = File(tmp.root, "starred-places.json")
         FileStarredPlacesStore(file).reconcile(setOf("940GZZLUOXC"), mapOf("940GZZLUOXC" to station))
-        assertTrue(file.readText().contains("\"version\":1"))
+        assertTrue(file.readText().contains("\"version\":2"))
         file.writeText("""{"places":[{"stopId":"940GZZLUOXC","id":"940GZZLUOXC","name":"Oxford Circus","modes":["tube"]}]}""")
         assertEquals(mapOf("940GZZLUOXC" to station), FileStarredPlacesStore(file).load())
     }
@@ -49,10 +50,20 @@ class FileStarredPlacesStoreTest {
     @Test
     fun `a newer build's file loads as empty and is never written over`() {
         // Its place in a shape this build can't read.
-        val newer = """{"version":2,"places":[{"stopId":"940GZZLUOXC","id":"940GZZLUOXC","name":{"en":"Oxford Circus"}}]}"""
+        val newer = """{"version":3,"places":[{"stopId":"940GZZLUOXC","id":"940GZZLUOXC","name":{"en":"Oxford Circus"}}]}"""
         val file = File(tmp.root, "starred-places.json").apply { writeText(newer) }
         assertEquals(emptyMap<String, StationMatch>(), FileStarredPlacesStore(file).load())
         FileStarredPlacesStore(file).reconcile(setOf("490000000001A"), mapOf("490000000001A" to area))
         assertEquals(newer, file.readText())
+    }
+
+    @Test
+    fun `the level a place was picked at is kept, and absent from a file written before levels`() {
+        val file = File(tmp.root, "starred-places.json")
+        val picked = station.copy(level = Pick.Level.STATION)
+        FileStarredPlacesStore(file).reconcile(setOf("940GZZLUOXC"), mapOf("940GZZLUOXC" to picked))
+        assertEquals(mapOf("940GZZLUOXC" to picked), FileStarredPlacesStore(file).load())
+        file.writeText("""{"version":1,"places":[{"stopId":"940GZZLUOXC","id":"940GZZLUOXC","name":"Oxford Circus","modes":["tube"]}]}""")
+        assertEquals(mapOf("940GZZLUOXC" to station), FileStarredPlacesStore(file).load())
     }
 }

@@ -1,5 +1,6 @@
 package app.stopdash.data
 
+import app.stopdash.domain.Pick
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.PlaceHit
 import app.stopdash.domain.PlaceKind
@@ -103,7 +104,7 @@ class FileRecentStationsStoreTest {
     fun `a file says its version, and one from before versions reads as the first`() {
         val file = File(tmp.root, "recent-stations.json")
         FileRecentStationsStore(file).add(oxford)
-        assertTrue(file.readText().contains("\"version\":1"))
+        assertTrue(file.readText().contains("\"version\":2"))
         file.writeText("""{"stations":[{"id":"940GZZLUOXC","name":"Oxford Circus","modes":["tube"]}]}""")
         assertEquals(listOf(oxford), FileRecentStationsStore(file).load())
     }
@@ -111,12 +112,24 @@ class FileRecentStationsStoreTest {
     @Test
     fun `a newer build's file loads as empty and is never written over`() {
         // Its stop in a shape this build can't read.
-        val newer = """{"version":2,"stations":[{"id":"940GZZLUOXC","name":{"en":"Oxford Circus"}}]}"""
+        val newer = """{"version":3,"stations":[{"id":"940GZZLUOXC","name":{"en":"Oxford Circus"}}]}"""
         val file = File(tmp.root, "recent-stations.json").apply { writeText(newer) }
         assertEquals(emptyList<SearchEntry>(), FileRecentStationsStore(file).loadPicks())
         FileRecentStationsStore(file).add(stop)
         FileRecentStationsStore(file).addPlace(PlaceHit("Example Park", Coordinates(51.5, -0.12), PlaceKind.PLACE))
         assertFalse("the search says the row stayed", FileRecentStationsStore(file).remove(SearchEntry.Stop(oxford)))
         assertEquals(newer, file.readText())
+    }
+
+    @Test
+    fun `the level a stop was picked at is kept, and absent from a list written before levels`() {
+        val file = File(tmp.root, "recent-stations.json")
+        val picked = oxford.copy(level = Pick.Level.STATION)
+        FileRecentStationsStore(file).add(picked)
+        FileRecentStationsStore(file).add(stop)
+        assertEquals(listOf(stop, picked), FileRecentStationsStore(file).load())
+        // A version-1 list, or a code this build doesn't know: no level, read through the model later.
+        file.writeText("""{"version":1,"stations":[{"id":"940GZZLUOXC","name":"Oxford Circus","modes":["tube"]},{"id":"490000000001A","name":"Example Road","modes":["bus"],"level":"junction"}]}""")
+        assertEquals(listOf(oxford, stop), FileRecentStationsStore(file).load())
     }
 }
