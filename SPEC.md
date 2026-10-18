@@ -4192,6 +4192,17 @@ app may show its newest strings in English.
   the app's own composables where practical.
 - **Persistence via DataStore**: watched stops, per-stop line/direction filters, the
   optional user API key, and the **last-good snapshot** each surface renders from.
+- **A store that saves a picked place says its version.** Recents, starred places, the trip on
+  the way and favorite journeys each write a schema version (a file from before versions reads
+  as 1), read every version up to their own, and keep a newer build's file as it is: it loads as
+  empty, or as no trip, and is never read back and rewritten without what the newer build added.
+  The one overwrite is a trip started here, which replaces the newer build's trip as any new trip
+  replaces the last; every other edit to a newer file is refused. In the three plain files the version alone decides this, read before
+  anything else, since a newer build may write a known field in a shape this one can't read
+  (favorite journeys, kept by DataStore, don't yet). A field an older
+  build would drop or misread comes with a version bump (`dev-docs/station-model.md` *A saved
+  level comes with a version*). Only a developer can go back to an older build; for everyone
+  else this keeps each bump from hiding what was saved before it.
 - **Snapshot-render, warm at startup.** Every surface renders immediately and refreshes
   in the background — it never blocks its first frame on a network call *or a disk read*.
   The snapshot is warmed into memory at startup so the first frame is the real content;

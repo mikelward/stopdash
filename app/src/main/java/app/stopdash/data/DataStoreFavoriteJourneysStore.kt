@@ -149,7 +149,9 @@ class DataStoreFavoriteJourneysStore internal constructor(
                 stored
             } else {
                 val base = stored ?: PersistedFavoriteJourneys()
-                base.copy(pending = change(base.pendingToDomain().orEmpty()).map { it.toPersisted() })
+                // Written as this build's version, as every other write is: an older file read here
+                // is rewritten in this build's shape.
+                base.copy(version = PersistedFavoriteJourneys.CURRENT_VERSION, pending = change(base.pendingToDomain().orEmpty()).map { it.toPersisted() })
             }
         } }
     }
@@ -321,7 +323,7 @@ private fun PendingJourney.toPersisted() = PersistedPendingJourney(from.toPersis
 
 /** The grayed journeys, or null for a newer schema version this build can't read. */
 internal fun PersistedFavoriteJourneys.pendingToDomain(): List<PendingJourney>? {
-    if (version != PersistedFavoriteJourneys.CURRENT_VERSION) return null
+    if (version > PersistedFavoriteJourneys.CURRENT_VERSION) return null
     return pending.mapNotNull { p ->
         val from = p.from.toDomain() ?: return@mapNotNull null
         val to = p.to.toDomain() ?: return@mapNotNull null
@@ -335,8 +337,10 @@ private fun PersistedJourneyEnd.toDomain() = JourneyEnd(stopId, name, latitude, 
 internal fun List<FavoriteJourney>.toPersisted(alerts: Map<String, JourneyAlertSchedule> = emptyMap()): PersistedFavoriteJourneys =
     PersistedFavoriteJourneys(alerts = alerts.mapValues { it.value.toPersisted() }, journeys = map { PersistedFavoriteJourney(it.from.toPersisted(), it.to.toPersisted(), it.lineId, it.lineName, it.mode, it.hiddenLines.toList()) })
 
+// Every version up to this build's is read, so a bump never hides what an older build saved; only a
+// newer one is kept unread (dev-docs/station-model.md *A saved level comes with a version*).
 internal fun PersistedFavoriteJourneys.toDomain(): List<FavoriteJourney>? {
-    if (version != PersistedFavoriteJourneys.CURRENT_VERSION) return null
+    if (version > PersistedFavoriteJourneys.CURRENT_VERSION) return null
     // One journey per segment: a file from before journeys were line-free may hold the same two
     // stations starred on two lines; the first stands for both.
     // A hidden line is kept only as this build reads one: an entry of another kind, from a later build, is dropped.

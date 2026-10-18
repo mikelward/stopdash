@@ -98,4 +98,25 @@ class FileRecentStationsStoreTest {
     fun `no file is an empty list`() {
         assertEquals(emptyList<StationMatch>(), FileRecentStationsStore(File(tmp.root, "none.json")).load())
     }
+
+    @Test
+    fun `a file says its version, and one from before versions reads as the first`() {
+        val file = File(tmp.root, "recent-stations.json")
+        FileRecentStationsStore(file).add(oxford)
+        assertTrue(file.readText().contains("\"version\":1"))
+        file.writeText("""{"stations":[{"id":"940GZZLUOXC","name":"Oxford Circus","modes":["tube"]}]}""")
+        assertEquals(listOf(oxford), FileRecentStationsStore(file).load())
+    }
+
+    @Test
+    fun `a newer build's file loads as empty and is never written over`() {
+        // Its stop in a shape this build can't read.
+        val newer = """{"version":2,"stations":[{"id":"940GZZLUOXC","name":{"en":"Oxford Circus"}}]}"""
+        val file = File(tmp.root, "recent-stations.json").apply { writeText(newer) }
+        assertEquals(emptyList<SearchEntry>(), FileRecentStationsStore(file).loadPicks())
+        FileRecentStationsStore(file).add(stop)
+        FileRecentStationsStore(file).addPlace(PlaceHit("Example Park", Coordinates(51.5, -0.12), PlaceKind.PLACE))
+        assertFalse("the search says the row stayed", FileRecentStationsStore(file).remove(SearchEntry.Stop(oxford)))
+        assertEquals(newer, file.readText())
+    }
 }

@@ -138,6 +138,14 @@ class DataStoreFavoriteJourneysStoreTest {
     }
 
     @Test
+    fun `a file of an older version than this build's still reads`() = runTest {
+        val older = """{"version":0,"journeys":[{"from":{"stopId":"A","name":"A"},"to":{"stopId":"B","name":"B"},"lineId":"northern"}],"pending":[{"from":{"kind":"station","id":"C","name":"C"},"to":{"kind":"place","id":"p","name":"P"}}]}"""
+        val read = FavoriteJourneysSerializer.readFrom(ByteArrayInputStream(older.toByteArray()))!!
+        assertEquals("northern", read.toDomain()!!.single().lineId)
+        assertEquals("station:C", read.pendingToDomain()!!.single().from.key)
+    }
+
+    @Test
     fun `hidden lines round-trip through JSON, and a file from before them reads as none hidden`() = runTest {
         val hiding = journey.copy(hiddenLines = setOf(HiddenModes.lineKey("bus-x", "X1")))
         val out = ByteArrayOutputStream()
@@ -267,6 +275,18 @@ class DataStoreFavoriteJourneysStoreTest {
         assertNull(store.pendingJourneys().first())
         store.addPending(fromHome)
         assertEquals(newer, data.data.first())
+    }
+
+    @Test
+    fun `every write rewrites an older file as this build's version`() = runTest {
+        val older = PersistedFavoriteJourneys(version = 0)
+        val data = FakeDataStore(older)
+        val store = DataStoreFavoriteJourneysStore(data)
+        store.addPending(fromHome)
+        assertEquals(PersistedFavoriteJourneys.CURRENT_VERSION, data.data.first()!!.version)
+        data.updateData { older }
+        store.add(journey)
+        assertEquals(PersistedFavoriteJourneys.CURRENT_VERSION, data.data.first()!!.version)
     }
 
     @Test
