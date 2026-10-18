@@ -1898,6 +1898,17 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               the train that vanished was the earlier at least as often as the later, and most early
               vanishing was one train TfL listed on two lines at once (now grayed on both, outside
               the pairs).
+          - [ ] **Record a platform with its display noted alongside** (maintainer, 2026-10-18): at a
+                Northern line platform, TfL's own times listed four trains due within 3 minutes where
+                one came in that time (`dev-docs/arrivals-measurements.md` *Field reports*). Run
+                `arrivals_recorder.py record` on the platform while the rider notes each train as it
+                comes (destination and time), then match listings to trains: which were extras, how
+                early or late each real one came, and whether an extra held in the spacing queue
+                pushes a real train behind it late. Destination and time can't tell two listings
+                with one destination apart (a copy has its own id), so match each by when it went
+                "At Platform" against the noted arrival, and keep a pair that can't be separated
+                as unmatched rather than guess. Keep the recording and the station's name
+                outside the repository (AGENTS.md *Privacy*); only paraphrased findings go in.
         - [ ] **Tell a train back from the end of the line from one that moved platform** (2026-10-16
               recording): the recorder voids a train listed at two platforms of one line within
               `REAPPEARS_AFTER` (10 min). At Stockwell and Waterloo that was mostly the same train

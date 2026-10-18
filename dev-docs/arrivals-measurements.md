@@ -230,6 +230,29 @@ feed: in 3, one train left the board near its due time without being placed at t
 Numbers only: one hour at four stations at the end of a peak, judged by TfL's own record, which
 settles neither signal. A station display, watched alongside, is what would.
 
+## Field reports
+
+Reports from a rider at a platform, against the board the app showed. The station isn't named
+(AGENTS.md *Privacy*).
+
+**A Northern line platform, weekend afternoon (2026-10-18).** What was seen, with no listing
+matched to a train, since nothing says which listing was which:
+
+- The app showed Battersea 0 · 5 · 7 and Morden 2 · 4 · 9 min, the first four grayed.
+- The rider saw Battersea come in 2 min, Morden in 5, Battersea in 6, Morden in 7.
+- TfL's own times at that refresh, as worked back from the debug log's spacing shifts: Battersea
+  about 0:30, Morden 1:30 and again 30 s later, Battersea 3:00, then trains at about 7:00 and
+  later. That is four listings due within the first 3 minutes against one train that came then.
+- Each of the four listings in the bunch after the first came within 60 s of the one before,
+  a chain of close pairs, so the app grayed all four (`DoubtfulTrains`). Spacing (`SpacedTrains`) set each listing at least 100 s after the one
+  ahead, grayed ones included.
+- A trip changing there counted on the first listing (0 min).
+
+Open, since the listings can't be matched to the trains: which listings were extras, whether
+the trains came early or late against their own listings, and whether an extra held in the
+spacing queue pushed a real train later. One report, judged only against what the rider saw. A
+recording at a platform with the station display noted alongside would match them.
+
 ## Not yet measured
 
 - A weekend morning.
