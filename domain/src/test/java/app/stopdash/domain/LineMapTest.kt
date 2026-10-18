@@ -741,13 +741,20 @@ class LineMapTest {
         assertEquals(
             listOf(
                 "[Edgware · High Barnet · Mill Hill East]", "King's Cross St. Pancras", "Angel", "Old Street", "Moorgate", "Bank",
-                "[Battersea Power Station · Morden]",
+                // The Battersea closure, off the ride, shows where it starts and ends as anywhere else
+                // (maintainer, 2026-10-18), the rest of the stretch still folding by where it leads.
+                "[London Bridge to Elephant & Castle]", "Kennington", "Nine Elms", "Battersea Power Station", "[Morden]",
             ),
             items.labels(),
         )
-        // The Battersea closure, off the ride, says how bad on the fold it's in.
-        assertEquals(LineMap.Level.CLOSURE, (items.last() as LineMap.Item.Fold).level)
+        assertTrue(items.filterIsInstance<LineMap.Item.Fold>().none { it.level != null })
         assertFalse("named by where it leads, as it would be without the alert", (items.last() as LineMap.Item.Fold).unnamed)
+        // A tap opens one part of it, not the rest.
+        val morden = items.last() as LineMap.Item.Fold
+        assertEquals(
+            listOf("Battersea Power Station", "Oval"),
+            map.folded(setOf(morden.key)).labels().let { it.subList(it.indexOf("Battersea Power Station"), it.indexOf("Battersea Power Station") + 2) },
+        )
         assertEquals("Euston counted once", 30, (items.first() as LineMap.Item.Fold).count)
         // Ridden the other way up the map, the same stretch.
         val back = LineMap.of(northern(), closures = closures, rides = rides.map { it.asReversed() })!!
@@ -919,7 +926,8 @@ class LineMapTest {
         assertTrue(map.row("King's Cross St. Pancras").unserved)
         assertEquals(
             listOf(
-                "[Edgware · High Barnet · Mill Hill East]", "King's Cross St. Pancras",
+                // Euston, where the closure through King's Cross begins, shows too (maintainer, 2026-10-18).
+                "[Edgware · High Barnet · Mill Hill East]", "Euston", "King's Cross St. Pancras",
                 // Between King's Cross and Bank, leading to no end of the line: its runs, on one track,
                 // Angel showing where the closure ends.
                 "Angel", "[Old Street to Moorgate]", "Bank", "[Battersea Power Station · Morden]",

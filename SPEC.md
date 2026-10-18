@@ -3747,7 +3747,8 @@ on the page, and read "No service" where a closure shuts one.
 **Folding.** The map opens folded, so what's the rider's reads at a glance with the rest of the line
 around it (maintainer, 2026-10-06). With an alert on the rider's own stops or a stretch they ride,
 each other stretch of the line folds to one row naming the line's ends it leads to ("Edgware · High
-Barnet · Mill Hill East", "22 stations"); a stretch between two kept stations that leads to no end of
+Barnet · Mill Hill East", "22 stations"), though an alert off their route there still shows its first and
+last stations as above (maintainer, 2026-10-18), the parts either side folding by where they lead; a stretch between two kept stations that leads to no end of
 the line shows its runs instead, each on one track, so no row jumps between two trunks. Otherwise the
 line's ends and junctions show, and only the runs of plain stations between them fold ("Burnt Oak to
 Chalk Farm", "8 stations"), any alert among them shown as above. A tap opens a fold where
