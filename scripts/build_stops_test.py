@@ -188,9 +188,10 @@ class BusPagesTest(unittest.TestCase):
         def fake(path, params=None):
             asked.append(params["page"])
             size = 1000 if params["page"] < 3 else 5
-            return {"stopPoints": [pole(f"{params['page']}-{i}") for i in range(size)]}
+            return {"stopPoints": [pole(f"{params['page']}-{i}") for i in range(size)], "total": 2005}
 
-        self.assertEqual(2005, len(fetch_bus_pages(fake)))
+        points, total = fetch_bus_pages(fake)
+        self.assertEqual((2005, 2005), (len(points), total))
         self.assertEqual([1, 2, 3], asked)
 
     def test_a_stop_one_read_of_the_list_skips_keeps_its_lines_from_another(self):
@@ -198,15 +199,37 @@ class BusPagesTest(unittest.TestCase):
         # lines; the second read has it with them.
         reads = iter([[pole("a", lines=("1",))], [pole("a", lines=("1",)), pole("b", lines=("2",))]])
         def fake(path, params=None):
-            return {"stopPoints": next(reads)}
+            return {"stopPoints": next(reads), "total": 2}
         found = collect(read_bus_list(fake), {})
         collect([pole("b")], found)
         stops, _ = build(found)
         self.assertEqual({"a": ["1"], "b": ["2"]}, {s["id"]: [line for line, _, _ in s["lines"]] for s in stops})
 
+    def test_the_list_is_read_again_until_its_reads_hold_its_total(self):
+        # Each read has one entry twice and so one missing; a third read finds the last one.
+        reads = iter([[pole("a"), pole("a"), pole("b")], [pole("a"), pole("b"), pole("b")],
+                      [pole("a"), pole("c"), pole("c")]])
+        asked = []
+        def fake(path, params=None):
+            asked.append(1)
+            return {"stopPoints": next(reads), "total": 3}
+        found = collect(read_bus_list(fake), {})
+        self.assertEqual({"a", "b", "c"}, set(found))
+        self.assertEqual(3, len(asked))
+
+    def test_a_list_whose_reads_never_hold_its_total_is_refused(self):
+        def fake(path, params=None):
+            return {"stopPoints": [pole("a"), pole("b")], "total": 3}
+        with self.assertRaises(SystemExit):
+            read_bus_list(fake, max_reads=4)
+
+    def test_a_list_that_doesn_t_state_its_total_is_refused(self):
+        with self.assertRaises(SystemExit):
+            fetch_bus_pages(lambda path, params=None: {"stopPoints": [pole("a")]})
+
     def test_an_empty_list_is_refused(self):
         with self.assertRaises(SystemExit):
-            fetch_bus_pages(lambda path, params=None: {"stopPoints": []})
+            fetch_bus_pages(lambda path, params=None: {"stopPoints": [], "total": 0})
 
 
 TODAY = datetime.date(2026, 10, 18)
