@@ -67,7 +67,11 @@ MAX_BUS_PAGES = 60
 # How many times the bus list is read. TfL's paging isn't stable from one read to the next: a stop can
 # fall between two pages, leaving only a copy without its lines from another listing (six stops of one
 # name lost their buses in one refresh), so the reads are merged and a stop any of them found keeps it.
+# Each page states how many entries the list holds (its "total"; one read in October 2026 held that
+# many with one entry twice, so one missing): the list is read again, up to MAX_BUS_READS times,
+# until the reads between them hold that many distinct entries, and refused if they never do.
 BUS_READS = 2
+MAX_BUS_READS = 5
 # TfL's own network, mode by mode; National Rail's mode listing is nationwide and times out, so its
 # stations come from the type listings, which also hold piers the river-bus list leaves out.
 MODES = ["tube", "dlr", "overground", "elizabeth-line", "tram", "river-bus", "cable-car"]
@@ -372,21 +376,37 @@ def required(label, points):
 
 
 def fetch_bus_pages(fetch_json=fetch):
+    """One read of the paged bus list: its entries and the total its pages state."""
     points = []
+    total = None
     for page in range(1, MAX_BUS_PAGES + 1):
-        found = (fetch_json("/StopPoint/Mode/bus", {"page": page}) or {}).get("stopPoints") or []
+        answer = fetch_json("/StopPoint/Mode/bus", {"page": page}) or {}
+        found = answer.get("stopPoints") or []
         points.extend(found)
+        if isinstance(answer.get("total"), int):
+            total = answer["total"]
         if len(found) < BUS_PAGE_SIZE:
-            return required("bus", points)
+            if total is None:
+                sys.exit("the bus list didn't say how many stops it holds; refusing to guess whether it's whole")
+            return required("bus", points), total
     sys.exit(f"the bus list ran past {MAX_BUS_PAGES} pages; refusing to guess where it ends")
 
 
-def read_bus_list(fetch_json=fetch, reads=BUS_READS):
-    """Every bus stop TfL's paged list gives in [reads] reads of it, for [collect] to merge."""
+def read_bus_list(fetch_json=fetch, reads=BUS_READS, max_reads=MAX_BUS_READS):
+    """Every bus stop TfL's paged list gives in at least [reads] reads of it, for [collect] to merge:
+    read again until the reads hold as many distinct entries as the list's last stated total, and
+    refused if [max_reads] reads never do (a page TfL always answers short)."""
     points = []
-    for _ in range(reads):
-        points.extend(fetch_bus_pages(fetch_json))
-    return points
+    seen = set()
+    for done in range(1, max_reads + 1):
+        found, total = fetch_bus_pages(fetch_json)
+        points.extend(found)
+        seen.update(stop_id(p) for p in found)
+        if done >= reads and len(seen) >= total:
+            print(f"the bus list's {total} entries were all found in {done} reads")
+            return points
+    sys.exit(f"{max_reads} reads of the bus list found {len(seen)} distinct entries of the {total} it states;"
+             " refusing to write a list missing some")
 
 
 def main(argv):
