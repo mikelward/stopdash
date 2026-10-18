@@ -3090,13 +3090,24 @@ private fun DepartureList(
                 }
             }
     }
+    // What leads the list where the disruptions row shows, the row or the place chips over it: nothing
+    // the list puts above those is there. Either way the list's top inset gives way, so there's 12dp
+    // clear above them as between them and below (maintainer, 2026-10-18).
+    val placesOrRowLead = disruptionsRow != null && viewActions == null && onUnpauseAlerts == null &&
+        onTelemetryInviteAnswer == null && watchInstall == null && widgetUpdate == null
+    val topInset = when {
+        // The row's own 4dp above it makes up the rest.
+        placesOrRowLead && favoritePlaces.isEmpty() -> 16.dp - DISRUPTIONS_ROW_EXTRA * 2
+        placesOrRowLead -> 16.dp - DISRUPTIONS_ROW_EXTRA
+        else -> 16.dp
+    }
     // Its items slide to their new places when a refresh re-sorts them, and taps wait while anything
     // in it moves on its own (SPEC *Update indicator*).
     SettlingLazyColumn(
         // Fades the edges while the list scrolls on past them, so more below reads as more.
         modifier = modifier.scrollEdgeCue(listState, scrollCueColors(MaterialTheme.colorScheme.background)),
         state = listState,
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp, top = topInset),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         // A platform or station view's buttons, above everything in it (maintainer, 2026-10-16).
@@ -3126,8 +3137,12 @@ private fun DepartureList(
         }
         // The lines a rider here may take and how they're running, under the place chips, so Home and
         // the favorites keep the top (maintainer, 2026-10-05). One line high whatever it says, so
-        // nothing under it moves.
-        disruptionsRow?.let { row -> item(key = "disruptions") { HomeDisruptionsRow(row) } }
+        // nothing under it moves. 12dp clear above and below, chips over it or not (maintainer,
+        // 2026-10-18): 4dp more each side than the list's 8dp gap, the 4dp above taken from the list's
+        // top inset where it leads ([topInset]), so the departures under it stay put.
+        disruptionsRow?.let { row ->
+            item(key = "disruptions") { HomeDisruptionsRow(row, Modifier.padding(vertical = DISRUPTIONS_ROW_EXTRA)) }
+        }
         // Favorite journeys lead the list (SPEC *Journeys*): each a header naming the direction shown,
         // tappable to show the other, over a card of just the trains that call at the far end.
         journeyItems(journeyCards)
@@ -7008,3 +7023,5 @@ internal fun mergeJourneyOrigins(refs: List<StopRef>): List<StopRef> =
         )
     }
 
+/** What the home disruptions row adds to the list's 8dp gap on each side, for 12dp clear around it. */
+private val DISRUPTIONS_ROW_EXTRA = 4.dp
