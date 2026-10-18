@@ -1198,6 +1198,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       so only its walk on can start a road's width off). The difference is a road's width, seconds of
       walk, but the walk shown can name the wrong side. To weigh: move a walk's end with the ride it
       meets, and retime it where the move is more than a crossing.
+- [ ] **Precompute a name's shortened forms off the main thread.** `DestinationAbbreviations`
+      `abbreviate`/`floor`/`forms` split and map a name's words inside `remember` in composition
+      (`MainScreen.kt` destination label, `ShortenedName`), which the *main thread: read and
+      dispatch only* rule forbids for input-scaling work. Carry the forms on the row model, built
+      on the worker with the snapshot, and have the composables only measure. Raised by Codex on
+      PR #971 (pre-existing; that PR only added one more branch to `floor`).
 
 ## Phase 2 — Watched stops and settings
 
