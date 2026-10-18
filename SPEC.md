@@ -401,7 +401,10 @@ The app finds stops two ways:
   station TfL lists under **two ids with no interchange** to stand for both (Weybridge; Reading,
   whose second record has only some of its modes) is one search row, with both's modes, found and
   ranked by either id's code, and opens both: its page asks for each id's stops, and fails with a retry if either lookup does rather than
-  showing half the station as if it were whole.
+  showing half the station as if it were whole. A **station's page asks for every record the station
+  model holds for it** (`dev-docs/station-model.md`), the ones its name doesn't share too: St Pancras's
+  page takes in its Thameslink low level as well as its main and domestic records. Without the model,
+  or for an id it doesn't hold, the page falls back on the same-name rule above.
   Same-named places farther apart ("Church Street" in two boroughs) both stay, and a
   result with no position is never folded.
   Each stop row shows its **postcode district** before its modes ("EC4M · Bus"), from the nearest

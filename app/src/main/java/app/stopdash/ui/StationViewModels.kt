@@ -16,6 +16,7 @@ import app.stopdash.domain.SearchEntry
 import app.stopdash.domain.SearchKey
 import app.stopdash.domain.SearchResults
 import app.stopdash.domain.StationFinder
+import app.stopdash.domain.Hubs
 import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StopLocation
@@ -823,6 +824,9 @@ class StationStopsViewModel(
     // The bundled index, for the other ids TfL lists this same station under (Weybridge's two records, no
     // interchange to open instead): asked for too, so none of its stops is left out. Read on [io].
     private val loadIndex: () -> StationIndex = { StationIndex.EMPTY },
+    // The station model, for every record the station is (St Pancras's main, low-level and domestic
+    // records), the index's same-name rule standing in where there's none or it doesn't hold the id.
+    private val loadHubs: suspend () -> Hubs? = { null },
     // How a failure names the station in [warn]: its id, a public TfL id, except where the stop is the rider's
     // own pick the log promises not to name (a trip's via, SPEC *Going via a stop*).
     private val logAs: String = stationId,
@@ -855,7 +859,10 @@ class StationStopsViewModel(
         _state.value = State.Loading
         load = viewModelScope.launch {
             _state.value = try {
-                val ids = withContext(io) { listOf(stationId) + loadIndex().sameStationIds(stationId) }
+                val ids = withContext(io) {
+                    val records = loadHubs()?.recordsOf(stationId).orEmpty()
+                    if (records.isNotEmpty()) (listOf(stationId) + records).distinct() else listOf(stationId) + loadIndex().sameStationIds(stationId)
+                }
                 // Every id or none: a page missing one record's stops would look whole (SPEC *Finding stops*).
                 val found = withContext(io) { ids.flatMap { finder.stationStops(it) } }
                 withContext(compute) {

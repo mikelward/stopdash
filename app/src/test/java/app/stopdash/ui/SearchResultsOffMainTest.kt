@@ -1,5 +1,9 @@
 package app.stopdash.ui
 
+import java.io.StringReader
+import java.io.BufferedReader
+import app.stopdash.domain.Hubs
+import app.stopdash.domain.BundledStops
 import app.stopdash.domain.BusStopIndex
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.PlaceCandidate
@@ -268,6 +272,40 @@ class SearchResultsOffMainTest {
             releaseCompute()
         }
         assertEquals(listOf("910GTWIN1", "910GTWIN2"), asked)
+        assertTrue(vm.state.value is StationStopsViewModel.State.Ready)
+    }
+
+    @Test
+    fun aStationsModelRecordsAreFoundOnIo() {
+        // The station model read and asked for the station's records waits on io, held here, so the main
+        // thread run to idle hasn't read it or asked TfL for anything yet.
+        val index = StationIndex(
+            listOf(
+                IndexedStation("910GTWIN1", "Upper Bezeta", listOf("national-rail"), "", 51.5, -0.12, icsCode = "1009901", station = "1009901:rail", modelHub = "910GTWIN1"),
+                IndexedStation("910GTWIN1LL", "Upper Bezeta LL", listOf("national-rail"), "", 51.5, -0.12, icsCode = "1009901", station = "1009901:rail", modelHub = "910GTWIN1"),
+            ),
+            revision = "abc",
+        )
+        val stops = BundledStops.read(BufferedReader(StringReader("# stopdash stops v2\tbounds=51.25,-0.65,51.75,0.4\trevision=abc\nL\t1\tbus\t1")))
+        val hubs = Hubs.of(index, stops)!!
+        val ioScheduler = TestCoroutineScheduler()
+        val io = StandardTestDispatcher(ioScheduler)
+        val asked = mutableListOf<String>()
+        var modelRead = false
+        val vm = StationStopsViewModel(
+            Finder(stops = { id -> asked += id; listOf(StopLocation(id, "Upper Bezeta", 51.5, -0.12)) }),
+            "910GTWIN1", io = io, compute = compute, loadIndex = { index }, loadHubs = { modelRead = true; hubs },
+        )
+        mainIdle()
+        computeScheduler.advanceUntilIdle()
+        assertFalse("model read with io held", modelRead)
+        assertEquals(emptyList<String>(), asked)
+        assertEquals(StationStopsViewModel.State.Loading, vm.state.value)
+        repeat(3) {
+            ioScheduler.advanceUntilIdle()
+            releaseCompute()
+        }
+        assertEquals(listOf("910GTWIN1", "910GTWIN1LL"), asked)
         assertTrue(vm.state.value is StationStopsViewModel.State.Ready)
     }
 

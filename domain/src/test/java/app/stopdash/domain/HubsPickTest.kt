@@ -115,6 +115,14 @@ class HubsPickTest {
     }
 
     @Test
+    fun `a station's records are every record of it, the lead first, from any of its ids`() {
+        assertEquals(listOf("910GEXPANC", "910GEXPANCLL"), hubs.recordsOf("910GEXPANCLL"))
+        assertEquals("from a platform", listOf("910GEXPANC", "910GEXPANCLL"), hubs.recordsOf("9100EXPANC1"))
+        assertEquals("a hub is no station", emptyList<String>(), hubs.recordsOf("HUBEXX"))
+        assertEquals(emptyList<String>(), hubs.recordsOf("910GGONE"))
+    }
+
+    @Test
     fun `a station is arrived at by its records, their platforms and the bus stops it owns`() {
         assertEquals(
             mapOf(
