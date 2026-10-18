@@ -43,6 +43,19 @@ class HubsBundleTest {
     }
 
     @Test
+    fun `search's St Pancras row opens St Pancras, and its King's Cross row the interchange`() {
+        val dir = listOf(File("src/main/assets/stations"), File("app/src/main/assets/stations")).first { it.exists() }
+        val index = StationIndexStore.parse(File(dir, "station_index.json").readText())
+        val rows = index.memberRows.getValue("HUBKGX").associateBy { it.match.name }
+        val stPancras = rows.getValue("St Pancras International").match
+        assertEquals(Pick.Level.STATION, stPancras.level)
+        assertEquals(hubs.stationOf("910GSTPX"), hubs.stationOf(stPancras.id))
+        assertEquals("HUBKGX", rows.getValue("King's Cross").match.id)
+        // A row saved before, at the interchange's id, reads as the row now listed.
+        assertEquals(stPancras, hubs.resolved(stPancras.copy(id = "HUBKGX", level = null)))
+    }
+
+    @Test
     fun `a King's Cross pick saved before phase 2 reads as the row it was picked from`() {
         // St Pancras's own row stands for St Pancras alone, and is arrived at there, never at King's Cross.
         val stPancras = hubs.picked("HUBKGX", "St Pancras International")

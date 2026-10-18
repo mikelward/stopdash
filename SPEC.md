@@ -390,9 +390,13 @@ The app finds stops two ways:
   International" (National Rail). Names are compared without what only tells TfL's records apart
   ("London …" unless the interchange is so named, "… LL", a line in brackets), so Paddington and
   Waterloo stay one row; a station named for two others (the tube's "King's Cross St. Pancras")
-  joins the first. Each name row opens the interchange under that name with that name's stations
+  joins the first. A name row that is one station's opens **that station** (`dev-docs/station-model.md`):
+  "St Pancras International" opens St Pancras, every record of it, not the whole interchange. A row
+  folded from two stations' names opens the interchange under that name with that name's stations
   first: its modes in order, Underground first, and within a mode the stations of that name, so
-  "St Pancras International" leads with St Pancras's trains and "King's Cross" with the Underground. A place's bus stops are listed one by one, so a result that is **one place by name
+  "King's Cross", which takes in the Underground's King's Cross St. Pancras, leads with the
+  Underground. A recent search or a pending ride saved from a station's name row before opens that
+  station too, and is replaced, not listed twice, when the row is picked again. A place's bus stops are listed one by one, so a result that is **one place by name
   with a better-ranked one folds into it** (maintainer, 2026-09-25), by the rule *Journeys* gives: the
   same name within 250 m, or a bus stop named for the station up to its cross street (maintainer,
   2026-10-15). "Archway" is listed once, not once per stand, and its page takes in the stops around it.

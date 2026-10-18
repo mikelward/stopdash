@@ -73,6 +73,22 @@ class HubsPickTest {
     }
 
     @Test
+    fun `a row saved at an interchange's station name reads as the row now carries it`() {
+        val saved = StationMatch("HUBEXX", "Example Pancras", listOf("national-rail"), lead = listOf("national-rail"))
+        assertEquals("the station, by its lead record, as search lists it now", index.memberRows.getValue("HUBEXX")[1].match, hubs.resolved(saved))
+        val folded = StationMatch("HUBEXX", "Example Cross", listOf("national-rail", "tube"), lead = listOf("national-rail", "tube"))
+        assertEquals(folded.copy(level = Pick.Level.HUB), hubs.resolved(folded))
+        val station = StationMatch("910GEXPANC", "Example Pancras", listOf("national-rail"))
+        assertEquals("any other row is itself", station, hubs.resolved(station))
+        assertEquals(
+            PendingEnd.Station("910GEXPANC", "Example Pancras", Pick.Level.STATION),
+            hubs.resolved(PendingEnd.Station("HUBEXX", "Example Pancras")),
+        )
+        val picked = PendingEnd.Station("HUBEXX", "Example Pancras", Pick.Level.HUB)
+        assertEquals("an end that says its level is as saved", picked, hubs.resolved(picked))
+    }
+
+    @Test
     fun `a station record a stop's poles are filed under reads as the stop when the entry says so`() {
         assertEquals("by the starred pole", Pick("490000009B", "Vale", Pick.Level.STOP), hubs.picked("910GVALE", "Vale", stopId = "490000009B"))
         assertEquals("by a starred pole filed elsewhere since", Pick("490000005B", "Vale", Pick.Level.STOP), hubs.picked("910GVALE", "Vale", stopId = "490000005B"))

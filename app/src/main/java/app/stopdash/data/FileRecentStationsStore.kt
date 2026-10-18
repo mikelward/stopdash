@@ -30,6 +30,9 @@ import kotlinx.serialization.json.Json
 internal class FileRecentStationsStore(
     private val file: File,
     private val warn: (String) -> Unit = {},
+    // A stop as it reads now ([HubsStore.resolvedNow]): an interchange's station name saved before
+    // phase 2 read as its station, so it opens there and a new pick of the row replaces it.
+    private val resolve: (StationMatch) -> StationMatch = { it },
 ) {
     private val tmp = File(file.path + ".tmp")
 
@@ -52,6 +55,9 @@ internal class FileRecentStationsStore(
                 null
             } else {
                 json.decodeFromString<PersistedRecentStations>(text).stations.map { it.toDomain() }
+                    .map { entry -> if (entry is SearchEntry.Stop) SearchEntry.Stop(resolve(entry.match)) else entry }
+                    // A pick saved under both shapes is listed once, at the newer.
+                    .distinctBy { it.key }
             }
         } catch (e: IOException) {
             discard("unreadable", e)

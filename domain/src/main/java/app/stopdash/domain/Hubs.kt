@@ -193,6 +193,30 @@ class Hubs private constructor(
         }
     }
 
+    /**
+     * A search row saved before phase 2 as one of an interchange's station names (the interchange's id
+     * with the name's [StationMatch.lead]) as the row now carries it ([StationIndex.memberRows]): one
+     * station's name at that station's lead record, one folded from two stations' at the interchange.
+     * Any other row, or one already at a record, is itself.
+     *
+     * Read where a store reads its file, off the main thread. Unmarked, like [PendingJourneys]: lint's
+     * WorkerThreadCall can't see the stores' own hops, so a mark here would flag every screen that
+     * builds one. Its work is a lookup and a name compared per entry, once the interchanges' member
+     * rows are built (on the model's first use of them, a worker's).
+     */
+    fun resolved(match: StationMatch): StationMatch {
+        if (match.lead.isEmpty() || !match.id.startsWith("HUB", ignoreCase = true)) return match
+        val pick = pickedInterchange(match.id, match.name)
+        return match.copy(id = pick.id, level = pick.level)
+    }
+
+    /** A pending ride's end saved before phase 2 at an interchange's station name, as [resolved] reads its row. */
+    fun resolved(end: PendingEnd.Station): PendingEnd.Station {
+        if (end.level != null || !end.stationId.startsWith("HUB", ignoreCase = true)) return end
+        val pick = pickedInterchange(end.stationId, end.name)
+        return PendingEnd.Station(pick.id, end.name, pick.level)
+    }
+
     // A bus pole's or area's id, or an entry saved as a bus stop, is a stop; an interchange's a hub.
     private fun unbundledLevel(id: String, modes: List<String>): Pick.Level = when {
         BUS_ID.matches(id) || modes == listOf("bus") -> Pick.Level.STOP

@@ -24,5 +24,5 @@ internal class RecentSearches(
 
     @Synchronized
     fun store(kind: Kind): FileRecentStationsStore =
-        stores.getOrPut(kind) { FileRecentStationsStore(File(dir, kind.fileName), warn) }
+        stores.getOrPut(kind) { FileRecentStationsStore(File(dir, kind.fileName), warn, HubsStore::resolvedNow) }
 }

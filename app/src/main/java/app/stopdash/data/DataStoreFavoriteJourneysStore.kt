@@ -54,6 +54,9 @@ class DataStoreFavoriteJourneysStore internal constructor(
     // Held by every write: the journey alert check holds it from its last read of the settings through its
     // posts, so no edit can land between them (Codex on #700).
     private val writes: Mutex = FavoriteJourneysWrites.lock,
+    // A pending end as it reads now ([HubsStore.resolvedNow]): an interchange's station name saved
+    // before phase 2 read as its station, so a new pick of the row replaces it rather than adding one.
+    private val resolveEnd: (PendingEnd.Station) -> PendingEnd.Station = { it },
 ) : FavoriteJourneysStore {
 
     // A disk read failure (DataStore's IOException) reads as unavailable — starring journeys is
@@ -106,7 +109,7 @@ class DataStoreFavoriteJourneysStore internal constructor(
 
     override fun pendingJourneys(): Flow<List<PendingJourney>?> =
         dataStore.data
-            .map { stored -> if (stored == null) emptyList() else stored.pendingToDomain() }
+            .map { stored -> if (stored == null) emptyList() else stored.pendingToDomain(resolveEnd) }
             .flowOn(compute)
             .catch { e ->
                 if (e !is IOException) throw e
@@ -116,7 +119,7 @@ class DataStoreFavoriteJourneysStore internal constructor(
 
     override fun savedJourneys(): Flow<SavedJourneys> =
         dataStore.data
-            .map { stored -> if (stored == null) SavedJourneys(emptyList(), emptyList()) else SavedJourneys(stored.toDomain(), stored.pendingToDomain()) }
+            .map { stored -> if (stored == null) SavedJourneys(emptyList(), emptyList()) else SavedJourneys(stored.toDomain(), stored.pendingToDomain(resolveEnd)) }
             .flowOn(compute)
             .catch { e ->
                 if (e !is IOException) throw e
@@ -135,7 +138,7 @@ class DataStoreFavoriteJourneysStore internal constructor(
                 stored
             } else {
                 val next = Journeys.add(stored?.toDomain() ?: emptyList(), journey)
-                val pending = PendingJourneys.remove(stored?.pendingToDomain().orEmpty(), grayed)
+                val pending = PendingJourneys.remove(stored?.pendingToDomain(resolveEnd).orEmpty(), grayed)
                 next.toPersisted(JourneyAlerts.prune(stored?.alertsToDomain().orEmpty(), next))
                     .copy(pending = pending.map { it.toPersisted() })
             }
@@ -152,7 +155,7 @@ class DataStoreFavoriteJourneysStore internal constructor(
                 val base = stored ?: PersistedFavoriteJourneys()
                 // Written as this build's version, as every other write is: an older file read here
                 // is rewritten in this build's shape.
-                base.copy(version = PersistedFavoriteJourneys.CURRENT_VERSION, pending = change(base.pendingToDomain().orEmpty()).map { it.toPersisted() })
+                base.copy(version = PersistedFavoriteJourneys.CURRENT_VERSION, pending = change(base.pendingToDomain(resolveEnd).orEmpty()).map { it.toPersisted() })
             }
         } }
     }
@@ -195,6 +198,7 @@ class DataStoreFavoriteJourneysStore internal constructor(
                         context.applicationContext.dataStoreFile(FILE_NAME)
                     },
                     warn,
+                    resolveEnd = HubsStore::resolvedNow,
                 ).also { instance = it }
             }
     }
@@ -327,11 +331,12 @@ private fun PersistedPendingEnd.toDomain(): PendingEnd? = when (kind) {
 private fun PendingJourney.toPersisted() = PersistedPendingJourney(from.toPersisted(), to.toPersisted())
 
 /** The grayed journeys, or null for a newer schema version this build can't read. */
-internal fun PersistedFavoriteJourneys.pendingToDomain(): List<PendingJourney>? {
+internal fun PersistedFavoriteJourneys.pendingToDomain(resolve: (PendingEnd.Station) -> PendingEnd.Station = { it }): List<PendingJourney>? {
     if (version > PersistedFavoriteJourneys.CURRENT_VERSION) return null
+    fun PendingEnd.read(): PendingEnd = if (this is PendingEnd.Station) resolve(this) else this
     return pending.mapNotNull { p ->
-        val from = p.from.toDomain() ?: return@mapNotNull null
-        val to = p.to.toDomain() ?: return@mapNotNull null
+        val from = p.from.toDomain()?.read() ?: return@mapNotNull null
+        val to = p.to.toDomain()?.read() ?: return@mapNotNull null
         PendingJourney(from, to)
     }.distinctBy { it.key }
 }

@@ -64,23 +64,28 @@ class StationIndex(
      * [near], where the trip starts, puts the nearer of same-named stations first, as [rank] does.
      */
     fun search(query: String, limit: Int = DEFAULT_LIMIT, near: Coordinates? = null): List<StationMatch> {
+        var matchedRowHubs: Set<String> = emptySet()
         val scored = stations.mapNotNull { station ->
             StationMatcher.tier(query, station.name, station.id, station.interchangeId)?.let {
                 val at = if (station.latitude != null && station.longitude != null) Coordinates(station.latitude, station.longitude) else null
                 Scored(StationMatch(station.id, station.name, station.modes, level = levelOf(station.id, station.modes)), station.interchangeId, it, query, distanceFrom(near, at), station)
             }
-        } + hubNames.mapNotNull { name ->
+        } + memberRows.flatMap { (hub, rows) ->
             // By its name alone: a station code ("kgx") is the interchange's, and finds that row.
-            StationMatcher.tier(query, name.name)?.let {
-                Scored(name, "", it, query, if (near == null) 0.0 else distanceFrom(near, positionOf(name.id)))
+            rows.mapNotNull { row ->
+                StationMatcher.tier(query, row.match.name)?.let {
+                    MemberScored(hub, Scored(row.match, "", it, query, if (near == null) 0.0 else distanceFrom(near, positionOf(row.match.id))))
+                }
             }
-        }
-        val matchedIds = scored.mapTo(HashSet()) { it.match.id }
+        }.also { rows -> matchedRowHubs = rows.mapTo(HashSet()) { it.hub } }.map { it.scored }
+        // A station is left out where its interchange matched, or one of its station names did: that
+        // row opens it, and listing both reads as the same place twice.
+        val matchedIds = scored.mapTo(HashSet()) { it.match.id } + matchedRowHubs
         return scored
             .filter { it.interchangeId.isBlank() || it.interchangeId !in matchedIds }
             .sortedWith(
                 compareBy(
-                    { it.tier }, { leadOf(it.match) }, { !it.match.id.startsWith("HUB", ignoreCase = true) },
+                    { it.tier }, { leadOf(it.match) }, { !leadsAsHub(it.match) },
                     // As in [rank]: the exact name, one the query starts, then a station before a bus stop
                     // (one of the user's, joined by withYours), then the nearer to where the trip starts.
                     { !it.exact }, { !it.startsName },
@@ -143,6 +148,8 @@ class StationIndex(
         }
     }
 
+    private class MemberScored(val hub: String, val scored: Scored)
+
     private class Scored(
         val match: StationMatch,
         val interchangeId: String,
@@ -165,7 +172,9 @@ class StationIndex(
      * (West Hampstead lists "West Hampstead Thameslink" only). An interchange whose members come to
      * one name lists none:
      * Paddington, Waterloo and Victoria stay one row each. Each row's modes put the Underground
-     * first ([MODE_ORDER]), and are its [StationMatch.lead].
+     * first ([MODE_ORDER]), and are its [StationMatch.lead]. A row that is one station's (by the
+     * station model's membership) carries that station's lead record, so St Pancras's opens St
+     * Pancras; one folded from two stations' carries the interchange's id and opens it whole.
      */
     // Built on first read from the whole index: a worker's work.
     @get:WorkerThread
@@ -222,7 +231,17 @@ class StationIndex(
         return groups.values.map { group ->
             val ordered = group.modes.filter { it.isNotBlank() }.distinct()
                 .sortedBy { MODE_ORDER.indexOf(it).let { i -> if (i < 0) MODE_ORDER.size else i } }
-            MemberRow(StationMatch(hub, group.display, ordered, lead = ordered), group.records)
+            // A name that is one station's opens that station, by its lead record, at the station level;
+            // one folded from two stations' (King's Cross, which takes in the Underground's) opens the
+            // interchange, the only level that holds both (dev-docs/station-model.md *Saved data*).
+            val stations = group.records.map { byId[it]?.station.orEmpty() }
+            val one = stations.distinct().singleOrNull()?.takeIf { it.isNotBlank() }
+            val match = if (one != null) {
+                StationMatch(group.records.first(), group.display, ordered, lead = ordered, level = Pick.Level.STATION)
+            } else {
+                StationMatch(hub, group.display, ordered, lead = ordered, level = Pick.Level.HUB)
+            }
+            MemberRow(match, group.records)
         }
     }
 
@@ -261,7 +280,8 @@ class StationIndex(
         // of the same place, nor anything into it: a row once listed stays where it is.
         val candidates = (local.map { match -> placed[match.id]?.takeIf { match.lead.isEmpty() }?.let { match.copy(latitude = it.latitude, longitude = it.longitude) } ?: match } + remote)
             .distinctBy { it.key }
-        val matchedIds = candidates.mapTo(HashSet()) { it.id }
+        // The interchanges matched, by their own rows or one of their station names'.
+        val matchedIds = candidates.mapTo(HashSet()) { it.id } + candidates.mapNotNull { rowHubOf(it) }
         // One ranking over both sources, by the same rules as [search] — tier, the user's own stops
         // first, then interchanges, the exact name, a name the query starts, a station before a bus
         // stop, then the nearer —
@@ -278,13 +298,13 @@ class StationIndex(
             match.key to distanceFrom(near, at)
         }
         return candidates
-            .filter { hubOf[it.id]?.let { hub -> hub in matchedIds } != true }
+            .filter { it.lead.isNotEmpty() || hubOf[it.id]?.let { hub -> hub in matchedIds } != true }
             .withIndex()
             .sortedWith(
                 compareBy(
                     { tierOf(query, it.value)?.ordinal ?: StationMatchTier.entries.size },
                     { leadOf(it.value) },
-                    { !it.value.id.startsWith("HUB", ignoreCase = true) },
+                    { !leadsAsHub(it.value) },
                     // The exact name first, then the better known: a station before a bus stop, so "St Paul's"
                     // means the station. A name's length is no measure of a match (maintainer, 2026-10-12).
                     { exact[it.value.key] != true },
@@ -344,7 +364,18 @@ class StationIndex(
      * Whether [match] leads its tier ahead of how well its name matches: one of the user's own stops,
      * or an interchange, as [search] and [rank] order them. [SearchResults.merge] keeps a place behind it.
      */
-    fun leads(match: StationMatch): Boolean = leadOf(match) != Int.MAX_VALUE || match.id.startsWith("HUB", ignoreCase = true)
+    fun leads(match: StationMatch): Boolean = leadOf(match) != Int.MAX_VALUE || leadsAsHub(match)
+
+    // An interchange's own row, or one of its station names': ranked as the interchange is.
+    private fun leadsAsHub(match: StationMatch): Boolean = match.id.startsWith("HUB", ignoreCase = true) || match.lead.isNotEmpty()
+
+    // The interchange a station name's row ([memberRows]) belongs to: its own id while the row stands
+    // for the hub, else its station record's interchange. Null for any other row.
+    private fun rowHubOf(match: StationMatch): String? = when {
+        match.lead.isEmpty() -> null
+        match.id.startsWith("HUB", ignoreCase = true) -> match.id
+        else -> hubOf[match.id]
+    }
 
     private val byId: Map<String, IndexedStation> by lazy { stations.associateBy { it.id } }
 

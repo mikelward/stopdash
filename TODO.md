@@ -817,8 +817,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 bump (*A saved level comes with a version*).
           - [x] The station page's records on the model (`Hubs.recordsOf`): St Pancras's page takes in
                 its low level. Read through `HubsStore.ready`, the same-name rule standing in without it.
-          - [ ] Search's member and bus-stop rows and the twin fold on the model: St Pancras's row
-                opens St Pancras, and old member-row picks read back through `Hubs.picked`.
+          - [x] Search's member rows on the model: a name that is one station's carries its lead record
+                (St Pancras's row opens St Pancras), and recents and pending ends saved at the
+                interchange's id read back as that station (`Hubs.resolved`, `HubsStore.resolvedNow`).
+          - [ ] Search's bus-stop rows and the twin fold on the model; an open trip's From, To and Via
+                and the open station page's saved state read back the same way.
           - [ ] Getting off, far ends, Direct, off-plan, passing a stop, and a trip's arrivals
                 (`Hubs.idsOf`) on the model, with SPEC *Departures*, *Finding stops* and *Trips with
                 a change*.
