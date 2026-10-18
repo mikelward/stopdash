@@ -148,9 +148,13 @@ tasks.withType<Test>().configureEach {
     jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
     if (project.hasProperty("roborazzi.test.record")) {
         jvmArgs("-Droborazzi.test.record=true")
+        // Recording writes PNGs into ../app/src/test/snapshots/images outside Gradle's tracked
+        // outputs, so a cached or up-to-date skip would leave the watch screenshots unwritten.
+        outputs.upToDateWhen { false }
     }
     if (project.hasProperty("roborazzi.test.verify")) {
         jvmArgs("-Droborazzi.test.verify=true")
+        outputs.upToDateWhen { false }
     }
 }
 

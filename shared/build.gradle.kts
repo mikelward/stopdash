@@ -54,4 +54,5 @@ tasks.withType<Test>().configureEach {
     // jdk.internal.access.SharedSecrets, which java.base doesn't export; without this
     // every Robolectric test fails in setup with IllegalAccessException.
     jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
+    inputs.dir(file("src/main/assets")).withPathSensitivity(PathSensitivity.RELATIVE)
 }
