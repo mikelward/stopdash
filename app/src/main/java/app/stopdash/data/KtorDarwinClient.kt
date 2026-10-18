@@ -30,7 +30,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 /**
  * National Rail's live departure boards (Darwin) from the Rail Data Marketplace: with the user's own
  * key ([apiKey], read per request so a key pasted in Settings applies on the next refresh) straight
- * from National Rail, else through stopdash's relay ([relayUrl]), which holds a key of its own and
+ * from National Rail, else through stopdash's proxy ([proxyUrl]), which holds a key of its own and
  * answers the same boards. With neither it's unavailable and asks nothing. A board asked for with
  * neither (a key cleared since [available] was read) fails, never reading as one with no trains.
  *
@@ -53,17 +53,17 @@ class KtorDarwinClient(
     private val stopIdFor: (String) -> String? = { null },
     // Every TfL stop id of a station code (RailStationCodes.stopIdsFor): a train's calling points.
     private val stopIdsFor: (String) -> Set<String> = { emptySet() },
-    // stopdash's relay ([RailRelay]), for a rider with no key of their own. Null (tests, a build with
+    // stopdash's proxy ([StopdashProxy]), for a rider with no key of their own. Null (tests, a build with
     // none) leaves a keyless rider without National Rail times, as before it.
-    private val relayUrl: () -> String? = { null },
+    private val proxyUrl: () -> String? = { null },
     // Returns once the rider's saved key, if any, has been read back, so a board asked for meanwhile
-    // goes the way it will once it's known: never through the relay in place of their key, and never
+    // goes the way it will once it's known: never through the proxy in place of their key, and never
     // refused for want of one (Codex, #944). Waited for up to [KEY_LOAD_WAIT].
     private val keyLoaded: suspend () -> Unit = {},
 ) : RailBoardSource {
-    // A board can be had once there's a key or a relay. With a relay, that's so whatever the saved key
+    // A board can be had once there's a key or a proxy. With a proxy, that's so whatever the saved key
     // turns out to be, so a board isn't refused while it's still being read back.
-    override val available: Boolean get() = apiKey()?.isNotBlank() == true || relay() != null
+    override val available: Boolean get() = apiKey()?.isNotBlank() == true || proxy() != null
 
     override suspend fun departures(crs: String): List<Departure> = board(crs).departures
 
@@ -95,31 +95,31 @@ class KtorDarwinClient(
         return fetch(route, DETAILS, crs, DETAIL_ROWS, mapOf("filterCrs" to towards, "filterType" to "to") + from, towards, offsetMinutes) { board, age -> RailRuns(board.toRuns(), age) }
     }
 
-    // Where a board is asked: straight from National Rail with the rider's key, else through the relay.
+    // Where a board is asked: straight from National Rail with the rider's key, else through the proxy.
     private sealed interface Route {
         data class Direct(val key: String) : Route
-        data class Relay(val url: String) : Route
+        data class Proxy(val url: String) : Route
     }
 
-    private fun relay(): String? = relayUrl()?.trim()?.trimEnd('/')?.ifEmpty { null }
+    private fun proxy(): String? = proxyUrl()?.trim()?.trimEnd('/')?.ifEmpty { null }
 
-    // The way to ask, once the saved key is known. If it isn't read back in time, no board: the relay
+    // The way to ask, once the saved key is known. If it isn't read back in time, no board: the proxy
     // isn't asked in the key's place.
     private suspend fun route(): Route? {
         withTimeoutOrNull(KEY_LOAD_WAIT.toMillis()) { keyLoaded() }
             ?: throw TflException.Unreachable("national rail key not read yet", null)
-        return apiKey()?.trim()?.ifBlank { null }?.let(Route::Direct) ?: relay()?.let(Route::Relay)
+        return apiKey()?.trim()?.ifBlank { null }?.let(Route::Direct) ?: proxy()?.let(Route::Proxy)
     }
 
     // [crs]'s board from [operation], [rows] long and narrowed by [filters], read by [read] with how old it
-    // already was (the relay's `Age`, zero straight from National Rail); failures as [TflException]s.
+    // already was (the proxy's `Age`, zero straight from National Rail); failures as [TflException]s.
     private suspend fun <T> fetch(
         route: Route,
         operation: String,
         crs: String,
         rows: Int,
         filters: Map<String, String> = emptyMap(),
-        // The relay's form of [filters] (a followed train's terminus and offset): it sets the rows itself.
+        // The proxy's form of [filters] (a followed train's terminus and offset): it sets the rows itself.
         towards: String? = null,
         offsetMinutes: Int = 0,
         // Run on [decodeDispatcher], never the caller's thread: it reads the whole board.
@@ -134,13 +134,13 @@ class KtorDarwinClient(
                             parameter("numRows", rows)
                             filters.forEach { (name, value) -> parameter(name, value) }
                         }
-                        // The relay's own shape, with nothing of the rider's: no key, the board's codes alone.
-                        is Route.Relay -> httpClient.get("${route.url}/v1/board/$crs${if (operation == DETAILS) "/details" else ""}") {
+                        // The proxy's own shape, with nothing of the rider's: no key, the board's codes alone.
+                        is Route.Proxy -> httpClient.get("${route.url}/v1/board/$crs${if (operation == DETAILS) "/details" else ""}") {
                             towards?.let { parameter("to", it) }
                             if (towards != null && offsetMinutes != 0) parameter("offset", offsetMinutes)
                         }
                     }
-                // Seconds the relay counted itself, so the board is dated by its real age, never by clocks.
+                // Seconds the proxy counted itself, so the board is dated by its real age, never by clocks.
                 val age = response.headers[HttpHeaders.Age]?.trim()?.toLongOrNull()?.takeIf { it > 0 }?.let(Duration::ofSeconds) ?: Duration.ZERO
                 read(response.body<DarwinBoardDto>(), age)
             }
@@ -153,7 +153,7 @@ class KtorDarwinClient(
                 TflException.Unreachable("HTTP ${e.response.status.value}", e)
             }
         } catch (e: ServerResponseException) {
-            val why = if (route is Route.Relay) relayReason(e) else null
+            val why = if (route is Route.Proxy) proxyReason(e) else null
             throw TflException.Unreachable("HTTP ${e.response.status.value}${why?.let { " ($it)" }.orEmpty()}", e)
         } catch (e: UnknownHostException) {
             throw TflException.Offline(e)
@@ -167,25 +167,25 @@ class KtorDarwinClient(
         }
     }
 
-    // What the relay's failed answer says went wrong upstream, where it's one of the two shapes it writes
+    // What the proxy's failed answer says went wrong upstream, where it's one of the two shapes it writes
     // (an error's type, or National Rail's status), so the debug log names it (Codex, #944). Anything else
     // in the body is never repeated: null. Read and matched on [decodeDispatcher], as a board is: the
     // caller can be a screen's main thread (Codex, #944).
-    private suspend fun relayReason(e: ServerResponseException): String? = try {
-        withContext(decodeDispatcher + FAILURE_BODY) { RELAY_REASON.find(e.response.bodyAsText())?.groupValues?.get(1) }
+    private suspend fun proxyReason(e: ServerResponseException): String? = try {
+        withContext(decodeDispatcher + FAILURE_BODY) { PROXY_REASON.find(e.response.bodyAsText())?.groupValues?.get(1) }
     } catch (c: CancellationException) {
         throw c
     } catch (other: Exception) {
-        // The status alone still says the relay failed; the body is only its detail.
-        warn("national rail relay: failure body unreadable: ${other::class.simpleName}")
+        // The status alone still says the proxy failed; the body is only its detail.
+        warn("stopdash proxy: failure body unreadable: ${other::class.simpleName}")
         null
     }
 
     companion object {
         // Names the failure body's read on [decodeDispatcher], so a test can see it ran there.
-        internal val FAILURE_BODY = CoroutineName("relay failure body")
+        internal val FAILURE_BODY = CoroutineName("proxy failure body")
 
-        private val RELAY_REASON = Regex(""""error"\s*:\s*"(national rail (?:unreachable: [A-Za-z]{1,40}|answered \d{3}))"""")
+        private val PROXY_REASON = Regex(""""error"\s*:\s*"(national rail (?:unreachable: [A-Za-z]{1,40}|answered \d{3}))"""")
 
         /** The Live Departure Board product's endpoint on the Rail Data Marketplace. */
         const val DEFAULT_BASE_URL: String =

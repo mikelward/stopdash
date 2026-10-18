@@ -168,11 +168,11 @@ class KtorTflClient(
     // The bus fare a route the Planner left unpriced can be sure of ([BusFare]). A test swaps in its own to see
     // where it ran.
     private val fillFares: (List<TripRoute>) -> List<TripRoute> = BusFare::filled,
-    // stopdash's National Rail relay (`dev-docs/national-rail-proxy.md`), for National Rail's own words
+    // stopdash's proxy (`dev-docs/proxy.md`), for National Rail's own words
     // where TfL's status for a line is only a link to its disruption page ([RailIncidents]). Read per
-    // request; null (tests, the other clients, a build with no relay) leaves TfL's text as it is.
-    private val railRelayUrl: () -> String? = { null },
-    // Where the relay's answer is kept, shared by every client so they ask it once between them.
+    // request; null (tests, the other clients, a build with no proxy) leaves TfL's text as it is.
+    private val proxyUrl: () -> String? = { null },
+    // Where the proxy's answer is kept, shared by every client so they ask it once between them.
     private val railIncidents: RailIncidentCache = RailIncidentCache.SHARED,
 ) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, StopZoneSource, JourneyPlanner, PostcodeResolver, PlaceSearch, VehicleSource,
     LiftOutageSource, TimetableSource {
@@ -854,19 +854,19 @@ class KtorTflClient(
 
     /**
      * [statuses] with National Rail's own words where TfL's are only a link to its disruption page
-     * ([RailIncidents]), from the relay, asked only when one is. A relay that can't be reached leaves
+     * ([RailIncidents]), from the proxy, asked only when one is. A proxy that can't be reached leaves
      * TfL's link, which still opens the page: the status itself is TfL's and stands either way.
      */
     private suspend fun withRailIncidents(statuses: List<LineStatus>): List<LineStatus> {
-        val relay = railRelayUrl()?.trimEnd('/')?.ifEmpty { null } ?: return statuses
+        val proxy = proxyUrl()?.trimEnd('/')?.ifEmpty { null } ?: return statuses
         return withContext(decodeDispatcher) {
             if (!RailIncidents.wanted(statuses)) return@withContext statuses
             val held = railIncidents.current(
                 onFailure = { warn("rail incidents: ${(it as? io.ktor.client.plugins.ResponseException)?.response?.status?.value ?: it::class.simpleName}") },
             ) {
                 withOneRetryOnStall(retry = {}) {
-                    val response = httpClient.get("$relay/v1/incidents")
-                    // How old the relay's copy already was, in seconds, counted by the relay: never this
+                    val response = httpClient.get("$proxy/v1/incidents")
+                    // How old the proxy's copy already was, in seconds, counted by the proxy: never this
                     // device's clock against its timestamp, which a wrong clock on either side would skew.
                     val age = response.headers[HttpHeaders.Age]?.toLongOrNull()?.let(java.time.Duration::ofSeconds) ?: java.time.Duration.ZERO
                     FetchedIncidents(response.body<List<RailIncidentDto>>().mapNotNull { it.toIncident() }, age)

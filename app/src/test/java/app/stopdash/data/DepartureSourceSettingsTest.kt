@@ -41,7 +41,7 @@ class DepartureSourceSettingsTest {
             departureSourceChanges(key, MutableStateFlow(true), loaded).collect { seen += it }
         }
         assertEquals(1, seen.size)
-        // Read back as no key at all: the same null, but the relay may now be asked.
+        // Read back as no key at all: the same null, but the proxy may now be asked.
         loaded.value = true
         assertEquals(2, seen.size)
     }

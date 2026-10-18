@@ -1,4 +1,4 @@
-// stopdash's National Rail relay (dev-docs/national-rail-proxy.md): National Rail's current incidents,
+// stopdash's proxy (dev-docs/proxy.md): National Rail's current incidents,
 // fetched on a schedule, and its live departure boards, fetched as asked and cached, both with
 // stopdash's own Rail Data Marketplace keys, so the app needs no key of its own. Nothing about a
 // caller is logged or forwarded: no console output in request handling (the tests hold it to that),
@@ -40,7 +40,7 @@ export async function handle(request, env, { now = Date.now(), cache, fetcher = 
   if (url.search) return error(400, "no query parameters");
   if (url.pathname === "/v1/health") return health(env, now);
   if (url.pathname !== "/v1/incidents") return error(404, "not found");
-  const held = await env.RAIL.get(INCIDENTS, { type: "json", cacheTtl: EDGE_SECONDS });
+  const held = await env.PROXY.get(INCIDENTS, { type: "json", cacheTtl: EDGE_SECONDS });
   if (!held?.body || !held.fetchedAt || now - held.fetchedAt > MAX_AGE_MS) return error(503, "no current incident list");
   return new Response(held.body, {
     headers: {
@@ -54,9 +54,9 @@ export async function handle(request, env, { now = Date.now(), cache, fetcher = 
   });
 }
 
-/** What the relay last fetched and when: nothing about any caller. */
+/** What the proxy last fetched and when: nothing about any caller. */
 async function health(env, now) {
-  const held = (await env.RAIL.get(INCIDENTS, { type: "json" })) ?? {};
+  const held = (await env.PROXY.get(INCIDENTS, { type: "json" })) ?? {};
   return Response.json({
     incidents: {
       fetchedAt: held.fetchedAt ? new Date(held.fetchedAt).toISOString() : null,
@@ -82,7 +82,7 @@ export const UPSTREAM_TIMEOUT_MS = 30_000;
  * (GetDepBoardWithDetails), optionally `?to={crs}` (trains calling there) and `&offset={minutes}` (from
  * that many on, in quarter hours within Darwin's -120 to 119). Anything else is refused before the cache or National Rail sees it,
  * which keeps the set of distinct boards small. Served from the cache while under [BOARD_SECONDS]
- * old; a miss is a cold request, counted against the caller's limit and the relay's own budget, and
+ * old; a miss is a cold request, counted against the caller's limit and the proxy's own budget, and
  * shared with any caller already waiting on the same board. A cached board is never refused.
  */
 async function board(url, request, env, now, cache, fetcher) {
@@ -129,7 +129,7 @@ async function board(url, request, env, now, cache, fetcher) {
     try {
       allowed = await coldAllowed(request, env, now);
     } catch {
-      // The per-caller count couldn't be read or kept: let it through, the relay's own budget still
+      // The per-caller count couldn't be read or kept: let it through, the proxy's own budget still
       // bounds what reaches National Rail (Codex, #944). Not logged, as nothing in request handling is.
       allowed = true;
     }
@@ -214,13 +214,13 @@ function boardResponse(body, fetchedAt, now) {
 
 /**
  * Whether this caller may make another cold board request this minute. Keyed by `callerKey`, never the
- * IP. With no limiter bound, or no secret yet for today, it's let through: the relay's own budget
+ * IP. With no limiter bound, or no secret yet for today, it's let through: the proxy's own budget
  * still caps what reaches National Rail.
  */
 async function coldAllowed(request, env, now) {
   const ip = request.headers.get("cf-connecting-ip");
   if (!env.COLD_PER_CALLER || !ip) return true;
-  const secret = await env.RAIL.get(SECRET_PREFIX + londonDate(now), { cacheTtl: 60 });
+  const secret = await env.PROXY.get(SECRET_PREFIX + londonDate(now), { cacheTtl: 60 });
   if (!secret) return true;
   const { success } = await env.COLD_PER_CALLER.limit({ key: await callerKey(secret, ip) });
   return success;
@@ -262,17 +262,17 @@ export function dayBefore(date) {
 export async function refresh(env, at = Date.now(), fetcher = fetch) {
   const today = londonDate(at);
   try {
-    if (!(await env.RAIL.get(SECRET_PREFIX + today))) {
+    if (!(await env.PROXY.get(SECRET_PREFIX + today))) {
       const bytes = crypto.getRandomValues(new Uint8Array(32));
-      await env.RAIL.put(SECRET_PREFIX + today, btoa(String.fromCharCode(...bytes)), { expirationTtl: 2 * 24 * 60 * 60 });
+      await env.PROXY.put(SECRET_PREFIX + today, btoa(String.fromCharCode(...bytes)), { expirationTtl: 2 * 24 * 60 * 60 });
     }
     // Checked every run, not only when today's is made, so a delete that failed is tried again (Codex,
     // #944). Read first: a delete is a write, and one each run would outrun the free plan's writes.
     const yesterday = SECRET_PREFIX + dayBefore(today);
-    if (await env.RAIL.get(yesterday)) await env.RAIL.delete(yesterday);
+    if (await env.PROXY.get(yesterday)) await env.PROXY.delete(yesterday);
   } catch (e) {
     // Rotation is retried next run; the incident list goes on regardless (Codex, #944). With no
-    // secret for today, cold board requests go uncounted per caller, under the relay's own budget.
+    // secret for today, cold board requests go uncounted per caller, under the proxy's own budget.
     console.error(`caller secret rotation failed: ${e?.name ?? "error"}\n${stackFrames(e)}`);
   }
   let status;
@@ -301,12 +301,12 @@ export async function refresh(env, at = Date.now(), fetcher = fetch) {
   }
   console.log(`incidents refresh: ${status}`);
   // Read after the fetch, not before it, so what a slower overlapping run stored is seen.
-  const held = (await env.RAIL.get(INCIDENTS, { type: "json" })) ?? {};
+  const held = (await env.PROXY.get(INCIDENTS, { type: "json" })) ?? {};
   if ((held.lastAttemptAt ?? -Infinity) > at) return held;
   const next = body
     ? { body, fetchedAt: at, lastAttemptAt: at, lastStatus: status, lastFailure: held.lastFailure }
     : { ...held, lastAttemptAt: at, lastStatus: status, ...(failure ? { lastFailure: failure } : {}) };
-  await env.RAIL.put(INCIDENTS, JSON.stringify(next));
+  await env.PROXY.put(INCIDENTS, JSON.stringify(next));
   return next;
 }
 

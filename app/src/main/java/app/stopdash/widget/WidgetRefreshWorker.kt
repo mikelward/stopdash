@@ -3,7 +3,7 @@ package app.stopdash.widget
 import app.stopdash.BuildConfig
 import app.stopdash.data.KtorDarwinClient
 import app.stopdash.data.logNetworkWarning
-import app.stopdash.data.RailRelay
+import app.stopdash.data.StopdashProxy
 import app.stopdash.data.RailStationCodesStore
 import app.stopdash.data.StationIndexStore
 import app.stopdash.data.RejectedApiKey
@@ -558,7 +558,7 @@ internal suspend fun refreshStoredSnapshot(
                     stationIndex = { StationIndexStore.load(context) },
                     // The statuses it fetches fill the shared line-status cache the app reuses, so
                     // they carry National Rail's words too, though the widget shows no reasons.
-                    railRelayUrl = { BuildConfig.RAIL_RELAY_URL },
+                    proxyUrl = { BuildConfig.PROXY_URL },
                 )
                 val client = CachingTflClient(RailAwareTflClient(
                     tfl = tfl,
@@ -567,8 +567,8 @@ internal suspend fun refreshStoredSnapshot(
                         apiKey = { railKey },
                         warn = ::logWidgetSnapshotWarning,
                         stopIdFor = { RailStationCodesStore.load(context).stopIdFor(it) },
-                        // As in the app: without a key of the rider's own, the boards come through the relay.
-                        relayUrl = { RailRelay.url },
+                        // As in the app: without a key of the rider's own, the boards come through the proxy.
+                        proxyUrl = { StopdashProxy.url },
                     ),
                     codes = { RailStationCodesStore.load(context) },
                     warn = ::logWidgetSnapshotWarning,

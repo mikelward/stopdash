@@ -64,7 +64,7 @@ data class CallingPortion(val stops: Set<String>, val complete: Boolean) {
  * [railMessageText]), the words TfL's status for a National Rail line often leaves out for a link.
  * [suppressed] is a board Darwin has suppressed ([SuppressedRailBoard]): no trains to stand behind, only
  * its [messages], which often say why. It is never kept, and its station's times are a failure.
- * [age] is how old it already was when it arrived (stopdash's relay serves one from its cache), so it
+ * [age] is how old it already was when it arrived (stopdash's proxy serves one from its cache), so it
  * is dated by when National Rail gave it, not when it was asked for (SPEC D4).
  */
 data class RailBoard(

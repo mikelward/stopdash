@@ -109,7 +109,7 @@ class ArrivalsCacheTest {
         val entry = cache.fetchBoardOnce("national-rail:EXA", now, null) { aged }
         assertEquals(SteadyClock.stamp(now).minusSeconds(25), entry?.fetchedAt)
         assertEquals(entry?.fetchedAt, cache.get("national-rail:EXA", now)?.fetchedAt)
-        // Within the shared bound counted from the relay's fetch, not from this ask.
+        // Within the shared bound counted from the proxy's fetch, not from this ask.
         val bound = Staleness.THRESHOLD.inWholeSeconds
         assertNull(cache.get("national-rail:EXA", now.plusSeconds(bound - 25)))
     }

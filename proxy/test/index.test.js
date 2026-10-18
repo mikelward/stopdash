@@ -35,7 +35,7 @@ beforeEach(() => {
 afterEach(() => Object.assign(console, original));
 
 function env(overrides = {}) {
-  return { RAIL: kv(), DISRUPTIONS_API_KEY: "EXAMPLE", ...overrides };
+  return { PROXY: kv(), DISRUPTIONS_API_KEY: "EXAMPLE", ...overrides };
 }
 
 function upstream(status, body) {
@@ -54,7 +54,7 @@ test("the cron job stores today's list, asked with the key and the London date",
   assert.equal(calls.length, 1);
   assert.equal(calls[0].init.headers["x-apikey"], "EXAMPLE");
   assert.deepEqual(JSON.parse(calls[0].init.body), { startDate: "2026-10-17", endDate: "2026-10-17" });
-  const held = JSON.parse(e.RAIL.store.get("incidents"));
+  const held = JSON.parse(e.PROXY.store.get("incidents"));
   assert.equal(held.body, LIST);
   assert.equal(held.fetchedAt, NOW);
 });
@@ -67,7 +67,7 @@ test("a failed or malformed fetch keeps the last good list", async () => {
   await refresh(e, NOW + 360_000, async () => {
     throw new TypeError("network");
   });
-  const held = JSON.parse(e.RAIL.store.get("incidents"));
+  const held = JSON.parse(e.PROXY.store.get("incidents"));
   assert.equal(held.body, LIST);
   assert.equal(held.fetchedAt, NOW);
   assert.equal(held.lastStatus, "TypeError");
@@ -104,7 +104,7 @@ test("an older run that ends after a newer one leaves the newer list", async () 
   await refresh(e, NOW + 120_000, upstream(200, LIST).fetcher);
   release();
   await older;
-  const held = JSON.parse(e.RAIL.store.get("incidents"));
+  const held = JSON.parse(e.PROXY.store.get("incidents"));
   assert.equal(held.body, LIST);
   assert.equal(held.fetchedAt, NOW + 120_000);
   assert.equal(held.lastStatus, 200);
@@ -121,7 +121,7 @@ test("a request gets the stored list with its fetch time, and logs nothing", asy
   const e = env();
   await refresh(e, NOW, upstream(200, LIST).fetcher);
   logged = [];
-  const response = await handle(new Request("https://relay.example/v1/incidents", { headers: { "cf-connecting-ip": "192.0.2.1" } }), e, { now: NOW + 60_000 });
+  const response = await handle(new Request("https://proxy.example/v1/incidents", { headers: { "cf-connecting-ip": "192.0.2.1" } }), e, { now: NOW + 60_000 });
   assert.equal(response.status, 200);
   assert.equal(await response.text(), LIST);
   assert.equal(response.headers.get("x-fetched-at"), new Date(NOW).toISOString());
@@ -132,17 +132,17 @@ test("a request gets the stored list with its fetch time, and logs nothing", asy
 test("a list past five minutes old isn't served", async () => {
   const e = env();
   await refresh(e, NOW, upstream(200, LIST).fetcher);
-  const response = await handle(new Request("https://relay.example/v1/incidents"), e, { now: NOW + MAX_AGE_MS + 1 });
+  const response = await handle(new Request("https://proxy.example/v1/incidents"), e, { now: NOW + MAX_AGE_MS + 1 });
   assert.equal(response.status, 503);
-  assert.equal((await handle(new Request("https://relay.example/v1/incidents"), env(), { now: NOW })).status, 503);
+  assert.equal((await handle(new Request("https://proxy.example/v1/incidents"), env(), { now: NOW })).status, 503);
 });
 
 test("anything but a bare GET of a known path is refused, without echoing it, and logs nothing", async () => {
   const e = env();
   const cases = [
-    [new Request("https://relay.example/v1/incidents?station=EUS"), 400],
-    [new Request("https://relay.example/v1/incidents", { method: "POST", body: "x" }), 405],
-    [new Request("https://relay.example/v1/departures/EUS"), 404],
+    [new Request("https://proxy.example/v1/incidents?station=EUS"), 400],
+    [new Request("https://proxy.example/v1/incidents", { method: "POST", body: "x" }), 405],
+    [new Request("https://proxy.example/v1/departures/EUS"), 404],
   ];
   for (const [request, status] of cases) {
     const response = await handle(request, e, { now: NOW });
@@ -160,7 +160,7 @@ test("London's date, not UTC's, names the day", () => {
 test("health says when the list was fetched, and nothing about callers", async () => {
   const e = env();
   await refresh(e, NOW, upstream(200, LIST).fetcher);
-  const body = await (await handle(new Request("https://relay.example/v1/health"), e, { now: NOW })).json();
+  const body = await (await handle(new Request("https://proxy.example/v1/health"), e, { now: NOW })).json();
   assert.deepEqual(body, { incidents: { fetchedAt: new Date(NOW).toISOString(), current: true, lastAttemptAt: new Date(NOW).toISOString(), lastStatus: 200, lastFailure: null } });
 });
 
@@ -171,7 +171,7 @@ test("the cron job's last failure is kept for health, as its type and frames alo
   });
   // A later success keeps the failure on record, with its own time, beside the fresh list.
   await refresh(e, NOW + 120_000, upstream(200, LIST).fetcher);
-  const response = await handle(new Request("https://relay.example/v1/health"), e, { now: NOW + 120_000 });
+  const response = await handle(new Request("https://proxy.example/v1/health"), e, { now: NOW + 120_000 });
   const failure = (await response.clone().json()).incidents.lastFailure;
   assert.equal(failure.at, new Date(NOW).toISOString());
   assert.equal(failure.type, "TypeError");
@@ -217,9 +217,9 @@ async function seeded(overrides = {}) {
   return e;
 }
 
-const ask = (path, ip = "192.0.2.1") => new Request(`https://relay.example${path}`, { headers: { "cf-connecting-ip": ip } });
+const ask = (path, ip = "192.0.2.1") => new Request(`https://proxy.example${path}`, { headers: { "cf-connecting-ip": ip } });
 
-test("a board is fetched once with the relay's key, then served from the cache for 30 s", async () => {
+test("a board is fetched once with the proxy's key, then served from the cache for 30 s", async () => {
   const e = await seeded();
   const cache = edgeCache();
   const { calls, fetcher } = boards();
@@ -262,7 +262,7 @@ test("only cold board requests count against a caller, under today's HMAC of the
   assert.equal((await handle(ask("/v1/board/KGX"), e, { now: NOW + 1000, cache, fetcher })).status, 429);
   // A cached board is still served to that caller.
   assert.equal((await handle(ask("/v1/board/EUS"), e, { now: NOW + 2000, cache, fetcher })).status, 200);
-  const secret = e.RAIL.store.get(`caller-secret:${londonDate(NOW)}`);
+  const secret = e.PROXY.store.get(`caller-secret:${londonDate(NOW)}`);
   assert.equal(cold.keys[0], await callerKey(secret, "192.0.2.1"));
   assert.match(cold.keys[0], /^[0-9a-f]{24}$/);
   assert.deepEqual(logged, []);
@@ -285,7 +285,7 @@ test("callers missing the same board together make one request, counted once", a
   assert.equal(cold.keys.length, 1);
 });
 
-test("the relay's own budget caps what reaches National Rail", async () => {
+test("the proxy's own budget caps what reaches National Rail", async () => {
   const e = await seeded({ UPSTREAM_BUDGET: limiter(() => false) });
   const { calls, fetcher } = boards();
   assert.equal((await handle(ask("/v1/board/EUS"), e, { now: NOW, cache: edgeCache(), fetcher })).status, 503);
@@ -294,7 +294,7 @@ test("the relay's own budget caps what reaches National Rail", async () => {
 
 test("a limiter that fails lets a caller through, but a budget that fails asks nothing", async () => {
   const broken = { limit: async () => { throw new TypeError("binding down"); } };
-  // The per-caller count down: the board is still served, under the relay's own budget.
+  // The per-caller count down: the board is still served, under the proxy's own budget.
   const open = await seeded({ COLD_PER_CALLER: broken, UPSTREAM_BUDGET: limiter() });
   const first = boards();
   assert.equal((await handle(ask("/v1/board/EUS"), open, { now: NOW, cache: edgeCache(), fetcher: first.fetcher })).status, 200);
@@ -376,13 +376,13 @@ test("a board request outside its shape is refused before the cache or National 
 test("a new London day makes a new secret and deletes yesterday's", async () => {
   const e = env();
   await refresh(e, NOW, upstream(200, LIST).fetcher);
-  const first = e.RAIL.store.get("caller-secret:2026-10-17");
+  const first = e.PROXY.store.get("caller-secret:2026-10-17");
   assert.ok(first);
   await refresh(e, NOW + 60_000, upstream(200, LIST).fetcher);
-  assert.equal(e.RAIL.store.get("caller-secret:2026-10-17"), first);
+  assert.equal(e.PROXY.store.get("caller-secret:2026-10-17"), first);
   await refresh(e, Date.parse("2026-10-18T00:01:00+01:00"), upstream(200, LIST).fetcher);
-  assert.equal(e.RAIL.store.get("caller-secret:2026-10-17"), undefined);
-  const next = e.RAIL.store.get("caller-secret:2026-10-18");
+  assert.equal(e.PROXY.store.get("caller-secret:2026-10-17"), undefined);
+  const next = e.PROXY.store.get("caller-secret:2026-10-18");
   assert.notEqual(next, first);
   assert.notEqual(await callerKey(first, "192.0.2.1"), await callerKey(next, "192.0.2.1"));
 });
@@ -396,16 +396,16 @@ test("yesterday is the calendar day before, across the clocks going forward and 
   const e = env();
   const before = Date.parse("2026-03-29T12:00:00+01:00");
   await refresh(e, before, upstream(200, LIST).fetcher);
-  assert.ok(e.RAIL.store.get("caller-secret:2026-03-29"));
+  assert.ok(e.PROXY.store.get("caller-secret:2026-03-29"));
   await refresh(e, Date.parse("2026-03-30T00:01:00+01:00"), upstream(200, LIST).fetcher);
-  assert.equal(e.RAIL.store.get("caller-secret:2026-03-29"), undefined);
+  assert.equal(e.PROXY.store.get("caller-secret:2026-03-29"), undefined);
 });
 
 test("yesterday's secret is deleted on a later run if the first try failed", async () => {
   const e = env();
   await refresh(e, NOW, upstream(200, LIST).fetcher);
-  const remove = e.RAIL.delete;
-  e.RAIL.delete = async () => {
+  const remove = e.PROXY.delete;
+  e.PROXY.delete = async () => {
     throw new Error("kv unavailable");
   };
   const tomorrow = Date.parse("2026-10-18T00:01:00+01:00");
@@ -413,10 +413,10 @@ test("yesterday's secret is deleted on a later run if the first try failed", asy
   const { calls, fetcher } = upstream(200, LIST);
   await refresh(e, tomorrow, fetcher);
   assert.equal(calls.length, 1);
-  assert.equal(JSON.parse(e.RAIL.store.get("incidents")).fetchedAt, tomorrow);
-  assert.ok(e.RAIL.store.get("caller-secret:2026-10-17"));
+  assert.equal(JSON.parse(e.PROXY.store.get("incidents")).fetchedAt, tomorrow);
+  assert.ok(e.PROXY.store.get("caller-secret:2026-10-17"));
   assert.ok(logged.some(([level, text]) => level === "error" && /^caller secret rotation failed: Error\n/.test(text) && !/kv unavailable/.test(text)));
-  e.RAIL.delete = remove;
+  e.PROXY.delete = remove;
   await refresh(e, tomorrow + 120_000, upstream(200, LIST).fetcher);
-  assert.equal(e.RAIL.store.get("caller-secret:2026-10-17"), undefined);
+  assert.equal(e.PROXY.store.get("caller-secret:2026-10-17"), undefined);
 });

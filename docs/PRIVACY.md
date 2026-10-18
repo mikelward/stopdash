@@ -12,13 +12,13 @@ StopDash is a **client-only** app. Its network calls go to: **Transport for Lond
 the calls that *are* the product; — on a release build only — **Google Play**, to ask whether an app
 update is available (detailed below; it carries nothing about you); and **National Rail's live
 departure boards** (the Rail Data Marketplace), with a National Rail key of your own, or without one
-through stopdash's own relay (both detailed below). **Google** is asked only
+through stopdash's own proxy (both detailed below). **Google** is asked only
 when you share a Google Maps short link into the app, to learn the place it points to (see *Find a
-station*). **stopdash's own relay** is asked for National Rail's disruption notices, a request that
+station*). **stopdash's own proxy** is asked for National Rail's disruption notices, a request that
 carries nothing about you (see *National Rail disruption notices*). **Firebase** is added
 only if you turn on *Help make StopDash better* (off by default; see *Crash reports and usage stats*
 below). Your **location, the stops and lines you look up, and your API keys** go only to TfL, or
-with National Rail times also to National Rail, directly or through the relay (if you opt in, Firebase sees only the rough region
+with National Rail times also to National Rail, directly or through the proxy (if you opt in, Firebase sees only the rough region
 Google infers from your IP address), and only ever what a request needs to answer your question
 about departures: the details of what you're looking up (your location for "near me now" and for
 a trip you plan from it —
@@ -51,7 +51,7 @@ next, the one after it and one it may be held at, at most three a refresh. For a
 25 minutes away from where you board, the board there is asked from a later time, in quarter hours,
 which says roughly when your train is due. Usually that's one or two boards a refresh. Your
 key is your own credential, sent only with those requests, never logged. Without a key of your
-own, the same requests go to **stopdash's own relay** instead, which asks National Rail with
+own, the same requests go to **stopdash's own proxy** instead, which asks National Rail with
 stopdash's key: it sees the same station codes and your connection's IP address, passes on only
 the codes, and logs nothing. To protect National Rail's limits it counts, for one minute, the
 requests it couldn't answer from its cache, under a key your IP address can't be recovered from,
@@ -59,16 +59,16 @@ and keeps nothing else about you. The station codes themselves come bundled with
 the Department for Transport's public stop list.
 
 **National Rail disruption notices.** Where TfL's status for a National Rail line is only a link to
-National Rail's disruption page, stopdash asks **its own small relay** for National Rail's current
+National Rail's disruption page, stopdash asks **its own small proxy** for National Rail's current
 notices, to show their words instead. That request carries nothing about you: no location, station,
-line or key. Like any server, the relay sees your connection's IP address. It keeps no log of
+line or key. Like any server, the proxy sees your connection's IP address. It keeps no log of
 requests and no record of who asked, and passes nothing about you on to National Rail. Cloudflare,
-which hosts the relay, keeps its own sampled records of requests to it, which can include your IP
+which hosts the proxy, keeps its own sampled records of requests to it, which can include your IP
 address, for about a month, as any web host does.
 
 Nothing else leaves the device *to stopdash* unless you turn on **Help make StopDash better**
 in Settings, which is **off by default** (see *Crash reports and usage stats* below): no
-third-party tracker, no ads, and no server of stopdash's own beyond that relay, which keeps
+third-party tracker, no ads, and no server of stopdash's own beyond that proxy, which keeps
 nothing about you beyond the one-minute count of National Rail board requests described above (its
 host's sampled request records aside).
 
@@ -95,7 +95,7 @@ that says so, and then to your clipboard and the app you pick (the clipboard cop
 soon as you confirm — detailed below).
 So the guarantee is precise rather than absolute: **without your opt-in, the only user data
 stopdash itself sends off the device goes in its TfL requests, and its National Rail requests,
-to National Rail with a key of your own or otherwise through stopdash's relay** (the Play update
+to National Rail with a key of your own or otherwise through stopdash's proxy** (the Play update
 check carries none), **plus, if a paired watch has the
 StopDash watch app, the widget's stops and departures, and any trip on the way, to that watch** (above); with it, the crash reports and usage
 stats above go to Firebase too. Android's backup

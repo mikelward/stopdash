@@ -1,16 +1,18 @@
-# National Rail proxy (design)
+# stopdash proxy (design)
 
-Status: **proposed** (maintainer, 2026-10-17). Nothing here is built yet. Decisions marked
-**Open** need the maintainer's call before building.
+Status: **built, not yet deployed** (2026-10-18). `proxy/` serves `/v1/incidents` (#943) and
+`/v1/board/…` (#944), and the app uses both once `stopdash.proxyUrl` is set. Deploying it is the
+maintainer's step (`proxy/README.md`). The one decision still **Open** is RDM's quotas and terms
+(below), which bound the boards' budget.
 
 ## Why
 
 National Rail data comes from two Rail Data Marketplace (RDM) products, each with its own key:
 
 - **Live Departure Board** (Darwin, `GetDepartureBoard` / `GetDepBoardWithDetails`): times at a
-  station. Used today, with a key the rider pastes in Settings.
+  station. Asked with a key the rider pastes in Settings, or through the proxy without one.
 - **NationalRail Disruptions API** (`POST /disruptions/incidents/search`): National Rail's own
-  incident text. Not used yet. TfL's status for a National Rail line is often only a link to
+  incident text, asked by the proxy alone. TfL's status for a National Rail line is often only a link to
   `nationalrail.co.uk/service-disruptions/<slug>/`; each incident in this feed carries that exact
   link in `disruptionLinks[].uri`. On 2026-10-17 all eight National Rail lines whose TfL status
   was a bare link matched an incident by it.
@@ -77,14 +79,14 @@ failure for `/v1/health`. Requests read through the Cache API (60 s) in front of
 - Upstream load: **720 requests a day**, fixed, whatever the number of riders.
 - A copy older than **5 minutes** (the app's shared staleness bound, two missed runs) is not
   served: `/v1/incidents` answers 503, and the app falls back to TfL's link. The app holds words no
-  longer than that either, from the relay's fetch by its `Age`. A stale incident list never passes
+  longer than that either, from the proxy's fetch by its `Age`. A stale incident list never passes
   for a current one.
 
 **Boards: cached on request, not prefetched.** The cache key is the normalized upstream request
 (path and validated parameters, never the key or anything from the caller).
 
 - **Served for 30 s, then fetched again.** No stale-while-revalidate in v1 (autopilot, TODO
-  *Decisions needing review*). The app dates each board by the relay's `Age`, so a cached one is
+  *Decisions needing review*). The app dates each board by the proxy's `Age`, so a cached one is
   never taken for fresher than it is; a longer window is a cost and freshness call, not a
   correctness one.
 - **One upstream request per key at a time** within an isolate: concurrent misses share it.
@@ -103,11 +105,11 @@ failure for `/v1/health`. Requests read through the Cache API (60 s) in front of
 ## Staleness (SPEC D4)
 
 Data is dated by when the **marketplace** answered, not by when the app asked, and by a duration
-the relay counts (`Age`), never by comparing the phone's wall clock with a server timestamp: either
+the proxy counts (`Age`), never by comparing the phone's wall clock with a server timestamp: either
 clock can be wrong, and the app's stamps are steady-clock ones. The incident list is used for at
-most the shared staleness bound from the relay's fetch (`RailIncidentCache`), after which TfL's
+most the shared staleness bound from the proxy's fetch (`RailIncidentCache`), after which TfL's
 link is shown again. A board is dated the same way: its `Age` is taken off its steady-clock stamp
-(`RailBoard.age` into `ArrivalsCache`), so it goes stale at the bound counted from the relay's
+(`RailBoard.age` into `ArrivalsCache`), so it goes stale at the bound counted from the proxy's
 fetch, not from the app's ask.
 
 ## No user data: what the proxy sees and keeps
@@ -132,7 +134,7 @@ nothing per caller: every request reads the stored list.
    the Worker's route. What can't be turned off is Cloudflare's own edge analytics: sampled
    records of requests to the zone, which can include the client IP, kept for about a month and
    readable in the dashboard. That is the host's processing as a service provider, not a log the
-   relay writes, and `docs/PRIVACY.md` says so (*Policy and Play Data Safety*).
+   proxy writes, and `docs/PRIVACY.md` says so (*Policy and Play Data Safety*).
 2. **The Cron job may log**, since no request is involved: upstream status and timing only.
 3. **No raw IP is ever a key, and no WAF rule.** A WAF rate-limit rule logs blocked IPs to
    Security Events. The Workers rate-limit binding syncs its counters through a backing store
@@ -197,13 +199,13 @@ is shared with.
 | Failure | What the rider sees |
 |---|---|
 | Proxy unreachable or 5xx | A National Rail line's times say "No data", as a failed board does today. Incident text falls back to the link's own words. |
-| Incident list older than 5 min | The relay answers 503 and the app drops the words it held from it, showing TfL's link. |
-| Marketplace down | A board the relay fetched under 30 s ago is still served; past that the relay answers 502 and the app treats it as any failed board: it keeps showing what it already had within its own staleness bound, marked stale, then "No data". No stale-if-error at the relay in v1. |
+| Incident list older than 5 min | The proxy answers 503 and the app drops the words it held from it, showing TfL's link. |
+| Marketplace down | A board the proxy fetched under 30 s ago is still served; past that the proxy answers 502 and the app treats it as any failed board: it keeps showing what it already had within its own staleness bound, marked stale, then "No data". No stale-if-error at the proxy in v1. |
 | Rider pasted their own key | The app goes straight to the marketplace with it, bypassing the proxy (kept as the escape hatch, and for anyone who'd rather not use it). |
 
-## App changes (later PRs)
+## App changes (#943, #944)
 
-Disruptions first (maintainer, 2026-10-17): the relay ships with `/v1/incidents` alone and the
+Disruptions first (maintainer, 2026-10-17): the proxy ships with `/v1/incidents` alone and the
 app's incident text, which carry nothing about the rider, then boards in a later release.
 
 1. **Incidents**: an incident client against
@@ -212,9 +214,9 @@ app's incident text, which carry nothing about the rider, then boards in a later
    for display (`LineStatus` keeps TfL's own `fullText` for identity, so dismissals don't change).
    No key, no new Settings row.
 2. **Boards**: `KtorDarwinClient` routes each request by whether the rider has a key: their own,
-   straight to Darwin with its paths and parameters, as now; none, to the relay's own paths
+   straight to Darwin with its paths and parameters, as now; none, to the proxy's own paths
    (`/v1/board/{crs}`, `/details`, `?to=`, `&offset=`), with no key and the board's codes alone.
-   It isn't a base-URL swap: the relay's paths aren't Darwin's. National Rail then works without a
+   It isn't a base-URL swap: the proxy's paths aren't Darwin's. National Rail then works without a
    key, so the "No key" states, the default-hidden National Rail mode (`RailKeyDefault`) and the
    "National Rail needs a key" dialog all change. That's a product change for SPEC
    *National Rail* in the same PR.
@@ -226,13 +228,13 @@ app's incident text, which carry nothing about the rider, then boards in a later
 
 Constraint (maintainer, 2026-10-17): a **small wording change** to the privacy policy, and as
 little change to the Data Safety form as possible. The per-caller cold limit (*Abuse and quotas*)
-is the one thing the relay keeps about a caller, so it is disclosed rather than argued away
+is the one thing the proxy keeps about a caller, so it is disclosed rather than argued away
 (maintainer, 2026-10-17, choosing it over a product-only budget): its counter outlives the request
 in the rate-limit binding's backing store, which Play doesn't treat as ephemeral.
 
 - **Data Safety form: one added purpose.**
   - *Device or other IDs*: already **Collected, Optional**, for Analytics (the opt-in Firebase).
-    It gains **Fraud prevention, security, and compliance**, for the relay's per-caller key. It
+    It gains **Fraud prevention, security, and compliance**, for the proxy's per-caller key. It
     stays Optional: the key is made only for National Rail times fetched without a key of your
     own, which the app works without and which your own key avoids.
   - *Approximate location*: already **Collected**, for app functionality. A station code reaching
@@ -248,12 +250,12 @@ in the rate-limit binding's backing store, which Play doesn't treat as ephemeral
   - *User IDs* keeps its Rail Data Marketplace key line, because pasting your own key stays
     possible (the escape hatch in *Failure modes*).
 - **`docs/PRIVACY.md`: a short addition.** The National Rail paragraph says that without a key of
-  your own the same requests go through stopdash's relay, which sees the same station codes and
+  your own the same requests go through stopdash's proxy, which sees the same station codes and
   your connection's IP address, passes on only the codes, and logs nothing; and that, to protect
   National Rail's limits, it counts for one minute the requests it couldn't answer from its cache,
   under a key your IP address can't be recovered from, and keeps nothing else about you. It adds
-  that Cloudflare, which hosts the relay, keeps its own sampled request records, which can include
-  your IP address, for about a month, as any web host does. The summary names the relay as a
+  that Cloudflare, which hosts the proxy, keeps its own sampled request records, which can include
+  your IP address, for about a month, as any web host does. The summary names the proxy as a
   destination. Nothing else moves: what is sent, why, and that it's
   never your location are all as now.
 - **Must not grow.** Anything that would change a form answer further is out of scope for the
@@ -282,14 +284,14 @@ proxy in `functions/`:
 - **Its own CI job** runs the Worker's tests; `.github/lanes.conf` sends `proxy/**` down the code
   lane, and an Android-only change needs no Worker run (and the reverse), which `classify` decides
   by path.
-- **Release notes skip `proxy/` by path**, as clothescast's skip `functions/`: the relay isn't in
-  the APK, so a relay commit never ships a Play bullet. Its subjects still take a prefix
-  (`internal:`) so intent reads plainly. Relay commits do count towards versionCode, as
+- **Release notes skip `proxy/` by path**, as clothescast's skip `functions/`: the proxy isn't in
+  the APK, so a proxy commit never ships a Play bullet. Its subjects still take a prefix
+  (`internal:`) so intent reads plainly. Proxy commits do count towards versionCode, as
   clothescast's do; the number only has to rise.
 - **Deployed by hand** (`wrangler deploy` from `proxy/`), as clothescast's functions are, so no
   Cloudflare token sits in this repository's secrets beside the Play release keys.
 - One difference from clothescast on purpose: no App Check or anonymous sign-in. Those give each
-  install an identifier, a new Data Safety answer, and the relay serves public data that doesn't
+  install an identifier, a new Data Safety answer, and the proxy serves public data that doesn't
   need one.
 
 ## Domain
@@ -297,7 +299,7 @@ proxy in `functions/`:
 **A subdomain of the maintainer's own domain** (maintainer, 2026-10-17), whose DNS is on Cloudflare
 anyway, served as a Worker custom domain (`routes` with `custom_domain = true` in
 `proxy/wrangler.toml`): free, and the address every installed build carries stays the
-maintainer's, so the relay can move host later without breaking old installs. `workers.dev` stays
+maintainer's, so the proxy can move host later without breaking old installs. `workers.dev` stays
 off for the Worker (`workers_dev = false`), so there's one address to reason about.
 
 ## Open decisions

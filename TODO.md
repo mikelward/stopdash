@@ -1058,24 +1058,24 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           documented shape (`{"value": "<p>…</p>"}`); either key case and a bare string are read.
     - [x] **Per-line National Rail incidents** (maintainer, 2026-10-17): a line whose TfL status is only
           a link shows the matching incident's words, from the Disruptions API through stopdash's own
-          relay (`proxy/`, `dev-docs/national-rail-proxy.md`), so no rider needs a second key.
-      - [ ] **Deploy the relay** (maintainer): Cloudflare account and domain, KV namespace, the
+          proxy (`proxy/`, `dev-docs/proxy.md`), so no rider needs a second key.
+      - [ ] **Deploy the proxy** (maintainer): Cloudflare account and domain, KV namespace, the
             Disruptions key as a secret, `wrangler deploy` (`proxy/README.md`); then set
-            `stopdash.railRelayUrl` in `gradle.properties`. Until then the app shows TfL's link as before.
+            `stopdash.proxyUrl` in `gradle.properties`. Until then the app shows TfL's link as before.
       - [ ] **Confirm the Disruptions API's quota and terms** allow serving it to the app's users.
       - [ ] **Planned work's link-only text** (a line page's *Coming up*): words for those too.
-      - [ ] **Log the relay's failures with their redacted stack**, not only a status or class:
+      - [ ] **Log the proxy's failures with their redacted stack**, not only a status or class:
             `KtorTflClient`'s `warn` takes a string, as every catch in it does, so this needs a
             throwable-taking sink for the whole client (Codex, #943).
-      - [x] **Boards through the relay**, so National Rail times need no key either; a pasted key still
-            goes straight to National Rail. Needs the Live Departure Board key on the relay too.
-      - [ ] **Update the Play Console** before the release that sets `stopdash.railRelayUrl`
+      - [x] **Boards through the proxy**, so National Rail times need no key either; a pasted key still
+            goes straight to National Rail. Needs the Live Departure Board key on the proxy too.
+      - [ ] **Update the Play Console** before the release that sets `stopdash.proxyUrl`
             (maintainer), as `docs/play-store/listing.md` says: the Data Safety form's *Device or other
-            IDs* gains *Fraud prevention, security, and compliance*, for the relay's per-caller count
+            IDs* gains *Fraud prevention, security, and compliance*, for the proxy's per-caller count
             (maintainer, 2026-10-17, over a product-only budget); *App access* becomes "All
             functionality is available", with no reviewer key; and the full description's National
             Rail bullet no longer says a key is needed (Codex, #944).
-      - [ ] **Settings' National Rail key copy** once the relay is live: the row and its summary still
+      - [ ] **Settings' National Rail key copy** once the proxy is live: the row and its summary still
             read as if a key were needed for times (see *Decisions needing review*).
   - [x] **National Rail unticked until a key is set** (maintainer, 2026-10-08): ticking it with no
         key asks for one (Get a key / Add key / Show anyway); a key added shows it by itself; the
@@ -4716,8 +4716,8 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 - [ ] **National Rail's words expire on their own, not by dating the status by its older half**
   (autopilot, 2026-10-18; Codex, #943). The maintainer leaned towards dating a line status by the
-  earlier of TfL's fetch and the relay's, but that is stamped separately by eight callers, each of
-  which would have to change. Instead `IncidentDetail` carries `until` (the relay's fetch plus the
+  earlier of TfL's fetch and the proxy's, but that is stamped separately by eight callers, each of
+  which would have to change. Instead `IncidentDetail` carries `until` (the proxy's fetch plus the
   shared staleness bound, in the steady frame) and `LineStatus.shownText`, which every surface reads,
   stops showing the words past it. Same effect, one place, and TfL's own status keeps its own age.
   Alternative: the older-half stamp at each caller. Reversible in `LineStatus.kt` and `RailIncidents.kt`.
@@ -4725,20 +4725,20 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   when the notification comes down (`shownTextThrough`); otherwise TfL's link (Codex, #943). A journey
   alert lasts up to 35 minutes and the words 5, so in practice it shows the link. Alternative: show the
   words and take the alert down when they expire, which leaves no alert until the next check (15 min).
-- [ ] **The relay serves a board only while it's under 30 s old, with no stale-while-revalidate**
+- [ ] **The proxy serves a board only while it's under 30 s old, with no stale-while-revalidate**
   (autopilot, 2026-10-17). The design proposed serving one up to 60 s old while refreshing. The app now
-  dates a relay board by its `Age` (`RailBoard.age`), so a longer window wouldn't show one as fresher
+  dates a proxy board by its `Age` (`RailBoard.age`), so a longer window wouldn't show one as fresher
   than it is; 30 s keeps boards as fresh as asking National Rail directly, inside the app's own 50 s
   arrivals reuse. Alternative: the 60 s window, half the upstream calls. Reversible in
   `proxy/src/index.js` (`BOARD_SECONDS`) alone.
-- [ ] **The relay's upstream budget starts at 60 cold board requests a minute** (autopilot, 2026-10-17):
+- [ ] **The proxy's upstream budget starts at 60 cold board requests a minute** (autopilot, 2026-10-17):
   the Live Departure Board product's quota isn't known. Alternative: the design's 300. Reversible in
   `proxy/wrangler.toml`.
-- [ ] **The relay's caller key counts as Optional on the Data Safety form** (autopilot, 2026-10-17): it's
+- [ ] **The proxy's caller key counts as Optional on the Data Safety form** (autopilot, 2026-10-17): it's
   made only for National Rail times fetched without your own key, which the app works without and
   which a key of your own avoids, and *Device or other IDs* is already Optional for Firebase.
   Alternative: mark the row Required. Reversible in `docs/play-store/listing.md` and the Console.
-- [ ] **Settings' National Rail key copy is unchanged for now** (autopilot, 2026-10-17): with the relay
+- [ ] **Settings' National Rail key copy is unchanged for now** (autopilot, 2026-10-17): with the proxy
   live the key is optional, and the summary ("Paste your free Rail Data Marketplace key to show
   National Rail times") overstates it. New copy needs the maintainer's wording and a translation
   pass. Alternative: reword now under the translation markers.
@@ -4747,9 +4747,9 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   switched off on a Worker's zone. `docs/PRIVACY.md` and SPEC now say so; the Data Safety form needs
   nothing more, since Play has no type for an IP as such. Alternative: a host whose request logs can
   be turned off. Reversible in the policy text; moving host would be a larger change.
-- [ ] **The relay reports a failed board in its answer, not in a log** (autopilot, 2026-10-17; Codex,
+- [ ] **The proxy reports a failed board in its answer, not in a log** (autopilot, 2026-10-17; Codex,
   #944). A 502 names the error's type (never its message), so the app's debug log shows what failed
-  while the relay still logs nothing in request handling. Alternative: a type-and-stack console line
+  while the proxy still logs nothing in request handling. Alternative: a type-and-stack console line
   per failure, kept nowhere while Workers Logs is off. Reversible in `proxy/src/index.js`.
 
 - [ ] **"Couldn't plan every route" on a later list (autopilot, 2026-10-15; Codex, #875).** A later plan

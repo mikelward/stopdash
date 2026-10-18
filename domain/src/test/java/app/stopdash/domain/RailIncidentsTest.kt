@@ -120,7 +120,7 @@ class RailIncidentsTest {
         val clock = Clock()
         val cache = RailIncidentCache(clock = { clock.now })
         val held = cache.current { FetchedIncidents(listOf(incident), age = Duration.ofMinutes(1)) }
-        // Five minutes from the relay's fetch, a minute before it was had here.
+        // Five minutes from the proxy's fetch, a minute before it was had here.
         assertEquals(clock.now.plus(Duration.ofMinutes(4)), held?.until)
     }
 
@@ -197,13 +197,13 @@ class RailIncidentsTest {
     }
 
     @Test
-    fun `a failure is told and waited out, and the last words serve until five minutes from the relay's fetch`() = runTest {
+    fun `a failure is told and waited out, and the last words serve until five minutes from the proxy's fetch`() = runTest {
         val clock = Clock()
         val cache = RailIncidentCache(clock = { clock.now })
         val failures = mutableListOf<Exception>()
         var fail = false
         var asked = 0
-        // The relay's copy was already a minute old when it answered.
+        // The proxy's copy was already a minute old when it answered.
         val fetch: suspend () -> FetchedIncidents = {
             asked++
             if (fail) throw IOException("down") else FetchedIncidents(listOf(incident), age = Duration.ofMinutes(1))
@@ -217,7 +217,7 @@ class RailIncidentsTest {
         clock.advance(Duration.ofMinutes(1))
         cache.incidents(onFailure = { failures += it }, fetch = fetch)
         assertEquals(2, asked)
-        // Four minutes since it was had, five since the relay fetched it: no longer used.
+        // Four minutes since it was had, five since the proxy fetched it: no longer used.
         clock.advance(Duration.ofMinutes(1))
         assertNull(cache.incidents(onFailure = { failures += it }, fetch = fetch))
     }
@@ -260,7 +260,7 @@ class RailIncidentsTest {
     }
 
     @Test
-    fun `words the relay already held too long are never used`() = runTest {
+    fun `words the proxy already held too long are never used`() = runTest {
         val cache = RailIncidentCache(clock = { Instant.EPOCH })
         assertNull(cache.incidents { FetchedIncidents(listOf(incident), age = Duration.ofMinutes(6)) })
     }

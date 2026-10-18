@@ -1,12 +1,12 @@
-# stopdash's National Rail relay (dev-docs/national-rail-proxy.md). Deployed by hand from this directory:
+# stopdash's proxy (dev-docs/proxy.md). Deployed by hand from this directory:
 # `npx wrangler@4 deploy` (see README.md).
-name = "stopdash-rail"
+name = "stopdash-proxy"
 main = "src/index.js"
 compatibility_date = "2026-10-01"
 
-# One address, the maintainer's own (dev-docs/national-rail-proxy.md *Domain*). Set `pattern` to it.
+# One address, the maintainer's own (dev-docs/proxy.md *Domain*). Set `pattern` to it.
 workers_dev = false
-routes = [{ pattern = "REPLACE_WITH_RELAY_HOSTNAME", custom_domain = true }]
+routes = [{ pattern = "REPLACE_WITH_PROXY_HOSTNAME", custom_domain = true }]
 
 # No request logs: Workers Logs and its traces stay off, so nothing about a caller is recorded. The cron
 # job's last failure (type and stack frames) is kept in KV instead and shown by /v1/health.
@@ -17,14 +17,14 @@ enabled = false
 crons = ["*/2 * * * *"]
 
 [[kv_namespaces]]
-binding = "RAIL"
+binding = "PROXY"
 id = "REPLACE_WITH_KV_NAMESPACE_ID"
 
 # Cold board requests only (those reaching National Rail): per caller, under a key the IP can't be
-# recovered from (src/index.js callerKey), and the relay's own budget across every caller, set under
+# recovered from (src/index.js callerKey), and the proxy's own budget across every caller, set under
 # the Live Departure Board product's quota. Cloudflare counts each per location, so the budget bounds
-# each data center, not the relay as a whole: size it at about half the quota while London's riders
-# land on one or two, and move to a Durable Object if that stops holding (dev-docs/national-rail-proxy.md).
+# each data center, not the proxy as a whole: size it at about half the quota while London's riders
+# land on one or two, and move to a Durable Object if that stops holding (dev-docs/proxy.md).
 [[ratelimits]]
 name = "COLD_PER_CALLER"
 namespace_id = "1001"

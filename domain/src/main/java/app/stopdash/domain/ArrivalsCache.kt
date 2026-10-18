@@ -131,7 +131,7 @@ class ArrivalsCache {
         var outcome: Fetch = Fetch.Abandoned
         try {
             // Stamped when asked, as [CachingTflClient] stamps a stop's, less the age it already had
-            // ([RailBoard.age]), so a relay's cached board is dated by when National Rail gave it.
+            // ([RailBoard.age]), so a proxy's cached board is dated by when National Rail gave it.
             val askedAt = SteadyClock.stamp(now)
             val entry = fetch()?.let {
                 Entry(it.departures, askedAt.minus(it.age), source = source, untimed = it.untimed, messages = it.messages, suppressed = it.suppressed)
