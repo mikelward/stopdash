@@ -31,6 +31,17 @@ val gitCommitCount: Int? = gitOutput("rev-list", "--count", "HEAD")?.toIntOrNull
 val gitShortSha: String? = gitOutput("rev-parse", "--short", "HEAD")
 val gitShallow: Boolean = gitOutput("rev-parse", "--is-shallow-repository") == "true"
 
+// As for the phone (app/build.gradle.kts): CI's test, lint and screenshot runs set
+// -PstopdashFixedVersion so a per-commit version doesn't make every commit miss the build cache,
+// and a debug build names its branch and commit.
+val fixedTestVersion: Boolean = providers.gradleProperty("stopdashFixedVersion").isPresent
+val buildBranch: String = (
+    providers.environmentVariable("GITHUB_HEAD_REF").orNull?.ifEmpty { null }
+        ?: providers.environmentVariable("GITHUB_REF_NAME").orNull?.ifEmpty { null }
+        ?: gitOutput("rev-parse", "--abbrev-ref", "HEAD")
+        ?: "unknown"
+    ).replace(Regex("[^A-Za-z0-9._/-]"), "-").take(30)
+
 // As for the phone: a shipped build's versionCode must come from main's full history, or Play
 // rejects it (or it lands under a real-looking number it doesn't deserve).
 val releaseVersionProblem: String? = when {
@@ -47,6 +58,15 @@ val releaseVersionCheck = tasks.register("checkReleaseVersion") {
     }
 }
 tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn(releaseVersionCheck) }
+val releaseFixedVersionCheck = tasks.register("checkReleaseNotFixedVersion") {
+    description = "Fails packaging a release build while -PstopdashFixedVersion is set."
+    val fixed = fixedTestVersion
+    doLast {
+        check(!fixed) { "A release build can't be packaged with -PstopdashFixedVersion: its versionCode is a placeholder." }
+    }
+}
+tasks.matching { it.name == "packageRelease" || it.name == "bundleRelease" }
+    .configureEach { dependsOn(releaseFixedVersionCheck) }
 
 // The phone's upload key: the Data Layer pairs only apps signed alike, and Play App Signing
 // re-signs both. All four variables, or none (an unsigned local release build).
@@ -71,8 +91,8 @@ android {
         // Wear OS 5 (Android 14), the fleet's API floor.
         minSdk = 34
         targetSdk = 36
-        versionCode = watchVersionCodeOffset + (gitCommitCount ?: 1)
-        versionName = "0.1.${gitCommitCount ?: 1}+${gitShortSha ?: "unknown"}"
+        versionCode = watchVersionCodeOffset + if (fixedTestVersion) 1 else gitCommitCount ?: 1
+        versionName = if (fixedTestVersion) "0.1.0-test" else "0.1.${gitCommitCount ?: 1}+${gitShortSha ?: "unknown"}"
     }
 
     signingConfigs {
@@ -155,6 +175,15 @@ tasks.withType<Test>().configureEach {
     if (project.hasProperty("roborazzi.test.verify")) {
         jvmArgs("-Droborazzi.test.verify=true")
         outputs.upToDateWhen { false }
+    }
+}
+
+androidComponents {
+    onVariants(selector().withBuildType("debug")) { variant ->
+        if (!fixedTestVersion) {
+            val name = "0.1.${gitCommitCount ?: 1}-debug+$buildBranch@${gitShortSha ?: "unknown"}"
+            variant.outputs.forEach { it.versionName.set(name) }
+        }
     }
 }
 

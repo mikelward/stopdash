@@ -75,6 +75,11 @@ jobs:
           path: ~/.m2/repository/org/robolectric
           key: robolectric-${{ runner.os }}-${{ steps.robolectric.outputs.version }}
       - name: Unit tests
+        env:
+          # A fixed versionCode/versionName for tasks that only read the build, so :app's
+          # merged manifest, and every cached task after it, stays the same from commit to
+          # commit (app/build.gradle.kts). The debug APK and release builds don't set it.
+          ORG_GRADLE_PROJECT_stopdashFixedVersion: "true"
         run: ./gradlew test
       - name: Save Robolectric's Android runtime
         # Only after the steps using it passed, so the runtime is whole: an entry can't be
@@ -86,6 +91,8 @@ jobs:
           path: ~/.m2/repository/org/robolectric
           key: robolectric-${{ runner.os }}-${{ steps.robolectric.outputs.version }}
       - name: Lint
+        env:
+          ORG_GRADLE_PROJECT_stopdashFixedVersion: "true"
         run: ./gradlew lint
       - name: A release build refuses a versionCode not from the full history
         # A release build's first task fails when git can't read the history (a source archive:
@@ -178,6 +185,11 @@ jobs:
         # Run by hand against the Analytics property (dev-docs/firebase.md step 6), never by CI, so a
         # regression would first show up as a failed or wrong registration.
         run: python3 scripts/register_analytics_definitions_test.py
+      - name: Test the version selection
+        # The fixed test version, the debug build's branch name and the release guard
+        # (app/ and wear/build.gradle.kts): nothing else reads the merged version, so a
+        # regression would otherwise ship unnoticed. Runs the real manifest tasks.
+        run: python3 scripts/version_selection_test.py
       - name: Assemble debug APK
         run: ./gradlew assembleDebug
       - name: Upload debug APK
@@ -198,6 +210,9 @@ jobs:
   screenshot-tests:
     name: screenshot-tests
     runs-on: ubuntu-latest
+    env:
+      # As the build job's test and lint steps: a fixed version keeps :app cacheable.
+      ORG_GRADLE_PROJECT_stopdashFixedVersion: "true"
     timeout-minutes: 20
     needs: classify
     if: needs.classify.outputs.docs_only != 'true'
