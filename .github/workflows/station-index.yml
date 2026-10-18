@@ -25,6 +25,8 @@ on:
       - scripts/build_crs_index.py
       - scripts/build_step_free.py
       - scripts/build_stops.py
+      - scripts/stop_membership.py
+      - scripts/membership_changes.py
       - .github/workflows/station-index.yml
 permissions: {}
 concurrency:
@@ -54,8 +56,12 @@ jobs:
         run: python3 scripts/build_step_free.py --out build/stations/step_free.json
       - name: Test the stop list builder
         run: python3 scripts/build_stops_test.py
+      - name: Test the station model's stop membership
+        run: python3 scripts/stop_membership_test.py
+      # Last: it works out the station model's membership from the station index and stamps the
+      # shared content revision into it (dev-docs/station-model.md *Where it's built*).
       - name: Build the stop list from TfL
-        run: python3 scripts/build_stops.py --out build/stations/stops.tsv
+        run: python3 scripts/build_stops.py --out build/stations/stops.tsv --stations build/stations/station_index.json
       - name: Upload the index
         uses: actions/upload-artifact@v4
         with:

@@ -792,9 +792,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         - Phase 1 lands in three PRs, each unused by the app:
           - [x] the station index's ICS codes, stations and hubs (`build_station_index.py`), with a
                 platform under records of one station kept under one record;
-          - [ ] `stops.tsv` v2: poles into stops, junctions, each stop's owning station and hub,
+          - [x] `stops.tsv` v2: poles into stops, junctions, each stop's owning station and hub,
                 the shared content revision, `--stations` in both workflows and the refresh's
-                capped membership-diff body;
+                capped membership-diff body (`stop_membership.py`, `membership_changes.py`);
           - [ ] `Hubs` in `:domain` reading both, the `hubId` → interchange rename, the
                 real-bundle tests, the APK and load-time measurement, and SPEC *Finding stops*.
         - Favorite rides stay (maintainer, 2026-10-16), so phase 3 builds on them. Nothing is left

@@ -160,6 +160,8 @@ jobs:
         run: python3 scripts/build_step_free_test.py
       - name: Test the stop list builder
         run: python3 scripts/build_stops_test.py
+      - name: Test the station model's stop membership
+        run: python3 scripts/stop_membership_test.py
       - name: Test the arrivals recorder
         # A hand-run tool (TODO *Space out bunched Tube trains*); this keeps its scoring honest.
         run: python3 scripts/arrivals_recorder_test.py

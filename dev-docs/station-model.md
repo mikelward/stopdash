@@ -652,7 +652,12 @@ the batch").
 
   and a content revision over the lines and membership columns (*Each level's id*).
   In `station_index.json` a record's fields are `icsCode`, `station` and `modelHub`: its `hub`
-  already holds TfL's interchange, which stays as it is for today's readers.
+  already holds TfL's interchange, which stays as it is for today's readers. The revision is the
+  index's `revision` and the `revision=` field of `stops.tsv`'s header. Phase 1 measured the
+  columns written in full, no blanks: `stops.tsv` grows from 2.2 MB to 2.9 MB raw, from 630 KB to
+  760 KB compressed, so the blank-saving encoding wasn't worth a reader rule. The rules live in
+  `scripts/stop_membership.py` (tests in `stop_membership_test.py`), and
+  `scripts/membership_changes.py` writes the refresh's list of regrouped ids.
   `build_stops.py` takes `--stations` (`build/stations/station_index.json` in `station-index.yml`,
   `"$INDEX"` in `station-index-refresh.yml`), writes the four columns on `B` rows in `stops.tsv`
   and `icsCode`, `station` and the model's `hub` on the `M`, `R` and `F` rows in `stops.tsv` that
