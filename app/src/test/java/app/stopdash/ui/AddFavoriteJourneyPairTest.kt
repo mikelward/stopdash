@@ -1,7 +1,10 @@
 package app.stopdash.ui
 
+import app.stopdash.domain.BundledStops
 import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.FavoriteJourneysStore
+import app.stopdash.domain.Hubs
+import app.stopdash.domain.IndexedStation
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.PendingEnd
@@ -10,11 +13,14 @@ import app.stopdash.domain.StationFinder
 import app.stopdash.domain.CachingStopFinder
 import app.stopdash.domain.NearbyStopsCache
 import app.stopdash.domain.NearestStops
+import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StopFinder
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.TflException
+import java.io.BufferedReader
 import java.io.IOException
+import java.io.StringReader
 import java.util.concurrent.Executors
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -109,6 +115,42 @@ class AddFavoriteJourneyPairTest {
 
     @After
     fun clearNote() = JourneyAdds.dismiss()
+
+    @Test
+    fun `a bus stop's end takes in its pole across the road, so a line only that pole serves is found`() = runTest {
+        // Synthetic: a stop joined from two stop areas, one pole each, and a second stop down the road,
+        // around the fake (51.5, -0.12). Only the far pole of the first stop serves route 1.
+        val index = StationIndex(listOf(IndexedStation("910GEXVALE", "Example Vale", listOf("national-rail"), station = "910GEXVALE", modelHub = "910GEXVALE")), revision = "abc")
+        val tsv = listOf(
+            "# stopdash stops v2\tbounds=51.25,-0.65,51.75,0.4\trevision=abc",
+            "L\t1\tbus\t1",
+            "S\t490000007A\tB\tExample Green\t51.500000\t-0.120000\t490G000007\t\t\t\t\t1\t\t490G000007\t\t490G000007",
+            "S\t490000007B\tB\tExample Green\t51.500200\t-0.120000\t490G000008\t\t\t\t\t1\t\t490G000007\t\t490G000007",
+            "S\t490000020A\tB\tExample Hill\t51.510000\t-0.120000\t490G000020\t\t\t\t\t1\t\t490G000020\t\t490G000020",
+        ).joinToString("\n")
+        val hubs = Hubs.of(index, BundledStops.read(BufferedReader(StringReader(tsv))))!!
+        fun bus(id: String, name: String, vararg lines: String) =
+            StopLocation(id, name, 51.5, -0.12, lines.map { LineRef(it, it, "bus") }, clusterId = id)
+        val buses = Finder(
+            mapOf(
+                "490000007A" to listOf(bus("490000007A", "Example Green", "2")),
+                "490G000007" to listOf(bus("490000007A", "Example Green", "2")),
+                "490G000008" to listOf(bus("490000007B", "Example Green", "1")),
+                "490000020A" to listOf(bus("490000020A", "Example Hill", "1")),
+                "490G000020" to listOf(bus("490000020A", "Example Hill", "1")),
+            ),
+        )
+        val from = StationMatch("490000007A", "Example Green", listOf("bus"))
+        val to = StationMatch("490000020A", "Example Hill", listOf("bus"))
+        val journeys = Journeys(emptyList())
+        assertNull(addFavoriteJourneyPair(from, to, buses, noBuses, journeys, worker = StandardTestDispatcher(testScheduler), loadHubs = { hubs }))
+        assertEquals("1", journeys.state.value!!.single().lineId)
+        assertEquals("every pole of each stop, by its areas", listOf("490G000007", "490G000008", "490G000020"), buses.asked)
+        // Without the model, the picked pole alone, which no line joins to the other stop: saved grayed.
+        val without = Journeys(emptyList())
+        addFavoriteJourneyPair(from, to, buses, noBuses, without, worker = StandardTestDispatcher(testScheduler))
+        assertEquals(emptyList<FavoriteJourney>(), without.state.value)
+    }
 
     @Test
     fun `two stations on one line are saved as a journey on it`() = runTest {

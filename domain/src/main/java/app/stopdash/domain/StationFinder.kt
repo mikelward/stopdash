@@ -1,5 +1,7 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
+
 /**
  * A station, hub or stop that matched a typed name (SPEC *Finding stops → Find a station*): the
  * id to look it up by ([StationFinder.stationStops]), its cleaned display name, and the modes it
@@ -59,4 +61,21 @@ interface StationFinder {
      * id resolves to nothing stopdash shows departures for. Throws like [searchStations].
      */
     suspend fun stationStops(id: String): List<StopLocation>
+
+    /**
+     * [stationStops] for each of [ids], together: TfL answers up to 20 ids in one `/StopPoint/{ids}`
+     * request, so a bus station's many poles cost a request or two, not one each. Every id or none:
+     * throws like [stationStops] if any request fails. By default one [stationStops] per id.
+     */
+    suspend fun stationStops(ids: List<String>): List<StopLocation> = ids.flatMap { stationStops(it) }
 }
+
+/**
+ * The stops of every stand the station or bus stop [id] names, as the station model holds it ([Hubs.lookupIdsOf]):
+ * St Pancras's every record, a bus stop's poles either side of the road. [id] alone without a model, or for an id
+ * it doesn't hold. Every lookup or none: throws like [StationFinder.stationStops] if any fails, so a part is
+ * never passed off as the whole. On a worker: the model's lookup walks its stop.
+ */
+@WorkerThread
+suspend fun StationFinder.everyStop(id: String, hubs: Hubs?): List<StopLocation> =
+    stationStops(hubs?.lookupIdsOf(id).orEmpty().ifEmpty { listOf(id) }).distinctBy { it.id }

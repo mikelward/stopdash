@@ -828,7 +828,8 @@ class StationStopsViewModel(
     // interchange to open instead): asked for too, so none of its stops is left out. Read on [io].
     private val loadIndex: () -> StationIndex = { StationIndex.EMPTY },
     // The station model, for every record the station is (St Pancras's main, low-level and domestic
-    // records), the index's same-name rule standing in where there's none or it doesn't hold the id.
+    // records) or every pole of a bus stop, the index's same-name rule standing in where there's none or
+    // it doesn't hold the id.
     private val loadHubs: suspend () -> Hubs? = { null },
     // How a failure names the station in [warn]: its id, a public TfL id, except where the stop is the rider's
     // own pick the log promises not to name (a trip's via, SPEC *Going via a stop*).
@@ -863,11 +864,11 @@ class StationStopsViewModel(
         load = viewModelScope.launch {
             _state.value = try {
                 val ids = withContext(io) {
-                    val records = loadHubs()?.recordsOf(stationId).orEmpty()
-                    if (records.isNotEmpty()) (listOf(stationId) + records).distinct() else listOf(stationId) + loadIndex().sameStationIds(stationId)
+                    // Every record of a station, or every pole of a bus stop, either side of its road.
+                    loadHubs()?.lookupIdsOf(stationId).orEmpty().ifEmpty { listOf(stationId) + loadIndex().sameStationIds(stationId) }
                 }
                 // Every id or none: a page missing one record's stops would look whole (SPEC *Finding stops*).
-                val found = withContext(io) { ids.flatMap { finder.stationStops(it) } }
+                val found = withContext(io) { finder.stationStops(ids) }
                 withContext(compute) {
                     val stops = found.distinctBy { it.id }
                     if (stops.isEmpty()) State.NoStops else State.Ready(stops.map(StopLocation::toStopRef), FixedLocation.centerOf(stops))

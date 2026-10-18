@@ -25,6 +25,7 @@ import app.stopdash.domain.StationMatch
 import app.stopdash.domain.TflException
 import app.stopdash.domain.UkPostcode
 import app.stopdash.domain.Workers
+import app.stopdash.domain.everyStop
 import java.time.DayOfWeek
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
@@ -89,6 +90,9 @@ class FavoritePlacesViewModel(
     // A fresh id for a newly-added place; overridable so tests get stable ids.
     private val newId: () -> String = { UUID.randomUUID().toString() },
     private val warn: (String) -> Unit = {},
+    // The station model, so a picked station resolves from every record of it and a bus stop from every
+    // pole. None by default, asking the picked id alone.
+    private val loadHubs: suspend () -> Hubs? = { null },
     // Looks a place or postcode up with TfL's Journey Planner, for one outside London (maintainer,
     // 2026-10-11): only the typed text is sent. Null offers no such search.
     private val findOutside: (suspend (String) -> List<PlaceCandidate>)? = null,
@@ -409,7 +413,7 @@ class FavoritePlacesViewModel(
         resolve = viewModelScope.launch {
             val center: Coordinates?
             try {
-                val stops = withContext(io) { finder.stationStops(match.id) }
+                val stops = withContext(io) { finder.everyStop(match.id, loadHubs()) }
                 center = withContext(compute) { FixedLocation.centerOf(stops) }
             } catch (e: CancellationException) {
                 throw e

@@ -407,8 +407,11 @@ The app finds stops two ways:
   record's modes, found and ranked by any record's code, and opens them all: its page asks for each id's stops, and fails with a retry if either lookup does rather than
   showing half the station as if it were whole. A **station's page asks for every record the station
   model holds for it** (`dev-docs/station-model.md`), the ones its name doesn't share too: St Pancras's
-  page takes in its Thameslink low level as well as its main and domestic records. Without the model,
-  or for an id it doesn't hold, the page falls back on the same-name rule above.
+  page takes in its Thameslink low level as well as its main and domestic records. A **bus stop's page
+  takes in every pole of the stop** the model holds, either side of its road, across the TfL stop areas
+  it was joined from, at one request per area; so does adding a favorite ride from or to it, so a line
+  only the stop's other side serves is found. Without the model, or for an id it doesn't hold, the page
+  falls back on the same-name rule above, and a bus stop on the pole picked.
   Same-named places farther apart ("Church Street" in two boroughs) both stay, and a
   result with no position is never folded.
   Each stop row shows its **postcode district** before its modes ("EC4M · Bus"), from the nearest

@@ -56,8 +56,14 @@ class StationViewModelsTest {
     private class FakeFinder(
         val stops: suspend (String) -> List<StopLocation> = { emptyList() },
     ) : StationFinder {
+        // Each batched lookup ([StationFinder.stationStops] of a list), as it was asked.
+        val batches = mutableListOf<List<String>>()
         override suspend fun searchStations(query: String): List<StationMatch> = emptyList()
         override suspend fun stationStops(id: String): List<StopLocation> = stops(id)
+        override suspend fun stationStops(ids: List<String>): List<StopLocation> {
+            batches += ids
+            return ids.flatMap { stationStops(it) }
+        }
     }
 
     private val oxford = StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"), level = Pick.Level.STATION)
@@ -1344,6 +1350,34 @@ class StationViewModelsTest {
         StationStopsViewModel(finder, "HUBEXX", io = dispatcher, compute = dispatcher, loadIndex = { index }, loadHubs = { hubs })
         advanceUntilIdle()
         assertEquals("an interchange still opens as itself", listOf("HUBEXX"), asked)
+    }
+
+    @Test
+    fun `a bus stop opens every pole of it, either side of the road`() = runTest {
+        // A synthetic stop joined from two TfL stop areas, one pole in each, around the fake (51.5, -0.12).
+        val index = StationIndex(listOf(IndexedStation("910GEXVALE", "Example Vale", listOf("national-rail"), station = "910GEXVALE", modelHub = "910GEXVALE")), revision = "abc")
+        val stops = BundledStops.read(BufferedReader(StringReader(listOf(
+            "# stopdash stops v2\tbounds=51.25,-0.65,51.75,0.4\trevision=abc",
+            "L\t1\tbus\t1",
+            "S\t490000007A\tB\tExample Green\t51.500000\t-0.120000\t490G000007\t\t\t\t\t1\t\t490G000007\t\t490G000007",
+            "S\t490000007B\tB\tExample Green\t51.500200\t-0.120000\t490G000008\t\t\t\t\t1\t\t490G000007\t\t490G000007",
+        ).joinToString("\n"))))
+        val hubs = Hubs.of(index, stops)!!
+        val poleOf = mapOf("490G000007" to "490000007A", "490G000008" to "490000007B")
+        val asked = mutableListOf<String>()
+        val finder = FakeFinder(stops = { id ->
+            asked += id
+            listOf(StopLocation(poleOf[id] ?: id, "Example Green", 51.5, -0.12, listOf(LineRef("1", "1", "bus")), clusterId = id))
+        })
+        val vm = StationStopsViewModel(finder, "490000007A", io = dispatcher, compute = dispatcher, loadHubs = { hubs })
+        advanceUntilIdle()
+        assertEquals("each stop area", listOf("490G000007", "490G000008"), asked)
+        assertEquals("asked together, in one batched lookup", listOf(listOf("490G000007", "490G000008")), finder.batches)
+        assertEquals(listOf("490000007A", "490000007B"), (vm.state.value as StationStopsViewModel.State.Ready).stops.map { it.id })
+        asked.clear()
+        StationStopsViewModel(finder, "490000007A", io = dispatcher, compute = dispatcher, loadHubs = { null })
+        advanceUntilIdle()
+        assertEquals("with no model, the pole alone as before", listOf("490000007A"), asked)
     }
 
     @Test
