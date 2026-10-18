@@ -4049,7 +4049,7 @@ internal fun StopGroupHeader(
                     Modifier
                 },
             )
-            .padding(start = 4.dp, end = 4.dp, top = if (firstOnScreen) 0.dp else 16.dp)
+            .padding(start = 4.dp, end = 4.dp, top = if (firstOnScreen) 0.dp else GROUP_BREAK)
             .semantics(mergeDescendants = true) { contentDescription = spoken },
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -4825,7 +4825,7 @@ private fun RideStopHeader(
         modifier = Modifier
             .fillMaxWidth()
             .then(if (onOpen != null) Modifier.clickable(onClickLabel = openLabel, onClick = onOpen) else Modifier)
-            .padding(start = 4.dp, end = 4.dp, top = if (firstOnScreen) 0.dp else 16.dp)
+            .padding(start = 4.dp, end = 4.dp, top = if (firstOnScreen) 0.dp else GROUP_BREAK)
             .semantics(mergeDescendants = true) { contentDescription = spoken },
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -4877,7 +4877,7 @@ private fun JourneyHeader(
             .fillMaxWidth()
             // The tap target spans the group-break space above the text too, as a stop header's does.
             .then(if (onOpen != null) Modifier.clickable(onClickLabel = openLabel, onClick = onOpen) else Modifier)
-            .padding(start = 4.dp, end = 4.dp, top = if (firstOnScreen) 0.dp else 16.dp)
+            .padding(start = 4.dp, end = 4.dp, top = if (firstOnScreen) 0.dp else GROUP_BREAK)
             // Read "Highgate to King's Cross", not the arrow's name.
             .semantics(mergeDescendants = true) { contentDescription = spoken },
         verticalAlignment = Alignment.CenterVertically,
@@ -7022,6 +7022,13 @@ internal fun mergeJourneyOrigins(refs: List<StopRef>): List<StopRef> =
             interchangeId = same.firstOrNull { it.interchangeId.isNotBlank() }?.interchangeId.orEmpty(),
         )
     }
+
+/**
+ * The space above a group's heading on top of the list's 8dp gap, so the gap from the card above
+ * (16dp) reads clearly wider than the one from the heading to its own card (maintainer, 2026-10-18:
+ * 16dp here read as more than the list's other gaps).
+ */
+private val GROUP_BREAK = 8.dp
 
 /** What the home disruptions row adds to the list's 8dp gap on each side, for 12dp clear around it. */
 private val DISRUPTIONS_ROW_EXTRA = 4.dp

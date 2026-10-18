@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.semantics.getOrNull
@@ -515,6 +516,34 @@ class MainScreenScreenshotTest {
 
     @Test
     fun `the disruptions row has as much room above it as below, under the chips`() = disruptionsRowGaps(places)
+
+    @Test
+    fun `a departure card is 16dp from the next stop's heading`() {
+        val stops = stops(now.minusSeconds(60))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(stops, now.minusSeconds(60), lineStatuses = statuses()),
+                        now,
+                        {},
+                    )
+                }
+            }
+        }
+        val list = composeRule.onAllNodes(hasScrollToIndexAction(), useUnmergedTree = true).fetchSemanticsNodes().maxBy { it.boundsInRoot.height }
+        fun firstText(node: SemanticsNode): SemanticsNode? =
+            if (node.config.getOrNull(SemanticsProperties.Text) != null) node else node.children.firstNotNullOfOrNull { firstText(it) }
+        val items = list.children.sortedBy { it.boundsInRoot.top }
+        // From each card to the text of the stop heading under it (the heading's item carries the break).
+        val gaps = items.zipWithNext { above, below ->
+            firstText(below)?.takeIf { it.config.getOrNull(SemanticsProperties.Text)?.joinToString() == "Whitechapel" }
+                ?.let { it.boundsInRoot.top - above.boundsInRoot.bottom }
+        }.filterNotNull()
+        assertTrue("found no stop headings under a card", gaps.isNotEmpty())
+        val sixteen = with(composeRule.density) { 16.dp.toPx() }
+        gaps.forEach { assertEquals(sixteen, it, 1f) }
+    }
 
     private fun disruptionsRowGaps(chips: List<FavoritePlace>) {
         val stops = stops(now.minusSeconds(60))
