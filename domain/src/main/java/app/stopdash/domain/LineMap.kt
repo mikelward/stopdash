@@ -271,7 +271,8 @@ class LineMap internal constructor(
      * The map as the page draws it, with the folds keyed in [opened] open, or every station with [all].
      * With an alert placed on the rider's own stops or a stretch they ride, every other stretch that
      * leads to an end of the line folds to one line naming where it leads, so the page opens on what's
-     * theirs with the rest of the line around it; one between two kept stations leading nowhere shows
+     * theirs with the rest of the line around it, though an alert off their route there still shows where it
+     * starts and ends; one between two kept stations leading nowhere shows
      * its ends and junctions with its plain runs folded. Otherwise the line's ends and junctions show
      * and its plain runs fold. A fold opened shows every station it holds. An alert off the rider's own stops and
      * stretches shows the first and last stations it's placed on (maintainer, 2026-10-18), the stations
@@ -303,7 +304,7 @@ class LineMap internal constructor(
             when {
                 // Opened in one tap, every station it holds, never to its ends with the rest folded again.
                 key in opened -> (i until end).mapTo(items) { Item.Station(rows[it]) }
-                alerted && leadsSomewhere -> items += sectionFold(key, i, end)
+                alerted && leadsSomewhere -> sections(i, end, opened, items)
                 else -> runs(i, end, opened, items)
             }
             i = end
@@ -346,6 +347,34 @@ class LineMap internal constructor(
             }
             i = end
         }
+    }
+
+    // A stretch leading to an end of the line, with an alert placed on the rider: each alert off their route in it
+    // shows its first and last stations as anywhere else (maintainer, 2026-10-18), the rest folding by where it
+    // leads, or where a part leads to no end, by its runs. With none, one fold named by where it leads.
+    private fun sections(from: Int, until: Int, opened: Set<String>, into: MutableList<Item>) {
+        fun edge(k: Int) = rows[k].alerted && !inside[k]
+        if ((from until until).none { edge(it) }) {
+            into += sectionFold("section:${rows[from].key}", from, until)
+            return
+        }
+        fun part(a: Int, b: Int) {
+            if (a >= b) return
+            val key = "part:${rows[a].key}"
+            when {
+                key in opened -> (a until b).mapTo(into) { Item.Station(rows[it]) }
+                b - a >= 2 && (a until b).any { rows[it].end } -> into += sectionFold(key, a, b)
+                else -> runs(a, b, opened, into)
+            }
+        }
+        var start = from
+        for (k in from until until) {
+            if (!edge(k)) continue
+            part(start, k)
+            into += Item.Station(rows[k])
+            start = k + 1
+        }
+        part(start, until)
     }
 
     private fun sectionFold(key: String, from: Int, until: Int): Item.Fold {
