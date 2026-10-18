@@ -2771,6 +2771,23 @@ as it was.
   shortest form, then "…"), since a line that wraps reads slower (maintainer, 2026-10-03); the words around a place ("Walk to", "Board … at") and a
   line's name never do (maintainer, 2026-10-03).
   The app bar says StopDash: the card names the trip, so the bar needn't.
+- **Show stops** (maintainer, 2026-10-18). Under the row of the ride at hand (walking to it, waiting for
+  it or on it), **Show stops** opens its stops on the line's rail, as a route's page draws a train's:
+  where it boards through where it gets off, the stop the rider is at or last passed the blue "you are
+  here" dot, those behind them muted. The dot sits where it boards until they're seen on board (a
+  train gone with no sign of them on it leaves them there, as the step does), then at the stop before
+  the next one the trip counts to (or names); where the trip can't place their train, no stop is
+  marked rather than a guess, nor from an answer too old to stand behind (as the card
+  withholds its stops then; stops counted from where the rider was seen stand). Each stop is a row of the screen's list, so a long route draws only
+  what's on screen. The stops are the Planner's for the ride (the line's own where the
+  trip follows them on another of its lines), else, where it lists none, the line's route's from where it
+  boards through where it gets off ("Stop list unavailable" where neither can); a stop it leaves unnamed (a bus's, often) takes its name
+  from the line's route, cached as the trip's other checks cache it (a line's route is its two directions,
+  so at most two TfL requests per line a day, asked only when a stop is unlisted or unnamed; the list says
+  it's loading meanwhile rather than grow under the rider; a route that can't be read says why, as the route
+  page does, and isn't asked for again until the list is reopened), and
+  one named by neither is left out rather than shown by its code; closed by default, so the
+  route's legs stay one row each.
 - **Time left.** On the card, under where the trip goes, it says when it gets there and how long is
   left (maintainer, 2026-10-01; moved onto the card 2026-10-03): "29 min · 08:31", unmarked when it's TfL's prediction for where
   the rider gets off the ride they're on, with only walks after (it read "~08:31" until 2026-10-16). It's "est." when any of it is the

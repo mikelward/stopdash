@@ -1367,6 +1367,680 @@ class OnTheWayScreenScreenshotTest {
         captureSnapshot("on-the-way-riding.png")
     }
 
+    // A Victoria line ride between well-known stations, with the stops it calls at, for its stop list.
+    private val victoria = TripLeg(
+        "tube", "victoria", "Victoria", "940GZZLUVIC", "Victoria", "940GZZLUKSX", "King's Cross St. Pancras", at(4), at(16),
+        path = listOf("940GZZLUGPK", "940GZZLUOXC", "940GZZLUWRR", "940GZZLUEUS", "940GZZLUKSX"),
+        pathNames = listOf("Green Park", "Oxford Circus", "Warren Street", "Euston", "King's Cross St. Pancras"),
+    )
+    private val victoriaTrip = ActiveTrip(TripRoute(listOf(victoria)), "King's Cross St. Pancras", startedAt = now, vehicleId = "EXAMPLE")
+
+    private fun showOnVictoria(progress: TripProgress, boarded: Boolean) {
+        val worker = HeldWorker()
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalWorker provides worker.dispatcher) {
+                    OnTheWayScreen(victoriaTrip.copy(boarded = boarded, onBoardSeen = boarded), progress, false, now, {}, {}, onGoTo = { _, _ -> })
+                }
+            }
+        }
+    }
+
+    private fun yourStop(name: String) = composeRule.onNode(
+        hasText(name) and androidx.compose.ui.test.SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, string(app.stopdash.R.string.route_stop_current)),
+    )
+
+    @Test
+    fun show_stops_lists_the_ride_s_stops_with_the_rider_s_stop_marked() {
+        // On board, three stops left: past Oxford Circus, next Warren Street (maintainer, 2026-10-18).
+        showOnVictoria(TripProgress.Riding(victoria, "Warren Street", 3, at(10), getOffSoon = false), boarded = true)
+        // Collapsed at first: the route's legs stay one row each.
+        composeRule.onAllNodesWithTag("onTheWayRideStop").assertCountEquals(0)
+        captureSnapshot("on-the-way-ride-stops-closed.png")
+        composeRule.onNodeWithText("Show stops").assertIsDisplayed().performClick()
+        composeRule.onAllNodesWithTag("onTheWayRideStop").assertCountEquals(6)
+        listOf("Victoria", "Green Park", "Oxford Circus", "Warren Street", "Euston").forEach {
+            composeRule.onNode(hasText(it) and androidx.compose.ui.test.hasAnyAncestor(hasTestTag("onTheWayRideStop"))).assertExists()
+        }
+        yourStop("Oxford Circus").assertExists()
+        yourStop("Victoria").assertDoesNotExist()
+        captureSnapshot("on-the-way-ride-stops.png")
+        composeRule.onNodeWithText("Hide stops").performClick()
+        composeRule.onAllNodesWithTag("onTheWayRideStop").assertCountEquals(0)
+    }
+
+    @Test
+    fun open_stops_stay_shown_while_a_refresh_is_worked_out() {
+        // A new answer moves the train on: the rows stay while its list is worked out, then the dot moves (Codex, #968).
+        val worker = HeldWorker()
+        var progress by mutableStateOf<TripProgress>(TripProgress.Riding(victoria, "Warren Street", 3, at(10), getOffSoon = false))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalWorker provides worker.dispatcher) {
+                    OnTheWayScreen(victoriaTrip.copy(boarded = true, onBoardSeen = true), progress, false, now, {}, {})
+                }
+            }
+        }
+        composeRule.onNodeWithText("Show stops").performClick()
+        yourStop("Oxford Circus").assertExists()
+        worker.hold()
+        progress = TripProgress.Riding(victoria, "Euston", 2, at(10), getOffSoon = false)
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("onTheWayRideStop").assertCountEquals(6)
+        worker.release()
+        composeRule.waitForIdle()
+        yourStop("Warren Street").assertExists()
+    }
+
+    @Test
+    fun open_stops_from_another_branch_are_not_held_while_its_own_are_worked_out() {
+        // The train is found taking another way between the same two stops: the same ride by its ends and times, but
+        // the old way's rows aren't shown while the new way's list is worked out (Codex, #968).
+        val worker = HeldWorker()
+        val other = victoria.copy(
+            path = listOf("940GZZLUTCR", "940GZZLUEUS", "940GZZLUKSX"),
+            pathNames = listOf("Tottenham Court Road", "Euston", "King's Cross St. Pancras"),
+        )
+        var on by mutableStateOf<TripLeg?>(null)
+        val progress = TripProgress.Riding(victoria, "Euston", 2, at(10), getOffSoon = false)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalWorker provides worker.dispatcher) {
+                    OnTheWayScreen(victoriaTrip.copy(boarded = true, onBoardSeen = true, vehicleLeg = on), progress, false, now, {}, {})
+                }
+            }
+        }
+        composeRule.onNodeWithText("Show stops").performClick()
+        composeRule.onAllNodesWithTag("onTheWayRideStop").assertCountEquals(6)
+        worker.hold()
+        on = other
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Oxford Circus").assertDoesNotExist()
+        worker.release()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("onTheWayRideStop").assertCountEquals(4)
+        composeRule.onNode(hasText("Tottenham Court Road") and androidx.compose.ui.test.hasAnyAncestor(hasTestTag("onTheWayRideStop"))).assertExists()
+    }
+
+    @Test
+    fun open_stops_stay_shown_for_a_copy_of_the_ride_with_the_same_stops() {
+        // A ride read again, its stops in new lists of the same names, keeps the rows shown once that's checked off
+        // the main thread.
+        val worker = HeldWorker()
+        var on by mutableStateOf<TripLeg?>(null)
+        val progress = TripProgress.Riding(victoria, "Warren Street", 3, at(10), getOffSoon = false)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalWorker provides worker.dispatcher) {
+                    OnTheWayScreen(victoriaTrip.copy(boarded = true, onBoardSeen = true, vehicleLeg = on), progress, false, now, {}, {})
+                }
+            }
+        }
+        composeRule.onNodeWithText("Show stops").performClick()
+        yourStop("Oxford Circus").assertExists()
+        on = victoria.copy(path = victoria.path.toList(), pathNames = victoria.pathNames.toList())
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("onTheWayRideStop").assertCountEquals(6)
+        yourStop("Oxford Circus").assertExists()
+    }
+
+    @Test
+    fun a_ride_found_to_match_one_list_does_not_vouch_for_another_branch_s() {
+        // A copy of the ride is checked against the list then shown; once another branch's list replaces it, going back
+        // to that copy doesn't show the other branch's rows while its own are worked out (Codex, #968).
+        val worker = HeldWorker()
+        val copy = victoria.copy(path = victoria.path.toList(), pathNames = victoria.pathNames.toList())
+        val other = victoria.copy(
+            path = listOf("940GZZLUTCR", "940GZZLUEUS", "940GZZLUKSX"),
+            pathNames = listOf("Tottenham Court Road", "Euston", "King's Cross St. Pancras"),
+        )
+        var on by mutableStateOf<TripLeg?>(null)
+        val progress = TripProgress.Riding(victoria, "Euston", 2, at(10), getOffSoon = false)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalWorker provides worker.dispatcher) {
+                    OnTheWayScreen(victoriaTrip.copy(boarded = true, onBoardSeen = true, vehicleLeg = on), progress, false, now, {}, {})
+                }
+            }
+        }
+        composeRule.onNodeWithText("Show stops").performClick()
+        composeRule.onAllNodesWithTag("onTheWayRideStop").assertCountEquals(6)
+        on = copy
+        composeRule.waitForIdle()
+        on = other
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("onTheWayRideStop").assertCountEquals(4)
+        worker.hold()
+        on = copy
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Tottenham Court Road").assertDoesNotExist()
+        worker.release()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("onTheWayRideStop").assertCountEquals(6)
+    }
+
+    @Test
+    fun show_stops_answers_a_tap_anywhere_on_its_touch_target() {
+        // Tucked up under its leg's row, it still takes a tap across its whole 40dp target, top and bottom edge
+        // included, not only the part inside the room it takes in the list (Codex, #968); and reaches no higher than
+        // the leg's row ends, so a tap there opens the leg, not the stops (maintainer, 2026-10-18).
+        showOnVictoria(TripProgress.Riding(victoria, "Warren Street", 3, at(10), getOffSoon = false), boarded = true)
+        val button = composeRule.onNodeWithTag("onTheWayShowStops")
+        val height = button.fetchSemanticsNode().size.height
+        assertTrue("touch target ${height}px", height >= with(composeRule.density) { 40.dp.roundToPx() })
+        val leg = composeRule.onNode(hasText("Victoria → King's Cross St. Pancras", substring = true)).getUnclippedBoundsInRoot()
+        assertTrue("overlaps the leg's row", button.getUnclippedBoundsInRoot().top >= leg.bottom)
+        button.performTouchInput { click(androidx.compose.ui.geometry.Offset(centerX, 2f)) }
+        composeRule.onAllNodesWithTag("onTheWayRideStop").assertCountEquals(6)
+        button.performTouchInput { click(androidx.compose.ui.geometry.Offset(centerX, height - 2f)) }
+        composeRule.onAllNodesWithTag("onTheWayRideStop").assertCountEquals(0)
+    }
+
+    @Test
+    fun stops_the_planner_left_unnamed_wait_for_the_line_s_names_then_show_complete() {
+        // A bus's path often comes without names: the list waits for the line's route rather than show the stops it
+        // has and grow under the rider once the rest land (Codex, #968). Public names, synthetic ids.
+        val routeIn = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val repository = app.stopdash.domain.RouteStopsRepository(
+            object : app.stopdash.domain.RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                    routeIn.await()
+                    return LineSequence(
+                        routes = listOf(LineRoute("Brixton - Walthamstow Central", listOf("940GZZLUVIC") + victoria.path)),
+                        stopNames = mapOf("940GZZLUOXC" to "Oxford Circus", "940GZZLUEUS" to "Euston"),
+                    )
+                }
+            },
+            io = kotlinx.coroutines.Dispatchers.Unconfined,
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+        val unnamed = victoria.copy(pathNames = listOf("Green Park", "", "Warren Street", "", ""))
+        val onward = TripLeg(TripLeg.WALKING, "", "", "940GZZLUKSX", "King's Cross St. Pancras", "910GSTPX", "St Pancras International", at(16), at(20))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalRouteStops provides repository, LocalWorker provides kotlinx.coroutines.Dispatchers.Unconfined) {
+                    OnTheWayScreen(
+                        ActiveTrip(TripRoute(listOf(unnamed, onward)), "St Pancras International", startedAt = now),
+                        TripProgress.Waiting(unnamed, at(4)), false, now, {}, {},
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("Show stops").performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("onTheWayRideStop").assertCountEquals(0)
+        composeRule.onNodeWithTag("onTheWayRideStopsLoading").assertDoesNotExist()
+        // The leg after it, which mustn't move when the note shows: its line is held from the first frame (Codex, #968).
+        val after = composeRule.onNode(hasText("→ St Pancras International", substring = true))
+        val before = after.getUnclippedBoundsInRoot().top
+        // Said while it waits, once long enough to see, never blank (Codex, #968).
+        composeRule.mainClock.advanceTimeBy(LOADING_NOTE_DELAY_MILLIS + 50)
+        composeRule.onNodeWithTag("onTheWayRideStopsLoading").assertExists()
+        assertEquals(before, after.getUnclippedBoundsInRoot().top)
+        routeIn.complete(Unit)
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("onTheWayRideStop").assertCountEquals(6)
+        composeRule.onNodeWithTag("onTheWayRideStopsLoading").assertDoesNotExist()
+        listOf("Oxford Circus", "Euston", "King's Cross St. Pancras").forEach {
+            composeRule.onNode(hasText(it) and androidx.compose.ui.test.hasAnyAncestor(hasTestTag("onTheWayRideStop"))).assertExists()
+        }
+    }
+
+    @Test
+    fun a_ride_with_no_stops_to_list_says_so() {
+        // The Planner listed none and there's no route to read them from: said, never left blank (SPEC principle 2).
+        show(trip.copy(boarded = true, onBoardSeen = true), TripProgress.Riding(mildmay, "Hackney Central", 4, at(16), getOffSoon = false))
+        composeRule.onNodeWithText("Show stops").performClick()
+        composeRule.onNodeWithTag("onTheWayRideStopsUnavailable").assertExists()
+        composeRule.onAllNodesWithTag("onTheWayRideStop").assertCountEquals(0)
+    }
+
+    @Test
+    fun a_route_that_cant_be_read_says_why_and_isnt_asked_for_each_refresh() {
+        // Offline: the list says so, not "unavailable" as if the line had no route, and the moves the train makes
+        // while it's open don't ask TfL again; reopening it does (Codex, #968).
+        var asked = 0
+        val repository = app.stopdash.domain.RouteStopsRepository(
+            object : app.stopdash.domain.RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                    asked++
+                    throw app.stopdash.domain.TflException.Offline(null)
+                }
+            },
+            io = kotlinx.coroutines.Dispatchers.Unconfined,
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+        var progress by mutableStateOf<TripProgress>(TripProgress.Riding(mildmay, "Hackney Central", 4, at(16), getOffSoon = false))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalRouteStops provides repository, LocalWorker provides kotlinx.coroutines.Dispatchers.Unconfined) {
+                    OnTheWayScreen(trip.copy(boarded = true, onBoardSeen = true), progress, false, now, {}, {})
+                }
+            }
+        }
+        composeRule.onNodeWithText("Show stops").performClick()
+        composeRule.onNodeWithTag("onTheWayRideStopsFailed").assertTextEquals(string(app.stopdash.R.string.route_stops_failed_offline))
+        composeRule.onNodeWithTag("onTheWayRideStopsUnavailable").assertDoesNotExist()
+        val once = asked
+        assertTrue(once > 0)
+        progress = TripProgress.Riding(mildmay, "Hackney Wick", 3, at(16), getOffSoon = false)
+        composeRule.waitForIdle()
+        assertEquals(once, asked)
+        composeRule.onNodeWithText("Hide stops").performClick()
+        composeRule.onNodeWithText("Show stops").performClick()
+        composeRule.waitForIdle()
+        assertTrue(asked > once)
+    }
+
+    @Test
+    fun a_route_read_under_way_isnt_restarted_by_a_refresh() {
+        // A bus ride the Planner listed no stops for, so the list alone reads its route: still being read when the bus
+        // moves on, it carries on rather than being canceled and asked for again with each refresh (Codex, #968).
+        // Hub names, synthetic ids.
+        val bus = TripLeg("bus", "example", "73", "490EXAMPLE1", "Euston", "490EXAMPLE2", "King's Cross St. Pancras", at(4), at(20))
+        var asked = 0
+        val routeIn = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val repository = app.stopdash.domain.RouteStopsRepository(
+            object : app.stopdash.domain.RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                    asked++
+                    routeIn.await()
+                    throw app.stopdash.domain.TflException.NotFound(null)
+                }
+            },
+            io = kotlinx.coroutines.Dispatchers.Unconfined,
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+        var progress by mutableStateOf<TripProgress>(TripProgress.Riding(bus, "Euston Square", 4, at(16), getOffSoon = false))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalRouteStops provides repository, LocalWorker provides kotlinx.coroutines.Dispatchers.Unconfined) {
+                    OnTheWayScreen(
+                        ActiveTrip(TripRoute(listOf(bus)), "King's Cross St. Pancras", startedAt = now, vehicleId = "EXAMPLE", boarded = true, onBoardSeen = true),
+                        progress, false, now, {}, {},
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        assertEquals(0, asked)
+        composeRule.onNodeWithText("Show stops").performClick()
+        composeRule.waitForIdle()
+        val once = asked
+        assertTrue(once > 0)
+        progress = TripProgress.Riding(bus, "Warren Street", 3, at(16), getOffSoon = false)
+        composeRule.waitForIdle()
+        assertEquals(once, asked)
+        routeIn.complete(Unit)
+        composeRule.waitForIdle()
+        assertEquals(once, asked)
+        composeRule.onNodeWithTag("onTheWayRideStopsUnavailable").assertExists()
+    }
+
+    @Test
+    fun a_failed_route_isnt_asked_for_again_after_a_recreation() {
+        // Offline, the open list says so; a rotation recreates the screen with the list still open, and it says so
+        // again without asking TfL (Codex, #968). A bus ride, so the list alone reads its route. Hub names, synthetic ids.
+        val bus = TripLeg("bus", "example", "73", "490EXAMPLE1", "Euston", "490EXAMPLE2", "King's Cross St. Pancras", at(4), at(20))
+        var asked = 0
+        val repository = app.stopdash.domain.RouteStopsRepository(
+            object : app.stopdash.domain.RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                    asked++
+                    throw app.stopdash.domain.TflException.Offline(null)
+                }
+            },
+            io = kotlinx.coroutines.Dispatchers.Unconfined,
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+        val restoration = androidx.compose.ui.test.junit4.StateRestorationTester(composeRule)
+        restoration.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalRouteStops provides repository, LocalWorker provides kotlinx.coroutines.Dispatchers.Unconfined) {
+                    OnTheWayScreen(
+                        ActiveTrip(TripRoute(listOf(bus)), "King's Cross St. Pancras", startedAt = now, vehicleId = "EXAMPLE", boarded = true, onBoardSeen = true),
+                        TripProgress.Riding(bus, "Warren Street", 3, at(16), getOffSoon = false), false, now, {}, {},
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("Show stops").performClick()
+        composeRule.onNodeWithTag("onTheWayRideStopsFailed").assertExists()
+        val once = asked
+        assertTrue(once > 0)
+        restoration.emulateSavedInstanceStateRestore()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("onTheWayRideStopsFailed").assertExists()
+        assertEquals(once, asked)
+    }
+
+    @Test
+    fun a_route_read_under_way_outlives_a_recreation() {
+        // A rotation while the open list's route is still being read: the read carries on rather than starting again,
+        // and its answer reaches the recreated screen (Codex, #968). A bus ride, so the list alone reads its route.
+        // Hub names, synthetic ids.
+        val bus = TripLeg("bus", "example", "73", "490EXAMPLE1", "Euston", "490EXAMPLE2", "King's Cross St. Pancras", at(4), at(20))
+        var asked = 0
+        val routeIn = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val repository = app.stopdash.domain.RouteStopsRepository(
+            object : app.stopdash.domain.RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                    asked++
+                    routeIn.await()
+                    throw app.stopdash.domain.TflException.NotFound(null)
+                }
+            },
+            io = kotlinx.coroutines.Dispatchers.Unconfined,
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+        val restoration = androidx.compose.ui.test.junit4.StateRestorationTester(composeRule)
+        restoration.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalRouteStops provides repository, LocalWorker provides kotlinx.coroutines.Dispatchers.Unconfined) {
+                    OnTheWayScreen(
+                        ActiveTrip(TripRoute(listOf(bus)), "King's Cross St. Pancras", startedAt = now, vehicleId = "EXAMPLE", boarded = true, onBoardSeen = true),
+                        TripProgress.Riding(bus, "Warren Street", 3, at(16), getOffSoon = false), false, now, {}, {},
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("Show stops").performClick()
+        composeRule.waitForIdle()
+        val once = asked
+        assertTrue(once > 0)
+        restoration.emulateSavedInstanceStateRestore()
+        composeRule.waitForIdle()
+        assertEquals(once, asked)
+        routeIn.complete(Unit)
+        composeRule.waitForIdle()
+        assertEquals(once, asked)
+        composeRule.onNodeWithTag("onTheWayRideStopsUnavailable").assertExists()
+    }
+
+    @Test
+    fun a_restored_screen_opens_no_stops_for_a_ride_it_wasnt_open_for() {
+        // Open for the trip's first ride, then the screen is restored with the trip on its next ride: that ride's
+        // stops start closed, as any ride's do (Codex, #968).
+        // Read only by the restored content, so the state saved is the first ride's.
+        var movedOn = false
+        val restoration = androidx.compose.ui.test.junit4.StateRestorationTester(composeRule)
+        restoration.setContent {
+            StopDashTheme(dynamicColor = false) {
+                val onTrip = trip.copy(legIndex = if (movedOn) 2 else 0, boarded = true, onBoardSeen = true)
+                val progress = if (movedOn) {
+                    TripProgress.Riding(jubilee, "West Ham", 3, at(30), getOffSoon = false)
+                } else {
+                    TripProgress.Riding(mildmay, "Hackney Central", 4, at(16), getOffSoon = false)
+                }
+                OnTheWayScreen(onTrip, progress, false, now, {}, {})
+            }
+        }
+        composeRule.onNodeWithText("Show stops").performClick()
+        composeRule.onNodeWithText("Hide stops").assertExists()
+        movedOn = true
+        restoration.emulateSavedInstanceStateRestore()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Show stops").assertExists()
+        composeRule.onNodeWithText("Hide stops").assertDoesNotExist()
+    }
+
+    @Test
+    fun a_failed_route_isnt_asked_for_again_on_switching_back_to_its_line() {
+        // Offline, the bus followed switches to another line that runs the ride and back again: each line's route is
+        // asked for once while the list stays open (Codex, #968). Hub names, synthetic ids.
+        val bus = TripLeg("bus", "example", "73", "490EXAMPLE1", "Euston", "490EXAMPLE2", "King's Cross St. Pancras", at(4), at(20))
+        val other = bus.copy(lineId = "example-two", lineName = "390")
+        val asked = mutableMapOf<String, Int>()
+        val repository = app.stopdash.domain.RouteStopsRepository(
+            object : app.stopdash.domain.RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                    asked[lineId] = (asked[lineId] ?: 0) + 1
+                    throw app.stopdash.domain.TflException.Offline(null)
+                }
+            },
+            io = kotlinx.coroutines.Dispatchers.Unconfined,
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+        var on by mutableStateOf<TripLeg?>(null)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalRouteStops provides repository, LocalWorker provides kotlinx.coroutines.Dispatchers.Unconfined) {
+                    OnTheWayScreen(
+                        ActiveTrip(TripRoute(listOf(bus)), "King's Cross St. Pancras", startedAt = now, vehicleId = "EXAMPLE", boarded = true, onBoardSeen = true, vehicleLeg = on),
+                        TripProgress.Riding(bus, "Warren Street", 3, at(16), getOffSoon = false), false, now, {}, {},
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("Show stops").performClick()
+        composeRule.onNodeWithTag("onTheWayRideStopsFailed").assertExists()
+        on = other
+        composeRule.waitForIdle()
+        on = null
+        composeRule.waitForIdle()
+        val first = asked["example"]
+        on = other
+        composeRule.waitForIdle()
+        on = null
+        composeRule.waitForIdle()
+        assertEquals(first, asked["example"])
+        composeRule.onNodeWithTag("onTheWayRideStopsFailed").assertExists()
+    }
+
+    @Test
+    fun a_route_read_under_way_isnt_restarted_by_a_switch_of_line() {
+        // The bus followed switches to another line that runs the ride while the first line's route is still being
+        // read, then back: the first read carries on rather than being canceled and asked for again (Codex, #968).
+        // Hub names, synthetic ids.
+        val bus = TripLeg("bus", "example", "73", "490EXAMPLE1", "Euston", "490EXAMPLE2", "King's Cross St. Pancras", at(4), at(20))
+        val other = bus.copy(lineId = "example-two", lineName = "390")
+        val asked = mutableMapOf<String, Int>()
+        val routeIn = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val repository = app.stopdash.domain.RouteStopsRepository(
+            object : app.stopdash.domain.RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                    asked[lineId] = (asked[lineId] ?: 0) + 1
+                    routeIn.await()
+                    throw app.stopdash.domain.TflException.NotFound(null)
+                }
+            },
+            io = kotlinx.coroutines.Dispatchers.Unconfined,
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+        var on by mutableStateOf<TripLeg?>(null)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalRouteStops provides repository, LocalWorker provides kotlinx.coroutines.Dispatchers.Unconfined) {
+                    OnTheWayScreen(
+                        ActiveTrip(TripRoute(listOf(bus)), "King's Cross St. Pancras", startedAt = now, vehicleId = "EXAMPLE", boarded = true, onBoardSeen = true, vehicleLeg = on),
+                        TripProgress.Riding(bus, "Warren Street", 3, at(16), getOffSoon = false), false, now, {}, {},
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("Show stops").performClick()
+        composeRule.waitForIdle()
+        val first = checkNotNull(asked["example"])
+        on = other
+        composeRule.waitForIdle()
+        on = null
+        composeRule.waitForIdle()
+        assertEquals(first, asked["example"])
+        routeIn.complete(Unit)
+        composeRule.waitForIdle()
+        assertEquals(first, asked["example"])
+        composeRule.onNodeWithTag("onTheWayRideStopsUnavailable").assertExists()
+    }
+
+    @Test
+    fun a_failed_route_isnt_said_for_a_branch_that_didnt_need_it() {
+        // The route couldn't be read for the planned ride's unlisted stops; the train then turns out to take a branch
+        // whose stops are all named, so its list is complete and says nothing about the failed read (Codex, #968).
+        val repository = app.stopdash.domain.RouteStopsRepository(
+            object : app.stopdash.domain.RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence =
+                    throw app.stopdash.domain.TflException.Offline(null)
+            },
+            io = kotlinx.coroutines.Dispatchers.Unconfined,
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+        val named = mildmay.copy(
+            path = listOf("910GHACKNYW", "910GSTFD"),
+            pathNames = listOf("Hackney Wick", "Stratford"),
+        )
+        var on by mutableStateOf<TripLeg?>(null)
+        val progress = TripProgress.Riding(mildmay, "Hackney Wick", 2, at(16), getOffSoon = false)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalRouteStops provides repository, LocalWorker provides kotlinx.coroutines.Dispatchers.Unconfined) {
+                    OnTheWayScreen(trip.copy(boarded = true, onBoardSeen = true, vehicleLeg = on), progress, false, now, {}, {})
+                }
+            }
+        }
+        composeRule.onNodeWithText("Show stops").performClick()
+        composeRule.onNodeWithTag("onTheWayRideStopsFailed").assertExists()
+        on = named
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("onTheWayRideStop").assertCountEquals(3)
+        composeRule.onNodeWithTag("onTheWayRideStopsFailed").assertDoesNotExist()
+    }
+
+    @Test
+    fun a_train_gone_without_the_rider_seen_on_it_leaves_them_at_the_boarding_stop() {
+        // The train left (boarded) but nothing saw the rider on it: its lost-train position isn't theirs (Codex, #968).
+        val worker = HeldWorker()
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalWorker provides worker.dispatcher) {
+                    OnTheWayScreen(victoriaTrip.copy(boarded = true, onBoardSeen = false), TripProgress.Lost(victoria, ahead = 3, placed = true), false, now, {}, {})
+                }
+            }
+        }
+        composeRule.onNodeWithText("Show stops").performClick()
+        yourStop("Victoria").assertExists()
+    }
+
+    @Test
+    fun the_marked_stop_goes_at_once_when_the_answer_goes_stale() {
+        // The answer ages out while the list's next run waits on the worker: the held list drops the stop TfL's calls
+        // placed the rider at in that same frame, never showing it as current (Codex, #968).
+        val worker = HeldWorker()
+        var current by mutableStateOf(true)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalWorker provides worker.dispatcher) {
+                    OnTheWayScreen(
+                        victoriaTrip.copy(boarded = true, onBoardSeen = true), TripProgress.Riding(victoria, "Warren Street", 3, at(10), getOffSoon = false),
+                        false, now, {}, {}, current = current,
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("Show stops").performClick()
+        yourStop("Oxford Circus").assertExists()
+        worker.hold()
+        current = false
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("onTheWayRideStop").assertCountEquals(6)
+        yourStop("Oxford Circus").assertDoesNotExist()
+        worker.release()
+    }
+
+    @Test
+    fun the_marked_stop_goes_at_once_when_the_train_is_lost() {
+        // A fresh answer can't place the train while the list's next run waits on the worker: the held list drops its
+        // marked stop in that same frame, never showing the last one as current (Codex, #968).
+        val worker = HeldWorker()
+        var progress by mutableStateOf<TripProgress>(TripProgress.Riding(victoria, "Warren Street", 3, at(10), getOffSoon = false))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalWorker provides worker.dispatcher) {
+                    OnTheWayScreen(victoriaTrip.copy(boarded = true, onBoardSeen = true), progress, false, now, {}, {})
+                }
+            }
+        }
+        composeRule.onNodeWithText("Show stops").performClick()
+        yourStop("Oxford Circus").assertExists()
+        worker.hold()
+        progress = TripProgress.Lost(victoria, ahead = 2, placed = false)
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("onTheWayRideStop").assertCountEquals(6)
+        yourStop("Oxford Circus").assertDoesNotExist()
+        worker.release()
+    }
+
+    @Test
+    fun another_trip_at_the_same_leg_starts_with_its_stops_closed() {
+        // The rider replaces the trip: the new one's ride is closed by default, not left open from the last (Codex, #968).
+        val worker = HeldWorker()
+        var shown by mutableStateOf(victoriaTrip)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalWorker provides worker.dispatcher) {
+                    OnTheWayScreen(shown, TripProgress.Waiting(victoria, at(4)), false, now, {}, {})
+                }
+            }
+        }
+        composeRule.onNodeWithText("Show stops").performClick()
+        composeRule.onAllNodesWithTag("onTheWayRideStop").assertCountEquals(6)
+        shown = victoriaTrip.copy(startedAt = at(1))
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("onTheWayRideStop").assertCountEquals(0)
+        composeRule.onNodeWithText("Show stops").assertExists()
+    }
+
+    @Test
+    fun show_stops_marks_the_boarding_stop_while_waiting() {
+        showOnVictoria(TripProgress.Waiting(victoria, at(4)), boarded = false)
+        composeRule.onNodeWithText("Show stops").performClick()
+        yourStop("Victoria").assertExists()
+    }
+
+    @Test
+    fun show_stops_is_under_the_ride_being_walked_to_and_no_later_one() {
+        // Walking to the Victoria line: its stops, the boarding stop the rider's (Codex, #968); the ride after
+        // the change at King's Cross isn't at hand yet.
+        val toVictoria = TripLeg(TripLeg.WALKING, "", "", "", "", "940GZZLUVIC", "Victoria", now, at(4))
+        val change = TripLeg(TripLeg.WALKING, "", "", "940GZZLUKSX", "King's Cross St. Pancras", "910GKGX", "King's Cross", at(16), at(22))
+        val onward = TripLeg(
+            "tube", "northern", "Northern", "940GZZLUKSX", "King's Cross St. Pancras", "940GZZLUCTN", "Camden Town", at(24), at(30),
+            path = listOf("940GZZLUEUS", "940GZZLUMTC", "940GZZLUCTN"), pathNames = listOf("Euston", "Mornington Crescent", "Camden Town"),
+        )
+        show(
+            ActiveTrip(TripRoute(listOf(toVictoria, victoria, change, onward)), "Camden Town", startedAt = now),
+            TripProgress.Walking(toVictoria, at(4)),
+        )
+        composeRule.onAllNodesWithText("Show stops").assertCountEquals(1)
+        composeRule.onNodeWithText("Show stops").performClick()
+        yourStop("Victoria").assertExists()
+        composeRule.onNode(hasText("Mornington Crescent")).assertDoesNotExist()
+    }
+
+    @Test
+    fun show_stops_lists_the_line_the_rider_is_followed_on() {
+        // Planned on the Jubilee, followed on a Metropolitan train, which runs Baker Street to Finchley Road
+        // without calling between: its stops, not the plan's (Codex, #968).
+        val jubileeRide = TripLeg(
+            "tube", "jubilee", "Jubilee", "940GZZLUBST", "Baker Street", "940GZZLUFYR", "Finchley Road", at(4), at(12),
+            path = listOf("940GZZLUSJW", "940GZZLUSWC", "940GZZLUFYR"), pathNames = listOf("St. John's Wood", "Swiss Cottage", "Finchley Road"),
+        )
+        val metropolitan = jubileeRide.copy(lineId = "metropolitan", lineName = "Metropolitan", path = listOf("940GZZLUFYR"), pathNames = listOf("Finchley Road"))
+        val worker = HeldWorker()
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalWorker provides worker.dispatcher) {
+                    OnTheWayScreen(
+                        ActiveTrip(TripRoute(listOf(jubileeRide)), "Finchley Road", startedAt = now, vehicleId = "EXAMPLE", vehicleLeg = metropolitan, boarded = true, onBoardSeen = true),
+                        TripProgress.Riding(jubileeRide, "Finchley Road", 1, at(12), getOffSoon = false), false, now, {}, {},
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("Show stops").performClick()
+        yourStop("Baker Street").assertExists()
+        composeRule.onNode(hasText("Swiss Cottage") and androidx.compose.ui.test.hasAnyAncestor(hasTestTag("onTheWayRideStop"))).assertDoesNotExist()
+    }
+
     @Test
     fun on_the_way_train_gone_but_rider_not_seen_on_it_still_says_take_it() {
         // The train followed has left, but no fix or word says the rider is on it: underground at the
