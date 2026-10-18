@@ -969,7 +969,9 @@ common whole words to a compact form (`East`→`E.`, `Street`→`St`, `Lane`→`
 `DestinationAbbreviations`; each part of a slash-separated name alike, so "Shepherd's Bush
 Market/Wood Lane" keeps both places, and below the floor each place elides on its own rather than all but
 the first behind one trailing `…`), then, for a name no word maps, drops to its **floor** — the first word
-in full with each later word an initial (`Battersea Power`→`Battersea P.`) — and only below the
+in full with each later word an initial (`Battersea Power`→`Battersea P.`), unless the last word is a place
+a compass or "High" qualifies elsewhere (Barnet, Harrow), which keeps the identity while the words before it
+take initials (`Sudbury Hill Harrow`→`S. H. Harrow`) — and only below the
 floor does it **elide with a single `…`** — never a mid-glyph cut, and the **terminus yields before
 the branch**. **Both sides are abbreviated before either is cut** (maintainer, 2026-09-25): the
 full branch is kept while the terminus, in full or abbreviated, fits beside it; otherwise the branch

@@ -59,6 +59,21 @@ object DestinationAbbreviations {
     )
 
     /**
+     * Places that carry a name's identity when they end it: each is the last word of a bundled
+     * station named `<qualifier> <place>` with a [forms] qualifier (`High Barnet`, `North Acton`,
+     * `East Croydon`), so an un-mapped word before it is the throwaway part (maintainer,
+     * 2026-10-18). A generic word (`Quay`, `Town`) is left out, so `Kentish Town` floors as before.
+     */
+    private val placeStems = setOf(
+        "Acton", "Barnet", "Bentley", "Bermondsey", "Brompton", "Brooms", "Byfleet", "Chesterford",
+        "Croydon", "Drayton", "Dulwich", "Ealing", "Fambridge", "Farleigh", "Finchley", "Greenford",
+        "Greenwich", "Grinstead", "Halliford", "Ham", "Hampstead", "Harrow", "Holloway", "Horndon",
+        "India", "Kensington", "Kenton", "Malling", "Merton", "Missenden", "Norwood", "Putney",
+        "Ruislip", "Sheen", "Silvertown", "Sutton", "Sydenham", "Tilbury", "Tottenham", "Warlingham",
+        "Wembley", "Wickham", "Wimbledon", "Woodford", "Worthing", "Wycombe",
+    )
+
+    /**
      * The forms every shortened name steps through, longest first: in full, then [abbreviate], then
      * [floor], and only below that an elision. One list for every place a name shortens — a
      * departure's destination, a trip's banner, a favorite ride's heading — so each shortens alike
@@ -81,7 +96,10 @@ object DestinationAbbreviations {
      *
      * When [abbreviate] already shortens a word it is the floor (`North Finchley` → `N. Finchley`,
      * `High Barnet` → `H. Barnet`) — the mapped word is the throwaway one, so this keeps the
-     * identity ("Finchley", "Barnet"). Only when nothing maps does it fall to **first word in full,
+     * identity ("Finchley", "Barnet"). When nothing maps but the **last word is a place a compass or
+     * "High" qualifies elsewhere** ([placeStems]: `High Barnet`, `West Harrow`), that last word is the
+     * identity and each earlier word takes its initial (`Sudbury Hill Harrow` → `S. H. Harrow`,
+     * `New Barnet` → `N. Barnet`). Otherwise it falls to **first word in full,
      * each later word an initial** (`Battersea Power` → `Battersea P.`), where the first word carries
      * the identity. A non-letter token (`&`, a number) is left whole so `Elephant & Castle` reads
      * `Elephant & C.`, not `Elephant &. C.`. A one-word or blank name is returned unchanged. Each
@@ -94,12 +112,20 @@ object DestinationAbbreviations {
         when {
             abbreviated != part -> abbreviated
             words.size <= 1 -> part
+            words.last() in placeStems -> stemFloor(words)
             else -> words.first() + " " + words.drop(1).joinToString(" ") { word ->
                 val first = word.first()
                 if (first.isLetter()) "${first.uppercaseChar()}." else word
             }
         }
     }
+
+    /** [words] with each word before the last an initial, non-letter tokens kept whole. */
+    private fun stemFloor(words: List<String>): String =
+        (words.dropLast(1).map { word ->
+            val first = word.first()
+            if (!first.isLetter()) word else "${first.uppercaseChar()}."
+        } + words.last()).joinToString(" ")
 
     /** [name] with [shorten] applied to each slash-separated part, the slashes and their spacing kept. */
     private fun eachPart(name: String, shorten: (String) -> String): String =
