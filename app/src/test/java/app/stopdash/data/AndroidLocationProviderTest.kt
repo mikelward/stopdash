@@ -11,6 +11,7 @@ import androidx.test.core.app.ApplicationProvider
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
+import app.stopdash.domain.FavoriteShortcuts
 import app.stopdash.domain.FixSelection
 import app.stopdash.domain.LocationFix
 import app.stopdash.domain.RecognizedPlace
@@ -245,6 +246,106 @@ class AndroidLocationProviderTest {
         assertEquals(0, wifi.asked)
         assertEquals(listOf(51.7), wifi.observed.map { it.coordinates.latitude })
         assertEquals(5f, checkNotNull(wifi.observed.single().accuracyMeters), 0f)
+    }
+
+    // A fresh GPS fix as GPS gives one indoors: answering, but vaguely.
+    private fun vagueGps(latitude: Double, accuracy: Float = 113f) = gps(latitude).apply { this.accuracy = accuracy }
+
+    @Test
+    fun `on a saved place's Wi-Fi, a vague GPS fix is rough and gives way to the place, with no banner`() = runTest {
+        shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+        shadowOf(manager).setProviderEnabled(LocationManager.GPS_PROVIDER, true)
+        shadowOf(manager).simulateLocation(vagueGps(51.501))
+        val wifi = FakeWifiPlaces(home)
+        val fix = checkNotNull(locate(AndroidLocationProvider(app, remembers = false, wifiPlaces = wifi)))
+        assertEquals(home.coordinate, fix.coordinates)
+        assertEquals(false, fix.isCoarse)
+        // As sure as the near-me chips need to leave Home out.
+        assertEquals(WifiPlaces.RECOGNIZED_ACCURACY_METERS, checkNotNull(fix.accuracyMeters), 0f)
+        assertTrue(FavoriteShortcuts.isAccurate(fix.accuracyMeters))
+        // Asked near the vague fix, so a place's network can be matched too.
+        assertEquals(listOf(51.501), wifi.near.map { it?.latitude })
+    }
+
+    @Test
+    fun `a vague GPS fix isn't remembered as a precise one`() = runTest {
+        AndroidLocationProvider.preciseMemory.forget()
+        shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+        shadowOf(manager).setProviderEnabled(LocationManager.GPS_PROVIDER, true)
+        shadowOf(manager).simulateLocation(vagueGps(51.501))
+        checkNotNull(locate(AndroidLocationProvider(app, wifiPlaces = FakeWifiPlaces(home))))
+        assertNull(AndroidLocationProvider.rememberedPreciseFix(app))
+        assertNull(recalledNear(51.501))
+    }
+
+    @Test
+    fun `a vague precise follow-up isn't remembered either`() = runTest {
+        AndroidLocationProvider.preciseMemory.forget()
+        shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+        shadowOf(manager).setProviderEnabled(LocationManager.GPS_PROVIDER, true)
+        shadowOf(manager).simulateLocation(vagueGps(51.501))
+        val got = async { AndroidLocationProvider(app).preciseFix() }
+        runCurrent()
+        shadowOf(Looper.getMainLooper()).idle()
+        runCurrent()
+        assertEquals(51.501, checkNotNull(got.getCompleted()).coordinates.latitude, 0.0)
+        assertNull(AndroidLocationProvider.rememberedPreciseFix(app))
+    }
+
+    @Test
+    fun `a young remembered precise fix comes before the Wi-Fi on a vague GPS fix`() = runTest {
+        AndroidLocationProvider.preciseMemory.forget()
+        shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+        shadowOf(manager).setProviderEnabled(LocationManager.GPS_PROVIDER, true)
+        shadowOf(manager).simulateLocation(gps(51.52))
+        AndroidLocationProvider(app).current(forceFresh = false)
+        // Moments later, a vague GPS fix whose circle holds it, on a network learned at home.
+        shadowOf(manager).simulateLocation(vagueGps(51.5205))
+        val wifi = FakeWifiPlaces(home)
+        val fix = checkNotNull(locate(AndroidLocationProvider(app, wifiPlaces = wifi)))
+        assertEquals(51.52, fix.coordinates.latitude, 0.0)
+        assertEquals(false, fix.isCoarse)
+        assertEquals(0, wifi.asked)
+        AndroidLocationProvider.preciseMemory.forget()
+    }
+
+    @Test
+    fun `a recent cached vague GPS fix lets an access point place the rider, but never a network`() = runTest {
+        shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+        shadowOf(manager).setProviderEnabled(LocationManager.GPS_PROVIDER, true)
+        shadowOf(manager).simulateLocation(vagueGps(51.501))
+        val wifi = FakeWifiPlaces(home)
+        // Not forced fresh: the recent last-known fix is taken as it is.
+        val fix = checkNotNull(AndroidLocationProvider(app, remembers = false, wifiPlaces = wifi).current(forceFresh = false))
+        assertEquals(home.coordinate, fix.coordinates)
+        // Where the rider was, so it isn't the rough fix a network is placed near.
+        assertEquals(listOf<Coordinates?>(null), wifi.near)
+    }
+
+    @Test
+    fun `off a saved place's Wi-Fi, a vague GPS fix is rough, as a network one is`() = runTest {
+        shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+        shadowOf(manager).setProviderEnabled(LocationManager.GPS_PROVIDER, true)
+        shadowOf(manager).simulateLocation(vagueGps(51.501))
+        val wifi = FakeWifiPlaces(null)
+        val fix = checkNotNull(locate(AndroidLocationProvider(app, remembers = false, wifiPlaces = wifi)))
+        assertEquals(51.501, fix.coordinates.latitude, 0.0)
+        // Shown as approximate, and asked again for a precise one.
+        assertEquals(true, fix.isCoarse)
+        assertEquals(113f, checkNotNull(fix.accuracyMeters), 0f)
+        assertEquals(1, wifi.asked)
+    }
+
+    @Test
+    fun `a GPS fix as sure as the Wi-Fi isn't second-guessed by it`() = runTest {
+        shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+        shadowOf(manager).setProviderEnabled(LocationManager.GPS_PROVIDER, true)
+        shadowOf(manager).simulateLocation(vagueGps(51.7, accuracy = WifiPlaces.RECOGNIZED_ACCURACY_METERS))
+        val wifi = FakeWifiPlaces(home)
+        val fix = checkNotNull(AndroidLocationProvider(app, remembers = false, wifiPlaces = wifi).current(forceFresh = false))
+        assertEquals(51.7, fix.coordinates.latitude, 0.0)
+        assertEquals(false, fix.isCoarse)
+        assertEquals(0, wifi.asked)
     }
 
     @Test

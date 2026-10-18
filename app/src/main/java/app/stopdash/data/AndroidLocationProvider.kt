@@ -19,6 +19,7 @@ import app.stopdash.domain.LocationProvider
 import app.stopdash.domain.PreciseFixMemory
 import app.stopdash.domain.WifiMatch
 import app.stopdash.domain.WifiPlaceSource
+import app.stopdash.domain.WifiPlaces
 import app.stopdash.domain.raceFix
 import java.time.Duration
 import kotlin.coroutines.resume
@@ -120,15 +121,19 @@ class AndroidLocationProvider(
         )
         if (coordinates != null) logFix(fresh, cached, fromFallback)
         // Coarse: the fix used is a fresh one from network/passive while precise location is
-        // granted, i.e. GPS/fused missed the grace. The caller shows it as approximate and asks
-        // [precise] for a better one (SPEC *Finding stops*). Under a coarse-only grant a network
-        // fix is as good as it gets, so it is not flagged.
+        // granted, i.e. GPS/fused missed the grace, or a GPS/fused one too vague to stand on (below).
+        // The caller shows it as approximate and asks [precise] for a better one (SPEC *Finding
+        // stops*). Under a coarse-only grant a network fix is as good as it gets, so it is not flagged.
         val usedFresh = fresh
-        val isCoarse = !fromFallback && usedFresh != null && hasFineLocationPermission() &&
-            !isAccurateProvider(usedFresh.provider)
         // A precise fix used here — fresh, recent-cached or fallback — is remembered as of when it
         // was taken, so a coarse fix in the next few minutes can defer to it.
         val used = if (!fromFallback && usedFresh != null) usedFresh else cached?.located
+        // A GPS or fused fix vaguer than a recognized place's own claim (or saying nothing of it) is
+        // rough, as a network one is: indoors GPS can answer 100 m out, and taken as precise it beat
+        // home's Wi-Fi (maintainer bug report, 2026-10-18; maintainer, 2026-10-18: treat it as rough).
+        val vague = !fromFallback && used != null && hasFineLocationPermission() && isVague(used)
+        val isCoarse = vague || !fromFallback && usedFresh != null && hasFineLocationPermission() &&
+            !isAccurateProvider(usedFresh.provider)
         if (remembers && coordinates != null && used != null && isAccurateProvider(used.provider)) {
             remember(used)
             // An old fallback re-remembered at its own (expired) timestamp is dropped again.
@@ -140,17 +145,17 @@ class AndroidLocationProvider(
         if (coordinates != null && used != null && !fromFallback && isAccurateProvider(used.provider)) observe(used.toFix())
         // A remembered precise fix that is still only a guess: the saved place's Wi-Fi beats it.
         var recalledGuess: LocationFix? = null
-        if (remembers && coordinates != null && isCoarse && usedFresh != null) {
+        if (remembers && coordinates != null && isCoarse && used != null) {
             // The rider hasn't left the coarse fix's circle since the last precise fix: use that.
             val considered = preciseMemory.consider(
-                usedFresh.coordinates,
-                usedFresh.accuracyMeters,
+                used.coordinates,
+                used.accuracyMeters,
                 SystemClock.elapsedRealtime(),
             )
             // Logged used or not, with how far apart the two fixes are: far outside the circle is
             // what a network fix placing the rider at the wrong station looks like.
             if (considered != null) {
-                warn(FixDiagnostics.describeRemembered(considered, usedFresh.accuracyMeters))
+                warn(FixDiagnostics.describeRemembered(considered, used.accuracyMeters))
                 // Only when used: a rejected one isn't where the app placed the rider, and it was
                 // recorded when it was taken, so re-recording it would only restart its 15 minutes.
                 if (considered.used) {
@@ -170,10 +175,10 @@ class AndroidLocationProvider(
         }
         // No precise fix to stand on (a rough one, a last-known one, or none): at a saved place whose
         // Wi-Fi the phone is on, that place is where the rider is, with no banner and no wait for GPS.
-        // Only a rough fix taken now places a network: a last-known one is where the rider was, and on the
-        // same network at another site it would put them back where they'd left (Codex). Without one, only
-        // an access point the place learned can say.
-        val near = coordinates.takeIf { isCoarse }
+        // Only a rough fix taken now places a network: a last-known one, or a vague one cached, is where
+        // the rider was, and on the same network at another site it would put them back where they'd
+        // left (Codex). Without one, only an access point the place learned can say.
+        val near = coordinates.takeIf { isCoarse && used === usedFresh }
         if (coordinates == null || isCoarse || fromFallback) recognizedPlace(near)?.let { return it }
         recalledGuess?.let { return it }
         return coordinates?.let { LocationFix(it, isFallback = fromFallback, isCoarse = isCoarse, accuracyMeters = used?.accuracyMeters) }
@@ -208,13 +213,22 @@ class AndroidLocationProvider(
     // A fix taken here, for the saved places' Wi-Fi to learn from in the background.
     private fun observe(fix: LocationFix) = wifiPlaces.observe(fix)
 
-    private fun remember(fix: Located) =
+    // A GPS or fused fix vaguer than a recognized saved place's own claim, or saying nothing of it.
+    private fun isVague(fix: Located): Boolean =
+        isAccurateProvider(fix.provider) && (fix.accuracyMeters ?: Float.MAX_VALUE) > WifiPlaces.RECOGNIZED_ACCURACY_METERS
+
+    // Every path that remembers a precise fix comes through here, so a vague one, which is rough, is
+    // never kept, the precise follow-up's included: a later rough fix would recall it ahead of the
+    // Wi-Fi (Codex).
+    private fun remember(fix: Located) {
+        if (isVague(fix)) return
         preciseMemory.remember(
             fix.coordinates,
             fix.elapsedRealtimeNanos / 1_000_000,
             provider = fix.provider,
             accuracyMeters = fix.accuracyMeters,
         )
+    }
 
     // Every location taken expires the remembered precise fix first, whatever path it takes after
     // (a fallback, a coarse fix, no fix at all), so docs/PRIVACY.md's "deleted the next time the

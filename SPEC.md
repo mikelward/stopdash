@@ -135,7 +135,10 @@ The app finds stops two ways:
 
   A **coarse fresh fix** — a network one, used because GPS didn't answer within the short grace —
   can be hundreds of meters out, so the stops nearest the rider can be missing (maintainer bug
-  report, 2026-09-25). Two things keep that from standing (maintainer, 2026-09-25):
+  report, 2026-09-25). A GPS or fused fix reporting **worse than 100 m** (or no accuracy) is rough
+  too and is handled exactly the same way, banner and GPS check included, and never remembered as
+  precise: indoors GPS answering 113 m out had been taken as precise and beaten home's Wi-Fi,
+  leaving the Home chip showing at home (maintainer bug report and decision, 2026-10-18). Two things keep that from standing (maintainer, 2026-09-25):
   - **The last precise fix is remembered for 10 minutes**, in memory only. A coarse fix whose own
     accuracy circle still contains it — the rider may well not have moved — defers to it, and the
     list is built from the precise fix. A precise fix **no older than two minutes** — the age at
