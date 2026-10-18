@@ -8,8 +8,21 @@ import app.stopdash.BuildConfig
  * key still goes straight to National Rail, as before the proxy.
  */
 object StopdashProxy {
+    private val built: String? = BuildConfig.PROXY_URL.trim().trimEnd('/').ifEmpty { null }
+
     /** The proxy's address, from `stopdash.proxyUrl`; null in a build with none. */
-    val url: String? = BuildConfig.PROXY_URL.trim().trimEnd('/').ifEmpty { null }
+    @Volatile
+    var url: String? = built
+        private set
+
+    /** Lets a test stand for a build with no proxy, or with one; [resetForTest] restores the build's. */
+    internal fun setForTest(url: String?) {
+        this.url = url
+    }
+
+    internal fun resetForTest() {
+        url = built
+    }
 
     /** Whether National Rail times can be had with [key] (the rider's own, or none): with it, or through the proxy. */
     fun timesWith(key: String?, proxy: String? = url): Boolean = !key.isNullOrBlank() || proxy != null

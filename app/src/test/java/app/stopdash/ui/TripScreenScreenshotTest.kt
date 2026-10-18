@@ -71,6 +71,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
+import app.stopdash.data.StopdashProxy
 import app.stopdash.data.TflRouteSequenceDto
 import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.Departure
@@ -3251,8 +3252,38 @@ class TripScreenScreenshotTest {
 
     @Test
     fun a_route_with_a_national_rail_train_says_following_it_needs_a_key() {
-        // The same route, its first train a National Rail one, with no National Rail key set: its train is
-        // followed from National Rail's boards, which need one.
+        // The same route, its first train a National Rail one, with no National Rail key set and a build with
+        // no proxy: its train is followed from National Rail's boards, which then need one.
+        StopdashProxy.setForTest(null)
+        try {
+            showRailRoute()
+            // Worked out off the main thread ([rememberStartCheck]): Start holds its place until then.
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodesWithText("National Rail key needed").fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithText("Start").assertDoesNotExist()
+            composeRule.onNodeWithText("National Rail key needed").assertIsDisplayed()
+        } finally {
+            StopdashProxy.resetForTest()
+        }
+    }
+
+    @Test
+    fun a_route_with_a_national_rail_train_can_start_through_the_proxy() {
+        // The same route and still no key, but a build with stopdash's proxy: its boards come through it.
+        StopdashProxy.setForTest("https://proxy.example.com")
+        try {
+            showRailRoute()
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodesWithText("Start").fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithText("National Rail key needed").assertDoesNotExist()
+        } finally {
+            StopdashProxy.resetForTest()
+        }
+    }
+
+    private fun showRailRoute() {
         val byRail = TripRoute(listOf(viaCanadaWater.legs[0].copy(mode = "national-rail"), viaCanadaWater.legs[1]))
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -3264,12 +3295,6 @@ class TripScreenScreenshotTest {
             }
         }
         composeRule.onNodeWithText("27 min · 08:29").performClick()
-        // Worked out off the main thread ([rememberStartCheck]): Start holds its place until then.
-        composeRule.waitUntil(timeoutMillis = 5_000) {
-            composeRule.onAllNodesWithText("National Rail key needed").fetchSemanticsNodes().isNotEmpty()
-        }
-        composeRule.onNodeWithText("Start").assertDoesNotExist()
-        composeRule.onNodeWithText("National Rail key needed").assertIsDisplayed()
     }
 
     @Test
