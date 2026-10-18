@@ -18,7 +18,7 @@ crons = ["*/2 * * * *"]
 
 [[kv_namespaces]]
 binding = "PROXY"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "a8125611950448f491a70fec5f92582d"
 
 # Cold board requests only (those reaching National Rail): per caller, under a key the IP can't be
 # recovered from (src/index.js callerKey), and the proxy's own budget across every caller, set under

@@ -23,8 +23,8 @@ No dependencies. `npm test` runs the tests with Node alone.
 
 From this directory, signed in with `npx wrangler@4 login`:
 
-1. **Storage:** `npx wrangler@4 kv namespace create PROXY`, and put the `id` it prints in
-   `wrangler.toml`.
+1. **Storage:** done once already; its `id` is in `wrangler.toml`. A new account would run
+   `npx wrangler@4 kv namespace create PROXY` and put the `id` it prints there.
 2. **Address:** `proxy.stopdash.app`, already in `wrangler.toml`'s `routes` (`stopdash.app`'s DNS
    must be on this Cloudflare account). Cloudflare creates its DNS record and certificate on deploy.
 3. **Keys:** `npx wrangler@4 secret put DISRUPTIONS_API_KEY`, pasting the NationalRail Disruptions
