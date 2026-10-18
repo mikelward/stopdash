@@ -2088,6 +2088,7 @@ class MainActivity : ComponentActivity() {
                                                 // The same bundled index From…/To… search uses, so the
                                                 // picker matches identically (SPEC *Finding stops*).
                                                 loadIndex = { StationIndexStore.load(applicationContext) },
+                                                currentHubs = HubsStore::current,
                                                 // London's bus stops, bundled, found on the device as the stations are.
                                                 loadBusStops = { BusStopIndexStore.load(applicationContext) },
                                                 // The bundled London places, streets and postcodes, to save
@@ -2381,6 +2382,7 @@ class MainActivity : ComponentActivity() {
                                                 StationSearchViewModel(
                                                     createSavedStateHandle(),
                                                     loadIndex = { StationIndexStore.load(appContext) },
+                                                    currentHubs = HubsStore::current,
                                                     // London's bus stops, bundled, found on the device as the stations are.
                                                     loadBusStops = { BusStopIndexStore.load(appContext) },
                                                     loadYours = { loadYourStops(appContext, recents) },
@@ -4339,6 +4341,7 @@ class MainActivity : ComponentActivity() {
                     StationSearchViewModel(
                         createSavedStateHandle(),
                         loadIndex = { StationIndexStore.load(appContext) },
+                        currentHubs = HubsStore::current,
                         loadBusStops = { BusStopIndexStore.load(appContext) },
                         loadYours = { loadYourStops(appContext, recents) },
                         searchPlaces = false,
@@ -4456,6 +4459,7 @@ class MainActivity : ComponentActivity() {
                     createSavedStateHandle(),
                     // The bundled index, read off the main thread on the search's first query.
                     loadIndex = { StationIndexStore.load(appContext) },
+                    currentHubs = HubsStore::current,
                     // London's bus stops, bundled, found on the device as the stations are.
                     loadBusStops = { BusStopIndexStore.load(appContext) },
                     // The user's own stops, from the device: listed before typing, matched as they type.
@@ -5127,6 +5131,7 @@ class MainActivity : ComponentActivity() {
                     StationSearchViewModel(
                         createSavedStateHandle(),
                         loadIndex = { StationIndexStore.load(appContext) },
+                        currentHubs = HubsStore::current,
                         // London's bus stops, bundled, found on the device as the stations are.
                         loadBusStops = { BusStopIndexStore.load(appContext) },
                         loadYours = { loadYourStops(appContext, recents) },

@@ -1,5 +1,7 @@
 package app.stopdash.ui
 
+import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.CoroutineDispatcher
 import androidx.lifecycle.SavedStateHandle
 import app.stopdash.domain.BusStopIndex
 import app.stopdash.domain.ChipLabel
@@ -127,6 +129,29 @@ class FavoritePlacesViewModelTest {
         assertEquals(listOf(oxford, StationMatch("4900A", "Oxford Lane", listOf("bus"), 51.5, -0.12, level = Pick.Level.STOP)), editor.results)
         assertFalse(editor.searching)
         assertEquals(emptyList<String>(), finder.queries)
+    }
+
+    @Test
+    fun `a stop search attaches the station model on io, never the main thread`() = runTest {
+        // [io] marks the work it runs; the model is read, and the index rebuilt with it, only there.
+        val onIo = ThreadLocal.withInitial { false }
+        val inner = StandardTestDispatcher(testScheduler)
+        val io = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) =
+                inner.dispatch(context, Runnable { onIo.set(true); try { block.run() } finally { onIo.set(false) } })
+        }
+        val reads = mutableListOf<Boolean>()
+        val model = FavoritePlacesViewModel(
+            FakeStore(), FakeFinder(), io = io, compute = dispatcher, loadIndex = { stations },
+            currentHubs = { reads += onIo.get(); null }, debounceMillis = 300, newId = { "id-1" },
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        model.onQueryChange("oxf")
+        advanceUntilIdle()
+        assertEquals(listOf(oxford), model.state.value.editor!!.results.filter { it.id == oxford.id })
+        assertTrue("the model was read", reads.isNotEmpty())
+        assertEquals("only ever on io", setOf(true), reads.toSet())
     }
 
     @Test

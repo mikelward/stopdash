@@ -402,9 +402,9 @@ The app finds stops two ways:
   2026-10-15). "Archway" is listed once, not once per stand, and its page takes in the stops around it.
   A station never folds into a bus stop's row of another name, which would read as the station while
   opening the stop, and two bus stops named apart stay two rows, each picked for itself. A
-  station TfL lists under **two ids with no interchange** to stand for both (Weybridge; Reading,
-  whose second record has only some of its modes) is one search row, with both's modes, found and
-  ranked by either id's code, and opens both: its page asks for each id's stops, and fails with a retry if either lookup does rather than
+  station TfL lists under **several ids** (one station in the station model, `dev-docs/station-model.md`:
+  Weybridge; Reading, whose second record has only some of its modes) is one search row, with every
+  record's modes, found and ranked by any record's code, and opens them all: its page asks for each id's stops, and fails with a retry if either lookup does rather than
   showing half the station as if it were whole. A **station's page asks for every record the station
   model holds for it** (`dev-docs/station-model.md`), the ones its name doesn't share too: St Pancras's
   page takes in its Thameslink low level as well as its main and domestic records. Without the model,

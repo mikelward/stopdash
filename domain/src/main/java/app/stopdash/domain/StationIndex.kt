@@ -46,7 +46,7 @@ class StationIndex(
     // this order, and so does the interchange it folds into, so a stop picked lately ranks above an
     // equally good one picked before it, and both above a stranger. An interchange's station name
     // leads as itself, apart from the interchange's own row.
-    own: List<String> = emptyList(),
+    private val own: List<String> = emptyList(),
     // Each line's name as TfL spells it ("Hammersmith & City"), by id, for a line the index carries
     // by id alone. Empty in an older index.
     val lineNames: Map<String, String> = emptyMap(),
@@ -56,6 +56,9 @@ class StationIndex(
     // Entries the file held that couldn't be read (no id or name) and were left out, so the station
     // model ([Hubs]) can refuse an index it can't vouch for whole.
     val skippedEntries: Int = 0,
+    // The station model ([Hubs]) once loaded, which decides which records are one station ([withModel]);
+    // null while it loads or where it's unavailable.
+    private val model: Hubs? = null,
 ) {
     /**
      * The stations matching [query], best first ([rank]), at most [limit]. A station whose
@@ -100,10 +103,11 @@ class StationIndex(
     }
 
     /**
-     * [ranked] with a station TfL lists under two ids ([sameStation]: Reading's two records at one spot) as
-     * one row, at the better-ranked one's place, under the user's own twin or else the one with the most
-     * modes, and with every twin's modes, so search shows Reading once with its Elizabeth line, whichever record matched ("RDNG4AB" finds
-     * only the leaner one). Opened, its page asks the other ids too ([sameStationIds]).
+     * [ranked] with a station TfL lists under several ids (one station in the station model: Reading's two
+     * records at one spot, Liverpool Street's main line and Elizabeth line ones) as one row, at the
+     * better-ranked one's place, under the user's own twin or else the one with the most modes, and with
+     * every twin's modes, so search shows Reading once with its Elizabeth line, whichever record matched
+     * ("RDNG4AB" finds only the leaner one). Opened, its page asks every record of it ([Hubs.recordsOf]).
      */
     private fun foldTwins(ranked: List<Scored>, query: String): List<Scored> {
         val kept = ArrayList<Scored>(ranked.size)
@@ -131,18 +135,32 @@ class StationIndex(
     }
 
     /**
-     * Each station TfL lists under several ids ([sameStation]), by each id, to the whole group, itself
-     * included; a station under one id is absent. Built on first read from the whole index: a worker's work.
+     * Each station listed under several ids, by each id, to the whole group, itself included; a station
+     * under one id is absent. The loaded station model ([model], [Hubs.stationOf]) decides, inside an
+     * interchange as outside one, so search folds by the same model a station's page opens every
+     * record by ([Hubs.recordsOf]); an id it doesn't hold (a stop of the user's own) is never grouped.
+     * While the model loads, or where it's unavailable, [sameStation]'s name, mode and distance decide,
+     * outside interchanges only, as the page's own fallback does ([sameStationIds]). Built on first
+     * read from the whole index: a worker's work.
      */
     @get:WorkerThread
     private val twins: Map<String, List<IndexedStation>> by lazy {
-        val byName = stations.filter { it.interchangeId.isBlank() && !it.isHub }.groupBy { cleanStopName(it.name) }
-        buildMap {
-            for (same in byName.values) {
-                if (same.size < 2) continue
-                for (station in same) {
-                    val group = same.filter { it === station || sameStation(it, station) }
-                    if (group.size > 1) put(station.id, group)
+        val model = model
+        if (model != null) {
+            buildMap {
+                stations.filterNot { it.isHub }
+                    .groupBy { (model.stationOf(it.id) as? Hubs.Membership.Of)?.id }
+                    .forEach { (station, group) -> if (station != null && group.size > 1) group.forEach { put(it.id, group) } }
+            }
+        } else {
+            val byName = stations.filter { it.interchangeId.isBlank() && !it.isHub }.groupBy { cleanStopName(it.name) }
+            buildMap {
+                for (same in byName.values) {
+                    if (same.size < 2) continue
+                    for (station in same) {
+                        val group = same.filter { it === station || sameStation(it, station) }
+                        if (group.size > 1) put(station.id, group)
+                    }
                 }
             }
         }
@@ -334,15 +352,17 @@ class StationIndex(
     private fun tierOf(query: String, match: StationMatch): StationMatchTier? = tier(query, match)
 
     /**
-     * How well [match] matches [query], as [rank] places it: a station TfL lists twice by any of its
-     * twins' ids, so the row [search] folds them into keeps a code only the other twin carries
-     * ("rdng4ab" for Reading). An interchange's station name matches by its name alone. A worker's work.
+     * How well [match] matches [query], as [rank] places it: a station TfL lists under several ids by
+     * any of its twins' ids and names, so the row [search] folds them into keeps a code or a name only
+     * another twin carries ("rdng4ab" for Reading, "London Paddington" for a row led by the user's own
+     * "Paddington" record). An interchange's station name matches by its name alone. A worker's work.
      */
     @WorkerThread
     fun tier(query: String, match: StationMatch): StationMatchTier? {
         if (match.lead.isNotEmpty()) return StationMatcher.tier(query, match.name)
-        val ids = twins[match.id]?.map { it.id } ?: listOf(match.id)
-        return ids.mapNotNull { StationMatcher.tier(query, match.name, it, hubOf[it].orEmpty()) }.minOrNull()
+        val own = StationMatcher.tier(query, match.name, match.id, hubOf[match.id].orEmpty())
+        val others = twins[match.id].orEmpty().mapNotNull { StationMatcher.tier(query, it.name, it.id, hubOf[it.id].orEmpty()) }
+        return (others + listOfNotNull(own)).minOrNull()
     }
 
     // Each indexed station's interchange, for folding TfL's matches the way [search] folds its own.
@@ -462,8 +482,15 @@ class StationIndex(
         if (yours.all.isEmpty()) return this
         val indexed = stations.mapTo(HashSet()) { it.id }
         val extra = yours.all.filter { it.id !in indexed }.map { IndexedStation(it.id, it.name, it.modes) }
-        return StationIndex(stations + extra, yours.own, lineNames)
+        return StationIndex(stations + extra, yours.own, lineNames, revision, skippedEntries, model)
     }
+
+    /**
+     * This index with [hubs], the station model as now loaded (null while it loads or where it's
+     * unavailable), deciding which records search folds into one row ([twins]).
+     */
+    fun withModel(hubs: Hubs?): StationIndex =
+        if (hubs === model) this else StationIndex(stations, own, lineNames, revision, skippedEntries, hubs)
 
     companion object {
         /**
