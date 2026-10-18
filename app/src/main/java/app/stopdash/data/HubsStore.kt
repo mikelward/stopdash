@@ -55,7 +55,10 @@ object HubsStore {
     /** A pending ride's end, as [resolvedNow] reads a search row. */
     fun resolvedNow(end: PendingEnd.Station): PendingEnd.Station = readyNow()?.resolved(end) ?: end
 
-    private fun readyNow(): Hubs? = (state.value as? Hubs.State.Ready)?.hubs
+    private fun readyNow(): Hubs? = current()
+
+    /** The model if loaded now, without waiting: null while it loads or where it's unavailable. */
+    fun current(): Hubs? = (state.value as? Hubs.State.Ready)?.hubs
 
     /** Starts the load on [scope] once per process: files on [io], the model built on [compute]. */
     fun warm(

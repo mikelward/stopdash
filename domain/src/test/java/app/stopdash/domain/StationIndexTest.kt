@@ -89,6 +89,67 @@ class StationIndexTest {
         assertEquals(listOf("910GRDNG4AB"), reading.sameStationIds("910GRDNGSTN"))
     }
 
+    // The station model over [index], with no bus stops: what [Hubs.of] builds from the bundle.
+    private fun modelOf(index: StationIndex): Hubs =
+        Hubs.of(index, BundledStops.read(java.io.BufferedReader(java.io.StringReader("# stopdash stops v2\tbounds=51.25,-0.65,51.75,0.4\trevision=abc\nL\t1\tbus\t1"))))!!
+
+    @Test
+    fun `the station model folds a station's records inside an interchange, and only one station's`() {
+        // Two records of one station, listed under an interchange whose own name and code the query
+        // doesn't name (a stand-in: a real interchange's row matches its stations' names and takes them in).
+        val paddington = StationIndex(
+            listOf(
+                IndexedStation("HUBZZZ", "Somewhere Else", listOf("elizabeth-line", "national-rail")),
+                IndexedStation("910GPADTLL", "Paddington", listOf("elizabeth-line"), interchangeId = "HUBZZZ", station = "1001221:rail", modelHub = "HUBZZZ"),
+                IndexedStation("910GPADTON", "London Paddington Rail Station", listOf("elizabeth-line", "national-rail"), interchangeId = "HUBZZZ", station = "1001221:rail", modelHub = "HUBZZZ"),
+            ),
+            revision = "abc",
+        )
+        val withModel = paddington.withModel(modelOf(paddington))
+        // One row, under the record with more modes, carrying both records' modes.
+        val found = withModel.search("paddington")
+        assertEquals(listOf("910GPADTON"), found.map { it.id })
+        assertEquals(listOf("elizabeth-line", "national-rail"), found.single().modes.sorted())
+        // While the model loads, or where it's unavailable, the records stay two rows inside an
+        // interchange, as before: the page then opens each by the same old rule.
+        assertEquals(setOf("910GPADTON", "910GPADTLL"), paddington.search("paddington").map { it.id }.toSet())
+        assertEquals(setOf("910GPADTON", "910GPADTLL"), withModel.withModel(null).search("paddington").map { it.id }.toSet())
+        // A stop of the user's own the bundle doesn't hold (a bus stop) keeps the model in charge, and is
+        // never grouped.
+        val withOwn = withModel.withYours(YourStops(recent = listOf(StationMatch("490000099X", "Paddington Green", listOf("bus")))))
+        assertEquals(listOf("910GPADTON"), withOwn.search("paddington").filter { it.id.startsWith("910G") }.map { it.id })
+    }
+
+    @Test
+    fun `a folded row led by the user's own record still ranks by its other records' names`() {
+        // The user picked the "Paddington" record before, so it leads the row; "london paddington" names
+        // only the other record, and the row must still rank as that match (Codex on #972).
+        val records = listOf(
+            IndexedStation("HUBZZZ", "Somewhere Else", listOf("elizabeth-line", "national-rail")),
+            IndexedStation("910GPADTLL", "Paddington", listOf("elizabeth-line"), interchangeId = "HUBZZZ", station = "1001221:rail", modelHub = "HUBZZZ"),
+            IndexedStation("910GPADTON", "London Paddington Rail Station", listOf("elizabeth-line", "national-rail"), interchangeId = "HUBZZZ", station = "1001221:rail", modelHub = "HUBZZZ"),
+        )
+        val bundled = StationIndex(records, revision = "abc")
+        val index = StationIndex(records, own = listOf("910GPADTLL"), revision = "abc").withModel(modelOf(bundled))
+        val row = index.search("london paddington").single()
+        assertEquals("910GPADTLL", row.id)
+        assertEquals(StationMatcher.tier("london paddington", "London Paddington Rail Station", "910GPADTON"), index.tier("london paddington", row))
+    }
+
+    @Test
+    fun `the station model keeps two stations of one name and place apart, and without it the old rule folds them`() {
+        // Two records the old name, mode and distance rule takes for one, the model's two stations.
+        val two = StationIndex(
+            listOf(
+                IndexedStation("910GAAA", "Example Rail Station", listOf("national-rail"), latitude = 51.5, longitude = -0.12, station = "1:rail", modelHub = "1:rail"),
+                IndexedStation("910GAAB", "Example Rail Station", listOf("national-rail"), latitude = 51.5, longitude = -0.12, station = "2:rail", modelHub = "2:rail"),
+            ),
+            revision = "abc",
+        )
+        assertEquals(setOf("910GAAA", "910GAAB"), two.withModel(modelOf(two)).search("example").map { it.id }.toSet())
+        assertEquals(1, two.search("example").size)
+    }
+
     @Test
     fun `a twin found by the other record's code keeps that match through the ranking and the merge`() {
         val reading = StationIndex(

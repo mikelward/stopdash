@@ -11,6 +11,7 @@ import app.stopdash.domain.FavoritePlaceIcon
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FavoritePlacesStore
+import app.stopdash.domain.Hubs
 import app.stopdash.domain.FixedLocation
 import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.PlaceHit
@@ -72,6 +73,9 @@ class FavoritePlacesViewModel(
     // same ranked list as From…/To… (SPEC *Finding stops*); loaded once, off the main thread, on first
     // search. Empty by default (tests, and before it loads), which finds no station.
     loadIndex: suspend () -> StationIndex = { StationIndex.EMPTY },
+    // The station model as now loaded (null while it loads, or where it's unavailable), which decides
+    // which records search folds into one station's row, as From…/To… fold them.
+    private val currentHubs: () -> Hubs? = { null },
     // The bundled London places, streets and postcodes (dev-docs/PLACES.md), offered as places to save
     // alongside the stops, found on the device with nothing sent. A complete postcode it holds is
     // adopted from it without asking TfL. Read once, off the main thread. None by default.
@@ -613,7 +617,8 @@ class FavoritePlacesViewModel(
         search = viewModelScope.launch {
             // Searched on the device only (maintainer, 2026-10-11): the bundled stations, bus stops and
             // places, merged and ranked exactly as From…/To… do (SPEC *Finding stops*), with nothing sent.
-            val stations = index.await()
+            // The model is attached on [io], with the search: a new index walks every station (AGENTS.md *Main thread*).
+            val stations = withContext(io) { index.await().withModel(currentHubs()) }
             val local = withContext(io) { stations.search(trimmed) }
             // Bundled matches are positionless from search/rank; fill their own coordinate from the
             // index so a station favorite is selectable at once. Applied to the displayed lists only, so

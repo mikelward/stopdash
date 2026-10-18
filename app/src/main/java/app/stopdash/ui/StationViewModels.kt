@@ -79,6 +79,9 @@ class StationSearchViewModel(
     // The bundled station index, searched on the device as the user types (read off the main
     // thread, once). Empty by default, which finds no station.
     loadIndex: suspend () -> StationIndex = { StationIndex.EMPTY },
+    // The station model as now loaded (null while it loads, or where it's unavailable), which decides
+    // which records search folds into one station's row, as the station's page opens them.
+    private val currentHubs: () -> Hubs? = { null },
     // The user's own stops, read from the device each time the search opens ([refreshYours]). The
     // loader handles its own read failures: whatever it can't read is simply not listed.
     private val loadYours: suspend () -> YourStops = { YourStops.EMPTY },
@@ -457,7 +460,7 @@ class StationSearchViewModel(
         val trimmed = current.query.trim()
         if (current.searching || current.result !is Result.Matches) return
         search = viewModelScope.launch {
-            val stations = withContext(io) { index.await().withYours(yours.await()) }
+            val stations = withContext(io) { index.await().withModel(currentHubs()).withYours(yours.await()) }
             val buses = busStops.await()
             val shown = _state.value.result as? Result.Matches ?: return@launch
             val from = nearNow()
@@ -608,7 +611,7 @@ class StationSearchViewModel(
             }
             val read = yours
             val own = read.await()
-            val stations = withContext(io) { index.await().withYours(own) }
+            val stations = withContext(io) { index.await().withModel(currentHubs()).withYours(own) }
             val local = withContext(io) { stations.search(trimmed, near = from) }
             // While the bus stops are still being read (the first letters typed), the stations' first
             // few go up at once, and the rest join the bus stops below them.

@@ -102,6 +102,31 @@ class StationViewModelsTest {
     )
 
     @Test
+    fun `search folds a station's records by the station model once it's loaded`() = runTest {
+        // Synthetic: one station's two records under an interchange the query doesn't name.
+        val index = StationIndex(
+            listOf(
+                IndexedStation("HUBZZZ", "Somewhere Else", listOf("elizabeth-line", "national-rail")),
+                IndexedStation("910GEXVALL", "Example Vale", listOf("elizabeth-line"), "HUBZZZ", 51.5, -0.12, station = "1:rail", modelHub = "HUBZZZ"),
+                IndexedStation("910GEXVALE", "Example Vale Rail Station", listOf("elizabeth-line", "national-rail"), "HUBZZZ", 51.5, -0.12, station = "1:rail", modelHub = "HUBZZZ"),
+            ),
+            revision = "abc",
+        )
+        val hubs = Hubs.of(index, BundledStops.read(BufferedReader(StringReader("# stopdash stops v2\tbounds=51.25,-0.65,51.75,0.4\trevision=abc\nL\t1\tbus\t1"))))!!
+        var current: Hubs? = null
+        val vm = StationSearchViewModel(loadIndex = { index }, currentHubs = { current }, io = dispatcher, compute = dispatcher)
+        runCurrent()
+        vm.onQueryChange("example vale")
+        advanceUntilIdle()
+        fun rows() = (vm.state.value.result as StationSearchViewModel.Result.Matches).matches.map { it.id }
+        assertEquals("while the model loads, as before", setOf("910GEXVALE", "910GEXVALL"), rows().toSet())
+        current = hubs
+        vm.onQueryChange("example val")
+        advanceUntilIdle()
+        assertEquals("once loaded, one row, which opens both records", listOf("910GEXVALE"), rows())
+    }
+
+    @Test
     fun `a To search lists the bundled places it finds`() = runTest {
         val vm = StationSearchViewModel(
             io = dispatcher, compute = dispatcher,
