@@ -125,9 +125,28 @@ class BundledStopsTest {
     }
 
     @Test
+    fun `a v2 file reads as v1 did, its membership columns and revision aside`() {
+        val stops = read(
+            "# stopdash stops v2\tbounds=51.25,-0.65,51.75,0.4\trevision=0123456789abcdef\n" +
+                "L\t1\tbus\t1\n" +
+                "S\t490000001A\tB\tExample Road\t51.501000\t-0.120000\t490G000001\tHUBEXA\tA\tN\tExample Town\t1" +
+                "\t1009001\t490G000001\t1009002:rail\tHUBEXA\n" +
+                "S\t930GEXA\tF\tExample Pier\t51.500200\t-0.120000\t930GEXA\t\t\t\t\t\t\t930GEXA\t\t930GEXA\n",
+        )
+        assertEquals(0, stops.skippedLines)
+        val pole = stops.nearby(51.5, -0.12, 500, types).first { it.id == "490000001A" }
+        assertEquals("490G000001", pole.clusterId)
+        assertEquals("HUBEXA", pole.hubId)
+        assertEquals("Example Town", pole.towards)
+        assertEquals(listOf(LineRef("1", "1", "bus")), pole.lines)
+        assertEquals(2, stops.size)
+    }
+
+    @Test
     fun `another format version, or no bounds, isn't read`() {
-        assertThrows(IllegalArgumentException::class.java) { read("# stopdash stops v2\tbounds=51.25,-0.65,51.75,0.4\n") }
+        assertThrows(IllegalArgumentException::class.java) { read("# stopdash stops v3\tbounds=51.25,-0.65,51.75,0.4\n") }
         assertThrows(IllegalArgumentException::class.java) { read("# stopdash stops v1\n") }
+        assertThrows(IllegalArgumentException::class.java) { read("# stopdash stops v2\trevision=abc\n") }
         assertEquals(0, read("").size)
     }
 

@@ -98,10 +98,14 @@ class BundledStops private constructor(
     }
 
     companion object {
-        const val FORMAT_VERSION = 1
+        const val FORMAT_VERSION = 2
+
+        // The versions read: v2 adds four membership columns (the station model, not read yet) and a
+        // content revision to v1, so a v1 file, as the APK carried before, reads the same as ever.
+        private val READ_VERSIONS = 1..FORMAT_VERSION
 
         private const val METERS_PER_DEGREE = 111_320.0
-        private const val STOP_FIELDS = 12
+        private const val STOP_FIELDS = 16
 
         // The file's type codes and the NaPTAN stop types they stand for (StopFinder's defaults).
         private val TYPE_NAMES = listOf("NaptanMetroStation", "NaptanRailStation", "NaptanPublicBusCoachTram", "NaptanFerryPort")
@@ -122,7 +126,7 @@ class BundledStops private constructor(
         fun read(reader: BufferedReader): BundledStops {
             val header = reader.readLine() ?: return EMPTY
             val headerFields = header.split('\t')
-            require(headerFields[0] == "# stopdash stops v$FORMAT_VERSION") {
+            require(READ_VERSIONS.any { headerFields[0] == "# stopdash stops v$it" }) {
                 "stops: unexpected header for format $FORMAT_VERSION"
             }
             val bounds = headerFields.drop(1).firstOrNull { it.startsWith("bounds=") }

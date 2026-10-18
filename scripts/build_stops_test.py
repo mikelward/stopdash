@@ -76,14 +76,59 @@ class BuildTest(unittest.TestCase):
     def test_the_file_carries_a_versioned_header_lines_then_stops_and_no_stray_tabs(self):
         stops, lines = build(collect([pole("490000001A", "Example\tRoad  / High St", lines=["1"], letter="A")], {}))
         out = io.StringIO()
-        write(out, stops, lines)
+        write(out, stops, lines, {"490000001A": ("1009001", "490000001A", "", "490000001A")}, "abc123")
         records = out.getvalue().splitlines()
-        self.assertEqual("# stopdash stops v1\tbounds=51.25,-0.65,51.75,0.4", records[0])
+        self.assertEqual("# stopdash stops v2\tbounds=51.25,-0.65,51.75,0.4\trevision=abc123", records[0])
         self.assertEqual("L\t1\tbus\t1", records[1])
         fields = records[2].split("\t")
-        self.assertEqual(12, len(fields))
+        self.assertEqual(16, len(fields))
         self.assertEqual(["S", "490000001A", "B", "Example Road  / High St", "51.500000", "-0.120000"], fields[:6])
         self.assertEqual("1", fields[11])
+        self.assertEqual(["1009001", "490000001A", "", "490000001A"], fields[12:])
+
+    def test_a_stop_without_membership_writes_its_four_columns_empty(self):
+        stops, lines = build(collect([pole("490000001A", lines=["1"])], {}))
+        out = io.StringIO()
+        write(out, stops, lines)
+        self.assertEqual(["", "", "", ""], out.getvalue().splitlines()[2].split("\t")[12:])
+
+    def test_a_stop_carries_its_ics_code_from_whichever_listing_has_it(self):
+        bare = pole("490000001A")
+        coded = pole("490000001A")
+        coded["icsCode"] = "1009001"
+        for listings in ([bare, coded], [coded, bare]):
+            stops, _ = build(collect(listings, {}))
+            self.assertEqual("1009001", stops[0]["ics"])
+
+    def test_the_revision_changes_with_lines_or_membership_and_nothing_else(self):
+        from build_stops import revision
+        stops, lines = build(collect([pole("490000001A", lines=["1"], towards="Example Town")], {}))
+        index = {"version": 1, "stations": [{"id": "910GEXAMPL", "station": "1009001:rail", "modelHub": "HUBEXA"}]}
+        columns = {"490000001A": ("1009001", "490000001A", "", "490000001A")}
+        base = revision(stops, lines, columns, index)
+        self.assertEqual(16, len(base))
+        moved, _ = build(collect([pole("490000001A", lines=["1"], towards="Elsewhere", lat=51.6)], {}))
+        self.assertEqual(base, revision(moved, lines, columns, index), "a stop's position or towards isn't membership")
+        self.assertNotEqual(base, revision(stops, lines, {"490000001A": ("1009001", "490G000001", "", "490G000001")}, index))
+        self.assertNotEqual(base, revision(stops, {"1": ("bus", "One")}, columns, index))
+        regrouped = {"version": 1, "stations": [{"id": "910GEXAMPL", "station": "910GEXAMPL", "modelHub": "910GEXAMPL"}]}
+        self.assertNotEqual(base, revision(stops, lines, columns, regrouped))
+        relined = {"version": 1, "stations": [{**index["stations"][0], "modeLines": {"national-rail": ["southern"]}}]}
+        self.assertNotEqual(base, revision(stops, lines, columns, relined), "an indexed station's lines count")
+        renamed = {**index, "lineNames": {"southern": "Southern"}}
+        self.assertNotEqual(base, revision(stops, lines, columns, renamed), "so do the index's line names")
+
+    def test_the_revision_is_stamped_into_the_station_index_after_its_version(self):
+        from build_stops import with_revision
+        index = {"version": 1, "stations": [], "lineNames": {}}
+        self.assertEqual(["version", "revision", "stations", "lineNames"], list(with_revision(index, "abc")))
+        self.assertEqual("abc", with_revision(with_revision(index, "old"), "abc")["revision"])
+
+    def test_a_bus_pole_without_membership_stops_the_build(self):
+        from build_stops import checked_membership
+        stops, _ = build(collect([pole("490000001A", lines=["1"])], {}))
+        with self.assertRaises(SystemExit):
+            checked_membership(stops, {})
 
 
 def full_set(skip_lines_for=""):

@@ -72,6 +72,14 @@ jobs:
         run: python3 scripts/build_step_free_test.py
       - name: Test the stop list builder
         run: python3 scripts/build_stops_test.py
+      - name: Test the station model's stop membership
+        run: python3 scripts/stop_membership_test.py
+      # The committed membership, kept to list what this refresh regroups.
+      - name: Keep the committed lists
+        run: |
+          mkdir -p build/old
+          cp "$INDEX" build/old/station_index.json
+          cp "$STOPS" build/old/stops.tsv
       - name: Build the index from TfL
         run: python3 scripts/build_station_index.py --out "$INDEX"
       - name: Build the National Rail station codes from NaPTAN
@@ -79,7 +87,7 @@ jobs:
       - name: Build step-free access from TfL's station data
         run: python3 scripts/build_step_free.py --out "$STEP_FREE"
       - name: Build the stop list from TfL
-        run: python3 scripts/build_stops.py --out "$STOPS"
+        run: python3 scripts/build_stops.py --out "$STOPS" --stations "$INDEX"
       - name: Compare with the committed lists
         id: diff
         run: |
@@ -90,6 +98,13 @@ jobs:
             git diff --stat -- "$INDEX" "$CRS" "$STEP_FREE" "$STOPS"
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
+      # Every id whose station, stop, owning station or hub changed, for the pull request's body.
+      - name: List the membership changes
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          python3 scripts/membership_changes.py --old-stops build/old/stops.tsv --old-index build/old/station_index.json \
+            --new-stops "$STOPS" --new-index "$INDEX" > build/membership.md
+          cat build/membership.md
       - name: Upload the lists
         if: steps.diff.outputs.changed == 'true'
         uses: actions/upload-artifact@v4
@@ -100,6 +115,14 @@ jobs:
             ${{ env.CRS }}
             ${{ env.STEP_FREE }}
             ${{ env.STOPS }}
+          if-no-files-found: error
+      # Its own artifact: in the lists' one, its path would move theirs off the shared directory.
+      - name: Upload the membership changes
+        if: steps.diff.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: membership-changes
+          path: build/membership.md
           if-no-files-found: error
 
   publish:
@@ -121,6 +144,11 @@ jobs:
         with:
           name: station-index
           path: build/station-index
+      - name: Download the membership changes
+        uses: actions/download-artifact@v4
+        with:
+          name: membership-changes
+          path: build/membership
       - name: Commit it to the refresh branch
         env:
           TOKEN: ${{ secrets.GRADLE_UPDATE_PAT }}
@@ -146,17 +174,24 @@ jobs:
           auth=$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)
           git -c "http.extraheader=AUTHORIZATION: basic $auth" \
             push --force-with-lease="refs/heads/$BRANCH:$TIP" "https://github.com/$REPO.git" "HEAD:refs/heads/$BRANCH"
-      - name: Open the pull request if none is open
+      - name: Open the pull request, or update the open one's body
         env:
           GH_TOKEN: ${{ secrets.GRADLE_UPDATE_PAT }}
         run: |
+          {
+            echo "The weekly rebuild of the bundled station data (station-index-refresh.yml) found changes. Review the diffs of \`$INDEX\`, \`$CRS\`, \`$STEP_FREE\` and \`$STOPS\` for anything odd (a mode, interchange, station code, step-free station or bus stop gone missing, or a station's step-free level dropping) before merging; the builders already refuse a list under 200 stations, one missing a required mode or interchange, under 2,000 station codes, under 300 step-free stops, or under 15,000 bus stops."
+            echo
+            # Every id the station model regrouped (dev-docs/station-model.md), capped per category.
+            cat build/membership/membership.md
+          } > build/body.md
           # This repository's own branch only: a fork's same-named branch isn't the refresh.
           open=$(gh pr list --head "$BRANCH" --state open --json number,isCrossRepository \
-            --jq '[.[] | select(.isCrossRepository | not)] | length')
-          if [ "$open" != "0" ]; then
-            echo "A refresh pull request is already open; the push above updated it."
+            --jq '[.[] | select(.isCrossRepository | not)] | .[0].number // empty')
+          if [ -n "$open" ]; then
+            # The push above updated its branch; its body now describes this week's list.
+            gh pr edit "$open" --body-file build/body.md
             exit 0
           fi
           gh pr create --base main --head "$BRANCH" \
             --title "Refresh station details from TfL" \
-            --body "The weekly rebuild of the bundled station data (station-index-refresh.yml) found changes. Review the diffs of \`$INDEX\`, \`$CRS\`, \`$STEP_FREE\` and \`$STOPS\` for anything odd (a mode, interchange, station code, step-free station or bus stop gone missing, or a station's step-free level dropping) before merging; the builders already refuse a list under 200 stations, one missing a required mode or interchange, under 2,000 station codes, under 300 step-free stops, or under 15,000 bus stops."
+            --body-file build/body.md

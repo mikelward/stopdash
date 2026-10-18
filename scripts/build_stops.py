@@ -17,22 +17,35 @@ station). Every listing is required: a failed or empty one stops the build, so t
 list stays rather than a partial one replacing it. Keyless by default (about 45 requests); set
 TFL_APP_KEY to use a key. Public transport data only — nothing about any user.
 
-Format (v1), one record per line, tab-separated:
-  # stopdash stops v1<TAB>bounds=<south>,<west>,<north>,<east>
+It also writes the station model's membership (dev-docs/station-model.md), worked out by
+stop_membership.py from these stops and the station index (--stations): each bus pole's ICS code,
+stop, owning station and hub, and the station and hub of each station record the index leaves
+out. A content revision over the lines and the membership is stamped into this file's header
+and into the station index, so the app can tell when a refresh changed either.
+
+Format (v2), one record per line, tab-separated:
+  # stopdash stops v2<TAB>bounds=<south>,<west>,<north>,<east><TAB>revision=<hex>
   L <id> <mode> <name>                                      a line, once
   S <id> <type> <name> <lat> <lon> <cluster> <hub> <letter> <compass> <towards> <line ids>
-where <type> is M (metro station), R (rail station), B (bus/coach/tram stop) or F (pier), and
-<line ids> is comma-separated in TfL's order. A field TfL leaves out is empty.
+    <ics> <stop> <owner> <model hub>
+where <type> is M (metro station), R (rail station), B (bus/coach/tram stop) or F (pier),
+<line ids> is comma-separated in TfL's order, and <hub> is TfL's interchange. On a B row <stop>
+is its stop, <owner> the station that owns it (empty for none) and <model hub> its hub; on a
+station record the index leaves out, <stop> is its station and <owner> is empty; every other row
+leaves all four empty. A field TfL leaves out is empty.
 """
 import argparse
+import hashlib
+import json
 import os
 import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from build_station_index import fetch  # noqa: E402
+from stop_membership import membership  # noqa: E402
 
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 # The stop types the app's nearby search asks TfL for (StopFinder.DEFAULT_NEARBY_STOP_TYPES).
 TYPE_CODES = {
     "NaptanMetroStation": "M",
@@ -127,6 +140,7 @@ def merged(listings):
         "lon": best.get("lon"),
         "cluster": next((p["stationNaptan"] for p in listings if p.get("stationNaptan")), ""),
         "hub": next((p["hubNaptanCode"] for p in listings if p.get("hubNaptanCode")), ""),
+        "ics": next((str(p["icsCode"]).strip() for p in listings if p.get("icsCode")), ""),
         "letter": next((p["stopLetter"] for p in listings if p.get("stopLetter")), ""),
         "compass": props.get("CompassPoint", ""),
         "towards": props.get("Towards", ""),
@@ -161,8 +175,13 @@ def clean(text):
     return re.sub(r"[\t\r\n]", " ", str(text))
 
 
-def write(out, stops, lines, bounds=BOUNDS):
-    out.write(f"# stopdash stops v{FORMAT_VERSION}\tbounds={','.join(str(b) for b in bounds)}\n")
+NO_MEMBERSHIP = ("", "", "", "")
+
+
+def write(out, stops, lines, columns=None, revision="", bounds=BOUNDS):
+    """The file, each stop with its [columns] (membership, by id) and the header's [revision]."""
+    columns = columns or {}
+    out.write(f"# stopdash stops v{FORMAT_VERSION}\tbounds={','.join(str(b) for b in bounds)}\trevision={revision}\n")
     for line in sorted(lines):
         mode, name = lines[line]
         out.write("\t".join(["L", clean(line), clean(mode), clean(name)]) + "\n")
@@ -173,7 +192,40 @@ def write(out, stops, lines, bounds=BOUNDS):
             clean(s["cluster"]), clean(s["hub"]), clean(s["letter"]),
             clean(s["compass"]), clean(s["towards"]),
             ",".join(clean(line) for line, _, _ in s["lines"]),
+            *(clean(c) for c in columns.get(s["id"], NO_MEMBERSHIP)),
         ]) + "\n")
+
+
+def revision(stops, lines, columns, index):
+    """A hash over the lines (the line table, each stop's, and each indexed station's and line
+    name) and the membership of both files:
+    the same in stops.tsv and station_index.json, and changed by a refresh that changes either."""
+    digest = hashlib.sha256()
+    for line in sorted(lines):
+        digest.update("\t".join(["L", line, *lines[line]]).encode() + b"\n")
+    for s in stops:
+        record = [s["id"], ",".join(line for line, _, _ in s["lines"]), *columns.get(s["id"], NO_MEMBERSHIP)]
+        digest.update("\t".join(record).encode() + b"\n")
+    # The index's own lines too: hundreds of its stations (the commuter belt's) aren't in stops.tsv.
+    for entry in index["stations"]:
+        record = [entry["id"], entry.get("icsCode", ""), entry.get("station", ""), entry.get("modelHub", ""),
+                  json.dumps(entry.get("modeLines", {}), sort_keys=True)]
+        digest.update("\t".join(record).encode() + b"\n")
+    digest.update(json.dumps(index.get("lineNames", {}), sort_keys=True).encode())
+    return digest.hexdigest()[:16]
+
+
+def with_revision(index, value):
+    """[index] with its "revision" set to [value], after its "version"."""
+    return {"version": index["version"], "revision": value, **{k: v for k, v in index.items() if k not in ("version", "revision")}}
+
+
+def checked_membership(stops, columns):
+    """Refuses a list where a bus pole lacks its membership: the app would read it ungrouped."""
+    missing = [s["id"] for s in stops if s["type"] == "B" and s["id"] not in columns]
+    if missing:
+        sys.exit(f"{len(missing)} bus stops came out with no stop or hub; refusing to write the list")
+    return columns
 
 
 def checked(stops):
@@ -223,7 +275,11 @@ def read_bus_list(fetch_json=fetch, reads=BUS_READS):
 def main(argv):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", required=True, help="where to write stops.tsv")
+    parser.add_argument("--stations", required=True,
+                        help="the station_index.json build_station_index.py wrote; its revision is stamped in place")
     args = parser.parse_args(argv)
+    with open(args.stations, encoding="utf-8") as f:
+        index = json.load(f)
     found = {}
     collect(read_bus_list(), found)
     for mode in MODES:
@@ -232,11 +288,15 @@ def main(argv):
         collect(required(stop_type, fetch(f"/StopPoint/Type/{stop_type}")), found)
     stops, lines = build(found)
     checked(stops)
+    columns = checked_membership(stops, membership(stops, index))
+    stamp = revision(stops, lines, columns, index)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(args.out, "w", encoding="utf-8", newline="\n") as out:
-        write(out, stops, lines)
-    print(f"wrote {len(stops)} stops and {len(lines)} lines to {args.out}")
-
+        write(out, stops, lines, columns, stamp)
+    with open(args.stations, "w", encoding="utf-8") as out:
+        json.dump(with_revision(index, stamp), out, ensure_ascii=False, separators=(",", ":"))
+        out.write("\n")
+    print(f"wrote {len(stops)} stops and {len(lines)} lines to {args.out}, revision {stamp}")
 
 if __name__ == "__main__":
     main(sys.argv[1:])
