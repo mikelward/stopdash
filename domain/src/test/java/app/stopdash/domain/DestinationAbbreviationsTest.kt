@@ -140,6 +140,19 @@ class DestinationAbbreviationsTest {
     }
 
     @Test
+    fun `an un-mapped name ending in a qualified place initials the words before it`() {
+        // "Harrow" and "Sutton" are places a compass qualifies elsewhere (West Harrow, North Sutton),
+        // so they carry the identity and the words before them are the throwaway part.
+        assertEquals("S. H. Harrow", floor("Sudbury Hill Harrow"))
+        assertEquals("K. Sutton", floor("Kings Sutton"))
+        // "New" initials like any other qualifier (maintainer, 2026-10-18).
+        assertEquals("N. Barnet", floor("New Barnet"))
+        // A last word that isn't such a place keeps the first-word rule.
+        assertEquals("Kentish T.", floor("Kentish Town"))
+        assertEquals("Battersea P.", floor("Battersea Power"))
+    }
+
+    @Test
     fun `a one-word or blank name has no floor to take`() {
         assertEquals("Morden", floor("Morden"))
         assertEquals("Brixton", floor("Brixton"))
