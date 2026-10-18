@@ -65,7 +65,7 @@ val releaseFixedVersionCheck = tasks.register("checkReleaseNotFixedVersion") {
         check(!fixed) { "A release build can't be packaged with -PstopdashFixedVersion: its versionCode is a placeholder." }
     }
 }
-tasks.matching { it.name == "packageRelease" || it.name == "bundleRelease" }
+tasks.matching { it.name in setOf("packageRelease", "packageReleaseBundle", "bundleRelease") }
     .configureEach { dependsOn(releaseFixedVersionCheck) }
 
 // The phone's upload key: the Data Layer pairs only apps signed alike, and Play App Signing
