@@ -6,7 +6,8 @@ name: station-index
 # the list "Find a station" searches on the device (SPEC *Finding stops*), the codes National Rail
 # boards are asked for by, and how far each platform is step-free (SPEC *Step-free access*), and
 # every stop the near-me list can find (stops.tsv, SPEC *Finding stops → Near me now*). It
-# runs when a pull request changes a builder or this workflow. The weekly refresh is
+# runs when a pull request changes a builder or this workflow, except on a head that is this
+# workflow's own refresh commit (the gate job below). The weekly refresh is
 # station-index-refresh.yml, which opens a pull request of its own.
 #
 # Split like ci.yml's screenshot sync: the build job runs PR code (the scripts) with a read-only
@@ -33,8 +34,42 @@ concurrency:
   group: station-index-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 jobs:
+  # Whether to rebuild: not when the head is this workflow's own refresh commit, which changes no
+  # builder. TfL's lists vary a little from one read to the next (a bus stop's routes come back on
+  # one read and not the next), so a rebuild of a rebuild rarely comes out identical: each refresh
+  # commit would start another run, which commits again, and the pull request would never hold still
+  # long enough for its CI to go green. Any other head rebuilds, a screenshot sync's included: its
+  # push cancels a build still running (the concurrency group), so skipping it could leave the
+  # branch with station files from the old builder.
+  gate:
+    name: decide whether to rebuild
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      rebuild: ${{ steps.head.outputs.rebuild }}
+    steps:
+      - name: Read the head commit
+        id: head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          # The commit job's commit-message, below.
+          REFRESH_MESSAGE: Refresh station details from TfL
+        run: |
+          head=$(gh api "repos/$REPO/commits/$SHA" --jq '.commit.author.name + "\t" + (.commit.message | split("\n")[0])')
+          if [ "$head" = "$(printf 'github-actions[bot]\t%s' "$REFRESH_MESSAGE")" ]; then
+            echo "The head is this workflow's own refresh, which changes no builder; not rebuilding."
+            echo "rebuild=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "rebuild=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     name: build station index
+    needs: [gate]
+    if: needs.gate.outputs.rebuild == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
