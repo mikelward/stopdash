@@ -27,9 +27,7 @@ the way `values-en-rGB` overrides the app's strings.
 > • **Journeys**: star two stops to see which trains get you from one to the other
 > • **Disruptions**: closures and delays on your lines, right on the stop's card
 > • **Find a station**: search any stop or station by name, no location needed
-> • **National Rail** (optional): add your own free API key to see live mainline times
->
-> (From the release that sets `stopdash.proxyUrl`, that bullet reads instead: "• **National Rail**: live mainline times, no key needed".)
+> • **National Rail**: live mainline times, no key needed
 >
 > Honest about freshness: every time shows how old it is, and StopDash never passes old data off as live. When TfL can't be reached, it says so.
 >
@@ -55,7 +53,7 @@ this directory. **Category:** Maps & Navigation.
 | Question | Answer |
 |---|---|
 | Privacy policy | `https://mikelward.github.io/stopdash/PRIVACY.html` (open it first to check it loads) |
-| App access | All or some functionality is restricted. Instructions: "No login. Live National Rail times need the user's own free Rail Data Marketplace key, pasted in Settings; everything else works without one." Add a reviewer key in Play Console if you want the reviewer to see National Rail times (never commit it here). **From the release that sets `stopdash.proxyUrl`:** All functionality is available without special access, so no instructions and no reviewer key |
+| App access | All functionality is available without special access: no instructions and no reviewer key. National Rail times come through stopdash's proxy, so a reviewer needs no key of their own |
 | Ads | No |
 | Advertising ID | No (the manifest removes `AD_ID`) |
 | Content rating (IARC) | Category "Utility, Productivity, Communication or Other"; No to every question, including user interaction, sharing location with other users, and digital purchases. Expect Everyone / PEGI 3 |

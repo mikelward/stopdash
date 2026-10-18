@@ -1062,9 +1062,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
     - [x] **Per-line National Rail incidents** (maintainer, 2026-10-17): a line whose TfL status is only
           a link shows the matching incident's words, from the Disruptions API through stopdash's own
           proxy (`proxy/`, `dev-docs/proxy.md`), so no rider needs a second key.
-      - [ ] **Deploy the proxy** (maintainer): Cloudflare account and domain, KV namespace, the
-            Disruptions key as a secret, `wrangler deploy` (`proxy/README.md`); then set
-            `stopdash.proxyUrl` in `gradle.properties`. Until then the app shows TfL's link as before.
+      - [x] **Deploy the proxy** (maintainer, 2026-10-18): at `https://proxy.stopdash.app`, which
+            `stopdash.proxyUrl` in `gradle.properties` now names.
       - [ ] **Confirm the Disruptions API's quota and terms** allow serving it to the app's users.
       - [ ] **Planned work's link-only text** (a line page's *Coming up*): words for those too.
       - [ ] **Log the proxy's failures with their redacted stack**, not only a status or class:

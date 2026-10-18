@@ -1,7 +1,7 @@
 # stopdash proxy (design)
 
-Status: **built, not yet deployed** (2026-10-18). `proxy/` serves `/v1/incidents` (#943) and
-`/v1/board/…` (#944), and the app uses both once `stopdash.proxyUrl` is set. Deploying it is the
+Status: **deployed** at `https://proxy.stopdash.app` (2026-10-18). `proxy/` serves `/v1/incidents`
+(#943) and `/v1/board/…` (#944), and the app uses both, as `stopdash.proxyUrl` names it. Deploying is the
 maintainer's step (`proxy/README.md`). The one decision still **Open** is RDM's quotas and terms
 (below), which bound the boards' budget.
 
