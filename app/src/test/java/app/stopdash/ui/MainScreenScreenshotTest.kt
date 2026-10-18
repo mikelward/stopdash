@@ -511,6 +511,48 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `the disruptions row has as much room above it as below, without chips`() = disruptionsRowGaps(emptyList())
+
+    @Test
+    fun `the disruptions row has as much room above it as below, under the chips`() = disruptionsRowGaps(places)
+
+    private fun disruptionsRowGaps(chips: List<FavoritePlace>) {
+        val stops = stops(now.minusSeconds(60))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(
+                            stops, now.minusSeconds(60), lineStatuses = statuses(),
+                            determinedLineIds = stops.flatMap { stop -> stop.departures.map { it.lineId } + stop.lines.map { it.id } }.toSet(),
+                        ),
+                        now,
+                        {},
+                        favoritePlaces = chips,
+                        showDisruptionsRow = true,
+                        always = HomeLines.Always(HomeLines.TUBE_IDS.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") }, now.minusSeconds(60)),
+                        alwaysNetworks = setOf("tube"),
+                    )
+                }
+            }
+        }
+        // In pixels, all of it, so nothing is lost to rounding back to dp.
+        val list = composeRule.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes().maxBy { it.boundsInRoot.height }
+        val row = composeRule.onNodeWithTag("homeDisruptions").fetchSemanticsNode().boundsInRoot
+        // The departures under it: the list's next thing down.
+        val next = list.children.map { it.boundsInRoot }.filter { it.top > row.bottom }.minBy { it.top }
+        val twelve = with(composeRule.density) { 12.dp.toPx() }
+        if (chips.isEmpty()) {
+            assertEquals(twelve, row.top - list.boundsInRoot.top, 1f)
+        } else {
+            val placeChips = composeRule.onNodeWithTag("favoriteChips").fetchSemanticsNode().boundsInRoot
+            assertEquals(twelve, placeChips.top - list.boundsInRoot.top, 1f)
+            assertEquals(twelve, row.top - placeChips.bottom, 1f)
+        }
+        assertEquals(twelve, next.top - row.bottom, 1f)
+    }
+
+    @Test
     fun `where the disruptions row shows, it says what couldn't be checked in place of the banner`() {
         val stops = stops(now.minusSeconds(60))
         capture("main-disruptions-unknown.png") {
