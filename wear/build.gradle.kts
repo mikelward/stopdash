@@ -92,7 +92,7 @@ android {
         minSdk = 34
         targetSdk = 36
         versionCode = watchVersionCodeOffset + if (fixedTestVersion) 1 else gitCommitCount ?: 1
-        versionName = if (fixedTestVersion) "0.1.0-test" else "0.1.${gitCommitCount ?: 1}+${gitShortSha ?: "unknown"}"
+        versionName = if (fixedTestVersion) "test" else "${gitCommitCount ?: 1}+${gitShortSha ?: "unknown"}"
     }
 
     signingConfigs {
@@ -181,7 +181,7 @@ tasks.withType<Test>().configureEach {
 androidComponents {
     onVariants(selector().withBuildType("debug")) { variant ->
         if (!fixedTestVersion) {
-            val name = "0.1.${gitCommitCount ?: 1}-debug+$buildBranch@${gitShortSha ?: "unknown"}"
+            val name = "${gitCommitCount ?: 1}-debug+$buildBranch@${gitShortSha ?: "unknown"}"
             variant.outputs.forEach { it.versionName.set(name) }
         }
     }

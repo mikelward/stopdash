@@ -291,13 +291,13 @@ or the clone is shallow, rather than ship `versionCode` 1 or a short count; run
 `git fetch --unshallow` first. A debug build takes the fallback with a warning.
 
 A debug build's `versionName` names its build:
-`0.1.<count>-debug+<branch>@<sha>`, with the branch from `GITHUB_HEAD_REF` on a
+`<count>-debug+<branch>@<sha>`, with the branch from `GITHUB_HEAD_REF` on a
 pull request, `GITHUB_REF_NAME` on `main` and git locally (truncated to 30
-characters). A release keeps `0.1.<count>+<sha>`.
+characters). A release keeps `<count>+<sha>`.
 
 CI's unit test, lint and screenshot runs set `-PstopdashFixedVersion` (as
 `ORG_GRADLE_PROJECT_stopdashFixedVersion`): versionCode `1` and versionName
-`0.1.0-test`. The version lands in the merged manifest those tasks read, so a
+`test`. The version lands in the merged manifest those tasks read, so a
 per-commit one made every commit miss the Gradle build cache for all of `:app`
 and `:wear`. The debug APK CI uploads and every release build use the real
 version, and packaging a release with the flag set fails
