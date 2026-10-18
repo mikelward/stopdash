@@ -23,6 +23,13 @@ stop, owning station and hub, and the station and hub of each station record the
 out. A content revision over the lines and the membership is stamped into this file's header
 and into the station index, so the app can tell when a refresh changed either.
 
+TfL's lists aren't stable from one read to the next: a bus stop, one of its lines, or its compass
+point or "towards" can be missing from one read and back on the next. So, given the last build
+(--previous, the directory holding the committed stops.tsv), whatever that build had and this
+read lacks is kept for up to KEEP_DAYS days, and the date it first went missing is recorded in
+stops_kept.tsv beside the output. A rebuild then changes only what TfL really changed, and what it
+really removed goes once it has been missing for KEEP_DAYS. The app doesn't read stops_kept.tsv.
+
 Format (v2), one record per line, tab-separated:
   # stopdash stops v2<TAB>bounds=<south>,<west>,<north>,<east><TAB>revision=<hex>
   L <id> <mode> <name>                                      a line, once
@@ -35,6 +42,7 @@ station record the index leaves out, <stop> is its station and <owner> is empty;
 leaves all four empty. A field TfL leaves out is empty.
 """
 import argparse
+import datetime
 import hashlib
 import json
 import os
@@ -67,6 +75,13 @@ TYPE_LISTINGS = ["NaptanRailStation", "NaptanMetroStation", "NaptanFerryPort"]
 # Greater London with a margin, as the station index's (build_station_index.py): TfL's buses run
 # a little past it, while the type listings' stations across the country aren't wanted.
 BOUNDS = (51.25, -0.65, 51.75, 0.40)
+# How long a stop, line or field the last build had is kept after TfL stops listing it, and the
+# file recording since when (beside stops.tsv; a builder file the app never reads).
+KEEP_DAYS = 30
+KEPT_FILE = "stops_kept.tsv"
+KEPT_HEADER = "# stopdash kept stops v1"
+# The fields kept when a read leaves them blank; the id, type and position are the stop itself.
+KEPT_FIELDS = ("name", "cluster", "hub", "ics", "letter", "compass", "towards")
 # A near-empty result means TfL answered oddly; the committed list stays.
 MIN_BUS_STOPS = 15000
 MIN_STATIONS = 600
@@ -162,11 +177,7 @@ def build(listings_by_id, bounds=BOUNDS):
     A line's name and mode are the first seen; a line TfL files under two modes keeps the first."""
     stops = [merged(v) for v in listings_by_id.values()]
     stops = sorted((s for s in stops if in_bounds(s, bounds)), key=lambda s: s["id"])
-    lines = {}
-    for s in stops:
-        for line, mode, name in s["lines"]:
-            lines.setdefault(line, (mode, name))
-    return stops, lines
+    return stops, line_table(stops)
 
 
 def clean(text):
@@ -194,6 +205,112 @@ def write(out, stops, lines, columns=None, revision="", bounds=BOUNDS):
             ",".join(clean(line) for line, _, _ in s["lines"]),
             *(clean(c) for c in columns.get(s["id"], NO_MEMBERSHIP)),
         ]) + "\n")
+
+
+def read_previous(text):
+    """id -> stop, as build() gives it, from a stops.tsv this builder wrote; empty for one of
+    another format version, which is then rebuilt from TfL's read alone."""
+    rows = text.splitlines()
+    if not rows or not rows[0].startswith(f"# stopdash stops v{FORMAT_VERSION}\t"):
+        return {}
+    lines = {}
+    stops = {}
+    for row in rows[1:]:
+        fields = row.split("\t")
+        if fields[0] == "L" and len(fields) == 4:
+            lines[fields[1]] = (fields[2], fields[3])
+        elif fields[0] == "S":
+            fields += [""] * (16 - len(fields))
+            stops[fields[1]] = {
+                "id": fields[1], "type": fields[2], "name": fields[3],
+                "lat": float(fields[4]), "lon": float(fields[5]),
+                "cluster": fields[6], "hub": fields[7], "letter": fields[8],
+                "compass": fields[9], "towards": fields[10], "ics": fields[12],
+                "lines": [(line, *lines.get(line, ("", line))) for line in fields[11].split(",") if line],
+            }
+    return stops
+
+
+def read_kept(text):
+    """(stop id, what) -> the date it went missing, from a stops_kept.tsv; what is "*" for the
+    whole stop, "line:<id>" for one of its lines, or a field's name."""
+    rows = text.splitlines()
+    if not rows or rows[0] != KEPT_HEADER:
+        return {}
+    kept = {}
+    for row in rows[1:]:
+        fields = row.split("\t")
+        if len(fields) == 3:
+            kept[(fields[1], fields[2])] = datetime.date.fromisoformat(fields[0])
+    return kept
+
+
+def write_kept(out, kept):
+    out.write(KEPT_HEADER + "\n")
+    for (sid, what), since in sorted(kept.items()):
+        out.write(f"{since.isoformat()}\t{sid}\t{what}\n")
+
+
+def keep(stops, previous, kept, today, days=KEEP_DAYS):
+    """[stops] with what [previous] had and they lack, while it has been missing for at most [days]:
+    a bus stop, a stop's line, or a field this read left blank. Returns the stops, in id order, and the
+    record of since when each kept item has been missing (what came back drops out of it)."""
+    found = {}
+
+    def held(sid, what, since=None):
+        since = kept.get((sid, what), since or today)
+        if (today - since).days > days:
+            return False
+        found[(sid, what)] = since
+        return True
+
+    def fill(stop, old, sid):
+        # A stop kept whole that comes back without some of what it had: those have been
+        # missing since the stop was, not since today.
+        whole = kept.get((sid, "*"))
+        for field in KEPT_FIELDS:
+            if not stop[field] and old[field] and held(sid, field, whole):
+                stop[field] = old[field]
+        have = {line for line, _, _ in stop["lines"]}
+        stop["lines"] = sorted(
+            stop["lines"] + [l for l in old["lines"] if l[0] not in have and held(sid, "line:" + l[0], whole)])
+
+    out = []
+    for stop in stops:
+        old = previous.get(stop["id"])
+        if old:
+            fill(stop, old, stop["id"])
+        out.append(stop)
+    fresh = {s["id"] for s in stops}
+    for sid, old in previous.items():
+        # Only a bus stop is kept whole: the paged bus list is what drifts, while a station comes
+        # from listings checked on their own and is placed by the station index, which a row
+        # rebuilt from the last list can't stand in for.
+        if sid in fresh or old["type"] != "B" or not held(sid, "*"):
+            continue
+        # A whole stop is kept as it was, less what was already kept and has now run out.
+        stop = dict(old)
+        for field in KEPT_FIELDS:
+            if (sid, field) in kept and not held(sid, field):
+                stop[field] = ""
+        stop["lines"] = [l for l in old["lines"] if (sid, "line:" + l[0]) not in kept or held(sid, "line:" + l[0])]
+        out.append(stop)
+    return sorted(out, key=lambda s: s["id"]), found
+
+
+def line_table(stops):
+    """The line table from the stops' lines: a line's name and mode are the first seen."""
+    lines = {}
+    for s in stops:
+        for line, mode, name in s["lines"]:
+            lines.setdefault(line, (mode, name))
+    return lines
+
+
+def kept_line_table(read, stops):
+    """The line table for [stops], what TfL's [read] says about a line first: a line's name and mode
+    come from the last build only where this read no longer lists it at all."""
+    return {**line_table(stops), **line_table(read)}
 
 
 def revision(stops, lines, columns, index):
@@ -277,26 +394,48 @@ def main(argv):
     parser.add_argument("--out", required=True, help="where to write stops.tsv")
     parser.add_argument("--stations", required=True,
                         help="the station_index.json build_station_index.py wrote; its revision is stamped in place")
+    parser.add_argument("--previous",
+                        help="the directory holding the last build's stops.tsv and stops_kept.tsv, to keep what this read misses")
     args = parser.parse_args(argv)
     with open(args.stations, encoding="utf-8") as f:
         index = json.load(f)
+    previous, kept = {}, {}
+    if args.previous:
+        # Read before anything is written: --out can be the same file.
+        def text_of(name):
+            path = os.path.join(args.previous, name)
+            if not os.path.exists(path):
+                print(f"no {path}; nothing kept from it")
+                return ""
+            with open(path, encoding="utf-8") as f:
+                return f.read()
+        previous = read_previous(text_of("stops.tsv"))
+        kept = read_kept(text_of(KEPT_FILE))
     found = {}
     collect(read_bus_list(), found)
     for mode in MODES:
         collect(required(mode, (fetch(f"/StopPoint/Mode/{mode}") or {}).get("stopPoints")), found)
     for stop_type in TYPE_LISTINGS:
         collect(required(stop_type, fetch(f"/StopPoint/Type/{stop_type}")), found)
-    stops, lines = build(found)
-    checked(stops)
+    read, _ = build(found)
+    # TfL's read alone must pass: a short answer is refused, not padded out with the last build.
+    checked(read)
+    # keep() fills the read's stops in place; their lines as read are what the table goes by.
+    read_lines = [dict(s, lines=list(s["lines"])) for s in read]
+    stops, kept = keep(read, previous, kept, datetime.datetime.now(datetime.timezone.utc).date())
+    lines = kept_line_table(read_lines, stops)
     columns = checked_membership(stops, membership(stops, index))
     stamp = revision(stops, lines, columns, index)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(args.out, "w", encoding="utf-8", newline="\n") as out:
         write(out, stops, lines, columns, stamp)
+    with open(os.path.join(os.path.dirname(os.path.abspath(args.out)), KEPT_FILE), "w", encoding="utf-8", newline="\n") as out:
+        write_kept(out, kept)
     with open(args.stations, "w", encoding="utf-8") as out:
         json.dump(with_revision(index, stamp), out, ensure_ascii=False, separators=(",", ":"))
         out.write("\n")
-    print(f"wrote {len(stops)} stops and {len(lines)} lines to {args.out}, revision {stamp}")
+    print(f"wrote {len(stops)} stops and {len(lines)} lines to {args.out}, revision {stamp};"
+          f" {len(kept)} kept from earlier builds that this read missed")
 
 if __name__ == "__main__":
     main(sys.argv[1:])

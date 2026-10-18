@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """Tests for build_stops, against hand-written fixtures (no network)."""
+import datetime
 import io
 import os
 import sys
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from build_stops import build, checked, collect, fetch_bus_pages, read_bus_list, required, write  # noqa: E402
+from build_stops import (  # noqa: E402
+    KEEP_DAYS, build, checked, collect, fetch_bus_pages, keep, kept_line_table, line_table, read_bus_list,
+    read_kept, read_previous, required, write, write_kept,
+)
 
 
 def pole(sid, name="Example Road", lat=51.5, lon=-0.12, lines=(), letter="", compass="", towards="",
@@ -203,6 +207,133 @@ class BusPagesTest(unittest.TestCase):
     def test_an_empty_list_is_refused(self):
         with self.assertRaises(SystemExit):
             fetch_bus_pages(lambda path, params=None: {"stopPoints": []})
+
+
+TODAY = datetime.date(2026, 10, 18)
+
+
+def built(*poles):
+    stops, _ = build(collect(list(poles), {}))
+    return stops
+
+
+def written(stops):
+    out = io.StringIO()
+    write(out, stops, line_table(stops))
+    return out.getvalue()
+
+
+def kept_text(kept):
+    out = io.StringIO()
+    write_kept(out, kept)
+    return out.getvalue()
+
+
+class KeepTest(unittest.TestCase):
+    """TfL's reads come and go a little; what the last build had is kept for KEEP_DAYS."""
+
+    def setUp(self):
+        self.full = pole("490000001A", lines=["1", "2"], letter="A", compass="N", towards="Example Town")
+        self.previous = read_previous(written(built(self.full, pole("490000002B", lines=["3"]))))
+
+    def test_the_last_build_reads_back_as_build_gives_it(self):
+        self.assertEqual(built(self.full, pole("490000002B", lines=["3"])),
+                         sorted(self.previous.values(), key=lambda s: s["id"]))
+
+    def test_a_read_with_everything_keeps_nothing(self):
+        stops, kept = keep(built(self.full, pole("490000002B", lines=["3"])), self.previous, {}, TODAY)
+        self.assertEqual(built(self.full, pole("490000002B", lines=["3"])), stops)
+        self.assertEqual({}, kept)
+
+    def test_a_stop_a_line_and_a_blank_field_the_read_missed_are_kept_from_today(self):
+        thin = pole("490000001A", lines=["1"], letter="A")
+        stops, kept = keep(built(thin), self.previous, {}, TODAY)
+        self.assertEqual(built(self.full, pole("490000002B", lines=["3"])), stops)
+        self.assertEqual({("490000001A", "line:2"): TODAY, ("490000001A", "compass"): TODAY,
+                          ("490000001A", "towards"): TODAY, ("490000002B", "*"): TODAY}, kept)
+
+    def test_what_went_missing_keeps_its_first_date(self):
+        earlier = TODAY - datetime.timedelta(days=10)
+        _, kept = keep(built(pole("490000001A", lines=["1"], letter="A", compass="N", towards="Example Town"),
+                             pole("490000002B", lines=["3"])),
+                       self.previous, {("490000001A", "line:2"): earlier}, TODAY)
+        self.assertEqual({("490000001A", "line:2"): earlier}, kept)
+
+    def test_what_has_been_missing_longer_than_the_window_goes(self):
+        long_ago = TODAY - datetime.timedelta(days=KEEP_DAYS + 1)
+        just = TODAY - datetime.timedelta(days=KEEP_DAYS)
+        thin = pole("490000001A", lines=["1"], letter="A", towards="Example Town")
+        stops, kept = keep(built(thin), self.previous,
+                           {("490000001A", "line:2"): long_ago, ("490000001A", "compass"): just,
+                            ("490000002B", "*"): long_ago}, TODAY)
+        self.assertEqual(["490000001A"], [s["id"] for s in stops])
+        self.assertEqual(["1"], [line for line, _, _ in stops[0]["lines"]])
+        self.assertEqual("N", stops[0]["compass"], "a field missing exactly the window is still kept")
+        self.assertEqual({("490000001A", "compass"): just}, kept)
+
+    def test_a_kept_stop_drops_its_own_kept_items_as_they_run_out(self):
+        long_ago = TODAY - datetime.timedelta(days=KEEP_DAYS + 1)
+        recent = TODAY - datetime.timedelta(days=3)
+        stops, kept = keep([], self.previous,
+                           {("490000001A", "*"): recent, ("490000001A", "line:2"): long_ago,
+                            ("490000001A", "towards"): long_ago, ("490000001A", "compass"): recent}, TODAY)
+        first = next(s for s in stops if s["id"] == "490000001A")
+        self.assertEqual((["1"], "", "N"), ([l for l, _, _ in first["lines"]], first["towards"], first["compass"]))
+        self.assertEqual({("490000001A", "*"): recent, ("490000001A", "compass"): recent,
+                          ("490000002B", "*"): TODAY}, kept)
+
+    def test_a_kept_stop_that_returns_without_something_counts_it_missing_since_the_stop_was(self):
+        gone = TODAY - datetime.timedelta(days=20)
+        stops, kept = keep(built(pole("490000001A", lines=["1"], letter="A", compass="N"),
+                                 pole("490000002B", lines=["3"])),
+                           self.previous, {("490000001A", "*"): gone}, TODAY)
+        self.assertEqual(["1", "2"], [l for l, _, _ in stops[0]["lines"]])
+        self.assertEqual({("490000001A", "line:2"): gone, ("490000001A", "towards"): gone}, kept)
+        long_gone = TODAY - datetime.timedelta(days=KEEP_DAYS + 1)
+        stops, kept = keep(built(pole("490000001A", lines=["1"], letter="A", compass="N"),
+                                 pole("490000002B", lines=["3"])),
+                           self.previous, {("490000001A", "*"): long_gone}, TODAY)
+        self.assertEqual((["1"], ""), ([l for l, _, _ in stops[0]["lines"]], stops[0]["towards"]))
+        self.assertEqual({}, kept)
+
+    def test_a_station_the_read_misses_isn_t_kept_whole(self):
+        station = pole("940GZZLUEXA", name="Example Underground Station", stop_type="NaptanMetroStation",
+                       mode="tube", lines=["victoria"])
+        previous = read_previous(written(built(self.full, station)))
+        stops, kept = keep(built(self.full), previous, {}, TODAY)
+        self.assertEqual(["490000001A"], [s["id"] for s in stops])
+        self.assertEqual({}, kept)
+
+    def test_what_comes_back_leaves_the_record_and_a_new_value_wins(self):
+        moved = pole("490000001A", lines=["1", "2"], letter="A", compass="S", towards="Example Town")
+        stops, kept = keep(built(moved, pole("490000002B", lines=["3"])), self.previous,
+                           {("490000001A", "compass"): TODAY - datetime.timedelta(days=2)}, TODAY)
+        self.assertEqual("S", stops[0]["compass"])
+        self.assertEqual({}, kept)
+
+    def test_a_kept_line_brings_its_mode_and_name_into_the_line_table(self):
+        stops, _ = keep(built(pole("490000001A", lines=["1"], letter="A")), self.previous, {}, TODAY)
+        self.assertEqual(("bus", "3"), line_table(stops)["3"])
+
+    def test_a_line_s_current_name_wins_over_a_kept_copy(self):
+        # Stop A misses line 3 this read and keeps the last build's copy, named "3"; stop B still
+        # lists it, now under a new name. A sorts first, so the kept copy is seen first.
+        previous = read_previous(written(built(pole("490000001A", lines=["3"]), pole("490000002B", lines=["3"]))))
+        renamed = pole("490000002B", lines=["3"])
+        renamed["lines"] = [{"id": "3", "name": "Three"}]
+        read = built(pole("490000001A", lines=["1"]), renamed)
+        stops, _ = keep([dict(s, lines=list(s["lines"])) for s in read], previous, {}, TODAY)
+        self.assertEqual(("bus", "Three"), kept_line_table(read, stops)["3"])
+        self.assertEqual(("bus", "1"), kept_line_table(read, stops)["1"])
+
+    def test_the_record_round_trips(self):
+        kept = {("490000001A", "line:2"): TODAY, ("490000002B", "*"): TODAY - datetime.timedelta(days=4)}
+        self.assertEqual(kept, read_kept(kept_text(kept)))
+
+    def test_a_file_of_another_format_keeps_nothing(self):
+        self.assertEqual({}, read_previous("# stopdash stops v1\tbounds=1,2,3,4\n"))
+        self.assertEqual({}, read_previous(""))
+        self.assertEqual({}, read_kept(""))
 
 
 if __name__ == "__main__":

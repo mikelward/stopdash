@@ -4,7 +4,7 @@ name: station-index-refresh
 # the National Rail station codes (crs_codes.json) from NaPTAN, and the step-free access table
 # (step_free.json) from TfL's station data, and the stops the near-me list finds on the device
 # (stops.tsv) from TfL's stop lists, once a week and, when any changed, opens (or updates) a
-# pull request with them, so "Find a station", National Rail times and step-free marks keep up
+# pull request with them that merges itself once its checks pass, so "Find a station", National Rail times and step-free marks keep up
 # without anyone touching the builders. station-index.yml still rebuilds them on a pull request
 # that changes a builder; this is the scheduled refresh.
 #
@@ -36,6 +36,7 @@ env:
   CRS: app/src/main/assets/stations/crs_codes.json
   STEP_FREE: app/src/main/assets/stations/step_free.json
   STOPS: app/src/main/assets/stations/stops.tsv
+  KEPT: app/src/main/assets/stations/stops_kept.tsv
   BRANCH: station-index/refresh
 jobs:
   build:
@@ -87,15 +88,20 @@ jobs:
       - name: Build step-free access from TfL's station data
         run: python3 scripts/build_step_free.py --out "$STEP_FREE"
       - name: Build the stop list from TfL
-        run: python3 scripts/build_stops.py --out "$STOPS" --stations "$INDEX"
+        # Keeps what main's list has and this read misses, for a while (KEEP_DAYS), and records
+        # since when in $KEPT; read before the list is overwritten in place. main is the last
+        # build because the refresh merges itself (below): a refresh left open would be rebuilt
+        # from main, and what it had dropped or dated would come back with a fresh date.
+        run: python3 scripts/build_stops.py --out "$STOPS" --stations "$INDEX" --previous "$(dirname "$STOPS")"
       - name: Compare with the committed lists
         id: diff
         run: |
-          if git diff --quiet -- "$INDEX" "$CRS" "$STEP_FREE" "$STOPS"; then
+          # status, not diff: $KEPT is new on the first run, and diff ignores an untracked file.
+          if [ -z "$(git status --porcelain -- "$INDEX" "$CRS" "$STEP_FREE" "$STOPS" "$KEPT")" ]; then
             echo "The files are unchanged; nothing to open."
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
-            git diff --stat -- "$INDEX" "$CRS" "$STEP_FREE" "$STOPS"
+            git status --short -- "$INDEX" "$CRS" "$STEP_FREE" "$STOPS" "$KEPT"
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
       # Every id whose station, stop, owning station or hub changed, for the pull request's body.
@@ -115,6 +121,7 @@ jobs:
             ${{ env.CRS }}
             ${{ env.STEP_FREE }}
             ${{ env.STOPS }}
+            ${{ env.KEPT }}
           if-no-files-found: error
       # Its own artifact: in the lists' one, its path would move theirs off the shared directory.
       - name: Upload the membership changes
@@ -163,10 +170,11 @@ jobs:
           cp build/station-index/crs_codes.json "$CRS"
           cp build/station-index/step_free.json "$STEP_FREE"
           cp build/station-index/stops.tsv "$STOPS"
+          cp build/station-index/stops_kept.tsv "$KEPT"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "$BRANCH"
-          git add -- "$INDEX" "$CRS" "$STEP_FREE" "$STOPS"
+          git add -- "$INDEX" "$CRS" "$STEP_FREE" "$STOPS" "$KEPT"
           git commit -m "Refresh station details from TfL"
           # The branch is this workflow's own: each week's list replaces the last one's. Leased on
           # the tip the build job saw as the run started (or on its absence), so a change someone
@@ -179,7 +187,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GRADLE_UPDATE_PAT }}
         run: |
           {
-            echo "The weekly rebuild of the bundled station data (station-index-refresh.yml) found changes. Review the diffs of \`$INDEX\`, \`$CRS\`, \`$STEP_FREE\` and \`$STOPS\` for anything odd (a mode, interchange, station code, step-free station or bus stop gone missing, or a station's step-free level dropping) before merging; the builders already refuse a list under 200 stations, one missing a required mode or interchange, under 2,000 station codes, under 300 step-free stops, or under 15,000 bus stops."
+            echo "The weekly rebuild of the bundled station data (station-index-refresh.yml) found changes. Review the diffs of \`$INDEX\`, \`$CRS\`, \`$STEP_FREE\` and \`$STOPS\` for anything odd (a mode, interchange, station code, step-free station or bus stop gone missing, or a station's step-free level dropping); it merges itself once its checks pass, so disable auto-merge to hold it. the builders already refuse a list under 200 stations, one missing a required mode or interchange, under 2,000 station codes, under 300 step-free stops, or under 15,000 bus stops."
             echo
             # Every id the station model regrouped (dev-docs/station-model.md), capped per category.
             cat build/membership/membership.md
@@ -188,10 +196,15 @@ jobs:
           open=$(gh pr list --head "$BRANCH" --state open --json number,isCrossRepository \
             --jq '[.[] | select(.isCrossRepository | not)] | .[0].number // empty')
           if [ -n "$open" ]; then
-            # The push above updated its branch; its body now describes this week's list.
+            # The push above updated its branch; its body now describes this week's list. Its
+            # auto-merge is left as it is: still armed unless someone turned it off to hold it.
             gh pr edit "$open" --body-file build/body.md
             exit 0
           fi
           gh pr create --base main --head "$BRANCH" \
             --title "Refresh station details from TfL" \
             --body-file build/body.md
+          # It merges itself once its required checks pass (codex included), so each week's
+          # refresh builds on the last one's (the stop list's --previous is main). A red check
+          # holds it, visibly, for a person to look at; the next week's run replaces its head.
+          gh pr merge "$BRANCH" --auto --rebase

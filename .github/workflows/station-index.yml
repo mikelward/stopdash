@@ -95,8 +95,12 @@ jobs:
         run: python3 scripts/stop_membership_test.py
       # Last: it works out the station model's membership from the station index and stamps the
       # shared content revision into it (dev-docs/station-model.md *Where it's built*).
+      # It keeps what the committed list has and this read of TfL misses, for a while
+      # (build_stops.py's KEEP_DAYS), recording since when in stops_kept.tsv beside it.
       - name: Build the stop list from TfL
-        run: python3 scripts/build_stops.py --out build/stations/stops.tsv --stations build/stations/station_index.json
+        run: >-
+          python3 scripts/build_stops.py --out build/stations/stops.tsv --stations build/stations/station_index.json
+          --previous app/src/main/assets/stations
       - name: Upload the index
         uses: actions/upload-artifact@v4
         with:

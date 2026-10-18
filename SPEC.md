@@ -290,6 +290,10 @@ The app finds stops two ways:
   soon as there's a fix, offline, and sends TfL no position; it is read in the background as the app's screen opens, so the first lookup finds it in memory. A search reaching past the bundle's area,
   or a bundle that can't be read, is still TfL's. The cost is that a stop or route change reaches the
   list only with the next weekly refresh and app update; the departures themselves are always live.
+  TfL's lists drop a stop, a route or a stop's direction from one read and bring it back on the
+  next, so each rebuild keeps what the last one had until TfL has left it out for **30 days**: a
+  refresh then changes only what TfL really changed, and a stop or route TfL really removes stays
+  in the list that long (its departures, being live, simply stop).
   The eager clusters' stops are fetched for arrivals at once, and a *more* cluster's
   stops are fetched only when its farther card is tapped (*Farther stations*). **The reach and the two-per-mode cap are
   not yet validated on a device** — whether either wants tuning at a real interchange lives in
