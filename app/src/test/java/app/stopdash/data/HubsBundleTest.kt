@@ -34,6 +34,7 @@ class HubsBundleTest {
         assertFalse(hubs.sameStation("910GSTPX", "940GZZLUKSX"))
         assertFalse(hubs.sameStation("910GKNGX", "940GZZLUKSX"))
         assertEquals(Membership.Of("HUBKGX"), hubs.hubOf("910GSTPXBOX"))
+        assertEquals("its page asks every record", setOf("910GSTPX", "910GSTPXBOX", "910GSTPADOM"), hubs.recordsOf("910GSTPX").toSet())
         assertTrue(hubs.sameHub("910GKNGX", "940GZZLUKSX"))
         val members = hubs.membersOf("HUBKGX")
         assertNotNull(members)

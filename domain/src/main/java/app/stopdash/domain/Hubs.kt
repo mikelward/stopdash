@@ -120,6 +120,16 @@ class Hubs private constructor(
         }
     }
 
+    /**
+     * Every TfL record of the station [id] belongs to (a record's, a platform's or the station's own
+     * id), the lead record first: St Pancras's main, low-level and domestic records together. Empty
+     * for an id the bundle doesn't hold as a station's, a hub's included.
+     */
+    fun recordsOf(id: String): List<String> = when (val station = stationOf(id)) {
+        is Membership.Of -> recordsOfStation[station.id].orEmpty()
+        else -> emptyList()
+    }
+
     /** Whether [a] and [b] are one station; an id the bundle doesn't hold is only itself. */
     fun sameStation(a: String, b: String): Boolean = same(stationOf(a), stationOf(b), a, b)
 

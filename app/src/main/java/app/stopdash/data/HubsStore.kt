@@ -12,14 +12,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The station model ([Hubs], dev-docs/station-model.md), loaded once per process on a worker as the
  * app starts, from the bundled station index and stops it already reads, and published as [state]:
- * [Hubs.State.Loading] until then, then [Hubs.State.Ready] or [Hubs.State.Unavailable], once. Nothing
- * reads it yet (phase 2 of the design does).
+ * [Hubs.State.Loading] until then, then [Hubs.State.Ready] or [Hubs.State.Unavailable], once. A
+ * station page reads it ([ready]) for the records its station is.
  */
 object HubsStore {
     private const val TAG = "StopDash.Stations"
@@ -28,6 +30,17 @@ object HubsStore {
     val state: StateFlow<Hubs.State> = mutableState.asStateFlow()
 
     private val started = AtomicBoolean(false)
+
+    // How long [ready] waits for a load still under way: the model is built once, as the app starts, so
+    // this bounds only a slow build, after which the caller goes without it.
+    private const val READY_WAIT_MILLIS = 3_000L
+
+    /**
+     * The model once loaded, waiting for a load under way at most [READY_WAIT_MILLIS]; null when it
+     * couldn't be built, or isn't built in time, for the caller to do without it as before.
+     */
+    suspend fun ready(): Hubs? =
+        (withTimeoutOrNull(READY_WAIT_MILLIS) { state.first { it !is Hubs.State.Loading } } as? Hubs.State.Ready)?.hubs
 
     /** Starts the load on [scope] once per process: files on [io], the model built on [compute]. */
     fun warm(

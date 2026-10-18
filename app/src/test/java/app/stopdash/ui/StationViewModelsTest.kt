@@ -1,5 +1,9 @@
 package app.stopdash.ui
 
+import java.io.StringReader
+import java.io.BufferedReader
+import app.stopdash.domain.Hubs
+import app.stopdash.domain.BundledStops
 import androidx.lifecycle.SavedStateHandle
 import app.stopdash.domain.BusStopIndex
 import app.stopdash.domain.Coordinates
@@ -1282,6 +1286,39 @@ class StationViewModelsTest {
         assertEquals(listOf("910GWEYBDGB", "910GWEYBDGE"), asked)
         val ready = vm.state.value as StationStopsViewModel.State.Ready
         assertEquals(listOf("910GWEYBDGB", "910GWEYBDGE"), ready.stops.map { it.id })
+    }
+
+    @Test
+    fun `a station opens every record the model holds for it, a low level its name doesn't share included`() = runTest {
+        // Synthetic records: a station's main and low-level records, which the index's same-name rule
+        // keeps apart, and a hub around it the page doesn't take in.
+        val index = StationIndex(
+            listOf(
+                IndexedStation("910GEXPANC", "Example Pancras", listOf("national-rail"), "HUBEXX", 51.501, -0.121, icsCode = "1009102", station = "1009102:rail", modelHub = "HUBEXX"),
+                IndexedStation("910GEXPANCLL", "Example Pancras LL", listOf("national-rail"), "HUBEXX", 51.5015, -0.121, icsCode = "1009102", station = "1009102:rail", modelHub = "HUBEXX"),
+                IndexedStation("910GEXCROSS", "Example Cross", listOf("national-rail"), "HUBEXX", 51.500, -0.120, icsCode = "1009101", station = "1009101:rail", modelHub = "HUBEXX"),
+                IndexedStation("HUBEXX", "Example Cross & Example Pancras", listOf("national-rail")),
+            ),
+            revision = "abc",
+        )
+        val stops = BundledStops.read(BufferedReader(StringReader("# stopdash stops v2\tbounds=51.25,-0.65,51.75,0.4\trevision=abc\nL\t1\tbus\t1")))
+        val hubs = Hubs.of(index, stops)!!
+        val asked = mutableListOf<String>()
+        val finder = FakeFinder(stops = { id ->
+            asked += id
+            listOf(StopLocation(id, "Example Pancras", 0.0, 0.0, listOf(LineRef("tl", "Thameslink", "national-rail")), clusterId = id))
+        })
+        StationStopsViewModel(finder, "910GEXPANC", io = dispatcher, compute = dispatcher, loadIndex = { index }, loadHubs = { hubs })
+        advanceUntilIdle()
+        assertEquals(listOf("910GEXPANC", "910GEXPANCLL"), asked)
+        asked.clear()
+        StationStopsViewModel(finder, "910GEXPANC", io = dispatcher, compute = dispatcher, loadIndex = { index }, loadHubs = { null })
+        advanceUntilIdle()
+        assertEquals("with no model, the same-name rule as before", listOf("910GEXPANC"), asked)
+        asked.clear()
+        StationStopsViewModel(finder, "HUBEXX", io = dispatcher, compute = dispatcher, loadIndex = { index }, loadHubs = { hubs })
+        advanceUntilIdle()
+        assertEquals("an interchange still opens as itself", listOf("HUBEXX"), asked)
     }
 
     @Test

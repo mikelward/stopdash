@@ -815,7 +815,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           - [ ] Every holder of a picked place holds a `Pick`, `StationMatch` included, a level the row
                 doesn't say read through `Hubs.picked`; the trip on the way's ends too, with its version
                 bump (*A saved level comes with a version*).
-          - [ ] Search's member and bus-stop rows, the board and the twin fold on the model.
+          - [x] The station page's records on the model (`Hubs.recordsOf`): St Pancras's page takes in
+                its low level. Read through `HubsStore.ready`, the same-name rule standing in without it.
+          - [ ] Search's member and bus-stop rows and the twin fold on the model: St Pancras's row
+                opens St Pancras, and old member-row picks read back through `Hubs.picked`.
           - [ ] Getting off, far ends, Direct, off-plan, passing a stop, and a trip's arrivals
                 (`Hubs.idsOf`) on the model, with SPEC *Departures*, *Finding stops* and *Trips with
                 a change*.

@@ -228,6 +228,7 @@ import app.stopdash.data.SharedTflRateLimiter
 import app.stopdash.data.SharedTflRequestPool
 import app.stopdash.data.BusStopIndexStore
 import app.stopdash.data.PlaceIndexStore
+import app.stopdash.data.HubsStore
 import app.stopdash.data.StationIndexStore
 import app.stopdash.data.StepFreeSetting
 import app.stopdash.data.SummaryNetworksSetting
@@ -4563,6 +4564,7 @@ class MainActivity : ComponentActivity() {
                             stationId,
                             warn = ::logDepartureWarning,
                             loadIndex = { StationIndexStore.load(applicationContext) },
+                            loadHubs = HubsStore::ready,
                         )
                     }
                 },
@@ -4641,6 +4643,7 @@ class MainActivity : ComponentActivity() {
                             stationId,
                             warn = ::logDepartureWarning,
                             loadIndex = { StationIndexStore.load(applicationContext) },
+                            loadHubs = HubsStore::ready,
                         )
                     }
                 },
