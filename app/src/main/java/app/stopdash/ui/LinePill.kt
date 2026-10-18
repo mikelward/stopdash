@@ -33,7 +33,9 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.lineCode
@@ -79,10 +81,10 @@ fun LinePill(lineName: String, lineId: String, mode: String, modifier: Modifier 
     // by construction, not just "no narrower than a floor": a two-digit bus number, a
     // three-letter tube code, and a four-character bus route all render in the same box.
     // The width holds the *widest* code this app shows (see [LINE_PILL_LABEL_WIDTH]), so
-    // nothing truncates — a shorter code just gets more centering room. Scaled by the font
-    // scale so it still holds those codes at a large accessibility text size rather than
-    // clipping them.
-    val labelWidth = LINE_PILL_LABEL_WIDTH * LocalDensity.current.fontScale
+    // nothing truncates — a shorter code just gets more centering room. Grown as the label's
+    // text grows ([linePillLabelWidth]), so it still holds those codes at a large accessibility
+    // text size without clipping them or padding them out.
+    val labelWidth = linePillLabelWidth(LocalDensity.current, MaterialTheme.typography.labelLarge.fontSize)
     val textStyle = MaterialTheme.typography.labelLarge.let { base ->
         if (colors is PillColors.Solid) base.copy(shadow = Shadow(colors.halo, Offset.Zero, haloBlurPx))
         else base
@@ -125,6 +127,16 @@ fun LinePill(lineName: String, lineId: String, mode: String, modifier: Modifier 
  * clips nor widens the column past the others.
  */
 private val LINE_PILL_LABEL_WIDTH = 48.dp
+
+/**
+ * A lone pill's label width at [density]'s font scale, for a label set at [fontSize]: [LINE_PILL_LABEL_WIDTH]
+ * grown by as much as the label's text grows. Not by the raw font scale: Android scales large text
+ * non-linearly, so at a large font scale a 14 sp label grows by less than the scale, and a box grown by the
+ * scale left wide padding either side of the code.
+ */
+internal fun linePillLabelWidth(density: Density, fontSize: TextUnit): Dp = with(density) {
+    LINE_PILL_LABEL_WIDTH * (fontSize.toDp().value / fontSize.value)
+}
 
 /**
  * Lines that serve one leg alike (the 43 or the 134 to the same stop) as **one pill cut
@@ -259,18 +271,21 @@ private val SEGMENT_PADDING = 8.dp
 private fun segmentStartPad(i: Int) = if (i == 0) SEGMENT_PADDING else CUT_PADDING
 private fun segmentEndPad(i: Int, last: Int) = if (i == last) SEGMENT_PADDING else CUT_PADDING
 
-/** The width, in pixels, every lone [LinePill] takes at [density]'s font scale: its fixed label width and padding. */
-internal fun linePillWidthPx(density: Density): Int = with(density) {
-    (LINE_PILL_LABEL_WIDTH * fontScale).roundToPx() + 2 * SEGMENT_PADDING.roundToPx()
+/**
+ * The width, in pixels, every lone [LinePill] takes at [density]'s font scale, its label set at [fontSize]:
+ * its fixed label width ([linePillLabelWidth]) and padding.
+ */
+internal fun linePillWidthPx(density: Density, fontSize: TextUnit): Int = with(density) {
+    linePillLabelWidth(density, fontSize).roundToPx() + 2 * SEGMENT_PADDING.roundToPx()
 }
 
 /**
  * The width, in pixels, a [SharedLinePill] for [lines] takes when it has the room, worked out as it
  * lays itself out, so a column sized to it fits the pill exactly. [measure] gives a code's width in
- * pixels in the pill's label style ([pillLabelStyle]); a lone pill needs none ([linePillWidthPx]).
+ * pixels in the pill's label style ([pillLabelStyle], set at [fontSize]); a lone pill needs none ([linePillWidthPx]).
  */
-internal fun sharedPillWidthPx(lines: List<LineRef>, density: Density, measure: (String) -> Int): Int {
-    if (lines.size == 1) return linePillWidthPx(density)
+internal fun sharedPillWidthPx(lines: List<LineRef>, density: Density, fontSize: TextUnit, measure: (String) -> Int): Int {
+    if (lines.size == 1) return linePillWidthPx(density, fontSize)
     val codes = cutPillCodes(lines)
     val min = measure(MIN_SEGMENT_CODE)
     return with(density) {

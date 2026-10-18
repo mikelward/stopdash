@@ -1,6 +1,8 @@
 package app.stopdash.ui
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -108,29 +110,59 @@ class LinePillWidthTest {
     @Test
     fun `pills stay uniform and grow with the font scale`() {
         // At 2x font scale the pill scales up (holding a wide code rather than clipping it)
-        // and both codes still measure the same width. The default-scale label is 48dp; at
-        // 2x it is 96dp, so a width well past the default proves it scaled with the font
-        // rather than clipping. Only two pills here: at 2x, four wide pills overflow the test
-        // window's width (the app never puts more than one pill in a row), which would clamp
-        // the trailing pill and defeat the uniformity check.
-        composeRule.setContent {
-            StopDashTheme {
-                val base = LocalDensity.current
-                CompositionLocalProvider(
-                    LocalDensity provides Density(density = base.density, fontScale = 2f),
-                ) {
-                    Surface {
-                        Row {
-                            LinePill(lineName = "12", lineId = "12", mode = "bus")
-                            LinePill(lineName = "N550", lineId = "n550", mode = "bus")
-                        }
-                    }
-                }
-            }
-        }
+        // and both codes still measure the same width. Only two pills here: at 2x, four wide
+        // pills overflow the test window's width (the app never puts more than one pill in a
+        // row), which would clamp the trailing pill and defeat the uniformity check.
+        composeRule.setContent { AtScale(2f) { Row { Pill("12"); Pill("N550") } } }
         val bus2x = widthOf("12")
         val route2x = widthOf("N550")
         assertEquals(bus2x, route2x, 0.5)
-        assertTrue("pill should widen at 2x font scale", bus2x > 90.0)
+        assertTrue("pill should widen at 2x font scale", bus2x > 64.0 + 16.0)
+    }
+
+    @Test
+    fun `the label box grows as the text does, not by the raw font scale`() {
+        // Android scales large text non-linearly, so at 2x a 14 sp label grows by less than 2x.
+        // The box must grow by the text's own growth: a box grown by the raw scale padded the
+        // code out at a large font size. Compare a bare N550 label's growth with the pill's.
+        composeRule.setContent {
+            Column {
+                AtScale(1f) { Pill("N550", "pill-1x"); Bare("bare-1x") }
+                AtScale(2f) { Pill("N550", "pill-2x"); Bare("bare-2x") }
+            }
+        }
+        val padding = 16.0
+        val textGrowth = widthOf("bare-2x") / widthOf("bare-1x")
+        val boxGrowth = (widthOf("pill-2x") - padding) / (widthOf("pill-1x") - padding)
+        assertTrue("2x text should be wider than 1x", textGrowth > 1.2)
+        assertEquals("pill 1x ${widthOf("pill-1x")} 2x ${widthOf("pill-2x")}, text 1x ${widthOf("bare-1x")} 2x ${widthOf("bare-2x")}", textGrowth, boxGrowth, 0.03)
+    }
+
+    @Composable
+    private fun AtScale(fontScale: Float, content: @Composable () -> Unit) {
+        StopDashTheme {
+            val base = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density = base.density, fontScale = fontScale)) {
+                Surface { Row { content() } }
+            }
+        }
+    }
+
+    @Composable
+    private fun Pill(line: String, label: String = line) {
+        Box(Modifier.semantics(mergeDescendants = true) { contentDescription = label }) {
+            LinePill(lineName = line, lineId = line.lowercase(), mode = "bus")
+        }
+    }
+
+    @Composable
+    private fun Bare(label: String) {
+        Text(
+            text = "N550",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            modifier = Modifier.semantics { contentDescription = label },
+        )
     }
 }

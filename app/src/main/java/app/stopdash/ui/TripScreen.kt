@@ -2510,7 +2510,7 @@ internal data class PillWidth(
      */
     fun measure(): (List<LineRef>) -> Int {
         val measurer = TextMeasurer(fontFamilyResolver, density, layoutDirection, cacheSize = 0)
-        return { pill -> sharedPillWidthPx(pill, density) { code -> measurer.measure(code, style, maxLines = 1).size.width } }
+        return { pill -> sharedPillWidthPx(pill, density, style.fontSize) { code -> measurer.measure(code, style, maxLines = 1).size.width } }
     }
 }
 
@@ -2726,7 +2726,8 @@ private fun RideStops(
 ) {
     val rides = card.first().route.rides
     val density = LocalDensity.current
-    val columnWidth = slotWidth ?: with(density) { linePillWidthPx(density).toDp() }
+    val labelFontSize = MaterialTheme.typography.labelLarge.fontSize
+    val columnWidth = slotWidth ?: with(density) { linePillWidthPx(density, labelFontSize).toDp() }
     // A row's pill column: at least [columnWidth], so every row's stop starts in one place.
     @Composable
     fun PillColumn(alignment: Alignment, pill: @Composable () -> Unit) {
