@@ -802,6 +802,17 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             children). And `stationOf`'s `Unresolved`: the builder drops a platform listed under two
             stations, so the device can't tell it from one the bundle doesn't hold, and reads it as
             `Unbundled`; keeping such platforms in the bundle would let it say so.
+        - Phase 2 (station identity), in PRs:
+          - [x] `Pick` (id, name, level, `extraStopId`, a place's position), its one codec
+                (`PersistedPick`), `Hubs.picked` for picks saved before it, `Hubs.idsOf`, and
+                search's member rows with the records behind each (`StationIndex.memberRows`). Unused.
+          - [ ] Every holder of a picked place holds a `Pick`, `StationMatch` included; each file
+                store that saves one bumps its version and reads every older one (*Saved data*).
+          - [ ] Search's member and bus-stop rows, the board and the twin fold on the model.
+          - [ ] Getting off, far ends, Direct, off-plan, passing a stop, and a trip's arrivals
+                (`Hubs.idsOf`) on the model, with SPEC *Departures*, *Finding stops* and *Trips with
+                a change*.
+          - [ ] The `Unbundled` interchange's trip, planned to its looked-up children.
         - Favorite rides stay (maintainer, 2026-10-16), so phase 3 builds on them. Nothing is left
           open.
         - It takes in matching stations by id (above), *A closed station's other ids*, *A bus ending
