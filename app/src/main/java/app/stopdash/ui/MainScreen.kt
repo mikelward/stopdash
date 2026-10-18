@@ -215,6 +215,7 @@ import app.stopdash.domain.routeDepartures
 import app.stopdash.domain.otherPlatforms
 import app.stopdash.domain.routeUntimed
 import app.stopdash.domain.serviceName
+import app.stopdash.domain.stopPlace
 import app.stopdash.domain.stopPlaceKey
 import app.stopdash.domain.takesLineSuffix
 import app.stopdash.telemetry.ReportScreen
@@ -279,6 +280,14 @@ fun MainScreen(
     // Shows a near-me stop (`stopId`, place name) in the maps app, from a tap on its header's
     // distance; null leaves the distance inert.
     onOpenStopMap: ((String, String) -> Unit)? = null,
+    // A ride's own view's Whole station (All stops for a bus ride), for the end it boards from, and Show on
+    // map, for that end (SPEC *Journeys*); null hides the button.
+    onOpenRideStation: ((FavoriteJourney) -> Unit)? = null,
+    onShowRideOnMap: ((JourneyEnd) -> Unit)? = null,
+    // A ride whose own view the screen opens on, as it first shows (Back from that ride's station page), and
+    // its taking it, so a later return to the screen opens on the list.
+    reopenJourneyKey: String? = null,
+    onJourneyReopened: () -> Unit = {},
     // The favorite journeys (SPEC *Journeys*), each already turned so its origin is the end nearer the
     // rider: shown as cards atop the near-me list, and starrable from a route page's stop list.
     journeys: List<FavoriteJourney> = emptyList(),
@@ -523,7 +532,9 @@ fun MainScreen(
         }
     }
     // The favorite journey whose own view is open (its key), from a tap on its heading, or null.
-    var journeyViewKey by rememberSaveable { mutableStateOf<String?>(null) }
+    // Opened from the first frame on a ride handed back to it, never the list for a frame first.
+    var journeyViewKey by rememberSaveable { mutableStateOf(reopenJourneyKey) }
+    LaunchedEffect(reopenJourneyKey) { if (reopenJourneyKey != null) onJourneyReopened() }
     // Whether the rider has tapped "Faraway favorites" to show the far journeys in full, for this
     // nearby set ([rememberFarReveal]).
     val farRevealed = farReveal.revealed
@@ -929,7 +940,15 @@ fun MainScreen(
             // A destination whose check failed with nothing known: the card says so, not "open".
             // From the same check as the far end's closures ([ListRows.destinationsUnknown]) (Codex, #524).
             val destinationUnchecked = destinationIds.any { it in rows.destinationsUnknown }
-            JourneyCard(journey, state, closures, checked, boardingIds, destinationIds, destinationUnchecked, misses)
+            // The origin's stop area, for a ride saved before its ends' areas were (Codex, #959): from its line's route,
+            // where saved areas come from, so it's known once the route is (before departures); else as they name it.
+            // Only a real area: blank when neither names one, so a bus ride's All stops stays hidden rather than
+            // opening its pole alone ([stopPlace] falls back to the stop's own id) (Codex, #959).
+            val originArea = journeySequences[journey.lineId]?.stopAreas?.get(journey.from.stopId)?.ifBlank { null }
+                ?: origin?.let { stopPlace(it.stopId, it.stopName, it.clusterId, emptyList()).id.takeIf { id -> id != it.stopId } }.orEmpty()
+            // And its published position from its line's route, for a ride saved before ends' positions were (Codex, #959).
+            val originPosition = journeySequences[journey.lineId]?.stopPositions?.get(journey.from.stopId)
+            JourneyCard(journey, state, closures, checked, boardingIds, destinationIds, destinationUnchecked, misses, originArea, originPosition)
         }
     }
     val nearbyOrdered = listRows?.nearby.orEmpty()
@@ -1678,6 +1697,8 @@ fun MainScreen(
                             journeyView = true,
                             onFlipJourney = onFlipJourney,
                             onUnstarJourney = onToggleJourney,
+                            onOpenRideStation = onOpenRideStation,
+                            onShowRideOnMap = onShowRideOnMap,
                             onHideRideLine = hideRideLine,
                             onShowRideLine = showRideLine,
                             onRetryJourneyRoutes = { journeyRouteRetry++ },
@@ -1926,6 +1947,8 @@ private fun LoadedContent(
     onOpenJourney: ((FavoriteJourney) -> Unit)? = null,
     journeyView: Boolean = false,
     onUnstarJourney: ((FavoriteJourney) -> Unit)? = null,
+    onOpenRideStation: ((FavoriteJourney) -> Unit)? = null,
+    onShowRideOnMap: ((JourneyEnd) -> Unit)? = null,
     onHideRideLine: ((FavoriteJourney, LineRef) -> Unit)? = null,
     onShowRideLine: ((FavoriteJourney, String) -> Unit)? = null,
     farJourneyCards: List<JourneyCard> = emptyList(),
@@ -2178,6 +2201,8 @@ private fun LoadedContent(
                         onOpenJourney = onOpenJourney,
                         journeyView = journeyView,
                         onUnstarJourney = onUnstarJourney,
+                        onOpenRideStation = onOpenRideStation,
+                        onShowRideOnMap = onShowRideOnMap,
                         onHideRideLine = onHideRideLine,
                         onShowRideLine = onShowRideLine,
                         farJourneyCards = farJourneyCards,
@@ -2726,6 +2751,9 @@ private fun DepartureList(
     journeyView: Boolean = false,
     // Unstars a journey from its own view's action row; null hides the button.
     onUnstarJourney: ((FavoriteJourney) -> Unit)? = null,
+    // Its own view's Whole station and Show on map, for the end it boards from; null hides the button.
+    onOpenRideStation: ((FavoriteJourney) -> Unit)? = null,
+    onShowRideOnMap: ((JourneyEnd) -> Unit)? = null,
     // Hides a line from a ride, from its rows' long press, and shows one again (by its entry) from its
     // own view (SPEC *Hiding a line from a ride*); null offers neither.
     onHideRideLine: ((FavoriteJourney, LineRef) -> Unit)? = null,
@@ -2909,6 +2937,13 @@ private fun DepartureList(
                             card.journey,
                             onSwap = { onFlipJourney(card.journey) },
                             onUnstar = onUnstarJourney?.let { unstar -> { unstar(card.journey) } },
+                            // A bus ride's pole alone isn't All stops: held back until its stop area is known, from its
+                            // saved end, route or departures (Codex, #959). A rail end's id is its station's own.
+                            onStation = onOpenRideStation?.takeIf { !card.journey.bus || card.stationRide.from.areaId.isNotBlank() }
+                                ?.let { open -> { open(card.stationRide) } },
+                            // Only where TfL published the stop's position: there is nothing to show without it.
+                            onMap = onShowRideOnMap?.takeIf { card.stationRide.from.latitude != null && card.stationRide.from.longitude != null }
+                                ?.let { show -> { show(card.stationRide.from) } },
                         )
                     }
                     // Its hidden lines, each a list item of its own, with a Show (SPEC *Hiding a line from a ride*).
@@ -4334,7 +4369,32 @@ internal data class JourneyCard(
     val destinationUnchecked: Boolean = false,
     // The departures left out as unchecked, by line, stop and reason, for the debug log.
     val misses: Set<RouteMiss> = emptySet(),
+    // Its origin's stop area from its line's route, else as its departures name it ([stopPlace]); blank where neither is in.
+    val originArea: String = "",
+    // Its origin's published position on its line's route ([LineSequence.stopPositions]); null where not loaded.
+    val originPosition: Pair<Double, Double>? = null,
 ) {
+    /**
+     * The ride as its Whole station and Show on map act on it: its origin's saved stop area and position, else the
+     * ones its departures and route give, so a ride saved before those were recorded still opens all its stop's
+     * poles, not the one, and still shows on the map (Codex, #959).
+     */
+    val stationRide: FavoriteJourney = journey.from.let { from ->
+        val area = from.areaId.ifBlank { originArea }
+        val position = if (from.latitude != null && from.longitude != null) null else originPosition
+        if (area == from.areaId && position == null) {
+            journey
+        } else {
+            journey.copy(
+                from = from.copy(
+                    areaId = area,
+                    latitude = position?.first ?: from.latitude,
+                    longitude = position?.second ?: from.longitude,
+                ),
+            )
+        }
+    }
+
     /** Its heading's ends, each longest first ([DestinationAbbreviations.forms]): worked out with the card, on the worker. */
     val fromForms: List<String> = DestinationAbbreviations.forms(journey.from.name)
     val toForms: List<String> = DestinationAbbreviations.forms(journey.to.name)
@@ -4726,12 +4786,19 @@ private fun ViewActionsRow(actions: ViewActions) {
 
 /**
  * A journey's own view's heading and actions, above its trains: the journey in full, then swap the
- * direction shown, and unstar the journey
+ * direction shown, open the station it boards from or show it on the map, and unstar the journey
  * (which closes the view, as its card is gone). Labeled buttons rather than bare icons — this is the
  * view a rider opens to act on the journey.
  */
 @Composable
-private fun JourneyActions(journey: FavoriteJourney, onSwap: () -> Unit, onUnstar: (() -> Unit)?) {
+private fun JourneyActions(
+    journey: FavoriteJourney,
+    onSwap: () -> Unit,
+    onUnstar: (() -> Unit)?,
+    // The end it boards from: its whole station (a bus ride's stops), and its place in the maps app.
+    onStation: (() -> Unit)? = null,
+    onMap: (() -> Unit)? = null,
+) {
     val spoken = stringResource(R.string.journey_title_spoken, journey.from.name, journey.to.name)
     Column {
         // The journey in full, wrapping as far as it needs, so both names show however long they are
@@ -4754,6 +4821,27 @@ private fun JourneyActions(journey: FavoriteJourney, onSwap: () -> Unit, onUnsta
             OutlinedButton(onClick = onSwap) {
                 Icon(SwapIcon, contentDescription = null, modifier = Modifier.size(18.dp))
                 Text(stringResource(R.string.action_flip_journey), modifier = Modifier.padding(start = 8.dp))
+            }
+            // Beside Swap, as a platform view's are (maintainer, 2026-10-18), for the end it boards from.
+            if (onStation != null) {
+                val bus = journey.bus
+                OutlinedButton(onClick = onStation, modifier = Modifier.testTag("rideStation")) {
+                    Icon(
+                        painterResource(if (bus) R.drawable.ic_mode_bus else R.drawable.ic_mode_rail),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Text(
+                        stringResource(if (bus) R.string.action_all_stops else R.string.action_whole_station),
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
+            }
+            if (onMap != null) {
+                OutlinedButton(onClick = onMap, modifier = Modifier.testTag("rideMap")) {
+                    Icon(Icons.Filled.Place, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Text(stringResource(R.string.action_show_on_map), modifier = Modifier.padding(start = 8.dp))
+                }
             }
             if (onUnstar != null) {
                 OutlinedButton(onClick = onUnstar) {

@@ -1347,7 +1347,14 @@ its own: a ⇄ at its end swapped the direction in place from 2026-09-24, and wa
 smaller tap target in a row that already opens the ride (maintainer, 2026-10-16). A tap on the heading opens
 the **journey's own view**: the journey in full, **Swap direction** and **Remove favorite** buttons, and
 its trains with each group headed by where it boards (the platform or pole), rendered from the same
-snapshot as the list; unstarring closes it.
+snapshot as the list; unstarring closes it. Beside Swap, **Whole station** (**All stops** for a bus
+ride) and **Show on map** act on the end it boards from (maintainer, 2026-10-18), as a platform view's
+do: the first opens that end's station page over the list, as a searched station opens. Only that page's
+own Back returns to the ride, boarding from the stop it was shown boarding from, even where the rider had
+swapped it or the fix has since moved; any other way out (use my location, a shared place, a trip started
+there) lands where it would from any station (maintainer, 2026-10-18). The second shows it in the maps app at TfL's published position, so a far ride's works
+too, and is left out where TfL gave none. They name the origin only, not each stop a ride boards from:
+one tap from the ride, where per-stop headings would be a tap per stop.
 
 **Grouped by stop or by ride** (maintainer, 2026-10-14), Settings → **Group favorite rides**. A ride
 boarding from several stops used to head each stop's departures like a near-me stop, so its heading

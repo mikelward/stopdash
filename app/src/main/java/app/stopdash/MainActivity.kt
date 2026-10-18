@@ -1,5 +1,6 @@
 package app.stopdash
 
+import androidx.annotation.WorkerThread
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
@@ -94,6 +95,7 @@ import app.stopdash.domain.widgetQuestionsSettled
 import app.stopdash.domain.widgetUpdateCardGone
 import app.stopdash.domain.widgetUpdateCardShown
 import app.stopdash.ui.LineStopWindow
+import app.stopdash.ui.LocalWorker
 import app.stopdash.ui.RouteStopMode
 import android.Manifest
 import android.content.BroadcastReceiver
@@ -1088,6 +1090,15 @@ class MainActivity : ComponentActivity() {
                 var replanningHere by rememberSaveable { mutableStateOf(false) }
                 var openStationId by rememberSaveable { mutableStateOf<String?>(null) }
                 var openStationName by rememberSaveable { mutableStateOf("") }
+                // The favorite ride a station was opened from (its Whole station): the station's id, the ride's
+                // key and the stop it was shown boarding from ([RideReturn]). Only that station's own Back reopens
+                // the ride ([rideToReopen]); every other way out (use my location, a shared place, a trip) lands
+                // where it always has, the list's saved state dropped with the overlay as for any other
+                // (maintainer, 2026-10-18; Codex, #959).
+                var rideStation by rememberSaveable { mutableStateOf<List<String>?>(null) }
+                LaunchedEffect(openStationId) { if (openStationId != rideStation?.first()) rideStation = null }
+                // The ride the near-me list opens on when it next shows, its key then its stop, taken once it has.
+                var rideToReopen by rememberSaveable { mutableStateOf<List<String>?>(null) }
                 // The order the open station's rows lead in ([StationLead]); null for any station but one of an
                 // interchange's names. Built when it's opened, so the page only reads it.
                 var openStationLead by rememberSaveable(stateSaver = STATION_LEAD_SAVER) { mutableStateOf<StationLead?>(null) }
@@ -1669,6 +1680,9 @@ class MainActivity : ComponentActivity() {
                     onTheWayFrom = openStationId.orEmpty()
                     onTheWayOverLines = openStationId != null && stationFromLines != null && linesPresence.isOpen
                     onTheWayOpen = true
+                    // A trip started from a ride's station is a way out of it like any other, so that
+                    // station's Back no longer reopens the ride (SPEC *Journeys*; Codex, #959).
+                    rideStation = null
                     GetOffSoonAlert.ensureChannel(applicationContext)
                     TimeToBoardAlert.ensureChannel(applicationContext)
                     RouteDisruptionAlert.ensureChannel(applicationContext)
@@ -2636,6 +2650,9 @@ class MainActivity : ComponentActivity() {
                                         // Mid-change (the station still loading, or failed), the search it
                                         // returns to still opens the next station at its To… search.
                                         onCloseStation = {
+                                            // Back from a ride's station: to the ride it was opened from.
+                                            rideToReopen = RideReturn.onBack(rideStation, openStationId)
+                                            rideStation = null
                                             openStationId = null
                                             openStationName = ""
                                             openStationLead = null
@@ -3066,6 +3083,20 @@ class MainActivity : ComponentActivity() {
                                             watchInstall = watchInstallCard.takeIf { !widgetCardHeld },
                                             widgetUpdate = widgetUpdateCard,
                                             onUnpauseAlerts = unpauseAlerts,
+                                            // The station page opens over the list, as one found by search does, and
+                                            // Back returns to the ride's view: its area where TfL gave one, so a bus
+                                            // ride's page holds all the place's poles.
+                                            onOpenRideStation = { journey ->
+                                                val end = journey.from
+                                                val id = end.areaId.ifBlank { end.stopId }
+                                                rideStation = RideReturn.record(id, journey)
+                                                openStationId = id
+                                                openStationName = end.name
+                                                openStationLead = null
+                                            },
+                                            reopenJourneyKey = RideReturn.key(rideToReopen),
+                                            reopenOrigin = RideReturn.origin(rideToReopen),
+                                            onJourneyReopened = { rideToReopen = null },
                                         )
                                     }
                                     // A place chip on "No stops found nearby" opens the trip from where the
@@ -3600,6 +3631,14 @@ class MainActivity : ComponentActivity() {
         widgetUpdate: WidgetUpdateActions? = null,
         // Unpauses journey alerts from the card atop the near-me list; null (not paused) shows none.
         onUnpauseAlerts: (() -> Unit)? = null,
+        // A favorite ride's own view's Whole station: the page of the end it boards from. Null (a
+        // station's page, which starts nothing) offers no button.
+        onOpenRideStation: ((FavoriteJourney) -> Unit)? = null,
+        // The ride the list opens on, Back from its station having brought the rider here, and taking it.
+        reopenJourneyKey: String? = null,
+        // The stop it was shown boarding from, which it reopens boarding from.
+        reopenOrigin: String? = null,
+        onJourneyReopened: () -> Unit = {},
     ) {
         // Each nearby set gets its own MainViewModel, and the previous one is CLEARED when
         // the set changes (the user moved and re-located) rather than left keyed in the
@@ -3807,6 +3846,21 @@ class MainActivity : ComponentActivity() {
             val journeysWork = remember(stopsKey) { mutableStateOf<Worked<Inputs, ShownJourneys>?>(null) }
             val journeysWorked = rememberShownJourneys(journeysWork, savedJourneys, ready.location, flippedJourneys, fixConfirmed = locationBannerNow == null)
             val journeysShown = journeysWorked.shown
+            // A reopened ride boards from the stop it was shown boarding from (maintainer, 2026-10-18): once the rides
+            // are worked out for the fix now, it's swapped where that turned it the other way. Its stop alone, taken
+            // from the ride as shown, so nothing of a swap still being worked out can be mixed in (Codex, #959).
+            var rideOrigin by rememberSaveable { mutableStateOf(reopenJourneyKey?.let { key -> reopenOrigin?.let { listOf(key, it) } }) }
+            val rideWorker = LocalWorker.current
+            LaunchedEffect(rideOrigin, journeysWorked.current, journeysShown) {
+                val (key, origin) = rideOrigin ?: return@LaunchedEffect
+                val shown = journeysShown?.journeys?.takeIf { journeysWorked.current } ?: return@LaunchedEffect
+                val flips = flippedJourneys
+                // It walks the shown rides: on the worker (AGENTS.md *Main thread*).
+                val settled = withContext(rideWorker) { RideReturn.settledFlips(flips, shown, key, origin) }
+                // A swap tapped meanwhile is the rider's own say, never overwritten by this correction (Codex, #959).
+                if (flippedJourneys == flips) flippedJourneys = settled
+                rideOrigin = null
+            }
             val shownJourneys = journeysShown?.journeys.orEmpty()
             val farJourneyMeters = journeysShown?.farMeters.orEmpty()
             val journeyScope = rememberCoroutineScope()
@@ -4170,6 +4224,17 @@ class MainActivity : ComponentActivity() {
                         UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SWAP))
                         flippedJourneys = if (journey.key in flippedJourneys) flippedJourneys - journey.key else flippedJourneys + journey.key
                     },
+                    // A reopened ride's ends are held back until it boards from its stop again ([rideOrigin]):
+                    // until then it may face the other way, and either button would act on the wrong end (Codex, #959).
+                    onOpenRideStation = onOpenRideStation?.takeIf { rideOrigin == null },
+                    reopenJourneyKey = reopenJourneyKey,
+                    onJourneyReopened = onJourneyReopened,
+                    // Its published position (TfL's, never the rider's), so a far ride's shows too.
+                    onShowRideOnMap = { end: JourneyEnd ->
+                        val latitude = end.latitude
+                        val longitude = end.longitude
+                        if (latitude != null && longitude != null) openStopMap(latitude, longitude, end.name)
+                    }.takeIf { rideOrigin == null },
                     // A tap on a header's distance shows that stop in the maps app. The stop comes
                     // from the same nearby set the distances span, so every distance can resolve.
                     onOpenStopMap = { stopId, name ->
@@ -6816,6 +6881,37 @@ internal fun NearbyArea(
 }
 
 private const val NEARBY_BODY = "nearby-body"
+
+/**
+ * The favorite ride a station page was opened from (its Whole station, SPEC *Journeys*), kept as saveable strings:
+ * the station's id, the ride's key, and the stop it was shown boarding from. Only that station's own Back hands
+ * the ride back ([onBack]), which the near-me list then opens on, boarding from that stop ([settledFlips]).
+ */
+internal object RideReturn {
+    /** [ride] as its view showed it, opening the station [stationId]. */
+    fun record(stationId: String, ride: FavoriteJourney): List<String> =
+        listOf(stationId, ride.key, ride.from.stopId)
+
+    /** What Back from [openStationId] reopens: the ride, if that station is the one it opened. */
+    fun onBack(record: List<String>?, openStationId: String?): List<String>? =
+        record?.takeIf { it.first() == openStationId }?.drop(1)
+
+    fun key(reopen: List<String>?): String? = reopen?.firstOrNull()
+
+    /** The stop the ride was shown boarding from. */
+    fun origin(reopen: List<String>?): String? = reopen?.getOrNull(1)?.ifBlank { null }
+
+    /**
+     * [flips] set so ride [key] boards from [origin] among the rides as [shown] with them: swapped where it now
+     * boards from its other end. Walks the shown rides, so on a worker or in an effect, not composition.
+     */
+    @WorkerThread
+    fun settledFlips(flips: List<String>, shown: List<FavoriteJourney>, key: String, origin: String): List<String> {
+        val ride = shown.firstOrNull { it.key == key } ?: return flips
+        if (ride.from.stopId == origin) return flips
+        return if (key in flips) flips - key else flips + key
+    }
+}
 
 // The near-me list's surface in the shared line cache's pulls ([LineStatusCache.pull]): its own and its
 // farther cards' models, whichever nearby set they show.
