@@ -26,6 +26,12 @@ data class IndexedStation(
     val terminusEnds: Map<String, List<String>> = emptyMap(),
     // The platforms TfL lists under the station ("9100LIVSTLL1", "9400ZZLUKSX3"), for [StationIndex.stationOf].
     val platforms: List<String> = emptyList(),
+    // The station model's membership ([Hubs]; dev-docs/station-model.md): TfL's ICS code, the station
+    // this record belongs to ("1001276:rail") and its hub. Blank in an index built before them, and
+    // on an interchange's own row.
+    val icsCode: String = "",
+    val station: String = "",
+    val modelHub: String = "",
 )
 
 /**
@@ -44,6 +50,12 @@ class StationIndex(
     // Each line's name as TfL spells it ("Hammersmith & City"), by id, for a line the index carries
     // by id alone. Empty in an older index.
     val lineNames: Map<String, String> = emptyMap(),
+    // The bundle's content revision, shared with stops.tsv ([BundledStops.revision]); blank in an
+    // index built before it.
+    val revision: String = "",
+    // Entries the file held that couldn't be read (no id or name) and were left out, so the station
+    // model ([Hubs]) can refuse an index it can't vouch for whole.
+    val skippedEntries: Int = 0,
 ) {
     /**
      * The stations matching [query], best first ([rank]), at most [limit]. A station whose

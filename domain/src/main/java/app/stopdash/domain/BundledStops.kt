@@ -23,6 +23,10 @@ class BundledStops private constructor(
     private val bounds: DoubleArray,
     /** Records that couldn't be read and were left out, so the caller can say so. */
     val skippedLines: Int,
+    /** Each stop's station-model columns, by index with [stops]: empty from a v1 file. */
+    private val memberships: List<StopMembership> = emptyList(),
+    /** The bundle's content revision (stops.tsv v2), blank from a v1 file. */
+    val revision: String = "",
 ) {
     val size: Int get() = stops.size
 
@@ -97,6 +101,14 @@ class BundledStops private constructor(
             stop.latitude in bounds[0]..bounds[2] && stop.longitude in bounds[1]..bounds[3]
     }
 
+    /**
+     * Each stop with its station-model columns ([StopMembership]), for [Hubs]; empty for a file
+     * written before them (v1). Every stop, so it's a worker's walk.
+     */
+    @WorkerThread
+    fun memberships(): List<Pair<StopLocation, StopMembership>> =
+        if (memberships.size == stops.size) stops.zip(memberships) else emptyList()
+
     companion object {
         const val FORMAT_VERSION = 2
 
@@ -129,6 +141,7 @@ class BundledStops private constructor(
             require(READ_VERSIONS.any { headerFields[0] == "# stopdash stops v$it" }) {
                 "stops: unexpected header for format $FORMAT_VERSION"
             }
+            val revision = headerFields.drop(1).firstOrNull { it.startsWith("revision=") }?.removePrefix("revision=").orEmpty()
             val bounds = headerFields.drop(1).firstOrNull { it.startsWith("bounds=") }
                 ?.removePrefix("bounds=")?.split(',')?.mapNotNull { it.toDoubleOrNull() }
             require(bounds != null && bounds.size == 4 && bounds[0] < bounds[2] && bounds[1] < bounds[3]) {
@@ -137,6 +150,7 @@ class BundledStops private constructor(
             val lines = HashMap<String, LineRef>()
             val stops = ArrayList<StopLocation>(25_000)
             val types = java.io.ByteArrayOutputStream(25_000)
+            val memberships = ArrayList<StopMembership>(25_000)
             var skipped = 0
             while (true) {
                 val record = reader.readLine() ?: break
@@ -156,12 +170,27 @@ class BundledStops private constructor(
                         } else {
                             stops += stop
                             types.write(type)
+                            memberships += membershipOf(fields)
                         }
                     }
                     else -> skipped++
                 }
             }
-            return BundledStops(stops, types.toByteArray(), bounds.toDoubleArray(), skipped)
+            return BundledStops(stops, types.toByteArray(), bounds.toDoubleArray(), skipped, memberships, revision)
+        }
+
+        // A record's membership columns (v2; blank in a v1 record) and the raw cluster [Hubs] keys
+        // a stop area by.
+        private fun membershipOf(record: List<String>): StopMembership {
+            fun field(i: Int) = record.getOrNull(i).orEmpty()
+            return StopMembership(
+                type = field(2).firstOrNull() ?: ' ',
+                cluster = field(6),
+                icsCode = field(12),
+                level = field(13),
+                owner = field(14),
+                hub = field(15),
+            )
         }
 
         // A stop record, as the app reads TfL's answer for it (toStopLocationOrNull); null when it
@@ -192,6 +221,22 @@ class BundledStops private constructor(
         }
     }
 }
+
+/**
+ * A bundled stop's station-model columns (stops.tsv v2, `scripts/stop_membership.py`): for a bus
+ * pole ([type] `B`) its TfL [icsCode], its stop ([level]), the station that owns it ([owner], blank
+ * for none) and its [hub]; for a station record the station index leaves out, its station as
+ * [level] and its hub; blank for every other row. [cluster] is the record's TfL stop area as the
+ * file has it, blank where TfL gives none.
+ */
+data class StopMembership(
+    val type: Char,
+    val cluster: String,
+    val icsCode: String,
+    val level: String,
+    val owner: String,
+    val hub: String,
+)
 
 /**
  * A [StopFinder] that answers from the bundled stops ([BundledStops]) when they cover the search,

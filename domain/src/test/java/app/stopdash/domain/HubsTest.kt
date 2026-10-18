@@ -1,0 +1,137 @@
+package app.stopdash.domain
+
+import app.stopdash.domain.Hubs.Membership
+import java.io.BufferedReader
+import java.io.StringReader
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/** Synthetic records around the obviously-fake (51.5, -0.12); never a real stop. */
+class HubsTest {
+    private val index = StationIndex(
+        listOf(
+            IndexedStation("910GHILL", "Hill", listOf("national-rail"), "HUBEXA", 51.500, -0.120,
+                platforms = listOf("9100HILL1"), icsCode = "1009001", station = "1009001:rail", modelHub = "HUBEXA"),
+            IndexedStation("910GHILLLL", "Hill LL", listOf("national-rail"), "HUBEXA", 51.502, -0.120,
+                icsCode = "1009001", station = "1009001:rail", modelHub = "HUBEXA"),
+            IndexedStation("940GZZLUHIL", "Hill", listOf("tube"), "HUBEXA", 51.501, -0.121,
+                icsCode = "1009002", station = "1009002:tube", modelHub = "HUBEXA"),
+            IndexedStation("910GVALE", "Vale", listOf("national-rail"), latitude = 51.53, longitude = -0.12,
+                station = "910GVALE", modelHub = "910GVALE"),
+            IndexedStation("HUBEXA", "Hill", listOf("national-rail", "tube")),
+        ),
+        revision = "abc",
+    )
+
+    private val tsv = listOf(
+        "# stopdash stops v2\tbounds=51.25,-0.65,51.75,0.4\trevision=abc",
+        "L\t1\tbus\t1",
+        // Two poles of one clean area, owned by Hill's rail station.
+        "S\t490000001A\tB\tHill Station\t51.500500\t-0.120000\t490G000001\t\tA\t\t\t1\t1009001\t490G000001\t1009001:rail\tHUBEXA",
+        "S\t490000001B\tB\tHill Station\t51.500700\t-0.120000\t490G000001\t\tB\t\t\t1\t1009001\t490G000001\t1009001:rail\tHUBEXA",
+        // An area split into two stops, at a junction of their own.
+        "S\t490000005A\tB\tHigh Road\t51.520000\t-0.120000\t490G000005\t\t\t\t\t1\t\t490000005A\t\t490000005A",
+        "S\t490000005B\tB\tMill Lane\t51.520300\t-0.120000\t490G000005\t\t\t\t\t1\t\t490000005B\t\t490000005A",
+        // A rail record the index leaves out, of Vale's station.
+        "S\t910GVALELL\tR\tVale LL Rail Station\t51.531000\t-0.120000\t910GVALELL\t\t\t\t\t\t\t910GVALE\t\t910GVALE",
+    ).joinToString("\n")
+
+    private fun stops(text: String = tsv) = BundledStops.read(BufferedReader(StringReader(text)))
+
+    private val hubs = Hubs.of(index, stops())!!
+
+    @Test
+    fun `records of one ICS code are one station, and an interchange's stations one hub`() {
+        assertEquals(Membership.Of("1009001:rail"), hubs.stationOf("910GHILL"))
+        assertTrue(hubs.sameStation("910GHILL", "910GHILLLL"))
+        assertFalse(hubs.sameStation("910GHILL", "940GZZLUHIL"))
+        assertTrue(hubs.sameHub("910GHILL", "940GZZLUHIL"))
+        assertEquals(Membership.Of("HUBEXA"), hubs.hubOf("HUBEXA"))
+        assertEquals(Hubs.Members(setOf("1009001:rail", "1009002:tube"), setOf("490G000001")), hubs.membersOf("HUBEXA"))
+    }
+
+    @Test
+    fun `a platform is its record's station`() {
+        assertEquals(Membership.Of("1009001:rail"), hubs.stationOf("9100HILL1"))
+        // Named by its record's code alone, as TfL names an access area.
+        assertEquals(Membership.Of("1009001:rail"), hubs.stationOf("9100HILLLL"))
+    }
+
+    @Test
+    fun `a pole is its stop's and its owner's hub's, and so is its whole area`() {
+        assertEquals(Membership.Of("490G000001"), hubs.stopOf("490000001A"))
+        assertEquals(Membership.Of("490G000001"), hubs.stopOf("490G000001"))
+        assertTrue(hubs.sameStop("490000001A", "490000001B"))
+        assertEquals(Membership.Of("HUBEXA"), hubs.hubOf("490000001B"))
+        assertTrue(hubs.sameHub("490000001A", "910GHILLLL"))
+    }
+
+    @Test
+    fun `a split area's id names its stops, never one of them`() {
+        assertEquals(Membership.Split(setOf("490000005A", "490000005B")), hubs.stopOf("490G000005"))
+        assertFalse(hubs.sameStop("490000005A", "490000005B"))
+        assertEquals("both stops are one junction's", Membership.Of("490000005A"), hubs.hubOf("490G000005"))
+    }
+
+    @Test
+    fun `a station record the index leaves out reads its station from the stops`() {
+        assertTrue(hubs.sameStation("910GVALE", "910GVALELL"))
+        assertEquals(Membership.Of("910GVALE"), hubs.hubOf("910GVALELL"))
+    }
+
+    @Test
+    fun `a platform of a record only stops tsv holds is that record's station`() {
+        assertEquals(Membership.Of("910GVALE"), hubs.stationOf("9100VALELL"))
+    }
+
+    @Test
+    fun `an id the bundle doesn't hold is unbundled and matches only itself`() {
+        assertEquals(Membership.Unbundled, hubs.stationOf("910GNOWHERE"))
+        assertEquals(Membership.Unbundled, hubs.stopOf("490NOWHERE1"))
+        assertEquals(Membership.Unbundled, hubs.hubOf("HUBNOWHERE"))
+        assertTrue(hubs.sameHub("HUBNOWHERE", "hubnowhere"))
+        assertFalse(hubs.sameHub("HUBNOWHERE", "910GHILL"))
+    }
+
+    @Test
+    fun `each level's place is the middle of its records or poles`() {
+        assertEquals(51.501, hubs.placeOf("1009001:rail", Hubs.Level.STATION)!!.latitude, 1e-9)
+        assertEquals(51.5006, hubs.placeOf("490G000001", Hubs.Level.STOP)!!.latitude, 1e-9)
+        // A hub counts each of its stations' records once, not its stations' middles.
+        assertEquals((51.500 + 51.502 + 51.501) / 3, hubs.placeOf("HUBEXA", Hubs.Level.HUB)!!.latitude, 1e-9)
+        assertNull(hubs.placeOf("910GNOWHERE", Hubs.Level.STATION))
+        assertNull("an id is placed only at its own level", hubs.placeOf("HUBEXA", Hubs.Level.STOP))
+    }
+
+    @Test
+    fun `a junction and the anchor stop it's named after are placed apart`() {
+        // The junction is named after its anchor stop, 490000005A: one id, two levels.
+        assertEquals(51.52015, hubs.placeOf("490000005A", Hubs.Level.HUB)!!.latitude, 1e-9)
+        assertEquals(51.52, hubs.placeOf("490000005A", Hubs.Level.STOP)!!.latitude, 1e-9)
+    }
+
+    @Test
+    fun `a bundle built before the model, or from two builds, is unavailable and says why`() {
+        val reasons = mutableListOf<String>()
+        assertNull(Hubs.of(index, stops(tsv.replace("\trevision=abc", "").replace("stops v2", "stops v1"))) { reasons += it })
+        assertNull(Hubs.of(index, stops(tsv + "\nS\tbroken\tB")) { reasons += it })
+        assertNull(Hubs.of(StationIndex(index.stations, revision = "abc", skippedEntries = 1), stops()) { reasons += it })
+        assertNull(Hubs.of(index, stops(tsv.replace("revision=abc", "revision=def"))) { reasons += it })
+        assertNull(Hubs.of(StationIndex(index.stations.map { it.copy(station = "") }, revision = "abc"), stops()) { reasons += it })
+        assertNull(Hubs.of(index, stops(tsv.replace("\t490000005A\t\t490000005A\n", "\t\t\t\n"))) { reasons += it })
+        assertEquals(
+            listOf(
+                "bundle built before the station model",
+                "bundle has unreadable records",
+                "bundle has unreadable records",
+                "station index and stops are from different builds",
+                "a station record has no membership",
+                "a bus stop has no membership",
+            ),
+            reasons,
+        )
+    }
+}

@@ -55,7 +55,16 @@ class StationIndexStoreTest {
     }
 
     @Test
-    fun `a newer format is ignored whole`() {
+    fun `an entry without an id or name is left out and counted`() {
+        val index = StationIndexStore.parse(
+            """{"version":1,"stations":[{"id":"910GEXA","name":"Example Rail Station"},{"id":"","name":"No Id"},{"id":"910GNONAME"}]}""",
+        )
+        assertEquals(listOf("910GEXA"), index.stations.map { it.id })
+        assertEquals(2, index.skippedEntries)
+    }
+
+    @Test
+        fun `a newer format is ignored whole`() {
         var warned = ""
         val index = StationIndexStore.parse("""{"version":2,"stations":[{"id":"X","name":"Y"}]}""") { warned = it }
         assertTrue(index.stations.isEmpty())

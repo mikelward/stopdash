@@ -795,8 +795,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           - [x] `stops.tsv` v2: poles into stops, junctions, each stop's owning station and hub,
                 the shared content revision, `--stations` in both workflows and the refresh's
                 capped membership-diff body (`stop_membership.py`, `membership_changes.py`);
-          - [ ] `Hubs` in `:domain` reading both, the `hubId` → interchange rename, the
+          - [x] `Hubs` in `:domain` reading both, the `hubId` → interchange rename, the
                 real-bundle tests, the APK and load-time measurement, and SPEC *Finding stops*.
+          - Moved to phase 2, with the `Pick` they need: `Hubs.picked` and its pre-phase-2 pick
+            tests, `Hubs.idsOf`, and the `Unbundled` interchange's trip (planning to its looked-up
+            children). And `stationOf`'s `Unresolved`: the builder drops a platform listed under two
+            stations, so the device can't tell it from one the bundle doesn't hold, and reads it as
+            `Unbundled`; keeping such platforms in the bundle would let it say so.
         - Favorite rides stay (maintainer, 2026-10-16), so phase 3 builds on them. Nothing is left
           open.
         - It takes in matching stations by id (above), *A closed station's other ids*, *A bus ending
