@@ -3411,6 +3411,236 @@ class MainScreenScreenshotTest {
         )
 
     @Test
+    fun `a bus ride with no stop area known yet offers no All stops`() {
+        val sequence = LineSequence(
+            routes = listOf(LineRoute("Brixton ↔ Walthamstow Central", listOf("940GZZLUVIC", "940GZZLUWRR", "940GZZLUWWL"))),
+            stopNames = mapOf("940GZZLUVIC" to "Victoria", "940GZZLUWRR" to "Warren Street", "940GZZLUWWL" to "Walthamstow Central"),
+        )
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String) = sequence
+            },
+        )
+        // Its departures are in but name no area: TfL's cluster falls back to the stop's name.
+        val victoria = StopArrivals(
+            "940GZZLUVIC",
+            "Victoria",
+            listOf(dep("victoria", "Victoria", "northbound", "Walthamstow Central", 180, "Northbound - Platform 5")),
+            fetchedAt = now.minusSeconds(60),
+            clusterId = "Victoria",
+        )
+        // Saved before ends' areas were, and neither its route nor its departures name one.
+        val journey = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria", mode = "bus")
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalRouteStops provides repository) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(listOf(manorHouse(), victoria), now.minusSeconds(60)),
+                            now,
+                            {},
+                            stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
+                            journeys = listOf(journey),
+                            onToggleJourney = {},
+                            onOpenRideStation = {},
+                            reopenJourneyKey = journey.key,
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Swap direction").assertExists()
+        composeRule.onAllNodesWithText("All stops").assertCountEquals(0)
+    }
+
+    @Test
+    fun `a bus ride offers All stops whatever its saved mode's case`() {
+        val sequence = LineSequence(
+            routes = listOf(LineRoute("Brixton ↔ Walthamstow Central", listOf("940GZZLUVIC", "940GZZLUWRR", "940GZZLUWWL"))),
+            stopNames = mapOf("940GZZLUVIC" to "Victoria", "940GZZLUWRR" to "Warren Street", "940GZZLUWWL" to "Walthamstow Central"),
+        )
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String) = sequence
+            },
+        )
+        val victoria = StopArrivals(
+            "940GZZLUVIC",
+            "Victoria",
+            listOf(dep("victoria", "Victoria", "northbound", "Walthamstow Central", 180, "Northbound - Platform 5")),
+            fetchedAt = now.minusSeconds(60),
+            clusterId = "HUBVIC",
+        )
+        // A mode saved as TfL cased it.
+        val journey = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria", mode = "Bus")
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalRouteStops provides repository) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(listOf(manorHouse(), victoria), now.minusSeconds(60)),
+                            now,
+                            {},
+                            stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
+                            journeys = listOf(journey),
+                            onToggleJourney = {},
+                            onOpenRideStation = {},
+                            reopenJourneyKey = journey.key,
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("All stops").assertExists()
+        composeRule.onAllNodesWithText("Whole station").assertCountEquals(0)
+    }
+
+    @Test
+    fun `a ride saved before its stop areas were opens its route's area before departures are in`() {
+        val sequence = LineSequence(
+            routes = listOf(LineRoute("Brixton ↔ Walthamstow Central", listOf("940GZZLUVIC", "940GZZLUWRR", "940GZZLUWWL"))),
+            stopNames = mapOf("940GZZLUVIC" to "Victoria", "940GZZLUWRR" to "Warren Street", "940GZZLUWWL" to "Walthamstow Central"),
+            // Victoria's stop area, as TfL's route sequence gives it.
+            stopAreas = mapOf("940GZZLUVIC" to "HUBVIC"),
+        )
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String) = sequence
+            },
+        )
+        // Saved before ends' areas were recorded, and its origin's departures not in.
+        val journey = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria")
+        var opened: FavoriteJourney? = null
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalRouteStops provides repository) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(listOf(manorHouse()), now.minusSeconds(60)),
+                            now,
+                            {},
+                            stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
+                            journeys = listOf(journey),
+                            onToggleJourney = {},
+                            onOpenRideStation = { opened = it },
+                            reopenJourneyKey = journey.key,
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Whole station").performClick()
+        assertEquals("HUBVIC", opened?.from?.areaId)
+    }
+
+    @Test
+    fun `a ride saved before its stop areas and positions were opens its origin's whole area and map`() {
+        val sequence = LineSequence(
+            routes = listOf(LineRoute("Brixton ↔ Walthamstow Central", listOf("940GZZLUVIC", "940GZZLUWRR", "940GZZLUWWL"))),
+            stopNames = mapOf("940GZZLUVIC" to "Victoria", "940GZZLUWRR" to "Warren Street", "940GZZLUWWL" to "Walthamstow Central"),
+            // Victoria's published position, as TfL's route sequence gives it.
+            stopPositions = mapOf("940GZZLUVIC" to (51.4965 to -0.1447)),
+        )
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String) = sequence
+            },
+        )
+        // Victoria's departures name its station area, as TfL's stationNaptan does.
+        val victoria = StopArrivals(
+            "940GZZLUVIC",
+            "Victoria",
+            listOf(dep("victoria", "Victoria", "northbound", "Walthamstow Central", 180, "Northbound - Platform 5")),
+            fetchedAt = now.minusSeconds(60),
+            clusterId = "HUBVIC",
+        )
+        // Saved before ends' areas and positions were recorded: no areaId, latitude or longitude.
+        val journey = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria")
+        var opened: FavoriteJourney? = null
+        var mapShown: JourneyEnd? = null
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalRouteStops provides repository) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(listOf(manorHouse(), victoria), now.minusSeconds(60)),
+                            now,
+                            {},
+                            stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
+                            journeys = listOf(journey),
+                            onToggleJourney = {},
+                            onOpenRideStation = { opened = it },
+                            onShowRideOnMap = { mapShown = it },
+                            reopenJourneyKey = journey.key,
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Whole station").performClick()
+        assertEquals("HUBVIC", opened?.from?.areaId)
+        assertEquals(journey.key, opened?.key)
+        // Show on map is offered, at the route's position for the stop.
+        composeRule.onNodeWithText("Show on map").performClick()
+        assertEquals(51.4965, mapShown?.latitude)
+        assertEquals(-0.1447, mapShown?.longitude)
+    }
+
+    @Test
+    fun `back from a ride's station page opens on that ride, not the list`() {
+        val sequence = LineSequence(
+            routes = listOf(LineRoute("Brixton ↔ Walthamstow Central", listOf("940GZZLUVIC", "940GZZLUWRR", "940GZZLUWWL"))),
+            stopNames = mapOf("940GZZLUVIC" to "Victoria", "940GZZLUWRR" to "Warren Street", "940GZZLUWWL" to "Walthamstow Central"),
+        )
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String) = sequence
+            },
+        )
+        val victoria = StopArrivals(
+            "940GZZLUVIC",
+            "Victoria",
+            listOf(dep("victoria", "Victoria", "northbound", "Walthamstow Central", 180, "Northbound - Platform 5")),
+            fetchedAt = now.minusSeconds(60),
+        )
+        val journey = FavoriteJourney(JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria")
+        var reopened = 0
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalRouteStops provides repository) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(listOf(manorHouse(), victoria), now.minusSeconds(60)),
+                            now,
+                            {},
+                            stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
+                            journeys = listOf(journey),
+                            onToggleJourney = {},
+                            reopenJourneyKey = journey.key,
+                            onJourneyReopened = { reopened++ },
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.waitForIdle()
+
+        // The ride's own view, from the first frame: its actions, and no near-me list under it.
+        composeRule.onNodeWithText("Swap direction").assertExists()
+        composeRule.onAllNodesWithText("Manor House", substring = true).assertCountEquals(0)
+        // Taken, so the next return to the screen opens on the list.
+        assertEquals(1, reopened)
+    }
+
+    @Test
     fun `a favorite journey shows only the trains that reach its far end, atop the near-me list`() {
         // Victoria line from Victoria: northbound trains reach Warren Street, southbound ones don't.
         // Public station ids/names as examples; the journey origin isn't one of the near-me stops.
@@ -3440,10 +3670,14 @@ class MainScreenScreenshotTest {
             ),
             fetchedAt = now.minusSeconds(60),
         )
+        // Victoria's published position, as TfL's route sequence gives it.
         val journey = FavoriteJourney(
-            JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria",
+            JourneyEnd("940GZZLUVIC", "Victoria", 51.4965, -0.1447, areaId = "HUBVIC"),
+            JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria",
         )
         var flipped: FavoriteJourney? = null
+        var stationOpened: JourneyEnd? = null
+        var mapShown: JourneyEnd? = null
         // The saved journeys, reloadable: after a rotation they re-read from disk (unknown, empty).
         var saved by mutableStateOf(listOf(journey))
         var savedKnown by mutableStateOf(true)
@@ -3462,6 +3696,8 @@ class MainScreenScreenshotTest {
                             journeysLoading = savedLoading,
                             onFlipJourney = { flipped = it },
                             onToggleJourney = {},
+                            onOpenRideStation = { stationOpened = it.from },
+                            onShowRideOnMap = { mapShown = it },
                         )
                     }
                 }
@@ -3489,6 +3725,11 @@ class MainScreenScreenshotTest {
         flipped = null
         composeRule.onNodeWithText("Swap direction").performClick()
         assertEquals(journey, flipped)
+        // Beside Swap, the end it boards from: its whole station, and its place on the map.
+        composeRule.onNodeWithText("Whole station").performClick()
+        assertEquals(journey.from, stationOpened)
+        composeRule.onNodeWithText("Show on map").performClick()
+        assertEquals(journey.from, mapShown)
 
         // While the saved journeys reload, the view holds (no flash to the near-me list) and comes
         // back once they're known again (Codex).
