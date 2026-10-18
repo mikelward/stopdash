@@ -62,7 +62,6 @@ val gitCommitCount: Int? = gitOutput("rev-list", "--count", "HEAD")?.toIntOrNull
 val gitShortSha: String? = gitOutput("rev-parse", "--short", "HEAD")
 // A shallow clone counts only the commits it holds: a versionCode below main's real one.
 val gitShallow: Boolean = gitOutput("rev-parse", "--is-shallow-repository") == "true"
-val baseVersionName = "0.1"
 
 // CI's unit test, lint and screenshot runs set -PstopdashFixedVersion (as
 // ORG_GRADLE_PROJECT_stopdashFixedVersion): a per-commit versionCode or versionName lands in
@@ -150,9 +149,9 @@ android {
         targetSdk = 36
         versionCode = if (fixedTestVersion) 1 else gitCommitCount ?: 1
         versionName = if (fixedTestVersion) {
-            "$baseVersionName.0-test"
+            "test"
         } else {
-            "$baseVersionName.${gitCommitCount ?: 1}+${gitShortSha ?: "unknown"}"
+            "${gitCommitCount ?: 1}+${gitShortSha ?: "unknown"}"
         }
     }
 
@@ -333,11 +332,11 @@ val exportBundledLicenses = tasks.register("exportBundledLicenses") {
 }
 
 // A debug build names its commit and branch, so a sideloaded APK or a bug report from one says
-// which build it is; the shipped release keeps its plain "<base>.<count>+<sha>".
+// which build it is; the shipped release keeps its plain "<count>+<sha>".
 androidComponents {
     onVariants(selector().withBuildType("debug")) { variant ->
         if (!fixedTestVersion) {
-            val name = "$baseVersionName.${gitCommitCount ?: 1}-debug+$buildBranch@${gitShortSha ?: "unknown"}"
+            val name = "${gitCommitCount ?: 1}-debug+$buildBranch@${gitShortSha ?: "unknown"}"
             variant.outputs.forEach { it.versionName.set(name) }
         }
     }

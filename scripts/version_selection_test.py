@@ -8,10 +8,10 @@ shipped must keep the real one. A regression either way stays invisible to the u
 the real manifest tasks and reads what they merged:
 
 - with the flag, the phone gets versionCode 1 and the watch the watch offset plus 1, both
-  named 0.1.0-test;
-- without it, debug builds are named 0.1.<count>-debug+<branch>@<sha>, the branch taken
+  named test;
+- without it, debug builds are named <count>-debug+<branch>@<sha>, the branch taken
   from GITHUB_HEAD_REF, then GITHUB_REF_NAME, then git, sanitized and cut to 30 characters,
-  and release builds keep 0.1.<count>+<sha>, the count being git's commit count;
+  and release builds keep <count>+<sha>, the count being git's commit count;
 - packaging a release, as an APK or a Play bundle, with the flag set is refused.
 
 Needs the Android SDK and a full clone, as the build job has. Run it directly:
@@ -85,7 +85,7 @@ for module, offset in (("app", 0), ("wear", WATCH_OFFSET)):
     for variant in ("debug", "release"):
         code, name = merged_version(module, variant)
         check(code == offset + 1, f"{module} {variant} with the flag: versionCode {code}")
-        check(name == "0.1.0-test", f"{module} {variant} with the flag: versionName {name}")
+        check(name == "test", f"{module} {variant} with the flag: versionName {name}")
 
 # Which branch a debug build names: a pull request's head branch over the pushed ref, then
 # git's own answer, each with characters outside [A-Za-z0-9._/-] replaced and cut to 30.
@@ -101,11 +101,11 @@ for branch_env, branch in BRANCH_CASES:
     for module, offset in (("app", 0), ("wear", WATCH_OFFSET)):
         code, name = merged_version(module, "debug")
         check(code == offset + count, f"{module} debug {branch_env}: versionCode {code}")
-        expected = f"0.1.{count}-debug+{branch}@{sha}"
+        expected = f"{count}-debug+{branch}@{sha}"
         check(name == expected, f"{module} debug {branch_env}: versionName {name}, want {expected}")
         code, name = merged_version(module, "release")
         check(code == offset + count, f"{module} release {branch_env}: versionCode {code}")
-        check(name == f"0.1.{count}+{sha}", f"{module} release {branch_env}: versionName {name}")
+        check(name == f"{count}+{sha}", f"{module} release {branch_env}: versionName {name}")
 
 for module in (":app", ":wear"):
     # Both ways a release leaves CI: the APK (packageRelease) and the Play bundle (bundleRelease).
