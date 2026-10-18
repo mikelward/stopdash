@@ -369,6 +369,20 @@ object RailApiKeySetting {
  * stored, so a key added brings National Rail back at once; [chosen] is the rider's own set, which
  * the near-me banner names.
  */
+/**
+ * Whether National Rail starts hidden: with no key of the rider's own, and no choice of theirs, even in a
+ * build with the proxy (maintainer, 2026-10-18), so a big station isn't flooded with trains they never asked for.
+ */
+internal fun railHiddenByDefault(choice: HiddenModesChoice, key: String?): Boolean =
+    RailKeyDefault.applies(keySet = !key.isNullOrBlank(), chosen = choice.railChosen, stored = choice.modes)
+
+/**
+ * Whether showing National Rail asks for a key: only once the stored key is read ([loaded]), and only when
+ * its times can't be had without one, so a build with the proxy shows it at once.
+ */
+internal fun railKeyNeeded(key: String?, loaded: Boolean, proxy: String? = StopdashProxy.url): Boolean =
+    loaded && !StopdashProxy.timesWith(key, proxy)
+
 object HiddenModesSetting {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -387,8 +401,7 @@ object HiddenModesSetting {
         },
     )
 
-    private fun railDefault(choice: HiddenModesChoice, key: String?): Boolean =
-        RailKeyDefault.applies(keySet = StopdashProxy.timesWith(key), chosen = choice.railChosen, stored = choice.modes)
+    private fun railDefault(choice: HiddenModesChoice, key: String?): Boolean = railHiddenByDefault(choice, key)
 
     @WorkerThread
     private fun effective(choice: HiddenModesChoice, key: String?): Set<String> =
@@ -405,7 +418,7 @@ object HiddenModesSetting {
      * it came to be hidden.
      */
     val railKeyMissing: StateFlow<Boolean> =
-        combine(RailApiKeySetting.changes, RailApiKeySetting.isLoaded) { key, loaded -> loaded && !StopdashProxy.timesWith(key) }
+        combine(RailApiKeySetting.changes, RailApiKeySetting.isLoaded) { key, loaded -> railKeyNeeded(key, loaded) }
             .stateIn(scope, SharingStarted.Eagerly, false)
 
     /** The hidden modes right now, as [changes] last worked them out: a read, no work. */

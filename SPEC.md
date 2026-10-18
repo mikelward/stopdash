@@ -584,18 +584,19 @@ The app finds stops two ways:
   timetabled trains, Eurostar with them), **Bus**, **Tram** and **Boat** (TfL's "river bus"). The
   menu says under a name what it doesn't ("Tube, DLR, Elizabeth"; "Thameslink, Southern, …"), kept
   short; the trip chips, with no room, carry the name alone. Until 2026-10-08 the groups were Tube &
-  DLR and one **Train** (maintainer: National Rail is the one that floods a big station and has no
-  times without a key, and riders ride the Elizabeth line like the Tube); a stored hide follows the
+  DLR and one **Train** (maintainer: National Rail is the one that floods a big station, and riders
+  ride the Elizabeth line like the Tube); a stored hide follows the
   new groups, the Elizabeth line the Tube's, and a trip's Train choice carries to Overground and
   National Rail. A coach counts as a **Bus**: TfL lists no coach routes
   or stops, and riders don't tell the two apart (maintainer, 2026-10-08; until then Coach was a sixth
   group, empty in practice). The overflow menu lists all six, always the
-  same, each with a checkbox ticked while it shows. **National Rail starts unticked while its times can't be had** — no
-  National Rail key set and no proxy in the build (*National Rail*) (maintainer, 2026-10-08): without
-  times its rows flood a big station. A build with the proxy has its times keyless, so there it
-  starts shown and none of this applies. Ticking it while its times can't be had, however it came to be hidden, opens a dialog saying a free Rail Data Marketplace key gives its
-  times, with **Get a key** (the sign-up page), **Add key** (Settings, at the key) and **Show anyway**. Adding a
-  key shows it by itself. The default is never stored: once the rider shows or hides National Rail
+  same, each with a checkbox ticked while it shows. **National Rail starts unticked without a key of the rider's own** (maintainer, 2026-10-08; kept
+  with the proxy, 2026-10-18): its rows flood a big station for a rider who never asked for trains.
+  Ticking it shows it at once when its times can be had, through the proxy (*National Rail*) or the
+  rider's key. Only in a build with no proxy and no key set does ticking it, however it came to be
+  hidden, open a dialog saying a free Rail Data Marketplace key gives its times, with **Get a key**
+  (the sign-up page), **Add key** (Settings, at the key) and **Show anyway**. Adding a key shows it by
+  itself. The default is never stored: once the rider shows or hides National Rail
   themselves, their choice stands, key or none. The near-me banner and Settings' Hidden list leave
   the default out (an empty list still names it). A trip follows it like any hide (maintainer,
   2026-10-08): no routes riding National Rail without its times, its banner naming National Rail, whose
@@ -4276,8 +4277,9 @@ surface.)
   **Boards need no key either** (maintainer, 2026-10-17): without a key of the rider's own, every
   board (a station's, one with calling points, a followed train's) comes through the same proxy,
   which holds a Live Departure Board key and answers in Darwin's own shape. The proxy counts as a
-  key wherever this spec says one: National Rail starts shown, there's no "No key", and a trip
-  follows National Rail trains. A key the rider pastes still goes straight to National Rail, as
+  key for times wherever this spec says one: there's no "No key", ticking National Rail asks for none,
+  and a trip follows National Rail trains. It doesn't change what shows by default: National Rail
+  still starts unticked without a key of the rider's own (*Hiding a mode*; maintainer, 2026-10-18). A key the rider pastes still goes straight to National Rail, as
   before, and a build with no proxy behaves as before it. The proxy keeps a board for 30 seconds,
   inside what the app already treats as live, and only a request it can't answer from that copy
   reaches National Rail or counts against a caller.

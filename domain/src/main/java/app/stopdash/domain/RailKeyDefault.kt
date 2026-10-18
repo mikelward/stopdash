@@ -8,8 +8,9 @@ data class HiddenModesChoice(val modes: Set<String> = emptySet(), val railChosen
 
 /**
  * National Rail's place in the hidden set while no National Rail key is set (SPEC *Finding stops →
- * Hiding a mode*, maintainer 2026-10-08): it counts as hidden then, since without a key its rows
- * carry no times and flood a big station, and it shows again by itself once a key is added. That
+ * Hiding a mode*, maintainer 2026-10-08): it counts as hidden then, since its rows flood a big
+ * station for a rider who never asked for trains, and it shows again by itself once a key is added.
+ * The proxy brings the times without a key, but not the asking (maintainer, 2026-10-18). That
  * holds until the rider chooses for themselves (shows it anyway, or hides it): from then on the
  * stored set alone decides, as for every other group.
  *
