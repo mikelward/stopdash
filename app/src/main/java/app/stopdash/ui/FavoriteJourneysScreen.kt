@@ -43,6 +43,7 @@ import androidx.annotation.WorkerThread
 import app.stopdash.R
 import java.time.DayOfWeek
 import java.time.format.TextStyle
+import app.stopdash.domain.Hubs
 import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.DestinationAbbreviations
 import app.stopdash.domain.FavoriteJourney
@@ -61,6 +62,7 @@ import app.stopdash.domain.StopLocation
 import app.stopdash.domain.StopPlace
 import app.stopdash.domain.TflException
 import app.stopdash.domain.WidgetJourneysReport
+import app.stopdash.domain.everyStop
 import kotlinx.coroutines.CancellationException
 import java.io.IOException
 import kotlin.math.ceil
@@ -194,7 +196,7 @@ internal suspend fun setRideLineHidden(
 
 /**
  * Adds the journey between two stations the rider picked, [from] then [to] ([FavoriteJourneyPicker]):
- * the stops under each looked up ([StationFinder.stationStops]), a line both serve picked
+ * the stops under each looked up ([everyStop]: every record of a station, every pole of a bus stop), a line both serve picked
  * ([JourneyPair]), and the journey saved unless it already is. Where none serves both, the rest of each
  * end's place counts too ([JourneyPair.withPlace], [StopPlace]'s rule): the stops of its interchange,
  * looked up by [finder], and those around it found by [stationBuses]: a station's own bus stops, as TfL
@@ -210,9 +212,13 @@ internal suspend fun addFavoriteJourneyPair(
     journeys: FavoriteJourneysStore,
     warn: (String) -> Unit = {},
     worker: CoroutineDispatcher = Dispatchers.Default,
+    // The station model, so each end is every record of its station or every pole of its bus stop: a line
+    // served only from the stop's other side is found. None by default (tests), asking each id alone.
+    loadHubs: suspend () -> Hubs? = { null },
 ): JourneyAddNote? = withContext(worker) {
     var (fromStops, toStops) = try {
-        finder.stationStops(from.id) to finder.stationStops(to.id)
+        val hubs = loadHubs()
+        finder.everyStop(from.id, hubs) to finder.everyStop(to.id, hubs)
     } catch (e: TflException) {
         // Logged without the stations (SPEC *Privacy*).
         warn("favorite journey add lookup failed: ${e::class.simpleName}")

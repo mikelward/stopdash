@@ -38,6 +38,8 @@ class Hubs private constructor(
     private val poleName: Map<String, String>,
     private val recordName: Map<String, String>,
     private val polesOfRecord: Map<String, List<String>>,
+    // Each bus stop area (a pole's `cluster`, not a station record) to its poles.
+    private val polesOfArea: Map<String, List<String>>,
     private val memberRows: () -> Map<String, List<StationIndex.MemberRow>>,
     /** The bundle's content revision both files carry. */
     val revision: String,
@@ -128,6 +130,23 @@ class Hubs private constructor(
     fun recordsOf(id: String): List<String> = when (val station = stationOf(id)) {
         is Membership.Of -> recordsOfStation[station.id].orEmpty()
         else -> emptyList()
+    }
+
+    /**
+     * The ids to ask TfL ([StationFinder.stationStops]) for every stand of the station or bus stop [id]
+     * belongs to, so a page or a lookup takes in all of it. A station: [id] then each of its records
+     * ([recordsOf]). A bus stop (a pole's, a whole stop area's or the stop's own id): each of its whole
+     * stop areas, one request for all its poles there, then each of its poles outside them, as TfL
+     * answers a pole with that pole alone. Empty for an id the bundle doesn't hold at either level, a
+     * stop area it split ([Membership.Split]) or a hub, for the caller to ask for [id] alone.
+     */
+    @WorkerThread
+    fun lookupIdsOf(id: String): List<String> {
+        recordsOf(id).takeIf { it.isNotEmpty() }?.let { return (listOf(id) + it).distinct() }
+        val stop = (stopOf(id) as? Membership.Of)?.id ?: return emptyList()
+        val areas = wholeAreasOfStop[stop].orEmpty().sorted()
+        val inAreas = areas.flatMapTo(HashSet()) { polesOfArea[it].orEmpty() }
+        return areas + polesOfStop[stop].orEmpty().filterNot { it in inAreas }
     }
 
     /** Whether [a] and [b] are one station; an id the bundle doesn't hold is only itself. */
@@ -423,6 +442,7 @@ class Hubs private constructor(
                 recordName = recordName,
                 // Bus poles filed under a station record: the pre-phase-2 picks [picked] reads with care.
                 polesOfRecord = clusterPoles.filterKeys { it in stationOfRecord }.mapValues { (_, poles) -> poles.sorted() },
+                polesOfArea = clusterPoles.filterKeys { it !in stationOfRecord },
                 memberRows = { index.memberRows },
                 revision = index.revision,
             )

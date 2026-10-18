@@ -665,6 +665,22 @@ class KtorTflClient(
                 .distinctBy { it.id }
         }
 
+    // TfL's `/StopPoint/{ids}` takes up to 20 comma-separated ids and answers an array of their trees.
+    override suspend fun stationStops(ids: List<String>): List<StopLocation> {
+        if (ids.size <= 1) return ids.flatMap { stationStops(it) }
+        return ids.chunked(STOP_POINT_IDS_PER_REQUEST).flatMap { chunk ->
+            // One id is answered as an object, not an array: the single lookup reads that shape.
+            if (chunk.size == 1) return@flatMap stationStops(chunk.single())
+            tflRequest { key ->
+                httpClient.get("$baseUrl/StopPoint/${chunk.joinToString(",")}") {
+                    applyAppKey(key)
+                }.body<List<TflStopPointDto>>()
+                    .flatMap { it.departureStops(StopFinder.DEFAULT_NEARBY_STOP_TYPES) }
+                    .mapNotNull { it.toStopLocationOrNull() }
+            }
+        }.distinctBy { it.id }
+    }
+
     override suspend fun hubInfo(interchangeId: String): HubInfo =
         tflRequest { key ->
             val dto = httpClient.get("$baseUrl/StopPoint/$interchangeId") {
@@ -1172,6 +1188,9 @@ class KtorTflClient(
 
         /** How many name-search matches to ask for — a screenful; a longer query narrows it. */
         const val SEARCH_MAX_RESULTS: Int = 20
+
+        /** The most ids TfL's `/StopPoint/{ids}` answers in one request. */
+        const val STOP_POINT_IDS_PER_REQUEST: Int = 20
 
         /**
          * The production HTTP client: OkHttp engine + lenient JSON, failing on non-2xx. Each slow

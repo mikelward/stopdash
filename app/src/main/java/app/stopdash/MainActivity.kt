@@ -2091,6 +2091,8 @@ class MainActivity : ComponentActivity() {
                                                 currentHubs = HubsStore::current,
                                                 // London's bus stops, bundled, found on the device as the stations are.
                                                 loadBusStops = { BusStopIndexStore.load(applicationContext) },
+                                                // Every record of a picked station, every pole of a bus stop.
+                                                loadHubs = HubsStore::ready,
                                                 // The bundled London places, streets and postcodes, to save
                                                 // one as a favorite (maintainer, 2026-10-11).
                                                 loadPlaceIndex = { PlaceIndexStore.load(applicationContext) },
@@ -2448,6 +2450,7 @@ class MainActivity : ComponentActivity() {
                                                         stationAreaStopFinder,
                                                         journeyStore,
                                                         warn = ::logStarWarning,
+                                                        loadHubs = HubsStore::ready,
                                                     )
                                                 } else {
                                                     // A favorite place at an end: saved grayed (maintainer, 2026-10-10).

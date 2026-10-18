@@ -45,6 +45,9 @@ class HubsPickTest {
         // cross-street pole of another stop.
         "S\t490000009A\tB\tVale\t51.530500\t-0.120000\t910GVALE\t\t\t\t\t1\t\t490000009A\t910GVALE\t910GVALE",
         "S\t490000009B\tB\tVale/High Road\t51.530700\t-0.120000\t910GVALE\t\t\t\t\t1\t\t490000009B\t\t910GVALE",
+        // A stop joined from two whole areas, either side of its road.
+        "S\t490000007A\tB\tExample Green\t51.540000\t-0.120000\t490G000007\t\t\t\t\t1\t\t490G000007\t\t490G000007",
+        "S\t490000007B\tB\tExample Green\t51.540200\t-0.120000\t490G000008\t\t\t\t\t1\t\t490G000007\t\t490G000007",
     ).joinToString("\n")
 
     private val hubs = Hubs.of(index, BundledStops.read(BufferedReader(StringReader(tsv))))!!
@@ -56,6 +59,24 @@ class HubsPickTest {
         assertEquals(listOf("910GEXCROSS", "940GZZLUEXC"), rows[0].records)
         assertEquals(listOf("910GEXPANC", "910GEXPANCLL"), rows[1].records)
         assertEquals("the rows search shows are these", rows.map { it.match }, index.hubNames)
+    }
+
+    @Test
+    fun `a stop is looked up by its whole areas and its poles outside them, a station by every record`() {
+        // One area, both its poles: one request, whichever id the row carries.
+        assertEquals(listOf("490G000001"), hubs.lookupIdsOf("490000001A"))
+        assertEquals(listOf("490G000001"), hubs.lookupIdsOf("490G000001"))
+        // Joined from two areas: each area, so the pole across the road is asked for too.
+        assertEquals(listOf("490G000007", "490G000008"), hubs.lookupIdsOf("490000007B"))
+        // A pole filed under a station record is asked for itself, never the station.
+        assertEquals(listOf("490000009A"), hubs.lookupIdsOf("490000009A"))
+        // A pole of a split area is its own stop; the split area names no one stop, so the caller asks it alone.
+        assertEquals(listOf("490000005A"), hubs.lookupIdsOf("490000005A"))
+        assertEquals(emptyList<String>(), hubs.lookupIdsOf("490G000005"))
+        // A station is the id asked, then every record of it.
+        assertEquals(listOf("910GEXPANCLL", "910GEXPANC"), hubs.lookupIdsOf("910GEXPANCLL"))
+        assertEquals(emptyList<String>(), hubs.lookupIdsOf("HUBEXX"))
+        assertEquals(emptyList<String>(), hubs.lookupIdsOf("490099999X"))
     }
 
     @Test

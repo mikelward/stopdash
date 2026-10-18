@@ -413,11 +413,13 @@ class KtorTflClientTest {
         clock: () -> java.time.Instant = java.time.Instant::now,
         stationIndex: () -> app.stopdash.domain.StationIndex? = { null },
         trainSpacing: suspend () -> Boolean = { true },
+        // The answer for each request, where it depends on the request; [body] otherwise.
+        bodyFor: ((HttpRequestData) -> String)? = null,
     ): KtorTflClient {
         val engine = MockEngine { request ->
             capture(request)
             respond(
-                content = ByteReadChannel(body),
+                content = ByteReadChannel(bodyFor?.invoke(request) ?: body),
                 status = status,
                 headers = headersOf(HttpHeaders.ContentType, "application/json"),
             )
@@ -1766,6 +1768,40 @@ class KtorTflClientTest {
               "modes": ["bus"], "lines": [{ "id": "73", "name": "73" }] }
         """.trimIndent()
         assertEquals(listOf("490000000001A"), client(pole).stationStops("490000000001A").map { it.id })
+    }
+
+    @Test
+    fun `several stops are looked up in one request, their trees' departure stops together`() = runTest {
+        // Two synthetic stop areas, either side of a road, asked for together as TfL's comma list allows.
+        val both = """
+            [
+              { "id": "490G00000007", "commonName": "Example Green", "stopType": "NaptanOnstreetBusCoachStopCluster",
+                "children": [{ "id": "490000000007A", "commonName": "Example Green", "stopType": "NaptanPublicBusCoachTram",
+                  "stationNaptan": "490G00000007", "modes": ["bus"], "lines": [{ "id": "1", "name": "1" }] }] },
+              { "id": "490G00000008", "commonName": "Example Green", "stopType": "NaptanOnstreetBusCoachStopCluster",
+                "children": [{ "id": "490000000007B", "commonName": "Example Green", "stopType": "NaptanPublicBusCoachTram",
+                  "stationNaptan": "490G00000008", "modes": ["bus"], "lines": [{ "id": "1", "name": "1" }] }] }
+            ]
+        """.trimIndent()
+        val asked = mutableListOf<String>()
+        val stops = client(both, capture = { asked += it.url.encodedPath }).stationStops(listOf("490G00000007", "490G00000008"))
+        assertEquals(listOf("/StopPoint/490G00000007,490G00000008"), asked)
+        assertEquals(listOf("490000000007A", "490000000007B"), stops.map { it.id })
+    }
+
+    @Test
+    fun `a last batch of one id is read in a single stop's shape`() = runTest {
+        // 21 synthetic poles: a batch of 20 answered as an array, then one answered as an object (Codex on #973).
+        fun pole(id: String) = """{ "id": "$id", "commonName": "Example Green", "stopType": "NaptanPublicBusCoachTram",
+            "modes": ["bus"], "lines": [{ "id": "1", "name": "1" }] }"""
+        val ids = (1..21).map { "4900000000%02d".format(it) }
+        val asked = mutableListOf<String>()
+        val client = client("", capture = { asked += it.url.encodedPath }, bodyFor = { request ->
+            val named = request.url.encodedPath.removePrefix("/StopPoint/").split(",")
+            if (named.size == 1) pole(named.single()) else named.joinToString(",", "[", "]") { pole(it) }
+        })
+        assertEquals(ids, client.stationStops(ids).map { it.id })
+        assertEquals(listOf("/StopPoint/" + ids.take(20).joinToString(","), "/StopPoint/" + ids.last()), asked)
     }
 
     @Test

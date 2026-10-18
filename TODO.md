@@ -822,8 +822,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 interchange's id read back as that station (`Hubs.resolved`, `HubsStore.resolvedNow`).
           - [x] Search's twin fold on the model: a station's records are one row by membership, inside
                 an interchange too, never two stations of one name and place.
-          - [ ] Search's bus-stop rows on the model; an open trip's From, To and Via and the open
-                station page's saved state read back the same way.
+          - [x] Opening a bus stop, adding a favorite ride and resolving a positionless pick ask every
+                pole of the model's stop, or every record of the station (`Hubs.lookupIdsOf`).
+          - [ ] Search's bus-stop rows on the model (`YourStops.stopPlace`, `journeyEnds`: a favorite
+                ride's end and a starred place at one stop one row); an open trip's From, To and Via and
+                the open station page's saved state read back the same way.
           - [ ] Getting off, far ends, Direct, off-plan, passing a stop, and a trip's arrivals
                 (`Hubs.idsOf`) on the model, with SPEC *Departures*, *Finding stops* and *Trips with
                 a change*.
