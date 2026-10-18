@@ -3,6 +3,7 @@ package app.stopdash.data
 import app.stopdash.domain.BundledStops
 import app.stopdash.domain.Hubs
 import app.stopdash.domain.Hubs.Membership
+import app.stopdash.domain.Pick
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -38,6 +39,21 @@ class HubsBundleTest {
         assertNotNull(members)
         assertEquals(3, members!!.stations.size)
         assertNotNull(hubs.placeOf("HUBKGX", Hubs.Level.HUB))
+    }
+
+    @Test
+    fun `a King's Cross pick saved before phase 2 reads as the row it was picked from`() {
+        // St Pancras's own row stands for St Pancras alone, and is arrived at there, never at King's Cross.
+        val stPancras = hubs.picked("HUBKGX", "St Pancras International")
+        assertEquals(Pick.Level.STATION, stPancras.level)
+        assertEquals(hubs.stationOf("910GSTPX"), hubs.stationOf(stPancras.id))
+        val arrivals = hubs.idsOf(stPancras)
+        assertTrue(arrivals.keys.containsAll(listOf("910GSTPX", "910GSTPXBOX", "910GSTPADOM")))
+        assertFalse("910GKNGX" in arrivals)
+        assertFalse("940GZZLUKSX" in arrivals)
+        // The King's Cross row takes in the Underground's King's Cross St. Pancras: two stations, so the hub.
+        assertEquals(Pick("HUBKGX", "King's Cross", Pick.Level.HUB), hubs.picked("HUBKGX", "King's Cross"))
+        assertTrue(hubs.idsOf(hubs.picked("HUBKGX", "King's Cross")).keys.containsAll(listOf("910GKNGX", "940GZZLUKSX", "910GSTPX")))
     }
 
     @Test

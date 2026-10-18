@@ -169,36 +169,60 @@ class StationIndex(
      */
     // Built on first read from the whole index: a worker's work.
     @get:WorkerThread
-    val hubNames: List<StationMatch> by lazy {
+    val hubNames: List<StationMatch> by lazy { memberRows.values.flatMap { rows -> rows.map { it.match } } }
+
+    /** One of an interchange's station-name rows ([hubNames]) and the records it was made from, in index order. */
+    data class MemberRow(val match: StationMatch, val records: List<String>)
+
+    /**
+     * Each interchange's [hubNames] rows by its id, with the records behind each, so the station model
+     * can tell what a row stood for ([Hubs.picked]): St Pancras's row its own station, the King's Cross
+     * row, which takes in the Underground's name, two stations.
+     */
+    // Built on first read from the whole index: a worker's work.
+    @get:WorkerThread
+    val memberRows: Map<String, List<MemberRow>> by lazy {
         stations.filter { it.interchangeId.isNotBlank() && it.interchangeId in byId }
             .groupBy { it.interchangeId }
-            .flatMap { (hub, members) -> namesIn(hub, members) }
+            .mapValues { (hub, members) -> rowsIn(hub, members) }
+            .filterValues { it.isNotEmpty() }
     }
 
-    private fun namesIn(hub: String, members: List<IndexedStation>): List<StationMatch> {
-        // Display name and modes, by the name as compared, in the members' order.
-        val groups = LinkedHashMap<String, Pair<String, MutableList<String>>>()
+    private class Group(val display: String) {
+        val modes = mutableListOf<String>()
+        val records = mutableListOf<String>()
+    }
+
+    private fun rowsIn(hub: String, members: List<IndexedStation>): List<MemberRow> {
+        // Display name, modes and records, by the name as compared, in the members' order.
+        val groups = LinkedHashMap<String, Group>()
         // "London" is the place's own name where the interchange says so (London Bridge).
         val keepLondon = byId.getValue(hub).name.startsWith("London ")
         for (member in members) {
             val display = memberName(member.name, keepLondon)
             if (display.isBlank()) continue
-            groups.getOrPut(StationMatcher.normalize(display).lowercase()) { display to mutableListOf() }.second += member.modes
+            val group = groups.getOrPut(StationMatcher.normalize(display).lowercase()) { Group(display) }
+            group.modes += member.modes
+            group.records += member.id
         }
         for (joint in groups.keys.toList()) {
             val base = groups.keys.firstOrNull { base ->
                 base != joint && joint.startsWith("$base ") &&
                     groups.keys.any { other -> other != base && other != joint && other.startsWith(joint.removePrefix("$base ")) }
             } ?: continue
-            groups.remove(joint)?.let { (_, modes) -> groups.getValue(base).second += modes }
+            groups.remove(joint)?.let { folded ->
+                groups.getValue(base).modes += folded.modes
+                groups.getValue(base).records += folded.records
+            }
         }
         if (groups.size < 2) return emptyList()
         // A name the interchange already goes by is its own row ("West Hampstead"): not a second one.
         val hubName = StationMatcher.normalize(memberName(byId.getValue(hub).name, keepLondon)).lowercase()
         groups.remove(hubName)
-        return groups.values.map { (display, modes) ->
-            val ordered = modes.filter { it.isNotBlank() }.distinct().sortedBy { MODE_ORDER.indexOf(it).let { i -> if (i < 0) MODE_ORDER.size else i } }
-            StationMatch(hub, display, ordered, lead = ordered)
+        return groups.values.map { group ->
+            val ordered = group.modes.filter { it.isNotBlank() }.distinct()
+                .sortedBy { MODE_ORDER.indexOf(it).let { i -> if (i < 0) MODE_ORDER.size else i } }
+            MemberRow(StationMatch(hub, group.display, ordered, lead = ordered), group.records)
         }
     }
 
