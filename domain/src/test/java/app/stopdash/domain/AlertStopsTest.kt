@@ -160,6 +160,48 @@ class AlertStopsTest {
             ),
         )
         assertEquals(emptySet<String>(), AlertStops.stretched("Buses no longer continue to miss the same stops from Alpha Road 'L' to Gamma Road / Delta Road 'G'.", road))
+        // The diversion's own dates said with "from" are when, not where (TfL's wording, 2026-10-18): a
+        // notice at the far end of a route flagged a ride at the near end.
+        assertEquals(
+            setOf("S0", "S1", "S2"),
+            AlertStops.stretched(
+                "EXAMPLE STREET, E1: Route 99 is on diversion towards North End from 23:55 on Monday 12 October to 18:00 on " +
+                    "Saturday 31 October due to electrical works. In addition to the existing diversion from Example Street, buses " +
+                    "are diverted via Other Lane and Last Terrace. Buses continue to miss the same stops from Alpha Road 'L' to " +
+                    "Gamma Road / Delta Road 'G'.",
+                road,
+            ),
+        )
+        // Every shape of date an alert's start is read in ([AlertStart.dateSpans]; maintainer, 2026-10-18).
+        for (dated in listOf(
+            "from Monday 12 October until 18:00", "from 2000 Sunday 25 October", "from 12 to 17 October", "from 12th October",
+            "from 25/10 to 26/10", "between 22.00 and 06.00",
+        )) {
+            assertEquals(
+                dated,
+                setOf("S0", "S1", "S2"),
+                AlertStops.stretched(
+                    "Route 99 is on diversion $dated. Buses are missing stops from Alpha Road 'F' to Gamma Road / Delta Road 'T'.",
+                    road,
+                ),
+            )
+        }
+        // A diversion from a place is one it can't place, a place starting like a day or named like one,
+        // or numbered, included (Codex on #967); so is a time that read doesn't take for one, which keeps
+        // the alert on.
+        for (place in listOf(
+            "Example Street", "Sunbury", "May Road", "Friday Hill", "100 Avenue", "23A Road", "1 Example Street", "May and Baker Way",
+            "12 May Road", "Friday or Saturday Road", "9am to 5pm",
+        )) {
+            assertEquals(
+                place,
+                emptySet<String>(),
+                AlertStops.stretched(
+                    "Route 99 is on diversion from $place. Buses are missing stops from Alpha Road 'F' to Gamma Road / Delta Road 'T'.",
+                    road,
+                ),
+            )
+        }
         // Only those words: other ways of saying buses miss a stretch, not seen from TfL, place nothing (Codex on #895).
         assertEquals(emptySet<String>(), AlertStops.stretched("Buses will miss stops from 'Alpha Road' to 'Gamma Road / Delta Road'.", road))
         // A curtailment leaves out the stops after where buses terminate and before where they start

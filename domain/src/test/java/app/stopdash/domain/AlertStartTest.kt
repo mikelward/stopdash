@@ -37,6 +37,20 @@ class AlertStartTest {
     }
 
     @Test
+    fun `a text's dates and times are found with what leads into them`() {
+        fun spans(text: String) = AlertStart.dateSpans(text).map { text.substring(it.first, it.last + 1).trim() }
+        assertEquals(
+            listOf("23:55", "Monday 12 October", "18:00", "Saturday 31 October"),
+            spans("On diversion from 23:55 on Monday 12 October to 18:00 on Saturday 31 October due to works."),
+        )
+        assertEquals(listOf("2000 Sunday 25 October"), spans("From 2000 Sunday 25 October, buses divert."))
+        assertEquals(listOf("12 to 17 October"), spans("Diverted from 12 to 17 October."))
+        assertEquals(listOf("25 / 10", "26 / 10"), spans("From 25 / 10 to 26 / 10."))
+        // A place named like a date or time isn't one.
+        assertEquals(emptyList<String>(), spans("Diverted from May Road, Friday Hill, 23A Road and 100 Avenue."))
+    }
+
+    @Test
     fun `a single day, a list and a range start on their first day`() {
         assertEquals(LocalDate.of(2026, 10, 10), start("Road will be closed on 10 October 05:30-19:00 for filming."))
         assertEquals(LocalDate.of(2026, 10, 8), start("ROUTES 1 2: Road will be closed due to resurfacing works on 8 October 08:00-16:00."))

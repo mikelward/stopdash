@@ -108,7 +108,7 @@ object AlertStops {
         // Victoria"): those may be the ride's (Codex, PR #455).
         val rest = StringBuilder(normalize(text.orEmpty()).replace(CITY_LINES, "CITYLINE"))
         read.forEach { range -> for (i in range) rest.setCharAt(i, ' ') }
-        if (rest.split(*CLAUSE_ENDS).any(::unreadSkip)) return emptySet()
+        if (whenMarked(rest.toString()).split(*CLAUSE_ENDS).any(::unreadSkip)) return emptySet()
         // Nor where a clause it read names another of the route's stops, besides those its read words
         // name ("not serving stops between A and B and stops C and D"): in the same breath as stops not
         // served, that stop may be one too, however the clause joins it on (Codex, PR #455). One named
@@ -478,8 +478,32 @@ object AlertStops {
 
     // A diversion from or between places, left over once those read are taken out: one whose ends aren't
     // both on the route, so the stretch it leaves isn't known (Codex, #941). A diversion naming only the
-    // roads it takes ("on diversion via Example Street") gives no stretch, and isn't one.
-    private val UNREAD_DIVERSION = Regex("""\b(?:divert\w*|on\s+diversion)\b[^.;:?!]*?\b(?:from|between)\b""", RegexOption.IGNORE_CASE)
+    // roads it takes ("on diversion via Example Street") gives no stretch, and isn't one; nor does one
+    // from or between dates or times ([WHEN], "on diversion towards North End from 23:55 on Monday 12
+    // October to 18:00 on Saturday 31 October", TfL's wording, 2026-10-18), which says when, not where.
+    private val UNREAD_DIVERSION = Regex(
+        """\b(?:divert\w*|on\s+diversion)\b[^.;:?!]*?\b(?:from|between)\b(?!\s*$WHEN)""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    // What [whenMarked] puts where a date or time was: no letter, digit or clause end, so no name or
+    // other wording reads into it.
+    private const val WHEN = "§"
+
+    // [text] with each date and time in it, as an alert's start is read ([AlertStart.dateSpans]), one
+    // [WHEN]: before it's split into clauses, as a time's colon ("23:55") would end one. Whatever isn't
+    // read as a date ("Friday Hill", "May and Baker Way", "100 Avenue") stays a place (Codex on #967).
+    private fun whenMarked(text: String): String {
+        val spans = AlertStart.dateSpans(text)
+        if (spans.isEmpty()) return text
+        val marked = StringBuilder()
+        var at = 0
+        for (span in spans) {
+            marked.append(text, at, span.first).append(WHEN)
+            at = span.last + 1
+        }
+        return marked.append(text, at, text.length).toString()
+    }
 
     // Serving, stopping or calling as a verb ("the stops" is a noun, and "do not miss any stops" says
     // nothing is missed).
