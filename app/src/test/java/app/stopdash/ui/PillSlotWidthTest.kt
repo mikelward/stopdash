@@ -1,6 +1,7 @@
 package app.stopdash.ui
 
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.sp
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
@@ -48,10 +49,10 @@ class PillSlotWidthTest {
     fun `a cut pill's width counts each code as at least two characters and its padding`() {
         val density = Density(1f)
         // Each character 10 px: "4" counts as "88"; 8 px at each end and 4 px either side of the cut.
-        val cut = sharedPillWidthPx(listOf(LineRef("4", "4", "bus"), LineRef("N20", "N20", "bus")), density) { it.length * 10 }
+        val cut = sharedPillWidthPx(listOf(LineRef("4", "4", "bus"), LineRef("N20", "N20", "bus")), density, 14.sp) { it.length * 10 }
         assertEquals(20 + 30 + 8 + 4 + 4 + 8, cut)
         // A lone pill is its fixed label width and padding, whatever its code.
-        assertEquals(linePillWidthPx(density), sharedPillWidthPx(listOf(LineRef("N20", "N20", "bus")), density) { error("measured $it") })
-        assertEquals(48 + 16, linePillWidthPx(density))
+        assertEquals(linePillWidthPx(density, 14.sp), sharedPillWidthPx(listOf(LineRef("N20", "N20", "bus")), density, 14.sp) { error("measured $it") })
+        assertEquals(48 + 16, linePillWidthPx(density, 14.sp))
     }
 }
