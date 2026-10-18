@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.SystemClock
 import android.util.Log
 import app.stopdash.domain.Hubs
+import app.stopdash.domain.PendingEnd
+import app.stopdash.domain.StationMatch
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -41,6 +43,19 @@ object HubsStore {
      */
     suspend fun ready(): Hubs? =
         (withTimeoutOrNull(READY_WAIT_MILLIS) { state.first { it !is Hubs.State.Loading } } as? Hubs.State.Ready)?.hubs
+
+    /**
+     * [match] as the model now reads a pick of it ([Hubs.resolved]): an interchange's station name
+     * saved before phase 2 at that station. Itself while the model is still loading or unavailable,
+     * opening as it was saved. Called where a store reads its file, off the main thread; unmarked, as
+     * [Hubs.resolved] is.
+     */
+    fun resolvedNow(match: StationMatch): StationMatch = readyNow()?.resolved(match) ?: match
+
+    /** A pending ride's end, as [resolvedNow] reads a search row. */
+    fun resolvedNow(end: PendingEnd.Station): PendingEnd.Station = readyNow()?.resolved(end) ?: end
+
+    private fun readyNow(): Hubs? = (state.value as? Hubs.State.Ready)?.hubs
 
     /** Starts the load on [scope] once per process: files on [io], the model built on [compute]. */
     fun warm(

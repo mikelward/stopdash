@@ -180,9 +180,9 @@ class StationIndexTest {
     fun `an interchange's differently named stations each get a row, Underground first`() {
         assertEquals(
             listOf(
-                StationMatch("HUBKGX", "King's Cross", listOf("tube", "national-rail"), lead = listOf("tube", "national-rail")),
-                StationMatch("HUBKGX", "St Pancras International", listOf("national-rail"), lead = listOf("national-rail")),
-                StationMatch("HUBWHD", "West Hampstead Thameslink", listOf("national-rail"), lead = listOf("national-rail")),
+                StationMatch("HUBKGX", "King's Cross", listOf("tube", "national-rail"), lead = listOf("tube", "national-rail"), level = Pick.Level.HUB),
+                StationMatch("HUBKGX", "St Pancras International", listOf("national-rail"), lead = listOf("national-rail"), level = Pick.Level.HUB),
+                StationMatch("HUBWHD", "West Hampstead Thameslink", listOf("national-rail"), lead = listOf("national-rail"), level = Pick.Level.HUB),
             ),
             hubs.hubNames,
         )
@@ -199,6 +199,37 @@ class StationIndexTest {
         // A tram stop's or pier's type, and a place in brackets, tell records apart, not stations.
         assertEquals("Beckenham Junction", StationIndex.memberName("Beckenham Junction Tram Stop"))
         assertEquals("Abbey Wood", StationIndex.memberName("Abbey Wood (London) Rail Station"))
+    }
+
+    // The same records with the station model's membership: St Pancras's three records one station,
+    // King's Cross's and the Underground's two others.
+    private val modelHubs = StationIndex(
+        hubs.stations.map { station ->
+            val model = mapOf(
+                "910GKNGX" to "1001171:rail", "910GSTPADOM" to "1001255:rail", "910GSTPX" to "1001255:rail",
+                "910GSTPXBOX" to "1001255:rail", "940GZZLUKSX" to "1001171:tube",
+            )[station.id]
+            if (model == null) station else station.copy(station = model, modelHub = "HUBKGX")
+        },
+    )
+
+    @Test
+    fun `with the model, a station name of one station opens it, and one of two keeps the interchange`() {
+        val rows = modelHubs.hubNames.filter { it.name != "West Hampstead Thameslink" }
+        assertEquals(
+            listOf(
+                StationMatch("HUBKGX", "King's Cross", listOf("tube", "national-rail"), lead = listOf("tube", "national-rail"), level = Pick.Level.HUB),
+                StationMatch("910GSTPADOM", "St Pancras International", listOf("national-rail"), lead = listOf("national-rail"), level = Pick.Level.STATION),
+            ),
+            rows,
+        )
+        // Found by its name as before, ranked as the interchange's rows are, and never beside its own
+        // record as a second St Pancras.
+        val stPancras = modelHubs.search("st pa")
+        assertEquals(listOf("910GSTPADOM|St Pancras International", "HUBKGX"), stPancras.map { it.key })
+        val ranked = modelHubs.rank("st pa", stPancras, listOf(StationMatch("910GSTPX", "St Pancras International", listOf("national-rail"))))
+        assertEquals("TfL's copy of one of its records folds into it", listOf("910GSTPADOM|St Pancras International", "HUBKGX"), ranked.map { it.key })
+        assertTrue(modelHubs.leads(stPancras.first()))
     }
 
     @Test

@@ -132,4 +132,21 @@ class FileRecentStationsStoreTest {
         file.writeText("""{"version":1,"stations":[{"id":"940GZZLUOXC","name":"Oxford Circus","modes":["tube"]},{"id":"490000000001A","name":"Example Road","modes":["bus"],"level":"junction"}]}""")
         assertEquals(listOf(oxford, stop), FileRecentStationsStore(file).load())
     }
+
+    @Test
+    fun `a station name saved at its interchange reads as its station, once, and a new pick replaces it`() {
+        val file = File(tmp.root, "recent-stations.json")
+        val old = StationMatch("HUBEXX", "Example Pancras", listOf("national-rail"), lead = listOf("national-rail"))
+        val now = StationMatch("910GEXPANC", "Example Pancras", listOf("national-rail"), lead = listOf("national-rail"), level = Pick.Level.STATION)
+        // As the model reads it ([HubsStore.resolvedNow]).
+        val resolve: (StationMatch) -> StationMatch = { if (it.id == "HUBEXX") now else it }
+        FileRecentStationsStore(file).add(old)
+        FileRecentStationsStore(file).add(oxford)
+        assertEquals(listOf(oxford, now), FileRecentStationsStore(file, resolve = resolve).load())
+        FileRecentStationsStore(file, resolve = resolve).add(now)
+        assertEquals(listOf(now, oxford), FileRecentStationsStore(file).load())
+        // Saved under both shapes, it's listed once, at the newer.
+        FileRecentStationsStore(file).add(old)
+        assertEquals(listOf(now, oxford), FileRecentStationsStore(file, resolve = resolve).load())
+    }
 }

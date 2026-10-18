@@ -295,6 +295,19 @@ class DataStoreFavoriteJourneysStoreTest {
     }
 
     @Test
+    fun `a pending end saved at an interchange's station name reads as its station, and a new pick replaces it`() = runTest {
+        val old = PendingJourney(PendingEnd.Place("h", "Home"), PendingEnd.Station("HUBEXX", "Example Pancras"))
+        val now = PendingJourney(PendingEnd.Place("h", "Home"), PendingEnd.Station("910GEXPANC", "Example Pancras", Pick.Level.STATION))
+        val resolve: (PendingEnd.Station) -> PendingEnd.Station = { if (it.stationId == "HUBEXX") now.to as PendingEnd.Station else it }
+        val data = FakeDataStore(null)
+        DataStoreFavoriteJourneysStore(data).addPending(old)
+        val store = DataStoreFavoriteJourneysStore(data, resolveEnd = resolve)
+        assertEquals(listOf(now), store.pendingJourneys().first())
+        store.addPending(now)
+        assertEquals("replaced, not added beside", listOf(now), DataStoreFavoriteJourneysStore(data).pendingJourneys().first())
+    }
+
+    @Test
     fun `every write rewrites an older file as this build's version`() = runTest {
         val older = PersistedFavoriteJourneys(version = 0)
         val data = FakeDataStore(older)
