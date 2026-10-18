@@ -806,8 +806,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           - [x] `Pick` (id, name, level, `extraStopId`, a place's position), its one codec
                 (`PersistedPick`), `Hubs.picked` for picks saved before it, `Hubs.idsOf`, and
                 search's member rows with the records behind each (`StationIndex.memberRows`). Unused.
-          - [ ] Every holder of a picked place holds a `Pick`, `StationMatch` included; each file
-                store that saves one bumps its version and reads every older one (*Saved data*).
+          - [x] Each file store that saves a pick says its version and reads every one up to its own,
+                keeping a newer build's file unread: recents, starred places and the active trip gain
+                one (a file without it reads as 1), and favorite journeys read every version up to theirs.
+          - [ ] Every holder of a picked place holds a `Pick`, `StationMatch` included; each of those
+                stores writes the level and bumps its version (*A saved level comes with a version*).
           - [ ] Search's member and bus-stop rows, the board and the twin fold on the model.
           - [ ] Getting off, far ends, Direct, off-plan, passing a stop, and a trip's arrivals
                 (`Hubs.idsOf`) on the model, with SPEC *Departures*, *Finding stops* and *Trips with

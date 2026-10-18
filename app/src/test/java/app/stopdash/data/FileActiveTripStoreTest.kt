@@ -465,4 +465,51 @@ class FileActiveTripStoreTest {
         file.writeText(file.readText().replaceFirst("\"kind\":\"stop\"", "\"kind\":\"future\""))
         assertEquals(trip.destinations.drop(1), FileActiveTripStore(file).load()!!.destinations)
     }
+
+    @Test
+    fun `a trip says its version, and one kept before versions reads as the first`() {
+        val file = File(tmp.root, "active-trip.json")
+        FileActiveTripStore(file).save(trip)
+        assertTrue(file.readText().contains("\"version\":1"))
+        file.writeText(file.readText().replace("\"version\":1,", ""))
+        assertFalse(file.readText().contains("version"))
+        assertEquals(trip, FileActiveTripStore(file).load())
+    }
+
+    @Test
+    fun `a newer build's trip loads as none and is kept, and a trip started here replaces it`() {
+        val file = File(tmp.root, "active-trip.json")
+        FileActiveTripStore(file).save(trip)
+        // Even with a field this build parses written in a shape it can't read.
+        val newer = file.readText().replace("\"version\":1", "\"version\":2")
+            .replace(Regex("\"startedAt\":\"[^\"]*\""), "\"startedAt\":1700000000")
+        file.writeText(newer)
+        assertNull(FileActiveTripStore(file).load())
+        assertEquals(newer, file.readText())
+        FileActiveTripStore(file).save(trip)
+        assertEquals(trip, FileActiveTripStore(file).load())
+    }
+
+    @Test
+    fun `a newer build's trip staged when the app died is no trip, left as it is over the kept one`() {
+        val file = File(tmp.root, "active-trip.json")
+        val staged = File(file.path + ".tmp")
+        val older = trip.copy(legIndex = 1, vehicleId = "", boarded = false, dueOffAt = null)
+        FileActiveTripStore(file).save(older)
+        val kept = file.readText()
+        // Even with a field this build parses written in a way it can't read.
+        val newer = File(tmp.root, "staged.json").also { FileActiveTripStore(it).save(trip) }.readText()
+            .replace("\"version\":1", "\"version\":2")
+            .replace(Regex("\"startedAt\":\"[^\"]*\""), "\"startedAt\":\"1700000000\"")
+        staged.writeText(newer)
+        assertNull("not the kept trip it replaces", FileActiveTripStore(file).load())
+        assertEquals(newer, staged.readText())
+        assertEquals(kept, file.readText())
+        // However the moves would go: none is tried.
+        assertNull(FileActiveTripStore(file, rename = { _, _ -> false }).load())
+        assertEquals(newer, staged.readText())
+        FileActiveTripStore(file).save(trip)
+        assertEquals(trip, FileActiveTripStore(file).load())
+        assertFalse(staged.exists())
+    }
 }

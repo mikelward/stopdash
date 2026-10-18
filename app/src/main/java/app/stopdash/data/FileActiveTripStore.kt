@@ -12,6 +12,8 @@ import java.io.IOException
 import java.time.Duration
 import java.time.Instant
 import java.time.format.DateTimeParseException
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
@@ -23,6 +25,8 @@ import kotlinx.serialization.json.Json
  * rider is going is theirs (`docs/PRIVACY.md`). Blocking; call it off the main thread. An unparseable
  * file loads as no trip and is deleted; one that can't be read is kept, and [load] throws, to be tried
  * again. A failed write is logged (a bare reason, never a stop) and the trip is followed in memory only.
+ * A trip a newer build kept ([PersistedActiveTrip.CURRENT_VERSION]) loads as none and is kept as it
+ * is, never read back and rewritten without what that build added; a trip started here replaces it.
  */
 internal class FileActiveTripStore(
     private val file: File,
@@ -63,13 +67,23 @@ internal class FileActiveTripStore(
             finishForgetting()
             return null
         }
-        if (tmp.exists()) recoverTemp()?.let { return it }
+        if (tmp.exists()) {
+            // A newer build's trip staged when the app died: no trip here, and left as it is for that
+            // build to finish moving in; a trip saved here writes over it, as it would the kept one.
+            if (stagedIsNewer()) return null
+            recoverTemp()?.let { return it }
+        }
         if (!file.exists()) return null
         return try {
             val text = file.readText()
             // An ended trip whose file couldn't be deleted ([save]): no trip.
             if (text.isBlank()) return null
-            json.decodeFromString<PersistedActiveTrip>(text).toTrip()
+            if ((savedVersion(text) ?: 1) > PersistedActiveTrip.CURRENT_VERSION) {
+                warn("active trip file is a newer schema version; preserving it, not loading it")
+                null
+            } else {
+                json.decodeFromString<PersistedActiveTrip>(text).toTrip()
+            }
         } catch (e: IOException) {
             // Storage that couldn't be read now may be read later: kept, and the failure passed on.
             warn("active trip unreadable (${e::class.simpleName}), kept for another try")
@@ -205,6 +219,20 @@ internal class FileActiveTripStore(
     // the newest trip when it's whole, so it's moved into place; one cut short mid-write is dropped.
     // One that can't be moved (nor written in place) is kept for next time, and read from here:
     // the kept file behind it is older. Returns that trip, or null to read the kept file.
+    // Whether the temp file holds a trip of a newer version, by its version alone ([savedVersion]).
+    private fun stagedIsNewer(): Boolean {
+        val text = try {
+            tmp.readText()
+        } catch (e: IOException) {
+            warn("active trip: temp file unreadable, kept: ${e::class.simpleName}")
+            throw e
+        }
+        // Not whole ([savedVersion] null): [recoverTemp] drops it as partial.
+        val newer = (savedVersion(text) ?: return false) > PersistedActiveTrip.CURRENT_VERSION
+        if (newer) warn("active trip: temp file is a newer schema version; preserving it, not loading it")
+        return newer
+    }
+
     private fun recoverTemp(): ActiveTrip? {
         val recovered = try {
             json.decodeFromString<PersistedActiveTrip>(tmp.readText()).toTrip()
@@ -255,6 +283,11 @@ internal class FileActiveTripStore(
 
 @Serializable
 private data class PersistedActiveTrip(
+    // A file without one is version 1, whatever this build's is; written even then, so every file
+    // says its version. Each write names this build's ([CURRENT_VERSION]).
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault
+    val version: Int = 1,
     val legs: List<PersistedTripLeg>,
     val destinationName: String,
     val startedAt: String,
@@ -354,7 +387,11 @@ private data class PersistedActiveTrip(
     )
 
     companion object {
+        /** The current on-disk format. Bump when a field an older build would drop or misread is added. */
+        const val CURRENT_VERSION = 1
+
         fun of(trip: ActiveTrip) = PersistedActiveTrip(
+            version = CURRENT_VERSION,
             legs = trip.route.legs.map { PersistedTripLeg.of(it) },
             destinationName = trip.destinationName,
             startedAt = trip.startedAt.toString(),
