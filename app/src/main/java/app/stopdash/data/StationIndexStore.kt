@@ -59,9 +59,9 @@ object StationIndexStore {
             warn("station index version ${file.version} != $CURRENT_VERSION, ignoring")
             return StationIndex.EMPTY
         }
+        val readable = file.stations.filter { it.id.isNotBlank() && it.name.isNotBlank() }
         return StationIndex(
-            file.stations
-                .filter { it.id.isNotBlank() && it.name.isNotBlank() }
+            readable
                 .map {
                     IndexedStation(
                         id = it.id,
@@ -74,15 +74,22 @@ object StationIndexStore {
                         routeEnds = it.routeEnds,
                         terminusEnds = it.terminusEnds,
                         platforms = it.platforms,
+                        icsCode = it.icsCode,
+                        station = it.station,
+                        modelHub = it.modelHub,
                     )
                 },
             lineNames = file.lineNames,
+            revision = file.revision,
+            skippedEntries = file.stations.size - readable.size,
         )
     }
 
     @Serializable
     private data class StationIndexFile(
         val version: Int = 0,
+        // The content revision stops.tsv shares (build_stops.py); absent from an older index.
+        val revision: String = "",
         val stations: List<StationDto> = emptyList(),
         // Line id → name as TfL spells it; absent from an older index.
         val lineNames: Map<String, String> = emptyMap(),
@@ -105,5 +112,9 @@ object StationIndexStore {
         val terminusEnds: Map<String, List<String>> = emptyMap(),
         // Absent from an older index, whose trips then drop a train named by its platform alone.
         val platforms: List<String> = emptyList(),
+        // The station model's membership (dev-docs/station-model.md); absent from an older index.
+        val icsCode: String = "",
+        val station: String = "",
+        val modelHub: String = "",
     )
 }

@@ -631,6 +631,26 @@ The app finds stops two ways:
   re-picks the nearby set from the same fix, so its stops come back, as "Show all" does; a list or
   trip out of view when Settings showed it re-picks as it comes back.
 
+**Stands, stations and hubs** (maintainer, 2026-10-16; `dev-docs/station-model.md`). StopDash is
+building one answer to "is this the same station?" and "is this the same place?", to replace the
+rules each screen keeps:
+- **Three levels.**
+  - A **stand** is where a rider waits: a platform or a bus pole.
+  - Each stand belongs to one **station**: the TfL records sharing an ICS code and a mode family,
+    so St Pancras International's three records are one station. For buses, it's a **stop**: both
+    directions of a road under one name.
+  - Each station and stop belongs to one **hub**: a TfL interchange (King's Cross & St Pancras), or
+    a lone station with its own bus stops within 200 m, or a junction of bus stops.
+- **Worked out weekly, only read on the device.** The weekly bundle refresh works out every stand's
+  station or stop and every hub, and ships them in the APK. The device loads them once, on a worker
+  as the app starts, as state that turns ready once, and makes no request for them. Doing it in the
+  batch keeps one copy of the rules, reviewed in the refresh's pull request (which lists every id
+  regrouped), and leaves nothing to compute or fetch while a rider waits.
+- **Edges fail safe.** A stop the bundle doesn't hold is matched only by its own id until a refresh
+  takes it in. A bundle that can't be read whole leaves the model unavailable, never half-loaded.
+- **Not used yet.** Every screen still asks its own rule. The next steps move station identity, then
+  hubs, onto the model, each saying here what changed.
+
 ### Departures
 
 For each watched stop, stopdash shows the next few departures: **line**, **destination**
