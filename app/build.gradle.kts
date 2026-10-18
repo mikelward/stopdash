@@ -106,7 +106,7 @@ val releaseFixedVersionCheck = tasks.register("checkReleaseNotFixedVersion") {
         check(!fixed) { "A release build can't be packaged with -PstopdashFixedVersion: its versionCode is a placeholder." }
     }
 }
-tasks.matching { it.name == "packageRelease" || it.name == "bundleRelease" }
+tasks.matching { it.name in setOf("packageRelease", "packageReleaseBundle", "bundleRelease") }
     .configureEach { dependsOn(releaseFixedVersionCheck) }
 
 // The four release-keystore variables, normalized once: blank is absent, so a

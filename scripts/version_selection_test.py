@@ -108,8 +108,9 @@ for branch_env, branch in BRANCH_CASES:
         check(name == f"{count}+{sha}", f"{module} release {branch_env}: versionName {name}")
 
 for module in (":app", ":wear"):
-    # Both ways a release leaves CI: the APK (packageRelease) and the Play bundle (bundleRelease).
-    for task in ("packageRelease", "bundleRelease"):
+    # Every way to package a release: the APK (packageRelease) and the Play bundle, whether
+    # through its lifecycle task (bundleRelease) or directly (packageReleaseBundle).
+    for task in ("packageRelease", "packageReleaseBundle", "bundleRelease"):
         graph = gradle(f"{module}:{task}", FLAG, "--dry-run").stdout
         check(f"{module}:checkReleaseNotFixedVersion" in graph,
               f"{module}:{task} runs the fixed-version guard")
