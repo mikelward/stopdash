@@ -388,7 +388,7 @@ object HiddenModesSetting {
     )
 
     private fun railDefault(choice: HiddenModesChoice, key: String?): Boolean =
-        RailKeyDefault.applies(keySet = RailRelay.timesWith(key), chosen = choice.railChosen, stored = choice.modes)
+        RailKeyDefault.applies(keySet = StopdashProxy.timesWith(key), chosen = choice.railChosen, stored = choice.modes)
 
     @WorkerThread
     private fun effective(choice: HiddenModesChoice, key: String?): Set<String> =
@@ -405,7 +405,7 @@ object HiddenModesSetting {
      * it came to be hidden.
      */
     val railKeyMissing: StateFlow<Boolean> =
-        combine(RailApiKeySetting.changes, RailApiKeySetting.isLoaded) { key, loaded -> loaded && !RailRelay.timesWith(key) }
+        combine(RailApiKeySetting.changes, RailApiKeySetting.isLoaded) { key, loaded -> loaded && !StopdashProxy.timesWith(key) }
             .stateIn(scope, SharingStarted.Eagerly, false)
 
     /** The hidden modes right now, as [changes] last worked them out: a read, no work. */
@@ -867,7 +867,7 @@ object DepartureSourceSettings {
 /**
  * [railKey] and [trainSpacing] together: the current pair first, then one on each change to either.
  * The key being read back ([railKeyLoaded]) is a change too, though a rider with none reads back the
- * same null: the relay is asked only once it's known, so boards skipped until then are asked for at
+ * same null: the proxy is asked only once it's known, so boards skipped until then are asked for at
  * once rather than at the next refresh (Codex, #944).
  */
 internal fun departureSourceChanges(

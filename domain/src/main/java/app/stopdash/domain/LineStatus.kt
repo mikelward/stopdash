@@ -361,7 +361,7 @@ data class LineAlert(
 /**
  * National Rail's [words] for a disruption whose TfL text, [forText], is only a link to its page, used
  * until [until] (in the steady frame, [SteadyClock]): the shared staleness bound counted from when the
- * relay fetched them, not from when the status carrying them was. Null: no limit of its own.
+ * proxy fetched them, not from when the status carrying them was. Null: no limit of its own.
  */
 data class IncidentDetail(val forText: String, val words: String, val until: java.time.Instant? = null) {
     /** Whether the words are still young enough to show at the wall time [now]. */

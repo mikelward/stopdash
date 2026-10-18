@@ -839,7 +839,7 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
                 alertDirections = LineAlertDirections.shared,
                 awaitAlertDirections = true,
                 // National Rail's words for a line whose TfL status is only a link, for the notification.
-                railRelayUrl = { BuildConfig.RAIL_RELAY_URL },
+                proxyUrl = { BuildConfig.PROXY_URL },
             )
             JourneyAlertChecks.answered(lineIds) { chunk -> client.lineStatuses(chunk) }
         } catch (e: CancellationException) {

@@ -1,7 +1,7 @@
 package app.stopdash.ui
 
 import app.stopdash.data.RailApiKeySetting
-import app.stopdash.data.RailRelay
+import app.stopdash.data.StopdashProxy
 import kotlinx.coroutines.delay
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
@@ -379,7 +379,7 @@ internal fun rememberStartCheck(
     originUnconfirmed: Boolean,
     // Whether the rider has a National Rail key, which following a National Rail ride needs ([OnTheWay.canFollow]):
     // checked again as it's added or cleared.
-    railTimes: Boolean = RailRelay.timesWith(RailApiKeySetting.changes.collectAsStateWithLifecycle().value),
+    railTimes: Boolean = StopdashProxy.timesWith(RailApiKeySetting.changes.collectAsStateWithLifecycle().value),
     follow: (TripRoute) -> Boolean = { OnTheWay.canFollow(it, railTimes) },
     start: (TripRoute, Map<String, LineSequence?>, Boolean) -> Boolean = ::canStart,
 ): StartCheck? {

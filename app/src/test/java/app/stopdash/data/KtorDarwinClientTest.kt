@@ -102,7 +102,7 @@ class KtorDarwinClientTest {
     }
 
     @Test
-    fun `without a key of the rider's own, boards come through the relay, carrying nothing of theirs`() {
+    fun `without a key of the rider's own, boards come through the proxy, carrying nothing of theirs`() {
         val board = checkNotNull(javaClass.getResource("/fixtures/darwin_board_example.json")).readText()
         val details = checkNotNull(javaClass.getResource("/fixtures/darwin_board_details_st_pancras.json")).readText()
         val asked = mutableListOf<String>()
@@ -116,7 +116,7 @@ class KtorDarwinClientTest {
             install(ContentNegotiation) { json(json) }
         }
         var key: String? = null
-        val client = KtorDarwinClient(http, apiKey = { key }, baseUrl = "https://darwin.example/api", relayUrl = { "https://relay.example/" })
+        val client = KtorDarwinClient(http, apiKey = { key }, baseUrl = "https://darwin.example/api", proxyUrl = { "https://proxy.example/" })
         assertTrue(client.available)
         runBlocking {
             client.board("WAT")
@@ -126,20 +126,20 @@ class KtorDarwinClientTest {
         }
         assertEquals(
             listOf(
-                "relay.example/v1/board/WAT null",
-                "relay.example/v1/board/WAT/details null",
-                "relay.example/v1/board/STP/details?to=BTN null",
-                "relay.example/v1/board/STP/details?to=BTN&offset=45 null",
+                "proxy.example/v1/board/WAT null",
+                "proxy.example/v1/board/WAT/details null",
+                "proxy.example/v1/board/STP/details?to=BTN null",
+                "proxy.example/v1/board/STP/details?to=BTN&offset=45 null",
             ),
             asked,
         )
-        // A key of the rider's own goes straight to National Rail, as before the relay.
+        // A key of the rider's own goes straight to National Rail, as before the proxy.
         key = "EXAMPLE"
         runBlocking { client.board("WAT") }
         assertEquals("darwin.example/api/GetDepartureBoard/WAT?numRows=20 EXAMPLE", asked.last())
         // Neither: nothing to ask.
         key = null
-        assertTrue(!KtorDarwinClient(http, apiKey = { key }, relayUrl = { null }).available)
+        assertTrue(!KtorDarwinClient(http, apiKey = { key }, proxyUrl = { null }).available)
     }
 
     @Test
@@ -157,7 +157,7 @@ class KtorDarwinClientTest {
         val loaded = kotlinx.coroutines.flow.MutableStateFlow(false)
         var key: String? = null
         val client = KtorDarwinClient(
-            http, apiKey = { key }, baseUrl = "https://darwin.example/api", relayUrl = { "https://relay.example" },
+            http, apiKey = { key }, baseUrl = "https://darwin.example/api", proxyUrl = { "https://proxy.example" },
             keyLoaded = { loaded.first { it } },
         )
         // Not refused while the key is read back: a restored trip's first board isn't a failure (Codex, #944).
@@ -165,7 +165,7 @@ class KtorDarwinClientTest {
         val read = async { client.board("WAT") }
         runCurrent()
         assertEquals(emptyList<String>(), asked)
-        // The saved key turns out to be the rider's own: straight to National Rail, never the relay.
+        // The saved key turns out to be the rider's own: straight to National Rail, never the proxy.
         key = "EXAMPLE"
         loaded.value = true
         read.await()
@@ -173,7 +173,7 @@ class KtorDarwinClientTest {
     }
 
     @Test
-    fun `a key never read back gives no board, and the relay isn't asked in its place`() = kotlinx.coroutines.test.runTest {
+    fun `a key never read back gives no board, and the proxy isn't asked in its place`() = kotlinx.coroutines.test.runTest {
         val asked = mutableListOf<String>()
         val engine = MockEngine { request ->
             asked += request.url.host
@@ -183,7 +183,7 @@ class KtorDarwinClientTest {
             expectSuccess = true
             install(ContentNegotiation) { json(json) }
         }
-        val client = KtorDarwinClient(http, apiKey = { null }, relayUrl = { "https://relay.example" }, keyLoaded = { awaitCancellation() })
+        val client = KtorDarwinClient(http, apiKey = { null }, proxyUrl = { "https://proxy.example" }, keyLoaded = { awaitCancellation() })
         val failed = try {
             client.board("WAT")
             null
@@ -195,7 +195,7 @@ class KtorDarwinClientTest {
     }
 
     @Test
-    fun `a relay board carries the age the relay gave it`() {
+    fun `a proxy board carries the age the proxy gave it`() {
         val board = checkNotNull(javaClass.getResource("/fixtures/darwin_board_example.json")).readText()
         var age: String? = "17"
         val engine = MockEngine {
@@ -206,7 +206,7 @@ class KtorDarwinClientTest {
             expectSuccess = true
             install(ContentNegotiation) { json(json) }
         }
-        val client = KtorDarwinClient(http, apiKey = { null }, relayUrl = { "https://relay.example" })
+        val client = KtorDarwinClient(http, apiKey = { null }, proxyUrl = { "https://proxy.example" })
         assertEquals(java.time.Duration.ofSeconds(17), runBlocking { client.board("WAT") }.age)
         // None, or one that can't be read, is no age at all.
         age = null
@@ -216,7 +216,7 @@ class KtorDarwinClientTest {
     }
 
     @Test
-    fun `a followed train's relay board carries its age, as a plain board does`() {
+    fun `a followed train's proxy board carries its age, as a plain board does`() {
         val body = checkNotNull(javaClass.getResource("/fixtures/darwin_board_details_st_pancras.json")).readText()
         val engine = MockEngine {
             respond(ByteReadChannel(body), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType to listOf("application/json"), HttpHeaders.Age to listOf("23")))
@@ -225,13 +225,13 @@ class KtorDarwinClientTest {
             expectSuccess = true
             install(ContentNegotiation) { json(json) }
         }
-        val runs = runBlocking { KtorDarwinClient(http, apiKey = { null }, relayUrl = { "https://relay.example" }).runs("STP", "BTN", 0) }
+        val runs = runBlocking { KtorDarwinClient(http, apiKey = { null }, proxyUrl = { "https://proxy.example" }).runs("STP", "BTN", 0) }
         assertTrue(runs!!.runs.isNotEmpty())
         assertEquals(java.time.Duration.ofSeconds(23), runs.age)
     }
 
     @Test
-    fun `a relay's failure names what went wrong upstream, and nothing else from its body`() {
+    fun `a proxy's failure names what went wrong upstream, and nothing else from its body`() {
         var body = """{"error":"national rail unreachable: TimeoutError"}"""
         val engine = MockEngine {
             respond(ByteReadChannel(body), HttpStatusCode.BadGateway, headersOf(HttpHeaders.ContentType, "application/json"))
@@ -240,7 +240,7 @@ class KtorDarwinClientTest {
             expectSuccess = true
             install(ContentNegotiation) { json(json) }
         }
-        val client = KtorDarwinClient(http, apiKey = { null }, relayUrl = { "https://relay.example" })
+        val client = KtorDarwinClient(http, apiKey = { null }, proxyUrl = { "https://proxy.example" })
         fun failure() = try {
             runBlocking { client.board("WAT") }
             null
@@ -256,7 +256,7 @@ class KtorDarwinClientTest {
     }
 
     @Test
-    fun `a relay's failure body is read off the thread that asked for it`() {
+    fun `a proxy's failure body is read off the thread that asked for it`() {
         val engine = MockEngine {
             respond(ByteReadChannel("""{"error":"national rail unreachable: TimeoutError"}"""), HttpStatusCode.BadGateway, headersOf(HttpHeaders.ContentType, "application/json"))
         }
@@ -273,7 +273,7 @@ class KtorDarwinClientTest {
                 decoder.execute(block)
             }
         }
-        val client = KtorDarwinClient(http, apiKey = { null }, relayUrl = { "https://relay.example" }, decodeDispatcher = decode)
+        val client = KtorDarwinClient(http, apiKey = { null }, proxyUrl = { "https://proxy.example" }, decodeDispatcher = decode)
         // The caller's own single thread, as a screen's main thread is.
         val caller = Executors.newSingleThreadExecutor()
         try {

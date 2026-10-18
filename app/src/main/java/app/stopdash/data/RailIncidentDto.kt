@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
 
 /**
  * One incident as National Rail's Disruptions API gives it (`/disruptions/incidents/search`), passed
- * through unchanged by stopdash's relay (`dev-docs/national-rail-proxy.md`): the fields stopdash reads,
+ * through unchanged by stopdash's proxy (`dev-docs/proxy.md`): the fields stopdash reads,
  * the rest ignored.
  */
 @Serializable

@@ -562,7 +562,7 @@ jobs:
             fi
           fi
 
-  # The National Rail relay (proxy/, dev-docs/national-rail-proxy.md): its tests need Node alone,
+  # The stopdash proxy (proxy/, dev-docs/proxy.md): its tests need Node alone,
   # nothing installed. Deployed by hand, never from CI.
   proxy:
     name: proxy
@@ -577,7 +577,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
-      - name: Relay tests
+      - name: Proxy tests
         working-directory: proxy
         run: npm test
 
@@ -958,7 +958,7 @@ jobs:
         #     `test:` / `tests:`);
         #   - skip commits whose every changed path is repo housekeeping —
         #     a `.md` file or any dotfile / dotdir at the repo root — or the
-        #     National Rail relay under `proxy/`, which isn't in the app.
+        #     stopdash proxy under `proxy/`, which isn't in the app.
         #     `docs/PRIVACY.md` is ordinary docs here too: Play's "What's
         #     new" is a store-listing field a user installing an update
         #     never sees, so a wording-only policy change shipping a
@@ -1260,7 +1260,7 @@ jobs:
               case "$f" in
                 .*)    ;;
                 *.md)  ;;
-                # The National Rail relay, a Worker deployed on its own: nothing in the app.
+                # The stopdash proxy, a Worker deployed on its own: nothing in the app.
                 proxy/*) ;;
                 *)     relevant=true; break ;;
               esac

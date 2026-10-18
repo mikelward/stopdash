@@ -292,7 +292,7 @@ class RailFollowTest {
         // Each station's board from so many minutes on, past the ten [at] lists from now.
         var later: Map<Int, Map<String, List<RailRun>>> = emptyMap()
 
-        // How old each board already was, as the relay's `Age` says.
+        // How old each board already was, as the proxy's `Age` says.
         var age: Duration = Duration.ZERO
 
         suspend fun runs(crs: String, towards: String, offset: Int): RailRuns? {

@@ -41,7 +41,7 @@ data class RailRun(
 )
 
 /**
- * A board's [runs] and how old the board already was when it arrived ([age]: the relay's `Age`, zero
+ * A board's [runs] and how old the board already was when it arrived ([age]: the proxy's `Age`, zero
  * straight from National Rail), kept with the list so a board listing none is dated too ([RailBoard.age]).
  */
 data class RailRuns(val runs: List<RailRun>, val age: Duration = Duration.ZERO)

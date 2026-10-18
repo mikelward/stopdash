@@ -93,14 +93,14 @@ object RailIncidents {
 /** Incidents held by [RailIncidentCache], usable [until] (steady frame): when they pass the shared staleness bound. */
 data class HeldIncidents(val incidents: List<RailIncident>, val until: Instant)
 
-/** The relay's incidents and how old they already were when it answered ([age], from its `Age` header). */
+/** The proxy's incidents and how old they already were when it answered ([age], from its `Age` header). */
 data class FetchedIncidents(val incidents: List<RailIncident>, val age: Duration = Duration.ZERO)
 
 /**
- * The process's last answer from the National Rail relay ([RailIncident]s), shared by every client so the
+ * The process's last answer from the stopdash proxy ([RailIncident]s), shared by every client so the
  * line page, the list, a trip and a journey's check ask at most once per [reuse] between them. A failed
- * ask is remembered as long, so a relay that's down isn't asked on every refresh. The words are dated
- * by when the relay fetched them, by the age it gives, not by when they were asked for, and none past
+ * ask is remembered as long, so a proxy that's down isn't asked on every refresh. The words are dated
+ * by when the proxy fetched them, by the age it gives, not by when they were asked for, and none past
  * [keep] (the shared staleness bound, SPEC D4) is used, so words National Rail has since changed or
  * cleared aren't shown as current: the link is shown instead.
  */
@@ -113,8 +113,8 @@ class RailIncidentCache(
     private var held: List<RailIncident>? = null
     // Everything here is judged in the steady frame ([SteadyClock]), so the clock set back doesn't hold
     // a refresh off, or keep old words current, until the wall clock catches up (Codex, #943).
-    // When the relay fetched [held] from National Rail, on this device's clock: when it was had, less
-    // the age the relay gave, so a wrong wall clock on either side doesn't move it.
+    // When the proxy fetched [held] from National Rail, on this device's clock: when it was had, less
+    // the age the proxy gave, so a wrong wall clock on either side doesn't move it.
     private var heldFrom: Instant? = null
     private var askedAt: Instant? = null
 
@@ -153,7 +153,7 @@ class RailIncidentCache(
     private fun now(): Instant = SteadyClock.stamp(clock())
 
     companion object {
-        /** How long an answer is used before the relay is asked again: as often as it refreshes its own. */
+        /** How long an answer is used before the proxy is asked again: as often as it refreshes its own. */
         val REUSE: Duration = Duration.ofMinutes(2)
 
         /** The oldest words used: the shared staleness bound, past which a line's own status isn't shown either. */
