@@ -1351,8 +1351,8 @@ class KtorTflClientTest {
         assertEquals(-0.12, stops[0].longitude, 1e-6)
         // The interchange code is carried when TfL gives one, blank otherwise — a folded
         // near-me disruption alert titles by the hub (SPEC *Disruptions*).
-        assertEquals("HUBCHX", stops[0].hubId)
-        assertEquals("", stops[1].hubId)
+        assertEquals("HUBCHX", stops[0].interchangeId)
+        assertEquals("", stops[1].interchangeId)
     }
 
     @Test
@@ -1367,7 +1367,7 @@ class KtorTflClientTest {
         assertEquals(mapOf("central" to "tube", "dlr" to "dlr", "elizabeth" to "elizabeth-line"), modeByLine)
     }
 
-    // A /StopPoint/{hubId} fixture for an interchange: its commonName carries a type suffix to prove
+    // A /StopPoint/{interchangeId} fixture for an interchange: its commonName carries a type suffix to prove
     // the name is cleaned like a stop's, and its `children` carry the member stations whose many
     // spellings become the disruption strip's alias set. Public place names only (SPEC *Privacy*).
     private val hubJson =
@@ -1708,7 +1708,7 @@ class KtorTflClientTest {
         assertEquals(listOf("tube", "bus"), matches.single().modes)
     }
 
-    // A trimmed /StopPoint/{hubId} tree: an interchange holding a tube station (whose platform child
+    // A trimmed /StopPoint/{interchangeId} tree: an interchange holding a tube station (whose platform child
     // must not become a stop of its own), a bus stop area with one line-serving pole and one
     // line-less pole, and an entrance. Public names and ids only.
     private val stationTreeJson =

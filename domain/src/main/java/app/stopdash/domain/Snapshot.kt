@@ -61,7 +61,7 @@ object Snapshot {
         // the merged stop so a folded near-me disruption alert can title itself by the interchange
         // (SPEC *Disruptions*). Both default blank — a stop in no hub, or a caller that doesn't
         // enrich hub names — in which case the alert titles by the stop's own name.
-        hubId: String = "",
+        interchangeId: String = "",
         hubName: String = "",
         // The interchange's member-station spellings, resolved alongside [hubName], for the display
         // strip's alias set (SPEC *Disruptions*). Empty for a stop in no hub or a caller that
@@ -107,7 +107,7 @@ object Snapshot {
             lines = lines,
             disruptions = disruptions,
             fetchedAt = prior?.fetchedAt ?: now,
-            hubId = hubId,
+            interchangeId = interchangeId,
             hubName = hubName,
             placeAliases = placeAliases,
             stopLetter = stopLetter,

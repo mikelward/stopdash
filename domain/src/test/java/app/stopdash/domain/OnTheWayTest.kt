@@ -1901,8 +1901,8 @@ class OnTheWayTest {
     // [fromHub] and [toHub] (blank: none).
     private fun index(from: Coordinates, to: Coordinates, fromHub: String = "", toHub: String = "") = StationIndex(
         listOf(
-            IndexedStation("940GZZ1", "One", hubId = fromHub, latitude = from.latitude, longitude = from.longitude),
-            IndexedStation("940GZZ2", "Two", hubId = toHub, latitude = to.latitude, longitude = to.longitude, platforms = listOf("9400ZZ2X")),
+            IndexedStation("940GZZ1", "One", interchangeId = fromHub, latitude = from.latitude, longitude = from.longitude),
+            IndexedStation("940GZZ2", "Two", interchangeId = toHub, latitude = to.latitude, longitude = to.longitude, platforms = listOf("9400ZZ2X")),
         ),
     )
 

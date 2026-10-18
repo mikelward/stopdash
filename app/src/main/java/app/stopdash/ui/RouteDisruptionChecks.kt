@@ -252,9 +252,9 @@ internal class RouteDisruptionChecks(
 
     // An interchange's names from TfL ([TflClient.hubInfo]); empty when it can't be had, so a later
     // check asks again.
-    private suspend fun hubInfo(hubId: String): HubInfo =
+    private suspend fun hubInfo(interchangeId: String): HubInfo =
         try {
-            withContext(io) { client.hubInfo(hubId) }
+            withContext(io) { client.hubInfo(interchangeId) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

@@ -831,7 +831,7 @@ object RouteDisruption {
             }.distinct().filter { !alerts(it) }
             if (retained.isEmpty()) return@mapNotNull null
             // The stops it's read across: an interchange's coming ones, folded or not (Codex, #567).
-            val members = row.hubId.takeIf { it.isNotEmpty() }?.let { atHub[it] } ?: same.map { it.stopId }.distinct()
+            val members = row.interchangeId.takeIf { it.isNotEmpty() }?.let { atHub[it] } ?: same.map { it.stopId }.distinct()
             fun listing(text: String) = members.associateWith { id ->
                 closures[id].orEmpty().filter { normalizeDisruptionText(it.description) == text }
             }.filterValues { it.isNotEmpty() }
@@ -889,7 +889,7 @@ object RouteDisruption {
             val place = places[end.id] ?: StopPlace(area = end.area)
             val stop = StopArrivals(
                 end.id, names[end.id].orEmpty(), emptyList(), SteadyClock.stamp(now), disruptions = notices,
-                clusterId = place.area, hubId = place.hub, hubName = place.hubName, placeAliases = place.aliases,
+                clusterId = place.area, interchangeId = place.hub, hubName = place.hubName, placeAliases = place.aliases,
             )
             DepartureRows.across(listOf(stop), now).filter { it.stopDisruption != null }
         }

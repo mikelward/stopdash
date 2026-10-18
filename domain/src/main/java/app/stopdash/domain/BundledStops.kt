@@ -183,7 +183,7 @@ class BundledStops private constructor(
                 longitude = lon,
                 lines = stopLines,
                 clusterId = fields[6].ifBlank { name },
-                hubId = fields[7],
+                interchangeId = fields[7],
                 // Read as TfL's own answer is (StopPole): an arrow in the letter is a bearing.
                 stopLetter = StopPole.letter(fields[8]),
                 bearing = StopPole.bearing(fields[8], fields[9]),

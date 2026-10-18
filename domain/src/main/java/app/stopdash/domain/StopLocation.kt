@@ -27,7 +27,7 @@ data class StopLocation(
     // fold an interchange's shared disruption into one alert and title it by the interchange, and
     // to keep two genuinely distinct same-named places apart (SPEC *Disruptions*). A public id,
     // not a coordinate; safe to carry (SPEC *Privacy*).
-    val hubId: String = "",
+    val interchangeId: String = "",
     // The bus pole's letter ("D", from TfL's `stopLetter`) and compass bearing ("E", from the
     // `CompassPoint` property): the per-pole cue that splits a bus place into one header per pole
     // ("King's Cross Station (D)" / "(Eastbound)"), the bus analog of a rail platform's compass (SPEC D8).

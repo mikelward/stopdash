@@ -6365,7 +6365,7 @@ class TripViewModelTest {
             now,
         ).single { it.stopDisruption != null }
         val atB = DismissedAlert.ofStopClosure(card)
-        val atHub = DismissedAlert.ofStopClosure(card.copy(hubId = "HUBX"))
+        val atHub = DismissedAlert.ofStopClosure(card.copy(interchangeId = "HUBX"))
         val store = reconcilingStore(setOf(atB, atHub))
         val client = FakeClient(mutableMapOf()).apply { disruptions = mapOf("B" to stationClosed) }
         val trip = TripViewModel(FakePlanner(listOf(route)), client, "A", listOf(TripDestination.Stop("C")), clock = { now }, io = dispatcher, dismissedStore = store)

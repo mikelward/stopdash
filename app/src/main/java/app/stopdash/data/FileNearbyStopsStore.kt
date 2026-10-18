@@ -10,6 +10,7 @@ import java.io.IOException
 import java.time.Instant
 import java.time.format.DateTimeParseException
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -101,7 +102,9 @@ private data class PersistedNearbyStop(
     val longitude: Double,
     val lines: List<PersistedNearbyLine> = emptyList(),
     val clusterId: String = "",
-    val hubId: String = "",
+    // The key files written before the field was renamed carry.
+    @SerialName("hubId")
+    val interchangeId: String = "",
     val stopLetter: String = "",
     val bearing: String = "",
     val towards: String = "",
@@ -115,7 +118,7 @@ private fun NearbyStopsCache.Entry.toPersisted() = PersistedNearbyEntry(
     stops.map { s ->
         PersistedNearbyStop(
             s.id, s.name, s.latitude, s.longitude, s.lines.map { PersistedNearbyLine(it.id, it.name, it.mode) },
-            s.clusterId, s.hubId, s.stopLetter, s.bearing, s.towards,
+            s.clusterId, s.interchangeId, s.stopLetter, s.bearing, s.towards,
         )
     },
 )
@@ -125,7 +128,7 @@ private fun PersistedNearbyEntry.toEntry() = NearbyStopsCache.Entry(
     stops.map { s ->
         StopLocation(
             s.id, s.name, s.latitude, s.longitude, s.lines.map { LineRef(it.id, riderLineName(it.name, it.mode), it.mode) },
-            s.clusterId, s.hubId, s.stopLetter, s.bearing, s.towards,
+            s.clusterId, s.interchangeId, s.stopLetter, s.bearing, s.towards,
         )
     },
 )

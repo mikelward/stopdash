@@ -655,9 +655,9 @@ class KtorTflClient(
                 .distinctBy { it.id }
         }
 
-    override suspend fun hubInfo(hubId: String): HubInfo =
+    override suspend fun hubInfo(interchangeId: String): HubInfo =
         tflRequest { key ->
-            val dto = httpClient.get("$baseUrl/StopPoint/$hubId") {
+            val dto = httpClient.get("$baseUrl/StopPoint/$interchangeId") {
                 applyAppKey(key)
             }.body<TflStopPointDto>()
             // The hub's own cleaned name titles the alert; the member-station spellings across the

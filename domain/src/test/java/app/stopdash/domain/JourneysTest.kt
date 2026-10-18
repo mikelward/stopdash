@@ -484,7 +484,7 @@ class JourneysTest {
     fun `a stop near the far end listed under its interchange sibling's id is reached`() {
         // The lookup lists the far end's station as MIDX; the line's route calls at its sibling MIDY,
         // the same station in interchange HUBM.
-        val far = listOf(StopLocation("MIDX", "Mid Road", 51.4905, -0.12, listOf(LineRef("r1", "R1", "national-rail")), hubId = "HUBM"))
+        val far = listOf(StopLocation("MIDX", "Mid Road", 51.4905, -0.12, listOf(LineRef("r1", "R1", "national-rail")), interchangeId = "HUBM"))
         val farEnd = Journeys.farEnd(journey.to, far, walkMeters = 800)!!
         val r1 = LineSequence(
             listOf(LineRoute("Top ↔ Mid", listOf("TOPR", "MIDY"))),
@@ -780,7 +780,7 @@ class JourneysTest {
     fun `a card's origin takes its pole's interchange, else its route's`() {
         val sequence = LineSequence(emptyList(), emptyMap(), stopHubs = mapOf("STN" to "HUBSEQ"))
         assertEquals("HUBSEQ", Journeys.originHub("STN", sequence, null))
-        val pole = StopLocation("STN", "Across", 51.5, -0.12, hubId = "HUBPOL")
+        val pole = StopLocation("STN", "Across", 51.5, -0.12, interchangeId = "HUBPOL")
         assertEquals("HUBPOL", Journeys.originHub("STN", sequence, pole))
         assertEquals("", Journeys.originHub("STN", null, null))
     }

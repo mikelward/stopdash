@@ -498,12 +498,12 @@ class MainViewModelTest {
             override suspend fun lineStatuses(lineIds: Collection<String>): List<LineStatus> = emptyList()
             override suspend fun stopDisruptions(stopId: String): List<StopDisruption> =
                 if (stopId == seeds[0].id) listOf(StopDisruption("Station closed until further notice")) else emptyList()
-            override suspend fun hubInfo(hubId: String): HubInfo {
+            override suspend fun hubInfo(interchangeId: String): HubInfo {
                 hubCalls++
                 return HubInfo("Oxford Circus Interchange")
             }
         }
-        val stops = listOf(seeds[0].copy(hubId = "HUBOXC"), seeds[1])
+        val stops = listOf(seeds[0].copy(interchangeId = "HUBOXC"), seeds[1])
         val vm = MainViewModel(client, stops, clock = { now }, io = dispatcher)
         advanceUntilIdle()
 
@@ -1825,12 +1825,12 @@ class MainViewModelTest {
             override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
             override suspend fun stopDisruptions(stopId: String): List<StopDisruption> =
                 if (stopId == seeds[0].id) listOf(StopDisruption("Station closed until further notice")) else emptyList()
-            override suspend fun hubInfo(hubId: String): HubInfo {
+            override suspend fun hubInfo(interchangeId: String): HubInfo {
                 hubGate.await()
                 return HubInfo("Oxford Circus Interchange")
             }
         }
-        val vm = MainViewModel(client, listOf(seeds[0].copy(hubId = "HUBOXC"), seeds[1]), clock = { now }, io = dispatcher)
+        val vm = MainViewModel(client, listOf(seeds[0].copy(interchangeId = "HUBOXC"), seeds[1]), clock = { now }, io = dispatcher)
         runCurrent()
         // Its closure is back but its hub's name isn't; another stop lands and reports meanwhile.
         laterStop.complete(Unit)
@@ -1859,7 +1859,7 @@ class MainViewModelTest {
             }
             override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
             override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
-            override suspend fun hubInfo(hubId: String): HubInfo {
+            override suspend fun hubInfo(interchangeId: String): HubInfo {
                 hubGate.await()
                 return HubInfo("Oxford Circus Interchange")
             }
@@ -1867,7 +1867,7 @@ class MainViewModelTest {
         // Another screen already found the stop closed, so its closure answer is in hand at once.
         shared.keep(seeds[0].id, shared.ask(now), listOf(StopDisruption("Station closed until further notice")))
         val vm = MainViewModel(
-            client, listOf(seeds[0].copy(hubId = "HUBOXC"), seeds[1]), clock = { now }, io = dispatcher,
+            client, listOf(seeds[0].copy(interchangeId = "HUBOXC"), seeds[1]), clock = { now }, io = dispatcher,
             disruptionCache = shared, disruptionReuse = DISRUPTION_REUSE,
         )
         advanceTimeBy(FIRST_PAINT_GRACE_MS + 1)
@@ -3890,20 +3890,20 @@ class MainViewModelTest {
             override suspend fun stopDisruptions(stopId: String) =
                 listOf(StopDisruption("No step free access"))
 
-            override suspend fun hubInfo(hubId: String): HubInfo {
+            override suspend fun hubInfo(interchangeId: String): HubInfo {
                 hubNameCalls++
                 return HubInfo("King's Cross & St Pancras International")
             }
         }
         val hubSeeds = listOf(
-            StopRef("910GSTPX", "St Pancras International", hubId = "HUBKGX"),
-            StopRef("940GZZLUKSX", "King's Cross St. Pancras", hubId = "HUBKGX"),
+            StopRef("910GSTPX", "St Pancras International", interchangeId = "HUBKGX"),
+            StopRef("940GZZLUKSX", "King's Cross St. Pancras", interchangeId = "HUBKGX"),
         )
         val vm = MainViewModel(client, hubSeeds, clock = { now }, io = dispatcher)
         advanceUntilIdle()
 
         val state = vm.state.value as DeparturesUiState.Loaded
-        assertTrue(state.stops.all { it.hubId == "HUBKGX" })
+        assertTrue(state.stops.all { it.interchangeId == "HUBKGX" })
         assertTrue(state.stops.all { it.hubName == "King's Cross & St Pancras International" })
         // Resolved once for the shared hub, not once per member.
         assertEquals(1, hubNameCalls)
@@ -3923,14 +3923,14 @@ class MainViewModelTest {
             override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 300))
             override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
             override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
-            override suspend fun hubInfo(hubId: String): HubInfo {
+            override suspend fun hubInfo(interchangeId: String): HubInfo {
                 hubNameCalls++
                 return HubInfo("X")
             }
         }
         val vm = MainViewModel(
             client,
-            listOf(StopRef("910GSTPX", "St Pancras International", hubId = "HUBKGX")),
+            listOf(StopRef("910GSTPX", "St Pancras International", interchangeId = "HUBKGX")),
             clock = { now },
             io = dispatcher,
         )
@@ -4560,7 +4560,7 @@ class MainViewModelTest {
             override suspend fun arrivals(stopId: String) = emptyList<Departure>()
             override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
             override suspend fun stopDisruptions(stopId: String) = listOf(StopDisruption("Closed"))
-            override suspend fun hubInfo(hubId: String): HubInfo {
+            override suspend fun hubInfo(interchangeId: String): HubInfo {
                 hubNameCalls++
                 if (fail) throw TflException.Unreachable("boom", null)
                 return HubInfo("King's Cross & St Pancras International")
@@ -4568,7 +4568,7 @@ class MainViewModelTest {
         }
         val vm = MainViewModel(
             client,
-            listOf(StopRef("940GZZLUKSX", "King's Cross St. Pancras", hubId = "HUBKGX")),
+            listOf(StopRef("940GZZLUKSX", "King's Cross St. Pancras", interchangeId = "HUBKGX")),
             clock = { now },
             io = dispatcher,
         )
@@ -4635,14 +4635,14 @@ class MainViewModelTest {
             override suspend fun arrivals(stopId: String) = emptyList<Departure>()
             override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
             override suspend fun stopDisruptions(stopId: String) = listOf(StopDisruption("Closed"))
-            override suspend fun hubInfo(hubId: String): HubInfo {
+            override suspend fun hubInfo(interchangeId: String): HubInfo {
                 hubNameCalls++
                 throw TflException.Unreachable("boom", null)
             }
         }
         val hubSeeds = listOf(
-            StopRef("910GSTPX", "St Pancras International", hubId = "HUBKGX"),
-            StopRef("940GZZLUKSX", "King's Cross St. Pancras", hubId = "HUBKGX"),
+            StopRef("910GSTPX", "St Pancras International", interchangeId = "HUBKGX"),
+            StopRef("940GZZLUKSX", "King's Cross St. Pancras", interchangeId = "HUBKGX"),
         )
         val vm = MainViewModel(client, hubSeeds, clock = { now }, io = dispatcher)
         advanceUntilIdle()
@@ -6345,7 +6345,7 @@ class MainViewModelTest {
     @Test
     fun `farther cards count a shown stop's lines and ids as reached`() {
         val reached = fartherReached(
-            listOf(StopRef("S", "S", listOf(LineRef("victoria", "Victoria", "Tube")), clusterId = "C", hubId = "")),
+            listOf(StopRef("S", "S", listOf(LineRef("victoria", "Victoria", "Tube")), clusterId = "C", interchangeId = "")),
         )
         assertEquals(setOf(setOf("S", "C")), reached.map { it.ids }.toSet())
         // Modes are compared lowercase against the bundled index.
@@ -6594,11 +6594,11 @@ class MainViewModelTest {
             override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
             override suspend fun stopDisruptions(stopId: String): List<StopDisruption> =
                 if (stopId == seeds[0].id) listOf(StopDisruption("Station closed until further notice")) else emptyList()
-            override suspend fun hubInfo(hubId: String) = HubInfo("Oxford Circus Interchange")
+            override suspend fun hubInfo(interchangeId: String) = HubInfo("Oxford Circus Interchange")
         }
         MainViewModel(
             client,
-            listOf(seeds[0].copy(hubId = "HUBOXC"), seeds[1]),
+            listOf(seeds[0].copy(interchangeId = "HUBOXC"), seeds[1]),
             clock = { now },
             io = dispatcher,
             elapsedMillis = { 0L },
@@ -6620,7 +6620,7 @@ class MainViewModelTest {
             override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
             override suspend fun stopDisruptions(stopId: String): List<StopDisruption> =
                 if (stopId == seeds[0].id) listOf(StopDisruption("Station closed until further notice")) else emptyList()
-            override suspend fun hubInfo(hubId: String): HubInfo {
+            override suspend fun hubInfo(interchangeId: String): HubInfo {
                 hubCalls++
                 return HubInfo("Oxford Circus Interchange")
             }
@@ -6632,7 +6632,7 @@ class MainViewModelTest {
         advanceUntilIdle()
         MainViewModel(
             client,
-            listOf(seeds[0].copy(hubId = "HUBOXC"), seeds[1]),
+            listOf(seeds[0].copy(interchangeId = "HUBOXC"), seeds[1]),
             clock = { now },
             io = dispatcher,
             elapsedMillis = { 0L },

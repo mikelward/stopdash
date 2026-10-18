@@ -69,7 +69,7 @@ object JourneyPair {
     @WorkerThread
     fun interchanges(stops: List<StopLocation>): List<String> =
         stops.filter(StopPlace::isStation).ifEmpty { stops.filter(StopPlace::isBusStop) }
-            .map { it.hubId }.filter { it.isNotBlank() }.distinctBy { it.uppercase() }
+            .map { it.interchangeId }.filter { it.isNotBlank() }.distinctBy { it.uppercase() }
 
     /**
      * The stations a station end's bus stops are measured from: its own among [stops], then those among

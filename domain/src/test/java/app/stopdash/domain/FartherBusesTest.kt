@@ -9,7 +9,7 @@ class FartherBusesTest {
     private fun bus(id: String) = LineRef(id, id, "bus")
 
     private fun pole(id: String, cluster: String, vararg routes: String, hub: String = "") =
-        StopLocation(id, "Stop $cluster", 0.0, 0.0, routes.map(::bus), clusterId = cluster, hubId = hub)
+        StopLocation(id, "Stop $cluster", 0.0, 0.0, routes.map(::bus), clusterId = cluster, interchangeId = hub)
 
     private fun cluster(key: String, meters: Double, vararg poles: StopLocation) =
         NearbySelection.NearbyCluster(key, poles.toList(), meters)
@@ -30,7 +30,7 @@ class FartherBusesTest {
     @Test
     fun `same-named clusters of one interchange are one place, differently named ones aren't`() {
         fun named(id: String, cluster: String, name: String, route: String) =
-            StopLocation(id, name, 0.0, 0.0, listOf(bus(route)), clusterId = cluster, hubId = "HUBX")
+            StopLocation(id, name, 0.0, 0.0, listOf(bus(route)), clusterId = cluster, interchangeId = "HUBX")
         val candidates = FartherBuses.candidates(
             listOf(
                 cluster("J1", 600.0, named("J1A", "J1", "Example Station", "1")),
@@ -99,9 +99,9 @@ class FartherBusesTest {
     @Test
     fun `a pole named for a station or in its interchange is at it a little farther`() {
         // About 200 m north: past the 150 m any pole counts within (StopPlace's rule).
-        val station = StopLocation("940GEX", "Example Underground Station", 51.5, -0.12, listOf(LineRef("northern", "Northern", "tube")), hubId = "HUBEXA")
+        val station = StopLocation("940GEX", "Example Underground Station", 51.5, -0.12, listOf(LineRef("northern", "Northern", "tube")), interchangeId = "HUBEXA")
         fun at(key: String, name: String, hub: String = "") =
-            cluster(key, 700.0, StopLocation("${key}A", name, 51.5018, -0.12, listOf(bus("234")), clusterId = key, hubId = hub))
+            cluster(key, 700.0, StopLocation("${key}A", name, 51.5018, -0.12, listOf(bus("234")), clusterId = key, interchangeId = hub))
         val candidates = FartherBuses.candidates(
             listOf(at("NAMED", "Example Station / High Road"), at("HUB", "High Road", hub = "HUBEXA"), at("OTHER", "High Road")),
             stations = listOf(station),

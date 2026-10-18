@@ -58,7 +58,7 @@ internal fun journeyOriginsOf(
             bearing = pole?.bearing.orEmpty(), towards = pole?.towards.orEmpty(),
             // Its interchange, so a closure there folds and titles by the interchange (SPEC
             // *Disruptions*) when no nearby stop brought it in.
-            hubId = Journeys.originHub(id, starSequences[j.lineId], pole),
+            interchangeId = Journeys.originHub(id, starSequences[j.lineId], pole),
         )
     }.let(::mergeJourneyOrigins)
 

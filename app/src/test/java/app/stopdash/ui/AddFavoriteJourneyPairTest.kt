@@ -386,9 +386,9 @@ class AddFavoriteJourneyPairTest {
 
     // King's Cross St Pancras's interchange as TfL lists it (its public ids): a bus stop by a name no name
     // match joins to the station, the Underground, and the rail station.
-    private val kxTube = tube("940GZZLUKSX", "northern", "victoria").copy(hubId = "HUBKGX")
-    private val kxRail = StopLocation("910GKNGX", "London King's Cross Rail Station", 51.531, -0.123, listOf(LineRef("great-northern", "Great Northern", "national-rail")), hubId = "HUBKGX")
-    private val kxPole = StopLocation("490012553B", "St Pancras Intern'l & King's X Stns", 51.533, -0.12, listOf(LineRef("214", "214", "bus")), hubId = "HUBKGX")
+    private val kxTube = tube("940GZZLUKSX", "northern", "victoria").copy(interchangeId = "HUBKGX")
+    private val kxRail = StopLocation("910GKNGX", "London King's Cross Rail Station", 51.531, -0.123, listOf(LineRef("great-northern", "Great Northern", "national-rail")), interchangeId = "HUBKGX")
+    private val kxPole = StopLocation("490012553B", "St Pancras Intern'l & King's X Stns", 51.533, -0.12, listOf(LineRef("214", "214", "bus")), interchangeId = "HUBKGX")
     private val kxFinder = Finder(
         mapOf(
             "490012553B" to listOf(kxPole),

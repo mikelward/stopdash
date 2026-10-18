@@ -23,7 +23,7 @@ data class RouteStopOpen(
     val name: String,
     val journey: FavoriteJourney?,
     // The stop's interchange (TfL `topMostParentId`, e.g. `HUBKGX`), where it has one.
-    val hubId: String = "",
+    val interchangeId: String = "",
     val stopId: String = stationId,
     val line: LineRef? = null,
     val fromName: String = "",
@@ -87,7 +87,7 @@ internal val RouteStopOpenSaver: Saver<RouteStopOpen?, Any> = Saver(
     save = { open ->
         open?.let { o ->
             arrayListOf<Any?>(
-                "v3", o.stationId, o.name, o.hubId, o.stopId, o.line?.id.orEmpty(), o.line?.name.orEmpty(), o.line?.mode.orEmpty(),
+                "v3", o.stationId, o.name, o.interchangeId, o.stopId, o.line?.id.orEmpty(), o.line?.name.orEmpty(), o.line?.mode.orEmpty(),
                 o.fromName, o.towards, o.position?.latitude, o.position?.longitude, o.boarding, o.ridden,
             ).apply {
                 o.journey?.let { j ->
@@ -109,7 +109,7 @@ internal val RouteStopOpenSaver: Saver<RouteStopOpen?, Any> = Saver(
             RouteStopOpen(
                 stationId = v[1] as String,
                 name = v[2] as String,
-                hubId = v[3] as String,
+                interchangeId = v[3] as String,
                 stopId = v[4] as String,
                 line = (v[5] as String).takeIf { it.isNotEmpty() }?.let { LineRef(it, v[6] as String, v[7] as String) },
                 fromName = v[8] as String,
@@ -123,7 +123,7 @@ internal val RouteStopOpenSaver: Saver<RouteStopOpen?, Any> = Saver(
             RouteStopOpen(
                 stationId = v[0] as String,
                 name = v[1] as String,
-                hubId = v[2] as String,
+                interchangeId = v[2] as String,
                 journey = if (v.size > 3) FavoriteJourney(end(6), end(11), v[3] as String, v[4] as String, v[5] as String) else null,
             )
         }

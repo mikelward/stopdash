@@ -224,29 +224,29 @@ private const val LINE_ALERT_PREFIX = "line:"
 
 /**
  * The stable place identity a stop-status row folds and dismisses on: the interchange
- * ([DepartureRow.hubId]) when there is one, else a **real** StopArea cluster
+ * ([DepartureRow.interchangeId]) when there is one, else a **real** StopArea cluster
  * ([DepartureRow.clusterId] when it is TfL's `stationNaptan`, not the display-name fallback — a
  * naptan code never equals a display name, so `clusterId != stopName` marks a real one), else the
  * stop's own id. Shared by the near-me fold ([DepartureRows.nearbyDeduped]) and the dismissal key
  * so the two agree on what "one place" means.
  */
 fun stopPlaceKey(row: DepartureRow): String =
-    stopPlaceKey(row.hubId, row.clusterId, row.stopName, row.stopId)
+    stopPlaceKey(row.interchangeId, row.clusterId, row.stopName, row.stopId)
 
 /** The place identity of a [StopArrivals] — the same rule as the [DepartureRow] overload, so a stop
  *  and the rows derived from it agree on their place (used to scope the dismissal [Dismissed.reconcile]). */
 fun stopPlaceKey(stop: StopArrivals): String =
-    stopPlaceKey(stop.hubId, stop.clusterId, stop.stopName, stop.stopId)
+    stopPlaceKey(stop.interchangeId, stop.clusterId, stop.stopName, stop.stopId)
 
 /**
- * The place identity from the raw stop-identity fields — the interchange ([hubId]) when there is
+ * The place identity from the raw stop-identity fields — the interchange ([interchangeId]) when there is
  * one, else a real StopArea cluster ([clusterId] when it is a `stationNaptan`, not the display-name
  * fallback), else the stop's own id. The one source of truth the row / [StopArrivals] overloads and
  * the ViewModel's queried-stop scope all call, so fold, dismiss, and reconcile agree on "one place".
  */
-fun stopPlaceKey(hubId: String, clusterId: String, stopName: String, stopId: String): String {
+fun stopPlaceKey(interchangeId: String, clusterId: String, stopName: String, stopId: String): String {
     val realCluster = clusterId.takeUnless { it.isBlank() || it == stopName }
-    return hubId.ifBlank { realCluster ?: stopId }
+    return interchangeId.ifBlank { realCluster ?: stopId }
 }
 
 /**

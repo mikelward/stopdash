@@ -52,7 +52,7 @@ fun planNotices(
             g.rows.any { r ->
                 r.stopId == notice.stopId ||
                     noticePlaceOf(r) == place ||
-                    (notice.hubId.isNotBlank() && (r.hubId == notice.hubId || hubOf[r.stopId] == notice.hubId))
+                    (notice.interchangeId.isNotBlank() && (r.interchangeId == notice.interchangeId || hubOf[r.stopId] == notice.interchangeId))
             }
         }
         if (first >= 0) aboveGroup.getOrPut(first) { ArrayList() } += notice else placeless += notice

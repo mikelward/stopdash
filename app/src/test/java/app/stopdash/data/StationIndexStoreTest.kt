@@ -18,7 +18,7 @@ class StationIndexStoreTest {
         )
         assertEquals(listOf("940GZZLUEXA", "HUBEXA"), index.stations.map { it.id })
         assertEquals("Example", index.stations.first().name)
-        assertEquals("HUBEXA", index.stations.first().hubId)
+        assertEquals("HUBEXA", index.stations.first().interchangeId)
     }
 
     @Test

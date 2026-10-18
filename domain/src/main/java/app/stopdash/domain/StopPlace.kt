@@ -29,14 +29,14 @@ object StopPlace {
     const val OWN_STOP_METERS = 150.0
 
     /**
-     * A stop as this rule weighs it: its [name], position (null where unknown), interchange ([hubId],
+     * A stop as this rule weighs it: its [name], position (null where unknown), interchange ([interchangeId],
      * blank for none) and whether it is a [station], serving a mode other than bus.
      */
     data class Stop(
         val name: String,
         val latitude: Double?,
         val longitude: Double?,
-        val hubId: String = "",
+        val interchangeId: String = "",
         val station: Boolean = false,
     )
 
@@ -47,7 +47,7 @@ object StopPlace {
             name = stop.name,
             latitude = stop.latitude.takeIf { placed },
             longitude = stop.longitude.takeIf { placed },
-            hubId = stop.hubId,
+            interchangeId = stop.interchangeId,
             station = isStation(stop),
         )
     }
@@ -88,7 +88,7 @@ object StopPlace {
     }
 
     /** Whether TfL files [a] and [b] under one interchange. */
-    fun sameInterchange(a: Stop, b: Stop): Boolean = a.hubId.isNotBlank() && a.hubId.equals(b.hubId, ignoreCase = true)
+    fun sameInterchange(a: Stop, b: Stop): Boolean = a.interchangeId.isNotBlank() && a.interchangeId.equals(b.interchangeId, ignoreCase = true)
 
     /**
      * Whether [a] and [b] are one place: [sameNamed], or [sameInterchange] where one of them is a station.

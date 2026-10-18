@@ -145,7 +145,7 @@ object WidgetFollow {
                 lines = stop.lines,
                 arrivalsFresh = false,
                 clusterId = stop.clusterId,
-                hubId = stop.hubId,
+                interchangeId = stop.interchangeId,
                 stopLetter = stop.stopLetter,
                 bearing = stop.bearing,
                 towards = stop.towards,

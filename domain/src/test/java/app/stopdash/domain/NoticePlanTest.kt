@@ -15,7 +15,7 @@ class NoticePlanTest {
     private fun plan(vararg stops: StopArrivals): Pair<NoticePlan, List<StopGroup>> {
         val rows = DepartureRows.across(stops.toList(), now)
         val groups = StopGrouping.groupByStop(rows, warningsLead = false)
-        val hubs = stops.filter { it.hubId.isNotBlank() }.associate { it.stopId to it.hubId }
+        val hubs = stops.filter { it.interchangeId.isNotBlank() }.associate { it.stopId to it.interchangeId }
         return planNotices(rows.filter { it.stopDisruption != null }, groups, groups, hubs) to groups
     }
 
@@ -110,7 +110,7 @@ class NoticePlanTest {
         val tube = StopArrivals(
             "940GZZLUKSX", "King's Cross St. Pancras", emptyList(),
             fetchedAt = now,
-            hubId = "HUBKGX",
+            interchangeId = "HUBKGX",
             hubName = "King's Cross & St Pancras International",
             disruptions = listOf(StopDisruption("No step-free access")),
         )
@@ -118,7 +118,7 @@ class NoticePlanTest {
             "910GSTPX", "London St Pancras International",
             listOf(departure("thameslink", "Brighton", "Platform A", mode = "national-rail")),
             fetchedAt = now,
-            hubId = "HUBKGX",
+            interchangeId = "HUBKGX",
         )
         val (plan, _) = plan(rail, tube)
         assertEquals(listOf(0), plan.aboveGroup.keys.toList())

@@ -1430,7 +1430,7 @@ class DepartureRowsTest {
         stopId: String,
         stopName: String,
         text: String = "Stop closed",
-        hubId: String = "",
+        interchangeId: String = "",
         hubName: String = "",
         clusterId: String = "",
     ) = DepartureRow(
@@ -1446,7 +1446,7 @@ class DepartureRowsTest {
         upcoming = emptyList(),
         fetchedAt = now,
         stopDisruption = text,
-        hubId = hubId,
+        interchangeId = interchangeId,
         hubName = hubName,
     )
 
@@ -1595,8 +1595,8 @@ class DepartureRowsTest {
     fun `nearbyDeduped treats two stop areas of one interchange as two places`() {
         // Both areas belong to one interchange but head separate groups: the route is still split
         // across headers, so it moves to the pair serving both ways.
-        val areaA = pole("AN", "Area A", "inbound", "490GAREAA").map { it.copy(hubId = "HUBX") }
-        val areaB = pole("BS", "Area B", "outbound", "490GAREAB").map { it.copy(hubId = "HUBX") }
+        val areaA = pole("AN", "Area A", "inbound", "490GAREAA").map { it.copy(interchangeId = "HUBX") }
+        val areaB = pole("BS", "Area B", "outbound", "490GAREAB").map { it.copy(interchangeId = "HUBX") }
         val deduped = DepartureRows.nearbyDeduped(
             areaA + areaB + pairNorth + pairSouth,
             mapOf("AN" to 100.0, "BS" to 100.0, "PN" to 110.0, "PS" to 120.0),
@@ -1787,10 +1787,10 @@ class DepartureRowsTest {
         val line = lineStatusRow("KGX", "King's Cross St. Pancras", "victoria")
         val folded = DepartureRows.stopStatusFolded(
             listOf(
-                stopStatusRow("KGX", "King's Cross St. Pancras", notice, hubId = "HUBKGX", hubName = hub),
+                stopStatusRow("KGX", "King's Cross St. Pancras", notice, interchangeId = "HUBKGX", hubName = hub),
                 line,
-                stopStatusRow("STP1", "St Pancras International", notice, hubId = "HUBKGX", hubName = hub),
-                stopStatusRow("STP2", "St Pancras International", notice, hubId = "HUBKGX", hubName = hub),
+                stopStatusRow("STP1", "St Pancras International", notice, interchangeId = "HUBKGX", hubName = hub),
+                stopStatusRow("STP2", "St Pancras International", notice, interchangeId = "HUBKGX", hubName = hub),
             ),
         )
         assertEquals(listOf("KGX", "KGX"), folded.map { it.stopId })
@@ -1804,8 +1804,8 @@ class DepartureRowsTest {
             listOf(
                 stopStatusRow("A", "Alpha", "Station closed"),
                 stopStatusRow("B", "Beta", "Station closed"),
-                stopStatusRow("K1", "Hub One", "Lifts out", hubId = "HUBX"),
-                stopStatusRow("K2", "Hub Two", "Escalator out", hubId = "HUBX"),
+                stopStatusRow("K1", "Hub One", "Lifts out", interchangeId = "HUBX"),
+                stopStatusRow("K2", "Hub Two", "Escalator out", interchangeId = "HUBX"),
             ),
         )
         assertEquals(listOf("A", "B", "K1", "K2"), folded.map { it.stopId })
@@ -1821,9 +1821,9 @@ class DepartureRowsTest {
         val hub = "King's Cross & St Pancras International"
         val deduped = DepartureRows.nearbyDeduped(
             listOf(
-                stopStatusRow("STP1", "St Pancras International", notice, hubId = "HUBKGX", hubName = hub),
-                stopStatusRow("STP2", "St Pancras International", notice, hubId = "HUBKGX", hubName = hub),
-                stopStatusRow("KGX", "King's Cross St. Pancras", notice, hubId = "HUBKGX", hubName = hub),
+                stopStatusRow("STP1", "St Pancras International", notice, interchangeId = "HUBKGX", hubName = hub),
+                stopStatusRow("STP2", "St Pancras International", notice, interchangeId = "HUBKGX", hubName = hub),
+                stopStatusRow("KGX", "King's Cross St. Pancras", notice, interchangeId = "HUBKGX", hubName = hub),
             ),
             mapOf("STP1" to 120.0, "STP2" to 150.0, "KGX" to 370.0),
         )
@@ -1866,11 +1866,11 @@ class DepartureRowsTest {
             "King William Street entrance due to faulty lifts."
         val bank = StopArrivals(
             "940GZZLUBNK", "Bank", departures = emptyList(), fetchedAt = now,
-            disruptions = listOf(StopDisruption(notice)), hubId = "HUBBAN", hubName = "Bank & Monument",
+            disruptions = listOf(StopDisruption(notice)), interchangeId = "HUBBAN", hubName = "Bank & Monument",
         )
         val monument = StopArrivals(
             "940GZZLUMND", "Monument", departures = emptyList(), fetchedAt = now,
-            disruptions = listOf(StopDisruption(notice)), hubId = "HUBBAN", hubName = "Bank & Monument",
+            disruptions = listOf(StopDisruption(notice)), interchangeId = "HUBBAN", hubName = "Bank & Monument",
         )
 
         val rows = DepartureRows.across(listOf(bank, monument), now)
@@ -1956,8 +1956,8 @@ class DepartureRowsTest {
         val hub = "King's Cross & St Pancras International"
         val deduped = DepartureRows.nearbyDeduped(
             listOf(
-                stopStatusRow("KGX", "King's Cross St. Pancras", "Lifts out of service", hubId = "HUBKGX", hubName = hub),
-                stopStatusRow("STP", "St Pancras International", "Escalator maintenance", hubId = "HUBKGX", hubName = hub),
+                stopStatusRow("KGX", "King's Cross St. Pancras", "Lifts out of service", interchangeId = "HUBKGX", hubName = hub),
+                stopStatusRow("STP", "St Pancras International", "Escalator maintenance", interchangeId = "HUBKGX", hubName = hub),
             ),
             mapOf("KGX" to 100.0, "STP" to 200.0),
         )
@@ -2129,7 +2129,7 @@ class DepartureRowsTest {
     @Test
     fun `with no stop placed, a notice at two stations keeps the named station's copy`() {
         fun closed(id: String, name: String) = StopArrivals(
-            id, name, departures = emptyList(), fetchedAt = now, disruptions = listOf(StopDisruption("Lifts out of service")), hubId = "HUBKGX",
+            id, name, departures = emptyList(), fetchedAt = now, disruptions = listOf(StopDisruption("Lifts out of service")), interchangeId = "HUBKGX",
         )
         val rows = DepartureRows.across(listOf(closed("910GKNGX", "London King's Cross"), closed("910GSTPX", "London St Pancras International")), now)
         val lead = StationLead("St Pancras International", listOf("national-rail"))
@@ -2883,7 +2883,7 @@ class DepartureRowsTest {
     @Test
     fun `a notice at two of an interchange's stations keeps the named station's copy`() {
         fun closed(id: String, name: String) = StopArrivals(
-            id, name, departures = emptyList(), fetchedAt = now, disruptions = listOf(StopDisruption("Lifts out of service")), hubId = "HUBKGX",
+            id, name, departures = emptyList(), fetchedAt = now, disruptions = listOf(StopDisruption("Lifts out of service")), interchangeId = "HUBKGX",
         )
         val stops = listOf(closed("910GKNGX", "London King's Cross"), closed("910GSTPX", "London St Pancras International"))
         val rows = DepartureRows.across(stops, now)

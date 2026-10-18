@@ -63,7 +63,7 @@ data class TflStopPointDto(
     // Holborn Circus" — [towards]), the bus header's direction cues.
     val additionalProperties: List<TflAdditionalPropertyDto> = emptyList(),
     // The member stop points nested under this one — populated when TfL returns a hub tree from
-    // `/StopPoint/{hubId}` (the interchange's stations and their platforms). Walked to collect every
+    // `/StopPoint/{interchangeId}` (the interchange's stations and their platforms). Walked to collect every
     // member station's name for the disruption strip's alias set ([hubStationNames]); empty in the
     // flat nearby-search response.
     val children: List<TflStopPointDto> = emptyList(),
@@ -220,7 +220,7 @@ fun TflStopPointDto.toStopLocationOrNull(): StopLocation? {
         // station's same-named poles still merge (SPEC *Finding stops*). Keying on the id when TfL
         // provides it is what keeps a station whose name it spells several ways together.
         clusterId = stationNaptan.ifBlank { stopName },
-        hubId = hubNaptanCode,
+        interchangeId = hubNaptanCode,
         // The pole's letter, bearing, and "towards" for the per-pole bus header (SPEC D8). All blank
         // for a station or a bus stop TfL gives none; an arrow-in-stopLetter drops to the bearing above.
         stopLetter = StopPole.letter(stopLetter),

@@ -39,7 +39,7 @@ class BundledStopsTest {
         assertEquals(cleanStopName("Example Road  / High Street"), pole.name)
         assertEquals(listOf(LineRef("1", "1", "bus"), LineRef("n1", "N1", "bus")), pole.lines)
         assertEquals("490G000001", pole.clusterId)
-        assertEquals("HUBEXA", pole.hubId)
+        assertEquals("HUBEXA", pole.interchangeId)
         assertEquals("A", pole.stopLetter)
         assertEquals("N", pole.bearing)
         assertEquals("Example Town", pole.towards)
@@ -136,7 +136,7 @@ class BundledStopsTest {
         assertEquals(0, stops.skippedLines)
         val pole = stops.nearby(51.5, -0.12, 500, types).first { it.id == "490000001A" }
         assertEquals("490G000001", pole.clusterId)
-        assertEquals("HUBEXA", pole.hubId)
+        assertEquals("HUBEXA", pole.interchangeId)
         assertEquals("Example Town", pole.towards)
         assertEquals(listOf(LineRef("1", "1", "bus")), pole.lines)
         assertEquals(2, stops.size)

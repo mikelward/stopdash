@@ -59,6 +59,15 @@ class FileRouteStopsStoreTest {
     }
 
     @Test
+    fun `a pole's interchange keeps the key files written before its rename carry`() {
+        val file = File(tmp.root, "route-stops.json")
+        val poles = contents.poles.mapValues { (_, timed) -> timed.copy(value = timed.value.map { it.copy(interchangeId = "HUBEXA") }) }
+        FileRouteStopsStore(file).save(contents.copy(poles = poles))
+        assertTrue(file.readText().contains("\"hubId\":\"HUBEXA\""))
+        assertEquals("HUBEXA", FileRouteStopsStore(file).load().poles.values.single().value.single().interchangeId)
+    }
+
+    @Test
     fun `no file loads as empty`() {
         assertEquals(RouteStopsStore.Contents(), FileRouteStopsStore(File(tmp.root, "route-stops.json")).load())
     }

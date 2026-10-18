@@ -70,7 +70,7 @@ object FartherBuses {
             // An interchange's clusters are one place only where they share a name: a card is named
             // after its nearest pole, so a differently named constituent would show its routes under
             // a stop that doesn't serve them.
-            val hub = cluster.stops.firstNotNullOfOrNull { it.hubId.takeIf(String::isNotBlank) }
+            val hub = cluster.stops.firstNotNullOfOrNull { it.interchangeId.takeIf(String::isNotBlank) }
             val key = hub?.let { "hub:$it|${cluster.stops.first().name}" } ?: cluster.key
             places.getOrPut(key) { mutableListOf() } += cluster
         }

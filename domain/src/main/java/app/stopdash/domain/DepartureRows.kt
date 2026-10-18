@@ -321,7 +321,7 @@ object DepartureRows {
      * hub-wide lift outage against both St Pancras International and King's Cross St. Pancras, or a
      * closed bus stop reported against each pole of one junction (a bus stop reported both ways). The
      * notice is kept once — on the **nearest** point — keyed on `(place, normalized text)`, where
-     * `place` is the coarsest identity that still holds: the interchange ([DepartureRow.hubId],
+     * `place` is the coarsest identity that still holds: the interchange ([DepartureRow.interchangeId],
      * `HUBKGX`) when there is one, else a **real StopArea** cluster ([DepartureRow.clusterId] when it
      * is TfL's `stationNaptan`, not the display-name fallback — the poles of a junction and the
      * platforms of a station share it), else the stop alone. Folding at that identity is what
@@ -664,7 +664,7 @@ object DepartureRows {
         // Fold each disruption notice to one card **per place**, on the nearest member: TfL reports
         // one notice against several stop points — a hub-wide lift outage against every member of an
         // interchange, or a closed bus stop against each pole of one junction. Keying on the coarsest
-        // place identity that still holds — the hub ([DepartureRow.hubId]) when there is one, else the
+        // place identity that still holds — the hub ([DepartureRow.interchangeId]) when there is one, else the
         // cluster ([DepartureRow.clusterId]), else the stop's own id — plus the normalized notice text is
         // what folds both cases while keeping two genuinely distinct places apart: two unrelated stops
         // with an identical place-less notice ("Station closed") have different names/clusters, so they
@@ -1250,7 +1250,7 @@ object DepartureRows {
                 stopId = stop.stopId,
                 stopName = stop.stopName,
                 clusterId = stop.clusterId,
-                hubId = stop.hubId,
+                interchangeId = stop.interchangeId,
                 hubName = stop.hubName,
                 placeAliases = stop.placeAliases,
                 // A bus pole's letter, bearing and heading, so a notice about one pole ("Bus Stop
@@ -1665,11 +1665,11 @@ data class StopArrivals(
     // into per-place headers by cluster rather than by the name TfL spells inconsistently (SPEC
     // D8). Blank groups the stop on its own.
     val clusterId: String = "",
-    // The interchange this stop belongs to (TfL `hubNaptanCode`, see [StopLocation.hubId]) and its
+    // The interchange this stop belongs to (TfL `hubNaptanCode`, see [StopLocation.interchangeId]) and its
     // display name, resolved for a stop with a disruption. The near-me alert dedup folds a shared
-    // notice by [hubId] and titles it by [hubName] (SPEC *Disruptions*). Both blank for a stop in
+    // notice by [interchangeId] and titles it by [hubName] (SPEC *Disruptions*). Both blank for a stop in
     // no hub or when the name lookup failed.
-    val hubId: String = "",
+    val interchangeId: String = "",
     val hubName: String = "",
     // Every member-station spelling of this stop's interchange, resolved alongside [hubName] for a
     // stop with a disruption. Carried onto the stop-status row so the display strip can drop a

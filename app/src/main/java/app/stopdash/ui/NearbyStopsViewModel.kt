@@ -909,7 +909,7 @@ class NearbyStopsViewModel(
  *  (it stays in the selection/distance math, never reaching the departures VM or a log). */
 internal fun StopLocation.toStopRef() =
     StopRef(
-        id = id, name = name, lines = lines, clusterId = clusterId, hubId = hubId,
+        id = id, name = name, lines = lines, clusterId = clusterId, interchangeId = interchangeId,
         stopLetter = stopLetter, bearing = bearing, towards = towards,
     )
 

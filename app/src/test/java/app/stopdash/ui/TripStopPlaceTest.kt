@@ -22,8 +22,8 @@ class TripStopPlaceTest {
     private val stations = StationIndex(
         listOf(
             IndexedStation("940GZZLUEUS", "Euston", listOf("tube"), latitude = 51.5282, longitude = -0.1337),
-            IndexedStation("940GZZLUKSX", "King's Cross St. Pancras", listOf("tube"), hubId = "HUBKGX", latitude = 51.5308, longitude = -0.1238),
-            IndexedStation("910GKGX", "King's Cross", listOf("national-rail"), hubId = "HUBKGX", latitude = 51.5320, longitude = -0.1233),
+            IndexedStation("940GZZLUKSX", "King's Cross St. Pancras", listOf("tube"), interchangeId = "HUBKGX", latitude = 51.5308, longitude = -0.1238),
+            IndexedStation("910GKGX", "King's Cross", listOf("national-rail"), interchangeId = "HUBKGX", latitude = 51.5320, longitude = -0.1233),
         ),
     )
     private val busStops = BusStopIndex.of(

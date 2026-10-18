@@ -2160,8 +2160,8 @@ private fun LoadedContent(
                         onDismissAlert = onDismissAlert,
                         dismissedClosures = dismissedClosures,
                         sharedNotices = sharedNotices,
-                        stopHubIds = remember(state.stops) {
-                            state.stops.filter { it.hubId.isNotBlank() }.associate { it.stopId to it.hubId }
+                        stopInterchangeIds = remember(state.stops) {
+                            state.stops.filter { it.interchangeId.isNotBlank() }.associate { it.stopId to it.interchangeId }
                         },
                         // Each stop's real StopArea (not the display-name fallback), so a place's notice
                         // can stand at its nearest member even where that member has nothing listed.
@@ -2692,7 +2692,7 @@ private fun DepartureList(
     // with nothing else to show keeps its heading and "Closed" chip without the notice.
     dismissedClosures: List<DepartureRow> = emptyList(),
     // Each stop's interchange, so an interchange's notice finds a member's sections ([planNotices]).
-    stopHubIds: Map<String, String> = emptyMap(),
+    stopInterchangeIds: Map<String, String> = emptyMap(),
     stopClusterIds: Map<String, String> = emptyMap(),
     // The notices filed against more than one stop of a place, as (place, text) ([planNotices]).
     sharedNotices: Set<Pair<String, String>> = emptySet(),
@@ -3134,7 +3134,7 @@ private fun DepartureList(
         nearbyEmptyNote?.let { note ->
             item(key = "nearby-empty") { JourneyNote(note) }
         }
-        items(leadingNotices, key = { "closure|${it.stopId}|${it.hubId}" }) { row ->
+        items(leadingNotices, key = { "closure|${it.stopId}|${it.interchangeId}" }) { row ->
             StopClosureCard(row, onDismiss = { onDismissAlert(row) })
         }
         // One combined one-line header per group, then the group's card (SPEC D8): the place name and
@@ -3179,7 +3179,7 @@ private fun DepartureList(
             }
             // A notice about this pole alone sits under its heading, above its departures.
             poleNotices[group.key]?.let { notice ->
-                item(key = "notice|${notice.stopId}|${notice.hubId}") {
+                item(key = "notice|${notice.stopId}|${notice.interchangeId}") {
                     StopNoticeCard(notice, closed = group.key in closedPoles, onDismiss = { onDismissAlert(notice) })
                 }
             }
@@ -3239,12 +3239,12 @@ private fun DepartureList(
             .filter { (place, _) -> place.placeKey !in pendingTracker.opened }
             .flatMapTo(HashSet()) { (place, _) -> groupsByPlace[place.placeKey].orEmpty().map { it.key } }
         val plan = if (noticesInPlace) {
-            planNotices(closureRows, groups, listed, stopHubIds, sharedNotices, hiddenGroupKeys)
+            planNotices(closureRows, groups, listed, stopInterchangeIds, sharedNotices, hiddenGroupKeys)
         } else {
             NoticePlan()
         }
         val dismissedPlan = if (noticesInPlace) {
-            planNotices(dismissedClosures, groups, listed, stopHubIds, sharedNotices, hiddenGroupKeys)
+            planNotices(dismissedClosures, groups, listed, stopInterchangeIds, sharedNotices, hiddenGroupKeys)
         } else {
             NoticePlan()
         }
@@ -3261,8 +3261,8 @@ private fun DepartureList(
             .flatMap { (place, _) -> place.stopIds.map { it to place.placeKey } }
             .firstWins()
         val fartherByStop = fartherStopIds.flatMap { (key, ids) -> ids.map { it to key } }.firstWins()
-        val heldByHub = heldByStop.entries.mapNotNull { (stop, key) -> stopHubIds[stop]?.let { it to key } }.firstWins()
-        val fartherByHub = fartherByStop.entries.mapNotNull { (stop, key) -> stopHubIds[stop]?.let { it to key } }.firstWins()
+        val heldByHub = heldByStop.entries.mapNotNull { (stop, key) -> stopInterchangeIds[stop]?.let { it to key } }.firstWins()
+        val fartherByHub = fartherByStop.entries.mapNotNull { (stop, key) -> stopInterchangeIds[stop]?.let { it to key } }.firstWins()
         // A notice about one pole alone, not shared across its place.
         fun poleOnly(notice: DepartureRow) =
             isPole(notice) && (stopPlaceKey(notice) to notice.stopDisruption.orEmpty()) !in sharedNotices
@@ -3270,12 +3270,12 @@ private fun DepartureList(
         // measured member of its interchange or StopArea — (that stop, its distance).
         fun noticeNearest(notice: DepartureRow): Pair<String, Double>? {
             val placeWide = !poleOnly(notice)
-            val hub = notice.hubId.ifBlank { null }?.takeIf { placeWide }
+            val hub = notice.interchangeId.ifBlank { null }?.takeIf { placeWide }
             val cluster = stopClusterIds[notice.stopId]?.takeIf { placeWide }
             return stopDistanceMeters.entries
                 .filter { (stop, _) ->
                     stop == notice.stopId ||
-                        (hub != null && stopHubIds[stop] == hub) ||
+                        (hub != null && stopInterchangeIds[stop] == hub) ||
                         (cluster != null && stopClusterIds[stop] == cluster)
                 }
                 .minByOrNull { it.value }?.let { it.key to it.value }
@@ -3285,7 +3285,7 @@ private fun DepartureList(
             .sortedBy { (notice, _) -> noticeNearest(notice)?.second ?: Double.MAX_VALUE }
             .groupBy { (notice, _) ->
                 // A pole's own notice matches its own stop only, never a sibling member's card.
-                val hub = notice.hubId.ifBlank { null }?.takeUnless { poleOnly(notice) }
+                val hub = notice.interchangeId.ifBlank { null }?.takeUnless { poleOnly(notice) }
                 (heldByStop[notice.stopId] ?: hub?.let(heldByHub::get))?.let { "held|$it" }
                     ?: (fartherByStop[notice.stopId] ?: hub?.let(fartherByHub::get))?.let { "farther|$it" }
             }
@@ -3313,7 +3313,7 @@ private fun DepartureList(
             val name = notice.hubName.ifBlank { notice.stopName }
             val first = headingLeads
             headingLeads = false
-            item(key = "notice-header|${notice.stopId}|${notice.hubId}") {
+            item(key = "notice-header|${notice.stopId}|${notice.interchangeId}") {
                 StopGroupHeader(
                     name,
                     // A pole's letter only when the notice is that pole's alone, not its junction's.
@@ -3335,7 +3335,7 @@ private fun DepartureList(
                 )
             }
             if (!dismissed) {
-                item(key = "notice|${notice.stopId}|${notice.hubId}") {
+                item(key = "notice|${notice.stopId}|${notice.interchangeId}") {
                     StopNoticeCard(notice, closed, onDismiss = { onDismissAlert(notice) })
                 }
             }
@@ -3405,12 +3405,12 @@ private fun DepartureList(
                 // across every section of the place, not just the first one listed.
                 // An interchange's members can be separate places, so its hub counts too; and a
                 // warning can carve a member into its own group key, so match the physical place.
-                val hub = notice.hubId.ifBlank { null }
+                val hub = notice.interchangeId.ifBlank { null }
                 val place = groupPlace(group)
                 val nearest = groups
                     .filter { g ->
                         g.placeKey == group.placeKey || groupPlace(g) == place ||
-                            (hub != null && g.rows.any { r -> r.hubId == hub || stopHubIds[r.stopId] == hub })
+                            (hub != null && g.rows.any { r -> r.interchangeId == hub || stopInterchangeIds[r.stopId] == hub })
                     }
                     .flatMap { it.rows }
                     .mapNotNull { r -> stopDistanceMeters[r.stopId]?.let { r.stopId to it } }
@@ -6335,7 +6335,7 @@ internal fun RouteDetailScreen(
                     stationId = sequence?.stopAreas?.get(stopId).orEmpty().ifBlank { stopId },
                     name = name.ifBlank { stopId },
                     journey = journey,
-                    hubId = sequence?.stopHubs?.get(stopId).orEmpty(),
+                    interchangeId = sequence?.stopHubs?.get(stopId).orEmpty(),
                     stopId = stopId,
                     line = LineRef(row.lineId, row.lineName.ifBlank { row.lineId }, row.mode),
                     fromName = row.stopName.ifBlank { loaded?.stops?.firstOrNull()?.name.orEmpty() },
@@ -7004,7 +7004,7 @@ internal fun mergeJourneyOrigins(refs: List<StopRef>): List<StopRef> =
     refs.groupBy { it.id }.map { (_, same) ->
         same.first().copy(
             lines = same.flatMap { it.lines }.distinctBy { it.id },
-            hubId = same.firstOrNull { it.hubId.isNotBlank() }?.hubId.orEmpty(),
+            interchangeId = same.firstOrNull { it.interchangeId.isNotBlank() }?.interchangeId.orEmpty(),
         )
     }
 

@@ -192,12 +192,12 @@ class FavoriteJourneysScreenshotTest {
     fun a_tapped_route_stop_survives_being_saved_and_restored() {
         val scope = SaverScope { true }
         val withJourney = RouteStopOpen("940GZZLUKSX", "King's Cross St. Pancras", victoriaLine.copy(from = JourneyEnd("940GZZLUVIC", "Victoria", 51.5, -0.12, "HUBVIC")))
-        val bare = RouteStopOpen("940GZZLUKSX", "King's Cross St. Pancras", null, hubId = "HUBKGX")
+        val bare = RouteStopOpen("940GZZLUKSX", "King's Cross St. Pancras", null, interchangeId = "HUBKGX")
         val full = RouteStopOpen(
             "940GZZLUKSX",
             "King's Cross St. Pancras",
             victoriaLine,
-            hubId = "HUBKGX",
+            interchangeId = "HUBKGX",
             stopId = "940GZZLUKSX",
             line = app.stopdash.domain.LineRef("victoria", "Victoria", "tube"),
             fromName = "Victoria",

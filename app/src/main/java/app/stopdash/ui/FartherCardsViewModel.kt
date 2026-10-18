@@ -528,7 +528,7 @@ internal fun reachedStopIds(state: DeparturesUiState): Set<String>? {
 internal fun fartherReached(shown: List<StopRef>, loadedIds: Set<String>? = null): List<FartherStations.ReachedStop> =
     shown.filter { loadedIds == null || it.id in loadedIds }.map { stop ->
         FartherStations.ReachedStop(
-            ids = setOf(stop.id, stop.clusterId, stop.hubId).filterTo(HashSet()) { it.isNotBlank() },
+            ids = setOf(stop.id, stop.clusterId, stop.interchangeId).filterTo(HashSet()) { it.isNotBlank() },
             lines = stop.lines.mapTo(HashSet()) { FartherStations.Line(it.mode.lowercase(), it.id) },
         )
     }

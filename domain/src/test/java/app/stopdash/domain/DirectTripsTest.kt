@@ -34,7 +34,7 @@ class DirectTripsTest {
     private fun stop(id: String, name: String, vararg departures: Departure, lines: List<LineRef> = emptyList()) =
         StopArrivals(id, name, departures.toList(), now, lines)
 
-    private fun station(id: String, name: String, hubId: String = "") = DirectTrips.End(id, name, hubId)
+    private fun station(id: String, name: String, interchangeId: String = "") = DirectTrips.End(id, name, interchangeId)
 
     @Test
     fun `a train's own calling points outrank its line's routes`() {
@@ -174,7 +174,7 @@ class DirectTripsTest {
         // The route calls at MID; the searched station comes back as MIDX in the same interchange.
         val hubbed = rail.copy(stopHubs = mapOf("MID" to "HUBMID"))
         val top = stop("TOP", "Top", departure("Bottom A", 60))
-        val result = DirectTrips.filter(listOf(top), listOf(station("MIDX", "Mid", hubId = "HUBMID")), mapOf("rail" to hubbed))
+        val result = DirectTrips.filter(listOf(top), listOf(station("MIDX", "Mid", interchangeId = "HUBMID")), mapOf("rail" to hubbed))
         assertEquals(1, result.stops.single().departures.size)
     }
 

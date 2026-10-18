@@ -97,7 +97,7 @@ class PlatformViewTest {
         // So a rider changing there between any of its stations' lines is offered every route through it.
         val inHub = StopArrivals(
             "STATION", "Example Cross", listOf(dep("victoria", "North End", "Northbound - Platform 1")), fetchedAt = now,
-            clusterId = "STATION", hubId = "HUBEXC",
+            clusterId = "STATION", interchangeId = "HUBEXC",
         )
         val platform = groups(listOf(inHub)).single()
         assertEquals(TripVia("HUBEXC", "Example Cross"), view(listOf(inHub), setOf("STATION"), platform.splitKey).via)
@@ -107,7 +107,7 @@ class PlatformViewTest {
     @Test
     fun `a bus pole goes via itself, never its interchange, and a place of several poles via none`() {
         fun pole(id: String, letter: String, to: String) = StopArrivals(
-            id, "Example Road", listOf(dep("1", to, null, mode = "bus")), fetchedAt = now, clusterId = "G1", hubId = "HUBEXC", stopLetter = letter,
+            id, "Example Road", listOf(dep("1", to, null, mode = "bus")), fetchedAt = now, clusterId = "G1", interchangeId = "HUBEXC", stopLetter = letter,
         )
         val a = pole("POLE-A", "A", "North End")
         val b = pole("POLE-B", "B", "South End")
@@ -128,7 +128,7 @@ class PlatformViewTest {
         // such a view matches no rows, and a view with none offers no via at all.
         fun closed(id: String, letter: String) = StopArrivals(
             id, "Example Road", emptyList(), fetchedAt = now, disruptions = listOf(StopDisruption("Stop closed")),
-            clusterId = "G1", hubId = "HUBEXC", stopLetter = letter,
+            clusterId = "G1", interchangeId = "HUBEXC", stopLetter = letter,
         )
         val a = closed("490000001A", "A")
         val b = closed("490000002B", "B")

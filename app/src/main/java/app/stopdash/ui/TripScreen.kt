@@ -3299,7 +3299,7 @@ internal fun routeClosures(
         // Only an interchange ("HUB…") is a hub: a stop with none has its stop area as its top parent.
         val hub = (sequence?.stopHubs?.get(end.id) ?: hubOf(end.id))?.takeIf { it.startsWith(HUB_PREFIX) }.orEmpty()
         val area = sequence?.stopAreas?.get(end.id) ?: end.area
-        val stop = StopArrivals(end.id, names[end.id].orEmpty(), emptyList(), SteadyClock.stamp(now), disruptions = notices, clusterId = area, hubId = hub)
+        val stop = StopArrivals(end.id, names[end.id].orEmpty(), emptyList(), SteadyClock.stamp(now), disruptions = notices, clusterId = area, interchangeId = hub)
         DepartureRows.across(listOf(stop), now).filter { it.stopDisruption != null }
     }
     // One card per notice at a place, folded as the list folds them (two poles of a stop area can

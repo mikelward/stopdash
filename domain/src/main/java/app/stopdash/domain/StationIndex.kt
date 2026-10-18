@@ -4,7 +4,7 @@ import androidx.annotation.WorkerThread
 
 /**
  * One station or interchange in the bundled index (SPEC *Finding stops → Find a station*): its
- * TfL [id], cleaned [name], the [modes] it serves, and the interchange it belongs to ([hubId],
+ * TfL [id], cleaned [name], the [modes] it serves, and the interchange it belongs to ([interchangeId],
  * blank for none — and for a hub itself). A station also carries its public position and its
  * [lines] by mode (null/empty on an index built before they were), for [FartherStations]. Public
  * TfL facts, never user data.
@@ -13,7 +13,7 @@ data class IndexedStation(
     val id: String,
     val name: String,
     val modes: List<String> = emptyList(),
-    val hubId: String = "",
+    val interchangeId: String = "",
     val latitude: Double? = null,
     val longitude: Double? = null,
     // Mode → line ids: tube lines, National Rail services, Overground lines, and so on.
@@ -53,9 +53,9 @@ class StationIndex(
      */
     fun search(query: String, limit: Int = DEFAULT_LIMIT, near: Coordinates? = null): List<StationMatch> {
         val scored = stations.mapNotNull { station ->
-            StationMatcher.tier(query, station.name, station.id, station.hubId)?.let {
+            StationMatcher.tier(query, station.name, station.id, station.interchangeId)?.let {
                 val at = if (station.latitude != null && station.longitude != null) Coordinates(station.latitude, station.longitude) else null
-                Scored(StationMatch(station.id, station.name, station.modes), station.hubId, it, query, distanceFrom(near, at), station)
+                Scored(StationMatch(station.id, station.name, station.modes), station.interchangeId, it, query, distanceFrom(near, at), station)
             }
         } + hubNames.mapNotNull { name ->
             // By its name alone: a station code ("kgx") is the interchange's, and finds that row.
@@ -65,7 +65,7 @@ class StationIndex(
         }
         val matchedIds = scored.mapTo(HashSet()) { it.match.id }
         return scored
-            .filter { it.hubId.isBlank() || it.hubId !in matchedIds }
+            .filter { it.interchangeId.isBlank() || it.interchangeId !in matchedIds }
             .sortedWith(
                 compareBy(
                     { it.tier }, { leadOf(it.match) }, { !it.match.id.startsWith("HUB", ignoreCase = true) },
@@ -108,7 +108,7 @@ class StationIndex(
             )
             if (!leads.add(lead.id)) continue
             val modes = (scored.match.modes + group.flatMap { it.modes }).distinct()
-            kept += Scored(StationMatch(lead.id, lead.name, modes), scored.hubId, scored.tier, query, scored.distance, lead)
+            kept += Scored(StationMatch(lead.id, lead.name, modes), scored.interchangeId, scored.tier, query, scored.distance, lead)
         }
         return kept
     }
@@ -119,7 +119,7 @@ class StationIndex(
      */
     @get:WorkerThread
     private val twins: Map<String, List<IndexedStation>> by lazy {
-        val byName = stations.filter { it.hubId.isBlank() && !it.isHub }.groupBy { cleanStopName(it.name) }
+        val byName = stations.filter { it.interchangeId.isBlank() && !it.isHub }.groupBy { cleanStopName(it.name) }
         buildMap {
             for (same in byName.values) {
                 if (same.size < 2) continue
@@ -133,7 +133,7 @@ class StationIndex(
 
     private class Scored(
         val match: StationMatch,
-        val hubId: String,
+        val interchangeId: String,
         val tier: StationMatchTier,
         query: String,
         val distance: Double,
@@ -158,8 +158,8 @@ class StationIndex(
     // Built on first read from the whole index: a worker's work.
     @get:WorkerThread
     val hubNames: List<StationMatch> by lazy {
-        stations.filter { it.hubId.isNotBlank() && it.hubId in byId }
-            .groupBy { it.hubId }
+        stations.filter { it.interchangeId.isNotBlank() && it.interchangeId in byId }
+            .groupBy { it.interchangeId }
             .flatMap { (hub, members) -> namesIn(hub, members) }
     }
 
@@ -291,7 +291,7 @@ class StationIndex(
 
     // Each indexed station's interchange, for folding TfL's matches the way [search] folds its own.
     private val hubOf: Map<String, String> =
-        stations.filter { it.hubId.isNotBlank() }.associate { it.id to it.hubId }
+        stations.filter { it.interchangeId.isNotBlank() }.associate { it.id to it.interchangeId }
 
     // Each own stop's place in [own], by key, and its interchange's (the earliest of its members').
     // A station name's key isn't a member's id, so it lends the interchange's row nothing.
@@ -365,7 +365,7 @@ class StationIndex(
         if (lat != null && lon != null) return Coordinates(lat, lon)
         // A hub record carries no position of its own; derive a center from its positioned members,
         // so a bundled interchange (King's Cross St. Pancras) is still selectable offline.
-        val members = stations.filter { it.hubId == id && it.latitude != null && it.longitude != null }
+        val members = stations.filter { it.interchangeId == id && it.latitude != null && it.longitude != null }
         if (members.isEmpty()) return null
         return Coordinates(members.mapNotNull { it.latitude }.average(), members.mapNotNull { it.longitude }.average())
     }
@@ -377,7 +377,7 @@ class StationIndex(
     fun placeOf(id: String): Coordinates? = positionOf(id) ?: stationOf(id)?.let(::positionOf)
 
     /**
-     * The interchange the stop [id] belongs to: a listed station's ([IndexedStation.hubId]), or that
+     * The interchange the stop [id] belongs to: a listed station's ([IndexedStation.interchangeId]), or that
      * of the station a platform is listed under, or [id] itself when it names an interchange. Null
      * for a stop in none, or one the index doesn't hold.
      */
