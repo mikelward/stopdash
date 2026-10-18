@@ -8,13 +8,19 @@ from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from build_station_index import (  # noqa: E402
-    add_route_ends, add_terminus_ends, build_index, checked_reach, london_reach, fetch, checked_hub_batch, modes_without_lines, required_points, route_ends, station_points, terminus_ends,
+    add_route_ends, add_terminus_ends, build_index, family_of, checked_reach, london_reach, fetch, checked_hub_batch, modes_without_lines, required_points, route_ends, station_points, terminus_ends,
 )
 
 
-def stop(sid, name, modes, stop_type="NaptanMetroStation", hub="", lat=51.5, lon=-0.12):
+def stop(sid, name, modes, stop_type="NaptanMetroStation", hub="", lat=51.5, lon=-0.12, ics=""):
     return {"id": sid, "commonName": name, "modes": modes, "stopType": stop_type,
-            "hubNaptanCode": hub, "lat": lat, "lon": lon}
+            "hubNaptanCode": hub, "lat": lat, "lon": lon, **({"icsCode": ics} if ics else {})}
+
+
+def rail(sid, name="Example", hub="", ics="", platforms=(), lat=51.5, lon=-0.12):
+    record = stop(sid, name, ["national-rail"], "NaptanRailStation", hub=hub, lat=lat, lon=lon, ics=ics)
+    record["children"] = [{"id": p} for p in platforms]
+    return record
 
 
 class BuildIndexTest(unittest.TestCase):
@@ -310,6 +316,125 @@ class FetchTest(unittest.TestCase):
         with mock.patch("urllib.request.urlopen", side_effect=[self.http_error(429)] * 2):
             with self.assertRaises(urllib.error.HTTPError):
                 fetch("/x", retry_delays=(5,), sleep=lambda _: None)
+
+
+class MembershipTest(unittest.TestCase):
+    """The station model's membership (dev-docs/station-model.md), on synthetic records."""
+
+    def by_id(self, stops, hubs=()):
+        return {s["id"]: s for s in build_index(stops, list(hubs))["stations"]}
+
+    def test_records_sharing_an_ics_code_and_family_are_one_station_in_their_interchange(self):
+        by_id = self.by_id([
+            rail("910GEXAMPL", hub="HUBEXA", ics="1009001"),
+            rail("910GEXAMPLLL", hub="HUBEXA", ics="1009001"),
+            stop("940GZZLUEXA", "Example", ["tube"], hub="HUBEXA", ics="1009002"),
+        ], [{"id": "HUBEXA", "commonName": "Example"}])
+        self.assertEqual("1009001:rail", by_id["910GEXAMPL"]["station"])
+        self.assertEqual("1009001:rail", by_id["910GEXAMPLLL"]["station"])
+        self.assertEqual("1009001", by_id["910GEXAMPL"]["icsCode"])
+        self.assertEqual("1009002:tube", by_id["940GZZLUEXA"]["station"], "another station of the hub")
+        self.assertEqual({"HUBEXA"}, {by_id[i]["modelHub"] for i in ("910GEXAMPL", "910GEXAMPLLL", "940GZZLUEXA")})
+        self.assertEqual("HUBEXA", by_id["910GEXAMPL"]["hub"], "TfL's interchange stays as it was")
+        self.assertNotIn("station", by_id["HUBEXA"], "an interchange row is never a station")
+        self.assertNotIn("modelHub", by_id["HUBEXA"])
+
+    def test_an_ics_code_from_either_listing_of_a_station_is_kept(self):
+        coded = stop("940GZZDLEXA", "Example", ["dlr"], ics="1009001")
+        bare = stop("940GZZDLEXA", "Example", ["dlr"])
+        for listings in ([bare, coded], [coded, bare]):
+            by_id = self.by_id(station_points(listings))
+            self.assertEqual("1009001:dlr", by_id["940GZZDLEXA"]["station"])
+
+    def test_one_ics_code_in_two_families_is_two_stations(self):
+        by_id = self.by_id([
+            rail("910GEXAMPL", ics="1009001"),
+            stop("940GZZDLEXA", "Example", ["dlr"], ics="1009001"),
+        ])
+        self.assertEqual("1009001:rail", by_id["910GEXAMPL"]["station"])
+        self.assertEqual("1009001:dlr", by_id["940GZZDLEXA"]["station"])
+
+    def test_a_station_with_no_interchange_is_its_own_hub(self):
+        by_id = self.by_id([rail("910GEXAMPL", ics="1009001"), rail("910GEXAMPLXR", ics="1009001")])
+        self.assertEqual("1009001:rail", by_id["910GEXAMPL"]["modelHub"])
+        self.assertEqual("1009001:rail", by_id["910GEXAMPLXR"]["modelHub"])
+        self.assertNotIn("hub", by_id["910GEXAMPL"])
+
+    def test_records_with_no_ics_code_stay_stations_of_their_own(self):
+        by_id = self.by_id([rail("910GEXAMPL"), rail("910GEXAMPLXR")])
+        self.assertEqual("910GEXAMPL", by_id["910GEXAMPL"]["station"])
+        self.assertEqual("910GEXAMPLXR", by_id["910GEXAMPLXR"]["station"])
+        self.assertEqual("910GEXAMPLXR", by_id["910GEXAMPLXR"]["modelHub"])
+        self.assertNotIn("icsCode", by_id["910GEXAMPL"])
+
+    def test_a_station_whose_records_name_different_interchanges_joins_the_one_most_name(self):
+        stops = [
+            rail("910GEXAMPA", hub="HUBEXB", ics="1009001"),
+            rail("910GEXAMPB", hub="HUBEXB", ics="1009001"),
+            rail("910GEXAMPC", hub="HUBEXA", ics="1009001"),
+            rail("910GEXAMPD", ics="1009001"),
+        ]
+        hubs = [{"id": "HUBEXA", "commonName": "A"}, {"id": "HUBEXB", "commonName": "B"}]
+        by_id = self.by_id(stops, hubs)
+        self.assertEqual({"HUBEXB"}, {by_id[s["id"]]["modelHub"] for s in stops}, "a record naming none doesn't count")
+        tied = self.by_id(stops[1:3], hubs)
+        self.assertEqual({"HUBEXA"}, {s["modelHub"] for s in tied.values() if "modelHub" in s}, "a tie goes to the lower id")
+
+    def test_membership_is_the_same_whatever_order_tfl_lists_the_records(self):
+        stops = [rail("910GEXAMPA", hub="HUBEXB", ics="1009001"), rail("910GEXAMPB", hub="HUBEXA", ics="1009001"),
+                 stop("940GZZLUEXA", "Example", ["tube"], hub="HUBEXA", ics="1009002")]
+        hubs = [{"id": "HUBEXA", "commonName": "A"}, {"id": "HUBEXB", "commonName": "B"}]
+        self.assertEqual(build_index(stops, hubs), build_index(list(reversed(stops)), hubs))
+
+    def test_an_interchange_whose_modes_span_two_families_builds(self):
+        by_id = self.by_id([
+            rail("910GEXAMPL", hub="HUBEXA", ics="1009001"),
+            stop("940GZZDLEXA", "Example", ["dlr"], hub="HUBEXA", ics="1009002"),
+        ], [{"id": "HUBEXA", "commonName": "Example"}])
+        self.assertEqual(["dlr", "national-rail"], by_id["HUBEXA"]["modes"])
+
+    def test_each_family_is_read_from_its_prefix(self):
+        self.assertEqual("rail", family_of("910GEXAMPL"))
+        self.assertEqual("dlr", family_of("940GZZDLEXA"))
+        self.assertEqual("tram", family_of("940GZZCREXA"))
+        self.assertEqual("cable-car", family_of("940GZZALEXA"))
+        self.assertEqual("tube", family_of("940GZZLUEXA"))
+        self.assertEqual("tube", family_of("940GZZBPSUST"), "Battersea Power Station is the Underground's")
+        self.assertEqual("tube", family_of("940GZZNEUGST"), "so is Nine Elms")
+        self.assertEqual("pier", family_of("930GEXA"))
+        self.assertIsNone(family_of("940GZZXXEXA"))
+        self.assertIsNone(family_of("940GZZBPEXA"), "only the two named records, not their prefix")
+
+    def test_a_record_of_an_unknown_prefix_or_the_wrong_family_stops_the_build(self):
+        with self.assertRaises(SystemExit):
+            build_index([stop("940GZZXXEXA", "Example", ["tube"], ics="1009001")], [])
+        with self.assertRaises(SystemExit):
+            build_index([stop("940GZZDLEXA", "Example", ["tube"], ics="1009001")], [])
+
+    def test_a_platform_under_records_of_one_station_is_kept_under_the_record_its_id_names(self):
+        by_id = self.by_id([
+            # An access area takes its record's code (9100STPXBOX is at 910GSTPXBOX).
+            rail("910GEXAMPL", ics="1009001", platforms=["9100EXAMPLLL", "9100EXAMPL1"]),
+            rail("910GEXAMPLLL", ics="1009001", platforms=["9100EXAMPLLL"]),
+        ])
+        self.assertEqual(["9100EXAMPL1"], by_id["910GEXAMPL"]["platforms"])
+        self.assertEqual(["9100EXAMPLLL"], by_id["910GEXAMPLLL"]["platforms"])
+
+    def test_a_platform_naming_neither_record_is_kept_under_the_lower_one(self):
+        by_id = self.by_id([
+            rail("910GEXAMPL", ics="1009001", platforms=["9100OTHER1"]),
+            rail("910GEXAMPLLL", ics="1009001", platforms=["9100OTHER1"]),
+        ])
+        self.assertEqual(["9100OTHER1"], by_id["910GEXAMPL"]["platforms"])
+        self.assertNotIn("platforms", by_id["910GEXAMPLLL"])
+
+    def test_a_platform_under_two_stations_is_neither_s(self):
+        by_id = self.by_id([
+            rail("910GEXAMPL", ics="1009001", platforms=["9100EXAMPL1"]),
+            rail("910GOTHER", ics="1009003", platforms=["9100EXAMPL1"]),
+        ])
+        self.assertNotIn("platforms", by_id["910GEXAMPL"])
+        self.assertNotIn("platforms", by_id["910GOTHER"])
 
 
 if __name__ == "__main__":

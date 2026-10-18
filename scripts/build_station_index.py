@@ -16,6 +16,12 @@ end of every tube, DLR, Overground, Elizabeth line or tram route it's on carries
 far ends of those routes ("terminusEnds"): TfL lists a train arriving there as bound for the
 station itself, and the app relabels it to where it leaves for. Bus stops are left to TfL's live search: there are ~20,000.
 
+Each station record also carries the station model's membership (dev-docs/station-model.md),
+worked out here so the device only reads it: its TfL ICS code ("icsCode"), the station it
+belongs to ("station": the records sharing an ICS code and a mode family, "1001276:rail" for St
+Pancras's three records), and its hub ("modelHub": the TfL interchange its station's records
+name, else the station itself). "hub" stays TfL's own interchange. Not yet read by the app.
+
 Built from TfL's per-mode stop lists (`/StopPoint/Mode/{mode}`), one mode at a time, and its
 rail-station listing for National Rail. Every listing is required: a failed or empty one stops
 the build, so the committed index stays rather than a partial one replacing it.
@@ -125,7 +131,7 @@ def station_points(points):
 
 
 def merged(first, other):
-    """[first] with [other]'s modes, line groups and platforms added: two listings of one station."""
+    """[first] with [other]'s modes, line groups, platforms and ICS code added: two listings of one station."""
     groups = {}
     for group in (first.get("lineModeGroups") or []) + (other.get("lineModeGroups") or []):
         mode = group.get("modeName")
@@ -135,6 +141,9 @@ def merged(first, other):
     children = {stop_id(c): c for c in (first.get("children") or []) + (other.get("children") or []) if stop_id(c)}
     return {
         **first,
+        # Either listing's ICS code, so membership doesn't hang on which mode listed it first.
+        **({"icsCode": first.get("icsCode") or other.get("icsCode")}
+           if first.get("icsCode") or other.get("icsCode") else {}),
         "modes": sorted(set(first.get("modes") or []) | set(other.get("modes") or [])),
         "lineModeGroups": [{"modeName": m, "lineIdentifier": sorted(ids)} for m, ids in sorted(groups.items())],
         "lines": [lines[k] for k in sorted(lines)],
@@ -218,11 +227,107 @@ def stop_id(stop):
     return stop.get("id") or stop.get("naptanId") or ""
 
 
+# A station record's mode family, from its id's NaPTAN prefix (dev-docs/station-model.md *The
+# model*): a station is the records sharing TfL's ICS code within one family, so St Pancras's
+# three rail records are one station and King's Cross St. Pancras Underground another. Checked in
+# order, the Northern line extension's two Underground records ahead of the prefixes.
+FAMILY_IDS = {"940GZZBPSUST": "tube", "940GZZNEUGST": "tube"}
+FAMILY_PREFIXES = (
+    ("910G", "rail"),
+    ("940GZZDL", "dlr"),
+    ("940GZZCR", "tram"),
+    ("940GZZAL", "cable-car"),
+    ("940GZZLU", "tube"),
+    ("930G", "pier"),
+)
+# The TfL modes each family's records may list; a record listing none of its family's is refused.
+FAMILY_MODES = {
+    "rail": {"national-rail", "overground", "elizabeth-line"},
+    "dlr": {"dlr"},
+    "tram": {"tram"},
+    "cable-car": {"cable-car"},
+    "tube": {"tube"},
+    "pier": {"river-bus"},
+}
+
+
+def family_of(sid):
+    """[sid]'s mode family, or None for a prefix no family claims."""
+    if sid in FAMILY_IDS:
+        return FAMILY_IDS[sid]
+    return next((family for prefix, family in FAMILY_PREFIXES if sid.startswith(prefix)), None)
+
+
+def checked_family(sid, modes):
+    """[sid]'s family, refusing the build on a prefix no family claims or a family none of the
+    record's [modes] belong to: a new prefix TfL brings in is classified by hand before it ships,
+    rather than falling into the wrong family and joining the wrong station."""
+    family = family_of(sid)
+    if family is None:
+        sys.exit(f"{sid} has a prefix no station family claims; classify it in FAMILY_PREFIXES")
+    if not set(modes) & FAMILY_MODES[family]:
+        sys.exit(f"{sid} is a {family} record but TfL lists it as {', '.join(modes)}; refusing to group it")
+    return family
+
+
+def station_key(sid, ics, family):
+    """The model's id for the station [sid] belongs to: its ICS code and family ("1001276:rail"),
+    or with no ICS code the record's own id, so two records TfL left without one never merge."""
+    return f"{ics}:{family}" if ics else sid
+
+
+def add_membership(stations, ics_codes):
+    """Each station record in [stations] (by id, interchange rows aside) with its ICS code
+    ("icsCode"), its station ("station", station_key) and the model's hub ("modelHub"): the TfL
+    interchange most of the station's records name, ties to the lower id, records naming none not
+    counting, else the station itself (dev-docs/station-model.md *The model*). TfL's own
+    interchange stays in "hub". Bus stops join a station's hub in stops.tsv, not here."""
+    members = {}
+    no_code = 0
+    for sid, station in stations.items():
+        ics = ics_codes.get(sid, "")
+        if not ics:
+            no_code += 1
+        key = station_key(sid, ics, checked_family(sid, station["modes"]))
+        station.update({**({"icsCode": ics} if ics else {}), "station": key})
+        members.setdefault(key, []).append(station)
+    split = 0
+    for key, records in members.items():
+        named = {}
+        for record in records:
+            if record.get("hub"):
+                named[record["hub"]] = named.get(record["hub"], 0) + 1
+        if len(named) > 1:
+            split += 1
+        hub = min(named, key=lambda h: (-named[h], h)) if named else key
+        for record in records:
+            record["modelHub"] = hub
+    # Counted on every build, so a refresh that drops codes or splits a station shows in its log.
+    print(f"{no_code} station records without an ICS code; {split} stations whose records name "
+          "different interchanges", file=sys.stderr)
+
+
+def platform_owner(platform, records):
+    """The record of [records] (each listing [platform]) that keeps it: the only one; else, when
+    all are one station's, the record [platform]'s id names (9100X at 910GX, 9400X at 940GX),
+    else the lowest record id; None when they're two stations', which says nothing about which
+    one a train leaves."""
+    if len(records) == 1:
+        return records[0]["id"]
+    if len({r["station"] for r in records}) > 1:
+        return None
+    ids = sorted(r["id"] for r in records)
+    named = next((s + platform[len(p):] for p, s in (("9100", "910G"), ("9400", "940G"))
+                  if platform.startswith(p)), None)
+    return named if named in ids else ids[0]
+
+
 def build_index(stops, hubs, reach=None):
     """The index document from TfL's station list and its hubs' own records, with [reach]
     (london_reach) deciding which commuter-belt rail stations call at London (pure, for tests)."""
     london_lines = commuter_lines(stops)
     stations = {}
+    ics_codes = {}
     hub_modes = {}
     # Each indexed line's name as TfL spells it ("Hammersmith & City", "Elizabeth line"), for the
     # app to label a line it knows only by id.
@@ -244,6 +349,8 @@ def build_index(stops, hubs, reach=None):
             **({"modeLines": lines} if lines else {}),
             **({"platforms": platforms} if platforms else {}),
         }
+        if stop.get("icsCode"):
+            ics_codes[sid] = str(stop["icsCode"]).strip()
         if hub:
             hub_modes.setdefault(hub, set()).update(modes)
         indexed = {line for ids in lines.values() for line in ids}
@@ -251,18 +358,23 @@ def build_index(stops, hubs, reach=None):
             name = (line.get("name") or "").strip()
             if line.get("id") in indexed and name:
                 line_names[line["id"]] = name
-    # A platform TfL lists under two stations says nothing about which one a train leaves: neither
+    add_membership(stations, ics_codes)
+    # A platform TfL lists under records of one station is that station's, kept under one record
+    # (platform_owner); under two stations it says nothing about which one a train leaves: neither
     # keeps it, so the trip is read no worse than before the index had platforms.
-    owners = {}
+    listed = {}
     for station in stations.values():
         for platform in station.get("platforms", []):
-            owners[platform] = owners.get(platform, 0) + 1
+            listed.setdefault(platform, []).append(station)
     for station in stations.values():
-        kept = [p for p in station.get("platforms", []) if owners[p] == 1]
+        kept = [p for p in station.get("platforms", []) if platform_owner(p, listed[p]) == station["id"]]
         if kept:
             station["platforms"] = kept
         else:
             station.pop("platforms", None)
+    split = sorted(p for p, records in listed.items() if platform_owner(p, records) is None)
+    if split:
+        print(f"{len(split)} platforms listed under two stations, kept by neither", file=sys.stderr)
     for hub in hubs:
         hid = stop_id(hub)
         name = (hub.get("commonName") or "").strip()

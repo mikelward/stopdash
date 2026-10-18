@@ -1,6 +1,7 @@
 # Stands, stations and hubs: one model
 
-**Status: proposed, not built** (maintainer, 2026-10-16: "write it up as a design first"). This
+**Status: phase 1 in progress** (maintainer, 2026-10-16: "write it up as a design first"; `TODO.md`
+tracks which of phase 1's three PRs have landed). This
 is the developer-facing design for one shared answer to two questions every screen asks: "is this
 the same station?" and "is this the same hub?". It replaces the rules each screen keeps today.
 
@@ -650,6 +651,8 @@ the batch").
   - each station's and stop's hub;
 
   and a content revision over the lines and membership columns (*Each level's id*).
+  In `station_index.json` a record's fields are `icsCode`, `station` and `modelHub`: its `hub`
+  already holds TfL's interchange, which stays as it is for today's readers.
   `build_stops.py` takes `--stations` (`build/stations/station_index.json` in `station-index.yml`,
   `"$INDEX"` in `station-index-refresh.yml`), writes the four columns on `B` rows in `stops.tsv`
   and `icsCode`, `station` and the model's `hub` on the `M`, `R` and `F` rows in `stops.tsv` that
