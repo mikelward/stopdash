@@ -78,6 +78,8 @@ class LineMap internal constructor(
         val junction: Boolean,
         // The alert names it, where TfL placed no closure to say where the alert is ([AlertStops]).
         val marked: Boolean = false,
+        // Of [marked], one the alert's words name itself, not one only between two named ends of a stretch.
+        val named: Boolean = false,
         // One of the rider's starred stops.
         val starred: Boolean = false,
         // The line's station nearest the rider, within walking reach.
@@ -126,6 +128,7 @@ class LineMap internal constructor(
 
         /** What the alert places here: a closed track to it, or its name in the alert's words. */
         val alerted: Boolean = marked || own.any { it.closed }
+
 
         /**
          * How bad what's placed on it is, said on a fold holding it ([Item.Fold.level]): no service one way
@@ -178,9 +181,8 @@ class LineMap internal constructor(
          * ends folded into it, top first, by name — where it leads; [first] and [last] its first and
          * last stations; [count] how many it holds; [level] the worst alert placed on one of them or a
          * closed track of its own, said on the fold without naming which (maintainer, 2026-10-06). An
-         * [unnamed] fold holds an alert off the rider's route with the plain stations around it on its
-         * track: it says how many and how bad, naming none of them, so nothing on the page gives away
-         * where (maintainer, 2026-10-06).
+         * [unnamed] fold holds the stations inside an alert off the rider's route, between the
+         * stations shown where it starts and ends: it says how many and how bad.
          */
         data class Fold(
             override val key: String,
@@ -228,6 +230,40 @@ class LineMap internal constructor(
         val oneWayUp: Boolean = false,
     )
 
+    // Inside what an alert places on its track, so it folds rather than shows ([runs]): the stations either side
+    // of it on its own track alerted too, and its own track closed both ways or neither, so a stretch's first
+    // and last stations, and those either side of an open track between two closures, are never inside. A
+    // station the alert's words name itself is never inside either: only one between a stretch's ends is
+    // (Codex, #949).
+    private val inside: BooleanArray = BooleanArray(rows.size) { k ->
+        val row = rows[k]
+        val own = row.top.filter { it.to == row.column } + row.bottom.filter { it.from == row.column }
+        row.alerted && !row.named && (own.all { it.closed } || own.none { it.closed }) &&
+            neighbor(k, up = true)?.alerted == true && neighbor(k, up = false)?.alerted == true
+    }
+
+    // The station next to row [k] along its own track, above it or below it: a rail between two rows is
+    // drawn half in each (the upper's bottom, the lower's top), either half curving, and rows of other
+    // columns between are passed by, following the rail's column through them.
+    private fun neighbor(k: Int, up: Boolean): Row? {
+        var column = rows[k].column
+        var j = k
+        while (true) {
+            val next = j + if (up) -1 else 1
+            if (next !in rows.indices) return null
+            val (near, far) = if (up) rows[j].top to rows[next].bottom else rows[j].bottom to rows[next].top
+            column = if (up) {
+                val half = near.firstOrNull { it.to == column } ?: return null
+                far.firstOrNull { it.to == half.from }?.from ?: return null
+            } else {
+                val half = near.firstOrNull { it.from == column } ?: return null
+                far.firstOrNull { it.from == half.to }?.to ?: return null
+            }
+            if (rows[next].column == column) return rows[next]
+            j = next
+        }
+    }
+
     /** Whether an alert is placed on the rider's own stops or a stretch they ride: then the rest of the line folds away ([folded]). */
     val alerted: Boolean = rows.any { it.alertsRider }
 
@@ -238,10 +274,9 @@ class LineMap internal constructor(
      * theirs with the rest of the line around it; one between two kept stations leading nowhere shows
      * its ends and junctions with its plain runs folded. Otherwise the line's ends and junctions show
      * and its plain runs fold. A fold opened shows every station it holds. An alert off the rider's own stops and
-     * stretches folds with the plain stations around it on its track, a station on its own included,
-     * its fold saying how many and how bad ([Item.Fold.level]) without naming any of them
-     * ([Item.Fold.unnamed]; maintainer, 2026-10-06), though an end or a junction it's placed on still
-     * shows. The rider's own stops never fold (SPEC *Line page → Map*).
+     * stretches shows the first and last stations it's placed on (maintainer, 2026-10-18), the stations
+     * inside it folding between them, saying how many and how bad ([Item.Fold.level],
+     * [Item.Fold.unnamed]). The rider's own stops never fold (SPEC *Line page → Map*).
      */
     @WorkerThread
     fun folded(opened: Set<String>, all: Boolean = false): List<Item> {
@@ -280,33 +315,33 @@ class LineMap internal constructor(
     @WorkerThread
     fun foldable(): Boolean = folded(emptySet()).any { it is Item.Fold }
 
-    // Rows [from] until [until], each run on one track folded unless [opened] holds it: two or more plain
-    // stations, or with an alert placed on one, the alert and the plain stations around it, a station on
-    // its own included, its fold saying how many and how bad without naming any of them: off the rider's
-    // route an alert stays folded, giving nothing away of where (maintainer, 2026-10-06). An end or a
-    // junction never folds into a run, an alert on it or not.
+    // Rows [from] until [until], each run on one track of two or more stations folded unless [opened]
+    // holds it. The first and last stations an alert places on show, so the page says where it starts and
+    // ends rather than folding them into a run that reads as shut (maintainer, 2026-10-18); the stations
+    // inside it fold between them, saying how many and how bad. An end or a junction never folds into a
+    // run, an alert on it or not.
     private fun runs(from: Int, until: Int, opened: Set<String>, into: MutableList<Item>) {
-        fun folds(row: Row) = row.plain || row.level != null && !row.end && !row.junction
+        fun folds(k: Int) = rows[k].let { !it.kept && !it.end && !it.junction && (!it.alerted || inside[k]) }
         var i = from
         while (i < until) {
             val row = rows[i]
-            if (!folds(row)) {
+            if (!folds(i)) {
                 into += Item.Station(row)
                 i++
                 continue
             }
             var end = i + 1
-            while (end < until && folds(rows[end]) && rows[end].column == row.column) end++
+            while (end < until && folds(end) && rows[end].column == row.column) end++
             val key = "run:${row.key}"
             if (key in opened) {
                 for (k in i until end) into += Item.Station(rows[k])
             } else {
                 val fold = runFold(key, i, end)
                 into += when {
-                    // An alert in it, a closed track between two stations still served included.
+                    end - i < 2 -> Item.Station(row)
+                    // Inside a closure, between the stations where it starts and ends.
                     fold.level != null -> fold.copy(unnamed = true)
-                    end - i >= 2 -> fold
-                    else -> Item.Station(row)
+                    else -> fold
                 }
             }
             i = end
@@ -546,6 +581,10 @@ class LineMap internal constructor(
             }
             val byWords = placed.filterNot { landed(it) }.map { named(it.fullText) }
             val marked = named(alertText) + byWords.flatten()
+            val texts = listOfNotNull(alertText) + placed.filterNot { landed(it) }.mapNotNull { it.fullText }
+            val mentioned = texts.flatMapTo(HashSet()) { text ->
+                routes.flatMap { route -> AlertStops.mentioned(text, route.map { RouteStop(it, sequence.stopNames[it].orEmpty()) }) }
+            }
             // The trip's own stops by the rows its rides take: a station with a row on each of two branches
             // (Euston on the Northern line) is the rider's only on the branch they ride, where a ride runs
             // through it; matched by stop alone where none does, each ride judged by its own stretch, not
@@ -567,6 +606,7 @@ class LineMap internal constructor(
                     row.copy(
                         name = sequence.stopNames[stop]?.takeIf { it.isNotBlank() } ?: stop,
                         marked = stop in marked,
+                        named = stop in marked && stop in mentioned,
                         starred = nodePlaces.getValue(row.key).any { it in starredPlaces },
                         nearby = nodePlaces.getValue(row.key).any { it in nearbyPlaces },
                         riding = row.key in riding,

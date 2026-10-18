@@ -76,7 +76,7 @@ class LineMapOffMainTest {
         // Never "no map" for a moment while the route data came in and was laid out.
         assertTrue(seen.none { it == LineMapUi.Unavailable })
         assertTrue(first.items.any { it is LineMap.Item.Station && it.row.name == "Kennington" })
-        assertTrue(first.items.any { it is LineMap.Item.Fold && it.level == LineMap.Level.CLOSURE })
+        assertTrue(first.items.any { it is LineMap.Item.Station && it.row.name == "Nine Elms" && it.row.unserved })
 
         // A fold opened: the folding it was tapped on stays up while the new one is worked out.
         opened = OpenedFolds(first.items.first { it is LineMap.Item.Fold && it.count > 1 }.key, null)
