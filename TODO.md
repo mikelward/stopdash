@@ -233,9 +233,9 @@ exercises the whole spine the widget later renders from.
       regenerated with `./gradlew :app:exportBundledLicenses`, since AGP 9 can't wire the
       resource at build time), and a `LicensesScreen` renders it — reached from an About
       dialog behind the top-bar overflow menu. Roborazzi-covered.
-- [ ] **Check `AGENTS.md` < 24,000 bytes in CI** (PR #932): add `test "$(wc -c < AGENTS.md)" -lt 24000`
-      to `.github/workflows/ci.yml` on the docs/classify path so `AGENTS.md` cannot silently grow past
-      Antigravity's 24,000-byte per-file rule cap.
+- [x] **Check `AGENTS.md` < 24,000 bytes in CI** (PR #932): the `classify` job fails once `AGENTS.md`
+      reaches 24,000 bytes, Antigravity's per-file rule cap. It runs there so a docs-only change is
+      checked too.
 - [ ] **Write `GLOSSARY.md`** (maintainer, 2026-10-06): one place that says what each term the
       spec, this file, the code and the PRs lean on means, decided with the maintainer where uses
       differ or overlap. The product's own words (place, hub, interchange, stop, pole, stand,

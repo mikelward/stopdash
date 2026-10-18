@@ -29,6 +29,17 @@ jobs:
         with:
           mode: classify
           pr: ${{ github.event.pull_request.number }}
+      # Here rather than in a code-lane job, so a docs-only edit to AGENTS.md is
+      # checked too. Antigravity caps a rule file at 24,000 bytes and drops the
+      # tail without saying so.
+      - name: AGENTS.md stays under 24,000 bytes
+        run: |
+          size=$(wc -c < AGENTS.md)
+          if test "$size" -ge 24000; then
+            echo "::error file=AGENTS.md::AGENTS.md is $size bytes; Antigravity truncates rule files past 24,000. Trim it."
+            exit 1
+          fi
+          echo "AGENTS.md is $size bytes."
 
   build:
     name: build
