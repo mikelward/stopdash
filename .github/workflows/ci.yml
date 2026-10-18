@@ -92,6 +92,12 @@ jobs:
         # GIT_DIR pointing nowhere) or the clone is shallow (a depth-1 copy of this one), rather
         # than ship versionCode 1 or a short count (app/build.gradle.kts). The release-apk and
         # release-build jobs show this full clone passing the same check.
+        #
+        # Both builds here fail on purpose. setup-gradle skips its cache cleanup after any failed
+        # build in the job, so without this every main run saved the Gradle cache unpruned and it
+        # only ever grew; the skip keeps these two out of the build results it judges by.
+        env:
+          GRADLE_ACTIONS_SKIP_BUILD_RESULT_CAPTURE: "true"
         run: |
           git clone --quiet --bare --depth 1 "file://$PWD" "$RUNNER_TEMP/shallow.git"
           for case in "no-git:/nonexistent" "shallow:$RUNNER_TEMP/shallow.git"; do
