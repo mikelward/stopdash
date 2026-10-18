@@ -1300,4 +1300,8 @@
     <string name="route_disruption_none_direct">None direct to %1$s · Change at %2$s</string>
     <!-- A leg: %1$s from, %2$s to. -->
     <string name="on_the_way_leg">%1$s → %2$s</string>
+    <!-- TODO: translate -->
+    <string name="on_the_way_show_stops" tools:ignore="MissingTranslation">Show stops</string>
+    <!-- TODO: translate -->
+    <string name="on_the_way_hide_stops" tools:ignore="MissingTranslation">Hide stops</string>
 </resources>

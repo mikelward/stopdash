@@ -6,6 +6,9 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.Canvas
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.graphicsLayer
 import app.stopdash.domain.Compass
@@ -30,7 +33,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Button
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardColors
 import androidx.compose.material3.CardDefaults
@@ -54,6 +60,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -89,6 +96,11 @@ import app.stopdash.domain.DoubledTrains
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.LineSequence
+import app.stopdash.domain.RideStopList
+import app.stopdash.domain.lineStopNames
+import app.stopdash.domain.rideStopList
+import app.stopdash.domain.withRouteStops
+import app.stopdash.domain.TflException
 import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.StopDistance
 import app.stopdash.domain.ReplanOrigin
@@ -113,7 +125,13 @@ import app.stopdash.domain.UsageEvent
 import app.stopdash.telemetry.ReportScreen
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * A trip on the way (SPEC *On the way*): the next step over the route, leg by leg, the leg the rider
@@ -347,6 +365,31 @@ internal fun OnTheWayScreen(
         val tailSlot = remember { mutableStateOf<Worked<Inputs, OnTheWay.EtaTail?>?>(null) }
         val etaTail = rememberWorked(tailSlot, Inputs(trip?.route, trip?.legIndex)) { trip?.let(OnTheWay::etaTail) }
         val ridingBranches = rememberRidingBranches(trip, progress, now)
+        // The ride at hand, whose stops Show stops opens (maintainer, 2026-10-18): the one the rider is on or waiting
+        // for, or walking to. On it, as the line it's followed on runs it ([OnTheWay.ridingOn]); still to come, as
+        // planned, with the rider where it boards.
+        val stopsLeg = trip?.let { t ->
+            when {
+                t.leg?.isWalk == false -> t.legIndex
+                t.leg?.isWalk == true && t.route.legs.getOrNull(t.legIndex + 1)?.isWalk == false -> t.legIndex + 1
+                else -> null
+            }
+        }
+        val stopsAtHand = stopsLeg != null && stopsLeg == trip?.legIndex
+        val stopsOn = stopsLeg?.let { i -> trip?.let { t -> (if (stopsAtHand) OnTheWay.ridingOn(t) else null) ?: t.route.legs[i] } }
+            ?.takeIf { !it.isWalk }
+        // Closed again for another ride, or another trip (its start), whatever leg it's at; open through the walk to
+        // a ride and onto it, which is one leg (Codex, #968). Saved as the ride it's open for, so a screen restored
+        // after the trip moved on doesn't open the next ride's stops.
+        val stopsFor = "$stopsLeg@${trip?.startedAt}"
+        var stopsOpenFor by rememberSaveable { mutableStateOf<String?>(null) }
+        val stopsOpen = stopsLeg != null && stopsOpenFor == stopsFor
+        val stopsProgress = progress.takeIf { stopsAtHand }
+        // Seen on board, or the rider said so: a train that only left with no sign of them on it leaves them where it
+        // boards, as the step does (Codex, #968).
+        val stopsBoarded = stopsAtHand && trip?.onBoardSeen == true
+        val rideStops = rememberRideStops(stopsOn, stopsProgress, stopsBoarded, stopsOpen, stale = !current)
+        val stopsRail = stopsOn?.let { railColorFor(it) }
         LazyColumn(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -527,6 +570,43 @@ internal fun OnTheWayScreen(
                     val onTap = onGoTo?.takeIf { OnTheWay.canGoTo(trip, step, now) }?.let { go -> { go(at, step) } }
                     item(key = "leg${step.leg}") {
                         LegLine(leg, trip.route.rides, current = at.leg == step.leg, done = last < doneCount, onTap = onTap)
+                    }
+                    // The ride at hand's stops, a tap away under its row, each a row of this list.
+                    if (step.leg == stopsLeg && stopsOn != null && stopsRail != null) {
+                        item(key = "showStops${step.leg}") { ShowStopsButton(stopsOpen) { stopsOpenFor = if (stopsOpen) null else stopsFor } }
+                        val stops = rideStops?.list
+                        val failure = rideStops?.failure
+                        if (stops != null && stops.names.size >= 2) {
+                            items(stops.names.size, key = { "stop${step.leg}/$it" }) { i ->
+                                RideStopRow(stops.names, i, stops.here, stopsRail, joinGap = 12.dp)
+                            }
+                        }
+                        if (failure != null) {
+                            // The line's route couldn't be read: said with why, under what could be listed.
+                            item(key = "stopsFailed${step.leg}") {
+                                RideStopsNote(stringResource(routeStopsFailureMessage(failure)), Modifier.testTag("onTheWayRideStopsFailed"))
+                            }
+                        } else if (stops != null && stops.names.size < 2) {
+                            // Neither the Planner nor the line's route could list them: said, not left blank.
+                            item(key = "stopsUnavailable${step.leg}") {
+                                RideStopsNote(stringResource(R.string.route_stops_unavailable), Modifier.testTag("onTheWayRideStopsUnavailable"))
+                            }
+                        } else if (stops == null && stopsOpen) {
+                            // Still being worked out (the line's route read, at worst): said, once it's taken long enough
+                            // to see, so a list in at once never flashes it (Codex, #968). Its line is held from the
+                            // first frame, unseen and unread, so the legs below don't move when it shows.
+                            item(key = "stopsLoading${step.leg}") {
+                                var shown by remember { mutableStateOf(false) }
+                                LaunchedEffect(Unit) {
+                                    delay(LOADING_NOTE_DELAY_MILLIS)
+                                    shown = true
+                                }
+                                RideStopsNote(
+                                    stringResource(R.string.route_stops_loading),
+                                    if (shown) Modifier.testTag("onTheWayRideStopsLoading") else Modifier.alpha(0f).clearAndSetSemantics {},
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -2120,3 +2200,171 @@ internal fun stopsText(resources: Resources, left: Int, next: String?, minutes: 
  */
 internal fun fromTfl(progress: TripProgress?): Boolean =
     (progress is TripProgress.Riding && !progress.byPosition) || (progress is TripProgress.Waiting && progress.due != null)
+
+/**
+ * [on]'s stops ([rideStopList]) for the open list, worked out on [LocalWorker] in one step with any names the Planner
+ * left out, from the line's route through the route cache the trip's other checks share (at most two TfL requests per
+ * line a day, or none, and only when a stop is unlisted or unnamed). So only a finished list is shown: never one that grows once names
+ * land, nor one named from another line's route (Codex, #968). The last list stands in while a refresh's is worked
+ * out for the same ride, so the open rows never blink. A route that couldn't be read says why ([StopsShown.failure])
+ * and isn't asked for again until the list is opened again, so an outage or a rate limit costs no request each
+ * refresh (Codex, #968). Null while closed, or until the ride's first list is in.
+ */
+@Composable
+private fun rememberRideStops(on: TripLeg?, progress: TripProgress?, boarded: Boolean, open: Boolean, stale: Boolean): StopsShown? {
+    val repository = LocalRouteStops.current
+    val worker = LocalWorker.current
+    var shown by remember { mutableStateOf<Pair<TripLeg, StopsShown>?>(null) }
+    // Each line's route the open list has needed (its stops unlisted or unnamed), as read: read once per line while the
+    // list is open, each in its own job, so neither the progress refreshes that move the dot nor the followed line
+    // changing cancels a read under way, and a line's read isn't asked for again, failed or not; reopening the list
+    // asks again. Held by a view model, so a read under way, and a failure, outlive a recreation, and its maps are keyed
+    // snapshot state, so nothing on the main thread copies or walks them (Codex, #968).
+    val reads: RideStopsReads = viewModel(key = "ride-stops")
+    fun readRoute(line: String) {
+        // This open list's own, so a read finishing after it closes writes nowhere shown.
+        val session = reads.session
+        if (repository == null || line in session.done || line in session.reading) return
+        session.failed[line]?.let {
+            session.done[line] = RouteRead(line, null, emptyMap(), it)
+            return
+        }
+        session.reading[line] = reads.viewModelScope.launch(session.job) {
+            val read = try {
+                val sequence = repository.load(line, "")
+                RouteRead(line, sequence, withContext(worker) { lineStopNames(sequence) }, null)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: TflException.NotFound) {
+                // TfL has no route for the line (already logged, sanitized, by the repository): the list shows what it
+                // can, or says it's unavailable.
+                RouteRead(line, null, emptyMap(), null)
+            } catch (e: TflException) {
+                // Said under the list, with why (offline, rate-limited, TfL unreachable), not as no route.
+                val kind = errorKindOf(e)
+                session.failed[line] = kind
+                RouteRead(line, null, emptyMap(), kind)
+            }
+            session.reading.remove(line)
+            session.done[line] = read
+        }
+    }
+    val routeRead = on?.lineId?.let { reads.session.done[it] }
+    // A held list's ride and one found, off the main thread, to run the same stops as it: a copy whose path is
+    // another list of the same names. Kept as the pair, so it vouches for that held list alone (Codex, #968).
+    var samePath by remember { mutableStateOf<Pair<TripLeg, TripLeg>?>(null) }
+    // By identity: a ride's, a progress's or a route's equality walks its stops, which composition doesn't.
+    LaunchedEffect(ByIdentity(on), ByIdentity(progress), boarded, open, stale, ByIdentity(routeRead), repository, worker) {
+        if (on == null || !open) {
+            shown = null
+            reads.close(worker)
+            return@LaunchedEffect
+        }
+        val held = shown?.first
+        if (held != null && held !== on && !sameStops(held, on) && sameRide(held, on)) {
+            if (withContext(worker) { held.path == on.path && held.pathNames == on.pathNames }) samePath = held to on
+        }
+        // The line's route as read for this ride, when there's one to read; asked for and waited on (the last list, or
+        // "Loading stops", stays meanwhile) when it isn't in yet.
+        val readable = repository != null && on.lineId.isNotBlank()
+        val read = routeRead
+        // Whether this ride's list needed the route: only then is a failure to read it this list's to say (Codex, #968).
+        var needed = false
+        // A ride the Planner listed no stops for (a third of the recorded plans' rides) takes them from its line's
+        // route, from where it boards to where it gets off (Codex, #968).
+        if (on.path.isEmpty() && readable) {
+            if (read == null) {
+                readRoute(on.lineId)
+                return@LaunchedEffect
+            }
+            needed = true
+        }
+        val sequence = read?.sequence?.takeIf { needed }
+        val ride = sequence?.let { withContext(worker) { withRouteStops(on, it) } } ?: on
+        var list = withContext(worker) { rideStopList(ride, progress, boarded, if (needed) read!!.names else emptyMap(), stale) }
+        if (list?.missing == true && !needed) {
+            if (readable && read == null) {
+                readRoute(on.lineId)
+                return@LaunchedEffect
+            }
+            needed = true
+            list = withContext(worker) { rideStopList(ride, progress, boarded, read?.names.orEmpty(), stale) }
+        }
+        // None to show: the screen says the list is unavailable, or why it couldn't be read, rather than leave the
+        // opened space blank.
+        shown = on to StopsShown(list ?: RideStopList(emptyList(), null), read?.failure?.takeIf { needed })
+    }
+    // A list held from an earlier answer drops its stop at once, not when it's worked out again, where the answer now is
+    // stale (a TfL-placed stop) or places no one (Codex, #968).
+    // Held only while the ride runs the same stops: a train found taking another branch between the same two stops is
+    // still the same ride by [sameRide], but not the same list (Codex, #968).
+    return shown?.takeIf { open && on != null && sameRide(it.first, on) && (sameStops(it.first, on) || samePath?.let { (a, b) -> a === it.first && b === on } == true) }
+        ?.second?.let { StopsShown(it.list.shownStops(stale, progress, boarded), it.failure) }
+}
+
+/**
+ * Show stops' route reads, held above the screen's composition so a read under way and a failure outlive a recreation
+ * (Codex, #968): [session] is the open list's, swapped for a fresh one when it closes.
+ */
+internal class RideStopsReads : ViewModel() {
+    var session by mutableStateOf(Session(SupervisorJob(viewModelScope.coroutineContext[Job])))
+        private set
+
+    /** The list closed: a fresh session, the old one's reads canceled as one, off the main thread, never walked. */
+    fun close(worker: CoroutineDispatcher) {
+        val old = session
+        if (old.reading.isEmpty() && old.done.isEmpty() && old.failed.isEmpty()) return
+        session = Session(SupervisorJob(viewModelScope.coroutineContext[Job]))
+        viewModelScope.launch(worker) { old.job.cancel() }
+    }
+
+    /** One open list's reads: finished ones and failures by line, those under way, and their parent job. */
+    class Session(val job: Job) {
+        internal val done = mutableStateMapOf<String, RouteRead>()
+        internal val failed = mutableStateMapOf<String, DeparturesUiState.Error.Kind>()
+        internal val reading = HashMap<String, Job>()
+    }
+}
+
+/** [lineId]'s route as read for Show stops, with its stops' [names] ([lineStopNames]); [failure] where it couldn't be. */
+internal class RouteRead(val lineId: String, val sequence: LineSequence?, val names: Map<String, String>, val failure: DeparturesUiState.Error.Kind?)
+
+/** A ride's stops as Show stops lists them, and why its line's route couldn't be read, where it couldn't. */
+private class StopsShown(val list: RideStopList, val failure: DeparturesUiState.Error.Kind?)
+
+// Whether [a] and [b] run the same stops, by their lists' identity alone: a refresh copies a ride, keeping its lists.
+private fun sameStops(a: TripLeg, b: TripLeg): Boolean = a.path === b.path && a.pathNames === b.pathNames
+
+/** A line under Show stops in place of the ride's stops: why they aren't there yet, or at all. */
+@Composable
+private fun RideStopsNote(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier.pullUp(12.dp).padding(start = 12.dp),
+    )
+}
+
+/**
+ * Under the ride the rider is on or heading for, **Show stops** (maintainer, 2026-10-18): opens its stops, each a
+ * row of the screen's list ([RideStopRow]) so a long bus route composes only what's on screen (Codex, #968).
+ * Collapsed by default, so the route's legs stay one row each.
+ */
+@Composable
+private fun ShowStopsButton(open: Boolean, onToggle: () -> Unit) {
+    // Tucked under the leg's row it opens, into the list's gap, with 8dp of its own room below trimmed: a 40dp touch
+    // target, so it reaches neither the leg's row above it nor what's below (maintainer, 2026-10-18, over a 48dp one
+    // overlapping the row's tap area; Codex, #968).
+    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
+        TextButton(
+            onClick = onToggle,
+            contentPadding = PaddingValues(horizontal = 12.dp),
+            modifier = Modifier.pullUp(12.dp, below = 8.dp).height(40.dp).testTag("onTheWayShowStops"),
+        ) {
+            // 24dp, so its middle sits over the rail of the stops it opens ([RideStopRow]).
+            Icon(if (open) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown, contentDescription = null, modifier = Modifier.size(24.dp))
+            Text(stringResource(if (open) R.string.on_the_way_hide_stops else R.string.on_the_way_show_stops), modifier = Modifier.padding(start = 8.dp))
+        }
+    }
+}

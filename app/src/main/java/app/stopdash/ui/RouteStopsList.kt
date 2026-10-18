@@ -42,6 +42,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.Layout
@@ -52,6 +54,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import app.stopdash.R
@@ -66,6 +69,7 @@ import app.stopdash.domain.RouteStops
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.StepFreeLevel
 import app.stopdash.domain.TflException
+import app.stopdash.domain.TripLeg
 import app.stopdash.domain.Workers
 import android.util.LruCache
 import kotlinx.coroutines.CancellationException
@@ -501,6 +505,11 @@ private fun StopOnRail(
     onClick: (() -> Unit)? = null,
     // Opens this station's page, by a tap; null offers none.
     onOpen: (() -> Unit)? = null,
+    // Where the rider is: the blue dot, read as "Your stop". The boarding stop on a route's page; on a trip's
+    // ride, the stop they're at or last passed.
+    here: Boolean = first,
+    // Already behind the rider on a trip's ride: its name muted, as a done step is.
+    passed: Boolean = false,
 ) {
     val surface = MaterialTheme.colorScheme.surface
     val starredLabel = stringResource(R.string.route_stop_journey_starred)
@@ -535,7 +544,7 @@ private fun StopOnRail(
                         // Piccadilly). Every other stop, the terminus included, is hollow like a TfL
                         // line diagram's tick, so the one filled dot is the rider's; the terminus is
                         // marked by its bold name and the rail ending there.
-                        if (first) {
+                        if (here) {
                             drawCircle(surface, radius + 2.dp.toPx(), center)
                             drawCircle(CurrentStopBlue, radius, center)
                         } else {
@@ -565,6 +574,7 @@ private fun StopOnRail(
                     },
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = if (first || last) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (passed) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified,
                     inlineContent = if (stepFree != null && stepFreeLabel != null) {
                         mapOf(
                             STEP_FREE_MARK to InlineTextContent(Placeholder(1.15.em, 1.15.em, PlaceholderVerticalAlign.TextCenter)) {
@@ -607,7 +617,7 @@ private fun StopOnRail(
             )
             .then(
                 // Every state that applies, so the boarding stop named in the alert says both.
-                listOfNotNull(currentStop.takeIf { first }, starredLabel.takeIf { starred }, alertLabel.takeIf { inAlert })
+                listOfNotNull(currentStop.takeIf { here }, starredLabel.takeIf { starred }, alertLabel.takeIf { inAlert })
                     .takeIf { it.isNotEmpty() }
                     ?.let { states -> Modifier.semantics(mergeDescendants = true) { stateDescription = states.joinToString(", ") } }
                     ?: Modifier,
@@ -682,6 +692,47 @@ private fun StopOnRail(
     }
 }
 
+/**
+ * One of a trip's ride's stops ([RideStopList]) at [index] of [names], from where it boards to where it gets off,
+ * on its line's [railColor]: the stop the rider is at or last passed ([here]) the blue dot, those behind it muted.
+ * A row of the screen's lazy list, so a long route composes only what's shown; [joinGap] is the list's spacing
+ * above it, which it reaches up over so the rail runs on unbroken, flush under its button.
+ */
+@Composable
+internal fun RideStopRow(names: List<String>, index: Int, here: Int?, railColor: Color, joinGap: Dp = 0.dp) {
+    // Indented as Show stops' chevron is (its button's 12dp padding), so the rail runs down from under it.
+    Box(Modifier.testTag("onTheWayRideStop").pullUp(joinGap).padding(start = 12.dp)) {
+        StopOnRail(
+            name = names[index],
+            connections = emptyList(),
+            railColor = railColor,
+            first = index == 0,
+            last = index == names.lastIndex,
+            here = index == here,
+            passed = here != null && index < here,
+        )
+    }
+}
+
+/**
+ * Draws this item [gap] higher and takes [gap] (and [below]) less room, closing a lazy list's spacing above it
+ * and trimming empty room under it: rows that belong together (a ride's stops on their rail, under its leg) sit
+ * flush in a list spaced between items. Only what's drawn moves: the item's touch target keeps its full size.
+ */
+internal fun Modifier.pullUp(gap: Dp, below: Dp = 0.dp): Modifier = layout { measurable, constraints ->
+    val px = gap.roundToPx()
+    val placeable = measurable.measure(constraints)
+    layout(placeable.width, (placeable.height - px - below.roundToPx()).coerceAtLeast(0)) { placeable.place(0, -px) }
+}
+
+/** The rail color for a trip's ride, as [railColorFor] a row. */
+@Composable
+internal fun railColorFor(ride: TripLeg): Color {
+    val surface = MaterialTheme.colorScheme.surface
+    return lineAccentColor(ride.lineId, ride.mode, ride.lineName)?.let { accentEdgeOn(it, surface) }
+        ?: MaterialTheme.colorScheme.outline
+}
+
 /** The inline content id of a station name's step-free mark. */
 private const val STEP_FREE_MARK = "stepFree"
 
@@ -691,7 +742,7 @@ private fun DrawScope.drawRail(color: Color) {
     drawLine(color, Offset(x, 0f), Offset(x, size.height), strokeWidth = 4.dp.toPx())
 }
 
-private fun routeStopsFailureMessage(kind: DeparturesUiState.Error.Kind): Int = when (kind) {
+internal fun routeStopsFailureMessage(kind: DeparturesUiState.Error.Kind): Int = when (kind) {
     DeparturesUiState.Error.Kind.OFFLINE -> R.string.route_stops_failed_offline
     DeparturesUiState.Error.Kind.RATE_LIMITED -> R.string.route_stops_failed_rate_limited
     // Wording not split yet: both still read "can't reach TfL" here.
