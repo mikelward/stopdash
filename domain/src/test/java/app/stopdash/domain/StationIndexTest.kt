@@ -529,4 +529,13 @@ class StationIndexTest {
         assertEquals(Coordinates(51.5, -0.12), paddington.placeOf("9400ZZLUPAH1"))
         assertEquals(null, paddington.placeOf("490000000X"))
     }
+
+    @Test
+    fun `a search row says the level it is a pick at`() {
+        assertEquals(Pick.Level.HUB, index.search("king's cross").first { it.id == "HUBKGX" }.level)
+        assertEquals(Pick.Level.STATION, index.search("kennington").single().level)
+        assertEquals(Pick.Level.STATION, index.station("940GZZLUKNG")?.level)
+        assertEquals(Pick.Level.STOP, StationIndex.levelOf("490000000001A", listOf("bus")))
+        assertEquals("a record serving a bus among others is a station", Pick.Level.STATION, StationIndex.levelOf("910GEXAMPLE", listOf("bus", "national-rail")))
+    }
 }

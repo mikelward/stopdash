@@ -1,5 +1,6 @@
 package app.stopdash.data
 
+import app.stopdash.domain.Pick
 import app.stopdash.domain.StationMatch
 import java.io.File
 import java.io.IOException
@@ -41,7 +42,7 @@ internal class FileStarredPlacesStore(
                 warn("starred places file is a newer schema version; preserving it, not overwriting")
                 null
             } else {
-                json.decodeFromString<PersistedStarredPlaces>(text).places.associate { it.stopId to StationMatch(it.id, it.name, it.modes) }
+                json.decodeFromString<PersistedStarredPlaces>(text).places.associate { it.stopId to StationMatch(it.id, it.name, it.modes, level = Pick.Level.ofCode(it.level)) }
             }
         } catch (e: IOException) {
             discard("unreadable", e)
@@ -64,7 +65,7 @@ internal class FileStarredPlacesStore(
 
     private fun save(places: Map<String, StationMatch>) {
         try {
-            val persisted = places.map { (stopId, p) -> PersistedStarredPlace(stopId, p.id, p.name, p.modes) }
+            val persisted = places.map { (stopId, p) -> PersistedStarredPlace(stopId, p.id, p.name, p.modes, p.level?.code) }
             // Its directory is named, not checked, when the store is built ([AppDirs]), so made here.
             tmp.parentFile?.mkdirs()
             tmp.writeText(json.encodeToString(PersistedStarredPlaces(version = PersistedStarredPlaces.CURRENT_VERSION, places = persisted)))
@@ -99,7 +100,8 @@ private data class PersistedStarredPlaces(
 ) {
     companion object {
         /** The current on-disk format. Bump when a field an older build would drop or misread is added. */
-        const val CURRENT_VERSION = 1
+        // 2: a place's level ([PersistedStarredPlace.level]), which an older build would drop.
+        const val CURRENT_VERSION = 2
     }
 }
 
@@ -109,4 +111,7 @@ private data class PersistedStarredPlace(
     val id: String,
     val name: String,
     val modes: List<String> = emptyList(),
+    // The level the place was picked at ([StationMatch.level]) by its code; absent where it wasn't said,
+    // in a file written before levels were, or for a code this build doesn't know.
+    val level: String? = null,
 )

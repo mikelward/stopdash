@@ -22,6 +22,7 @@ import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlaceIcon
 import app.stopdash.domain.FavoritePlaces
+import app.stopdash.domain.Pick
 import app.stopdash.domain.PlaceKind
 import app.stopdash.domain.PlaceStart
 import app.stopdash.domain.SearchEntry
@@ -74,7 +75,7 @@ internal fun SearchEntry.coordinate(): Coordinates? = when (this) {
  */
 internal fun SearchEntry.asPlacePick(at: Coordinates? = null): StationMatch = when (this) {
     is SearchEntry.Stop -> if (match.latitude == null && at != null) match.copy(latitude = at.latitude, longitude = at.longitude) else match
-    is SearchEntry.Place -> StationMatch(PlaceStart.id(hit.coordinate), hit.name, latitude = hit.coordinate.latitude, longitude = hit.coordinate.longitude)
+    is SearchEntry.Place -> StationMatch(PlaceStart.id(hit.coordinate), hit.name, latitude = hit.coordinate.latitude, longitude = hit.coordinate.longitude, level = Pick.Level.PLACE)
 }
 
 /** The icon a saved [this] starts with: a searched place's type's, none for a stop, a street or a postcode. */

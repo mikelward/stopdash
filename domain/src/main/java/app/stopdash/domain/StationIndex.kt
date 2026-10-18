@@ -67,7 +67,7 @@ class StationIndex(
         val scored = stations.mapNotNull { station ->
             StationMatcher.tier(query, station.name, station.id, station.interchangeId)?.let {
                 val at = if (station.latitude != null && station.longitude != null) Coordinates(station.latitude, station.longitude) else null
-                Scored(StationMatch(station.id, station.name, station.modes), station.interchangeId, it, query, distanceFrom(near, at), station)
+                Scored(StationMatch(station.id, station.name, station.modes, level = levelOf(station.id, station.modes)), station.interchangeId, it, query, distanceFrom(near, at), station)
             }
         } + hubNames.mapNotNull { name ->
             // By its name alone: a station code ("kgx") is the interchange's, and finds that row.
@@ -120,7 +120,7 @@ class StationIndex(
             )
             if (!leads.add(lead.id)) continue
             val modes = (scored.match.modes + group.flatMap { it.modes }).distinct()
-            kept += Scored(StationMatch(lead.id, lead.name, modes), scored.interchangeId, scored.tier, query, scored.distance, lead)
+            kept += Scored(StationMatch(lead.id, lead.name, modes, level = levelOf(lead.id, modes)), scored.interchangeId, scored.tier, query, scored.distance, lead)
         }
         return kept
     }
@@ -387,7 +387,7 @@ class StationIndex(
         }
 
     /** The listed station with [id], as a match, or null for one the list doesn't hold. */
-    fun station(id: String): StationMatch? = byId[id]?.let { StationMatch(it.id, it.name, it.modes) }
+    fun station(id: String): StationMatch? = byId[id]?.let { StationMatch(it.id, it.name, it.modes, level = levelOf(it.id, it.modes)) }
 
     /**
      * The bundled station's own public position, when the index has one. Used to anchor a favorite
@@ -435,6 +435,16 @@ class StationIndex(
     }
 
     companion object {
+        /**
+         * The level a bundled record's own row is a pick at: an interchange's is the hub, a record
+         * serving buses alone a bus stop, any other a station.
+         */
+        fun levelOf(id: String, modes: List<String>): Pick.Level = when {
+            id.startsWith("HUB", ignoreCase = true) -> Pick.Level.HUB
+            modes.isNotEmpty() && modes.all { it == "bus" } -> Pick.Level.STOP
+            else -> Pick.Level.STATION
+        }
+
         const val DEFAULT_LIMIT = 20
 
         // The order a station name's modes lead in: the Underground first, then the rest of TfL's

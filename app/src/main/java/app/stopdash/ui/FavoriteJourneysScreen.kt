@@ -237,7 +237,7 @@ internal suspend fun addFavoriteJourneyPair(
     }
     // The pair as it would be saved grayed: one list holds it at a time, whichever way it last resolved
     // (TfL's lines at a station can change between two Adds).
-    val grayed = PendingJourney(PendingEnd.Station(from.id, from.name), PendingEnd.Station(to.id, to.name))
+    val grayed = PendingJourney(PendingEnd.Station(from.id, from.name, from.level), PendingEnd.Station(to.id, to.name, to.level))
     when (result) {
         JourneyPair.Result.SameStation -> JourneyAddNote.SameStation(from.name, to.name)
         // No one line serves both: saved grayed, to follow once journeys with a change are (maintainer, 2026-10-10),

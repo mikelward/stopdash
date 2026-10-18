@@ -7,6 +7,7 @@ import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.IndexedStation
 import app.stopdash.domain.LineRef
+import app.stopdash.domain.Pick
 import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.PlaceHit
 import app.stopdash.domain.PlaceHits
@@ -55,7 +56,7 @@ class StationViewModelsTest {
         override suspend fun stationStops(id: String): List<StopLocation> = stops(id)
     }
 
-    private val oxford = StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"))
+    private val oxford = StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"), level = Pick.Level.STATION)
     private val oxfordStation = IndexedStation(oxford.id, oxford.name, oxford.modes)
 
     private fun searchVm(
@@ -444,7 +445,7 @@ class StationViewModelsTest {
         advanceUntilIdle()
         val result = vm.state.value.result as StationSearchViewModel.Result.Matches
         assertEquals(listOf("4900A", "940GZZZETA"), result.matches.map { it.id })
-        assertEquals(StationMatch("4900A", "Zeta Road", listOf("bus"), 51.5, -0.12), result.matches.first())
+        assertEquals(StationMatch("4900A", "Zeta Road", listOf("bus"), 51.5, -0.12, level = Pick.Level.STOP), result.matches.first())
         assertFalse(vm.state.value.searching)
     }
 
@@ -839,7 +840,8 @@ class StationViewModelsTest {
         )
         vm.onQueryChange("example")
         advanceUntilIdle()
-        assertEquals(listOf(favoriteStop), (vm.state.value.result as StationSearchViewModel.Result.Matches).matches)
+        // As the bundle would list it: a stop serving buses alone, at the stop level.
+        assertEquals(listOf(favoriteStop.copy(level = Pick.Level.STOP)), (vm.state.value.result as StationSearchViewModel.Result.Matches).matches)
     }
 
     @Test

@@ -809,8 +809,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           - [x] Each file store that saves a pick says its version and reads every one up to its own,
                 keeping a newer build's file unread: recents, starred places and the active trip gain
                 one (a file without it reads as 1), and favorite journeys read every version up to theirs.
-          - [ ] Every holder of a picked place holds a `Pick`, `StationMatch` included; each of those
-                stores writes the level and bumps its version (*A saved level comes with a version*).
+          - [x] The level a search row is a pick at, where the row says so (`StationMatch.level`: a bundled
+                station or interchange, a bundled bus stop, a place), saved with recents, starred places
+                and pending ends (`PendingEnd.Station.level`), each store at version 2. Unused.
+          - [ ] Every holder of a picked place holds a `Pick`, `StationMatch` included, a level the row
+                doesn't say read through `Hubs.picked`; the trip on the way's ends too, with its version
+                bump (*A saved level comes with a version*).
           - [ ] Search's member and bus-stop rows, the board and the twin fold on the model.
           - [ ] Getting off, far ends, Direct, off-plan, passing a stop, and a trip's arrivals
                 (`Hubs.idsOf`) on the model, with SPEC *Departures*, *Finding stops* and *Trips with

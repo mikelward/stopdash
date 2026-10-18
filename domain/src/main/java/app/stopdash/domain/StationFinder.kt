@@ -17,6 +17,11 @@ data class StationMatch(
     // the modes that name stands for, Underground first. [id] is still the interchange's, so the row
     // opens the interchange; the list tells it which modes lead.
     val lead: List<String> = emptyList(),
+    // The level the row is a pick at (dev-docs/station-model.md *Saved data*), where the row says so
+    // itself: a bundled station or interchange, a bundled bus stop, a place. Null where only the model
+    // can tell (an interchange's station name, a TfL search answer, a stop the app has shown), read
+    // then through [Hubs.picked]. Saved with the pick; nothing reads it yet.
+    val level: Pick.Level? = null,
     // What the row shows and says for [modes], worked out once, where the match is first made (off the
     // main thread). Constructor parameters, not body properties, so a copy carries them rather than
     // working them out again: a click handler that copies a match ("Add favorite" on a positionless
@@ -32,7 +37,7 @@ data class StationMatch(
     val key: String get() = if (lead.isEmpty()) id else "$id|$name"
 
     /** This match with [modes] instead, its icons and labels worked out for them: never `copy(modes = …)`. */
-    fun withModes(modes: List<String>): StationMatch = StationMatch(id, name, modes, latitude, longitude, lead)
+    fun withModes(modes: List<String>): StationMatch = StationMatch(id, name, modes, latitude, longitude, lead, level)
 }
 
 /**

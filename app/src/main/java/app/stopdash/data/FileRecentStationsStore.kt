@@ -1,6 +1,7 @@
 package app.stopdash.data
 
 import app.stopdash.domain.Coordinates
+import app.stopdash.domain.Pick
 import app.stopdash.domain.PlaceHit
 import app.stopdash.domain.PlaceKind
 import app.stopdash.domain.PlaceType
@@ -115,7 +116,8 @@ private data class PersistedRecentStations(
 ) {
     companion object {
         /** The current on-disk format. Bump when a field an older build would drop or misread is added. */
-        const val CURRENT_VERSION = 1
+        // 2: a stop's level ([PersistedRecentStation.level]), which an older build would drop.
+        const val CURRENT_VERSION = 2
     }
 }
 
@@ -135,6 +137,9 @@ private data class PersistedRecentStation(
     // An interchange's station name's modes ([StationMatch.lead]); empty for any other stop, and in a
     // list written before names were listed.
     val lead: List<String> = emptyList(),
+    // The level the stop was picked at ([StationMatch.level]) by its code; absent where the row didn't
+    // say, in a list written before levels were, or for a code this build doesn't know.
+    val level: String? = null,
 )
 
 private fun PersistedRecentStation.toDomain(): SearchEntry =
@@ -143,11 +148,11 @@ private fun PersistedRecentStation.toDomain(): SearchEntry =
         val type = placeType?.let { PlaceType.ofCode(it) } ?: PlaceType.PLACE
         SearchEntry.Place(PlaceHit(name, Coordinates(latitude, longitude), kind, type = type))
     } else {
-        SearchEntry.Stop(StationMatch(id, name, modes, lead = lead))
+        SearchEntry.Stop(StationMatch(id, name, modes, lead = lead, level = Pick.Level.ofCode(level)))
     }
 
 private fun SearchEntry.toPersisted(): PersistedRecentStation = when (this) {
-    is SearchEntry.Stop -> PersistedRecentStation(match.id, match.name, match.modes, lead = match.lead)
+    is SearchEntry.Stop -> PersistedRecentStation(match.id, match.name, match.modes, lead = match.lead, level = match.level?.code)
     is SearchEntry.Place -> PersistedRecentStation(
         id = "", name = hit.name, latitude = hit.coordinate.latitude, longitude = hit.coordinate.longitude, placeKind = hit.kind.name,
         placeType = hit.type.code,
