@@ -20,8 +20,14 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
 }
 
-// AnalyticsDefinitionsTest reads the definitions the registration script registers: a change to them alone
-// runs the tests again rather than passing as up to date.
+// Tests that read files outside :domain (AnalyticsDefinitionsTest, BundledStopsTest, PlaceIndexTest,
+// PlaceHitsTest): a change to any of them runs the tests again rather than passing as up to date or
+// restoring from the build cache, and RELATIVE sensitivity keeps the cache key checkout-independent.
 tasks.test {
-    inputs.file(rootProject.file("dev-docs/analytics-definitions.tsv"))
+    inputs.files(
+        rootProject.file("dev-docs/analytics-definitions.tsv"),
+        rootProject.file("app/src/main/assets/stations/stops.tsv"),
+        rootProject.file("app/src/main/assets/places/place_index.tsv"),
+        rootProject.file("scripts/build_place_index.py"),
+    ).withPathSensitivity(PathSensitivity.RELATIVE)
 }

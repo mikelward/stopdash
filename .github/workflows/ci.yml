@@ -49,6 +49,10 @@ jobs:
       # ubuntu-latest ships the Android SDK; AGP auto-installs the compileSdk
       # minor platform on the first build.
       - uses: gradle/actions/setup-gradle@4c125117fe7c5aed11272ec4213f602f012f89f2  # v5
+        with:
+          # PR-controlled code must not write the shared cache; only main
+          # pushes do.
+          cache-read-only: ${{ github.event_name != 'push' }}
       # Robolectric's Android runtime (android-all-instrumented, ~200 MB) is fetched from Maven
       # Central into ~/.m2 on first use, which setup-gradle's cache doesn't cover: every job
       # downloaded it again, and a failed fetch failed the build before any test ran. Kept here
