@@ -1,7 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Compose draws everything (see StopDashTheme); this platform theme only
-         styles the launch window. Framework theme, so no
+         styles the launch window and the system bars' icons. Framework theme, so no
          com.google.android.material dependency is pulled in. -->
-    <style name="Theme.StopDash" parent="android:Theme.Material.NoActionBar" />
+    <style name="Theme.StopDash" parent="android:Theme.Material.NoActionBar">
+        <!-- Dark bar icons over the light app. The main window gets them from enableEdgeToEdge,
+             but a full-screen Compose Dialog (a line's, stop's or trip's page) takes them from
+             this theme, and the dark parent's white ones vanish on a light page. -->
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
 </resources>
