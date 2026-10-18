@@ -549,7 +549,7 @@ object Journeys {
      * when neither says.
      */
     fun originHub(originId: String, sequence: LineSequence?, pole: StopLocation?): String =
-        pole?.hubId?.takeIf { it.isNotBlank() } ?: sequence?.stopHubs?.get(originId).orEmpty()
+        pole?.interchangeId?.takeIf { it.isNotBlank() } ?: sequence?.stopHubs?.get(originId).orEmpty()
 
     /** [this] with [journey]'s ends in place of the sibling stop ids its routes call at. */
     private fun LineSequence.callingAtEnds(journey: FavoriteJourney): LineSequence =
@@ -692,7 +692,7 @@ object Journeys {
         return FarEnd(
             near.mapTo(HashSet()) { it.id },
             near.flatMapTo(HashSet()) { stop -> stop.lines.map { it.id } },
-            near.map { DirectTrips.End(it.id, it.name, it.hubId) },
+            near.map { DirectTrips.End(it.id, it.name, it.interchangeId) },
         )
     }
 

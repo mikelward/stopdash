@@ -33,14 +33,14 @@ object StationMatcher {
 
     /**
      * The best tier at which [query] matches a station named [name] with TfL id [id] (and
-     * [hubId], its interchange), or null for no match. A blank query matches nothing: the
+     * [interchangeId], its interchange), or null for no match. A blank query matches nothing: the
      * search shows its prompt instead of every station.
      */
-    fun tier(query: String, name: String, id: String = "", hubId: String = ""): StationMatchTier? {
+    fun tier(query: String, name: String, id: String = "", interchangeId: String = ""): StationMatchTier? {
         val q = queryForm(query)
         if (q.isEmpty()) return null
         val nameTier = nameTierOf(q, namesOf(name, interchange = id.startsWith("HUB", ignoreCase = true)))
-        val codeTier = listOf(id, hubId).filter { it.isNotBlank() }.mapNotNull { codeTier(q, it) }.minOrNull()
+        val codeTier = listOf(id, interchangeId).filter { it.isNotBlank() }.mapNotNull { codeTier(q, it) }.minOrNull()
         return listOfNotNull(nameTier, codeTier).minOrNull()
     }
 

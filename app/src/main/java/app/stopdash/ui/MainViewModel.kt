@@ -105,10 +105,10 @@ data class StopRef(
     // The stop's cluster (TfL `stationNaptan` else display name) for per-place grouping (SPEC D8);
     // blank groups the stop alone. Set from the nearby lookup ([StopLocation.clusterId]).
     val clusterId: String = "",
-    // The stop's interchange (TfL `hubNaptanCode`, [StopLocation.hubId]): `HUBKGX` ties King's
+    // The stop's interchange (TfL `hubNaptanCode`, [StopLocation.interchangeId]): `HUBKGX` ties King's
     // Cross and St Pancras. Blank for a stop in no hub. When the stop has a disruption, its hub
     // name is resolved so the near-me alert titles by the interchange (SPEC *Disruptions*).
-    val hubId: String = "",
+    val interchangeId: String = "",
     // The bus pole's letter, bearing, and "towards" ([StopLocation]), for the per-pole bus header
     // (SPEC D8). Blank for a station or a letter-less bus stop, and for a watched stop (whose seed
     // carries none yet — a follow-up).
@@ -240,7 +240,7 @@ class MainViewModel(
     // The surface a pull here is recorded for in [sharedLines] ([LineStatusCache.pull]): the near-me list
     // keeps one across the models a moving nearby set makes, so a pull holds for the new set's too.
     private val linesPullSurface: String = "list",
-    // Resolved interchange info (hubId → name + member aliases), so a hub with a disruption is
+    // Resolved interchange info (interchangeId → name + member aliases), so a hub with a disruption is
     // looked up once and reused across refreshes and across the stops sharing it (King's Cross and
     // St Pancras both resolve `HUBKGX` from one call). Only a real result is cached here — a failed
     // or blank lookup is retried on a later refresh rather than pinned. Within a single refresh a
@@ -686,7 +686,7 @@ class MainViewModel(
             StopArrivals(stop.id, stop.name, emptyList(), SteadyClock.stamp(now), disruptions = disruptions)
                 .also { checked += it }
         }
-        return MergedDestinations(cards, failed, checked, stopAsks, stops.distinctBy { it.id }.map { it.copy(clusterId = "", hubId = "") })
+        return MergedDestinations(cards, failed, checked, stopAsks, stops.distinctBy { it.id }.map { it.copy(clusterId = "", interchangeId = "") })
     }
 
     private val _state = MutableStateFlow<DeparturesUiState>(DeparturesUiState.Loading)
@@ -1210,7 +1210,7 @@ class MainViewModel(
         fun showing(stop: StopArrivals, lookup: StopClosureCache.Lookup): StopArrivals {
             asks[stop.stopId] = lookup.ask
             if (lookup.notices == stop.disruptions) return stop
-            val hub = hubNames[stop.hubId].takeIf { stop.hubName.isBlank() && lookup.notices.isNotEmpty() }
+            val hub = hubNames[stop.interchangeId].takeIf { stop.hubName.isBlank() && lookup.notices.isNotEmpty() }
             return stop.copy(
                 disruptions = lookup.notices,
                 hubName = hub?.name ?: stop.hubName,
@@ -1365,13 +1365,13 @@ class MainViewModel(
         // The hub lookups that went to TfL this batch (not the cache), for the per-fetch log line —
         // counted where they start, since the early reveal can warm the cache before the final pass.
         var hubRequests = 0
-        suspend fun hubOf(hubId: String): HubInfo {
-            hubLookups[hubId]?.let { return it.await() }
+        suspend fun hubOf(interchangeId: String): HubInfo {
+            hubLookups[interchangeId]?.let { return it.await() }
             val lookup = CompletableDeferred<HubInfo>()
-            hubLookups[hubId] = lookup
+            hubLookups[interchangeId] = lookup
             val info = try {
                 // Counted only when this batch sends it, not when it waits on another's (Codex, #567).
-                resolveHubInfo(hubId) { hubRequests++ }
+                resolveHubInfo(interchangeId) { hubRequests++ }
             } catch (e: CancellationException) {
                 lookup.cancel()
                 throw e
@@ -1568,7 +1568,7 @@ class MainViewModel(
                             freshDisruptions = stopDisruptions,
                             prior = prior[stop.id],
                             now = shared[i]?.fetchedAt ?: client.stampOf(stop.id, stamp),
-                            hubId = stop.hubId,
+                            interchangeId = stop.interchangeId,
                             hubName = hub.name,
                             placeAliases = hub.aliases,
                             stopLetter = stop.stopLetter,
@@ -1605,7 +1605,7 @@ class MainViewModel(
                         }
                         // A disrupted interchange titles its alert by the hub, as the final pass does
                         // (one lookup per hub per batch — [hubOf] — so that pass doesn't ask again).
-                        val hub = if (stop.hubId.isNotBlank() && !stopDisruptions.isNullOrEmpty()) {
+                        val hub = if (stop.interchangeId.isNotBlank() && !stopDisruptions.isNullOrEmpty()) {
                             // Its departures shown while the hub's name is looked up, closure pending,
                             // rather than left "Loading" on a slow lookup.
                             if (departures != null && stop.id !in closurePending) {
@@ -1615,7 +1615,7 @@ class MainViewModel(
                                 report()
                             }
                             // On the caller's thread, where the batch's other hub lookups are kept.
-                            withContext(caller) { hubOf(stop.hubId) }
+                            withContext(caller) { hubOf(stop.interchangeId) }
                         } else {
                             HubInfo()
                         }
@@ -1639,11 +1639,11 @@ class MainViewModel(
         // needs its member aliases (SPEC *Disruptions*). Deduplicated up front so a hub shared by
         // several disrupted stops costs one call even when it fails, and every member agrees. A stop
         // with no disruption, or no hub, costs no call and titles by its own name.
-        val hubIds = stops.indices
-            .filter { i -> stops[i].hubId.isNotBlank() && !disruptionResults[i]?.getOrNull()?.notices.isNullOrEmpty() }
-            .mapTo(LinkedHashSet()) { i -> stops[i].hubId }
+        val interchangeIds = stops.indices
+            .filter { i -> stops[i].interchangeId.isNotBlank() && !disruptionResults[i]?.getOrNull()?.notices.isNullOrEmpty() }
+            .mapTo(LinkedHashSet()) { i -> stops[i].interchangeId }
         val hubs: Map<String, HubInfo> = coroutineScope {
-            hubIds.map { hubId -> async { hubId to hubOf(hubId) } }.awaitAll().toMap()
+            interchangeIds.map { interchangeId -> async { interchangeId to hubOf(interchangeId) } }.awaitAll().toMap()
         }
 
         // Each stop merged, with its fetch stamp, worked out off the main thread ([compute]): a merge
@@ -1669,7 +1669,7 @@ class MainViewModel(
                 // As old as the oldest part of its arrivals (a National Rail board another screen fetched,
                 // say), both on screen and in what a later refresh carries over by: the two must match.
                 val fetchedAt = shared[i]?.fetchedAt ?: client.stampOf(stop.id, stamp)
-                val hub = if (stop.hubId.isNotBlank() && !disruptions.isNullOrEmpty()) hubs[stop.hubId] ?: HubInfo() else HubInfo()
+                val hub = if (stop.interchangeId.isNotBlank() && !disruptions.isNullOrEmpty()) hubs[stop.interchangeId] ?: HubInfo() else HubInfo()
                 MergedStop(
                     Snapshot.mergeStop(
                         stopId = stop.id,
@@ -1680,7 +1680,7 @@ class MainViewModel(
                         freshDisruptions = disruptions,
                         prior = prior[stop.id],
                         now = fetchedAt,
-                        hubId = stop.hubId,
+                        interchangeId = stop.interchangeId,
                         hubName = hub.name,
                         placeAliases = hub.aliases,
                         stopLetter = stop.stopLetter,
@@ -3026,7 +3026,7 @@ class MainViewModel(
             // Includes each near-me folded card's identity, so its dismissal isn't pruned as not-live.
             val live = DepartureRows.liveStopClosureAlerts(DepartureRows.across(shownStops, now, lineStatuses)) +
                 DepartureRows.liveLineStatusAlerts(lineStatuses, now)
-            fun placeOf(stop: StopRef) = stopPlaceKey(stop.hubId, stop.clusterId, stop.name, stop.id)
+            fun placeOf(stop: StopRef) = stopPlaceKey(stop.interchangeId, stop.clusterId, stop.name, stop.id)
             // A place with any member whose disruption lookup failed this cycle is not fully known, so it
             // is excluded from the checked set and its dismissals are retained.
             // So is one with a member another check has a newer answer for, or whose newest lookup failed.
@@ -3249,7 +3249,7 @@ class MainViewModel(
     }
 
     /**
-     * The interchange [hubId]'s name + member aliases, from cache or a one-time [TflClient.hubInfo]
+     * The interchange [interchangeId]'s name + member aliases, from cache or a one-time [TflClient.hubInfo]
      * lookup, so a folded near-me disruption alert titles by the interchange and the strip can drop
      * a redundant leading name in any member spelling (SPEC *Disruptions*).
      *
@@ -3262,17 +3262,17 @@ class MainViewModel(
      * Rethrows [CancellationException] first (structured concurrency). The log carries only the hub
      * id — a public TfL place identifier, like a stop id (SPEC *Privacy*).
      */
-    private suspend fun resolveHubInfo(hubId: String, sent: () -> Unit = {}): HubInfo =
+    private suspend fun resolveHubInfo(interchangeId: String, sent: () -> Unit = {}): HubInfo =
         // A success is durable; an empty isn't cached, so the next refresh retries. One already in
         // flight (a trip on the way's, say) is waited on rather than asked again.
-        hubNames.load(hubId) {
+        hubNames.load(interchangeId) {
             sent()
             try {
-                withContext(io) { client.hubInfo(hubId) }
+                withContext(io) { client.hubInfo(interchangeId) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                warn("hub lookup failed for $hubId: ${reason(e)}")
+                warn("hub lookup failed for $interchangeId: ${reason(e)}")
                 HubInfo()
             }
         }

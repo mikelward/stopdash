@@ -40,6 +40,16 @@ class FileNearbyStopsStoreTest {
     }
 
     @Test
+    fun `a stop's interchange keeps the key files written before its rename carry`() {
+        val file = File(tmp.root, "nearby-stops.json")
+        val withInterchange = entry.copy(stops = entry.stops.map { it.copy(interchangeId = "HUBEXA") })
+        FileNearbyStopsStore(file).save(listOf(withInterchange))
+        assertTrue(file.readText().contains("\"hubId\":\"HUBEXA\""))
+        // A file an older build wrote names it only by that key, and still reads with it.
+        assertEquals("HUBEXA", FileNearbyStopsStore(file).load().single().stops.single().interchangeId)
+    }
+
+    @Test
     fun `a leftover temp file from an interrupted save is deleted on load`() {
         val file = File(tmp.root, "nearby-stops.json")
         val leftover = File(file.path + ".tmp").apply { writeText("{}") }

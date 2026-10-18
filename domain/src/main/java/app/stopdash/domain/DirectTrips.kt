@@ -12,7 +12,7 @@ object DirectTrips {
     /** One of the destination station's stops: its TfL id, name and interchange (blank if none). */
     // [area]: the stop's own cluster ([StopLocation.clusterId], a bus stop's pair of poles), so an avoided
     // stop area leaves out both poles ([PlaceDirect.rows]).
-    data class End(val id: String, val name: String, val hubId: String = "", val area: String = "")
+    data class End(val id: String, val name: String, val interchangeId: String = "", val area: String = "")
 
     /**
      * What a trip filter kept: the [stops] with only the departures that reach the destination (a
@@ -58,7 +58,7 @@ object DirectTrips {
         // them, as its step-free access is its own (Codex, #886).
         val seenFrom = if (byStation) destination else emptyList()
         fun sequenceAt(stop: StopArrivals, lineId: String): LineSequence? =
-            sequences[lineId]?.let { routeAt(it, stop.stopId, hubs[stop.stopId] ?: stop.hubId, stop.stopName, seenFrom) }
+            sequences[lineId]?.let { routeAt(it, stop.stopId, hubs[stop.stopId] ?: stop.interchangeId, stop.stopName, seenFrom) }
         val kept = stops.map { stop ->
             // The origin itself is no destination: From and To the same station is no trip.
             if (stop.stopId in destinationIds) {
@@ -117,7 +117,7 @@ object DirectTrips {
         if (stop.stopId in destinationIds) return stop.departures.map { Judged(kept = false) }
         val routes = HashMap<String, LineSequence?>()
         fun routeOf(lineId: String): LineSequence? = routes.getOrPut(lineId) {
-            sequences[lineId]?.let { routeAt(it, stop.stopId, hubs[stop.stopId] ?: stop.hubId, stop.stopName, destination) }
+            sequences[lineId]?.let { routeAt(it, stop.stopId, hubs[stop.stopId] ?: stop.interchangeId, stop.stopName, destination) }
         }
         return stop.departures.map { judgeDeparture(it, stop.stopId, destinationIds, sequences, hidden, byStation, ::routeOf) }
     }
@@ -206,9 +206,9 @@ object DirectTrips {
      * stop and line, then shared by its departures.
      */
     @WorkerThread
-    fun routeAt(sequence: LineSequence, stopId: String, hubId: String, stopName: String, destination: List<End>): LineSequence {
-        var route = sequence.knowing(stopId, hubId, stopName).callingAt(stopId)
-        for (end in destination) route = route.knowing(end.id, end.hubId, end.name).callingAt(end.id)
+    fun routeAt(sequence: LineSequence, stopId: String, interchangeId: String, stopName: String, destination: List<End>): LineSequence {
+        var route = sequence.knowing(stopId, interchangeId, stopName).callingAt(stopId)
+        for (end in destination) route = route.knowing(end.id, end.interchangeId, end.name).callingAt(end.id)
         return route
     }
 
@@ -278,12 +278,12 @@ object DirectTrips {
      * supply them ([LineSequence.withStations]) — a searched station TfL returned outside the index —
      * so [LineSequence.callingAt] can place it through a sibling id its routes call at.
      */
-    private fun LineSequence.knowing(stopId: String, hubId: String, name: String): LineSequence =
-        if (hubId.isBlank() || stopHubs.containsKey(stopId)) {
+    private fun LineSequence.knowing(stopId: String, interchangeId: String, name: String): LineSequence =
+        if (interchangeId.isBlank() || stopHubs.containsKey(stopId)) {
             this
         } else {
             copy(
-                stopHubs = stopHubs + (stopId to hubId),
+                stopHubs = stopHubs + (stopId to interchangeId),
                 stopNames = if (stopNames.containsKey(stopId)) stopNames else stopNames + (stopId to cleanStopName(name)),
             )
         }

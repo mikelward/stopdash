@@ -218,7 +218,7 @@ internal class PlatformView(
  * place's poles): the Planner goes via one stop, and no one of them is the view's.
  */
 internal fun viaOf(stops: List<StopArrivals>, bus: Boolean, name: String): TripVia? {
-    if (!bus) stops.mapTo(HashSet()) { it.hubId }.singleOrNull()?.takeIf { it.isNotBlank() }?.let { return TripVia(it, name) }
+    if (!bus) stops.mapTo(HashSet()) { it.interchangeId }.singleOrNull()?.takeIf { it.isNotBlank() }?.let { return TripVia(it, name) }
     return stops.mapTo(HashSet()) { it.stopId }.singleOrNull()?.let { TripVia(it, name) }
 }
 

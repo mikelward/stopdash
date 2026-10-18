@@ -125,11 +125,11 @@ data class LineSequence(
     fun callingAt(stopId: String): LineSequence {
         val onRoute = routes.flatMapTo(HashSet()) { it.stopIds }
         if (stopId in onRoute) return this
-        val hubId = stopHubs[stopId].orEmpty()
+        val interchangeId = stopHubs[stopId].orEmpty()
         val name = stopNames[stopId].orEmpty()
-        if (hubId.isBlank() || name.isBlank()) return this
+        if (interchangeId.isBlank() || name.isBlank()) return this
         val siblings = onRoute.filterTo(LinkedHashSet()) { id ->
-            stopHubs[id] == hubId && sameStation(name, stopNames[id].orEmpty())
+            stopHubs[id] == interchangeId && sameStation(name, stopNames[id].orEmpty())
         }
         if (siblings.isEmpty()) return this
         fun <T> firstOf(map: Map<String, T>): T? = siblings.firstNotNullOfOrNull { map[it] }
@@ -154,7 +154,7 @@ data class LineSequence(
         if (known.isEmpty()) return this
         return copy(
             stopNames = known.associate { it.id to it.name } + stopNames,
-            stopHubs = known.associate { it.id to it.hubId } + stopHubs,
+            stopHubs = known.associate { it.id to it.interchangeId } + stopHubs,
         )
     }
 }
@@ -814,9 +814,9 @@ class RouteStopsRepository(
     private suspend fun warmHere() {
         if (stationsByHub == null) {
             val index = withContext(io) { stations?.invoke().orEmpty() }
-            val inHubs = index.filter { it.hubId.isNotBlank() }
-            hubByStation = inHubs.associate { it.id to it.hubId }
-            stationsByHub = inHubs.groupBy { it.hubId }
+            val inHubs = index.filter { it.interchangeId.isNotBlank() }
+            hubByStation = inHubs.associate { it.id to it.interchangeId }
+            stationsByHub = inHubs.groupBy { it.interchangeId }
         }
         if (storeRead) return
         storeLock.withLock {

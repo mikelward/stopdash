@@ -488,7 +488,7 @@ class RouteDisruptionTest {
     fun `a stop notice dismissed on the trip's closure card isn't a signal`() {
         val notices = listOf(StopDisruption("Station closed"))
         val place = RouteDisruption.StopPlace(area = "940GZZEXC", hub = "HUBEXC")
-        val stop = StopArrivals("C", "C", emptyList(), at(3), disruptions = notices, clusterId = place.area, hubId = place.hub)
+        val stop = StopArrivals("C", "C", emptyList(), at(3), disruptions = notices, clusterId = place.area, interchangeId = place.hub)
         val card = DepartureRows.across(listOf(stop), at(3)).single { it.stopDisruption != null }
         val dismissed = setOf(DismissedAlert.ofStopClosure(card))
         assertEquals(emptyList<Signal>(), signals(closures = mapOf("C" to notices), places = mapOf("C" to place), dismissed = dismissed))

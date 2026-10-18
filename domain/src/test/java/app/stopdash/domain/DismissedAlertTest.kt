@@ -14,7 +14,7 @@ class DismissedAlertTest {
         stopId: String,
         stopName: String,
         notice: String,
-        hubId: String = "",
+        interchangeId: String = "",
         clusterId: String = "",
     ) = DepartureRow(
         stopId = stopId,
@@ -29,12 +29,12 @@ class DismissedAlertTest {
         upcoming = emptyList(),
         fetchedAt = Instant.EPOCH,
         stopDisruption = notice,
-        hubId = hubId,
+        interchangeId = interchangeId,
     )
 
     @Test
     fun `place key is the hub when there is one`() {
-        val row = closureRow("940GZZLUKSX", "King's Cross St. Pancras", "closed", hubId = "HUBKGX", clusterId = "940GZZLUKSX")
+        val row = closureRow("940GZZLUKSX", "King's Cross St. Pancras", "closed", interchangeId = "HUBKGX", clusterId = "940GZZLUKSX")
         assertEquals("HUBKGX", stopPlaceKey(row))
     }
 
@@ -62,7 +62,7 @@ class DismissedAlertTest {
             departures = emptyList(),
             fetchedAt = Instant.EPOCH,
             clusterId = "940GZZLUKSX",
-            hubId = "HUBKGX",
+            interchangeId = "HUBKGX",
         )
         assertEquals("HUBKGX", stopPlaceKey(stop))
     }

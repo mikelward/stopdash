@@ -67,7 +67,7 @@ object StationIndexStore {
                         id = it.id,
                         name = cleanStopName(it.name),
                         modes = it.modes,
-                        hubId = it.hub,
+                        interchangeId = it.hub,
                         latitude = it.lat,
                         longitude = it.lon,
                         lines = it.modeLines,

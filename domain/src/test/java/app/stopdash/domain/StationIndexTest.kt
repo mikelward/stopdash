@@ -10,8 +10,8 @@ class StationIndexTest {
     private val index = StationIndex(
         listOf(
             IndexedStation("HUBKGX", "King's Cross St. Pancras", listOf("tube", "national-rail")),
-            IndexedStation("940GZZLUKSX", "King's Cross St. Pancras", listOf("tube"), hubId = "HUBKGX"),
-            IndexedStation("940GZZLUCHX", "Charing Cross", listOf("tube"), hubId = "HUBCHX"),
+            IndexedStation("940GZZLUKSX", "King's Cross St. Pancras", listOf("tube"), interchangeId = "HUBKGX"),
+            IndexedStation("940GZZLUCHX", "Charing Cross", listOf("tube"), interchangeId = "HUBCHX"),
             IndexedStation("940GZZLUKNG", "Kennington", listOf("tube")),
             IndexedStation("940GZZLUKSH", "Kilburn High Road", listOf("overground")),
         ),
@@ -142,7 +142,7 @@ class StationIndexTest {
         val kingsCross = StationIndex(
             listOf(
                 IndexedStation("HUBKGX", "King's Cross & St Pancras International", listOf("national-rail", "tube")),
-                IndexedStation("910GSTPX", "London St Pancras International Rail Station", listOf("national-rail"), hubId = "HUBKGX"),
+                IndexedStation("910GSTPX", "London St Pancras International Rail Station", listOf("national-rail"), interchangeId = "HUBKGX"),
             ),
         )
         val local = kingsCross.search("st pa")
@@ -156,23 +156,23 @@ class StationIndexTest {
     private val hubs = StationIndex(
         listOf(
             IndexedStation("HUBKGX", "King's Cross & St Pancras International", listOf("national-rail", "tube")),
-            IndexedStation("910GKNGX", "London King's Cross Rail Station", listOf("national-rail"), hubId = "HUBKGX"),
-            IndexedStation("910GSTPADOM", "London St Pancras International Rail Station", listOf("national-rail"), hubId = "HUBKGX"),
-            IndexedStation("910GSTPX", "London St Pancras International Rail Station", listOf("national-rail"), hubId = "HUBKGX"),
-            IndexedStation("910GSTPXBOX", "London St Pancras International LL Rail Station", listOf("national-rail"), hubId = "HUBKGX"),
-            IndexedStation("940GZZLUKSX", "King's Cross St. Pancras Underground Station", listOf("tube"), hubId = "HUBKGX"),
+            IndexedStation("910GKNGX", "London King's Cross Rail Station", listOf("national-rail"), interchangeId = "HUBKGX"),
+            IndexedStation("910GSTPADOM", "London St Pancras International Rail Station", listOf("national-rail"), interchangeId = "HUBKGX"),
+            IndexedStation("910GSTPX", "London St Pancras International Rail Station", listOf("national-rail"), interchangeId = "HUBKGX"),
+            IndexedStation("910GSTPXBOX", "London St Pancras International LL Rail Station", listOf("national-rail"), interchangeId = "HUBKGX"),
+            IndexedStation("940GZZLUKSX", "King's Cross St. Pancras Underground Station", listOf("tube"), interchangeId = "HUBKGX"),
             IndexedStation("HUBPAD", "Paddington", listOf("national-rail", "elizabeth-line", "tube")),
-            IndexedStation("910GPADTON", "London Paddington Rail Station", listOf("national-rail"), hubId = "HUBPAD"),
-            IndexedStation("910GPADTLL", "Paddington", listOf("elizabeth-line"), hubId = "HUBPAD"),
-            IndexedStation("940GZZLUPAC", "Paddington Underground Station", listOf("tube"), hubId = "HUBPAD"),
-            IndexedStation("940GZZLUPAH", "Paddington (H&C Line)-Underground", listOf("tube"), hubId = "HUBPAD"),
+            IndexedStation("910GPADTON", "London Paddington Rail Station", listOf("national-rail"), interchangeId = "HUBPAD"),
+            IndexedStation("910GPADTLL", "Paddington", listOf("elizabeth-line"), interchangeId = "HUBPAD"),
+            IndexedStation("940GZZLUPAC", "Paddington Underground Station", listOf("tube"), interchangeId = "HUBPAD"),
+            IndexedStation("940GZZLUPAH", "Paddington (H&C Line)-Underground", listOf("tube"), interchangeId = "HUBPAD"),
             IndexedStation("HUBWHD", "West Hampstead", listOf("overground", "tube", "national-rail")),
-            IndexedStation("910GWHMDSTD", "West Hampstead Rail Station", listOf("overground"), hubId = "HUBWHD"),
-            IndexedStation("940GZZLUWHP", "West Hampstead Underground Station", listOf("tube"), hubId = "HUBWHD"),
-            IndexedStation("910GWHMPSTM", "West Hampstead Thameslink Rail Station", listOf("national-rail"), hubId = "HUBWHD"),
+            IndexedStation("910GWHMDSTD", "West Hampstead Rail Station", listOf("overground"), interchangeId = "HUBWHD"),
+            IndexedStation("940GZZLUWHP", "West Hampstead Underground Station", listOf("tube"), interchangeId = "HUBWHD"),
+            IndexedStation("910GWHMPSTM", "West Hampstead Thameslink Rail Station", listOf("national-rail"), interchangeId = "HUBWHD"),
             IndexedStation("HUBLBG", "London Bridge", listOf("national-rail", "tube")),
-            IndexedStation("910GLNDNBDC", "London Bridge Rail Station", listOf("national-rail"), hubId = "HUBLBG"),
-            IndexedStation("940GZZLULNB", "London Bridge Underground Station", listOf("tube"), hubId = "HUBLBG"),
+            IndexedStation("910GLNDNBDC", "London Bridge Rail Station", listOf("national-rail"), interchangeId = "HUBLBG"),
+            IndexedStation("940GZZLULNB", "London Bridge Underground Station", listOf("tube"), interchangeId = "HUBLBG"),
         ),
     )
 
@@ -243,8 +243,8 @@ class StationIndexTest {
         val positioned = StationIndex(
             listOf(
                 IndexedStation("HUBKGX", "King's Cross St. Pancras", listOf("tube")),
-                IndexedStation("940GZZLUKSX", "King's Cross St. Pancras", listOf("tube"), hubId = "HUBKGX", latitude = 51.53, longitude = -0.12),
-                IndexedStation("940GNRKSX", "King's Cross", listOf("national-rail"), hubId = "HUBKGX", latitude = 51.53, longitude = -0.124),
+                IndexedStation("940GZZLUKSX", "King's Cross St. Pancras", listOf("tube"), interchangeId = "HUBKGX", latitude = 51.53, longitude = -0.12),
+                IndexedStation("940GNRKSX", "King's Cross", listOf("national-rail"), interchangeId = "HUBKGX", latitude = 51.53, longitude = -0.124),
                 IndexedStation("940GZZLUOXC", "Oxford Circus", listOf("tube"), latitude = 51.5, longitude = -0.14),
             ),
         )
@@ -379,7 +379,7 @@ class StationIndexTest {
             listOf(
                 IndexedStation("HUBAAA", "Kings Arms", listOf("tube")),
                 IndexedStation("HUBKGX", "Kings Crossing", listOf("tube")),
-                IndexedStation("940GZZLUKSX", "King's Cross St. Pancras", listOf("tube"), hubId = "HUBKGX"),
+                IndexedStation("940GZZLUKSX", "King's Cross St. Pancras", listOf("tube"), interchangeId = "HUBKGX"),
             ),
         )
         val starred = StationMatch("940GZZLUKSX", "King's Cross St. Pancras", listOf("tube"))
@@ -516,7 +516,7 @@ class StationIndexTest {
         val paddington = StationIndex(
             listOf(
                 IndexedStation("HUBPAD", "Paddington"),
-                IndexedStation("940GZZLUPAH", "Paddington (H&C Line)", hubId = "HUBPAD", latitude = 51.5, longitude = -0.12, platforms = listOf("9400ZZLUPAH1")),
+                IndexedStation("940GZZLUPAH", "Paddington (H&C Line)", interchangeId = "HUBPAD", latitude = 51.5, longitude = -0.12, platforms = listOf("9400ZZLUPAH1")),
                 IndexedStation("940GZZLUBST", "Baker Street", latitude = 51.52, longitude = -0.15),
             ),
         )

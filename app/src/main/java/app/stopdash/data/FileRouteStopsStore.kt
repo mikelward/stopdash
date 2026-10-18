@@ -11,6 +11,7 @@ import java.io.IOException
 import java.time.Instant
 import java.time.format.DateTimeParseException
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -137,7 +138,9 @@ private data class RouteCacheStop(
     val longitude: Double,
     val lines: List<RouteCacheLine> = emptyList(),
     val clusterId: String = "",
-    val hubId: String = "",
+    // The key files written before the field was renamed carry.
+    @SerialName("hubId")
+    val interchangeId: String = "",
     val stopLetter: String = "",
     val bearing: String = "",
     val towards: String = "",
@@ -170,9 +173,9 @@ private fun RouteCacheSequence.toSequence() = LineSequence(
 )
 
 private fun StopLocation.toPersisted() = RouteCacheStop(
-    id, name, latitude, longitude, lines.map { it.toPersisted() }, clusterId, hubId, stopLetter, bearing, towards,
+    id, name, latitude, longitude, lines.map { it.toPersisted() }, clusterId, interchangeId, stopLetter, bearing, towards,
 )
 
 private fun RouteCacheStop.toStop() = StopLocation(
-    id, name, latitude, longitude, lines.map { it.toLine() }, clusterId, hubId, stopLetter, bearing, towards,
+    id, name, latitude, longitude, lines.map { it.toLine() }, clusterId, interchangeId, stopLetter, bearing, towards,
 )

@@ -81,9 +81,9 @@ class RouteDisruptionChecksTest {
             return notices[stopId].orEmpty()
         }
 
-        override suspend fun hubInfo(hubId: String): HubInfo {
-            hubReads += hubId
-            return hubInfos[hubId] ?: throw TflException.Offline(null)
+        override suspend fun hubInfo(interchangeId: String): HubInfo {
+            hubReads += interchangeId
+            return hubInfos[interchangeId] ?: throw TflException.Offline(null)
         }
     }
 

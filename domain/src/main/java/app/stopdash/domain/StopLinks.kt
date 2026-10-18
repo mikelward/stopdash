@@ -48,7 +48,7 @@ data class NearStation(
     val modes: List<String> = emptyList(),
     // The interchange it's in, blank for none: what From opens for a station under several ids, as a search
     // for it does, so none of its ids' stops is left out.
-    val hubId: String = "",
+    val interchangeId: String = "",
     // What its details look up under From and To, by its own modes ([stopCueOf]), worked out here, on
     // the worker, so the details never walk its modes (Codex on #678).
     val cue: StopCue = StopCue.NONE,
@@ -64,7 +64,7 @@ data class NearStation(
 internal fun sameStation(a: IndexedStation, b: IndexedStation): Boolean {
     if (cleanStopName(a.name) != cleanStopName(b.name)) return false
     if (!a.modes.containsAll(b.modes) && !b.modes.containsAll(a.modes)) return false
-    if (a.hubId.isNotBlank() || b.hubId.isNotBlank()) return a.hubId == b.hubId
+    if (a.interchangeId.isNotBlank() || b.interchangeId.isNotBlank()) return a.interchangeId == b.interchangeId
     val aLat = a.latitude ?: return false
     val aLon = a.longitude ?: return false
     val bLat = b.latitude ?: return false
@@ -106,8 +106,8 @@ fun StationIndex.linksOf(id: String, nearbyMeters: Double = NEARBY_LINK_METERS, 
     val ownId = station(id)?.id ?: stationOf(id) ?: return StopLinks.NONE
     val own = stations.first { it.id == ownId }
     val isHub = ownId.startsWith("HUB", ignoreCase = true)
-    val hub = if (isHub) ownId else own.hubId
-    val members = if (hub.isBlank()) emptyList() else stations.filter { it.hubId == hub }
+    val hub = if (isHub) ownId else own.interchangeId
+    val members = if (hub.isBlank()) emptyList() else stations.filter { it.interchangeId == hub }
     val here = placeOf(ownId)
     fun metersTo(station: IndexedStation): Double? {
         val lat = station.latitude ?: return null
@@ -124,7 +124,7 @@ fun StationIndex.linksOf(id: String, nearbyMeters: Double = NEARBY_LINK_METERS, 
         station.lines.values.flatten().filterTo(LinkedHashSet()) { it.isNotBlank() },
         station.latitude?.let { lat -> station.longitude?.let { lon -> Coordinates(lat, lon) } },
         station.modes,
-        hubId = station.hubId,
+        interchangeId = station.interchangeId,
         cue = stopCueOf(station.modes),
     )
 
@@ -160,7 +160,7 @@ fun StationIndex.linksOf(id: String, nearbyMeters: Double = NEARBY_LINK_METERS, 
     for (station in members + inReach.filter { (cleanStopName(it.name) to it.modes) in kept }) {
         linesOf(station).forEach { line -> around.putIfAbsent(line.id, line) }
     }
-    val openId = own.hubId.takeIf { ownGroup.isNotEmpty() && it.isNotBlank() }
+    val openId = own.interchangeId.takeIf { ownGroup.isNotEmpty() && it.isNotBlank() }
     val linesById = if (isHub) {
         emptyMap()
     } else {

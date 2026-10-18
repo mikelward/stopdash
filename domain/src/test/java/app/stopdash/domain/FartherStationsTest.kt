@@ -156,9 +156,9 @@ class FartherStationsTest {
 
     @Test
     fun `an interchange's stations are one button, opening the interchange`() {
-        val tubeStation = station("940GZZLUEXA", "Example", 2_000.0, tube("central")).copy(hubId = "HUBEXA")
-        val dlr = station("940GZZDLEXA", "Example", 2_050.0, mapOf("dlr" to listOf("dlr"))).copy(hubId = "HUBEXA")
-        val railStation = station("910GEXAMPLE", "Example Rail", 2_100.0, mapOf("national-rail" to listOf("c2c"))).copy(hubId = "HUBEXA")
+        val tubeStation = station("940GZZLUEXA", "Example", 2_000.0, tube("central")).copy(interchangeId = "HUBEXA")
+        val dlr = station("940GZZDLEXA", "Example", 2_050.0, mapOf("dlr" to listOf("dlr"))).copy(interchangeId = "HUBEXA")
+        val railStation = station("910GEXAMPLE", "Example Rail", 2_100.0, mapOf("national-rail" to listOf("c2c"))).copy(interchangeId = "HUBEXA")
         val hub = IndexedStation("HUBEXA", "Example", listOf("dlr", "national-rail", "tube"))
         val picked = FartherStations.pick(listOf(tubeStation, dlr, railStation, hub), here, emptyList())
         assertEquals(listOf("HUBEXA"), picked.map { it.station.id })

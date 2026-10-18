@@ -67,14 +67,14 @@ class StopPlaceTest {
         assertFalse(StopPlace.ownStop(station, stop("Example Road", 51.5014)))
         // Named for it, a little farther still, or in its interchange anywhere.
         assertTrue(StopPlace.ownStop(station, stop("Hill Station / High Road", 51.5022)))
-        assertTrue(StopPlace.ownStop(station.copy(hubId = "HUBEXA"), stop("Example Road", 51.51, hub = "HUBEXA")))
+        assertTrue(StopPlace.ownStop(station.copy(interchangeId = "HUBEXA"), stop("Example Road", 51.51, hub = "HUBEXA")))
         // Not the other way round: a station merely near a bus stop isn't that stop's place.
         assertFalse(StopPlace.samePlace(stop("Example Road", 51.5013), station))
     }
 
     @Test
     fun `a stop is weighed with its interchange, and no position where TfL left one out`() {
-        val tube = StopLocation("940GZZLUKSX", "King's Cross St. Pancras", 51.53, -0.12, listOf(LineRef("northern", "Northern", "tube")), hubId = "HUBKGX")
+        val tube = StopLocation("940GZZLUKSX", "King's Cross St. Pancras", 51.53, -0.12, listOf(LineRef("northern", "Northern", "tube")), interchangeId = "HUBKGX")
         assertEquals(StopPlace.Stop("King's Cross St. Pancras", 51.53, -0.12, "HUBKGX", true), StopPlace.of(tube))
         val unplaced = StopPlace.of(tube.copy(latitude = 0.0, longitude = 0.0))
         assertNull(unplaced.latitude)

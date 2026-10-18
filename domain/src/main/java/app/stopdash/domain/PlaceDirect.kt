@@ -72,7 +72,7 @@ object PlaceDirect {
     // ([sameStation]: "St Pancras International" and its "LL"; a branch's route can list the station by
     // another id), never two stations an interchange joins.
     private fun oneStation(a: DirectTrips.End, b: DirectTrips.End): Boolean =
-        a.id == b.id || (a.hubId.isNotBlank() && a.hubId == b.hubId && sameStation(a.name, b.name))
+        a.id == b.id || (a.interchangeId.isNotBlank() && a.interchangeId == b.interchangeId && sameStation(a.name, b.name))
 
     /**
      * The [rows], nearest stop first, and why fewer may show than reach the place: a line's route
@@ -118,8 +118,8 @@ object PlaceDirect {
         if (avoided.isEmpty()) return rowsOf(stops, ends, sequences, distanceMeters, now, hidden, stepFree, access)
         // Its arrivals emptied rather than the stop dropped, so it still counts as answered. A bus stop is
         // avoided by its area, so both its poles (its cluster here).
-        val open = stops.map { if (it.stopId in avoided || it.hubId in avoided || it.clusterId in avoided) it.copy(departures = emptyList()) else it }
-        val reachable = ends.filterNot { it.id in avoided || it.hubId in avoided || it.area in avoided }
+        val open = stops.map { if (it.stopId in avoided || it.interchangeId in avoided || it.clusterId in avoided) it.copy(departures = emptyList()) else it }
+        val reachable = ends.filterNot { it.id in avoided || it.interchangeId in avoided || it.area in avoided }
         return rowsOf(open, reachable, sequences, distanceMeters, now, hidden, stepFree, access)
     }
 
@@ -136,7 +136,7 @@ object PlaceDirect {
     ): Result {
         if (ends.isEmpty()) return Result(emptyList(), pending = false, unresolved = false)
         val misses = LinkedHashSet<RouteMiss>()
-        val hubs = stops.associate { it.stopId to it.hubId }
+        val hubs = stops.associate { it.stopId to it.interchangeId }
         val level = needed(stepFree)
         var unknownAccess = false
         val kept: List<StopArrivals>
@@ -230,7 +230,7 @@ object PlaceDirect {
                             val ways = sequences[lineId]?.let { sequence ->
                                 RouteStops.candidatePaths(
                                     // With a step-free level, never a sibling renamed to a stop near the place.
-                                    DirectTrips.routeAt(sequence, stop.stopId, stop.hubId, stop.stopName, if (level == null) ends else emptyList()),
+                                    DirectTrips.routeAt(sequence, stop.stopId, stop.interchangeId, stop.stopName, if (level == null) ends else emptyList()),
                                     stop.stopId, train.destination, train.branch,
                                     train.mode.equals("bus", ignoreCase = true), RouteStops.boundOf(train.platform),
                                     train.direction, train.destinationId, train.via,

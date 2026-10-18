@@ -134,9 +134,9 @@ class JourneyPairTest {
 
     // King's Cross St Pancras's interchange as TfL lists it: a bus stop by a name no name match joins, the
     // Underground and the rail station (TfL's ids; synthetic positions, the pole about 330 m off).
-    private val kxTube = kingsCross.single().copy(hubId = "HUBKGX")
-    private val kxRail = StopLocation("910GKNGX", "London King's Cross Rail Station", 51.531, -0.123, listOf(LineRef("great-northern", "Great Northern", "national-rail")), hubId = "HUBKGX")
-    private val kxPole = StopLocation("490012553B", "St Pancras Intern'l & King's X Stns", 51.533, -0.12, listOf(LineRef("214", "214", "bus")), hubId = "HUBKGX")
+    private val kxTube = kingsCross.single().copy(interchangeId = "HUBKGX")
+    private val kxRail = StopLocation("910GKNGX", "London King's Cross Rail Station", 51.531, -0.123, listOf(LineRef("great-northern", "Great Northern", "national-rail")), interchangeId = "HUBKGX")
+    private val kxPole = StopLocation("490012553B", "St Pancras Intern'l & King's X Stns", 51.533, -0.12, listOf(LineRef("214", "214", "bus")), interchangeId = "HUBKGX")
     private val kxOtherPole = kxPole.copy(id = "490001172X", name = "King's Cross / Caledonian Road", lines = listOf(LineRef("30", "30", "bus")))
 
     @Test
@@ -168,9 +168,9 @@ class JourneyPairTest {
         assertEquals("northern", (JourneyPair.resolve("King's Cross", placed, "Waterloo", waterloo) as JourneyPair.Result.Found).journey.lineId)
         // A stop in no interchange, or another one, has none to look in.
         assertEquals(emptyList<String>(), JourneyPair.interchanges(listOf(eustonPlaced)))
-        assertEquals(listOf(eustonPlaced), JourneyPair.withPlace(listOf(eustonPlaced), listOf(kxPole.copy(hubId = "HUBEXA"))))
+        assertEquals(listOf(eustonPlaced), JourneyPair.withPlace(listOf(eustonPlaced), listOf(kxPole.copy(interchangeId = "HUBEXA"))))
         // A station end's interchanges are its stations', not its bus poles'.
-        assertEquals(listOf("HUBKGX"), JourneyPair.interchanges(listOf(kxRail, kxPole.copy(hubId = "HUBEXA"))))
+        assertEquals(listOf("HUBKGX"), JourneyPair.interchanges(listOf(kxRail, kxPole.copy(interchangeId = "HUBEXA"))))
     }
 
     @Test

@@ -174,7 +174,7 @@ object NearbySelection {
         // The place a cluster counts as toward its mode's cap: its interchange for a rail station in
         // one, else the cluster itself. Places keep the nearest-first order of their nearest member.
         fun placeOf(cluster: NearbyCluster, mode: String): String =
-            cluster.stops.firstNotNullOfOrNull { it.hubId.ifBlank { null } }
+            cluster.stops.firstNotNullOfOrNull { it.interchangeId.ifBlank { null } }
                 ?.takeIf { mode in HUB_PLACE_MODES }?.let { "\u0000hub:$it" }
                 ?: cluster.key
         for (mode in clusters.flatMapTo(sortedSetOf()) { modesOf(it) }) {

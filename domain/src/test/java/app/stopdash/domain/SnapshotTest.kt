@@ -38,7 +38,7 @@ class SnapshotTest {
         freshDisruptions: List<StopDisruption>?,
         prior: StopArrivals?,
         lines: List<LineRef> = emptyList(),
-        hubId: String = "",
+        interchangeId: String = "",
         hubName: String = "",
     ) = Snapshot.mergeStop(
         stopId = "940GZZLUKSX",
@@ -49,7 +49,7 @@ class SnapshotTest {
         freshDisruptions = freshDisruptions,
         prior = prior,
         now = now,
-        hubId = hubId,
+        interchangeId = interchangeId,
         hubName = hubName,
     )
 
@@ -117,10 +117,10 @@ class SnapshotTest {
             freshDepartures = null,
             freshDisruptions = listOf(StopDisruption("No step free access")),
             prior = null,
-            hubId = "HUBKGX",
+            interchangeId = "HUBKGX",
             hubName = "King's Cross & St Pancras International",
         )!!
-        assertEquals("HUBKGX", result.hubId)
+        assertEquals("HUBKGX", result.interchangeId)
         assertEquals("King's Cross & St Pancras International", result.hubName)
     }
 

@@ -104,7 +104,7 @@ interface TflClient {
         stopIds.associateWith { stopDisruptions(it) }
 
     /**
-     * The interchange [hubId] (TfL `hubNaptanCode`) resolved from `/StopPoint/{hubId}`: its display
+     * The interchange [interchangeId] (TfL `hubNaptanCode`) resolved from `/StopPoint/{interchangeId}`: its display
      * [HubInfo.name] — e.g. "King's Cross & St Pancras International" for `HUBKGX`, cleaned of its
      * type suffix like a stop name — plus [HubInfo.aliases], every member station's cleaned name.
      * The name titles an interchange's folded disruption by the interchange rather than one member
@@ -114,7 +114,7 @@ interface TflClient {
      * name so a failed lookup never blanks the alert. Defaults to empty so a client that doesn't
      * enrich hubs, and a test fake, take the same safe fallback without implementing it.
      */
-    suspend fun hubInfo(hubId: String): HubInfo = HubInfo()
+    suspend fun hubInfo(interchangeId: String): HubInfo = HubInfo()
 }
 
 /** An interchange's resolved display [name] and every member-station [aliases] spelling. */

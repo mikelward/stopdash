@@ -333,7 +333,7 @@ class PlaceDirectViewModel(
         // A stop avoided (found closed) isn't asked about at all, so it neither costs a fetch nor, failing,
         // makes the rest look unsure. Held in [heldOrigin] all the same, so the reach stays steady.
         val avoidedStops = AvoidedLines.stopIds(hidden)
-        val open = if (avoidedStops.isEmpty()) stops else stops.filterNot { it.id in avoidedStops || it.clusterId in avoidedStops || it.hubId in avoidedStops }
+        val open = if (avoidedStops.isEmpty()) stops else stops.filterNot { it.id in avoidedStops || it.clusterId in avoidedStops || it.interchangeId in avoidedStops }
         val level = chosen.stepFree
         if (level != StepFree.ANY && access == null) access = withContext(io) { stepFreeAccess() }
         // With a level to meet, the table as of the lifts out now: the same outages keep the same table.
@@ -430,7 +430,7 @@ class PlaceDirectViewModel(
                     }
                     // Every stop near the place this row's trains reach, not only the one it's named by: with that one
                     // closed, a ride getting off at a later one is still this row's (Codex on #861).
-                    val ends = row.reaches.flatMapTo(HashSet()) { listOf(it.id, it.hubId) }.apply { remove("") }
+                    val ends = row.reaches.flatMapTo(HashSet()) { listOf(it.id, it.interchangeId) }.apply { remove("") }
                     ShownRow(
                         row, Countdown.mergedLabel(row.departures, now), status?.description, closureNotice(row, closures.found, now),
                         ends, ends.sorted().joinToString(","), Countdown.parts(row.departures, now), row.departures.any { it.grayed },
@@ -514,7 +514,7 @@ class PlaceDirectViewModel(
     private suspend fun arrivalsOf(stop: StopRef, now: Instant, pulled: Boolean): StopArrivals? {
         val source = client.arrivalsSource()
         if (!pulled) arrivals.recent(stop.id, now, source)?.let { entry ->
-            return StopArrivals(stop.id, stop.name, entry.departures, entry.fetchedAt, clusterId = stop.clusterId, hubId = stop.hubId)
+            return StopArrivals(stop.id, stop.name, entry.departures, entry.fetchedAt, clusterId = stop.clusterId, interchangeId = stop.interchangeId)
         }
         return try {
             // Stamped when asked, as the list stamps its fetches (SPEC D4).
@@ -526,7 +526,7 @@ class PlaceDirectViewModel(
             }
             val fetchedAt = client.fetchedAt(stop.id) ?: at
             if (shared) arrivals.put(stop.id, departures, fetchedAt, client.railFeed(stop.id), generation, source, client.untimed(stop.id), client.railNotices(stop.id))
-            StopArrivals(stop.id, stop.name, departures, fetchedAt, clusterId = stop.clusterId, hubId = stop.hubId)
+            StopArrivals(stop.id, stop.name, departures, fetchedAt, clusterId = stop.clusterId, interchangeId = stop.interchangeId)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

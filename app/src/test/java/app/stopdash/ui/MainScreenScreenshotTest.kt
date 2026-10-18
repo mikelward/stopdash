@@ -1893,7 +1893,7 @@ class MainScreenScreenshotTest {
             StopDashTheme(dynamicColor = false) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     MainScreen(
-                        DeparturesUiState.Loaded(listOf(kingsCrossStPancras().copy(hubId = "HUBKGX"), manorHouse()), now.minusSeconds(60)),
+                        DeparturesUiState.Loaded(listOf(kingsCrossStPancras().copy(interchangeId = "HUBKGX"), manorHouse()), now.minusSeconds(60)),
                         now,
                         {},
                         stopDistanceMeters = mapOf("940GZZLUKSX" to 120.0, "940GZZLUMRH" to 400.0),
@@ -2346,7 +2346,7 @@ class MainScreenScreenshotTest {
             fetchedAt = now.minusSeconds(60),
             disruptions = listOf(StopDisruption(notice)),
             arrivalsFresh = false,
-            hubId = "HUBKGX",
+            interchangeId = "HUBKGX",
             hubName = hubName,
         )
         val members = listOf(

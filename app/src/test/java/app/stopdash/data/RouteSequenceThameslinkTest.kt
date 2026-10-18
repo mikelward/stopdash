@@ -50,9 +50,9 @@ class RouteSequenceThameslinkTest {
     private val index: List<IndexedStation> =
         StationIndexStore.parse(File("src/main/assets/stations/station_index.json").readText()).stations
 
-    private val thameslink = fetched.withStations(index.filter { it.hubId.isNotBlank() }.groupBy { it.hubId })
+    private val thameslink = fetched.withStations(index.filter { it.interchangeId.isNotBlank() }.groupBy { it.interchangeId })
 
-    private val bothWays = (fetched + southbound).withStations(index.filter { it.hubId.isNotBlank() }.groupBy { it.hubId })
+    private val bothWays = (fetched + southbound).withStations(index.filter { it.interchangeId.isNotBlank() }.groupBy { it.interchangeId })
 
     private val now = Instant.parse("2026-09-23T08:00:00Z")
 

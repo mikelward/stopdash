@@ -105,7 +105,7 @@ object FartherStations {
             reason.line in reachedWhole || reason in reachedEnds || (reason.end == null && reason.line in reachedByRoute)
         // The place a station stands for: its interchange when it has one, else itself.
         fun placeOf(station: IndexedStation): IndexedStation =
-            station.hubId.takeIf { it.isNotBlank() }?.let(byId::get) ?: station
+            station.interchangeId.takeIf { it.isNotBlank() }?.let(byId::get) ?: station
         // A place the list already shows is never a button, whatever its index record claims.
         val shownIds = reached.flatMapTo(HashSet()) { it.ids }
         val nearestByReason = LinkedHashMap<Reason, Pair<IndexedStation, Double>>()

@@ -16,25 +16,25 @@ class HubInfoCache {
     private val entries = ConcurrentHashMap<String, HubInfo>()
     private val inFlight = ConcurrentHashMap<String, CompletableDeferred<HubInfo>>()
 
-    operator fun get(hubId: String): HubInfo? = entries[hubId]
+    operator fun get(interchangeId: String): HubInfo? = entries[interchangeId]
 
-    operator fun contains(hubId: String): Boolean = entries.containsKey(hubId)
+    operator fun contains(interchangeId: String): Boolean = entries.containsKey(interchangeId)
 
-    /** Keeps [info] for [hubId] when it names the hub; a blank one is dropped. */
-    operator fun set(hubId: String, info: HubInfo) {
-        if (info.name.isNotBlank()) entries[hubId] = info
+    /** Keeps [info] for [interchangeId] when it names the hub; a blank one is dropped. */
+    operator fun set(interchangeId: String, info: HubInfo) {
+        if (info.name.isNotBlank()) entries[interchangeId] = info
     }
 
     /**
-     * [hubId]'s names: kept ones, else the answer of a lookup already in flight for it, else [fetch]'s,
+     * [interchangeId]'s names: kept ones, else the answer of a lookup already in flight for it, else [fetch]'s,
      * kept when it names the hub. [fetch] handles its own failures; one canceled before it answers leaves
      * a waiting caller to fetch for itself.
      */
-    suspend fun load(hubId: String, fetch: suspend () -> HubInfo): HubInfo {
+    suspend fun load(interchangeId: String, fetch: suspend () -> HubInfo): HubInfo {
         while (true) {
-            entries[hubId]?.let { return it }
+            entries[interchangeId]?.let { return it }
             val mine = CompletableDeferred<HubInfo>()
-            val pending = inFlight.putIfAbsent(hubId, mine)
+            val pending = inFlight.putIfAbsent(interchangeId, mine)
             if (pending != null) {
                 try {
                     return pending.await()
@@ -46,14 +46,14 @@ class HubInfoCache {
             }
             try {
                 val info = fetch()
-                this[hubId] = info
+                this[interchangeId] = info
                 mine.complete(info)
                 return info
             } catch (e: Throwable) {
                 mine.completeExceptionally(e)
                 throw e
             } finally {
-                inFlight.remove(hubId, mine)
+                inFlight.remove(interchangeId, mine)
             }
         }
     }

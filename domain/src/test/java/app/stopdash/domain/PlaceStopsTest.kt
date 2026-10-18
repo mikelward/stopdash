@@ -13,14 +13,14 @@ class PlaceStopsTest {
     private val place = Coordinates(0.0, 0.0)
 
     // About 111 m per 0.001 degree of longitude at the equator.
-    private fun stop(id: String, lonOffset: Double, hubId: String = "") =
-        StopLocation(id, "Stop $id", 0.0, lonOffset, hubId = hubId)
+    private fun stop(id: String, lonOffset: Double, interchangeId: String = "") =
+        StopLocation(id, "Stop $id", 0.0, lonOffset, interchangeId = interchangeId)
 
     @Test
     fun `the stops within a short walk of the place, nearest first`() {
         val ends = PlaceStops.ends(
             place,
-            listOf(stop("far", 0.006), stop("beyond", 0.009), stop("near", 0.001, hubId = "HUBA")),
+            listOf(stop("far", 0.006), stop("beyond", 0.009), stop("near", 0.001, interchangeId = "HUBA")),
         )
         assertEquals(listOf(DirectTrips.End("near", "Stop near", "HUBA"), DirectTrips.End("far", "Stop far")), ends)
     }
