@@ -3725,19 +3725,20 @@ map's heading ("This closure isn't on the map"), so the map is never read as una
 **An alert shows in full only where it touches the rider** (maintainer, 2026-10-06): at their own
 stops, and on the stretches their trip rides on the line, each from where it boards to where it gets
 off; a closure counts there only where it shuts a track the trip rides, the way it rides it. Anywhere
-else an alert stays folded and gives nothing away of where it is: the stations it's
-placed on fold with the plain stations around them on their track, up to the next station the map
-shows (a junction, an end of the line, the rider's own), a station on its own included, and the fold
-says how many and how bad without naming any of them: where a station or a track in it has no service
-(one way or both), a no-entry sign on its rail and "No service" under its label ("9 stations", then
-"No service"), so the diagram shows where the line is shut and the words say what (maintainer,
-2026-10-08); else ⚠ after its label where an alert's words name a station. A tap opens it in full. **The
+else an alert shows only where it starts and ends: **the first and last stations it's placed on stay on
+the page** (maintainer, 2026-10-18: folding them into the plain run beside them read as that whole run
+shut, "9 stations, No service" for one closed stop), a station an alert's words name with ⚠ after it,
+and the stations inside its stretch, between its first and last, fold, saying how many and how bad: a
+no-entry sign on its rail and "No service" under its label ("3 stations", then "No service"), so the
+diagram shows where the line is shut and the words say what (maintainer, 2026-10-08), else ⚠ after its
+label. A tap opens a
+fold in full. **The
 line's ends and junctions always show**, an alert on one or not (maintainer, 2026-10-06), so where the
 line goes and where it parts read at a glance: Uxbridge, named in a delay along its branch, stays on
 the page with its ⚠, the stations along the branch folding behind it; a Central line delay naming
 North Acton and Leytonstone leaves both on the page with the trunk between them a plain run. A junction
-or an end a closure begins beside stays as it would with good service, its closed track running into
-the fold (Kennington, beside a closure of the Battersea branch). A fold
+or an end a closure begins beside stays as it would with good service, its closed track running on
+into the closure (Kennington, beside a closure of the Battersea branch). A fold
 leading to the line's ends is still named by them, an alert in it or not: that says where it leads,
 not where the alert is. Opened from the home screen, with no trip, the rider's starred stops stand in
 for a ride, and so does the line's station nearest them where one is within walking reach: they stay
@@ -3749,7 +3750,7 @@ each other stretch of the line folds to one row naming the line's ends it leads 
 Barnet · Mill Hill East", "22 stations"); a stretch between two kept stations that leads to no end of
 the line shows its runs instead, each on one track, so no row jumps between two trunks. Otherwise the
 line's ends and junctions show, and only the runs of plain stations between them fold ("Burnt Oak to
-Chalk Farm", "8 stations"), any alert among them folding its run as above. A tap opens a fold where
+Chalk Farm", "8 stations"), any alert among them shown as above. A tap opens a fold where
 it is, below what's above it, which doesn't move, showing every station it holds in one tap, never its
 ends alone with the rest folded again (maintainer, 2026-10-06). "Show all stations" opens everything
 and "Fold" puts it back as it opened. **The rider's own stops never fold** (maintainer,

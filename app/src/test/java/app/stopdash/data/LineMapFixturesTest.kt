@@ -51,21 +51,16 @@ class LineMapFixturesTest {
     }
 
     @Test
-    fun `today's Battersea closure folds with its branch, saying there's no service in it`() {
+    fun `today's Battersea closure shows where it starts and ends, and its one station between`() {
         // Shut both ways: TfL lists it once each way round.
         val closure = listOf(listOf("940GZZLUKNG", "940GZZNEUGST", "940GZZBPSUST"), listOf("940GZZBPSUST", "940GZZNEUGST", "940GZZLUKNG"))
         val map = LineMap.of(northern, closures = closure)!!
         assertEquals(setOf("Nine Elms", "Battersea Power Station"), map.names { it.unserved })
         val items = map.folded(emptySet())
-        // Off the rider's own stops and rides, the branch it shuts folds, Kennington and the line's end
-        // still on the page (maintainer, 2026-10-06).
-        assertTrue("Kennington" in items.labels())
-        assertTrue("Battersea Power Station" in items.labels())
-        assertTrue("Nine Elms" !in items.labels())
-        val branch = items.filterIsInstance<LineMap.Item.Fold>().single { it.level != null }
-        assertEquals(LineMap.Level.CLOSURE, branch.level)
-        assertEquals("Nine Elms", branch.first)
-        assertTrue("its stations named only once it's opened", branch.unnamed)
+        // Off the rider's own stops and rides, Kennington and the line's end still show where it starts and
+        // ends, and Nine Elms, alone between them, shows rather than folding on its own (maintainer, 2026-10-18).
+        assertTrue(items.labels().containsAll(listOf("Kennington", "Nine Elms", "Battersea Power Station")))
+        assertTrue(items.filterIsInstance<LineMap.Item.Fold>().none { it.level != null })
     }
 
     @Test
@@ -78,11 +73,13 @@ class LineMapFixturesTest {
         assertEquals(setOf("North Acton", "Leytonstone", "Woodford", "Hainault"), map.names { it.junction })
         assertTrue(map.rows.filter { it.end || it.junction }.all { it.level == LineMap.Level.WARNING })
         val items = map.folded(emptySet())
-        // Every end and junction stands on its own, an alert on it or not (maintainer, 2026-10-06), and
-        // nothing else: the stations the delays name between them fold, saying how bad without naming any.
+        // Every end and junction stands on its own, an alert on it or not (maintainer, 2026-10-06): the
+        // stations inside the delays' stretches fold, saying how bad, but for West Acton, alone between
+        // Ealing Broadway and North Acton, which no fold of one would save a row on, and Newbury Park,
+        // which the words name itself (Codex, #949).
         assertEquals(
             // Trimmed without stations' positions, as TfL lists it: west to east.
-            listOf("Ealing Broadway", "West Ruislip", "North Acton", "Leytonstone", "Woodford", "Hainault", "Epping"),
+            listOf("Ealing Broadway", "West Acton", "West Ruislip", "North Acton", "Leytonstone", "Newbury Park", "Woodford", "Hainault", "Epping"),
             items.filterIsInstance<LineMap.Item.Station>().map { it.row.name },
         )
         val folds = items.filterIsInstance<LineMap.Item.Fold>()

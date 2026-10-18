@@ -5218,35 +5218,29 @@ class TripScreenScreenshotTest {
         leg("tube", "northern", "Northern", from, to, 0, 10, 2)
 
     @Test
-    fun a_closure_off_the_riders_stops_folds_saying_how_bad_and_opens_on_a_tap() {
+    fun a_closure_off_the_riders_stops_shows_where_it_is_saying_no_service() {
         // King's Cross St Pancras starred: a big interchange, standing in for the rider's own.
         showLinePage(TripLine(northernLeg(), northernPartSuspended), northernLine, shown = "King's Cross St Pancras ★", starred = setOf("940GZZLUKSX"))
-        // Nine Elms folded, saying there's no service in it without naming where; the line's end, Battersea
-        // Power Station, always on the page (maintainer, 2026-10-06).
-        assertFalse(hasLine("Nine Elms"))
+        // Kennington, Nine Elms and Battersea Power Station on the page, never folded into a run that reads
+        // as shut (maintainer, 2026-10-18), each station without service saying so.
+        lineMapRow("Nine Elms")
         assertTrue(hasLine("Battersea Power Station"))
-        // The closure said in words under the fold, its sign drawn on the rail (maintainer, 2026-10-08).
-        lineMapRow("1 station")
-        lineMapRow("No service")
+        composeRule.onAllNodesWithText("No service").assertCountEquals(2)
         // Where the closure begins, said to a screen reader as well as drawn (Codex, #606).
         lineMapRow("Kennington").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Next to a closure"))
-        lineMapRow("1 station").performClick()
-        composeRule.waitUntil(10_000) { hasLine("Nine Elms") }
-        composeRule.onAllNodesWithText("No service").assertCountEquals(2)
-        lineMapRow("Fold").performClick()
-        composeRule.waitUntil(10_000) { !hasLine("Nine Elms") }
     }
 
     @Test
-    fun a_closure_of_one_station_folds_with_its_run_naming_none() {
-        // A made-up closure shutting Mornington Crescent alone, off any ride: it folds with the plain
-        // stations around it on the Charing Cross branch, the fold saying how many and how bad, not
-        // where (maintainer, 2026-10-06).
+    fun a_closure_of_one_station_shows_it_never_folded_into_its_run() {
+        // A made-up closure shutting Mornington Crescent alone, off any ride: it shows, and so does Euston,
+        // where the closure ends, rather than folding into the Charing Cross branch's run as though all of
+        // it were shut (maintainer, 2026-10-18).
         val shut = listOf("940GZZLUCTN", "940GZZLUMTC", "940GZZLUEUS")
         val status = LineStatus("northern", 3, "Part Suspended", closures = listOf(PartClosure(3, "Part Suspended", null, listOf(shut, shut.asReversed()))))
-        showLinePage(TripLine(northernLeg(), status), northernLine, shown = "9 stations")
-        assertFalse(hasLine("Mornington Crescent"))
+        showLinePage(TripLine(northernLeg(), status), northernLine, shown = "Mornington Crescent")
+        composeRule.onAllNodesWithText("No service").assertCountEquals(1)
         assertTrue("the junction it begins beside stays", hasLine("Camden Town"))
+        assertTrue("the run past Euston folds, saying nothing", hasLine("Warren Street to Waterloo"))
     }
 
     @Test
@@ -5630,10 +5624,10 @@ class TripScreenScreenshotTest {
     fun a_closure_dismissed_while_a_milder_alert_stands_is_still_drawn() {
         // The page names the suspension the rider dismissed beside the minor delays: its map draws it (Codex, #606).
         val line = TripLine(northernLeg(), LineStatus("northern", 9, "Minor Delays"), quieted = northernPartSuspended)
-        showLinePage(line, northernLine, shown = "1 station")
-        lineMapRow("1 station").performClick()
-        composeRule.waitUntil(10_000) { hasLine("Nine Elms") }
-        composeRule.onAllNodesWithText("No service").assertCountEquals(2)
+        showLinePage(line, northernLine, shown = "Nine Elms")
+        composeRule.onNodeWithText("Nine Elms").assertExists()
+        composeRule.onAllNodesWithText("No service").assertCountEquals(1)
+        assertTrue(hasLine("Battersea Power Station"))
     }
 
     @Test
@@ -5693,20 +5687,20 @@ class TripScreenScreenshotTest {
     @Test
     @Config(qualifiers = "en-rGB-w411dp-h914dp-night-420dpi")
     fun line_page_part_suspended() {
-        showLinePage(TripLine(northernLeg(), northernPartSuspended), northernLine, shown = "1 station", starred = setOf("940GZZLUKSX"))
+        showLinePage(TripLine(northernLeg(), northernPartSuspended), northernLine, shown = "Nine Elms", starred = setOf("940GZZLUKSX"))
         captureSnapshot("line-page-part-suspended.png")
     }
 
     @Test
     fun line_page_nearest_station() {
         // King's Cross St Pancras nearest the rider, Bank starred: big interchanges standing in for the
-        // rider's own. The nearest stays on the page, saying why, with no star; the closure still folds.
+        // rider's own. The nearest stays on the page, saying why, with no star; the closure shows where it is.
         val line = TripLine(northernLeg(), northernPartSuspended, nearby = setOf("940GZZLUKSX"))
         showLinePage(line, northernLine, shown = "King's Cross St Pancras", starred = setOf("940GZZLUBNK"))
         lineMapRow("King's Cross St Pancras").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Nearest"))
         lineMapRow("Nearest")
         lineMapRow("Bank ★")
-        lineMapRow("1 station")
+        lineMapRow("Nine Elms")
         composeRule.onNode(hasScrollAction()).performScrollToNode(hasText("King's Cross St Pancras"))
         captureSnapshot("line-page-nearest.png")
     }

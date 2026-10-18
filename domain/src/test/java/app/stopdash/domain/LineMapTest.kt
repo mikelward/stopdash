@@ -573,53 +573,73 @@ class LineMapTest {
     }
 
     @Test
-    fun `a closure off the rider's stops and rides folds with where it is, its fold saying how bad`() {
+    fun `a closure off the rider's stops and rides shows where it starts and ends`() {
         val map = LineMap.of(northern(), closures = closure)!!
         val items = map.folded(emptySet())
-        // The line as with good service, but Nine Elms folded: no station of it named on its own but the
-        // line's end, which always shows (maintainer, 2026-10-06).
+        // The line as with good service: Nine Elms, the closure's one station between Kennington and the
+        // line's end, shows rather than folding on its own (maintainer, 2026-10-18).
         assertEquals(
             listOf(
                 "Edgware", "[Burnt Oak to Chalk Farm]", "High Barnet", "[Totteridge & Whetstone to West Finchley]",
                 "Mill Hill East", "Finchley Central", "[East Finchley to Kentish Town]", "Camden Town",
                 "[Mornington Crescent to Waterloo]", "[Euston to Elephant & Castle]", "Kennington",
-                "[1 CLOSURE]", "Battersea Power Station", "[Oval to South Wimbledon]", "Morden",
+                "Nine Elms", "Battersea Power Station", "[Oval to South Wimbledon]", "Morden",
             ),
             items.labels(),
         )
         assertEquals(LineMap.Level.CLOSURE, map.row("Battersea Power Station").level)
-        val battersea = items.filterIsInstance<LineMap.Item.Fold>().single { it.first == "Nine Elms" }
-        assertEquals(LineMap.Level.CLOSURE, battersea.level)
-        assertEquals(1, battersea.count)
-        assertTrue("the plain runs say nothing", items.filterIsInstance<LineMap.Item.Fold>().filter { it !== battersea }.all { it.level == null })
-        // A tap shows it in full.
+        assertTrue(map.row("Nine Elms").unserved)
+        assertTrue("the plain runs say nothing", items.filterIsInstance<LineMap.Item.Fold>().all { it.level == null })
+        // A station an alert's words name shows the same way, the plain runs either side folding.
+        val words = LineMap.of(northern(), alertText = "Severe delays while we fix a signal at Hampstead.")!!.folded(emptySet()).labels()
         assertEquals(
-            listOf("Kennington", "Nine Elms", "Battersea Power Station", "[Oval to South Wimbledon]"),
-            map.folded(setOf(battersea.key)).labels().let { it.subList(it.indexOf("Kennington"), it.indexOf("Morden")) },
+            listOf("Edgware", "[Burnt Oak to Golders Green]", "Hampstead", "[Belsize Park to Chalk Farm]", "High Barnet"),
+            words.subList(0, 5),
         )
-        // A station an alert's words name folds the same way, as a warning, even one on its own.
-        val words = LineMap.of(northern(), alertText = "Severe delays while we fix a signal at Hampstead.")!!.folded(emptySet())
-        assertTrue("Hampstead" !in words.labels())
-        // Folded with the plain stations around it, up to the end and the junction either side: no run
-        // named beside it to say where.
-        assertTrue("[8 WARNING]" in words.labels())
-        assertTrue(words.labels().none { "Burnt Oak" in it || "Golders Green" in it || "Chalk Farm" in it })
+    }
+
+    @Test
+    fun `a closure's first and last stations show, never folded into a run read as shut`() {
+        // South Wimbledon to Morden shut, on no ride: South Wimbledon, still served, shows where the closure
+        // starts, rather than folding with the Morden branch's run into "10 stations, No service", which
+        // reads as all of them shut (maintainer, 2026-10-18).
+        val shut = ids("South Wimbledon", "Morden")
+        val map = LineMap.of(northern(), closures = listOf(shut, shut.asReversed()))!!
+        val items = map.folded(emptySet())
+        assertEquals(
+            listOf("Kennington", "Nine Elms", "Battersea Power Station", "[Oval to Colliers Wood]", "South Wimbledon", "Morden"),
+            items.labels().let { it.subList(it.indexOf("Kennington"), it.size) },
+        )
+        assertTrue("the run before it is served", items.filterIsInstance<LineMap.Item.Fold>().all { it.level == null })
+        // Stations an alert's words name one by one all show: none is only inside a stretch (Codex, #949).
+        val listed = LineMap.of(northern(), alertText = "Delays at Angel, Old Street, Moorgate and Bank.")!!.folded(emptySet()).labels()
+        assertEquals(
+            listOf("Angel", "Old Street", "Moorgate", "Bank"),
+            listed.subList(listed.indexOf("Angel"), listed.indexOf("Angel") + 4),
+        )
+        // A longer closure folds the stations inside it between its first and last, saying how bad.
+        val long = ids("Clapham North", "Clapham Common", "Clapham South", "Balham", "Tooting Bec")
+        val labels = LineMap.of(northern(), closures = listOf(long, long.asReversed()))!!.folded(emptySet()).labels()
+        assertEquals(
+            listOf("[Oval to Stockwell]", "Clapham North", "[3 CLOSURE]", "Tooting Bec", "[Tooting Broadway to South Wimbledon]", "Morden"),
+            labels.let { it.subList(it.indexOf("Battersea Power Station") + 1, it.size) },
+        )
     }
 
     @Test
     fun `a junction an alert names still shows, the runs either side folding`() {
         // Camden Town, where the Edgware and High Barnet branches meet the two trunks, named in a delay's
-        // words: it stays on the page, never folded with the stations beside it (maintainer, 2026-10-06).
+        // words: it stays on the page, never folded with the stations beside it (maintainer, 2026-10-06),
+        // and so does Chalk Farm, where the delay starts (maintainer, 2026-10-18).
         val map = LineMap.of(northern(), alertText = "Minor delays between Chalk Farm and Camden Town.")!!
         assertEquals(LineMap.Level.WARNING, map.row("Camden Town").level)
         val labels = map.folded(emptySet()).labels()
+        assertEquals(listOf("Edgware", "[Burnt Oak to Belsize Park]", "Chalk Farm"), labels.subList(0, 3))
         assertTrue("Camden Town" in labels)
-        assertTrue("Chalk Farm" !in labels)
-        assertEquals("[8 WARNING]", labels[labels.indexOf("Edgware") + 1])
     }
 
     @Test
-    fun `an end of the line an alert names still shows, the stations along it folding`() {
+    fun `an end of the line an alert names still shows, the stations inside its stretch folding`() {
         // The Metropolitan line, trimmed at Baker Street, with a delay between Harrow-on-the-Hill and
         // Uxbridge: Uxbridge, the branch's end, stays on the page; the stations along it fold, saying
         // how bad (maintainer, 2026-10-06).
@@ -658,46 +678,54 @@ class LineMapTest {
         assertEquals(LineMap.Level.WARNING, map.row("Uxbridge").level)
         val labels = map.folded(emptySet()).labels()
         assertTrue(labels.containsAll(listOf("Amersham", "Chesham", "Watford", "Uxbridge")))
-        // The stations along the branch fold behind it, naming none of them.
-        assertTrue(labels.none { "Ickenham" in it || "Hillingdon" in it || "West Harrow" in it })
-        assertTrue(labels[labels.indexOf("Uxbridge") + 1].endsWith(" WARNING]"))
+        // Ickenham, the fault's own station, shows with its ⚠; the stations only inside the delay's stretch
+        // fold either side of it, saying how bad (Codex, #949).
+        assertFalse(map.row("Hillingdon").named)
+        assertTrue(map.row("Ickenham").named)
+        assertEquals(listOf("Uxbridge", "Hillingdon", "Ickenham"), labels.subList(labels.indexOf("Uxbridge"), labels.indexOf("Uxbridge") + 3))
+        assertTrue(labels[labels.indexOf("Ickenham") + 1].endsWith(" WARNING]"))
+        assertTrue(labels.none { "West Harrow" in it })
     }
 
     @Test
-    fun `a closure off the rider's route folds with the plain stations around it, naming none`() {
-        // A made-up closure between Angel and Moorgate, on no ride: Angel and Moorgate, open, fold with
-        // it and the rest of the Bank branch's run, so no run's name says where it is (maintainer,
-        // 2026-10-06).
-        val shut = ids("Angel", "Old Street", "Moorgate")
+    fun `a closure off the rider's route shows where it starts and ends, folding what's inside`() {
+        // A made-up closure between Angel and Bank, on no ride: Angel and Bank, open, show where it starts
+        // and ends; Old Street and Moorgate, shut, fold between them, saying so (maintainer, 2026-10-18).
+        val shut = ids("Angel", "Old Street", "Moorgate", "Bank")
         val map = LineMap.of(northern(), closures = listOf(shut, shut.asReversed()))!!
         assertTrue(map.row("Angel").besideClosure)
         val items = map.folded(emptySet())
         val fold = items.filterIsInstance<LineMap.Item.Fold>().single { it.level != null }
         assertEquals(LineMap.Level.CLOSURE, fold.level)
+        assertEquals(2, fold.count)
         assertTrue(fold.unnamed)
         assertTrue("its track drawn closed", fold.rails.single { it.folded }.closed)
         // Its no-entry sign goes on that closed rail; a fold with no closure draws none.
         assertTrue(fold.signRail === fold.rails.single { it.folded })
         assertTrue(items.filterIsInstance<LineMap.Item.Fold>().filter { it.level == null }.all { it.signRail == null })
-        assertTrue(items.labels().none { "Angel" in it || "Moorgate" in it || "Euston" in it && it.startsWith("[") })
-        // The junctions either side stay on the page, as with good service.
-        assertTrue(items.labels().containsAll(listOf("Camden Town", "Kennington")))
+        val labels = items.labels()
+        assertEquals(
+            listOf("[Euston to King's Cross St. Pancras]", "Angel", "[2 CLOSURE]", "Bank", "[London Bridge to Elephant & Castle]"),
+            labels.subList(labels.indexOf("Angel") - 1, labels.indexOf("Angel") + 4),
+        )
         // A tap opens it in full.
         assertTrue("Old Street" in map.folded(setOf(fold.key)).labels())
     }
 
     @Test
-    fun `a closed track between two stations still served folds as a closure`() {
+    fun `a closed track between two stations still served shows both`() {
         // A made-up closure of the track between Old Street and Moorgate alone: both still served the
-        // other side, so neither is a station without service, but the fold still says so (Codex, #613).
+        // other side, both where it starts and ends, so both show, never folded into a run read as shut.
         val shut = ids("Old Street", "Moorgate")
         val map = LineMap.of(northern(), closures = listOf(shut, shut.asReversed()))!!
         assertTrue(map.row("Old Street").besideClosure)
         val items = map.folded(emptySet())
-        val fold = items.filterIsInstance<LineMap.Item.Fold>().single { it.level != null }
-        assertEquals(LineMap.Level.CLOSURE, fold.level)
-        assertTrue(fold.unnamed)
-        assertTrue(items.labels().none { "Old Street" in it || "Moorgate" in it })
+        assertTrue(items.filterIsInstance<LineMap.Item.Fold>().all { it.level == null })
+        val labels = items.labels()
+        assertEquals(
+            listOf("[Euston to Angel]", "Old Street", "Moorgate", "[Bank to Elephant & Castle]"),
+            labels.subList(labels.indexOf("Old Street") - 1, labels.indexOf("Old Street") + 3),
+        )
     }
 
     @Test
@@ -786,7 +814,7 @@ class LineMapTest {
     }
 
     @Test
-    fun `a closure on another branch where the ride only gets off folds as anywhere else`() {
+    fun `a closure on another branch where the ride only gets off shows as anywhere else`() {
         // A made-up closure up the Charing Cross branch from Camden Town, on a ride from Euston to Camden
         // Town by the Bank branch: the closed track isn't one the ride takes (Codex, #613).
         val shut = ids("Camden Town", "Mornington Crescent", "Euston")
@@ -796,10 +824,10 @@ class LineMapTest {
         assertFalse("nothing alerted on the ride", map.alerted)
         val labels = map.folded(emptySet()).labels()
         assertTrue("the line's ends and junctions as with good service", labels.containsAll(listOf("Edgware", "Camden Town", "Kennington")))
-        val fold = map.folded(emptySet()).filterIsInstance<LineMap.Item.Fold>().single { it.level != null }
-        assertEquals("Mornington Crescent folded, saying there's no service", LineMap.Level.CLOSURE, fold.level)
-        assertTrue(fold.unnamed)
-        assertTrue(labels.none { "Mornington Crescent" in it })
+        // Mornington Crescent, shut, shows between Camden Town and Euston, where the closure ends.
+        assertTrue(map.row("Mornington Crescent").unserved)
+        assertEquals("Euston", labels[labels.indexOf("Mornington Crescent") + 1])
+        assertTrue(map.folded(emptySet()).filterIsInstance<LineMap.Item.Fold>().all { it.level == null })
         // The same closure on the ride's own track, ridden by Mornington Crescent: shown in full.
         val through = LineMap.of(northern(), closures = listOf(shut, shut.asReversed()), rides = listOf(shut.asReversed()))!!
         assertTrue(through.alerted)
@@ -892,9 +920,9 @@ class LineMapTest {
         assertEquals(
             listOf(
                 "[Edgware · High Barnet · Mill Hill East]", "King's Cross St. Pancras",
-                // Between King's Cross and Bank, leading to no end of the line: its run, on one track,
-                // saying the closure runs on into it.
-                "[3 CLOSURE]", "Bank", "[Battersea Power Station · Morden]",
+                // Between King's Cross and Bank, leading to no end of the line: its runs, on one track,
+                // Angel showing where the closure ends.
+                "Angel", "[Old Street to Moorgate]", "Bank", "[Battersea Power Station · Morden]",
             ),
             map.folded(emptySet()).labels(),
         )
