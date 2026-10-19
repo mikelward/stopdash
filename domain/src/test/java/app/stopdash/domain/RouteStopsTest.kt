@@ -1103,4 +1103,83 @@ class RouteStopsTest {
         assertTrue(RouteStops.candidatePaths(route, "P2", "Hill", null, bus = true).isEmpty())
     }
 
+
+    // A station model of synthetic records around (51.5, -0.12): Hill's two rail records one station,
+    // its tube another.
+    private val hillModel = Hubs.of(
+        StationIndex(
+            listOf(
+                IndexedStation("910GHILL", "Hill", listOf("national-rail"), "HUBEXA", 51.500, -0.120,
+                    icsCode = "1009001", station = "1009001:rail", modelHub = "HUBEXA"),
+                IndexedStation("910GHILLLL", "Hill LL", listOf("national-rail"), "HUBEXA", 51.502, -0.120,
+                    icsCode = "1009001", station = "1009001:rail", modelHub = "HUBEXA"),
+                IndexedStation("940GZZLUHIL", "Hill", listOf("tube"), "HUBEXA", 51.501, -0.121,
+                    icsCode = "1009002", station = "1009002:tube", modelHub = "HUBEXA"),
+                IndexedStation("HUBEXA", "Hill", listOf("national-rail", "tube")),
+            ),
+            revision = "abc",
+        ),
+        BundledStops.read(java.io.BufferedReader(java.io.StringReader("# stopdash stops v2\tbounds=51.25,-0.65,51.75,0.4\trevision=abc\nL\t1\tbus\t1"))),
+    )!!
+
+    // TfL's own codes for the line: Hill's two records apart, its tube and an unbundled stop with the main one.
+    private val hillLine = LineSequence(
+        routes = listOf(LineRoute("Hill ↔ Gone", listOf("910GHILL", "910GHILLLL", "940GZZLUHIL", "910GGONE"))),
+        stopNames = mapOf("910GHILL" to "Hill", "910GHILLLL" to "Hill LL", "940GZZLUHIL" to "Hill", "910GGONE" to "Gone"),
+        stationCodes = mapOf("910GHILL" to "X", "910GHILLLL" to "Y", "940GZZLUHIL" to "X", "910GGONE" to "X"),
+    )
+
+    @Test
+    fun `a line's stations are the station model's, never its routes' own codes`() {
+        val placed = hillLine.withModelStations { id -> (hillModel.stationOf(id) as? Hubs.Membership.Of)?.id }
+        assertTrue(placed.sameStationId("910GHILL", "910GHILLLL"))
+        assertFalse(placed.sameStationId("910GHILL", "940GZZLUHIL"))
+        // A stop the model doesn't hold is a station of its own.
+        assertNull(placed.stationCodeOf("910GGONE"))
+        assertEquals(setOf("910GHILL", "910GHILLLL"), placed.stationIds(setOf("910GHILL")))
+    }
+
+    @Test
+    fun `a merged line takes its stations from the model as loaded, and is merged again when it loads`() = runTest {
+        var model: Hubs? = null
+        val repository = RouteStopsRepository(
+            CountingSource(hillLine, emptyList()),
+            stations = { emptyList() },
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
+            model = { model },
+        )
+        // No model yet: the routes' own codes stand.
+        val before = repository.load("hill", "")
+        assertTrue(before.sameStationId("910GHILL", "940GZZLUHIL"))
+        assertTrue(repository.cached("hill", "") === before)
+        // Loaded: the merge it held still stands for a peek, never dropped, until it's merged again by the model.
+        model = hillModel
+        assertTrue(repository.cached("hill", "") === before)
+        repository.remerge()
+        val after = checkNotNull(repository.cached("hill", ""))
+        assertTrue(after.sameStationId("910GHILL", "910GHILLLL"))
+        assertFalse(after.sameStationId("910GHILL", "940GZZLUHIL"))
+        // And a load hands out the same merge, not another.
+        assertTrue(repository.load("hill", "") === after)
+        // Merged by the model already: nothing to do again.
+        repository.remerge()
+        assertTrue(repository.cached("hill", "") === after)
+    }
+
+    @Test
+    fun `a merge the model loads during is merged by it before it's held for good`() = runTest {
+        // The model publishes between a merge reading it (none) and holding its result: the merge sees it
+        // when it checks again, so no later remerge has to have caught it.
+        var asks = 0
+        val repository = RouteStopsRepository(
+            CountingSource(hillLine, emptyList()),
+            stations = { emptyList() },
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
+            model = { if (asks++ == 0) null else hillModel },
+        )
+        val loaded = repository.load("hill", "")
+        assertTrue(loaded.sameStationId("910GHILL", "910GHILLLL"))
+        assertFalse(loaded.sameStationId("910GHILL", "940GZZLUHIL"))
+        assertTrue(repository.cached("hill", "") === loaded)
+    }
 }

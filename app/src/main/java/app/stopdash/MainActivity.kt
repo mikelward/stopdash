@@ -27,6 +27,7 @@ import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FavoriteShortcuts
 import app.stopdash.domain.FixedLocation
 import app.stopdash.domain.HubInfoCache
+import app.stopdash.domain.Hubs
 import app.stopdash.domain.JourneyAlertSchedule
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.Journeys
@@ -6498,9 +6499,18 @@ class MainActivity : ComponentActivity() {
                 // Places a station departures are listed under by an id its line's route doesn't
                 // call at (St Pancras's Thameslink platforms), wherever that id comes from.
                 stations = { StationIndexStore.load(context.applicationContext).stations },
+                // A station's ids as the station model files them, not each route's own codes.
+                model = { HubsStore.current() },
             ).also { repository ->
                 routeStopsInstance = repository
-                (context.applicationContext as? StopdashApp)?.applicationScope?.launch { repository.warm() }
+                (context.applicationContext as? StopdashApp)?.applicationScope?.let { scope ->
+                    scope.launch { repository.warm() }
+                    // Lines merged before the station model loaded take its stations once it has.
+                    scope.launch {
+                        HubsStore.state.first { it !is Hubs.State.Loading }
+                        repository.remerge()
+                    }
+                }
             }
         }
     }

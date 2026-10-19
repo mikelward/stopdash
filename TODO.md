@@ -854,8 +854,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 - [ ] Far ends, Direct, off-plan and passing a stop:
                     - [x] A Direct row's off stop: one station, or one bus stop's poles, by the model
                           (`Hubs.oneStop`), by interchange and name only while it isn't loaded.
-                    - [ ] Direct's own filter (`DirectTrips.filter` `byStation`), far ends, off-plan,
-                          passing a stop on the way.
+                    - [x] A line's stations, for Direct's own filter, far ends and rides
+                          (`LineSequence.stationIds`, `sameStationId`, `throughStation`): the model's
+                          (`RouteStopsRepository` `model`, `withModelStations`), never the routes'
+                          `icsId`; the routes' own codes only while it isn't loaded.
+                    - [ ] The name tests left: `RouteStops.sameStation` (Direct, rides, the route
+                          page), `OffPlan`'s name-only matches, and on the way's `sameStation` and
+                          `stationPlaces` (passing a stop).
                 - [x] Getting off at any of the trip on the way's `destinationIds` (Codex, #981): on
                       the last ride, the ride's end moves to the first of them the train calls at.
           - [ ] The `Unbundled` interchange's trip, planned to its looked-up children.
@@ -4785,6 +4790,14 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
       before implementation, per *Cost and reliability*.
 
 ## Decisions needing review
+
+- [ ] **A line's stations re-merged once the station model loads (autopilot, 2026-10-19; Codex, #995).**
+  `RouteStopsRepository` keeps a merge made before the model loaded and hands it out, then
+  `remerge()` (started once `HubsStore` stops loading) merges it again by the model; a merge in flight
+  as the model publishes asks for it again before it's held, so none is missed. *Alternative:* wait for
+  the model (bounded, as `HubsStore.ready` is) in `warm` before the first merge, so no merge ever
+  predates it, at the cost of up to 3 s more before a cold start's first route shows. **Reversible:**
+  `remerge`, `Merged.model` and the re-check loop in `merge`. **To confirm:** which the maintainer prefers.
 
 - [ ] **A platform the arrival ids don't hold counts as the station its code names, unchecked against
   the bundle's own listing** (autopilot, 2026-10-19; Codex on #986). `arrivalOf` reads only the trip's

@@ -142,6 +142,17 @@ data class LineSequence(
     }
 
     /**
+     * This sequence with each stop's station ([stationCodes]) as the station model files it ([stationOf]):
+     * one code for every id of one station, a stop it doesn't hold a station of its own (no code), never
+     * grouped by the route's `icsId` (dev-docs/station-model.md, phase 2). Bus poles have none, as before.
+     */
+    @WorkerThread
+    fun withModelStations(stationOf: (String) -> String?): LineSequence {
+        val ids = stopNames.keys + stationCodes.keys + routes.flatMap { it.stopIds }
+        return copy(stationCodes = ids.associateWith { stationOf(it).orEmpty() })
+    }
+
+    /**
      * This sequence knowing the [stations] (the bundled station index) that share an interchange
      * with one of its stops: each one's hub and name, for [callingAt]. A stop TfL routes the line
      * past is added this way, whatever row, saved snapshot or journey names it. What TfL's response
@@ -766,6 +777,9 @@ class RouteStopsRepository(
     private val stations: (() -> List<IndexedStation>)? = null,
     // Where the merging and placing above run ([Workers]).
     private val compute: CoroutineDispatcher = Workers.compute,
+    // The station model as loaded now (null while it isn't, or in a test): a merged sequence's stations
+    // are its, not the routes' own codes ([LineSequence.withModelStations]). Read on [compute].
+    private val model: () -> Hubs? = { null },
     // A station's fare zone and facilities, for its details (null: none looked up, as in a test).
     private val zones: StopZoneSource? = source as? StopZoneSource,
 ) {
@@ -777,7 +791,16 @@ class RouteStopsRepository(
     /** How many merged lines are held: a test's view of what [saveLocked] lets go of. */
     internal val mergedCount: Int get() = merged.size
 
-    private class Merged(val keys: List<String>, val parts: List<RouteStopsStore.Timed<LineSequence>>, val sequence: LineSequence) {
+    private class Merged(
+        val lineId: String,
+        val direction: String,
+        val keys: List<String>,
+        val parts: List<RouteStopsStore.Timed<LineSequence>>,
+        val sequence: LineSequence,
+        // The model its stations came from: a newer one (or the first, once loaded) merges it again
+        // ([remerge]); until then it's handed out as it is, never dropped.
+        val model: Hubs?,
+    ) {
         // Whether every entry this was merged from is still the one [cache] holds.
         fun heldIn(cache: Map<String, RouteStopsStore.Timed<LineSequence>>) = keys.indices.all { cache[keys[it]] === parts[it] }
     }
@@ -1009,8 +1032,22 @@ class RouteStopsRepository(
         if (parts.any { it.getOrNull()?.second == true } or unknownChanged.getAndSet(false)) save()
         parts.firstNotNullOfOrNull { it.exceptionOrNull() }?.let { throw it }
         merge(lineId, direction) ?: parts.map { it.getOrThrow().first }.reduce(LineSequence::plus)
-            .withStations(stationsByHub.orEmpty())
+            .withStations(stationsByHub.orEmpty()).byModel(model())
     }
+
+    /**
+     * Every line merged before the station model it now has ([model]) merged again by it, on [compute]:
+     * called once the model loads, so a line merged from the store before then (a cold start) takes the
+     * model's stations without waiting for a caller to load it again, and [cached] never drops it meanwhile.
+     */
+    suspend fun remerge(): Unit = withContext(compute) {
+        val hubs = model()
+        merged.values.toList().filter { it.model !== hubs }.forEach { merge(it.lineId, it.direction) }
+    }
+
+    // Its stations as [hubs] files them, or the routes' own codes while there's no model.
+    private fun LineSequence.byModel(hubs: Hubs?): LineSequence =
+        hubs?.let { model -> withModelStations { id -> (model.stationOf(id) as? Hubs.Membership.Of)?.id } } ?: this
 
     private fun mergedKey(lineId: String, direction: String) = "$lineId|${RouteStops.directionsFor(direction).joinToString(",")}"
 
@@ -1020,9 +1057,19 @@ class RouteStopsRepository(
         val byHub = stationsByHub ?: return null
         val keys = RouteStops.directionsFor(direction).map { "$lineId/$it" }
         val parts = keys.map { cache[it] ?: return null }
-        val sequence = parts.map { it.value }.reduce(LineSequence::plus).withStations(byHub)
-        merged[mergedKey(lineId, direction)] = Merged(keys, parts, sequence)
-        return sequence
+        val placed = parts.map { it.value }.reduce(LineSequence::plus).withStations(byHub)
+        // Held, then the model asked again: one published while this merged is the one it's merged by
+        // before returning, so a merge [remerge]'s snapshot missed (in flight as the model loaded) can't
+        // keep the routes' own codes for the process's life (Codex on #995). The model loads once, so
+        // this goes round at most twice.
+        var hubs = model()
+        while (true) {
+            val sequence = placed.byModel(hubs)
+            merged[mergedKey(lineId, direction)] = Merged(lineId, direction, keys, parts, sequence, hubs)
+            val now = model()
+            if (now === hubs) return sequence
+            hubs = now
+        }
     }
 
     /**
