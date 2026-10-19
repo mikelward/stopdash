@@ -343,13 +343,21 @@ suspend fun JourneyPlanner.journeys(fromId: String, to: TripDestination): List<T
  * would take that one, getting off the first time (maintainer, 2026-09-27). A detour nothing beats
  * stays, since it may be the only way the plan found there. [stopOf] names each id's stop, so a
  * call under one pole or its `490G…` stop area and an end at the sibling pole are the same stop;
- * an id it doesn't name is its own.
+ * an id it doesn't name is its own. A platform neither holds counts as its station's record
+ * ([arrivalOf]), so one TfL added after the bundle was built still arrives and compares as its station.
  */
 fun withoutDetours(
     routes: List<TripRoute>,
     destinations: Set<String>,
     stopOf: Map<String, String> = emptyMap(),
 ): List<TripRoute> {
+    val ids = routes.flatMap { route -> route.legs.flatMap { listOf(it.fromId, it.toId) + it.path } }
+    val platforms = ids.filter { it.isNotBlank() && it !in destinations }
+        .mapNotNull { id -> platformRecord(id)?.takeIf { it in destinations }?.let { id to (stopOf[it] ?: it) } }.toMap()
+    return keptOf(routes, destinations + platforms.keys, stopOf + platforms)
+}
+
+private fun keptOf(routes: List<TripRoute>, destinations: Set<String>, stopOf: Map<String, String>): List<TripRoute> {
     fun stop(id: String) = stopOf[id] ?: id
     val passed = routes.associateWith { route -> route.passedAt(destinations, stopOf).mapTo(HashSet()) { stop(it) } }
     // Whether [other] gets there before [route], or with it: a route that is a detour itself still

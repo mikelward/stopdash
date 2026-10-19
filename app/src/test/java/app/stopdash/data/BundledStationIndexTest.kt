@@ -36,6 +36,19 @@ class BundledStationIndexTest {
     }
 
     @Test
+    fun `no listed platform names one station by its code and is listed under another`() {
+        // A trip's arrival ids count a platform they don't hold as the station its code names
+        // (app.stopdash.domain.arrivalOf): sound only while every listed platform whose code names a
+        // listed station is that station's alone, as the model's own prefix step assumes.
+        val index = StationIndexStore.parse(asset.readText())
+        val ids = index.stations.mapTo(HashSet()) { it.id }
+        val coded = index.stations.flatMap { station -> station.platforms.map { it to station.id } }
+            .mapNotNull { (platform, owner) -> app.stopdash.domain.platformRecord(platform)?.takeIf { it in ids }?.let { Triple(platform, it, owner) } }
+        assertTrue("no coded platforms found: the check checks nothing", coded.isNotEmpty())
+        assertEquals(emptyList<Triple<String, String, String>>(), coded.filter { (_, record, owner) -> record != owner })
+    }
+
+    @Test
     fun `a terminus names the far end its arriving trains leave for`() {
         val index = StationIndexStore.parse(asset.readText())
         assertEquals(

@@ -203,6 +203,19 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `a platform the arrival ids don't hold is its station's to get off at on the way`() {
+        // B's record is the destination's; the train calls at a platform of it TfL added since the bundle.
+        val toStation = ActiveTrip(
+            TripRoute(listOf(ride.copy(toId = "940GZZLUCCC", path = listOf("940GZZLUBBB", "940GZZLUCCC")))), "C", startedAt = t0,
+            destinationIds = mapOf("940GZZLUBBB" to "S", "940GZZLUCCC" to "S"),
+        )
+        val (moved, progress) = OnTheWay.advance(OnTheWay.follow(toStation, train("8", 5)), listOf(call("9400ZZLUBBB", 9), call("940GZZLUCCC", 14)), at(6))
+        assertEquals("9400ZZLUBBB", moved.leg?.toId)
+        assertEquals(listOf("940GZZLUBBB"), moved.leg?.path)
+        assertEquals(at(9), (progress as TripProgress.Riding).getOffAt)
+    }
+
+    @Test
     fun `a bus's path of stop areas is cut at the destination's earlier stop, before or beyond the predictions`() {
         val bus = TripLeg("bus", "9", "9", "490A1", "A", "490C1", "C", at(5), at(15), path = listOf("490GB", "490GC"))
         // Each pole held under its stop's area, as the model gives a stop's poles and areas.

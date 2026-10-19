@@ -923,14 +923,17 @@ object OnTheWay {
     // call (or the leg's own end, [name]) names its station, told by its name (Codex, #982). -1 when it
     // isn't on it.
     private fun pathIndex(trip: ActiveTrip, leg: TripLeg, id: String, call: VehicleCall?, name: String? = call?.stopName): Int {
-        val stop = trip.destinationIds[id]
+        val stop = trip.destinationIds.arrivalOf(id)
         return leg.path.indices.indexOfFirst { i ->
             val at = leg.path[i]
-            at == id || (call != null && (at == call.stopId || at in call.stationIds)) ||
-                (stop != null && trip.destinationIds[at] == stop &&
+            samePlace(at, id) || (call != null && (samePlace(at, call.stopId) || at in call.stationIds)) ||
+                (stop != null && trip.destinationIds.arrivalOf(at) == stop &&
                     (at.startsWith(STOP_AREA_PREFIX) || (!name.isNullOrBlank() && sameStopName(leg.pathNames.getOrNull(i), name))))
         }
     }
+
+    // Whether [a] and [b] name one stop: the same id, or a platform and the station record it names ([platformRecord]).
+    private fun samePlace(a: String, b: String): Boolean = a == b || platformRecord(a) == b || platformRecord(b) == a
 
     // Whether [call] is at [leg]'s end by id: its own where it has one, else (a National Rail board's
     // call) its station's.
@@ -940,7 +943,7 @@ object OnTheWay {
     // Whether [leg], [trip]'s last ride, has had its end moved to one of the destination's stops
     // ([endedAtDestination]).
     private fun movedEnd(trip: ActiveTrip, leg: TripLeg): Boolean =
-        trip.plannedLegs != null && lastRide(trip) && leg.toId in trip.destinationIds
+        trip.plannedLegs != null && lastRide(trip) && trip.destinationIds.arrivalOf(leg.toId) != null
 
     // [trip] with its route as planned, its last ride's end moved back ([ActiveTrip.plannedLegs]).
     private fun asPlanned(trip: ActiveTrip): ActiveTrip =
@@ -953,9 +956,10 @@ object OnTheWay {
     // Whether the leg [trip] is on is its last ride: only walks, if anything, follow it.
     private fun lastRide(trip: ActiveTrip): Boolean = trip.route.legs.drop(trip.legIndex + 1).all { it.isWalk }
 
-    // The id of [trip]'s destination [call] is at, by its own id or a National Rail call's station's; null for none.
+    // The id of [trip]'s destination [call] is at, by its own id or a National Rail call's station's, a
+    // platform the bundle doesn't hold counting as its station's ([arrivalOf]); null for none.
     private fun destinationIdOf(trip: ActiveTrip, call: VehicleCall): String? =
-        call.stopId.takeIf { it in trip.destinationIds } ?: call.stationIds.firstOrNull { it in trip.destinationIds }
+        call.stopId.takeIf { trip.destinationIds.arrivalOf(it) != null } ?: call.stationIds.firstOrNull { trip.destinationIds.arrivalOf(it) != null }
 
     /**
      * When the change onto [trip]'s ride ends, while the rider is still making it: a ride straight

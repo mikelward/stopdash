@@ -2426,7 +2426,8 @@ didn't lift the lean. An ordinary pick is planned to as picked, the Planner walk
 stretch itself where a neighboring stop serves the trip better, so a same-named stand the search
 folded into the result is reached on foot rather than lost. It is still planned to once, but it is
 reached at the level it was picked at, from the station model: a station at any of its records,
-platforms and own bus stops, a bus stop at any of its poles or its stop area. So a route riding on
+platforms and own bus stops, a bus stop at any of its poles or its stop area. A platform TfL lists
+after the app's station data was built counts as its station. So a route riding on
 past St Pancras's low level is dropped for one getting off there no later; never one getting off at
 King's Cross or its Underground, the rest of the interchange. A trip on the way keeps those ids.
 On its last ride, once the rider is on a train seen due first at another of them, the ride ends

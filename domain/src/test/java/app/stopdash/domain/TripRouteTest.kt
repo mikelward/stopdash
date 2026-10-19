@@ -144,6 +144,22 @@ class TripRouteTest {
     }
 
     @Test
+    fun `a platform the arrival ids don't hold is its station's to get off at`() {
+        fun ride(line: String, from: String, to: String, path: List<String>, arrives: Long) =
+            ride(line, from, to, path).copy(arrival = t.plusSeconds(arrives * 60))
+        // The detour calls at a platform of record R, one TfL added since the bundle (its access area, `9400…`), and rides on to E;
+        // the direct ride gets off at that platform sooner.
+        val complex = setOf("940GZZLURRR", "E")
+        val stopOf = mapOf("940GZZLURRR" to "S", "E" to "S")
+        val detour = TripRoute(listOf(ride("red", "A", "F", listOf("9400ZZLURRR", "F"), 20), ride("bus", "F", "E", listOf("E"), 40)))
+        val direct = TripRoute(listOf(ride("red", "A", "9400ZZLURRR", listOf("9400ZZLURRR"), 30)))
+        assertEquals(listOf(direct), withoutDetours(listOf(detour, direct), complex, stopOf))
+        // Another record's platform isn't the destination's: the detour stays.
+        val elsewhere = TripRoute(listOf(ride("red", "A", "9400ZZLUQQQ", listOf("9400ZZLUQQQ"), 30)))
+        assertEquals(listOf(detour, elsewhere), withoutDetours(listOf(detour, elsewhere), complex, stopOf))
+    }
+
+    @Test
     fun `a ride through one destination stop to another passed the first`() {
         fun ride(line: String, from: String, to: String, path: List<String>, arrives: Long) =
             ride(line, from, to, path).copy(arrival = t.plusSeconds(arrives * 60))

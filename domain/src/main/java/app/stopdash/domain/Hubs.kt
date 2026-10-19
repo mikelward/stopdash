@@ -84,15 +84,8 @@ class Hubs private constructor(
         if (id in hubOfStation) return Membership.Of(id)
         platformStation(id)?.let { record -> stationOfRecord[record]?.let { return Membership.Of(it) } }
         // The prefix step again, over records the index leaves out but stops.tsv holds.
-        namedRecord(id)?.let { record -> stationOfRecord[record]?.let { return Membership.Of(it) } }
+        platformRecord(id)?.let { record -> stationOfRecord[record]?.let { return Membership.Of(it) } }
         return Membership.Unbundled
-    }
-
-    // The station record a platform's id names, as NaPTAN names an access area by its station's code.
-    private fun namedRecord(platform: String): String? = when {
-        platform.startsWith("9100") -> "910G" + platform.removePrefix("9100")
-        platform.startsWith("9400") -> "940G" + platform.removePrefix("9400")
-        else -> null
     }
 
     /** The bus stop [id] belongs to: a pole's, a stop's own id, or a TfL stop area's (whole, or [Membership.Split]). */
