@@ -849,10 +849,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 - [ ] A platform the bundle doesn't hold, arriving through `Hubs.stationOf`'s prefix
                       step; the bus target a station's own stop adds; getting off, far ends, Direct,
                       off-plan and passing a stop.
-                - [ ] Getting off at any of the trip on the way's `destinationIds` (Codex, #981):
-                      `OnTheWay.arrivesAt` reads only the leg's planned end and `vehicleOffId`, so a
-                      kept detour through another of the station's records rides on to its planned
-                      end. The ids are saved with the trip from #981 on, read by nothing yet.
+                - [x] Getting off at any of the trip on the way's `destinationIds` (Codex, #981): on
+                      the last ride, the ride's end moves to the first of them the train calls at.
           - [ ] The `Unbundled` interchange's trip, planned to its looked-up children.
         - Favorite rides stay (maintainer, 2026-10-16), so phase 3 builds on them. Nothing is left
           open.
@@ -4772,6 +4770,20 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
       before implementation, per *Cost and reliability*.
 
 ## Decisions needing review
+
+- [ ] **A moved end waits for the rider on board, and comes back when the train is let go**
+  (autopilot, 2026-10-19; #982). The last ride's end moves to the first of the destination's stops
+  the followed train reaches only once the rider is on it and the train keeps to the ride there.
+  The route as planned is kept and put back when another train is followed, the rider is seen left
+  behind, a step is taken, or they're placed on board by position with no train (a later train
+  re-derives it). Alternative: move it as soon as a waited-for train shows the stop, or keep it
+  through riding by position. Reversible: one function (`OnTheWay.endedAtDestination`) and the
+  `asPlanned` calls; the saved field is versioned (3).
+- [ ] **The trip names the moved stop, and Next after it arrives** (autopilot, 2026-10-19; #982).
+  With the end moved, the Riding step, its alert and the notification name the earlier stop (its
+  TfL name, "London St Pancras International LL" style), and the walks planned on from the old end
+  are gone from the steps. Alternative: keep naming the station as picked. Reversible: the name is
+  the moved leg's `toName`.
 
 - [ ] **Departures and on the way's From keep a bare id** (autopilot, 2026-10-19; station model phase
   2). `dev-docs/station-model.md` lists `departuresStationId` and `onTheWayFrom` among the picks to

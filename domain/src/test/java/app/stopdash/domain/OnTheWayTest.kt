@@ -95,6 +95,145 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `on the last ride the rider gets off at another of the destination's ids the train reaches first`() {
+        // The station picked as C is also B, another of its records: a kept route riding on through B to C.
+        val toStation = ActiveTrip(TripRoute(listOf(ride)), "C", startedAt = t0, destinationIds = mapOf("C" to "S", "B" to "S"))
+        val following = OnTheWay.follow(toStation, train("8", 5))
+        val (_, progress) = OnTheWay.advance(following, listOf(call("B", 9), call("C", 14)), at(6))
+        progress as TripProgress.Riding
+        assertEquals(1, progress.stopsLeft)
+        assertEquals(at(9), progress.getOffAt)
+        // Once counting down to B, the train gone from B with C still ahead is the rider off at B, not a count on to C.
+        val (atB, _) = OnTheWay.advance(following, listOf(call("B", 9), call("C", 14)), at(6))
+        // The ride ends there, keyed still by the Planner's, with the route as planned kept.
+        assertEquals("B", atB.leg?.toId)
+        assertEquals("C", atB.leg?.plannedToId)
+        assertEquals(toStation.route.legs, atB.plannedLegs)
+        val (_, off) = OnTheWay.advance(atB, listOf(call("C", 14)), at(10))
+        assertEquals(TripProgress.Arrived, off)
+        // Without the destination's other ids, as a trip kept before them: on to the planned end.
+        val (_, planned) = OnTheWay.advance(OnTheWay.follow(toStation.copy(destinationIds = emptyMap()), train("8", 5)), listOf(call("B", 9), call("C", 14)), at(6))
+        assertEquals(at(14), (planned as TripProgress.Riding).getOffAt)
+    }
+
+    @Test
+    fun `off at another of the destination's ids, the walk planned on from the ride's end is skipped`() {
+        val toStation = ActiveTrip(TripRoute(listOf(ride, walk)), "D", startedAt = t0, destinationIds = mapOf("C" to "S", "B" to "S"))
+        val (riding, _) = OnTheWay.advance(OnTheWay.follow(toStation, train("8", 5)), listOf(call("B", 9), call("C", 14)), at(6))
+        assertEquals(listOf("B"), riding.route.legs.map { it.toId })
+        val (done, off) = OnTheWay.advance(riding, listOf(call("C", 14)), at(10))
+        assertEquals(TripProgress.Arrived, off)
+        assertNull(done.leg)
+    }
+
+    @Test
+    fun `the destination's stop counted down to is kept even where it also passes for the planned end`() {
+        // B's call names C among its station's ids, so it passes for the planned end too; C still follows.
+        val toStation = ActiveTrip(TripRoute(listOf(ride)), "C", startedAt = t0, destinationIds = mapOf("C" to "S", "B" to "S"))
+        val atB = VehicleCall("B", "B", null, at(9), setOf("B", "C"))
+        val (riding, _) = OnTheWay.advance(OnTheWay.follow(toStation, train("8", 5)), listOf(atB, call("C", 14)), at(6))
+        assertEquals("B", OnTheWay.ridden(riding)?.toId)
+        // Gone from B with C still ahead: off at B, not a count on to C.
+        assertEquals(TripProgress.Arrived, OnTheWay.advance(riding, listOf(call("C", 14)), at(10)).second)
+    }
+
+    @Test
+    fun `the end's other pole, kept as where the rider gets off, doesn't hide an earlier destination stop`() {
+        // A bus found at C2, the planned end C's other pole, and due first at B: both the destination's.
+        val toStation = ActiveTrip(TripRoute(listOf(ride)), "C", startedAt = t0, destinationIds = mapOf("C" to "S", "C2" to "S", "B" to "S"))
+        val atPole = OnTheWay.follow(toStation, train("8", 5)).copy(vehicleOffId = "C2")
+        val (riding, progress) = OnTheWay.advance(atPole, listOf(call("B", 9), call("C2", 14)), at(6))
+        assertEquals("B", OnTheWay.ridden(riding)?.toId)
+        assertEquals(at(9), (progress as TripProgress.Riding).getOffAt)
+    }
+
+    @Test
+    fun `the route as planned comes back when the train the end moved for is let go`() {
+        val toStation = ActiveTrip(TripRoute(listOf(ride, walk)), "D", startedAt = t0, destinationIds = mapOf("C" to "S", "B" to "S"))
+        val (moved, _) = OnTheWay.advance(OnTheWay.follow(toStation, train("8", 5)), listOf(call("B", 9), call("C", 14)), at(6))
+        assertEquals(1, moved.route.legs.size)
+        // Another train followed, a step taken back, or the rider seen left behind: from the plan again.
+        assertEquals(toStation.route, OnTheWay.follow(moved, train("9", 8)).route)
+        assertEquals(toStation.route, OnTheWay.atStep(moved, OnTheWay.Step(0), at(7)).route)
+        // The same train again keeps it.
+        assertEquals(moved.route, OnTheWay.follow(moved, train("8", 5)).route)
+    }
+
+    @Test
+    fun `a train leaving the ride before the destination's other stop doesn't move the end`() {
+        // Off the leg at Y before B: a diversion, so the ride is lost and the plan's end stands.
+        val toStation = ActiveTrip(TripRoute(listOf(ride)), "C", startedAt = t0, destinationIds = mapOf("C" to "S", "B" to "S"))
+        val (lost, progress) = OnTheWay.advance(OnTheWay.follow(toStation, train("8", 5)), listOf(call("Y", 8), call("B", 9), call("C", 14)), at(6))
+        assertTrue(progress is TripProgress.Lost)
+        assertEquals("C", OnTheWay.ridden(lost)?.toId)
+    }
+
+    @Test
+    fun `the planned end, named by another of the destination's ids, is still where the rider gets off`() {
+        // TfL names C's stop by C2, another id of the same station: it's the end, under that id.
+        val toStation = ActiveTrip(TripRoute(listOf(ride)), "C", startedAt = t0, destinationIds = mapOf("C" to "S", "C2" to "S"))
+        val (riding, progress) = OnTheWay.advance(OnTheWay.follow(toStation, train("8", 5)), listOf(call("B", 9), VehicleCall("C2", "C", null, at(14))), at(6))
+        assertEquals(at(14), (progress as TripProgress.Riding).getOffAt)
+        assertEquals("C2", OnTheWay.ridden(riding)?.toId)
+    }
+
+    @Test
+    fun `a path naming a platform where the call names its station is cut there`() {
+        // The path has B's platform P; TfL's call is B's station record R. Both are the destination's.
+        val toStation = ActiveTrip(
+            TripRoute(listOf(ride.copy(path = listOf("P", "C"), pathNames = listOf("Bee", "C")))), "C", startedAt = t0,
+            destinationIds = mapOf("P" to "S", "R" to "S", "C" to "S"),
+        )
+        val following = OnTheWay.follow(toStation, train("8", 5))
+        val (atR, _) = OnTheWay.advance(following, listOf(VehicleCall("R", "Bee", null, at(9)), call("C", 14)), at(6))
+        assertEquals(listOf("P"), OnTheWay.ridden(atR)?.path)
+        // Gone from R with C still ahead: off, not on to C.
+        assertEquals(TripProgress.Arrived, OnTheWay.advance(atR, listOf(call("C", 14)), at(10)).second)
+    }
+
+    @Test
+    fun `the planned end beyond the predictions is found on a path naming its platform`() {
+        // The end is C, a record; the path names its platform CP. Only B, earlier, is predicted yet.
+        val toStation = ActiveTrip(
+            TripRoute(listOf(ride.copy(path = listOf("B", "CP"), pathNames = listOf("B", "C")))), "C", startedAt = t0,
+            destinationIds = mapOf("B" to "S", "C" to "S", "CP" to "S"),
+        )
+        val (moved, _) = OnTheWay.advance(OnTheWay.follow(toStation, train("8", 5)), listOf(call("B", 9)), at(6))
+        assertEquals("B", moved.leg?.toId)
+    }
+
+    @Test
+    fun `a bus's path of stop areas is cut at the destination's earlier stop, before or beyond the predictions`() {
+        val bus = TripLeg("bus", "9", "9", "490A1", "A", "490C1", "C", at(5), at(15), path = listOf("490GB", "490GC"))
+        // Each pole held under its stop's area, as the model gives a stop's poles and areas.
+        val ids = mapOf("490B1" to "490GB", "490GB" to "490GB", "490C1" to "490GC", "490GC" to "490GC")
+        val toStop = ActiveTrip(TripRoute(listOf(bus)), "C", startedAt = t0, destinationIds = ids)
+        val following = OnTheWay.follow(toStop, train("8", 5))
+        val (both, _) = OnTheWay.advance(following, listOf(call("490B1", 9), call("490C1", 14)), at(6))
+        assertEquals(listOf("490GB"), OnTheWay.ridden(both)?.path)
+        // C beyond what TfL predicts: B is still before it on the path.
+        val (beyond, _) = OnTheWay.advance(following, listOf(call("490B1", 9)), at(6))
+        assertEquals("490B1", OnTheWay.ridden(beyond)?.toId)
+    }
+
+    @Test
+    fun `a train due first at another of the destination's stops leaves the planned end until boarded`() {
+        // The train may be missed or let go, and the next may not call at B: C and the walk on stay.
+        val toStation = ActiveTrip(TripRoute(listOf(ride, walk)), "D", startedAt = t0, destinationIds = mapOf("C" to "S", "B" to "S"))
+        val (waiting, progress) = OnTheWay.advance(OnTheWay.follow(toStation, train("8", 5)), listOf(call("A", 5), call("B", 9), call("C", 14)), at(3))
+        assertTrue(progress is TripProgress.Waiting)
+        assertEquals(toStation.route, waiting.route)
+    }
+
+    @Test
+    fun `before the last ride a call at one of the destination's ids is only a stop on the way`() {
+        // The first ride passes B, another id of the destination, on its way to the change at C.
+        val changing = trip.copy(destinationIds = mapOf("E" to "S", "B" to "S"))
+        val (_, progress) = OnTheWay.advance(OnTheWay.follow(changing, train("8", 5)), listOf(call("B", 9), call("C", 14)), at(6))
+        assertEquals(at(14), (progress as TripProgress.Riding).getOffAt)
+    }
+
+    @Test
     fun `get off soon from one stop out, or two minutes, and said once`() {
         val following = OnTheWay.follow(trip, train("8", 5)).copy(boarded = true)
         val (oneStop, lastStop) = OnTheWay.advance(following, listOf(call("C", 14)), at(10))

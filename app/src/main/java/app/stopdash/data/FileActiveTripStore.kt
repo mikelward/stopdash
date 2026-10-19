@@ -349,6 +349,9 @@ private data class PersistedActiveTrip(
     val pastAtName: String = "",
     val offLeg: PersistedTripLeg? = null,
     val offAt: String? = null,
+    // The route's legs as planned while the last ride's end is moved, from version 3. Absent with
+    // nothing moved, or from a trip kept before it was.
+    val plannedLegs: List<PersistedTripLeg>? = null,
 ) {
     fun toTrip() = ActiveTrip(
         route = TripRoute(legs.map { it.toLeg() }),
@@ -389,14 +392,17 @@ private data class PersistedActiveTrip(
         pastAtName = pastAtName,
         offLeg = offLeg?.toLeg(),
         offAt = offAt?.let(Instant::parse),
+        plannedLegs = plannedLegs?.map { it.toLeg() },
     )
 
     companion object {
         /**
          * The current on-disk format. Bump when a field an older build would drop or misread is added: 2
-         * keeps the destination's level, which a build before it would drop on its next write.
+         * keeps the destination's level, which a build before it would drop on its next write; 3 the
+         * route as planned while the last ride's end is moved, without which an older build would keep
+         * the moved end for good.
          */
-        const val CURRENT_VERSION = 2
+        const val CURRENT_VERSION = 3
 
         fun of(trip: ActiveTrip) = PersistedActiveTrip(
             version = CURRENT_VERSION,
@@ -437,6 +443,7 @@ private data class PersistedActiveTrip(
             pastAtName = trip.pastAtName,
             offLeg = trip.offLeg?.let { PersistedTripLeg.of(it) },
             offAt = trip.offAt?.toString(),
+            plannedLegs = trip.plannedLegs?.map { PersistedTripLeg.of(it) },
         )
     }
 }

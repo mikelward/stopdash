@@ -109,6 +109,10 @@ data class ActiveTrip(
     // When the rider got off that ride: kept as it happened, as a later leg's start can be moved (a tap,
     // a walk seen done early), so how long since isn't worked back from it ([pastStop]; Codex, #635).
     val offAt: Instant? = null,
+    // The route's legs as planned, while the last ride's end is moved to a stop of the destination its
+    // train reaches first ([OnTheWay.endedAtDestination]): put back when that train is let go, so the
+    // next starts from the planned end and its walks again (Codex, #982). Null while nothing is moved.
+    val plannedLegs: List<TripLeg>? = null,
 ) {
     /** The leg the rider is on, or null once they've arrived. */
     val leg: TripLeg? get() = route.legs.getOrNull(legIndex)
@@ -708,8 +712,9 @@ object OnTheWay {
      * line runs it ([lineOf]), where that's another of the ride's lines than the Planner's.
      */
     fun follow(trip: ActiveTrip, train: Departure, on: TripLeg? = null): ActiveTrip =
-        // On board already by the rider's word ([atStep]), they're on this train: they stay so.
-        trip.copy(
+        // On board already by the rider's word ([atStep]), they're on this train: they stay so. Another
+        // train starts from the plan's end ([ActiveTrip.plannedLegs]).
+        (if (train.vehicleId == trip.vehicleId) trip else asPlanned(trip)).copy(
             vehicleId = train.vehicleId, vehicleLeg = on?.takeIf { it != trip.leg }, vehicleOffId = "", boardsAt = train.expectedArrival, boarded = trip.boarded,
             boardedAt = trip.boardedAt.takeIf { trip.boarded }, dueOffAt = null, heldFrom = null,
         )
@@ -808,6 +813,8 @@ object OnTheWay {
                 return trip.copy(boardsAt = due, heldFrom = heldFrom) to TripProgress.Waiting(leg, due, followedLineName(trip))
             }
         }
+        // On board and due first at another of the destination's stops: the ride ends there.
+        endedAtDestination(trip, on, calls)?.let { return advanceAlong(it, calls, now, atBoarding) }
         val off = calls.indexOfFirst { arrivesAt(trip, on, it) }
         // The stop again a lap later, after the rider was seen due there by now: they got off. A lap
         // is told from a delay by order, not time: the next lap reaches the stop only after coming
@@ -851,8 +858,104 @@ object OnTheWay {
 
     // Whether [call] is where [trip]'s rider gets off [leg]: the stop the Planner named, or the other
     // pole of its pair that the followed train was found calling at ([ActiveTrip.vehicleOffId]).
+    // Once the end is moved to one of the destination's stops ([endedAtDestination]), another of them
+    // never stands in for it by name.
     private fun arrivesAt(trip: ActiveTrip, leg: TripLeg, call: VehicleCall): Boolean =
-        callsTo(call, leg) || (trip.vehicleOffId.isNotEmpty() && call.stopId == trip.vehicleOffId)
+        (callsTo(call, leg) && !elsewhereInDestination(trip, leg, call)) ||
+            (trip.vehicleOffId.isNotEmpty() && call.stopId == trip.vehicleOffId)
+
+    /**
+     * [trip] with its last ride ending where its followed train's calls [ride] (those ahead, once on
+     * board) first reach one of the destination's stops ([ActiveTrip.destinationIds]): a route kept
+     * riding on past another of the station's records gets off there (Codex, #981). The end moves
+     * there, as a bus's does to the pole its route uses ([onPoles]), and the walks after it go, since
+     * they set off from the old end: so every step, Next and the stop named read where the rider now
+     * gets off (maintainer, 2026-10-19). The route as planned is kept ([ActiveTrip.plannedLegs]) and put
+     * back ([asPlanned]) when that train is let go: another followed, the rider seen left behind, or a
+     * step taken (Codex, #982). Null when there's no such stop before the end, the train leaves the
+     * ride on its way there, or the ride isn't the last.
+     */
+    private fun endedAtDestination(trip: ActiveTrip, on: TripLeg, ride: List<VehicleCall>): ActiveTrip? {
+        if (trip.destinationIds.isEmpty() || !lastRide(trip)) return null
+        val end = ride.indexOfFirst { arrivesAt(trip, on, it) }
+        // The end itself, matched by name and known to the destination by another id, moves to that id.
+        val at = ride.indexOfFirst {
+            destinationIdOf(trip, it) != null && !callsFrom(it, on) && !atEnd(on, it) &&
+                (trip.vehicleOffId.isEmpty() || it.stopId != trip.vehicleOffId)
+        }
+        if (at < 0 || (end in 0 until at)) return null
+        val call = ride[at]
+        val id = destinationIdOf(trip, call) ?: return null
+        if (!keepsToLeg(on, ride.take(at))) return null
+        // The end not among the calls, gone by or still beyond them: it only moves back along the ride's
+        // path, never on past an end already moved, so both have to be on it.
+        if (end < 0) {
+            val endAt = pathIndex(trip, on, on.toId, null, on.toName)
+            val callAt = pathIndex(trip, on, id, call)
+            if (endAt < 0 || callAt !in 0 until endAt) return null
+        }
+        val planned = trip.leg ?: return null
+        return trip.copy(
+            route = trip.route.copy(legs = trip.route.legs.take(trip.legIndex) + endedAt(trip, planned, id, call)),
+            vehicleLeg = trip.vehicleLeg?.let { endedAt(trip, it, id, call) }, vehicleOffId = "",
+            plannedLegs = trip.plannedLegs ?: trip.route.legs,
+        )
+    }
+
+    // [leg] ending at the destination's stop [id], where [call] is: its path cut there, keyed still by
+    // the stop the Planner named ([TripLeg.plannedToId]). Where it is, its pair and the change after it
+    // were the planned end's, so they go.
+    private fun endedAt(trip: ActiveTrip, leg: TripLeg, id: String, call: VehicleCall): TripLeg {
+        val cut = pathIndex(trip, leg, id, call)
+        return leg.copy(
+            toId = id, toName = call.stopName.ifBlank { leg.toName },
+            arrival = call.expected.takeIf { it.isAfter(leg.departure) } ?: leg.arrival,
+            path = if (cut >= 0) leg.path.take(cut + 1) else leg.path,
+            pathNames = if (cut >= 0) leg.pathNames.take(cut + 1) else leg.pathNames,
+            toArea = "", toAt = null, changeAfter = Duration.ZERO,
+            plannedToId = leg.plannedToId.ifEmpty { leg.toId },
+        )
+    }
+
+    // Where on [leg]'s path the destination's stop [id] (where [call] is, if known) comes: by its id, a
+    // National Rail call's station ids, or another id the destination holds under the same station or
+    // stop ([ActiveTrip.destinationIds]): a bus path's stop area, or a platform the path names where the
+    // call (or the leg's own end, [name]) names its station, told by its name (Codex, #982). -1 when it
+    // isn't on it.
+    private fun pathIndex(trip: ActiveTrip, leg: TripLeg, id: String, call: VehicleCall?, name: String? = call?.stopName): Int {
+        val stop = trip.destinationIds[id]
+        return leg.path.indices.indexOfFirst { i ->
+            val at = leg.path[i]
+            at == id || (call != null && (at == call.stopId || at in call.stationIds)) ||
+                (stop != null && trip.destinationIds[at] == stop &&
+                    (at.startsWith(STOP_AREA_PREFIX) || (!name.isNullOrBlank() && sameStopName(leg.pathNames.getOrNull(i), name))))
+        }
+    }
+
+    // Whether [call] is at [leg]'s end by id: its own where it has one, else (a National Rail board's
+    // call) its station's.
+    private fun atEnd(leg: TripLeg, call: VehicleCall): Boolean =
+        if (call.stopId.isNotBlank()) call.stopId == leg.toId else leg.toId in call.stationIds
+
+    // Whether [leg], [trip]'s last ride, has had its end moved to one of the destination's stops
+    // ([endedAtDestination]).
+    private fun movedEnd(trip: ActiveTrip, leg: TripLeg): Boolean =
+        trip.plannedLegs != null && lastRide(trip) && leg.toId in trip.destinationIds
+
+    // [trip] with its route as planned, its last ride's end moved back ([ActiveTrip.plannedLegs]).
+    private fun asPlanned(trip: ActiveTrip): ActiveTrip =
+        trip.plannedLegs?.let { trip.copy(route = trip.route.copy(legs = it), plannedLegs = null) } ?: trip
+
+    // Whether [call] is at another of the destination's stops than [leg]'s moved end.
+    private fun elsewhereInDestination(trip: ActiveTrip, leg: TripLeg, call: VehicleCall): Boolean =
+        movedEnd(trip, leg) && destinationIdOf(trip, call) != null && !atEnd(leg, call)
+
+    // Whether the leg [trip] is on is its last ride: only walks, if anything, follow it.
+    private fun lastRide(trip: ActiveTrip): Boolean = trip.route.legs.drop(trip.legIndex + 1).all { it.isWalk }
+
+    // The id of [trip]'s destination [call] is at, by its own id or a National Rail call's station's; null for none.
+    private fun destinationIdOf(trip: ActiveTrip, call: VehicleCall): String? =
+        call.stopId.takeIf { it in trip.destinationIds } ?: call.stationIds.firstOrNull { it in trip.destinationIds }
 
     /**
      * When the change onto [trip]'s ride ends, while the rider is still making it: a ride straight
@@ -1511,7 +1614,7 @@ object OnTheWay {
             // further back is a fix's error, not the train going back: it changes nothing.
             if (ahead >= trip.seenAlongStop) trip.copy(seenAlongStop = ahead, seenAlongAt = now) else trip
         } else {
-            trip.copy(
+            asPlanned(trip).copy(
                 vehicleId = "", vehicleLeg = line, vehicleOffId = "", boardsAt = null, boarded = true,
                 // Already on board by where they were seen, since then: the ride's time runs from there.
                 boardedAt = trip.boardedAt.takeIf { ridingUnmatched(trip) } ?: now,
@@ -1676,7 +1779,7 @@ object OnTheWay {
         // Kept with the pole it calls at for the rider's stop, where that's the pair's other one, so
         // it's known there as their stop ([arrivesAt]).
         val offId = calls.getOrNull(off)?.takeIf { !callsTo(it, leg) }?.stopId.orEmpty()
-        val aboard = trip.copy(
+        val aboard = (if (train.vehicleId == trip.vehicleId) trip else asPlanned(trip)).copy(
             vehicleId = train.vehicleId, vehicleLeg = leg.takeIf { it != planned }, vehicleOffId = offId,
             boardsAt = train.expectedArrival, boarded = true, boardedAt = left, dueOffAt = null, onBoardSeen = true, seenAlongStop = -1, seenAlongAt = null, heldFrom = null,
         )
@@ -2234,7 +2337,7 @@ object OnTheWay {
         // Wherever within its uncertainty the rider really is, they're still that close: a fix 140 m out
         // but only sure to 50 m could be a rider already moving off on the train.
         if (!near(rider, at, MISSED_WITHIN_METERS)) return trip
-        return trip.copy(
+        return asPlanned(trip).copy(
             vehicleId = "", vehicleLeg = null, vehicleOffId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null, heldFrom = null,
             legStartedAt = now, warnedLeg = -1, waitFrom = trip.waitFrom ?: trip.legStartedAt, onBoardSeen = false, seenAlongStop = -1, seenAlongAt = null,
         )
@@ -2336,7 +2439,7 @@ object OnTheWay {
             else -> null
         }
         return settledPast(
-            trip.copy(
+            asPlanned(trip).copy(
                 legIndex = to, legStartedAt = now,
                 vehicleId = "", vehicleLeg = null, offLeg = offLeg, offAt = offAt, vehicleOffId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null, warnedLeg = -1, waitFrom = null, heldFrom = null,
                 onBoardSeen = false, seenAlongStop = -1, seenAlongAt = null, aheadLeg = -1, aheadStop = -1,
@@ -2510,7 +2613,7 @@ object OnTheWay {
             // A train still minutes from the stop can't be the one they're on: more likely the one at
             // the platform, which the tracker picks as with none followed.
             val coming = at.vehicleId.isNotBlank() && at.boardsAt?.isAfter(now.plus(ON_BOARD_GRACE)) == true
-            val train = if (coming) at.copy(vehicleId = "", vehicleLeg = null, vehicleOffId = "", boardsAt = null, dueOffAt = null, heldFrom = null) else at
+            val train = if (coming) asPlanned(at).copy(vehicleId = "", vehicleLeg = null, vehicleOffId = "", boardsAt = null, dueOffAt = null, heldFrom = null) else at
             train.copy(boarded = true, boardedAt = now.minus(MISSED_WINDOW), legStartedAt = now, onBoardSeen = true, seenAlongStop = -1, seenAlongAt = null)
         }
         // On board a ride and moved on by Next: kept, so Back can undo just that. Kept with no train

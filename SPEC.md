@@ -2428,9 +2428,12 @@ folded into the result is reached on foot rather than lost. It is still planned 
 reached at the level it was picked at, from the station model: a station at any of its records,
 platforms and own bus stops, a bus stop at any of its poles or its stop area. So a route riding on
 past St Pancras's low level is dropped for one getting off there no later; never one getting off at
-King's Cross or its Underground, the rest of the interchange. A trip on the way keeps those ids, for
-getting off there too once that is on the model (`TODO.md`); until then it gets off where its route
-does.
+King's Cross or its Underground, the rest of the interchange. A trip on the way keeps those ids.
+On its last ride, once the rider is on a train seen due first at another of them, the ride ends
+there, and any walk planned on from the old end goes (maintainer, 2026-10-19). So a route riding on
+past the low level to St Pancras's main record counts down to the low level and names it. The route
+as planned is kept with the trip, through a restart, and comes back if that train is let go: another followed, the rider left behind,
+or a step taken. A ride before the last only passes them, on to its change.
 
 **What leaves the phone:** a trip from here sends the **rider's position** to TfL's Journey Planner as
 its start (maintainer, 2026-09-28): the fix the near-me list was found from, usually one the nearby
