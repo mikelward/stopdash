@@ -40,6 +40,8 @@ class SavedTripTest {
             OriginChange.Station("HUBKGX", "St Pancras International", toCanaryWharf, lead = listOf("national-rail")),
             OriginChange.Station("940GZZLUKSX", "King's Cross St. Pancras", toCanaryWharfStation),
             OriginChange.NearMe(toKingsCross),
+            // At the level the station was picked at.
+            OriginChange.Station("HUBKGX", "King's Cross & St Pancras International", toCanaryWharf, level = Pick.Level.HUB),
         )
         for (change in changes) {
             assertEquals(change, SavedTrip.originChangeOf(SavedTrip.originChangeFields(change)))
@@ -101,6 +103,14 @@ class SavedTripTest {
             OriginChange.Station("940GZZLUKSX", "King's Cross St. Pancras", toKingsCross.copy(level = null), lead = listOf("tube")),
             SavedTrip.originChangeOf(station),
         )
+    }
+
+    @Test
+    fun `a change of start saved before its station's level was kept restores with none`() {
+        val change = OriginChange.Station("HUBKGX", "St Pancras International", toCanaryWharfStation, lead = listOf("national-rail"), level = Pick.Level.STATION)
+        val before = SavedTrip.originChangeFields(change).dropLast(1)
+        assertEquals(change.copy(level = null), SavedTrip.originChangeOf(before))
+        assertEquals(OriginChange.NearMe(toKingsCross), SavedTrip.originChangeOf(SavedTrip.originChangeFields(OriginChange.NearMe(toKingsCross)).dropLast(1)))
     }
 
     @Test

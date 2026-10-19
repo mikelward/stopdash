@@ -1102,6 +1102,9 @@ class MainActivity : ComponentActivity() {
                 // The order the open station's rows lead in ([StationLead]); null for any station but one of an
                 // interchange's names. Built when it's opened, so the page only reads it.
                 var openStationLead by rememberSaveable(stateSaver = STATION_LEAD_SAVER) { mutableStateOf<StationLead?>(null) }
+                // The level the open station was picked at ([Pick.Level.code]): null where its row didn't say, or for a
+                // stop opened from a list or a map, which is what its id names.
+                var openStationLevel by rememberSaveable { mutableStateOf<String?>(null) }
                 // A stop's departures opened from its details (Departures): a look over them that starts nothing, apart
                 // from the station flow above, so a station page or trip open under them is left as it was.
                 var departuresStationId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -1590,6 +1593,7 @@ class MainActivity : ComponentActivity() {
                         openStationId = null
                         openStationName = ""
                         openStationLead = null
+                        openStationLevel = null
                         stationTo = ToChoice.NONE
                         originChange = null
                         replanning = false
@@ -1965,6 +1969,7 @@ class MainActivity : ComponentActivity() {
                                                 openStationId = null
                                                 openStationName = ""
                                                 openStationLead = null
+                                                openStationLevel = null
                                                 stationTo = ToChoice.NONE
                                                 originChange = null
                                                 replanning = false
@@ -1981,6 +1986,7 @@ class MainActivity : ComponentActivity() {
                                                 openStationId = null
                                                 openStationName = ""
                                                 openStationLead = null
+                                                openStationLevel = null
                                                 stationTo = ToChoice.NONE
                                                 originChange = null
                                             }
@@ -2006,6 +2012,7 @@ class MainActivity : ComponentActivity() {
                                     openStationId = stop.id
                                     openStationName = stop.name
                                     openStationLead = null
+                                    openStationLevel = null
                                     // Opened for the trip, not from Lines…, whatever's under it.
                                     stationFromLines = null
                                     stationTo = stop.to
@@ -2576,6 +2583,7 @@ class MainActivity : ComponentActivity() {
                                             openStationId = stop.fromId ?: stop.id
                                             openStationName = stop.name
                                             openStationLead = null
+                                            openStationLevel = null
                                             stationFromLines = stop.fromId ?: stop.id
                                         },
                                         // A trip there from the stops near the rider, as To… plans one. The trip is
@@ -2643,6 +2651,7 @@ class MainActivity : ComponentActivity() {
                                             openStationName = match.name
                                             // One of an interchange's station names opens it with that name's stations first.
                                             openStationLead = StationLead.of(match)
+                                            openStationLevel = match.level?.code
                                         },
                                         // The new start's To… search is up, so the change of start is done;
                                         // a near-me trip it began from gives way to this station's.
@@ -2667,6 +2676,7 @@ class MainActivity : ComponentActivity() {
                                             openStationId = null
                                             openStationName = ""
                                             openStationLead = null
+                                            openStationLevel = null
                                             stationTo = OriginChange.toAfterStationClosed(originChange)
                                         },
                                         onCloseSearch = {
@@ -2675,6 +2685,7 @@ class MainActivity : ComponentActivity() {
                                             openStationId = null
                                             openStationName = ""
                                             openStationLead = null
+                                            openStationLevel = null
                                             stationTo = ToChoice.NONE
                                             originChange = null
                                         },
@@ -2698,6 +2709,7 @@ class MainActivity : ComponentActivity() {
                                                     openStationId = null
                                                     openStationName = ""
                                                     openStationLead = null
+                                                    openStationLevel = null
                                                     stationTo = ToChoice.NONE
                                                 }
                                                 is OriginChange.Landing.NearMe -> {
@@ -2718,12 +2730,14 @@ class MainActivity : ComponentActivity() {
                                                     openStationId = null
                                                     openStationName = ""
                                                     openStationLead = null
+                                                    openStationLevel = null
                                                     stationTo = ToChoice.NONE
                                                 }
                                                 is OriginChange.Landing.Station -> {
                                                     openStationId = landing.id
                                                     openStationName = landing.name
                                                     openStationLead = landing.lead.takeIf { it.isNotEmpty() }?.let { StationLead(landing.name, it) }
+                                                    openStationLevel = landing.level?.code
                                                     stationTo = landing.to
                                                 }
                                             }
@@ -2733,13 +2747,14 @@ class MainActivity : ComponentActivity() {
                                         // trip's To… — its search, or its routes to the same destination.
                                         onChangeFrom = {
                                             val kept = OriginChange.kept(stationTo)
-                                            originChange = openStationId?.let { OriginChange.Station(it, openStationName, kept, openStationLead?.modes.orEmpty()) }
+                                            originChange = openStationId?.let { OriginChange.Station(it, openStationName, kept, openStationLead?.modes.orEmpty(), Pick.Level.ofCode(openStationLevel)) }
                                             // A station opened straight from the trip on the way (Plan again) had no search
                                             // under it: it's the search that changes the start (Codex on #479).
                                             stationSearchOpen = true
                                             openStationId = null
                                             openStationName = ""
                                             openStationLead = null
+                                            openStationLevel = null
                                             stationTo = kept
                                         },
                                     )
@@ -3108,6 +3123,7 @@ class MainActivity : ComponentActivity() {
                                                 openStationId = id
                                                 openStationName = end.name
                                                 openStationLead = null
+                                                openStationLevel = null
                                             },
                                             reopenJourneyKey = RideReturn.key(rideToReopen),
                                             reopenOrigin = RideReturn.origin(rideToReopen),
@@ -3219,6 +3235,7 @@ class MainActivity : ComponentActivity() {
                                                 openStationId = match.id
                                                 openStationName = match.name
                                                 openStationLead = StationLead.of(match)
+                                                openStationLevel = match.level?.code
                                             },
                                             // Here too, so Unpause never waits on location (Codex on #756).
                                             onUnpauseAlerts = unpauseAlerts,
@@ -3274,6 +3291,7 @@ class MainActivity : ComponentActivity() {
                                         openStationId = stop.fromId ?: stop.id
                                         openStationName = stop.name
                                         openStationLead = null
+                                        openStationLevel = null
                                         // Over Lines… (a route page of a stop's details there), the station flow starts from it, as
                                         // Lines…'s own From starts one, so an arrived trip's Done closes back past it (Codex, #658).
                                         if (linesPresence.isOpen) stationFromLines = stop.fromId ?: stop.id
@@ -5239,7 +5257,7 @@ class MainActivity : ComponentActivity() {
         // A stop picked in either Via… search below, over the via in place, so a station complex still being looked
         // up leaves it for Back to return to, before the trip has a destination as after (Codex on #905).
         val pickVia = { match: StationMatch ->
-            viaChoice = viaChoice.picked(TripVia(match.id, match.name), match.id.startsWith(HUB_PREFIX), toId)
+            viaChoice = viaChoice.picked(TripVia(match.id, match.name, match.level), match.id.startsWith(HUB_PREFIX), toId)
         }
         // The destination search: before anything is picked, and when the trip's To row reopens it.
         val noDestination = favorite == null && toId == null

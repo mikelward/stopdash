@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.DestinationViaChoice
+import app.stopdash.domain.Pick
 import app.stopdash.domain.PlaceArt
 import app.stopdash.domain.TripVia
 import app.stopdash.domain.ViaChoice
@@ -150,16 +151,21 @@ class TripEndsVia(val name: String, val onChange: () -> Unit, val onClear: () ->
 
 /**
  * Keeps a trip's [DestinationViaChoice] over a rotation and a recreated process: the destination it belongs to,
- * then each of its stops' id and name, empty for none, on the device.
+ * then each of its stops' id and name, then each one's [Pick.Level.code], empty for none, on the device. A
+ * shape saved before the levels were restores with none.
  */
 internal val ViaChoiceSaver: Saver<DestinationViaChoice, Any> = listSaver(
     save = { held ->
+        val stops = listOf(held.choice.via, held.choice.pending)
         listOf(held.destination.orEmpty()) +
-            listOf(held.choice.via, held.choice.pending).flatMap { listOf(it?.stopId.orEmpty(), it?.name.orEmpty()) }
+            stops.flatMap { listOf(it?.stopId.orEmpty(), it?.name.orEmpty()) } +
+            stops.map { it?.level?.code.orEmpty() }
     },
     restore = { saved ->
-        fun at(index: Int) = saved.getOrNull(index)?.takeIf { it.isNotEmpty() }?.let { TripVia(it, saved.getOrNull(index + 1).orEmpty()) }
-        DestinationViaChoice(saved.firstOrNull()?.takeIf { it.isNotEmpty() }, ViaChoice(via = at(1), pending = at(3)))
+        fun at(index: Int, levelAt: Int) = saved.getOrNull(index)?.takeIf { it.isNotEmpty() }?.let {
+            TripVia(it, saved.getOrNull(index + 1).orEmpty(), Pick.Level.ofCode(saved.getOrNull(levelAt)))
+        }
+        DestinationViaChoice(saved.firstOrNull()?.takeIf { it.isNotEmpty() }, ViaChoice(via = at(1, 5), pending = at(3, 6)))
     },
 )
 

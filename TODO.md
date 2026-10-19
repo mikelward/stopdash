@@ -819,9 +819,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                       `hereToLevel`) and the trip on the way's `destinationLevel`, the active trip file
                       at version 2. Unused until arrivals move onto the model (below); see *Decisions
                       needing review* for the nullable level.
-                - [ ] The Via (`TripVia`, `ViaChoiceSaver`), a changed From (`OriginChange.Station`), a
-                      favorite ride's From being added (`journeyFromId`), and the open pages
-                      (`openStationId`, `departuresStationId`, `onTheWayFrom`).
+                - [x] The Via (`TripVia.level`, `ViaChoiceSaver`), a changed From
+                      (`OriginChange.Station.level`, `SavedTrip`) and the open station page
+                      (`openStationLevel`), each saved with the level its row was picked at. A favorite
+                      ride's From being added already kept its level (`journeyFromLevel`). Departures
+                      and on the way's From stay bare ids: see *Decisions needing review*.
           - [x] The station page's records on the model (`Hubs.recordsOf`): St Pancras's page takes in
                 its low level. Read through `HubsStore.ready`, the same-name rule standing in without it.
           - [x] Search's member rows on the model: a name that is one station's carries its lead record
@@ -4759,6 +4761,12 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 ## Decisions needing review
 
+- [ ] **Departures and on the way's From keep a bare id** (autopilot, 2026-10-19; station model phase
+  2). `dev-docs/station-model.md` lists `departuresStationId` and `onTheWayFrom` among the picks to
+  carry a level. But Departures opens from a stop's details, a place the app hands in (read as what
+  its id names, by the design's own rule), and `onTheWayFrom` only says which open page started the
+  trip on the way, compared with `openStationId`, never opened or planned to. So neither gains a
+  level. Alternative: a level beside each anyway. Reversible: each is in-memory saved state, no file.
 - [ ] **A trip's To keeps a nullable level beside its id, not a `Pick`** (autopilot, 2026-10-19;
   station model phase 2). `dev-docs/station-model.md` *A picked place is never a bare id* has every
   holder swap its id for a `Pick`, whose level is required. But a To picked from a row that doesn't

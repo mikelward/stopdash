@@ -41,22 +41,24 @@ object SavedTrip {
 
     /**
      * An [OriginChange]: the station's id and name (nulls for near me), then its To…, then the
-     * station's lead ([OriginChange.Station.lead], empty for near me); empty for none.
+     * station's lead ([OriginChange.Station.lead], empty for near me) and its [Pick.Level.code] (null
+     * for near me, or a row that didn't say); empty for none.
      */
     fun originChangeFields(change: OriginChange?): List<Any?> = when (change) {
         null -> emptyList()
-        is OriginChange.NearMe -> listOf(null, null) + toChoiceFields(change.to) + listOf(ArrayList<String>())
-        is OriginChange.Station -> listOf(change.id, change.name) + toChoiceFields(change.to) + listOf(ArrayList(change.lead))
+        is OriginChange.NearMe -> listOf(null, null) + toChoiceFields(change.to) + listOf(ArrayList<String>(), null)
+        is OriginChange.Station -> listOf(change.id, change.name) + toChoiceFields(change.to) + listOf(ArrayList(change.lead), change.level?.code)
     }
 
     /**
-     * What [originChangeFields] saved, or what the builds before it did: a To… without its level, or its place's art,
+     * What [originChangeFields] saved, or what the builds before it did: a station without its level, a
+     * To… without its level, or its place's art,
      * with or without the station's lead; or a station's id and name alone, or "" for near me. Those
      * changes could only begin at a *To…* search, so they keep one open. Anything else is no change
      * under way.
      */
     fun originChangeOf(saved: List<Any?>): OriginChange? = when (saved.size) {
-        ORIGIN_FIELDS -> originChange(saved, TO_FIELDS)
+        ORIGIN_FIELDS, ORIGIN_FIELDS_WITHOUT_STATION_LEVEL -> originChange(saved, TO_FIELDS)
         ORIGIN_FIELDS_WITHOUT_LEVEL -> originChange(saved, TO_FIELDS_WITHOUT_LEVEL)
         ORIGIN_FIELDS_WITHOUT_ART, ORIGIN_FIELDS_WITHOUT_LEAD -> originChange(saved, TO_FIELDS_WITHOUT_ART)
         LEGACY_STATION_FIELDS -> OriginChange.Station(saved[0] as String, saved[1] as String, ToChoice.NONE.startPicking())
@@ -64,13 +66,15 @@ object SavedTrip {
         else -> null
     }
 
-    // A change saved as its station's id and name, [toFields] of To…, then (unless an older build's) its lead.
+    // A change saved as its station's id and name, [toFields] of To…, then (unless an older build's) its lead
+    // and its level.
     private fun originChange(saved: List<Any?>, toFields: Int): OriginChange {
         val to = toChoiceOf(saved.subList(2, 2 + toFields))
         val id = saved[0] as String?
         @Suppress("UNCHECKED_CAST")
         val lead = (saved.getOrNull(2 + toFields) as? List<String>).orEmpty()
-        return if (id == null) OriginChange.NearMe(to) else OriginChange.Station(id, saved[1] as String, to, lead)
+        val level = Pick.Level.ofCode(saved.getOrNull(3 + toFields) as String?)
+        return if (id == null) OriginChange.NearMe(to) else OriginChange.Station(id, saved[1] as String, to, lead, level)
     }
 
     private const val TO_FIELDS = 8
@@ -78,7 +82,9 @@ object SavedTrip {
     private const val TO_FIELDS_WITHOUT_LEVEL = 7
     // A To… before a place's art was kept.
     private const val TO_FIELDS_WITHOUT_ART = 6
-    private const val ORIGIN_FIELDS = 2 + TO_FIELDS + 1
+    private const val ORIGIN_FIELDS = 2 + TO_FIELDS + 2
+    // The shape before the station's own level was kept.
+    private const val ORIGIN_FIELDS_WITHOUT_STATION_LEVEL = 2 + TO_FIELDS + 1
     // The shape before a To…'s level was kept.
     private const val ORIGIN_FIELDS_WITHOUT_LEVEL = 2 + TO_FIELDS_WITHOUT_LEVEL + 1
     // The shape before a place's art was kept.
