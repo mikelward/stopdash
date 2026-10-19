@@ -1024,33 +1024,23 @@ class TripViewModel(
     /**
      * Fetches the timetables of [keys] not yet in ([LegTimetables.fetch]), the rides the page timed past
      * their live predictions ([TripTiming.Estimate.scheduleAsked]), and puts every one found today in
-     * [State.timetables], so the page times them again. Off the main thread; returns at once. One that
-     * failed is asked again after [LegTimetables.retryAfter] while these rides are still the ones wanted.
+     * [State.timetables], so the page times them again. Off the main thread; returns at once. The page
+     * asks again every minute while it's shown, so one that failed is fetched again once its retry is
+     * due ([LegTimetables.retryAfter]), and one answered for the day before, its fetch spanning 04:00,
+     * is fetched for the new day.
      */
     fun wantTimetables(keys: Set<LegTimetables.Key>) {
         val timetables = legTimetables ?: return
-        // The rides asked for last are superseded: their retries stop.
-        timetablesWanted?.cancel()
         if (keys.isEmpty()) return
-        timetablesWanted = viewModelScope.launch(io) {
-            while (true) {
-                timetables.fetch(keys)
-                // Those another trip fetched today count too: a timetable for a ride doesn't change within the day.
-                val (day, known) = timetables.known()
-                val held = _state.value
-                if (known.keys != held.timetables.keys || day != held.timetablesDay) _state.update { it.copy(timetables = known, timetablesDay = day) }
-                // Every ride answered for the service day it is now: done. A failed one is asked again once
-                // its retry is due, while the same rides are still wanted (the page asks again only when they
-                // change); one answered for the day before, its fetch spanning 04:00, is asked again at once.
-                if (keys.all { it in known }) break
-                // Waited only until its retry is due, which another trip's failure may have started already.
-                timetables.retryDueIn(keys)?.let { delay(it.toMillis()) }
-            }
+        viewModelScope.launch(io) {
+            // Asked twice at once, a ride is fetched once: the second ask waits for the first's answer.
+            timetables.fetch(keys)
+            // Those another trip fetched today count too: a timetable for a ride doesn't change within the day.
+            val (day, known) = timetables.known()
+            val held = _state.value
+            if (known.keys != held.timetables.keys || day != held.timetablesDay) _state.update { it.copy(timetables = known, timetablesDay = day) }
         }
     }
-
-    // The fetch of the rides last asked for ([wantTimetables]), retrying any that failed.
-    private var timetablesWanted: Job? = null
 
     fun noteWithheld(withheld: Map<String, TripTiming.Withheld?>) {
         for ((key, why) in withheld) {

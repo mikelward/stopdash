@@ -771,9 +771,10 @@ internal fun shownTrains(
 }
 
 /**
- * Hands [wanted] (null until the trip frame is worked out) to [onWanted] while the trip is shown. In
- * the background, or off screen, nothing is wanted, so a failed fetch's retries stop until the trip
- * is shown again, as the live refresh does.
+ * Hands [wanted] (null until the trip frame is worked out) to [onWanted] now and every
+ * [TIMETABLES_ASK_EVERY] while the trip is shown, so a failed fetch is tried again once its retry is
+ * due and a new service day's timetables are fetched. In the background, or off screen, nothing is
+ * asked, as the live refresh does.
  */
 @Composable
 internal fun WantTimetables(wanted: Set<LegTimetables.Key>?, onWanted: (Set<LegTimetables.Key>) -> Unit) {
@@ -781,10 +782,17 @@ internal fun WantTimetables(wanted: Set<LegTimetables.Key>?, onWanted: (Set<LegT
         .isAtLeast(Lifecycle.State.STARTED)
     val want by rememberUpdatedState(onWanted)
     LaunchedEffect(wanted, started) {
-        if (started) wanted?.let(want) else want(emptySet())
+        if (!started || wanted.isNullOrEmpty()) return@LaunchedEffect
+        while (true) {
+            want(wanted)
+            delay(TIMETABLES_ASK_EVERY.toMillis())
+        }
     }
-    DisposableEffect(Unit) { onDispose { want(emptySet()) } }
 }
+
+// How often a shown trip asks again for the timetables it still wants ([WantTimetables]): each ask
+// fetches only those not yet in, or failed with their retry due, so most ask nothing of TfL.
+internal val TIMETABLES_ASK_EVERY: Duration = Duration.ofMinutes(1)
 
 /**
  * Each of [state]'s routes timed from [now], best first; null until there is a plan. A route riding

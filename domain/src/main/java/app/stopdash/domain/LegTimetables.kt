@@ -89,23 +89,6 @@ class LegTimetables(
         }
     }
 
-    /** Whether any of [keys] last failed to fetch, so [fetch] asks it again once [retryAfter] has passed. */
-    @WorkerThread
-    fun failed(keys: Collection<Key>): Boolean = keys.any { entries[it]?.failed == true }
-
-    /**
-     * How long until the first of [keys] that last failed is due to be asked again ([retryAfter] after
-     * its failure, whoever asked); zero when one is due now, null when none failed.
-     */
-    @WorkerThread
-    fun retryDueIn(keys: Collection<Key>): Duration? {
-        val now = clock()
-        // A failure from the day before (its fetch spanning 04:00) is no backoff for today's first ask.
-        val today = serviceDay(now)
-        return keys.mapNotNull { key -> entries[key]?.takeIf { it.failed && it.day == today } }
-            .minOfOrNull { Duration.between(now, it.at.plus(retryAfter)).coerceAtLeast(Duration.ZERO) }
-    }
-
     private fun needed(entry: Entry?, now: Instant): Boolean =
         entry == null || (entry.failed && Duration.between(entry.at, now) >= retryAfter)
 
