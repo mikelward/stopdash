@@ -56,7 +56,10 @@ class LaterTripViewModel(
     private val destinations: List<TripDestination>,
     // Every id of the destination besides its own stops, each to its stop ([TripViewModel.State.destinationStops]),
     // so a route riding through it and back is left out where another gets off there no later.
-    private val destinationIds: Map<String, String> = emptyMap(),
+    destinationIds: Map<String, String> = emptyMap(),
+    // As the trip for now's ([TripViewModel.arrivalIds]): the destination's ids at its level, from the station
+    // model, read on [io]; null where the model doesn't decide them.
+    arrivalIds: suspend () -> Map<String, String>? = { null },
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val compute: CoroutineDispatcher = Workers.compute,
     private val warn: (String) -> Unit = {},
@@ -157,6 +160,12 @@ class LaterTripViewModel(
     private var excluded: Set<String>? = null
     private var job: Job? = null
 
+    // Every id of the destination, each to its stop, for [withoutDetours]: its own stops, [destinationIds], and
+    // what the station model adds, read once on [io] and awaited by the first listing.
+    private val destinationStops = viewModelScope.async(io) {
+        destinations.filterIsInstance<TripDestination.Stop>().associate { it.id to it.id } + destinationIds + arrivalIds().orEmpty()
+    }
+
     init {
         viewModelScope.launch(compute) { for (request in requests) handle(request) }
     }
@@ -209,7 +218,7 @@ class LaterTripViewModel(
                 // hand are listed again. A plan still running publishes for this request too.
                 val held = _state.value
                 val routes = raw
-                _state.value = held.copy(request = request, cards = if (changed && routes != null) listed(routes, request.time, leftOut) else held.cards)
+                _state.value = held.copy(request = request, cards = if (changed && routes != null) listed(routes, request.time, leftOut, destinationStops.await()) else held.cards)
                 false
             } else {
                 planned = request
@@ -258,7 +267,7 @@ class LaterTripViewModel(
                 raw = routes
                 _state.value = State(
                     request = latest ?: request,
-                    cards = listed(routes, request.time, excluded.orEmpty()),
+                    cards = listed(routes, request.time, excluded.orEmpty(), destinationStops.await()),
                     incomplete = stationsMissed,
                     routesMissed = routesMissed,
                 )
@@ -269,8 +278,7 @@ class LaterTripViewModel(
     // On [compute]: the routes keeping to the time and not riding what's [leftOut], less the detours the rest
     // beat, in order, as cards.
     @WorkerThread
-    private fun listed(routes: List<TripRoute>, time: TripTime, leftOut: Set<String>): List<Card> {
-        val stops = destinations.filterIsInstance<TripDestination.Stop>().associate { it.id to it.id } + destinationIds
+    private fun listed(routes: List<TripRoute>, time: TripTime, leftOut: Set<String>, stops: Map<String, String>): List<Card> {
         val kept = withoutDetours(routes.filter { it.legs.isNotEmpty() && time.keeps(it) && !AvoidedLines.drops(it, leftOut) }, stops.keys, stops)
         // A route the same as another in every leg's times is one card: the list's keys stay unique.
         return TripTime.ordered(kept, time).map(::cardOf).distinctBy { it.listKey }

@@ -3086,6 +3086,36 @@ class TripViewModelTest {
         assertEquals("G", trip.state.value.destinationStops["P1"])
     }
 
+    // The station model's ids at the level picked join the destination's stops, read on [io], never the
+    // caller's thread.
+    @Test
+    fun `the destination's every id at its level joins its stops, read off the caller's thread`() = runTest(dispatcher) {
+        val io = StandardTestDispatcher(testScheduler, name = "io")
+        var readOn: kotlin.coroutines.ContinuationInterceptor? = null
+        val trip = TripViewModel(
+            FakePlanner(emptyList()), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")), clock = { now }, plans = TripPlans(), io = io,
+            arrivalIds = {
+                readOn = kotlin.coroutines.coroutineContext[kotlin.coroutines.ContinuationInterceptor]
+                mapOf("C" to "S", "C2" to "S")
+            },
+        )
+        assertEquals("C", trip.state.value.destinationStops["C"])
+        advanceUntilIdle()
+        assertEquals(io, readOn)
+        assertEquals(mapOf("C" to "S", "C2" to "S"), trip.state.value.destinationStops)
+    }
+
+    // A Start tapped before the model has been read (over a cached plan) still takes every id.
+    @Test
+    fun `a trip started before the model's ids are in waits for them`() = runTest(dispatcher) {
+        val trip = TripViewModel(
+            FakePlanner(emptyList()), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")), clock = { now }, plans = TripPlans(), io = dispatcher,
+            arrivalIds = { mapOf("C" to "S", "C2" to "S") },
+        )
+        assertEquals(mapOf("C" to "C"), trip.state.value.destinationStops)
+        assertEquals(mapOf("C" to "S", "C2" to "S"), trip.destinationStops())
+    }
+
     // The only route beating the detour rides a mode the rider hid: the detour is all they can see,
     // so it stays, and comes and goes with the setting without a re-plan.
     @Test

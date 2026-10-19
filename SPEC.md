@@ -2424,7 +2424,13 @@ routes stand and the trip says "Couldn't plan to every station", with a retry; o
 reused. Not the complex's centre point: that ended every trip at a street address with a walk and
 didn't lift the lean. An ordinary pick is planned to as picked, the Planner walking the last
 stretch itself where a neighboring stop serves the trip better, so a same-named stand the search
-folded into the result is reached on foot rather than lost.
+folded into the result is reached on foot rather than lost. It is still planned to once, but it is
+reached at the level it was picked at, from the station model: a station at any of its records,
+platforms and own bus stops, a bus stop at any of its poles or its stop area. So a route riding on
+past St Pancras's low level is dropped for one getting off there no later; never one getting off at
+King's Cross or its Underground, the rest of the interchange. A trip on the way keeps those ids, for
+getting off there too once that is on the model (`TODO.md`); until then it gets off where its route
+does.
 
 **What leaves the phone:** a trip from here sends the **rider's position** to TfL's Journey Planner as
 its start (maintainer, 2026-09-28): the fix the near-me list was found from, usually one the nearby

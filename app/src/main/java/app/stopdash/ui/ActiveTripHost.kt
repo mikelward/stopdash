@@ -42,7 +42,8 @@ class OnTheWayActions(
         destinationName: String,
         readyAt: Instant,
         destinations: List<TripDestination>,
-        destinationIds: Map<String, String>,
+        // Read when the start runs, off the main thread: a trip list's own ([TripViewModel.destinationStops]).
+        destinationIds: suspend () -> Map<String, String>,
         destinationStopId: String,
         destinationLevel: Pick.Level?,
     ) -> Unit)? = null,
@@ -51,7 +52,8 @@ class OnTheWayActions(
         destinationName: String,
         readyAt: Instant,
         destinations: List<TripDestination>,
-        destinationIds: Map<String, String>,
+        // Read when the start runs, off the main thread: a trip list's own ([TripViewModel.destinationStops]).
+        destinationIds: suspend () -> Map<String, String>,
         destinationStopId: String,
         destinationLevel: Pick.Level?,
     ) -> Unit,

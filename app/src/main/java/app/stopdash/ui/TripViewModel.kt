@@ -143,6 +143,10 @@ class TripViewModel(
     // them has reached it. Each id maps to its stop, so a bus stop's poles and its "490G…" area
     // are one stop when one route passes it and another gets off there.
     destinationIds: Map<String, String> = stopIds(destinations).associateWith { it },
+    // The destination's ids at the level it was picked at, from the station model ([Hubs.arrivalIdsOf]), read
+    // on [io] and added to [destinationIds]: a station's every record and own bus stop, a bus stop's every pole.
+    // Null where the model doesn't decide them (an interchange, a place, no model).
+    private val arrivalIds: suspend () -> Map<String, String>? = { null },
     // The stops a trip the rider sends through a station goes via (SPEC *Going via a stop*): one per station
     // of what they picked ([PlanTargets.viaStops]), each asked of the Planner for every destination and the
     // answers merged, so every route passes one of them. Null for a trip that goes any way. Part of what the
@@ -933,8 +937,24 @@ class TripViewModel(
     // Bumped on each departure source change: a refresh's arrivals asked for before it are dropped.
     private var sourceGeneration = 0
 
+    // The destination's every id at its level ([arrivalIds]), read once on [io].
+    private val modelArrivals = viewModelScope.async(io) { arrivalIds() }
+
+    /**
+     * Every id of the destination, each to its stop, once the station model's are in: what a trip started from
+     * this list arrives at. Awaited by the start, on its own coroutine, so a Start tapped over a cached plan,
+     * before the model has been read, still keeps them all.
+     */
+    suspend fun destinationStops(): Map<String, String> = _state.value.destinationStops + modelArrivals.await().orEmpty()
+
     init {
         viewModelScope.launch { followDismissed(dismissedStore, _dismissed, warn) }
+        // The destination's every id at its level, once the model has read it: before the plan comes back, as a
+        // rule, so a route riding past one of them is left out where another gets off there no later.
+        viewModelScope.launch {
+            val ids = modelArrivals.await() ?: return@launch
+            _state.update { it.copy(destinationStops = it.destinationStops + ids) }
+        }
         // Which of the routes' walks are changes on foot, decided off the main thread each time the
         // routes change (with the station index, as a trip started on one decides them).
         viewModelScope.launch {

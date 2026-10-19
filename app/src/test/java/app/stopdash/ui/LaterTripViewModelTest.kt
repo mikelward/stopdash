@@ -131,6 +131,27 @@ class LaterTripViewModelTest {
 
     private val LaterTripViewModel.routes get() = state.value.cards?.map { it.route }
 
+    // The station model's ids for a station picked as C: its other record C2 too, each to the station.
+    @Test
+    fun `a route riding past another of the station's records is left out where one gets off there no later`() = runTest(dispatcher) {
+        val past = TripRoute(listOf(leg("red", "A", "C", 5, 40).copy(path = listOf("C2", "X", "C"))))
+        val there = TripRoute(listOf(leg("blue", "A", "C2", 5, 20)))
+        val planner = Planner(mapOf("C" to listOf(past, there)))
+        val station = mapOf("C" to "S", "C2" to "S")
+        val later = LaterTripViewModel(
+            planner, { TripOrigin.Stop("A") }, listOf(TripDestination.Stop("C")), io = dispatcher, compute = dispatcher,
+            arrivalIds = { station },
+        )
+        later.show(LaterTripViewModel.Request(leave))
+        advanceUntilIdle()
+        assertEquals(listOf(there), later.routes)
+        // Without the model, the other record isn't the destination: both are listed.
+        val unmodeled = model(planner)
+        unmodeled.show(LaterTripViewModel.Request(leave))
+        advanceUntilIdle()
+        assertEquals(setOf(past, there), unmodeled.routes!!.toSet())
+    }
+
     @Test
     fun `plans every stop for the time picked and lists the soonest there first`() = runTest(dispatcher) {
         val late = TripRoute(listOf(leg("red", "A", "C", 5, 40)))

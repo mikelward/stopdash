@@ -264,6 +264,26 @@ class HubsPickTest {
     }
 
     @Test
+    fun `a trip's arrivals are its destination's ids at the level it was picked at`() {
+        // St Pancras's low level picked as a station: the station's every record and its own bus stop.
+        val station = hubs.idsOf(Pick("910GEXPANCLL", "Example Pancras", Pick.Level.STATION))
+        assertEquals(station, hubs.arrivalIdsOf("910GEXPANCLL", "Example Pancras", Pick.Level.STATION))
+        // A row saved without its level reads as its pick would: the record is the station.
+        assertEquals(station, hubs.arrivalIdsOf("910GEXPANCLL", "Example Pancras", null))
+        // Never the rest of the interchange.
+        assertNull(hubs.arrivalIdsOf("910GEXPANC", "Example Pancras", Pick.Level.STATION)!!["910GEXCROSS"])
+        // A bus stop by either pole: its poles and its area.
+        assertEquals(
+            mapOf("490G000001" to "490G000001", "490000001A" to "490G000001", "490000001B" to "490G000001"),
+            hubs.arrivalIdsOf("490000001B", "Example Pancras", Pick.Level.STOP),
+        )
+        // An interchange is still looked up member by member, and an id the bundle doesn't hold is itself.
+        assertNull(hubs.arrivalIdsOf("HUBEXX", "Example Cross & Example Pancras", Pick.Level.HUB))
+        assertNull(hubs.arrivalIdsOf("HUBEXX", "Example Cross & Example Pancras", null))
+        assertEquals(mapOf("910GGONE" to "910GGONE"), hubs.arrivalIdsOf("910GGONE", "Gone", null))
+    }
+
+    @Test
     fun `a stop by its poles and whole areas, never an area it shares with another stop`() {
         assertEquals(mapOf("490000005B" to "490000005B"), hubs.idsOf(Pick("490000005B", "Mill Lane", Pick.Level.STOP)))
         assertEquals("490G000001", hubs.idsOf(Pick("490000001B", "Example Pancras", Pick.Level.STOP))["490G000001"])

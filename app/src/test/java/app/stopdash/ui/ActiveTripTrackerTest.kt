@@ -706,9 +706,11 @@ class ActiveTripTrackerTest {
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         tracker.start(route, "C", readyAt = now)
         val other = TripRoute(listOf(ride.copy(fromId = "B", fromName = "B", path = listOf("C"))))
-        tracker.launchStart(this, other, "C", readyAt = now, destinationStopId = "C", replacing = true).join()
+        tracker.launchStart(this, other, "C", readyAt = now, destinationIds = { mapOf("C" to "S", "C2" to "S") }, destinationStopId = "C", replacing = true).join()
         assertEquals(other, tracker.trip.value?.route)
         assertEquals("C", kept?.destinationStopId)
+        // The ids handed over are read as the start runs, the list's every one.
+        assertEquals(mapOf("C" to "S", "C2" to "S"), kept?.destinationIds)
         // Without replacing, one trip at a time: the one on the way stays.
         tracker.launchStart(this, route, "C", readyAt = now).join()
         assertEquals(other, tracker.trip.value?.route)

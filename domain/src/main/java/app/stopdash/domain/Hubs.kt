@@ -340,6 +340,22 @@ class Hubs private constructor(
         return ids
     }
 
+    /**
+     * A trip's arrival ids ([idsOf]) for the destination [id] ([name]) picked at [level], or as a pick
+     * saved without one reads ([picked]): a station's records, platforms and own bus stops, or a stop's
+     * poles and whole areas, each to its station or stop (dev-docs/station-model.md, `destinationIds`).
+     * Null for an interchange, which the trip still looks up member by member until phase 3, and for a
+     * place, which has no stop.
+     */
+    @WorkerThread
+    fun arrivalIdsOf(id: String, name: String, level: Pick.Level?): Map<String, String>? {
+        val pick = level?.let { Pick(id, name, it) } ?: picked(id, name)
+        return when (pick.level) {
+            Pick.Level.STATION, Pick.Level.STOP -> idsOf(pick)
+            Pick.Level.HUB, Pick.Level.PLACE -> null
+        }
+    }
+
     private fun addStation(ids: MutableMap<String, String>, station: String) {
         recordsOfStation[station].orEmpty().forEach { record ->
             ids[record] = station
