@@ -861,6 +861,16 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                     - [x] A station's departures id finding its line's route (`LineSequence.callingAt`):
                           by the model's stations where the sequence has them, the name test only
                           without.
+                    - [ ] Drop the fallbacks to TfL's codes and to names where the model couldn't be
+                          built (maintainer, 2026-10-19: one source): with no model, an id is a station
+                          of its own.
+                    - [ ] Build the bundled stops and the station model when the app is built
+                          (maintainer, 2026-10-19): a Gradle task runs `:domain`'s own readers and
+                          `Hubs.of` over `stops.tsv` and `station_index.json` and writes one compact
+                          binary asset; nearby stops and `HubsStore` load it instead of parsing the TSV
+                          and building at start (~1 s cold on the JVM), falling back to both when its
+                          revision doesn't match the bundle. A round-trip test (built then read equals
+                          built in place) keeps it honest.
                     - [ ] The name tests left: `PlaceDirect`'s and `StopLinks`' `sameStation`,
                           `OffPlan`'s name-only matches, and on the way's `sameStation` and
                           `stationPlaces` (passing a stop).
@@ -4794,14 +4804,12 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 ## Decisions needing review
 
-- [ ] **A line's stations re-merged once the station model loads (autopilot, 2026-10-19; Codex, #995).**
-  `RouteStopsRepository` keeps a merge made before the model loaded and hands it out, then
-  `remerge()` (started once `HubsStore` stops loading) merges it again by the model; a merge in flight
-  as the model publishes asks for it again before it's held, so none is missed. *Alternative:* wait for
-  the model (bounded, as `HubsStore.ready` is) in `warm` before the first merge, so no merge ever
-  predates it, at the cost of up to 3 s more before a cold start's first route shows. **Reversible:**
-  `remerge`, `Merged.model` and the re-check loop in `merge`. **To confirm:** which the maintainer prefers.
-
+- [x] **A line's stations re-merged once the station model loads (autopilot, 2026-10-19; Codex, #995).**
+  Settled (maintainer, 2026-10-19): `RouteStopsRepository` waits for the model once (bounded by
+  `HubsStore.ready`, 3 s) before its first merge, so no line is merged by TfL's codes and redone;
+  `remerge` and its re-check loop are gone. Measured on the JVM with the bundled files: the model builds
+  in ~60–180 ms after the stops and index (which nearby stops already read at start); the device's own
+  figure is the "station model built in N ms" log line.
 - [ ] **A platform the arrival ids don't hold counts as the station its code names, unchecked against
   the bundle's own listing** (autopilot, 2026-10-19; Codex on #986). `arrivalOf` reads only the trip's
   saved ids, so a platform the bundle lists under another station than its code names would count as

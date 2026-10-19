@@ -1140,47 +1140,65 @@ class RouteStopsTest {
     }
 
     @Test
-    fun `a merged line takes its stations from the model as loaded, and is merged again when it loads`() = runTest {
-        var model: Hubs? = null
-        val repository = RouteStopsRepository(
-            CountingSource(hillLine, emptyList()),
-            stations = { emptyList() },
-            compute = kotlinx.coroutines.Dispatchers.Unconfined,
-            model = { model },
-        )
-        // No model yet: the routes' own codes stand.
-        val before = repository.load("hill", "")
-        assertTrue(before.sameStationId("910GHILL", "940GZZLUHIL"))
-        assertTrue(repository.cached("hill", "") === before)
-        // Loaded: the merge it held still stands for a peek, never dropped, until it's merged again by the model.
-        model = hillModel
-        assertTrue(repository.cached("hill", "") === before)
-        repository.remerge()
-        val after = checkNotNull(repository.cached("hill", ""))
-        assertTrue(after.sameStationId("910GHILL", "910GHILLLL"))
-        assertFalse(after.sameStationId("910GHILL", "940GZZLUHIL"))
-        // And a load hands out the same merge, not another.
-        assertTrue(repository.load("hill", "") === after)
-        // Merged by the model already: nothing to do again.
-        repository.remerge()
-        assertTrue(repository.cached("hill", "") === after)
-    }
-
-    @Test
-    fun `a merge the model loads during is merged by it before it's held for good`() = runTest {
-        // The model publishes between a merge reading it (none) and holding its result: the merge sees it
-        // when it checks again, so no later remerge has to have caught it.
+    fun `a line is merged only once the station model is in hand, asked for once`() = runTest {
+        val ready = CompletableDeferred<Hubs?>()
         var asks = 0
         val repository = RouteStopsRepository(
             CountingSource(hillLine, emptyList()),
             stations = { emptyList() },
             compute = kotlinx.coroutines.Dispatchers.Unconfined,
-            model = { if (asks++ == 0) null else hillModel },
+            model = { asks++; ready.await() },
         )
-        val loaded = repository.load("hill", "")
+        // A load before the model is built waits for it: nothing is merged by the routes' own codes.
+        val loading = async { repository.load("hill", "") }
+        runCurrent()
+        assertFalse(loading.isCompleted)
+        assertNull(repository.cached("hill", ""))
+        ready.complete(hillModel)
+        val loaded = loading.await()
         assertTrue(loaded.sameStationId("910GHILL", "910GHILLLL"))
         assertFalse(loaded.sameStationId("910GHILL", "940GZZLUHIL"))
         assertTrue(repository.cached("hill", "") === loaded)
+        // Asked once, not at every load.
+        repository.load("hill", "")
+        assertEquals(1, asks)
+    }
+
+    @Test
+    fun `the station model is asked for once however many callers race for it, and a pole lookup never waits on it`() = runTest {
+        val ready = CompletableDeferred<Hubs?>()
+        var asks = 0
+        val repository = RouteStopsRepository(
+            CountingSource(hillLine, listOf(StopLocation("490000001A", "Hill Station", 51.5, -0.12))),
+            stations = { emptyList() },
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
+            model = { asks++; ready.await() },
+        )
+        // A pole lookup answers while the model is still being built: it doesn't use it.
+        assertEquals(listOf("490000001A"), repository.loadPoles("490G000001").map { it.id })
+        // The app's warm-up and a first load race for the model: one ask, one answer for both.
+        val warming = async { repository.warm() }
+        val loading = async { repository.load("hill", "") }
+        runCurrent()
+        assertEquals(1, asks)
+        ready.complete(hillModel)
+        warming.await()
+        val loaded = loading.await()
+        assertTrue(loaded.sameStationId("910GHILL", "910GHILLLL"))
+        assertEquals(1, asks)
+    }
+
+    @Test
+    fun `a line merged where the station model couldn't be built keeps its routes' own codes`() = runTest {
+        val repository = RouteStopsRepository(
+            CountingSource(hillLine, emptyList()),
+            stations = { emptyList() },
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
+            model = { null },
+        )
+        val loaded = repository.load("hill", "")
+        assertTrue(loaded.sameStationId("910GHILL", "940GZZLUHIL"))
+        assertFalse(loaded.modelStations)
     }
 
     @Test
