@@ -31,6 +31,7 @@ import app.stopdash.data.SharedTflRateLimiter
 import app.stopdash.data.SharedTflRequestPool
 import app.stopdash.data.UserApiKeySetting
 import app.stopdash.data.logNetworkWarning
+import app.stopdash.domain.NewestArrivals
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.LocationFix
 import app.stopdash.domain.FavoriteJourney
@@ -831,6 +832,7 @@ class JourneyAlertWorker(appContext: Context, params: WorkerParameters) : Corout
                 appKey = { keys.tfl },
                 rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
                 requestPool = SharedTflRequestPool.pool,
+                newestArrivals = NewestArrivals.SHARED,
                 keyAnswered = RejectedApiKey.SHARED::record,
                 warn = ::logJourneyAlertWarning,
                 // Which way each alert runs, so a diversion TfL scopes to the other way doesn't alert this

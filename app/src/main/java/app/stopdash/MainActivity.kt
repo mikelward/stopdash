@@ -5,6 +5,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.saveable.SaveableStateHolder
+import app.stopdash.domain.NewestArrivals
 import app.stopdash.domain.AppSettings
 import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.LineStatusCache
@@ -532,6 +533,7 @@ class MainActivity : ComponentActivity() {
             appKey = { UserApiKeySetting.current },
             rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
             requestPool = SharedTflRequestPool.pool,
+            newestArrivals = NewestArrivals.SHARED,
             keyAnswered = RejectedApiKey.SHARED::record,
         )
     }
@@ -6160,6 +6162,7 @@ class MainActivity : ComponentActivity() {
                 appKey = { UserApiKeySetting.current },
                 rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
                 requestPool = SharedTflRequestPool.pool,
+                newestArrivals = NewestArrivals.SHARED,
                 keyAnswered = RejectedApiKey.SHARED::record,
                 warn = ::logDepartureWarning,
                 // A new line alert's direction is looked up once, off the refresh, so a row only
@@ -6200,6 +6203,7 @@ class MainActivity : ComponentActivity() {
                 appKey = { UserApiKeySetting.current },
                 rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
                 requestPool = SharedTflRequestPool.pool,
+                newestArrivals = NewestArrivals.SHARED,
                 keyAnswered = RejectedApiKey.SHARED::record,
             )
         }
@@ -6212,6 +6216,7 @@ class MainActivity : ComponentActivity() {
                 appKey = { UserApiKeySetting.current },
                 rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
                 requestPool = SharedTflRequestPool.pool,
+                newestArrivals = NewestArrivals.SHARED,
                 keyAnswered = RejectedApiKey.SHARED::record,
                 warn = ::logDepartureWarning,
                 proxyUrl = { BuildConfig.PROXY_URL },
@@ -6268,6 +6273,7 @@ class MainActivity : ComponentActivity() {
                 appKey = { UserApiKeySetting.current },
                 rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
                 requestPool = SharedTflRequestPool.pool,
+                newestArrivals = NewestArrivals.SHARED,
                 keyAnswered = RejectedApiKey.SHARED::record,
             )
         }
@@ -6286,6 +6292,7 @@ class MainActivity : ComponentActivity() {
                 appKey = { UserApiKeySetting.current },
                 rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
                 requestPool = SharedTflRequestPool.pool,
+                newestArrivals = NewestArrivals.SHARED,
                 keyAnswered = RejectedApiKey.SHARED::record,
                 warn = ::logDepartureWarning,
                 // A train the Planner names by its platform alone leaves from the station the
@@ -6465,6 +6472,7 @@ class MainActivity : ComponentActivity() {
                     appKey = { UserApiKeySetting.current },
                     rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
                     requestPool = SharedTflRequestPool.pool,
+                    newestArrivals = NewestArrivals.SHARED,
                     keyAnswered = RejectedApiKey.SHARED::record,
                 ),
                 // The app's scope, so a fetch outlives the screen that asked for it; a test's own app
@@ -6482,6 +6490,7 @@ class MainActivity : ComponentActivity() {
                     appKey = { UserApiKeySetting.current },
                     rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
                     requestPool = SharedTflRequestPool.pool,
+                    newestArrivals = NewestArrivals.SHARED,
                     keyAnswered = RejectedApiKey.SHARED::record,
                 ),
                 warn = ::logRouteStopsWarning,

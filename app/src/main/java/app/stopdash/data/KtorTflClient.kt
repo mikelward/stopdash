@@ -12,6 +12,7 @@ import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusBatch
 import app.stopdash.domain.LiftOutageSource
 import app.stopdash.domain.MaxWalk
+import app.stopdash.domain.NewestArrivals
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.PlannedAlert
@@ -154,6 +155,9 @@ class KtorTflClient(
     // Where the trains TfL may be tracking twice are noted ([DoubtfulTrains]), the debug log by
     // default; a test swaps in its own to see where the marking ran.
     private val logDoubtful: (String) -> Unit = ::logDoubtfulTrains,
+    // Each stop's newest answer, so an older cache copy TfL hands back is set aside ([NewestArrivals]). The
+    // app passes the process's one ([NewestArrivals.SHARED]); a test, or an unwired client, keeps its own.
+    private val newestArrivals: NewestArrivals = NewestArrivals(),
     // Where each request's answer is read: decoding a route's sequence (~600 KB for a National Rail
     // line) and mapping a plan (which reads the bundled station index) froze the screen for seconds
     // when it ran on a caller's main thread, as a screen's own loads do. A test swaps in its own.
@@ -556,17 +560,38 @@ class KtorTflClient(
         tflRequest { key ->
             httpClient.get("$baseUrl/StopPoint/$stopId/Arrivals") {
                 applyAppKey(key)
-            }.body<List<TflArrivalDto>>().map { it.toDeparture() }
+            }.body<List<TflArrivalDto>>()
                 // Already on the decode dispatcher; the hop names it here, where lint can see it.
-                .let {
+                .let { answer ->
                     withContext(decodeDispatcher) {
-                        val marked = withDoubtfulMarked(stopId, Turnback.relabel(it, stopId, stationIndex()?.terminusEnds(stopId).orEmpty()))
+                        val newest = withNewest(stopId, answer)
+                        val marked = withDoubtfulMarked(stopId, Turnback.relabel(newest, stopId, stationIndex()?.terminusEnds(stopId).orEmpty()))
                         // Turned off in Settings: TfL's own times, the doubtful marks kept.
                         if (trainSpacing()) withSpacing(stopId, marked) else marked
                     }
                 }
                 .let(DepartureRows::inferDirections)
         }
+
+    // The answer's departures, or the stop's last answer's when this one is an older cache copy, and said
+    // so with how much older: a stop stepping back in time is what the debug log should show.
+    @WorkerThread
+    private fun withNewest(stopId: String, answer: List<TflArrivalDto>): List<Departure> {
+        val madeAt = answer.mapNotNull { dto ->
+            dto.timestamp?.let { stamp ->
+                try {
+                    Instant.parse(stamp)
+                } catch (e: java.time.format.DateTimeParseException) {
+                    // Undated, so judged as it comes rather than against the last answer.
+                    warn("arrivals at $stopId: unreadable prediction time (${e::class.simpleName})")
+                    null
+                }
+            }
+        }.maxOrNull()
+        val pick = newestArrivals.pick(stopId, madeAt, answer.map { it.toDeparture() })
+        pick.setAside?.let { logDoubtful("older answer at $stopId set aside: ${it.seconds}s behind the last") }
+        return pick.departures
+    }
 
     // A train TfL may be tracking twice is marked, and said so: what the feed looked like each time is
     // what tells a real close pair from a copy. Each is the "earlier" or "later" of two a minute or less
