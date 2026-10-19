@@ -7,6 +7,19 @@ Tube trains* in `TODO.md`.
 ## Method
 
 `scripts/arrivals_recorder.py record` polls StopPoint Arrivals for a few hubs every 20 s.
+Each poll keeps how old TfL's cache copy was (`age`, `cache`) and, per arrival, when TfL made
+the prediction (`timestamp`, `timing`), its id and `timeToLive`, and its `destinationNaptanId`
+and `direction` (so analysis can replay the app's turnback relabel), none of which scoring reads.
+With `--vehicles FILE` it also asks, once a round, for every call ahead of each tube train
+listed within a minute of another at one platform number, on any line
+(`/Vehicle/{ids}/Arrivals`), into a file of its own: that's what may tell a copy from a real
+train. That set is a deliberate superset of the pairs the app grays, so analysis applies the
+app's exact rule (newest answer kept, turnbacks relabeled, pairs per line) to the recorded polls
+rather than the recorder copying it. `--vehicles` needs `TFL_APP_KEY`. Every request goes through
+one limiter that keeps any rolling minute within TfL's limit (about 50 keyless, 500 with a key),
+waiting when it's full. A vehicle request goes only while the minute keeps room for a round of
+stop polls after it; trains left over are said on stderr and wait for a later round, the ones
+asked least lately going first.
 `score` then finds when each train actually reached each platform: halfway between the poll
 where TfL first places it "At Platform" and the poll before. It compares TfL's times, and the
 same times spaced at least a gap apart per platform, against those arrivals. Two numbers per
@@ -259,11 +272,20 @@ reported each train as it came, by destination and, where visible, train number,
 the board. Stations, dates and times of day are left out (AGENTS.md *Privacy*); only intervals
 are kept.
 
-- **Close pairs at a branch merge were two real trains.** Southbound Northern trains from the
-  two northern branches listed 60 s apart, and twice in the same second, both arrived, each
-  seen by number. One of those pairs was the rider's own train, 60 s behind a train from the
-  other branch, so the app would have grayed the train the rider was on. Where two branches
-  join, a pair a minute apart is ordinary, not a copy.
+- **Close pairs were two real trains.** Three southbound Northern pairs were listed 0–60 s
+  apart:
+  - A Battersea and a Morden listed in the same second for a minute, then 60–86 s apart. The
+    rider saw both come, about 1:40 apart.
+  - A Morden from the Edgware branch 60 s ahead of the rider's own Morden from the High
+    Barnet branch, then 90 s. The first was listed at the platform, and the rider was on the
+    second, so the app would have grayed the train the rider was on.
+  - Two trains from the two High Barnet-side branches, listed 60 s apart and twice in the same
+    second where they meet. Nobody saw them come, but TfL tracked each separately, station by
+    station, the whole way.
+
+  TfL squeezes trains still several stations out into steps of 60 s or less; the real spacing
+  shows only as they near. Each pair's two listings moved independently, their locations
+  advancing on their own.
 - **The feed missed real trains.** Two Piccadilly short workings arrived and were seen by
   number, yet neither number appears anywhere in the recording. The board listed each several
   minutes ahead, and listed both trains that followed them correctly. Earlier, one listing with
