@@ -94,6 +94,16 @@ data class LineStatus(
      */
     fun shownTextThrough(end: java.time.Instant): String? = detail?.wordsFor(fullText, end) ?: fullText
 
+    /**
+     * How long from the wall time [now] until [shownText] gives way to TfL's link, National Rail's words
+     * growing too old ([IncidentDetail.until]): what reads stations from those words (the line's map) is
+     * worked out again then. Null where they're not shown, or carry no limit.
+     */
+    fun shownWordsLapseIn(now: java.time.Instant): java.time.Duration? {
+        val until = detail?.takeIf { it.wordsFor(fullText, now) != null }?.until ?: return null
+        return java.time.Duration.between(SteadyClock.stamp(now), until)
+    }
+
     /** True when TfL reports anything other than a good service on this line. */
     val disrupted: Boolean get() = severity != GOOD_SERVICE
 

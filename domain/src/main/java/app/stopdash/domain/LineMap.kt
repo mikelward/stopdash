@@ -695,9 +695,11 @@ class LineMap internal constructor(
         private fun placed(status: LineStatus?): List<PartClosure> =
             status?.let { it.closures + it.byDirection.values.flatMap { way -> way.closures } }.orEmpty().filter { it.sections.isNotEmpty() }
 
-        // The words of the alert [status] shows, unless it's one of the [placed] closures.
+        // The words of the alert [status] shows, unless it's one of the [placed] closures: the page's own
+        // ([LineStatus.shownText]), so a rail alert whose TfL text is only a link to National Rail's page is
+        // placed by National Rail's words, as it reads.
         private fun shown(status: LineStatus?, placed: List<PartClosure>): String? =
-            status?.takeIf { it.disrupted }?.fullText?.takeIf { text -> placed.none { it.fullText == text } }
+            status?.takeIf { it.disrupted }?.takeIf { shown -> placed.none { it.fullText == shown.fullText } }?.shownText
 
         /**
          * The line's [routes] all one way, and the stops of the other way taken as an outbound stop ([same]);

@@ -6015,8 +6015,10 @@ internal fun RouteDetailScreen(
     // train-specific list is withheld — loads the line's stations just to name them; they aren't
     // listed, since which direction or branch to list is a guess (and a stale train may be gone).
     // The alert the page tells of: the one flagging the row, else one wholly behind its stop
-    // ([DepartureRow.statusBehind]), told muted.
-    val alertText = (row.status ?: row.statusBehind)?.fullText
+    // ([DepartureRow.statusBehind]), told muted. Read in the words the page shows ([LineStatus.shownText]):
+    // a rail alert's TfL text is only a link to National Rail's page, naming no station.
+    // Read again when National Rail's words grow too old ([rememberShownWords]).
+    val alertText = rememberShownWords(row.status ?: row.statusBehind)
     val lineStops = rememberLineStops(
         row.lineId,
         // Not for a line TfL doesn't know: its route request already failed, and asking again can't
@@ -6037,7 +6039,7 @@ internal fun RouteDetailScreen(
     // shows at once, unmarked, and the marks follow.
     val trainStops = (stops as? RouteStopsUi.Loaded)?.stops
     val trainSequence = (stops as? RouteStopsUi.Loaded)?.sequence
-    val statusText = row.status?.fullText
+    val statusText = row.status?.shownText
     val hasStatus = row.status != null
     // A new alert's marks clear the old ones at once, so a reworded or cleared alert never shows the
     // last one's ⚠s or places while its own are read; a stop list refreshed under the same alert keeps

@@ -4430,9 +4430,11 @@ internal fun TripLineReason(
     // Dismisses one alert of the work to come; null offers no ×.
     onDismissPlanned: ((PlannedAlert) -> Unit)? = null,
 ) {
-    val reason = line.reason ?: restored
+    // Read again when National Rail's words grow too old ([rememberShownWords]), as the map's marks are: the
+    // words worked out with the line are a snapshot, and would read as current past their limit (Codex on #1004).
+    val reason = rememberShownWords(line.status.takeIf { line.reason != null })?.takeIf { it.isNotBlank() } ?: restored
     // The worse alert the rider dismissed, under the one that stands, toned down.
-    val quieted = line.quietedReason ?: restoredQuieted
+    val quieted = rememberShownWords(line.quieted.takeIf { line.quietedReason != null })?.takeIf { it.isNotBlank() } ?: restoredQuieted
     // A stand-in line ([TripLine.restoring]) has no map either: its status isn't in.
     // While its week is worked in again, marked with the work to come as last shown, as Coming up is.
     val map = if (restoring || line.restoring) null else rememberLineMapSection(line, starred, aheadHeld)
