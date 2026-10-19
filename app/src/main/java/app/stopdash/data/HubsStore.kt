@@ -60,6 +60,20 @@ object HubsStore {
     /** The model if loaded now, without waiting: null while it loads or where it's unavailable. */
     fun current(): Hubs? = (state.value as? Hubs.State.Ready)?.hubs
 
+    /**
+     * The user's stops as search rows ([Hubs.asStopRow]) by the model loaded now, never waiting: as saved
+     * until it has loaded.
+     */
+    fun stopRows(): (StationMatch) -> StationMatch = rowsOf(current())
+
+    /**
+     * [stopRows] once the model has loaded, waiting for a load under way as [ready] does: for a read of
+     * the user's stops that nothing reads again when the model arrives. As saved if it isn't built in time.
+     */
+    suspend fun readyStopRows(): (StationMatch) -> StationMatch = rowsOf(ready())
+
+    private fun rowsOf(hubs: Hubs?): (StationMatch) -> StationMatch = hubs?.let { it::asStopRow } ?: { it }
+
     /** Starts the load on [scope] once per process: files on [io], the model built on [compute]. */
     fun warm(
         context: Context,

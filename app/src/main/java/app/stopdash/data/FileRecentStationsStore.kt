@@ -66,9 +66,11 @@ internal class FileRecentStationsStore(
         }
     }
 
-    /** Put [opened] at the front of the list ([RecentStations.add]) and save it. */
+    /** Put [opened] at the front of the list ([RecentStations.add]), in place of any pick at its stop by [asRow], and save it. */
     @Synchronized
-    fun add(opened: StationMatch) { edit { RecentStations.add(it, SearchEntry.Stop(opened)) } }
+    fun add(opened: StationMatch, asRow: (StationMatch) -> StationMatch = { it }) {
+        edit { RecentStations.add(it, SearchEntry.Stop(opened), asRow = asRow) }
+    }
 
     /** Put the geocoded place [picked] at the front of the list, as a station opened is, and save it. */
     @Synchronized
@@ -79,7 +81,8 @@ internal class FileRecentStationsStore(
      * false when the save failed (logged), or the file is a newer build's, so the search can say the row stayed.
      */
     @Synchronized
-    fun remove(removed: SearchEntry): Boolean = edit { RecentStations.remove(it, removed) }
+    fun remove(removed: SearchEntry, asRow: (StationMatch) -> StationMatch = { it }): Boolean =
+        edit { RecentStations.remove(it, removed, asRow) }
 
     // Whether [change] was saved: never over a newer build's file.
     private fun edit(change: (List<SearchEntry>) -> List<SearchEntry>): Boolean = read()?.let { save(change(it)) } ?: false

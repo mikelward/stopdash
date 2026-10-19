@@ -824,9 +824,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 an interchange too, never two stations of one name and place.
           - [x] Opening a bus stop, adding a favorite ride and resolving a positionless pick ask every
                 pole of the model's stop, or every record of the station (`Hubs.lookupIdsOf`).
-          - [ ] Search's bus-stop rows on the model (`YourStops.stopPlace`, `journeyEnds`: a favorite
-                ride's end and a starred place at one stop one row); an open trip's From, To and Via and
-                the open station page's saved state read back the same way.
+          - [x] Search's bus-stop rows on the model: the user's own stops (`YourStops.of`, through
+                `Hubs.asStopRow`) are their model stop's own pole, so a favorite ride's end and a starred
+                place at one stop are one row.
+          - [ ] An open trip's From, To and Via and the open station page's saved state read back as
+                the pick they were (`Hubs.picked`), as the recents and pending ends do.
           - [ ] Getting off, far ends, Direct, off-plan, passing a stop, and a trip's arrivals
                 (`Hubs.idsOf`) on the model, with SPEC *Departures*, *Finding stops* and *Trips with
                 a change*.

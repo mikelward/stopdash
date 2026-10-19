@@ -229,6 +229,32 @@ class Hubs private constructor(
         return match.copy(id = pick.id, level = pick.level)
     }
 
+    /**
+     * [match], one of the user's own stops (a recent pick, a starred row's place, a favorite ride's end,
+     * a stop lately shown), as a search row of the bus stop it belongs to: at that stop's lowest-id pole,
+     * so two of the user's rows at one stop (a ride's end saved by its stop area, a pick by a pole across
+     * the road) are one row, which opens every pole of it ([lookupIdsOf]). An area the bundle split is the
+     * stop of the pole carrying the row's name. A station, an interchange's station name or an id the
+     * bundle doesn't hold as a bus stop is itself.
+     *
+     * Read where the user's stops are gathered, off the main thread. Unmarked, as [resolved] is: it is a
+     * lookup or two per row.
+     */
+    fun asStopRow(match: StationMatch): StationMatch {
+        if (match.lead.isNotEmpty()) return match
+        // A bus stop shown under the station record its poles are filed under ([stopPlace]) is a bus-only
+        // row at the record, as [pickedRecord] reads it: the stop of its pole carrying the row's name.
+        val busRecord = match.modes == listOf("bus") && match.id in polesOfRecord
+        if (!busRecord && stationOf(match.id) is Membership.Of) return match
+        val stopOfRow = if (busRecord) stopOf(poleNamed(polesOfRecord[match.id].orEmpty(), match.name) ?: match.id) else stopOf(match.id)
+        val pole = when (val stop = stopOfRow) {
+            is Membership.Of -> anchorPole(stop.id)
+            is Membership.Split -> poleNamed(stop.ids.flatMap { polesOfStop[it].orEmpty() }, match.name)
+            Membership.Unbundled -> null
+        } ?: return match
+        return if (pole == match.id && match.level == Pick.Level.STOP) match else match.copy(id = pole, level = Pick.Level.STOP)
+    }
+
     /** A pending ride's end saved before phase 2 at an interchange's station name, as [resolved] reads its row. */
     fun resolved(end: PendingEnd.Station): PendingEnd.Station {
         if (end.level != null || !end.stationId.startsWith("HUB", ignoreCase = true)) return end
