@@ -8,6 +8,7 @@ import os
 import sys
 import tempfile
 import unittest
+import unittest.mock
 import urllib.error
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -1133,10 +1134,12 @@ class RecordTest(unittest.TestCase):
         lines = [json.loads(line) for line in out.getvalue().splitlines()]
         self.assertEqual(["S1", "S2"], [line["stop"] for line in lines])
         self.assertEqual(set(ar.KEPT), set(lines[0]["arrivals"][0]))
+        # What analysis needs to replay the app's turnback relabel before pairing.
+        self.assertTrue({"destinationNaptanId", "direction"} <= set(ar.KEPT))
         # Each poll is stamped after its answer came, not when it was asked.
         self.assertEqual([iso(1), iso(22)], [line["polledAt"] for line in lines])
         self.assertIn("S2: fetch failed", err.getvalue())
-        self.assertIn("S1: fetch failed: closed", err.getvalue())
+        self.assertIn("S1: fetch failed: RemoteDisconnected: closed", err.getvalue())
 
     def test_rounds_keep_to_the_interval_however_long_the_requests_take(self):
         # Three stops, each answering in 5 s: a round takes 15 s, so it waits 5 s, not 20, and
@@ -1165,6 +1168,387 @@ class RecordTest(unittest.TestCase):
         ar.record(["S1"], 20, 50, out, fetch=fetch, sleep=time_.sleep, clock=time_.clock)
         stamps = [json.loads(line)["polledAt"] for line in out.getvalue().splitlines()]
         self.assertEqual([iso(25), iso(65)], stamps)
+
+
+class NearTrainsTest(unittest.TestCase):
+    def test_names_every_train_within_a_minute_of_another_however_far_off(self):
+        arrivals = [train("A", 100, 0), train("B", 160, 0), train("C", 400, 0), train("D", 440, 0),
+                    train("E", 600, 0)]
+        # A superset of the app's pairs: C and D are near though C isn't due within 5 minutes (an
+        # older answer the app keeps would put it there); E is 160 s from D, so near nothing.
+        self.assertEqual(["A", "B", "C", "D"], ar.near_trains(arrivals))
+
+    def test_near_at_one_platform_number_on_any_line(self):
+        arrivals = [
+            train("A", 100, 0), train("B", 130, 0, platform="Northbound - Platform 1"),
+            train("C", 120, 0, line="victoria"), train("D", 200, 0),
+        ]
+        # C is on another line at A's platform, so both are named, where the app pairs per line; B
+        # is at another platform; D is 80 s from C.
+        self.assertEqual(["A", "C"], ar.near_trains(arrivals))
+
+    def test_a_train_with_no_id_makes_its_neighbor_near_but_isnt_named(self):
+        self.assertEqual(["B"], ar.near_trains([train("000", 100, 0), train("B", 150, 0)]))
+
+    def test_one_platform_however_tfl_words_it_and_never_an_unnumbered_one(self):
+        # As the app groups them (`knownPlatformNumber`): "Platform 2" is the same platform.
+        self.assertEqual(["A", "B"], ar.near_trains(
+            [train("A", 100, 0), train("B", 150, 0, platform="Platform 2")]))
+        self.assertEqual([], ar.near_trains(
+            [train("A", 100, 0, platform="Southbound"), train("B", 150, 0, platform="Southbound")]))
+
+    def test_only_tube_trains_a_blank_mode_taking_its_lines(self):
+        self.assertEqual([], ar.near_trains(
+            [train("A", 100, 0, mode="bus"), train("B", 150, 0, mode="bus")]))
+        self.assertEqual(["A", "B"], ar.near_trains(
+            [train("A", 100, 0), train("B", 150, 0, mode="")]))
+        # A whole answer with its modes left blank still counts: the app takes the stop's mode then.
+        self.assertEqual(["A", "B"], ar.near_trains(
+            [train("A", 100, 0, mode=""), train("B", 150, 0, mode="")]))
+        # A blank mode on a line the answer says is a bus stays out.
+        self.assertEqual([], ar.near_trains(
+            [train("A", 100, 0, mode="bus", line="n5"), train("B", 150, 0, mode="", line="n5")]))
+
+    def test_timed_by_expected_arrival_not_a_cached_countdown(self):
+        # A cached answer's countdowns put A and B 200 s apart; their expected times are 50 s apart.
+        a, b = train("A", 280, 0), train("B", 330, 0)
+        a["timeToStation"], b["timeToStation"] = 200, 400
+        self.assertEqual(["A", "B"], ar.near_trains([a, b]))
+        # A train already due is still named: an older answer the app keeps may not have it due.
+        self.assertEqual(["A", "B"], ar.near_trains([train("A", -5, 0), train("B", 30, 0)]))
+
+    def test_one_train_on_two_lines_and_its_neighbors_are_all_named(self):
+        # The app grays only T's two listings here; the superset names A and X beside them too.
+        arrivals = [
+            train("A", 100, 0, line="hammersmith-city"), train("T", 150, 0, line="hammersmith-city"),
+            train("T", 160, 0, line="metropolitan"), train("X", 210, 0, line="metropolitan"),
+        ]
+        self.assertEqual(["A", "T", "X"], ar.near_trains(arrivals))
+
+    def test_trains_further_apart_are_not_named(self):
+        arrivals = [train("T", 100, 0, line="hammersmith-city"), train("U", 200, 0, line="metropolitan")]
+        self.assertEqual([], ar.near_trains(arrivals))
+
+    def test_a_turnback_listed_on_two_platforms_is_still_named(self):
+        # The app relabels a terminus turnback to its direction; the superset asks anyway.
+        arrivals = [train("T", 100, 0), train("T", 100, 0, platform="Platform 1"), train("A", 140, 0)]
+        self.assertEqual(["T", "A"], ar.near_trains(arrivals))
+
+    def test_a_chain_of_close_trains_names_each_once(self):
+        arrivals = [train("A", 30, 0), train("B", 90, 0), train("C", 150, 0)]
+        self.assertEqual(["A", "B", "C"], ar.near_trains(arrivals))
+
+
+class FailureTest(unittest.TestCase):
+    def test_a_failure_names_its_type_and_never_the_app_key(self):
+        saved = os.environ.get("TFL_APP_KEY")
+        os.environ["TFL_APP_KEY"] = "EXAMPLE123"
+        try:
+            line = ar.failure(urllib.error.URLError(
+                "https://api.tfl.gov.uk/Vehicle/1/Arrivals?app_key=EXAMPLE123 refused; key EXAMPLE123"))
+        finally:
+            if saved is None:
+                del os.environ["TFL_APP_KEY"]
+            else:
+                os.environ["TFL_APP_KEY"] = saved
+        self.assertTrue(line.startswith("URLError: "))
+        self.assertNotIn("EXAMPLE123", line)
+        self.assertIn("app_key=REDACTED", line)
+
+    def test_a_failure_carries_its_stack_and_its_cause(self):
+        def fails():
+            try:
+                raise ValueError("not JSON")
+            except ValueError as cause:
+                raise OSError("fetch failed") from cause
+
+        try:
+            fails()
+        except OSError as e:
+            line = ar.failure(e)
+        self.assertTrue(line.startswith("OSError: fetch failed\n"))
+        self.assertIn("Traceback", line)
+        self.assertIn("in fails", line)
+        self.assertIn("ValueError: not JSON", line)
+
+
+class FakeResponse(io.BytesIO):
+    def __init__(self, body, headers):
+        super().__init__(json.dumps(body).encode())
+        self.headers = headers
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class FetchTest(unittest.TestCase):
+    def test_an_answer_carries_its_cache_age_and_hit(self):
+        asked = []
+
+        def opener(request, timeout):
+            asked.append(request.full_url)
+            return FakeResponse([train("A", 60, 0)], {"Age": "40", "X-Cache": "HIT"})
+
+        answer = ar.fetch_vehicles(["124", "167"], opener)
+        self.assertEqual("https://api.tfl.gov.uk/Vehicle/124%2C167/Arrivals", asked[0])
+        self.assertEqual((40, "HIT"), (answer.age, answer.cache))
+        self.assertEqual("A", answer[0]["vehicleId"])
+        line = json.loads(ar.record_line("S1", at(0), answer))
+        self.assertEqual((40, "HIT"), (line["age"], line["cache"]))
+
+    def test_a_body_still_arriving_at_its_deadline_is_given_up(self):
+        clock = [0]
+
+        class Trickle:
+            def read(self, size=-1):
+                clock[0] += 5
+                return b"[" if clock[0] < 100 else b""
+
+        with self.assertRaises(TimeoutError):
+            ar.read_by(Trickle(), deadline=12, now=lambda: clock[0])
+        # Within its deadline, the whole body comes back.
+        self.assertEqual(b'[]', ar.read_by(io.BytesIO(b'[]'), deadline=12, now=lambda: 0))
+        self.assertEqual(b'[]', ar.read_by(io.BytesIO(b'[]'), deadline=None))
+
+    def test_an_answer_with_no_cache_headers_says_so(self):
+        answer = ar.fetch_arrivals("S1", lambda request, timeout: FakeResponse([], {}))
+        self.assertEqual((None, None), (answer.age, answer.cache))
+
+
+class RecordVehiclesTest(unittest.TestCase):
+    def test_asks_once_a_round_for_every_paired_train_and_keeps_their_calls_apart(self):
+        time_ = FakeTime()
+        asked = []
+
+        def fetch(stop):
+            time_.take(1)
+            if stop == "S1":
+                return [train("A", 100, 0), train("B", 150, 0)]
+            return [train("B", 200, 0), train("C", 230, 0), train("D", 500, 0)]
+
+        def fetch_vehicles(ids, timeout=None):
+            asked.append(list(ids))
+            return [{"vehicleId": "A", "naptanId": "S9", "timeToStation": 30, "extra": "dropped"}]
+
+        out, vehicles_out = io.StringIO(), io.StringIO()
+        ar.record(["S1", "S2"], 20, 30, out, fetch=fetch, sleep=time_.sleep, clock=time_.clock,
+                  vehicles_out=vehicles_out, fetch_vehicles=fetch_vehicles)
+        # Two rounds, one request each, naming each paired train once across both stops.
+        self.assertEqual([["A", "B", "C"], ["A", "B", "C"]], asked)
+        lines = [json.loads(line) for line in vehicles_out.getvalue().splitlines()]
+        self.assertEqual(2, len(lines))
+        self.assertEqual(["A", "B", "C"], lines[0]["vehicles"])
+        self.assertEqual(set(ar.CALL_KEPT), set(lines[0]["calls"][0]))
+        # The stops' own file holds only their polls, so scoring reads it as before.
+        self.assertTrue(all("stop" in json.loads(line) for line in out.getvalue().splitlines()))
+
+    def test_an_unreadable_time_costs_its_pairs_not_the_recording(self):
+        time_ = FakeTime()
+
+        def fetch(stop):
+            time_.take(1)
+            return [train("A", 100, 0) | {"expectedArrival": "not a time"}, train("B", 130, 0)]
+
+        def fetch_vehicles(ids, timeout=None):
+            raise AssertionError("nothing to ask")
+
+        for vehicles_out in (None, io.StringIO()):
+            out, err = io.StringIO(), io.StringIO()
+            saved, sys.stderr = sys.stderr, err
+            try:
+                ar.record(["S1"], 20, 30, out, fetch=fetch, sleep=time_.sleep, clock=time_.clock,
+                          vehicles_out=vehicles_out, fetch_vehicles=fetch_vehicles)
+            finally:
+                sys.stderr = saved
+            # Both polls are written either way; pairs are only looked for with --vehicles.
+            self.assertEqual(2, len(out.getvalue().splitlines()))
+            self.assertEqual(vehicles_out is not None, "S1: pairs unreadable" in err.getvalue())
+
+    def test_more_trains_than_one_request_takes_are_asked_in_chunks(self):
+        time_ = FakeTime()
+        asked = []
+
+        def fetch(stop):
+            time_.take(1)
+            # 30 trains 10 s apart: one chain of 30 paired trains.
+            return [train(f"V{n}", 10 + 10 * n, 0) for n in range(30)]
+
+        def fetch_vehicles(ids, timeout=None):
+            asked.append(list(ids))
+            return []
+
+        out, vehicles_out = io.StringIO(), io.StringIO()
+        ar.record(["S1"], 20, 10, out, fetch=fetch, sleep=time_.sleep, clock=time_.clock,
+                  vehicles_out=vehicles_out, fetch_vehicles=fetch_vehicles)
+        self.assertEqual([25, 5], [len(ids) for ids in asked])
+        self.assertEqual([f"V{n}" for n in range(30)], asked[0] + asked[1])
+        self.assertEqual(2, len(vehicles_out.getvalue().splitlines()))
+
+    @staticmethod
+    def near_pairs_at(stops, slow_first=0):
+        """A recording's fakes: two near trains at every stop (two batches' worth at 15 stops), and
+        the time of every request made, stop polls and vehicle requests alike."""
+        time_, asked, sent = FakeTime(), [], []
+
+        def fetch(stop):
+            sent.append(time_.clock())
+            # The first request can be slow, bunching its round up against the next one.
+            time_.take(slow_first if len(sent) == 1 else 0)
+            n = int(stop[1:])
+            return [train(f"A{n}", 100, 0), train(f"B{n}", 130, 0)]
+
+        def fetch_vehicles(ids, timeout=None):
+            sent.append(time_.clock())
+            asked.append(list(ids))
+            return []
+
+        return time_, asked, sent, fetch, fetch_vehicles
+
+    def record_quietly(self, stops, interval, duration, per_minute, fakes):
+        time_, asked, sent, fetch, fetch_vehicles = fakes
+        err = io.StringIO()
+        saved, sys.stderr = sys.stderr, err
+        try:
+            ar.record(stops, interval, duration, io.StringIO(), fetch=fetch, sleep=time_.sleep,
+                      clock=time_.clock, vehicles_out=io.StringIO(), fetch_vehicles=fetch_vehicles,
+                      per_minute=per_minute)
+        finally:
+            sys.stderr = saved
+        return err.getvalue()
+
+    def test_no_minute_holds_more_requests_than_tfls_limit_even_when_a_request_is_slow(self):
+        # Codex's case: 15 stops every 20 s, the first request taking 15 s, so that round's polls
+        # land against the next round's.
+        stops = [f"S{n}" for n in range(15)]
+        fakes = self.near_pairs_at(stops, slow_first=15)
+        self.record_quietly(stops, 20, 180, 50, fakes)
+        _, asked, sent, _, _ = fakes
+        self.assertTrue(asked)
+        busiest = max(sum(1 for u in sent if t <= u < t + datetime.timedelta(minutes=1)) for t in sent)
+        self.assertLessEqual(busiest, 50)
+
+    def test_vehicle_requests_leave_room_for_a_round_of_stop_polls(self):
+        # 15 polls leave 16 of 31: one batch goes, which still leaves room for a round of polls;
+        # the second would not, so its 5 trains wait for a later round.
+        stops = [f"S{n}" for n in range(15)]
+        fakes = self.near_pairs_at(stops)
+        err = self.record_quietly(stops, 20, 10, 31, fakes)
+        self.assertEqual([25], [len(ids) for ids in fakes[1]])
+        self.assertIn("vehicles: 5 trains not asked about this round", err)
+        # With a key's limit, both batches go.
+        fakes = self.near_pairs_at(stops)
+        self.record_quietly(stops, 20, 10, ar.KEYED_PER_MINUTE, fakes)
+        self.assertEqual([25, 5], [len(ids) for ids in fakes[1]])
+
+    def test_the_trains_asked_least_lately_go_first(self):
+        # One batch a round (as above), a minute apart: the later stops' trains get their turn.
+        stops = [f"S{n}" for n in range(15)]
+        fakes = self.near_pairs_at(stops)
+        self.record_quietly(stops, 60, 150, 31, fakes)
+        asked = fakes[1]
+        self.assertEqual(3, len(asked))
+        everyone = {f"{x}{n}" for n in range(15) for x in "AB"}
+        self.assertEqual(everyone, set(asked[0]) | set(asked[1]))
+        self.assertTrue({"A14", "B14"} <= set(asked[1]))
+
+    def test_a_slow_vehicle_request_does_not_delay_the_next_round(self):
+        # A vehicle request that runs to its timeout ends by the next round's start, and the
+        # stops are polled on time; a batch with no time left waits for a later round.
+        stops = [f"S{n}" for n in range(15)]
+        time_, asked, sent, fetch, _ = self.near_pairs_at(stops)
+        polled, timeouts = [], []
+
+        def poll(stop):
+            polled.append(time_.clock())
+            return fetch(stop)
+
+        def slow_vehicles(ids, timeout=None):
+            timeouts.append(timeout)
+            asked.append(list(ids))
+            time_.take(timeout)
+            raise TimeoutError("timed out")
+
+        err = io.StringIO()
+        saved, sys.stderr = sys.stderr, err
+        try:
+            ar.record(stops, 20, 30, io.StringIO(), fetch=poll, sleep=time_.sleep, clock=time_.clock,
+                      vehicles_out=io.StringIO(), fetch_vehicles=slow_vehicles,
+                      per_minute=ar.KEYED_PER_MINUTE)
+        finally:
+            sys.stderr = saved
+        self.assertEqual([at(0), at(20)], [polled[0], polled[15]])
+        self.assertEqual([19, 19], timeouts)
+        self.assertIn("5 trains not asked about this round, with no time left", err.getvalue())
+
+    def test_vehicles_needs_an_api_key(self):
+        with tempfile.TemporaryDirectory() as d, unittest.mock.patch.dict(os.environ, clear=True):
+            path = os.path.join(d, "rec.jsonl")
+            err = io.StringIO()
+            saved, sys.stderr = sys.stderr, err
+            try:
+                with self.assertRaises(SystemExit) as raised:
+                    ar.main(["record", "S1", "--out", path, "--vehicles", os.path.join(d, "calls.jsonl")])
+            finally:
+                sys.stderr = saved
+            self.assertEqual(2, raised.exception.code)
+            self.assertIn("--vehicles needs TFL_APP_KEY", err.getvalue())
+            self.assertFalse(os.path.exists(path))
+
+    def test_vehicles_refuses_a_hard_link_to_the_recording_file(self):
+        with tempfile.TemporaryDirectory() as d, unittest.mock.patch.dict(os.environ, {"TFL_APP_KEY": "EXAMPLE"}):
+            path, link = os.path.join(d, "rec.jsonl"), os.path.join(d, "calls.jsonl")
+            open(path, "w").close()
+            os.link(path, link)
+            saved, sys.stderr = sys.stderr, io.StringIO()
+            try:
+                with self.assertRaises(SystemExit):
+                    ar.main(["record", "S1", "--out", path, "--vehicles", link])
+            finally:
+                sys.stderr = saved
+            self.assertEqual(0, os.path.getsize(path))
+            # Two different files are fine.
+            self.assertFalse(ar.same_file(path, os.path.join(d, "other.jsonl")))
+
+    def test_vehicles_refuses_the_recording_file_itself(self):
+        with tempfile.TemporaryDirectory() as d, unittest.mock.patch.dict(os.environ, {"TFL_APP_KEY": "EXAMPLE"}):
+            path = os.path.join(d, "rec.jsonl")
+            err = io.StringIO()
+            saved, sys.stderr = sys.stderr, err
+            try:
+                with self.assertRaises(SystemExit) as raised:
+                    ar.main(["record", "S1", "--out", path, "--vehicles", os.path.join(d, ".", "rec.jsonl")])
+            finally:
+                sys.stderr = saved
+            self.assertEqual(2, raised.exception.code)
+            self.assertIn("--vehicles needs a file of its own", err.getvalue())
+            # Refused before either file was opened.
+            self.assertFalse(os.path.exists(path))
+
+    def test_no_pair_asks_nothing_and_a_failed_ask_is_said_and_skipped(self):
+        time_ = FakeTime()
+        rounds = []
+
+        def fetch(stop):
+            time_.take(1)
+            rounds.append(stop)
+            return [train("A", 100, 0)] if len(rounds) == 1 else [train("A", 100, 0), train("B", 130, 0)]
+
+        def fetch_vehicles(ids, timeout=None):
+            raise urllib.error.URLError("down")
+
+        out, vehicles_out, err = io.StringIO(), io.StringIO(), io.StringIO()
+        saved, sys.stderr = sys.stderr, err
+        try:
+            ar.record(["S1"], 20, 30, out, fetch=fetch, sleep=time_.sleep, clock=time_.clock,
+                      vehicles_out=vehicles_out, fetch_vehicles=fetch_vehicles)
+        finally:
+            sys.stderr = saved
+        self.assertEqual("", vehicles_out.getvalue())
+        self.assertIn("vehicles A,B: fetch failed", err.getvalue())
+        self.assertEqual(2, len(out.getvalue().splitlines()))
 
 
 if __name__ == "__main__":
