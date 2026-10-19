@@ -60,6 +60,9 @@ class LaterTripViewModel(
     // As the trip for now's ([TripViewModel.arrivalIds]): the destination's ids at its level, from the station
     // model, read on [io]; null where the model doesn't decide them.
     arrivalIds: suspend () -> Map<String, String>? = { null },
+    // As the trip for now's ([TripViewModel.planTargets]): where the Planner is asked to plan to, from the station
+    // model, read on [io]; null to plan to [destinations] as they are.
+    planTargets: suspend () -> List<String>? = { null },
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val compute: CoroutineDispatcher = Workers.compute,
     private val warn: (String) -> Unit = {},
@@ -166,6 +169,11 @@ class LaterTripViewModel(
         destinations.filterIsInstance<TripDestination.Stop>().associate { it.id to it.id } + destinationIds + arrivalIds().orEmpty()
     }
 
+    // Where each plan asks the Planner to plan to ([planTargets]), read once on [io].
+    private val targets = viewModelScope.async(io) {
+        planTargets()?.takeIf { it.isNotEmpty() }?.map { TripDestination.Stop(it) } ?: destinations
+    }
+
     init {
         viewModelScope.launch(compute) { for (request in requests) handle(request) }
     }
@@ -245,7 +253,7 @@ class LaterTripViewModel(
             val (answers, viaStops) = coroutineScope {
                 // Via each station of a stop the rider picked to go through, as the trip for now asks.
                 val throughs: List<String?> = via?.ids ?: listOf(null)
-                val each = destinations.flatMap { destination -> throughs.map { through -> async(io) { planTo(from, destination, through, request) } } }
+                val each = targets.await().flatMap { destination -> throughs.map { through -> async(io) { planTo(from, destination, through, request) } } }
                 // Not for a trip via a stop the rider picked: the Planner routes via one stop, and theirs is the one asked.
                 val toward = async { if (via == null) planToward(from, request) else Answer(emptyList()) }
                 each.awaitAll() to toward.await()

@@ -6483,16 +6483,15 @@ class TripScreenScreenshotTest {
         composeRule.onAllNodesWithText("Planning…").assertCountEquals(0)
         composeRule.onNodeWithText("Try again").performClick()
         assertEquals(1, retried)
-        // Some of a complex's stations unanswered: the routes stand, said with a retry.
+        // Some of a station's targets unanswered: the routes stand, said with a retry, never as a station missed.
         state.value = later(listOf(dayOn(viaWhitechapel)), incomplete = true)
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Couldn't plan to every station").assertIsDisplayed()
+        composeRule.onNodeWithText("Couldn't plan every route").assertIsDisplayed()
         composeRule.onNodeWithText("09:05–09:25 · 20 min").assertIsDisplayed()
-        // Every station answered but a request for more routes didn't: said as that, never as a station missed.
+        // A request for more routes that failed says the same.
         state.value = later(listOf(dayOn(viaWhitechapel)), routesMissed = true)
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Couldn't plan every route").assertIsDisplayed()
-        composeRule.onAllNodesWithText("Couldn't plan to every station").assertCountEquals(0)
         captureSnapshot("trip-later-routes-missed.png")
         composeRule.onNodeWithText("Try again").performClick()
         assertEquals(2, retried)
@@ -6501,7 +6500,7 @@ class TripScreenScreenshotTest {
         state.value = later(listOf(dayOn(viaWhitechapel)), anotherTime, incomplete = true)
         composeRule.waitForIdle()
         composeRule.onAllNodesWithText("09:05–09:25 · 20 min").assertCountEquals(0)
-        composeRule.onAllNodesWithText("Couldn't plan to every station").assertCountEquals(0)
+        composeRule.onAllNodesWithText("Couldn't plan every route").assertCountEquals(0)
         composeRule.onNodeWithText("Planning…").assertIsDisplayed()
         // Nor another time's failure.
         state.value = LaterTripViewModel.State(request = anotherTime, error = DeparturesUiState.Error.Kind.OFFLINE)

@@ -152,6 +152,21 @@ class LaterTripViewModelTest {
         assertEquals(setOf(past, there), unmodeled.routes!!.toSet())
     }
 
+    // As the trip for now: a station is planned to at every target the model gives it.
+    @Test
+    fun `a later trip to a station is planned to at every target the model gives it`() = runTest(dispatcher) {
+        val there = TripRoute(listOf(leg("blue", "A", "C2", 5, 20)))
+        val planner = Planner(mapOf("C2" to listOf(there)))
+        val later = LaterTripViewModel(
+            planner, { TripOrigin.Stop("A") }, listOf(TripDestination.Stop("C")), io = dispatcher, compute = dispatcher,
+            planTargets = { listOf("C", "C2") },
+        )
+        later.show(LaterTripViewModel.Request(leave))
+        advanceUntilIdle()
+        assertEquals(setOf("C" to leave, "C2" to leave), planner.asked.toSet())
+        assertEquals(listOf(there), later.routes)
+    }
+
     @Test
     fun `plans every stop for the time picked and lists the soonest there first`() = runTest(dispatcher) {
         val late = TripRoute(listOf(leg("red", "A", "C", 5, 40)))

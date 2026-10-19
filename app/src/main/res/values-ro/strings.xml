@@ -215,7 +215,6 @@
     <string name="trip_planning">Se planifică…</string>
     <string name="trip_replanning">Planificat acum %1$d min · se actualizează…</string>
     <string name="trip_plan_failed">Nu s-a putut planifica călătoria: %1$s</string>
-    <string name="trip_plan_incomplete">Nu s-a putut planifica spre toate stațiile</string>
     <string name="trip_label_fastest">Cea mai rapidă</string>
     <string name="trip_label_simplest">Cea mai simplă</string>
     <string name="trip_label_least_walking">Minim pe jos</string>
@@ -298,7 +297,7 @@
     <string name="trip_later_times">%1$s–%2$s · %3$d min</string>
     <string name="trip_later_live_notice">Ore pentru acum, nu pentru %1$s</string>
     <string name="trip_later_not_now">Neplanificat pentru acum</string>
-    <string name="trip_later_routes_missed">Nu s-au putut planifica toate rutele</string>
+    <string name="trip_routes_missed">Nu s-au putut planifica toate rutele</string>
     <string name="station_search_hint">Numele stației</string>
     <string name="station_search_prompt">Introduceți un nume pentru a căuta</string>
     <string name="station_search_no_matches">Niciun rezultat</string>

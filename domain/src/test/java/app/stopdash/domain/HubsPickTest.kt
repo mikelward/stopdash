@@ -284,6 +284,26 @@ class HubsPickTest {
     }
 
     @Test
+    fun `a station is planned to at each of its records and one bus stop it owns`() {
+        // The low level picked: it first, then the station's other record, then its own bus stop's lowest pole.
+        assertEquals(
+            listOf("910GEXPANCLL", "910GEXPANC", "490000001A"),
+            hubs.planTargetsOf("910GEXPANCLL", "Example Pancras", Pick.Level.STATION),
+        )
+        // A record saved without a level reads as the station it is.
+        assertEquals(listOf("910GEXPANC", "910GEXPANCLL", "490000001A"), hubs.planTargetsOf("910GEXPANC", "Example Pancras", null))
+        // The stop it owns with a pole filed under its record is the bus stop planned to.
+        assertEquals(listOf("910GVALE", "490000009A"), hubs.planTargetsOf("910GVALE", "Vale", Pick.Level.STATION))
+    }
+
+    @Test
+    fun `a stop, an interchange, a place or an unbundled station is planned to as picked`() {
+        assertNull(hubs.planTargetsOf("490000001B", "Example Pancras", Pick.Level.STOP))
+        assertNull(hubs.planTargetsOf("HUBEXX", "Example Cross & Example Pancras", Pick.Level.HUB))
+        assertNull(hubs.planTargetsOf("910GGONE", "Gone", Pick.Level.STATION))
+    }
+
+    @Test
     fun `a stop by its poles and whole areas, never an area it shares with another stop`() {
         assertEquals(mapOf("490000005B" to "490000005B"), hubs.idsOf(Pick("490000005B", "Mill Lane", Pick.Level.STOP)))
         assertEquals("490G000001", hubs.idsOf(Pick("490000001B", "Example Pancras", Pick.Level.STOP))["490G000001"])

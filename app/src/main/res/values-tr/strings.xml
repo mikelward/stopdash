@@ -213,7 +213,6 @@
     <string name="trip_planning">Planlanıyor…</string>
     <string name="trip_replanning">%1$d dk önce planlandı · güncelleniyor…</string>
     <string name="trip_plan_failed">Yolculuk planlanamadı: %1$s</string>
-    <string name="trip_plan_incomplete">Tüm istasyonlara yolculuk planlanamadı</string>
     <string name="trip_label_fastest">En hızlı</string>
     <string name="trip_label_simplest">En basit</string>
     <string name="trip_label_least_walking">En az yürüyüş</string>
@@ -295,7 +294,7 @@
     <string name="trip_later_times">%1$s–%2$s · %3$d dk</string>
     <string name="trip_later_live_notice">Şimdiki saatler gösteriliyor, %1$s değil</string>
     <string name="trip_later_not_now">Şimdi için planlanmadı</string>
-    <string name="trip_later_routes_missed">Tüm güzergâhlar planlanamadı</string>
+    <string name="trip_routes_missed">Tüm güzergâhlar planlanamadı</string>
     <string name="station_search_hint">İstasyon veya durak adı</string>
     <string name="station_search_prompt">Aramak için bir ad yazın</string>
     <string name="station_search_no_matches">Eşleşme yok</string>

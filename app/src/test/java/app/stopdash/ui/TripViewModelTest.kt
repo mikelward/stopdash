@@ -3105,6 +3105,44 @@ class TripViewModelTest {
         assertEquals(mapOf("C" to "S", "C2" to "S"), trip.state.value.destinationStops)
     }
 
+    // A station picked as C is planned to at each of its records and its own bus stop, as the model gives them,
+    // read on [io]; a target that fails leaves the others' routes.
+    @Test
+    fun `a station is planned to at every target the model gives it`() = runTest(dispatcher) {
+        val io = StandardTestDispatcher(testScheduler, name = "io")
+        var readOn: kotlin.coroutines.ContinuationInterceptor? = null
+        val byRail = TripRoute(listOf(leg("red", "A", "C2", 5, 20)))
+        val planner = FakePlanner(emptyList()).apply {
+            byDestination = mapOf("C2" to listOf(byRail))
+            failFor = setOf("490000001A")
+        }
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")), clock = { now }, plans = TripPlans(), io = io,
+            planTargets = {
+                readOn = kotlin.coroutines.coroutineContext[kotlin.coroutines.ContinuationInterceptor]
+                listOf("C", "C2", "490000001A")
+            },
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(io, readOn)
+        assertEquals(setOf("C", "C2", "490000001A"), planner.journeyVias.map { it.first }.toSet())
+        assertEquals(listOf(byRail), trip.state.value.routes)
+    }
+
+    // No targets from the model (a stop, an interchange, none loaded): planned to the destination as picked.
+    @Test
+    fun `a destination the model gives no targets is planned to as picked`() = runTest(dispatcher) {
+        val planner = FakePlanner(emptyList())
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")), clock = { now }, plans = TripPlans(), io = dispatcher,
+            planTargets = { null },
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(setOf("C"), planner.journeyVias.map { it.first }.toSet())
+    }
+
     // A Start tapped before the model has been read (over a cached plan) still takes every id.
     @Test
     fun `a trip started before the model's ids are in waits for them`() = runTest(dispatcher) {

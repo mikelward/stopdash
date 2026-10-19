@@ -429,8 +429,6 @@
     <string name="trip_replanning">Planned %1$d min ago · updating…</string>
     <!-- Over a trip whose planning failed; the reason (offline, rate-limited…) follows. -->
     <string name="trip_plan_failed">Couldn\'t plan the trip: %1$s</string>
-    <!-- Some of a station complex's stations couldn't be planned to: the routes shown may miss the best. -->
-    <string name="trip_plan_incomplete">Couldn\'t plan to every station</string>
     <!-- A trip the Planner found no route for. -->
     <!-- The bold header over a trip's routes: the one getting there soonest, the one riding fewest
          (fewest changes), the one walking least, the one with the lowest fare, several of them over one
@@ -581,8 +579,8 @@
     <string name="trip_later_live_notice">Times for now, not %1$s</string>
     <!-- A later trip's route tapped that the trip for now doesn't offer, so it can't open live. -->
     <string name="trip_later_not_now">Not planned for now</string>
-    <!-- A later trip planned to every station, but a request for more routes failed: some may be missing. -->
-    <string name="trip_later_routes_missed">Couldn\'t plan every route</string>
+    <!-- Over a trip whose planning partly failed (a station, a bus stop or a request for more routes went unanswered): some routes may be missing. -->
+    <string name="trip_routes_missed">Couldn\'t plan every route</string>
     <!-- Placeholder in the station search field. -->
     <string name="station_search_hint">Station or stop name</string>
     <!-- Shown under the empty search field. -->

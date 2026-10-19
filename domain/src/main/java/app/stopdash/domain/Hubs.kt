@@ -349,6 +349,28 @@ class Hubs private constructor(
         }
     }
 
+    /**
+     * Where a trip to the destination [id] ([name]) picked at [level], or as a pick saved without one reads
+     * ([picked]), is planned to (dev-docs/station-model.md, *Trip planner ends*): a station's every record,
+     * the one picked first, and one bus stop it owns, by its lowest-id pole: the first by id of its own
+     * stops, one with a pole filed under its records first. The Planner walks between its poles, and a trip
+     * that takes a bus there gets off at its forecourt. [Pick.extraStopId] is planned to as well. Null for
+     * any other level, or a station the bundle doesn't hold, for the caller to plan to [id] alone.
+     */
+    @WorkerThread
+    fun planTargetsOf(id: String, name: String, level: Pick.Level?): List<String>? {
+        val pick = level?.let { Pick(id, name, it) } ?: picked(id, name)
+        if (pick.level != Pick.Level.STATION) return null
+        val station = (stationOf(pick.id) as? Membership.Of)?.id ?: return null
+        val records = recordsOfStation[station].orEmpty()
+        if (records.isEmpty()) return null
+        val filed = records.flatMapTo(HashSet()) { polesOfRecord[it].orEmpty() }
+        val owned = ownedStops[station].orEmpty()
+        val stop = owned.filter { stop -> polesOfStop[stop].orEmpty().any { it in filed } }.minOrNull() ?: owned.minOrNull()
+        val bus = listOfNotNull(stop?.let { polesOfStop[it]?.minOrNull() }, pick.extraStopId)
+        return (records.filter { it == pick.id } + records + bus).distinct()
+    }
+
     private fun addStation(ids: MutableMap<String, String>, station: String) {
         recordsOfStation[station].orEmpty().forEach { record ->
             ids[record] = station
