@@ -938,7 +938,6 @@ internal fun routeKey(route: TripRoute): String =
 private const val SHOWN_TRAINS = 3
 
 internal val CLOCK: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-private val MINUTE: DateTimeFormatter = DateTimeFormatter.ofPattern("mm")
 internal val LONDON: ZoneId = ZoneId.of("Europe/London")
 
 /**
@@ -2932,18 +2931,12 @@ private fun arrivalText(estimate: TripTiming.Estimate): String {
 }
 
 /**
- * The end of an [arrival]'s range when its [slack] is enough to show ([SHOWN_SLACK_MINUTES]):
- * minutes alone within the same hour ("11:26–34", to save width), else the clock (also across a clock
- * change, where the hour repeats); null for no range.
+ * The end of an [arrival]'s range when its [slack] is enough to show ([SHOWN_SLACK_MINUTES]), as a
+ * full clock time ("11:26–11:34", maintainer, 2026-10-19); null for no range.
  */
 internal fun arrivalEnd(arrival: Instant, slack: Duration): String? {
     if (slack.toMinutes() < SHOWN_SLACK_MINUTES) return null
-    val latest = arrival.plus(slack).atZone(LONDON)
-    val start = arrival.atZone(LONDON)
-    // Across the autumn clock change 01:58 BST + 8 min is 01:06 GMT: the same hour on the clock
-    // face, so the offset must match too, or "01:58–06" would run backward.
-    val sameHour = latest.hour == start.hour && latest.toLocalDate() == start.toLocalDate() && latest.offset == start.offset
-    return if (sameHour) MINUTE.format(latest) else CLOCK.format(latest)
+    return CLOCK.format(arrival.plus(slack).atZone(LONDON))
 }
 
 /**
