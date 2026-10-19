@@ -841,6 +841,18 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           - [ ] Getting off, far ends, Direct, off-plan, passing a stop, and a trip's arrivals
                 (`Hubs.idsOf`) on the model, with SPEC *Departures*, *Finding stops* and *Trips with
                 a change*.
+                - [x] A trip's arrivals at the station and stop levels (`Hubs.arrivalIdsOf`, read
+                      off the main thread by the trip's models and kept with the trip on the way):
+                      a station's records, platforms and own bus stops, a stop's poles and whole
+                      areas. Planning is unchanged: one request to the id picked. An interchange
+                      keeps its member lookup until phase 3.
+                - [ ] A platform the bundle doesn't hold, arriving through `Hubs.stationOf`'s prefix
+                      step; the bus target a station's own stop adds; getting off, far ends, Direct,
+                      off-plan and passing a stop.
+                - [ ] Getting off at any of the trip on the way's `destinationIds` (Codex, #981):
+                      `OnTheWay.arrivesAt` reads only the leg's planned end and `vehicleOffId`, so a
+                      kept detour through another of the station's records rides on to its planned
+                      end. The ids are saved with the trip from #981 on, read by nothing yet.
           - [ ] The `Unbundled` interchange's trip, planned to its looked-up children.
         - Favorite rides stay (maintainer, 2026-10-16), so phase 3 builds on them. Nothing is left
           open.

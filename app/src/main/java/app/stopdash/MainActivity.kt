@@ -1667,7 +1667,7 @@ class MainActivity : ComponentActivity() {
                 val hideUndoCarrier = remember { HideUndoCarrier() }
                 // Start a route on the way; [replacing], in place of the trip on the way (Plan again).
                 val startOnTheWay = { route: TripRoute, destinationName: String, readyAt: Instant, destinations: List<TripDestination>,
-                    destinationIds: Map<String, String>, destinationStopId: String, destinationLevel: Pick.Level?, replacing: Boolean ->
+                    destinationIds: suspend () -> Map<String, String>, destinationStopId: String, destinationLevel: Pick.Level?, replacing: Boolean ->
                     // Its first refresh is [FollowActiveTrip]'s, once the trip is on the way.
                     // In the app's scope, so recreating the activity can't cut the save short.
                     tracker.launchStart(
@@ -3279,7 +3279,7 @@ class MainActivity : ComponentActivity() {
                                             if (leg.toArea.isNotBlank()) put(leg.toArea, leg.toId)
                                         }
                                         // A stop handed by the route, not picked: no level, read as what its id names.
-                                        startOnTheWay(route, leg.toName, Instant.now(), listOf(TripDestination.Stop(leg.toId)), ids, leg.toId, null, replacing)
+                                        startOnTheWay(route, leg.toName, Instant.now(), listOf(TripDestination.Stop(leg.toId)), { ids }, leg.toId, null, replacing)
                                     },
                                     distanceTo = fixDistance,
                                     // A station beside it, as a From… pick opens one: the details close for it.
@@ -5356,6 +5356,10 @@ class MainActivity : ComponentActivity() {
         val destinations: List<TripDestination>
         val destKey: String
         val destinationIds: Map<String, String>
+        // The destination's every id at the level it was picked at, from the station model, read off the main
+        // thread by the trip's models: a station's records and own bus stops, a bus stop's poles. None for an
+        // interchange, still looked up member by member below, or a place.
+        var arrivalIds: suspend () -> Map<String, String>? = { null }
         if (favorite != null) {
             destinations = listOf(favorite)
             destKey = "place:${favorite.coordinate.latitude},${favorite.coordinate.longitude}"
@@ -5363,6 +5367,7 @@ class MainActivity : ComponentActivity() {
         } else {
             val toStopId = checkNotNull(toId) { "a To… trip has a destination once past the picker" }
             val (toStopIds, ids) = if (!toStopId.startsWith(HUB_PREFIX)) {
+                arrivalIds = { withContext(Workers.compute) { HubsStore.ready()?.arrivalIdsOf(toStopId, toName, toLevel) } }
                 listOf(toStopId) to mapOf(toStopId to toStopId)
             } else {
                 val toOwner = remember(toStopId) { toStores.ownerFor(toStopId, this@MainActivity) }
@@ -5483,6 +5488,7 @@ class MainActivity : ComponentActivity() {
                         dismissedStore = DataStoreDismissedAlertsStore.from(appContext, warn = ::logDepartureWarning),
                         writeFailures = writeFailures,
                         destinationIds = destinationIds,
+                        arrivalIds = arrivalIds,
                         // Which walks are changes on foot, as a trip started on a route decides them.
                         stations = { StationIndexStore.load(appContext) },
                         // The bus stops towards the destination a plan from here asks via, found on the device.
@@ -5577,6 +5583,7 @@ class MainActivity : ComponentActivity() {
                             origin = { latestHere?.let(TripOrigin::Here) ?: TripOrigin.Stop(fromId) },
                             destinations = destinations,
                             destinationIds = destinationIds,
+                            arrivalIds = arrivalIds,
                             warn = ::logDepartureWarning,
                             // The bus stops towards the destination a plan from here asks via, as for the trip for now.
                             stations = { StationIndexStore.load(appContext) },
@@ -5739,10 +5746,10 @@ class MainActivity : ComponentActivity() {
             onDismissWriteFailureShown = trip::dismissWriteFailureShown,
             // Start: followed from here to [toName], the rider at the first stop once they've walked there,
             // keeping where to as chosen, so the trip can be planned again from partway along.
-            onStart = LocalOnTheWay.current?.let { onTheWay -> { route -> onTheWay.start(route, toName, Instant.now().plus(access), destinations, destinationIds, toId.orEmpty(), toLevel) } },
+            onStart = LocalOnTheWay.current?.let { onTheWay -> { route -> onTheWay.start(route, toName, Instant.now().plus(access), destinations, trip::destinationStops, toId.orEmpty(), toLevel) } },
             onOpenTrip = LocalOnTheWay.current?.takeIf { it.active }?.open,
             onReplaceTrip = LocalOnTheWay.current?.takeIf { it.active }?.replace?.let { replace ->
-                { route -> replace(route, toName, Instant.now().plus(access), destinations, destinationIds, toId.orEmpty(), toLevel) }
+                { route -> replace(route, toName, Instant.now().plus(access), destinations, trip::destinationStops, toId.orEmpty(), toLevel) }
             },
             onWithheld = trip::noteWithheld,
             onListShown = trip::noteListShown,

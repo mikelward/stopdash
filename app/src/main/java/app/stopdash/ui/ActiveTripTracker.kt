@@ -659,7 +659,8 @@ class ActiveTripTracker(
         destinationName: String,
         readyAt: Instant,
         destinations: List<TripDestination> = emptyList(),
-        destinationIds: Map<String, String> = emptyMap(),
+        // Read on the start's own coroutine, so a caller can hand over ids still being worked out.
+        destinationIds: suspend () -> Map<String, String> = { emptyMap() },
         destinationStopId: String = "",
         destinationLevel: Pick.Level? = null,
         // In place of the trip on the way ([start]'s [replacing]), [onEnded] told once it's ended.
@@ -669,7 +670,7 @@ class ActiveTripTracker(
         _starting.update { it + 1 }
         return scope.launch {
             try {
-                start(route, destinationName, readyAt, destinations, destinationIds, destinationStopId, destinationLevel, replacing, onEnded)
+                start(route, destinationName, readyAt, destinations, destinationIds(), destinationStopId, destinationLevel, replacing, onEnded)
             } finally {
                 _starting.update { it - 1 }
             }
