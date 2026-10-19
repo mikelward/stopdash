@@ -25,8 +25,12 @@
     <string name="disruptions_unknown">Não foi possível verificar interrupções</string>
     <string name="widget_refreshing">Atualizando…</string>
     <string name="trip_disruptions_label">Interrupções:</string>
+    <string name="trip_disruptions_clear">Sem interrupções</string>
     <string name="trip_disruptions_checking">Verificando…</string>
     <string name="trip_lines_title">Status das linhas</string>
+    <string name="home_disruptions_no_line">Sem interrupções nas linhas</string>
+    <string name="home_disruptions_none">Sem interrupções seguidas</string>
+    <string name="home_lines_unwatched">Não é mais seguida</string>
     <string name="line_map_loading">Carregando mapa…</string>
     <string name="line_map_failed_rate_limited">Não foi possível carregar o mapa — a TfL está limitando pedidos</string>
     <string name="line_map_beside_closure">Ao lado de um trecho fechado</string>
@@ -91,6 +95,11 @@
     <string name="trip_train_checking_description">%1$s para %2$s, verificando o percurso</string>
     <string name="countdown_time_unusable_description">%1$s min, não dá para pegar</string>
     <string name="trip_change">%1$d min para baldeação</string>
+    <string name="trip_change_via">Mudar parada</string>
+    <string name="trip_clear_via">Remover parada</string>
+    <string name="station_search_via_hint">Estação ou parada</string>
+    <string name="trip_later_not_now">Não planejado para agora</string>
+    <string name="trip_later_routes_missed">Não foi possível planejar todos os percursos</string>
     <string name="station_search_hint">Nome da estação ou parada</string>
     <string name="station_search_prompt">Digite um nome para pesquisar</string>
     <string name="station_search_from_hint">Estação, parada, local ou código postal</string>
@@ -117,6 +126,7 @@
     <string name="settings_disruptions_row_summary">Uma barra com o status das linhas acima da lista</string>
     <string name="settings_disruptions_row_show">Mostrar na tela inicial</string>
     <string name="settings_disruptions_row_description">Mostrar alertas e atrasos na tela inicial</string>
+    <string name="settings_summary_networks_summary">As linhas perto de você e seus trajetos favoritos são sempre seguidos</string>
     <string name="settings_disruptions_row_write_failed">Não foi possível salvar; será revertido quando o StopDash reiniciar</string>
     <string name="favorite_places_loading">Carregando…</string>
     <string name="favorite_places_empty">Nada salvo ainda</string>
@@ -137,6 +147,9 @@
     <string name="settings_live_widget_refresh_summary">Atualiza o widget da tela inicial cerca de uma vez por minuto em segundo plano. Usa mais bateria e dados.</string>
     <string name="settings_wifi_places_title">Memorizar o Wi-Fi dos locais salvos</string>
     <string name="settings_wifi_places_write_failed">Não foi possível salvar; será revertido quando o StopDash reiniciar</string>
+    <string name="settings_train_spacing_title">Corrigir o espaçamento dos trens</string>
+    <string name="settings_train_spacing_summary">Ajustar os horários quando os trens estão próximos demais</string>
+    <string name="settings_ride_grouping_stop">Por parada</string>
     <string name="settings_widget_follows_summary">Mostra as paradas onde você está, usando sua localização em segundo plano.</string>
     <string name="action_dismiss">Dispensar</string>
     <string name="settings_text_size_reset">Redefinir</string>
@@ -161,7 +174,9 @@
     <string name="about_title">Sobre</string>
     <string name="about_data_sources">Horários em tempo real da TfL e da National Rail. Locais e ruas © colaboradores do OpenStreetMap, sob a ODbL. Contains public sector information licensed under the Open Government Licence v3.0. Contains Ordnance Survey data © Crown copyright and database right 2026. Contains Royal Mail data © Royal Mail copyright and database right 2026. Contains National Statistics data © Crown copyright and database right 2026.</string>
     <string name="action_show_platform">Mostrar só esta parada</string>
+    <string name="action_all_stops">Todas as paradas</string>
     <string name="action_show_stop">Mostrar parada</string>
+    <string name="action_plan_via_spoken">Planejar uma viagem via %1$s</string>
     <string name="journey_checking">Verificando trens…</string>
     <string name="journey_none">Nenhum trem para %1$s em breve</string>
     <string name="journey_none_direct">Nenhum trem direto para %1$s em breve</string>
@@ -241,4 +256,6 @@
     <string name="route_disruption_channel_description">Viagem em curso: uma interrupção à frente</string>
     <string name="route_disruption_missed">Não desceu em %1$s</string>
     <string name="route_disruption_none_direct">Nenhum direto para %1$s · Baldeação em %2$s</string>
+    <string name="on_the_way_show_stops">Mostrar paradas</string>
+    <string name="on_the_way_hide_stops">Ocultar paradas</string>
 </resources>

@@ -52,6 +52,7 @@
     <string name="widget_refresh_key_rejected">রিফ্রেশ হয়নি: API কী প্রত্যাখ্যাত</string>
     <string name="widget_refresh_failed_short">রিফ্রেশ হয়নি</string>
     <string name="trip_disruptions_label">বিঘ্ন:</string>
+    <string name="trip_disruptions_clear">কোনো বিঘ্ন নেই</string>
     <string name="trip_disruptions_checking">যাচাই হচ্ছে…</string>
     <string name="trip_disruptions_unknown">অজানা</string>
     <string name="trip_disruptions_unknown_label">অজানা:</string>
@@ -61,7 +62,14 @@
     <string name="trip_lines_title">লাইনের অবস্থা</string>
     <string name="trip_lines_gone">এই ট্রিপে আর নেই</string>
     <string name="home_disruptions_more">+%1$d</string>
+    <string name="home_disruptions_no_line">লাইনে কোনো বিঘ্ন নেই</string>
+    <string name="home_disruptions_none">নজরে রাখা লাইনে কোনো বিঘ্ন নেই</string>
     <string name="home_lines_gone">আর কাছাকাছি নেই</string>
+    <string name="home_lines_unwatched">আর নজরে নেই</string>
+    <string name="home_lines_watched">নজরে রাখা</string>
+    <string name="home_lines_other">অন্যান্য</string>
+    <string name="lines_watch">নজরে রাখুন</string>
+    <string name="lines_unwatch">নজর থেকে সরান</string>
     <string name="trip_lines_line">লাইন খুলুন</string>
     <string name="line_map_title">ম্যাপ</string>
     <string name="line_map_show_all">সব স্টেশন দেখুন</string>
@@ -114,6 +122,9 @@
     <string name="hide_mode">সব %1$s পরিষেবা লুকান</string>
     <string name="hide_line">%1$s লুকান</string>
     <string name="avoid_line">%1$s এড়িয়ে চলুন</string>
+    <string name="hide_line_from_ride">এই যাত্রায় %1$s লুকান</string>
+    <string name="ride_line_hidden">এই যাত্রায় %1$s লুকানো হয়েছে</string>
+    <string name="ride_hidden_lines_title">এই যাত্রায় লুকানো</string>
     <string name="more_actions">বিকল্প</string>
     <string name="modes_hidden">%1$s লুকানো</string>
     <string name="modes_show_all">সব দেখান</string>
@@ -184,6 +195,7 @@
     <string name="line_stop_from">এখান থেকে</string>
     <string name="route_stop_departure">%1$s থেকে, %2$s অভিমুখে</string>
     <string name="route_stop_departure_from">%1$s থেকে</string>
+    <string name="route_stop_to">গন্তব্য: %1$s</string>
     <string name="route_stop_go">চলুন</string>
     <string name="line_stop_to">এখানে যান</string>
     <string name="line_stop_departures">প্রস্থান</string>
@@ -205,6 +217,7 @@
     <string name="trip_label_fastest">দ্রুততম</string>
     <string name="trip_label_simplest">সহজতম</string>
     <string name="trip_label_least_walking">সবচেয়ে কম হাঁটা</string>
+    <string name="trip_label_cheapest">সস্তাতম</string>
     <string name="trip_label_separator">" · "</string>
     <string name="trip_label_other">অন্যান্য</string>
     <string name="trip_no_routes">কোনো ট্রিপ পাওয়া যায়নি</string>
@@ -259,6 +272,30 @@
     <string name="trip_walk_first">হেঁটে %1$s যান (~%2$d মি.)</string>
     <string name="trip_walk_first_now">হেঁটে %1$s যান</string>
     <string name="trip_line_not_running">%1$s: %2$s</string>
+    <string name="trip_via_pick">ভায়া…</string>
+    <string name="trip_ends_via">ভায়া</string>
+    <string name="trip_via">ভায়া %1$s</string>
+    <string name="trip_change_via">স্টপ বদলান</string>
+    <string name="trip_clear_via">স্টপ সরান</string>
+    <string name="station_search_via_hint">স্টেশন বা স্টপ</string>
+    <string name="trip_no_routes_via">ভায়া %1$s কোনো ট্রিপ পাওয়া যায়নি</string>
+    <string name="trip_change_time">সময় বদলান…</string>
+    <string name="trip_time_title">সময় বদলান</string>
+    <string name="trip_leave_now">এখনই রওনা</string>
+    <string name="trip_time_leave">রওনা</string>
+    <string name="trip_time_arrive">সময়ের মধ্যে পৌঁছানো</string>
+    <string name="trip_time_today">আজ</string>
+    <string name="trip_time_tomorrow">আগামীকাল</string>
+    <string name="trip_time_past">এই সময় পেরিয়ে গেছে</string>
+    <string name="trip_time_skipped">ঘড়ির সময় বদলের কারণে এই সময় নেই</string>
+    <string name="trip_time_on">%1$s %2$s</string>
+    <string name="trip_later_leave">রওনা: %1$s</string>
+    <string name="trip_later_arrive">পৌঁছাতে হবে: %1$s</string>
+    <string name="trip_later_timetable">সময়সূচি, লাইভ নয়</string>
+    <string name="trip_later_times">%1$s–%2$s · %3$d মি.</string>
+    <string name="trip_later_live_notice">এখনকার সময় দেখানো হচ্ছে, %1$s নয়</string>
+    <string name="trip_later_not_now">এখনকার জন্য পরিকল্পিত নয়</string>
+    <string name="trip_later_routes_missed">সব রুট পরিকল্পনা করা যায়নি</string>
     <string name="station_search_hint">স্টেশন বা স্টপের নাম</string>
     <string name="station_search_prompt">খুঁজতে নাম লিখুন</string>
     <string name="station_search_no_matches">কিছু মেলেনি</string>
@@ -396,6 +433,9 @@
     <string name="settings_disruptions_row_show">হোম স্ক্রিনে দেখান</string>
     <string name="settings_disruptions_row_off">বন্ধ</string>
     <string name="settings_disruptions_row_description">হোম স্ক্রিনে সতর্কতা ও বিলম্ব দেখায়</string>
+    <string name="settings_summary_networks_title">সবসময় নজরে রাখা হয়</string>
+    <string name="settings_summary_networks_summary">আপনার কাছাকাছি লাইন ও আপনার প্রিয় যাত্রাগুলো সবসময় নজরে রাখা হয়</string>
+    <string name="settings_summary_lines_title">এগুলোও নজরে রাখুন</string>
     <string name="settings_disruptions_row_write_failed">সেভ করা যায়নি; StopDash রিস্টার্ট হলে এটি রিসেট হবে</string>
     <string name="settings_hidden_title">লুকানো</string>
     <string name="settings_hidden_summary">তালিকা, ট্রিপ, উইজেট ও ঘড়ি থেকে বাদ</string>
@@ -462,6 +502,8 @@
     <string name="favorite_place_start_description">%1$s থেকে শুরু করুন</string>
     <string name="settings_title">সেটিংস</string>
     <string name="settings_live_widget_refresh_title">উইজেটের অটোমেটিক আপডেট</string>
+    <string name="settings_keep_updating_title">নিষ্ক্রিয় অবস্থায়ও আপডেট করুন</string>
+    <string name="settings_keep_updating_summary">বেশি ব্যাটারি খরচ করে</string>
     <string name="settings_live_widget_refresh_summary">ব্যাকগ্রাউন্ডে প্রায় প্রতি মিনিটে হোম-স্ক্রিন উইজেট রিফ্রেশ করে। এতে বেশি ব্যাটারি ও ডেটা খরচ হয়।</string>
     <string name="settings_location_title">লোকেশন</string>
     <string name="settings_location_precise">সুনির্দিষ্ট</string>
@@ -470,6 +512,11 @@
     <string name="settings_wifi_places_title">সেভ করা জায়গার ওয়াই-ফাই মনে রাখুন</string>
     <string name="settings_wifi_places_summary">বাড়িতে ও কর্মস্থলে ধীর বা ভুল লোকেশন ঠিক করুন</string>
     <string name="settings_wifi_places_write_failed">সেভ করা যায়নি; StopDash রিস্টার্ট হলে এটি রিসেট হবে</string>
+    <string name="settings_train_spacing_title">ট্রেনের ব্যবধান ঠিক করুন</string>
+    <string name="settings_train_spacing_summary">ট্রেন অসম্ভব কাছাকাছি দেখালে সময় ঠিক করুন</string>
+    <string name="settings_ride_grouping_title">প্রিয় যাত্রা গোষ্ঠীভুক্ত করুন</string>
+    <string name="settings_ride_grouping_ride">যাত্রা অনুযায়ী</string>
+    <string name="settings_ride_grouping_stop">স্টপ অনুযায়ী</string>
     <string name="settings_widget_follows_title">ঘড়ি ও উইজেটের অটোমেটিক লোকেশন</string>
     <string name="settings_widget_follows_summary">ব্যাকগ্রাউন্ডে আপনার লোকেশন ব্যবহার করে আপনি যেখানে আছেন সেখানকার স্টপ দেখায়।</string>
     <string name="settings_live_widget_refresh_failed">লাইভ রিফ্রেশ আপডেট করা যায়নি</string>
@@ -546,8 +593,12 @@
     <string name="action_back">ফিরে যান</string>
     <string name="action_show_platform">শুধু এই স্টপ দেখুন</string>
     <string name="action_show_station">পুরো স্টেশন দেখুন</string>
+    <string name="action_whole_station">পুরো স্টেশন</string>
+    <string name="action_all_stops">সব স্টপ</string>
     <string name="action_show_stop">স্টপ দেখুন</string>
     <string name="action_show_on_map">ম্যাপে দেখুন</string>
+    <string name="action_plan_via">ভায়া</string>
+    <string name="action_plan_via_spoken">ভায়া %1$s ট্রিপ পরিকল্পনা করুন</string>
     <string name="action_star_journey">প্রিয় যাত্রা হিসেবে সেভ করুন</string>
     <string name="action_flip_journey">দিক বদলান</string>
     <string name="action_open_journey">যাত্রা দেখুন</string>
@@ -564,6 +615,7 @@
     <string name="journey_checking_bus">বাস যাচাই হচ্ছে…</string>
     <string name="journey_none_bus">শিগগির %1$s যাওয়ার কোনো বাস নেই</string>
     <string name="journey_not_checked_bus">বাস যাচাই করা যায়নি</string>
+    <string name="journey_shown_above">উপরে দেখানো হয়েছে</string>
     <string name="journey_route_failed">রুট লোড করা যায়নি</string>
     <string name="journey_destination_unchecked">%1$s বন্ধ কিনা যাচাই করা যায়নি</string>
     <string name="journey_incomplete">কিছু রুট যাচাই করা যায়নি</string>
@@ -596,6 +648,7 @@
     <string name="bug_report_failed">বাগ রিপোর্ট শেয়ার করা যায়নি</string>
     <string name="on_the_way">যাত্রাপথে</string>
     <string name="on_the_way_title">গন্তব্য: %1$s</string>
+    <string name="on_the_way_cant_follow_rail">National Rail কী দরকার</string>
     <string name="on_the_way_open_current">চলতি ট্রিপ খুলুন</string>
     <string name="on_the_way_start">শুরু করুন</string>
     <string name="on_the_way_replace_title">চলতি ট্রিপ বদলাবেন?</string>
@@ -708,4 +761,6 @@
     <string name="route_disruption_missed">%1$s মিস হয়ে গেছে</string>
     <string name="route_disruption_none_direct">%1$s সরাসরি যাওয়ার কোনোটি নেই · %2$s গিয়ে বদলান</string>
     <string name="on_the_way_leg">%1$s → %2$s</string>
+    <string name="on_the_way_show_stops">স্টপ দেখান</string>
+    <string name="on_the_way_hide_stops">স্টপ লুকান</string>
 </resources>

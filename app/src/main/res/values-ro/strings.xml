@@ -52,6 +52,7 @@
     <string name="widget_refresh_key_rejected">Nu s-a putut actualiza: cheie API respinsă</string>
     <string name="widget_refresh_failed_short">Actualizare eșuată</string>
     <string name="trip_disruptions_label">Perturbări:</string>
+    <string name="trip_disruptions_clear">Fără perturbări</string>
     <string name="trip_disruptions_checking">Se verifică…</string>
     <string name="trip_disruptions_unknown">Necunoscute</string>
     <string name="trip_disruptions_unknown_label">Neverificate:</string>
@@ -61,7 +62,14 @@
     <string name="trip_lines_title">Starea liniilor</string>
     <string name="trip_lines_gone">Nu mai face parte din călătorie</string>
     <string name="home_disruptions_more">+%1$d</string>
+    <string name="home_disruptions_no_line">Fără perturbări pe linii</string>
+    <string name="home_disruptions_none">Fără perturbări urmărite</string>
     <string name="home_lines_gone">Nu mai este în apropiere</string>
+    <string name="home_lines_unwatched">Nu mai este urmărită</string>
+    <string name="home_lines_watched">Urmărite</string>
+    <string name="home_lines_other">Altele</string>
+    <string name="lines_watch">Urmăriți</string>
+    <string name="lines_unwatch">Nu mai urmăriți</string>
     <string name="trip_lines_line">Deschideți linia</string>
     <string name="line_map_title">Hartă</string>
     <string name="line_map_show_all">Afișați toate stațiile</string>
@@ -116,6 +124,9 @@
     <string name="hide_mode">Ascundeți toate serviciile: %1$s</string>
     <string name="hide_line">Ascundeți %1$s</string>
     <string name="avoid_line">Evitați %1$s</string>
+    <string name="hide_line_from_ride">Ascundeți %1$s pe această cursă</string>
+    <string name="ride_line_hidden">Ascunsă pe această cursă: %1$s</string>
+    <string name="ride_hidden_lines_title">Ascunse pe această cursă</string>
     <string name="more_actions">Opțiuni</string>
     <string name="modes_hidden">Ascunse: %1$s</string>
     <string name="modes_show_all">Afișați tot</string>
@@ -186,6 +197,7 @@
     <string name="line_stop_from">De la</string>
     <string name="route_stop_departure">De la %1$s, direcția %2$s</string>
     <string name="route_stop_departure_from">De la %1$s</string>
+    <string name="route_stop_to">Până la %1$s</string>
     <string name="route_stop_go">Porniți</string>
     <string name="line_stop_to">Spre</string>
     <string name="line_stop_departures">Plecări</string>
@@ -207,6 +219,7 @@
     <string name="trip_label_fastest">Cea mai rapidă</string>
     <string name="trip_label_simplest">Cea mai simplă</string>
     <string name="trip_label_least_walking">Minim pe jos</string>
+    <string name="trip_label_cheapest">Cea mai ieftină</string>
     <string name="trip_label_separator">" · "</string>
     <string name="trip_label_other">Altele</string>
     <string name="trip_no_routes">Nu s-au găsit călătorii</string>
@@ -262,6 +275,30 @@
     <string name="trip_walk_first">Pe jos până la %1$s (~%2$d min)</string>
     <string name="trip_walk_first_now">Pe jos până la %1$s</string>
     <string name="trip_line_not_running">%1$s: %2$s</string>
+    <string name="trip_via_pick">Prin…</string>
+    <string name="trip_ends_via">Prin</string>
+    <string name="trip_via">Prin %1$s</string>
+    <string name="trip_change_via">Schimbați stația</string>
+    <string name="trip_clear_via">Eliminați stația</string>
+    <string name="station_search_via_hint">Stație</string>
+    <string name="trip_no_routes_via">Nu s-au găsit călătorii prin %1$s</string>
+    <string name="trip_change_time">Schimbați ora…</string>
+    <string name="trip_time_title">Schimbați ora</string>
+    <string name="trip_leave_now">Plecare acum</string>
+    <string name="trip_time_leave">Plecare</string>
+    <string name="trip_time_arrive">Sosire până la</string>
+    <string name="trip_time_today">Azi</string>
+    <string name="trip_time_tomorrow">Mâine</string>
+    <string name="trip_time_past">Ora a trecut deja</string>
+    <string name="trip_time_skipped">Ora nu există din cauza schimbării orei</string>
+    <string name="trip_time_on">%1$s %2$s</string>
+    <string name="trip_later_leave">Plecare: %1$s</string>
+    <string name="trip_later_arrive">Sosire până la %1$s</string>
+    <string name="trip_later_timetable">Orar, nu în timp real</string>
+    <string name="trip_later_times">%1$s–%2$s · %3$d min</string>
+    <string name="trip_later_live_notice">Ore pentru acum, nu pentru %1$s</string>
+    <string name="trip_later_not_now">Neplanificat pentru acum</string>
+    <string name="trip_later_routes_missed">Nu s-au putut planifica toate rutele</string>
     <string name="station_search_hint">Numele stației</string>
     <string name="station_search_prompt">Introduceți un nume pentru a căuta</string>
     <string name="station_search_no_matches">Niciun rezultat</string>
@@ -399,6 +436,9 @@
     <string name="settings_disruptions_row_show">Afișați pe ecranul principal</string>
     <string name="settings_disruptions_row_off">Dezactivat</string>
     <string name="settings_disruptions_row_description">Afișați alertele și întârzierile pe ecranul principal</string>
+    <string name="settings_summary_networks_title">Mereu urmărite</string>
+    <string name="settings_summary_networks_summary">Liniile din apropiere și cursele dvs. preferate sunt mereu urmărite</string>
+    <string name="settings_summary_lines_title">Urmăriți și</string>
     <string name="settings_disruptions_row_write_failed">Nu s-a putut salva; se resetează când StopDash repornește</string>
     <string name="settings_hidden_title">Ascunse</string>
     <string name="settings_hidden_summary">Excluse din listă, călătorii, widget și ceas</string>
@@ -465,6 +505,8 @@
     <string name="favorite_place_start_description">Porniți de la %1$s</string>
     <string name="settings_title">Setări</string>
     <string name="settings_live_widget_refresh_title">Actualizare automată a widgetului</string>
+    <string name="settings_keep_updating_title">Actualizați și în repaus</string>
+    <string name="settings_keep_updating_summary">Consumă mai multă baterie</string>
     <string name="settings_live_widget_refresh_summary">Actualizează widgetul de pe ecranul de pornire cam o dată pe minut, în fundal. Consumă mai multă baterie și mai multe date.</string>
     <string name="settings_location_title">Locație</string>
     <string name="settings_location_precise">Exactă</string>
@@ -473,6 +515,11 @@
     <string name="settings_wifi_places_title">Memorați rețeaua Wi-Fi din locurile salvate</string>
     <string name="settings_wifi_places_summary">Corectează localizarea lentă sau greșită acasă și la serviciu</string>
     <string name="settings_wifi_places_write_failed">Nu s-a putut salva; se resetează când StopDash repornește</string>
+    <string name="settings_train_spacing_title">Corectați distanța dintre trenuri</string>
+    <string name="settings_train_spacing_summary">Ajustați orele când trenurile sunt imposibil de apropiate</string>
+    <string name="settings_ride_grouping_title">Grupați cursele preferate</string>
+    <string name="settings_ride_grouping_ride">După cursă</string>
+    <string name="settings_ride_grouping_stop">După stație</string>
     <string name="settings_widget_follows_title">Locație automată pentru ceas și widget</string>
     <string name="settings_widget_follows_summary">Afișează stațiile din locul în care vă aflați, folosind locația în fundal.</string>
     <string name="settings_live_widget_refresh_failed">Nu s-a putut configura actualizarea automată</string>
@@ -549,8 +596,12 @@
     <string name="action_back">Înapoi</string>
     <string name="action_show_platform">Afișați doar acest punct de oprire</string>
     <string name="action_show_station">Afișați toată stația</string>
+    <string name="action_whole_station">Toată stația</string>
+    <string name="action_all_stops">Toate stațiile</string>
     <string name="action_show_stop">Afișați stația</string>
     <string name="action_show_on_map">Afișați pe hartă</string>
+    <string name="action_plan_via">Prin</string>
+    <string name="action_plan_via_spoken">Planificați o călătorie prin %1$s</string>
     <string name="action_star_journey">Adăugați cursa la preferate</string>
     <string name="action_flip_journey">Inversați direcția</string>
     <string name="action_open_journey">Afișați cursa</string>
@@ -567,6 +618,7 @@
     <string name="journey_checking_bus">Se verifică autobuzele…</string>
     <string name="journey_none_bus">Niciun autobuz spre %1$s în curând</string>
     <string name="journey_not_checked_bus">Nu s-au putut verifica autobuzele</string>
+    <string name="journey_shown_above">Afișat mai sus</string>
     <string name="journey_route_failed">Nu s-a putut încărca ruta</string>
     <string name="journey_destination_unchecked">Nu s-au putut verifica închiderile pentru %1$s</string>
     <string name="journey_incomplete">Unele rute nu au putut fi verificate</string>
@@ -599,6 +651,7 @@
     <string name="bug_report_failed">Nu s-a putut trimite raportul de eroare</string>
     <string name="on_the_way">Pe drum</string>
     <string name="on_the_way_title">Spre %1$s</string>
+    <string name="on_the_way_cant_follow_rail">Este necesară o cheie National Rail</string>
     <string name="on_the_way_open_current">Deschideți călătoria curentă</string>
     <string name="on_the_way_start">Începeți</string>
     <string name="on_the_way_replace_title">Înlocuiți călătoria curentă?</string>
@@ -715,4 +768,6 @@
     <string name="route_disruption_missed">Ați ratat %1$s</string>
     <string name="route_disruption_none_direct">Niciunul direct spre %1$s · Schimbați la %2$s</string>
     <string name="on_the_way_leg">%1$s → %2$s</string>
+    <string name="on_the_way_show_stops">Afișați stațiile</string>
+    <string name="on_the_way_hide_stops">Ascundeți stațiile</string>
 </resources>
