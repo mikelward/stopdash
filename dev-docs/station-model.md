@@ -34,7 +34,8 @@ Once all four phases have shipped (*Plan*):
 - **Saved data keeps TfL's ids** plus the level each pick was made at, versioned. Nothing is
   keyed by a model id and nothing is migrated.
 - **Edges fail safe.** A stop the bundle doesn't hold stays on its own until a refresh takes it
-  in; an unreadable bundle makes the model a typed `Unavailable`, each caller then matching only
+  in. The app's build fails on bundled files it can't build a model from, so every build ships
+  one (maintainer, 2026-10-19); only an unreadable bundle makes the model a typed `Unavailable`, each caller then matching only
   the exact id it holds (an interchange still planned through its looked-up children), and the
   screen says what wasn't checked.
 

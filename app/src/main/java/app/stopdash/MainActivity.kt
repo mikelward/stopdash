@@ -5055,7 +5055,7 @@ class MainActivity : ComponentActivity() {
                         stepFreeAccess = { StepFreeStore.load(appContext) },
                         closureCache = StopClosureCache.SHARED,
                         liftsOut = { liftOutages.current().ids },
-                        oneStop = { HubsStore.current()?.let { it::oneStop } },
+                        oneStop = { HubsStore.ready()?.let { it::oneStop } ?: { a, b -> a == b } },
                         arrivals = ArrivalsCache.SHARED,
                         sharedLines = LineStatusCache.SHARED,
                         linePulls = linePulls,

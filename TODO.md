@@ -853,17 +853,17 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                       the trip was started at (`ToChoice.of`), so the trip list it opens plans the same.
                 - [ ] Far ends, Direct, off-plan and passing a stop:
                     - [x] A Direct row's off stop: one station, or one bus stop's poles, by the model
-                          (`Hubs.oneStop`), by interchange and name only while it isn't loaded.
+                          (`Hubs.oneStop`), waiting for it as it loads; never by interchange and name.
                     - [x] A line's stations, for Direct's own filter, far ends and rides
                           (`LineSequence.stationIds`, `sameStationId`, `throughStation`): the model's
                           (`RouteStopsRepository` `model`, `withModelStations`), never the routes'
-                          `icsId`; the routes' own codes only while it isn't loaded.
+                          `icsId`.
                     - [x] A station's departures id finding its line's route (`LineSequence.callingAt`):
-                          by the model's stations where the sequence has them, the name test only
-                          without.
-                    - [ ] Drop the fallbacks to TfL's codes and to names where the model couldn't be
-                          built (maintainer, 2026-10-19: one source): with no model, an id is a station
-                          of its own.
+                          by the model's stations alone.
+                    - [x] Drop the fallbacks to TfL's codes and to names where the model couldn't be
+                          built (maintainer, 2026-10-19: one source): the app's build fails without a
+                          model, so one ships in every build; with none (an unreadable bundle), an id
+                          is a station of its own. Routes no longer read TfL's `icsId`.
                     - [x] Build the station index, the stops and the station model when the app is
                           built (maintainer, 2026-10-19): `:app:stationBundle` runs `:domain`'s own
                           readers and `Hubs.of` over `station_index.json` and `stops.tsv` and writes one
@@ -882,7 +882,15 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                           run, rather than `build_station_index.py` then `build_stops.py` (which reads
                           the index) writing two that must share a revision. Stations stop appearing
                           twice with their own names and positions, and the station bundle is built
-                          from the one file.
+                          from the one file. Consider the format with it (maintainer, 2026-10-19): the
+                          refresh could write the app's bundle itself in a schema'd format (protobuf,
+                          FlatBuffers, CBOR or another) rather than the app's build turning two text
+                          files into `StationBundle`'s own; weigh a new dependency, size (shared strings),
+                          read time and tooling against the ~200 lines it replaces.
+                    - [ ] A Direct row to a place gets off at the id its train calls at, not the stop
+                          near the place it was matched by (maintainer, 2026-10-19: left to the station
+                          resolution's arriving-by-hub step rather than patched in `PlaceDirect`, where
+                          per-train sibling ids drew five review findings on #1003).
                     - [ ] The name tests left: `PlaceDirect`'s and `StopLinks`' `sameStation`,
                           `OffPlan`'s name-only matches, and on the way's `sameStation` and
                           `stationPlaces` (passing a stop).

@@ -83,11 +83,8 @@ object HubsStore {
         val appContext = context.applicationContext
         scope.launch {
             mutableState.value = try {
-                // The model the build worked out ([StationBundleStore]), or none where it couldn't make one.
-                val bundle = withContext(io) { StationBundleStore.load(appContext) }
-                bundle?.hubs?.let { Hubs.State.Ready(it) } ?: Hubs.State.Unavailable.also {
-                    if (bundle != null) Log.w(TAG, "station model unavailable: the build couldn't make one")
-                }
+                // The model the build worked out ([StationBundleStore]); none only where the bundle can't be read.
+                withContext(io) { StationBundleStore.load(appContext) }?.let { Hubs.State.Ready(it.hubs) } ?: Hubs.State.Unavailable
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

@@ -32,7 +32,6 @@ class FileRouteStopsStoreTest {
                     stopPositions = mapOf("490000001A" to (51.5 to -0.12)),
                     stopAreas = mapOf("490000001A" to "490G00000001"),
                     stopHubs = mapOf("490000001A" to "HUBEXA"),
-                    stationCodes = mapOf("490000002B" to "1000002"),
                 ),
             ),
         ),
@@ -56,6 +55,15 @@ class FileRouteStopsStoreTest {
         FileRouteStopsStore(file).save(contents)
         assertEquals(contents, FileRouteStopsStore(file).load())
         assertFalse(File(file.path + ".tmp").exists())
+    }
+
+    @Test
+    fun `a file written with TfL's station codes still reads, the codes left out`() {
+        val file = File(tmp.root, "route-stops.json")
+        FileRouteStopsStore(file).save(contents)
+        file.writeText(file.readText().replace("\"stopHubs\":", "\"stationCodes\":{\"490000002B\":\"1000002\"},\"stopHubs\":"))
+        assertTrue(file.readText().contains("stationCodes"))
+        assertEquals(contents, FileRouteStopsStore(file).load())
     }
 
     @Test

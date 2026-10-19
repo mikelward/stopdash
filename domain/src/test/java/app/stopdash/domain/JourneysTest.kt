@@ -163,7 +163,7 @@ class JourneysTest {
 
     @Test
     fun `a journey's far end is its station, whichever of its ids a route calls at`() {
-        // TfL codes MID and MID2 as one station; this line's route calls at MID2.
+        // The station model files MID and MID2 as one station; this line's route calls at MID2.
         fun coded(vararg stops: String) = LineSequence(
             routes = listOf(LineRoute("route", stops.toList())),
             stopNames = mapOf("TOP" to "Top", "TOP2" to "Top Low Level", "MID" to "Mid", "MID2" to "Mid Low Level", "BOTA" to "Bottom A"),
@@ -176,8 +176,8 @@ class JourneysTest {
         assertEquals(listOf("Bottom A"), trains.rows.flatMap { it.upcoming }.map { it.destination })
         // A route calling at the far end itself gets off there, never at another id of its station first.
         assertEquals(JourneySegment("TOP", setOf("MID")), Journeys.segment(journey, coded("TOP", "MID2", "MID", "BOTA")))
-        // The origin is boarded at its own id: a station's code also covers platforms trains leave from apart.
-        assertNull(Journeys.segment(journey, coded("TOP2", "MID", "BOTA")))
+        // The origin, where the journey's departures are listed, stands for its station's other id the route calls at.
+        assertEquals(JourneySegment("TOP", setOf("MID")), Journeys.segment(journey, coded("TOP2", "MID", "BOTA")))
     }
 
     @Test
@@ -483,13 +483,14 @@ class JourneysTest {
     @Test
     fun `a stop near the far end listed under its interchange sibling's id is reached`() {
         // The lookup lists the far end's station as MIDX; the line's route calls at its sibling MIDY,
-        // the same station in interchange HUBM.
+        // the same station by the model, in interchange HUBM.
         val far = listOf(StopLocation("MIDX", "Mid Road", 51.4905, -0.12, listOf(LineRef("r1", "R1", "national-rail")), interchangeId = "HUBM"))
         val farEnd = Journeys.farEnd(journey.to, far, walkMeters = 800)!!
         val r1 = LineSequence(
             listOf(LineRoute("Top ↔ Mid", listOf("TOPR", "MIDY"))),
             mapOf("TOPR" to "Top Rail", "MIDY" to "Mid Road"),
             stopHubs = mapOf("MIDY" to "HUBM"),
+            stationCodes = mapOf("MIDX" to "S1", "MIDY" to "S1"),
         )
         val poles = listOf(StopLocation("TOPR", "Top Rail", 51.5101, -0.12, listOf(LineRef("r1", "R1", "national-rail"))))
         val placed = Journeys.siblingPoles(journey, "TOP", poles, mapOf("r1" to r1), farEnd)

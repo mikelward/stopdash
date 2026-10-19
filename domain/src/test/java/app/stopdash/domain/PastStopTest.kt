@@ -55,6 +55,7 @@ class PastStopTest {
             routes = line.routes + LineRoute("A ↔ Y", listOf("A", "B2", "X", "Y")),
             stopNames = line.stopNames + mapOf("B2" to "B", "X" to "X", "Y" to "Y"),
             stopHubs = mapOf("B" to "HUBB", "B2" to "HUBB"),
+            stationCodes = mapOf("B" to "SB", "B2" to "SB"),
         )
         assertEquals(listOf(listOf("C", "D", "E"), listOf("X", "Y")), OnTheWay.onward(ride, sibling))
         // A bus, its path naming stop pairs where its routes list poles: matched pole by pair, so only the
@@ -145,7 +146,7 @@ class PastStopTest {
     @Test
     fun `a stop the trip goes on to by another id of the same station isn't past it`() {
         // The walk goes to C, which the next ride names C2, the same station (Codex, #635).
-        val siblings = line.copy(stopNames = line.stopNames + ("C2" to "C"), stopHubs = mapOf("C" to "HUBC", "C2" to "HUBC"))
+        val siblings = line.copy(stopNames = line.stopNames + ("C2" to "C"), stopHubs = mapOf("C" to "HUBC", "C2" to "HUBC"), stationCodes = mapOf("C" to "SC", "C2" to "SC"))
         val toC2 = walking.copy(route = TripRoute(listOf(ride, walk.copy(toId = "C2", toName = "C"), onward.copy(fromId = "C2", fromAt = null))))
         assertNull(OnTheWay.pastStop(toC2, fix(north(2.0)), siblings, at(12)))
         // The walk goes to C as one route lists it; another branch lists it as C2, its own platforms: there too,
@@ -155,6 +156,7 @@ class PastStopTest {
             stopNames = line.stopNames + mapOf("C2" to "C", "Y" to "Y"),
             stopPositions = line.stopPositions + mapOf("C2" to (51.52 to -0.116), "Y" to (51.53 to -0.112)),
             stopHubs = mapOf("C" to "HUBC", "C2" to "HUBC"),
+            stationCodes = mapOf("C" to "SC", "C2" to "SC"),
         )
         val toC = walking.copy(route = TripRoute(listOf(ride, walk.copy(toId = "C", toName = "C"), onward.copy(fromId = "C", fromAt = north(2.0)))))
         assertNull(OnTheWay.pastStop(toC, fix(Coordinates(51.52, -0.116)), branch, at(12)))
@@ -207,6 +209,7 @@ class PastStopTest {
             routes = listOf(LineRoute("A ↔ E", listOf("A", "B2", "C", "D", "E"))),
             stopNames = line.stopNames + ("B2" to "B"),
             stopHubs = mapOf("B" to "HUBB", "B2" to "HUBB"),
+            stationCodes = mapOf("B" to "SB", "B2" to "SB"),
         )
         assertEquals(listOf(listOf("C", "D", "E")), OnTheWay.onward(ride.copy(path = listOf("B2")), siblings))
         // And matched stop by stop as so: only the branch by X, not the as-long one by Y (Codex, #635).
@@ -224,6 +227,7 @@ class PastStopTest {
             routes = line.routes + LineRoute("A ↔ X", listOf("A", "B2", "X")),
             stopNames = line.stopNames + mapOf("B2" to "B", "X" to "X"),
             stopHubs = mapOf("B" to "HUBB", "B2" to "HUBB"),
+            stationCodes = mapOf("B" to "SB", "B2" to "SB"),
             stopPositions = line.stopPositions + mapOf("B2" to (51.51 to -0.11), "X" to (51.53 to -0.11)),
         )
         assertEquals(OnTheWay.Past(0, "X", "X"), OnTheWay.pastStop(walking, fix(Coordinates(51.515, -0.11)), branch, at(12)))
@@ -243,6 +247,7 @@ class PastStopTest {
             mapOf("A" to "A", "B" to "B", "B2" to "B", "C" to "C"),
             stopPositions = mapOf("A" to (51.5 to -0.12), "B" to (51.51 to -0.12), "B2" to (51.51 to -0.11), "C" to (51.53 to -0.11)),
             stopHubs = mapOf("B" to "HUBB", "B2" to "HUBB"),
+            stationCodes = mapOf("B" to "SB", "B2" to "SB"),
         )
         val pathless = walking.copy(route = TripRoute(listOf(ride.copy(path = emptyList()), walk, onward)))
         assertEquals(OnTheWay.Past(0, "C", "C"), OnTheWay.pastStop(pathless, fix(Coordinates(51.52, -0.11)), twin, at(12)))
@@ -399,6 +404,7 @@ class PastStopTest {
             routes = line.routes + LineRoute("A ↔ X", listOf("A", "B2", "X")),
             stopNames = line.stopNames + mapOf("B2" to "B", "X" to "X"),
             stopHubs = mapOf("B" to "HUBB", "B2" to "HUBB"),
+            stationCodes = mapOf("B" to "SB", "B2" to "SB"),
             stopPositions = line.stopPositions + mapOf("B2" to (51.51 to -0.11), "X" to (51.53 to -0.11)),
         )
         assertTrue(OnTheWay.backFromPast(past, fix(Coordinates(51.51, -0.11)), branch))

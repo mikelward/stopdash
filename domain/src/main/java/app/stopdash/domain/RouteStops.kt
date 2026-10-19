@@ -47,12 +47,9 @@ data class LineSequence(
     // itself: how a departure listed under one of a station's stop ids finds the sibling id the
     // route calls at (see [callingAt]).
     val stopHubs: Map<String, String> = emptyMap(),
-    // Each station's TfL code (`icsId`), the same for every id TfL lists it under; never a bus
-    // stop's, which it shares with the pole across the road (see [throughStation]).
+    // Each stop's station as the station model files it ([withModelStations]), the same for every id of
+    // one station; none for a bus stop, or an id the model doesn't hold, which is a station of its own.
     val stationCodes: Map<String, String> = emptyMap(),
-    // Whether [stationCodes] are the station model's ([withModelStations]), every stop's, so a stop with
-    // none is a station of its own; false for TfL's route codes, which name no stop outside the routes.
-    val modelStations: Boolean = false,
 ) {
     operator fun plus(other: LineSequence) =
         LineSequence(
@@ -63,7 +60,6 @@ data class LineSequence(
             stopAreas + other.stopAreas,
             stopHubs + other.stopHubs,
             stationCodes + other.stationCodes,
-            modelStations && other.modelStations,
         )
 
     // Each station code's ids on this line ([stationCodes] inverted), for [stationIds]: built once, on the
@@ -118,29 +114,19 @@ data class LineSequence(
      * can list a station's departures under one stop id and route the line through a sibling: St
      * Pancras's Thameslink trains depart under its domestic-platforms id, while the sequence calls at
      * its main and low-level ids. When no route calls at [stopId], every stop on a route that is the same
-     * station becomes [stopId]: by the station model where the sequence was placed by it ([modelStations]),
-     * else one in the same interchange ([stopHubs]) that is the same station by name ([stopNames], or it plus
-     * a platform qualifier like "LL"), so the route page, a journey starred from it, and that
-     * journey's trains all work from the id the departures carry. The name keeps another station in
-     * the hub (King's Cross beside St Pancras) out, which would otherwise make the path ambiguous or
-     * wrong. [stopId]'s own hub and name come from the station index ([withStations]). Unchanged
-     * when a route calls at [stopId], its hub or name is unknown, or no sibling matches.
+     * station by the station model ([stationCodes]) becomes [stopId], so the route page, a journey starred
+     * from it, and that journey's trains all work from the id the departures carry; another station of the
+     * hub (King's Cross beside St Pancras) is never one. Unchanged when a route calls at [stopId], the model
+     * doesn't hold it, or no sibling is its station.
      */
     @WorkerThread
     fun callingAt(stopId: String): LineSequence {
         val onRoute = routes.flatMapTo(HashSet()) { it.stopIds }
         if (stopId in onRoute) return this
-        // By the station model where the sequence has it: one station's other ids, never a name, and a stop it
-        // doesn't hold none (dev-docs/station-model.md, phase 2).
-        val siblings = if (modelStations) {
-            if (stationCodeOf(stopId) == null) return this
-            onRoute.filterTo(LinkedHashSet()) { sameStationId(stopId, it) }
-        } else {
-            val interchangeId = stopHubs[stopId].orEmpty()
-            val name = stopNames[stopId].orEmpty()
-            if (interchangeId.isBlank() || name.isBlank()) return this
-            onRoute.filterTo(LinkedHashSet()) { id -> stopHubs[id] == interchangeId && sameStation(name, stopNames[id].orEmpty()) }
-        }
+        // By the station model alone: one station's other ids, never a name, and a stop it doesn't hold none
+        // (dev-docs/station-model.md, phase 2).
+        if (stationCodeOf(stopId) == null) return this
+        val siblings = onRoute.filterTo(LinkedHashSet()) { sameStationId(stopId, it) }
         if (siblings.isEmpty()) return this
         fun <T> firstOf(map: Map<String, T>): T? = siblings.firstNotNullOfOrNull { map[it] }
         return copy(
@@ -159,7 +145,7 @@ data class LineSequence(
     @WorkerThread
     fun withModelStations(stationOf: (String) -> String?): LineSequence {
         val ids = stopNames.keys + stationCodes.keys + routes.flatMap { it.stopIds }
-        return copy(stationCodes = ids.associateWith { stationOf(it).orEmpty() }, modelStations = true)
+        return copy(stationCodes = ids.mapNotNull { id -> stationOf(id)?.takeIf { it.isNotBlank() }?.let { id to it } }.toMap())
     }
 
     /**
@@ -646,13 +632,13 @@ object RouteStops {
      * stop so named, else the route's end if the route is named for it (or on a bus, whose blind
      * names a place, not a stop); a way reaching no such terminus is dropped rather than guessed.
      * Failing a single way, [resolve] toward the Planner's terminus, if that passes where the leg
-     * gets off. [boarding] is already [LineSequence.callingAt] the boarding stop.
+     * gets off. [boarding] is already [LineSequence.callingAt] the boarding stop; where it gets off
+     * keeps the id the route calls at, the station's other id matched below, so the list ends where the
+     * train calls (its arrival is predicted there).
      */
     @WorkerThread
     fun forLeg(boarding: LineSequence, leg: TripLeg): Resolution {
-        // Where it gets off by the id the Planner names, as where it boards: a station's other id
-        // in the same interchange (a sibling platform) is the same place.
-        val sequence = boarding.callingAt(leg.toId)
+        val sequence = boarding
         fun exactly(id: String) = id == leg.toId || (leg.toArea.isNotEmpty() && sequence.stopAreas[id] == leg.toArea)
         // Failing that id on every way from the boarding stop, another id of its station ([LineSequence.sameStationId]):
         // northbound Thameslink calls at St Pancras by its low level, whichever id the Planner names. Only failing it,
@@ -662,11 +648,14 @@ object RouteStops {
             sequence.routes.none { route -> visits(route, leg.fromId).any { i -> (i + 1 until route.stopIds.size).any { exactly(route.stopIds[it]) } } }
         fun alights(id: String) = exactly(id) || (station && sequence.sameStationId(id, leg.toId))
         // How much of the planned path a way calls at, in order: branches that share their first
-        // stops only part where the path does.
+        // stops only part where the path does. Where it gets off counts by [alights], the id the way
+        // calls at for the planned one (Codex on #1003).
         fun followed(stops: List<String>): Int {
             var at = 0
             return leg.path.count { planned ->
-                val found = (at until stops.size).firstOrNull { stops[it] == planned || sequence.stopAreas[stops[it]] == planned }
+                val found = (at until stops.size).firstOrNull {
+                    stops[it] == planned || sequence.stopAreas[stops[it]] == planned || (planned == leg.toId && alights(stops[it]))
+                }
                     ?: return@count false
                 at = found + 1
                 true
@@ -1063,9 +1052,10 @@ class RouteStopsRepository(
             .withStations(stationsByHub.orEmpty()).byModel(modelHubs)
     }
 
-    // Its stations as [hubs] files them, or the routes' own codes where there's no model.
+    // Its stations as [hubs] files them; with no model, every id a station of its own, never the routes'
+    // own codes or a name (maintainer, 2026-10-19: one source).
     private fun LineSequence.byModel(hubs: Hubs?): LineSequence =
-        hubs?.let { model -> withModelStations { id -> (model.stationOf(id) as? Hubs.Membership.Of)?.id } } ?: this
+        withModelStations { id -> (hubs?.stationOf(id) as? Hubs.Membership.Of)?.id }
 
     private fun mergedKey(lineId: String, direction: String) = "$lineId|${RouteStops.directionsFor(direction).joinToString(",")}"
 

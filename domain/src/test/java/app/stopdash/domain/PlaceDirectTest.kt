@@ -55,14 +55,16 @@ class PlaceDirectTest {
     }
 
     @Test
-    fun `trains that get off at one station by its sibling ids name it`() {
+    fun `a row made without the station model names a stop only where every train reaches its one id`() {
+        // Rows from a look are named by the model; one made on its own has no model, so ids alone.
         val bottom = DirectTrips.End("BOT", "Bottom", "HUBB")
         val bottomX = DirectTrips.End("BOTX", "Bottom", "HUBB")
-        assertEquals("BOT", row(listOf(bottom), listOf(bottomX)).offStop?.id)
-        // TfL's two names for one station's two ids are one station too.
+        assertEquals("BOT", row(listOf(bottom), listOf(bottom)).offStop?.id)
+        // Never one by its interchange and name: same-named siblings stay apart.
+        assertNull(row(listOf(bottom), listOf(bottomX)).offStop)
         val stPancras = DirectTrips.End("910GSTPX", "St Pancras International", "HUBKGX")
         val stPancrasLow = DirectTrips.End("910GSTPXBOX", "St Pancras International LL", "HUBKGX")
-        assertEquals("910GSTPX", row(listOf(stPancras), listOf(stPancrasLow)).offStop?.id)
+        assertNull(row(listOf(stPancras), listOf(stPancrasLow)).offStop)
         // Two stations an interchange joins are two stops, not one.
         val kingsCross = DirectTrips.End("940GZZLUKSX", "King's Cross St. Pancras", "HUBKGX")
         assertNull(row(listOf(stPancras), listOf(kingsCross)).offStop)
@@ -92,7 +94,7 @@ class PlaceDirectTest {
 
     @Test
     fun `a row is the same whichever of its station's ids its soonest train gets off at`() {
-        // One route lists the station as Bottom, the other as Bottom Low: one station under one interchange.
+        // One route lists the station as Bottom, the other as Bottom Low: one station by the model.
         val twoIds = LineSequence(
             routes = listOf(
                 LineRoute("Top ↔ Bottom", listOf("TOP", "MID", "BOT")),
@@ -103,15 +105,18 @@ class PlaceDirectTest {
         )
         val near = listOf(DirectTrips.End("BOTX", "Bottom Low", "HUBB"), DirectTrips.End("BOT", "Bottom", "HUBB"))
         fun rowWith(soonest: String, next: String) =
-            PlaceDirect.rows(listOf(stop("TOP", "Top", departure(soonest, 60), departure(next, 120))), near, mapOf("rail" to twoIds), emptyMap(), now)
-                .rows.single()
+            PlaceDirect.rows(
+                listOf(stop("TOP", "Top", departure(soonest, 60), departure(next, 120))), near, mapOf("rail" to twoIds), emptyMap(), now,
+                // The station model files both ids under one station.
+                oneStop = { a, b -> setOf(a, b) == setOf("BOT", "BOTX") },
+            ).rows.single()
         // Named and keyed by the station as the place's stops first list it, whichever train leaves first.
         assertEquals("BOTX", rowWith("Bottom", "Bottom Low").offStop?.id)
         assertEquals(rowWith("Bottom", "Bottom Low").key, rowWith("Bottom Low", "Bottom").key)
     }
 
     @Test
-    fun `a row's station is one by the station model where it's loaded, never by its name`() {
+    fun `a row's station is one by the station model, never by its name`() {
         // Two ids of one station whose names share nothing, and two that do but are different stations.
         val routes = LineSequence(
             routes = listOf(
@@ -125,7 +130,7 @@ class PlaceDirectTest {
         val near = listOf(DirectTrips.End("BOT", "Bottom", "HUBB"), DirectTrips.End("LOW", "Lower Platforms", "HUBB"), DirectTrips.End("BOTX", "Bottom Low", "HUBB"))
         val stations = mapOf("BOT" to "S1", "LOW" to "S1", "BOTX" to "S2")
         val same = { a: String, b: String -> stations[a] != null && stations[a] == stations[b] }
-        fun rowsWith(vararg to: String, model: ((String, String) -> Boolean)?) = PlaceDirect.rows(
+        fun rowsWith(vararg to: String, model: (String, String) -> Boolean) = PlaceDirect.rows(
             listOf(stop("TOP", "Top", *to.mapIndexed { i, it -> departure(it, 60L * (i + 1)) }.toTypedArray())),
             near, mapOf("rail" to routes), emptyMap(), now, oneStop = model,
         ).rows
@@ -136,8 +141,11 @@ class PlaceDirectTest {
         assertEquals("BOT", onlyLower.offStop?.id)
         assertEquals("LOW", onlyLower.rideTo?.id)
         assertEquals("BOT", rowsWith("Bottom", "Lower Platforms", model = same).single().rideTo?.id)
-        // With none loaded, told by name: Bottom and Bottom Low one row, Lower Platforms its own.
-        assertEquals(listOf("BOT", "LOW"), rowsWith("Bottom", "Lower Platforms", "Bottom Low", model = null).map { it.offStop?.id })
+        // With no model, each id its own: never Bottom and Bottom Low by their names.
+        assertEquals(
+            listOf("BOT", "LOW", "BOTX"),
+            rowsWith("Bottom", "Lower Platforms", "Bottom Low", model = { a, b -> a == b }).map { it.offStop?.id },
+        )
     }
 
     @Test
@@ -363,11 +371,12 @@ class PlaceDirectTest {
     @Test
     fun `step-free is judged at the stop a train calls at, not a sibling near the place it's listed beside`() {
         // Only step-free Bottom-X is near the place; the route calls at its sibling Bottom (a step), one
-        // station by interchange and name, which the route would otherwise list as Bottom-X (Codex, #886).
+        // station by the model, which the route would otherwise list as Bottom-X (Codex, #886).
         val hubbed = LineSequence(
             routes = listOf(LineRoute("Top ↔ Bottom", listOf("TOP", "MID", "BOT"))),
             stopNames = mapOf("TOP" to "Top", "MID" to "Mid", "BOT" to "Bottom", "BOTX" to "Bottom"),
             stopHubs = mapOf("BOT" to "HUBB", "BOTX" to "HUBB"),
+            stationCodes = mapOf("BOT" to "SB", "BOTX" to "SB"),
         )
         val table = StepFreeAccess(
             mapOf(
@@ -445,7 +454,7 @@ class PlaceDirectTest {
 
     @Test
     fun `a train that may take either branch reaches a stop near the place its route lists under a sibling id`() {
-        // Bottom A's route id is BOTA; the stop near the place is its sibling BOTAX, one station (hub HUBA).
+        // Bottom A's route id is BOTA; the stop near the place is its sibling BOTAX, one station by the model.
         val fork = LineSequence(
             routes = listOf(
                 LineRoute("Top ↔ Bottom A", listOf("TOP", "MID", "BOTA")),
@@ -453,6 +462,7 @@ class PlaceDirectTest {
             ),
             stopNames = mapOf("TOP" to "Top", "MID" to "Mid", "BOTA" to "Bottom A", "BOTAX" to "Bottom A", "BOTB" to "Bottom B"),
             stopHubs = mapOf("BOTA" to "HUBA", "BOTAX" to "HUBA"),
+            stationCodes = mapOf("BOTA" to "SA", "BOTAX" to "SA"),
         )
         val both = listOf(DirectTrips.End("BOTAX", "Bottom A", "HUBA"), DirectTrips.End("BOTB", "Bottom B"))
         val result = PlaceDirect.rows(listOf(stop("TOP", "Top", departure("", 60))), both, mapOf("rail" to fork), emptyMap(), now)

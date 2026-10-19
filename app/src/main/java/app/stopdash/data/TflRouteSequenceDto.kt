@@ -52,14 +52,6 @@ data class TflRouteSequenceDto(
             val hub = stop.topMostParentId
             if (stop.id.isNotBlank() && hub.isNotBlank() && hub != stop.id) hubs.putIfAbsent(stop.id, hub)
         }
-        // A bus stop's code is shared with the pole across the road, which goes the other way. A
-        // railway station TfL also lists buses at keeps its own (Codex on #879): only a stop served by
-        // road alone is a pole.
-        val codes = HashMap<String, String>()
-        for (stop in stopPointSequences.flatMap { it.stopPoint }) {
-            val pole = stop.modes.isNotEmpty() && stop.modes.all { it in ROAD_MODES }
-            if (stop.id.isNotBlank() && stop.icsId.isNotBlank() && !pole) codes.putIfAbsent(stop.id, stop.icsId)
-        }
         return LineSequence(
             routes = orderedLineRoutes.filter { it.naptanIds.size >= 2 }.map { LineRoute(it.name, it.naptanIds, routeDirection) },
             stopNames = names,
@@ -67,13 +59,9 @@ data class TflRouteSequenceDto(
             stopPositions = positions,
             stopAreas = areas,
             stopHubs = hubs,
-            stationCodes = codes,
         )
     }
 }
-
-// A stop's TfL modes when it's a pole by the road: a bus or coach stop, never a station.
-private val ROAD_MODES = setOf("bus", "coach")
 
 @Serializable
 data class TflOrderedRouteDto(val name: String = "", val naptanIds: List<String> = emptyList())
@@ -91,8 +79,6 @@ data class TflMatchedStopDto(
     val stationId: String = "",
     val modes: List<String> = emptyList(),
     val lines: List<TflLineIdentifierDto> = emptyList(),
-    // TfL's code for the station, the same for every id it lists the station under.
-    val icsId: String = "",
     // The stop's published position — lets a favorite journey pick its nearer end (SPEC *Journeys*).
     val lat: Double? = null,
     val lon: Double? = null,

@@ -113,7 +113,7 @@ private data class RouteCacheSequence(
     val stopPositions: Map<String, RouteCachePosition> = emptyMap(),
     val stopAreas: Map<String, String> = emptyMap(),
     val stopHubs: Map<String, String> = emptyMap(),
-    val stationCodes: Map<String, String> = emptyMap(),
+    // An older file's `stationCodes` (TfL's own) are left unread: a line's stations are the station model's.
 )
 
 @Serializable
@@ -159,7 +159,6 @@ private fun LineSequence.toPersisted(key: String, at: Instant) = RouteCacheSeque
     stopPositions.mapValues { (_, p) -> RouteCachePosition(p.first, p.second) },
     stopAreas,
     stopHubs,
-    stationCodes,
 )
 
 private fun RouteCacheSequence.toSequence() = LineSequence(
@@ -169,7 +168,6 @@ private fun RouteCacheSequence.toSequence() = LineSequence(
     stopPositions.mapValues { (_, p) -> p.latitude to p.longitude },
     stopAreas,
     stopHubs,
-    stationCodes,
 )
 
 private fun StopLocation.toPersisted() = RouteCacheStop(

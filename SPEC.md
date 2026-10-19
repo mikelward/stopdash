@@ -1170,22 +1170,25 @@ it among the stop's arrivals, but it takes no one anywhere from there. It's matc
 near-me list matches a terminus — by TfL's destination id against the stop and its stop area, by
 name only when TfL gives no id. **A station TfL lists under one id and routes
 under another** (St Pancras's Thameslink departures, whose route calls at the station's low-level
-platforms) boards at the same-named station in the same interchange — never a different station
-in it, like King's Cross beside St Pancras. **A station TfL routes under one id one way and another
+platforms) boards at that station, one by the station model — never a different station
+in the interchange, like King's Cross beside St Pancras, and never by a name. **A station TfL routes under one id one way and another
 the other** (maintainer's report, 2026-10-15: Thameslink's low-level platforms are its own id
 northbound and the main station's southbound, so every southbound train there matched no route and
 dropped out of the Direct section and a trip's times; HS1's trains leave under the domestic id, which
 one route ends at under the main id) takes a train whose own id has no way at all to its terminus,
 whatever its board says it runs via, through the other:
-the same station by the station model (its records of one ICS code and mode family; TfL's own code
-only while the model isn't loaded, and a stop it doesn't hold a station of its own). Only then, so a station's separate platforms that share a
+the same station by the station model (its records of one ICS code and mode family; never TfL's own
+code or a name, and a stop it doesn't hold a station of its own). Only then, so a station's separate platforms that share a
 code (Liverpool Street's terminus and the Elizabeth line beneath it) never stand in for each other
 while the train's own id says where it goes; never for a train naming no destination ("Check Front of
 Train"), whose own id only ending its routes says it arrives here; and never for a bus, whose code the
-pole across the road shares. **Where a train gets the rider off is a station, by TfL's code** (maintainer,
-2026-10-15): a trip, a journey or a place reached at one id of it is reached by a train calling at
-any, so a northbound Thameslink, which calls at St Pancras's low level only, gets off at St Pancras
-whichever of its ids was asked for. Never another station of the interchange (King's Cross beside
+pole across the road shares. **Where a train gets the rider off is a station, by the station model**
+(maintainer, 2026-10-15): a trip, a journey or a place reached at one id of it is reached by a train
+calling at any, so a northbound Thameslink, which calls at St Pancras's low level only, gets off at St
+Pancras whichever of its ids was asked for — at the id the train calls at, where its arrival is
+predicted, not the one asked for (maintainer, 2026-10-19); a Direct row to a place still names the
+stop near the place it was matched by until ids are resolved where they enter the app
+(`dev-docs/station-resolution.md`). Never another station of the interchange (King's Cross beside
 it), never a bus pole, and the named id first: a train whose way calls at that id itself gets off
 there, never at another id of its station before it. A journey starred there keeps the id the departures
 carry, and its card places it the same way. Which interchange a stop is in comes from the bundled
