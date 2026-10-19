@@ -297,6 +297,19 @@ class HubsPickTest {
     }
 
     @Test
+    fun `a trip on the way to a station is planned again to its every target`() {
+        // Its To… carries the level the trip was started at, so the trip list it opens plans to the same targets.
+        val at = java.time.Instant.parse("2026-10-02T08:00:00Z")
+        val ride = TripLeg("rail", "example", "Example", "910GVALE", "Vale", "910GEXPANC", "Example Pancras", at, at.plusSeconds(600))
+        val trip = ActiveTrip(TripRoute(listOf(ride)), "Example Pancras", startedAt = at, destinationStopId = "910GEXPANCLL", destinationLevel = Pick.Level.STATION)
+        val to = ToChoice.of(trip)
+        assertEquals(listOf("910GEXPANCLL", "910GEXPANC", "490000001A"), hubs.planTargetsOf(to.stopId!!, to.name, to.level))
+        // A trip kept before its level was, read as the station its id is.
+        val old = ToChoice.of(trip.copy(destinationLevel = null))
+        assertEquals(listOf("910GEXPANCLL", "910GEXPANC", "490000001A"), hubs.planTargetsOf(old.stopId!!, old.name, old.level))
+    }
+
+    @Test
     fun `a stop, an interchange, a place or an unbundled station is planned to as picked`() {
         assertNull(hubs.planTargetsOf("490000001B", "Example Pancras", Pick.Level.STOP))
         assertNull(hubs.planTargetsOf("HUBEXX", "Example Cross & Example Pancras", Pick.Level.HUB))
