@@ -48,7 +48,8 @@ import kotlin.math.roundToInt
  * all, and doesn't call a connection missed that another of the complex's stops still makes. Empty for
  * a trip kept before they were. [destinationStopId] is the stop or station (an interchange's `HUB…`
  * included) the rider picked, to open the trip list to again; blank for a place, or a trip kept
- * before it was.
+ * before it was. [destinationLevel] is the level it was picked at, where the row said so; null where
+ * it didn't, or for a trip kept before it was.
  * Kept on the device only: where a rider is going is theirs (SPEC *Privacy*).
  */
 data class ActiveTrip(
@@ -78,6 +79,7 @@ data class ActiveTrip(
     val destinations: List<TripDestination> = emptyList(),
     val destinationIds: Map<String, String> = emptyMap(),
     val destinationStopId: String = "",
+    val destinationLevel: Pick.Level? = null,
     // The walks that are changes on foot ([OnTheWay.changesOnFoot]), by leg index: decided once when
     // the trip starts, so its steps never change on the way. Null on a trip kept by an older build,
     // which goes by the names alone.

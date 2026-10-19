@@ -815,6 +815,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           - [ ] Every holder of a picked place holds a `Pick`, `StationMatch` included, a level the row
                 doesn't say read through `Hubs.picked`; the trip on the way's ends too, with its version
                 bump (*A saved level comes with a version*).
+                - [x] A trip's To: `ToChoice.level`, its saved state (`SavedTrip`, the near-me trip's
+                      `hereToLevel`) and the trip on the way's `destinationLevel`, the active trip file
+                      at version 2. Unused until arrivals move onto the model (below); see *Decisions
+                      needing review* for the nullable level.
+                - [ ] The Via (`TripVia`, `ViaChoiceSaver`), a changed From (`OriginChange.Station`), a
+                      favorite ride's From being added (`journeyFromId`), and the open pages
+                      (`openStationId`, `departuresStationId`, `onTheWayFrom`).
           - [x] The station page's records on the model (`Hubs.recordsOf`): St Pancras's page takes in
                 its low level. Read through `HubsStore.ready`, the same-name rule standing in without it.
           - [x] Search's member rows on the model: a name that is one station's carries its lead record
@@ -4752,6 +4759,14 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 ## Decisions needing review
 
+- [ ] **A trip's To keeps a nullable level beside its id, not a `Pick`** (autopilot, 2026-10-19;
+  station model phase 2). `dev-docs/station-model.md` *A picked place is never a bare id* has every
+  holder swap its id for a `Pick`, whose level is required. But a To picked from a row that doesn't
+  say its level (a TfL search hit) would need `Hubs.picked`, a worker's call, inside the tap. So
+  `ToChoice`, its saved state and the trip on the way keep `level: Pick.Level?` beside the id, as
+  `PendingEnd.Station` and `StationMatch` already do, null read through `Hubs.picked` where it's
+  used. Alternative: the `Pick` swap, the tap hopping to resolve first. Reversible: the level is
+  additive in each saved shape, so a later swap reads it as it is.
 - [ ] **National Rail's words expire on their own, not by dating the status by its older half**
   (autopilot, 2026-10-18; Codex, #943). The maintainer leaned towards dating a line status by the
   earlier of TfL's fetch and the proxy's, but that is stamped separately by eight callers, each of

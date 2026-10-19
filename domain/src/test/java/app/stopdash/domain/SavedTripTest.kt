@@ -7,6 +7,8 @@ import org.junit.Test
 class SavedTripTest {
     // Hubs' ids and names, and a synthetic coordinate, not anyone's place.
     private val toCanaryWharf = ToChoice(stopId = "940GZZLUCYF", name = "Canary Wharf")
+    private val toCanaryWharfStation = toCanaryWharf.copy(level = Pick.Level.STATION)
+    private val toKingsCross = ToChoice(stopId = "HUBKGX", name = "King's Cross & St Pancras International", level = Pick.Level.HUB)
     private val toPlace = ToChoice(place = TripDestination.Place(Coordinates(51.5, -0.12), "Work"), name = "Work")
     private val toMuseum = ToChoice(
         place = TripDestination.Place(Coordinates(51.5, -0.12), "Sample Museum", PlaceArt(type = PlaceType.MUSEUM)),
@@ -14,12 +16,15 @@ class SavedTripTest {
     )
     private val toStreet = ToChoice(place = TripDestination.Place(Coordinates(51.5, -0.12), "Example Street", PlaceArt(PlaceKind.STREET)), name = "Example Street")
 
+    // A To… as the build before its level was kept saved it.
+    private fun toFieldsWithoutLevel(to: ToChoice) = SavedTrip.toChoiceFields(to).dropLast(1)
+
     // A To… as the build before a place's art was kept saved it.
-    private fun toFieldsWithoutArt(to: ToChoice) = SavedTrip.toChoiceFields(to).dropLast(1)
+    private fun toFieldsWithoutArt(to: ToChoice) = SavedTrip.toChoiceFields(to).dropLast(2)
 
     @Test
     fun `a To round-trips`() {
-        for (to in listOf(ToChoice.NONE, ToChoice.NONE.startPicking(), toCanaryWharf, toPlace, toMuseum, toStreet, toCanaryWharf.startPicking())) {
+        for (to in listOf(ToChoice.NONE, ToChoice.NONE.startPicking(), toCanaryWharf, toCanaryWharfStation, toKingsCross, toPlace, toMuseum, toStreet, toCanaryWharf.startPicking())) {
             assertEquals(to, SavedTrip.toChoiceOf(SavedTrip.toChoiceFields(to)))
         }
     }
@@ -33,6 +38,8 @@ class SavedTripTest {
             OriginChange.Station("940GZZLUKSX", "King's Cross St. Pancras", toCanaryWharf),
             // Opened from one of King's Cross & St Pancras's station names, its lead goes with it.
             OriginChange.Station("HUBKGX", "St Pancras International", toCanaryWharf, lead = listOf("national-rail")),
+            OriginChange.Station("940GZZLUKSX", "King's Cross St. Pancras", toCanaryWharfStation),
+            OriginChange.NearMe(toKingsCross),
         )
         for (change in changes) {
             assertEquals(change, SavedTrip.originChangeOf(SavedTrip.originChangeFields(change)))
@@ -79,11 +86,27 @@ class SavedTripTest {
 
     @Test
     fun `an art this build doesn't know restores as a plain place`() {
-        val fields = SavedTrip.toChoiceFields(toMuseum).dropLast(1) + "aquarium"
+        val fields = toFieldsWithoutArt(toMuseum) + "aquarium"
         assertEquals(toMuseum.withPlainPlace(), SavedTrip.toChoiceOf(fields))
     }
 
     private fun ToChoice.withPlainPlace() = copy(place = place?.copy(art = PlaceArt.PLAIN))
+
+    @Test
+    fun `a To saved before its level was kept restores with none, read as a row that didn't say`() {
+        assertEquals(toCanaryWharf, SavedTrip.toChoiceOf(toFieldsWithoutLevel(toCanaryWharfStation)))
+        assertEquals(toMuseum, SavedTrip.toChoiceOf(toFieldsWithoutLevel(toMuseum)))
+        val station = listOf("940GZZLUKSX", "King's Cross St. Pancras") + toFieldsWithoutLevel(toKingsCross) + listOf(arrayListOf("tube"))
+        assertEquals(
+            OriginChange.Station("940GZZLUKSX", "King's Cross St. Pancras", toKingsCross.copy(level = null), lead = listOf("tube")),
+            SavedTrip.originChangeOf(station),
+        )
+    }
+
+    @Test
+    fun `a level this build doesn't know restores as none`() {
+        assertEquals(toCanaryWharf, SavedTrip.toChoiceOf(toFieldsWithoutLevel(toCanaryWharf) + "junction"))
+    }
 
     @Test
     fun `a shape no build saved is no change under way`() {

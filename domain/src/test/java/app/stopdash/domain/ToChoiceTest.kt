@@ -59,6 +59,19 @@ class ToChoiceTest {
     @Test
     fun `a trip on the way is planned again to the stop or station picked`() {
         assertEquals(ToChoice(stopId = "HUBKGX", name = "King's Cross"), ToChoice.of(trip.copy(destinationStopId = "HUBKGX")))
+        // At the level it was picked at.
+        assertEquals(
+            ToChoice(stopId = "HUBKGX", name = "King's Cross", level = Pick.Level.HUB),
+            ToChoice.of(trip.copy(destinationStopId = "HUBKGX", destinationLevel = Pick.Level.HUB)),
+        )
+    }
+
+    @Test
+    fun `a stop picked keeps the level its row was at, and clearing it forgets it`() {
+        val picked = ToChoice.NONE.pickStop(StationMatch("940GZZLUBNK", "Bank", listOf("tube"), level = Pick.Level.STATION))
+        assertEquals(Pick.Level.STATION, picked.level)
+        assertNull(picked.clearDestination().level)
+        assertNull(picked.pickPlace(place).level)
     }
 
     @Test

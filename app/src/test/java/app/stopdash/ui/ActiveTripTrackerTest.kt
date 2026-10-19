@@ -6,6 +6,7 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.OnTheWay.Step
+import app.stopdash.domain.Pick
 import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripDestination
@@ -359,14 +360,16 @@ class ActiveTripTrackerTest {
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         val destinations = listOf(TripDestination.Stop("C"), TripDestination.Stop("C2"))
         val ids = mapOf("C" to "C", "C2" to "C2", "C2a" to "C2")
-        tracker.start(route, "C", readyAt = now, destinations = destinations, destinationIds = ids)
+        tracker.start(route, "C", readyAt = now, destinations = destinations, destinationIds = ids, destinationStopId = "C", destinationLevel = Pick.Level.STATION)
         assertEquals(destinations, kept?.destinations)
         assertEquals(ids, kept?.destinationIds)
+        assertEquals(Pick.Level.STATION, kept?.destinationLevel)
         // So does one started with a walk to its first stop first.
         tracker.end()
-        tracker.start(route, "C", readyAt = now.plusSeconds(120), destinations = destinations, destinationIds = ids)
+        tracker.start(route, "C", readyAt = now.plusSeconds(120), destinations = destinations, destinationIds = ids, destinationStopId = "C", destinationLevel = Pick.Level.STATION)
         assertEquals(destinations, kept?.destinations)
         assertEquals(ids, kept?.destinationIds)
+        assertEquals(Pick.Level.STATION, kept?.destinationLevel)
     }
 
     @Test
