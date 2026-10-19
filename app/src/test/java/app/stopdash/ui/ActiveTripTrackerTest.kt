@@ -1958,6 +1958,8 @@ class ActiveTripTrackerTest {
             stopNames = mapOf("N" to "N", "N2" to "N", "X" to "X"),
             stopPositions = mapOf("N2" to (51.515 to -0.11), "X" to (51.53 to -0.11)),
             stopHubs = mapOf("N" to "HUBN", "N2" to "HUBN"),
+            // One station by the model.
+            stationCodes = mapOf("N" to "SN", "N2" to "SN"),
         )
         val toB = ride.copy(toId = "B", toName = "B", path = listOf("B"), arrival = at(10))
         val toN = TripLeg(TripLeg.WALKING, "", "", "B", "B", "N", "N", at(10), at(20))

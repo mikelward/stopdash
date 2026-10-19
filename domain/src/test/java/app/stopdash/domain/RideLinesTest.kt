@@ -180,12 +180,13 @@ class RideLinesTest {
 
     @Test
     fun `a line whose route runs through a sibling id of the same station is an equal`() {
-        // Green's departures are listed under A, but its route calls at A1: the same station, by
-        // interchange and name, as TfL does at some stations with several sets of platforms.
+        // Green's departures are listed under A, but its route calls at A1: the same station by the model,
+        // as TfL does at some stations with several sets of platforms.
         val green = LineSequence(
             routes = listOf(LineRoute("route", listOf("A1", "B", "End"))),
             stopNames = mapOf("A" to "Alpha", "A1" to "Alpha", "B" to "B", "End" to "End"),
             stopHubs = mapOf("A" to "HUB", "A1" to "HUB"),
+            stationCodes = mapOf("A" to "SA", "A1" to "SA"),
         )
         val lines = linesOf(mapOf("green" to green))
         assertEquals(listOf("red", "green"), lines.legs.map { it.lineId })
@@ -195,7 +196,7 @@ class RideLinesTest {
 
     @Test
     fun `a line calling at another id of the getting-off stop's station is an equal, getting off there`() {
-        // TfL codes B and B2 as one station, with no interchange or name in common; green calls at B2.
+        // The station model files B and B2 as one station, with no interchange or name in common; green calls at B2.
         fun green(vararg stops: String, codes: Map<String, String> = mapOf("B" to "1000002", "B2" to "1000002")) = LineSequence(
             routes = listOf(LineRoute("route", stops.toList())),
             stopNames = mapOf("A" to "A", "B" to "Beta", "B2" to "Beta Low Level", "End" to "End"),
@@ -204,7 +205,9 @@ class RideLinesTest {
         val lines = linesOf(mapOf("green" to green("A", "B2", "End")))
         assertEquals(listOf("red", "green"), lines.legs.map { it.lineId })
         assertEquals("A" to "B2", lines.legs[1].let { it.fromId to it.toId })
-        // Not one station without TfL's code.
+        // And it rides the same stretch, so it may time the ride: getting off at B2 is getting off at B (Codex on #1003).
+        assertEquals(listOf("red", "green"), lines.timed.map { it.lineId })
+        // Not one station without the model saying so.
         assertEquals(listOf("red"), linesOf(mapOf("green" to green("A", "B2", "End", codes = emptyMap()))).legs.map { it.lineId })
         // Calling at the stop itself, it gets off there, never at another id of its station first.
         assertEquals("B", linesOf(mapOf("green" to green("A", "B2", "B", "End"))).legs[1].toId)

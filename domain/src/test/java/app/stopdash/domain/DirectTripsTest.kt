@@ -171,8 +171,8 @@ class DirectTripsTest {
 
     @Test
     fun `a destination listed under a sibling id in its hub still matches`() {
-        // The route calls at MID; the searched station comes back as MIDX in the same interchange.
-        val hubbed = rail.copy(stopHubs = mapOf("MID" to "HUBMID"))
+        // The route calls at MID; the searched station comes back as MIDX, one station by the model.
+        val hubbed = rail.copy(stopHubs = mapOf("MID" to "HUBMID"), stationCodes = mapOf("MID" to "S1", "MIDX" to "S1"))
         val top = stop("TOP", "Top", departure("Bottom A", 60))
         val result = DirectTrips.filter(listOf(top), listOf(station("MIDX", "Mid", interchangeId = "HUBMID")), mapOf("rail" to hubbed))
         assertEquals(1, result.stops.single().departures.size)

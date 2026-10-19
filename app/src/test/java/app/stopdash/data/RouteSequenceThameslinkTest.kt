@@ -4,6 +4,8 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DirectTrips
 import app.stopdash.domain.IndexedStation
+import app.stopdash.domain.BundledStops
+import app.stopdash.domain.Hubs
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.JourneySegment
 import app.stopdash.domain.Journeys
@@ -50,9 +52,20 @@ class RouteSequenceThameslinkTest {
     private val index: List<IndexedStation> =
         StationIndexStore.parse(File("src/main/assets/stations/station_index.json").readText()).stations
 
-    private val thameslink = fetched.withStations(index.filter { it.interchangeId.isNotBlank() }.groupBy { it.interchangeId })
+    // The station model from the real bundle, which places a line's stations as the repository does.
+    private val hubs: Hubs by lazy {
+        val stops = File("src/main/assets/stations/stops.tsv").bufferedReader().use { BundledStops.read(it) }
+        Hubs.of(StationIndexStore.parse(File("src/main/assets/stations/station_index.json").readText()), stops)
+            ?: error("the bundled files build no station model")
+    }
 
-    private val bothWays = (fetched + southbound).withStations(index.filter { it.interchangeId.isNotBlank() }.groupBy { it.interchangeId })
+    private fun LineSequence.placed() = withModelStations { id -> (hubs.stationOf(id) as? Hubs.Membership.Of)?.id }
+
+    private val thameslink by lazy { fetched.withStations(index.filter { it.interchangeId.isNotBlank() }.groupBy { it.interchangeId }).placed() }
+
+    private val bothWays by lazy {
+        (fetched + southbound).withStations(index.filter { it.interchangeId.isNotBlank() }.groupBy { it.interchangeId }).placed()
+    }
 
     private val now = Instant.parse("2026-09-23T08:00:00Z")
 
@@ -205,25 +218,12 @@ class RouteSequenceThameslinkTest {
     }
 
     @Test
-    fun `the sequence carries each station's code, never a bus stop's`() {
-        assertEquals(STATION_CODE, southbound.stationCodes[ST_PANCRAS])
-        assertEquals(STATION_CODE, fetched.stationCodes[ST_PANCRAS_LL])
-        // A railway station TfL also lists buses at (Redhill, both ways) is a station all the same.
-        assertEquals("1001721", southbound.stationCodes["910GREDHILL"])
-        assertEquals("1001721", fetched.stationCodes["910GREDHILL"])
-        val stops = TflRouteSequenceDto(
-            stopPointSequences = listOf(
-                TflStopPointSequenceDto(
-                    listOf(
-                        TflMatchedStopDto(id = "910GA", name = "A Rail Station", icsId = "1000001", modes = listOf("national-rail")),
-                        TflMatchedStopDto(id = "490000002B", name = "B", icsId = "1000002", modes = listOf("bus")),
-                        TflMatchedStopDto(id = "910GC", name = "C Rail Station", icsId = "1000003", modes = listOf("bus", "national-rail")),
-                        TflMatchedStopDto(id = "490000004D", name = "D", icsId = "1000004", modes = listOf("bus", "coach")),
-                    ),
-                ),
-            ),
-        ).toLineSequence()
-        assertEquals(mapOf("910GA" to "1000001", "910GC" to "1000003"), stops.stationCodes)
+    fun `the sequence carries no station code of TfL's, the model placing its stations`() {
+        // TfL's own `icsId` is left unread (maintainer, 2026-10-19: one source).
+        assertTrue(fetched.stationCodes.isEmpty())
+        assertTrue(southbound.stationCodes.isEmpty())
+        assertTrue(bothWays.sameStationId(ST_PANCRAS, ST_PANCRAS_LL))
+        assertFalse(bothWays.sameStationId(ST_PANCRAS, KINGS_CROSS))
     }
 
     @Test

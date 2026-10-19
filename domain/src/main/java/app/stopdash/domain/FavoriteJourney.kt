@@ -350,8 +350,8 @@ object Journeys {
      * each end finds its best match on its own, so a bus origin found by stop area can pair with a
      * one-way destination found by distance. The far end ([station]) is its station where [route] calls
      * at none of it by its id ([LineSequence.sameStationId]): a northbound Thameslink route calls at St
-     * Pancras by its low level, whichever id the journey was starred from. The origin keeps its own id,
-     * as a station's code also covers platforms trains leave from apart (Liverpool Street's).
+     * Pancras by its low level, whichever id the journey was starred from. The origin is matched by its
+     * own id here, the routes already seen from it ([callingAtEnds]).
      */
     private fun matches(route: LineRoute, end: JourneyEnd, sequence: LineSequence, tier: Int, station: Boolean = false): List<Int> {
         val ids = route.stopIds
@@ -430,7 +430,7 @@ object Journeys {
                     pendingLines += row.lineId
                     return@mapNotNull null
                 }
-                // The row's own stop id (and the journey's ends) stand in for a sibling its routes
+                // The row's own stop id (and the journey's origin) stand in for a sibling its routes
                 // call at (see callingAt), as [segment] placed them.
                 val sequence = sequences[row.lineId]?.callingAt(row.stopId)
                     ?.let { if (journey == null) it else it.callingAtEnds(journey) }
@@ -551,9 +551,13 @@ object Journeys {
     fun originHub(originId: String, sequence: LineSequence?, pole: StopLocation?): String =
         pole?.interchangeId?.takeIf { it.isNotBlank() } ?: sequence?.stopHubs?.get(originId).orEmpty()
 
-    /** [this] with [journey]'s ends in place of the sibling stop ids its routes call at. */
+    /**
+     * [this] with [journey]'s origin, where its departures are listed, in place of the sibling stop ids its
+     * routes call at; the far end keeps the route's own id, matched by station ([matches]), so it names
+     * where the train calls.
+     */
     private fun LineSequence.callingAtEnds(journey: FavoriteJourney): LineSequence =
-        callingAt(journey.from.stopId).callingAt(journey.to.stopId)
+        callingAt(journey.from.stopId)
 
     /**
      * [this] row's trains with no time ([DepartureRow.untimed]) to a destination one of [kept] runs to,

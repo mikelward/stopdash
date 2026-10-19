@@ -96,10 +96,12 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
                     sameStops(ride, lineId, lineName, sequence, boarding)
                 }
                 if (found.isEmpty()) return@associateWith only(ride)
-                // The stops between, by their pairs, less where the ride gets off.
-                fun between(stops: List<String>) = stops.map(::stopOf).dropLastWhile { it == stopOf(ride.toId) || it == ride.toArea }
-                val ridden = between(ride.path)
-                RideLines(listOf(ride) + found, listOf(ride) + found.filter { between(it.path) == ridden })
+                // The stops between, by their pairs, less where the ride gets off: by the planned stop, or the id of
+                // its station a line gets off at ([sameStops] keeps the one the train calls at; Codex on #1003).
+                fun between(stops: List<String>, offId: String) =
+                    stops.map(::stopOf).dropLastWhile { it == stopOf(ride.toId) || it == stopOf(offId) || it == ride.toArea }
+                val ridden = between(ride.path, ride.toId)
+                RideLines(listOf(ride) + found, listOf(ride) + found.filter { between(it.path, it.toId) == ridden })
             }
         }
 
@@ -261,13 +263,13 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
             sequence: LineSequence,
             boarding: Set<String>,
         ): TripLeg? {
-            // Each boarding stop as the route sees it, and the getting-off stop too: TfL can list a
-            // station's departures under one id and route the line through a sibling
-            // ([LineSequence.callingAt]), which is still the same stop.
-            // Failing that id on every run, another id of its station ([LineSequence.sameStationId]): only
-            // failing it, since a station's code also covers platforms runs call at apart (Liverpool Street's).
+            // Each boarding stop as the route sees it: TfL can list a station's departures under one id and
+            // route the line through a sibling ([LineSequence.callingAt]), which is still the same stop. Where
+            // it gets off keeps the id the route calls at, the one its arrival is predicted at: the id the
+            // ride names, failing that on every run another id of its station ([LineSequence.sameStationId]),
+            // only failing it, since a station's code also covers platforms runs call at apart (Liverpool Street's).
             fun runs(station: Boolean) = boarding.flatMap { stop ->
-                val seen = sequence.callingAt(stop).callingAt(end.toId)
+                val seen = sequence.callingAt(stop)
                 fun alights(id: String) = id == end.toId || (end.toArea.isNotEmpty() && seen.stopAreas[id] == end.toArea) ||
                     (station && seen.sameStationId(id, end.toId))
                 seen.routes.flatMap { route ->

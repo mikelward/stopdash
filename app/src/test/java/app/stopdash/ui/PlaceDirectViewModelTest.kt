@@ -104,7 +104,7 @@ class PlaceDirectViewModelTest {
         val dispatcher = compute.asCoroutineDispatcher()
         try {
             var askedOn: String? = null
-            fun model(stations: (() -> ((String, String) -> Boolean)?)) = PlaceDirectViewModel(
+            fun model(stations: suspend () -> (String, String) -> Boolean) = PlaceDirectViewModel(
                 ends = { listOf(DirectTrips.End("BOT", "Bottom"), DirectTrips.End("LOW", "Lower Platforms")) },
                 client = client { listOf(departure("Bottom", 60), departure("Lower Platforms", 120)) },
                 routes = RouteStopsRepository(source, clock = { now }),
@@ -118,8 +118,8 @@ class PlaceDirectViewModelTest {
             same.refresh()
             assertEquals(listOf("BOT"), (same.state.value as PlaceDirectViewModel.State.Ready).rows.map { it.row.offStop?.id })
             assertTrue(askedOn.orEmpty().startsWith("compute"))
-            // With the model not loaded, told apart by name: a row each.
-            val none = model { null }
+            // With no model, each id its own: a row each.
+            val none = model { { a, b -> a == b } }
             none.refresh()
             assertEquals(listOf("BOT", "LOW"), (none.state.value as PlaceDirectViewModel.State.Ready).rows.map { it.row.offStop?.id })
         } finally {

@@ -68,9 +68,9 @@ class PlaceDirectViewModel(
     // every few minutes), taken off the step-free table before it's read, so a platform only a broken
     // lift reaches never counts as step-free.
     private val liftsOut: suspend () -> Set<String> = { emptySet() },
-    // Whether two stops are one, by the station model as loaded now (one station, or one bus stop's poles); null
-    // while it isn't, so a look never waits on it. Asked on [compute] at each look.
-    private val oneStop: () -> ((String, String) -> Boolean)? = { null },
+    // Whether two stops are one, by the station model (one station, or one bus stop's poles), waiting for it
+    // as it loads at start (bounded); with none, each id only itself. Asked at each look.
+    private val oneStop: suspend () -> (String, String) -> Boolean = { { a, b -> a == b } },
     // Stops' last closure lookups, shared with the other screens (the app passes [StopClosureCache.SHARED]).
     private val closureCache: StopClosureCache = StopClosureCache(),
     private val arrivals: ArrivalsCache = ArrivalsCache(),

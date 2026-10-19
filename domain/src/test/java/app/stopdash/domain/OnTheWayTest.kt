@@ -1453,12 +1453,13 @@ class OnTheWayTest {
         assertFalse(OnTheWay.comesThroughBoarding(ride, 0, trunk.copy(routes = trunk.routes + LineRoute("X-loop", listOf("X", "B", "C", "A", "B", "C")))))
         // A loop calling at B twice, round by X between: the second way to B isn't theirs (Codex, PR #462).
         assertFalse(OnTheWay.comesThroughBoarding(ride, 0, LineSequence(listOf(LineRoute("loop", listOf("A", "B", "X", "B", "C"))), emptyMap())))
-        // The route naming A by a sibling id at the same interchange: the same station, so the same way
+        // The route naming A by a sibling id, one station by the model: the same station, so the same way
         // (Codex, PR #462).
         val sibling = LineSequence(
             listOf(LineRoute("A-C", listOf("A2", "B", "C"))),
             mapOf("A" to "A", "A2" to "A", "B" to "B", "C" to "C"),
             stopHubs = mapOf("A" to "HUBA", "A2" to "HUBA"),
+            stationCodes = mapOf("A" to "SA", "A2" to "SA"),
         )
         assertTrue(OnTheWay.comesThroughBoarding(ride, 0, sibling))
         // One route calling at B by the ride's own id, another joining from X by a sibling id: still a
@@ -1467,6 +1468,7 @@ class OnTheWayTest {
             listOf(LineRoute("A-C", listOf("A", "B", "C")), LineRoute("X-C", listOf("X", "B2", "C"))),
             mapOf("A" to "A", "B" to "B", "B2" to "B", "C" to "C", "X" to "X"),
             stopHubs = mapOf("B" to "HUBB", "B2" to "HUBB"),
+            stationCodes = mapOf("B" to "SB", "B2" to "SB"),
         )
         assertFalse(OnTheWay.comesThroughBoarding(ride, 0, siblingJoin))
         // No routes known, or none reaching the stop: nothing to go on.
@@ -1551,12 +1553,13 @@ class OnTheWayTest {
         val withFast = allStops.copy(routes = allStops.routes + LineRoute("A-C fast", listOf("A", "C", "D")))
         assertEquals(OnTheWay.Twin.UNKNOWN, OnTheWay.twinOf(waiting, 0, listOf(call("C", 9)), 0, at(6), withFast))
         assertEquals(OnTheWay.Twin.UNKNOWN, OnTheWay.twinOf(waiting, 0, listOf(call("C", 9)), 0, at(6), null))
-        // So too where the fast route names A by a sibling id at the same interchange: route by route, it's
-        // still a way from A that skips B (Codex, PR #465).
+        // So too where the fast route names A by a sibling id, one station by the model: route by route,
+        // it's still a way from A that skips B (Codex, PR #465).
         val siblingFast = LineSequence(
             allStops.routes + LineRoute("A-C fast", listOf("A2", "C", "D")),
             mapOf("A" to "A", "A2" to "A", "B" to "B", "C" to "C", "D" to "D"),
             stopHubs = mapOf("A" to "HUBA", "A2" to "HUBA"),
+            stationCodes = mapOf("A" to "SA", "A2" to "SA"),
         )
         assertEquals(OnTheWay.Twin.UNKNOWN, OnTheWay.twinOf(waiting, 0, listOf(call("C", 9)), 0, at(6), siblingFast))
         // A loop round to A and on to C without B: its second time round skips B (Codex, PR #465).

@@ -923,15 +923,30 @@ class RouteStopsTest {
     @Test
     fun `a planned leg gets off at the station the Planner names by its other id`() {
         // The route calls at Z's low-level platforms (ZLL); the Planner names the station's main id
-        // (Z), in the same interchange: the same place, so the rider gets off there.
+        // (Z), one station by the model: the same place, so the rider gets off there, at the id the train calls at.
         val line = LineSequence(
             routes = listOf(LineRoute("A ↔ Y", listOf("A", "B", "ZLL", "Y"))),
             stopNames = mapOf("A" to "A", "B" to "B", "ZLL" to "Z", "Z" to "Z", "Y" to "Y"),
             stopHubs = mapOf("ZLL" to "HUBZ", "Z" to "HUBZ"),
+            stationCodes = mapOf("ZLL" to "SZ", "Z" to "SZ"),
         )
         val leg = TripLeg("rail", "line", "line", "A", "A", "Z", "Z", at(5), at(9), path = listOf("B", "Z"), headings = listOf("Y"))
         val stops = RouteStops.forLeg(line, leg) as RouteStops.Resolution.Found
-        assertEquals(listOf("A", "B", "Z", "Y"), stops.stops.map { it.id })
+        assertEquals(listOf("A", "B", "ZLL", "Y"), stops.stops.map { it.id })
+    }
+
+    @Test
+    fun `a leg whose path names only the station it gets off at follows the way calling there by another id`() {
+        // The Planner's path is only Z; one way calls at Z's low level (ZLL), the other at Q instead, both
+        // to Y. The way calling at the station is the leg's, not left ambiguous between them (Codex on #1003).
+        val line = LineSequence(
+            routes = listOf(LineRoute("A ↔ Y", listOf("A", "ZLL", "Y")), LineRoute("A ↔ Y via Q", listOf("A", "Q", "Y"))),
+            stopNames = mapOf("A" to "A", "ZLL" to "Z", "Z" to "Z", "Q" to "Q", "Y" to "Y"),
+            stationCodes = mapOf("ZLL" to "SZ", "Z" to "SZ"),
+        )
+        val leg = TripLeg("rail", "line", "line", "A", "A", "Z", "Z", at(5), at(9), path = listOf("Z"), headings = listOf("Y"))
+        val stops = RouteStops.forLeg(line, leg) as RouteStops.Resolution.Found
+        assertEquals(listOf("A", "ZLL", "Y"), stops.stops.map { it.id })
     }
 
     @Test
@@ -947,10 +962,10 @@ class RouteStopsTest {
             ),
             stopHubs = mapOf("HSD" to "HUBHMS", "HSC" to "HUBHMS", "HSX" to "HUBHMS"),
         )
-        // The H&C station isn't taken for the District's own.
+        // Neither is taken for the District's own by its name: with no station model's codes, every id
+        // is a station of its own (maintainer, 2026-10-19: one source).
         assertTrue(district.callingAt("HSC") === district)
-        // A stop under another id that leaves the qualifier off is.
-        assertEquals(listOf("A", "HSX", "B"), district.callingAt("HSX").routes.single().stopIds)
+        assertTrue(district.callingAt("HSX") === district)
         // Ending here, by name only: a qualifier on one side is a source that left it off; on both,
         // it has to name the same line.
         assertTrue(RouteStops.endsAt(district, "HSD", "Hammersmith", ""))
@@ -1189,7 +1204,7 @@ class RouteStopsTest {
     }
 
     @Test
-    fun `a line merged where the station model couldn't be built keeps its routes' own codes`() = runTest {
+    fun `a line merged where the station model couldn't be built has every id a station of its own`() = runTest {
         val repository = RouteStopsRepository(
             CountingSource(hillLine, emptyList()),
             stations = { emptyList() },
@@ -1197,8 +1212,9 @@ class RouteStopsTest {
             model = { null },
         )
         val loaded = repository.load("hill", "")
-        assertTrue(loaded.sameStationId("910GHILL", "940GZZLUHIL"))
-        assertFalse(loaded.modelStations)
+        // Never the routes' own codes (maintainer, 2026-10-19: one source).
+        assertFalse(loaded.sameStationId("910GHILL", "940GZZLUHIL"))
+        assertTrue(loaded.sameStationId("910GHILL", "910GHILL"))
     }
 
     @Test
@@ -1215,8 +1231,8 @@ class RouteStopsTest {
         assertEquals(listOf("TOP", "910GHILLLL"), placed.callingAt("910GHILLLL").routes.single().stopIds)
         // The tube station shares the name but not the station: by the model it finds no route...
         assertEquals(listOf("TOP", "910GHILL"), placed.callingAt("940GZZLUHIL").routes.single().stopIds)
-        // ...where by name alone, without the model, it took the rail record's place.
-        assertEquals(listOf("TOP", "940GZZLUHIL"), line.callingAt("940GZZLUHIL").routes.single().stopIds)
+        // ...nor by name alone, without the model: never a name (maintainer, 2026-10-19: one source).
+        assertEquals(listOf("TOP", "910GHILL"), line.callingAt("940GZZLUHIL").routes.single().stopIds)
         // A stop the model doesn't hold finds none.
         val unheld = line.copy(stopNames = line.stopNames + ("910GHILLX" to "Hill"), stopHubs = line.stopHubs + ("910GHILLX" to "HUBEXA"))
             .withModelStations { id -> (hillModel.stationOf(id) as? Hubs.Membership.Of)?.id }

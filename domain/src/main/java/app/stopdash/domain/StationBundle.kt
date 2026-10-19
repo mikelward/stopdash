@@ -17,7 +17,7 @@ import kotlin.system.exitProcess
  * and [Hubs.of] ([main]), so what the app loads is what it would have built itself; a round-trip test
  * holds the two equal.
  *
- * The file: a header (format, the bundle's content revision, whether a model was built), every
+ * The file: a header (format and the bundle's content revision), every
  * string once, then the index, the stops and the model, each string named by its place in that
  * table and each position in millionths of a degree, which every source position fits exactly.
  */
@@ -26,29 +26,28 @@ object StationBundle {
 
     private const val MAGIC = 0x53444231 // "SDB1"
     private const val MICRO = 1_000_000.0
-    const val FORMAT_VERSION = 1
+    const val FORMAT_VERSION = 2
 
     /** What [read] gives back: the index, the stops, and the model where the build could make one. */
-    class Contents(val index: StationIndex, val stops: BundledStops, val hubs: Hubs?)
+    class Contents(val index: StationIndex, val stops: BundledStops, val hubs: Hubs)
 
     /**
-     * Writes [index], [stops] and their model [hubs] (null where [Hubs.of] couldn't build one) to [out].
+     * Writes [index], [stops] and their model [hubs] to [out].
      * Throws [IllegalArgumentException] for an index and stops from different refreshes (their revisions
      * differ), which [read] would refuse, and for a position finer than a millionth of a degree, which the
      * file couldn't give back exactly.
      */
     @WorkerThread
-    fun write(index: StationIndex, stops: BundledStops, hubs: Hubs?, out: OutputStream) {
+    fun write(index: StationIndex, stops: BundledStops, hubs: Hubs, out: OutputStream) {
         require(index.revision == stops.revision) { "station bundle: the station index and stops are from different refreshes" }
         val body = Writer()
         writeIndex(index, body)
         stops.writeTo(body)
-        hubs?.writeTo(body)
+        hubs.writeTo(body)
         val data = DataOutputStream(out.buffered())
         data.writeInt(MAGIC)
         data.writeInt(FORMAT_VERSION)
         data.writeUTF(stops.revision)
-        data.writeBoolean(hubs != null)
         body.writeStrings(data)
         body.bytes.writeTo(data)
         data.flush()
@@ -67,12 +66,11 @@ object StationBundle {
         val version = data.readInt()
         require(version == FORMAT_VERSION) { "station bundle: format $version, not $FORMAT_VERSION" }
         val revision = data.readUTF()
-        val hasModel = data.readBoolean()
         val reader = Reader(data)
         val index = readIndex(reader)
         val stops = BundledStops.readFrom(reader)
         require(index.revision == revision && stops.revision == revision) { "station bundle: parts from different revisions" }
-        val hubs = if (hasModel) Hubs.readFrom(reader, index) else null
+        val hubs = Hubs.readFrom(reader, index)
         return Contents(index, stops, hubs)
     }
 
@@ -135,8 +133,8 @@ object StationBundle {
 
     /**
      * The build's step: `main <stops.tsv> <station_index.json> <out>`. Fails the build on a file it
-     * can't read whole; a bundle without a model ([Hubs.of] declined it) is written without one, as
-     * the app would have gone without it, and says why.
+     * can't read whole, and on files [Hubs.of] builds no station model from, saying why: the app never
+     * ships without one (maintainer, 2026-10-19), so nothing in it falls back to TfL's codes or names.
      */
     @JvmStatic
     fun main(args: Array<String>) {
@@ -145,16 +143,23 @@ object StationBundle {
             exitProcess(2)
         }
         val (stopsFile, indexFile, outFile) = args.map(::File)
+        build(stopsFile, indexFile, outFile)?.let { why ->
+            System.err.println("station bundle: $why")
+            exitProcess(1)
+        }
+    }
+
+    /** [main]'s work: writes the bundle to [outFile], or says why it can't, writing nothing. */
+    fun build(stopsFile: File, indexFile: File, outFile: File): String? {
         val stops = stopsFile.bufferedReader().use { BundledStops.read(it) }
         val index = StationIndexFile.parse(indexFile.readText()) { System.err.println("station index: $it") }
         // A bundle the app would refuse fails the build instead (Codex on #1002).
-        if (index.revision != stops.revision) {
-            System.err.println("station bundle: the station index and stops are from different refreshes")
-            exitProcess(1)
-        }
-        val hubs = Hubs.of(index, stops) { System.err.println("station bundle: no station model: $it") }
+        if (index.revision != stops.revision) return "the station index and stops are from different refreshes"
+        var why = "unknown"
+        val hubs = Hubs.of(index, stops) { why = it } ?: return "no station model: $why"
         outFile.parentFile?.mkdirs()
         outFile.outputStream().use { write(index, stops, hubs, it) }
+        return null
     }
 
     /** Writes a bundle's values, each string once ([string]), into [bytes]. */
