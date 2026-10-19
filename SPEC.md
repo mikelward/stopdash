@@ -2790,7 +2790,12 @@ as it was.
   where it boards through where it gets off, the stop the rider is at or last passed the blue "you are
   here" dot, those behind them muted. The dot sits where it boards until they're seen on board (a
   train gone with no sign of them on it leaves them there, as the step does), then at the stop before
-  the next one the trip counts to (or names); where the trip can't place their train, no stop is
+  the next one the trip counts to (or names). TfL's predictions for a bus can run a stop or so behind it, so two
+  fixes in a row sure to 50 m, each at one of the ride's stops past the one its predictions still say is next,
+  count the step's stops (and so the dot) on from the nearer of the two (a fix can jump wide for a moment, and one
+  between stops or off the ride counts for nothing; maintainer, 2026-10-19), never back again for a refresh without one, though
+  withheld with the train's predictions once they're too old to stand behind, since it still takes that train
+  to be theirs; where the trip can't place their train, no stop is
   marked rather than a guess, nor from an answer too old to stand behind (as the card
   withholds its stops then; stops counted from where the rider was seen stand). Each stop is a row of the screen's list, so a long route draws only
   what's on screen. The stops are the Planner's for the ride (the line's own where the

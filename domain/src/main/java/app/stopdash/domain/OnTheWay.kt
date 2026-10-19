@@ -25,7 +25,8 @@ import kotlin.math.roundToInt
  * only taken to be because the train followed left ([boarded]): until then the ride's step and its board of
  * departures stay up, since a rider still on the platform looks the same underground (maintainer, 2026-09-29).
  * [seenAlongStop] is the next stop on the ride's path ([TripLeg.path]) ahead of where the rider was seen
- * while on board with no train yet known to be theirs ([OnTheWay.onBoardAlong]); -1 otherwise.
+ * while on board with no train yet known to be theirs ([OnTheWay.onBoardAlong]), or seen past the next
+ * stop the train followed is predicted at ([OnTheWay.seenPastCalls]); -1 otherwise.
  * [seenAlongAt] is when they were last seen that far along: the Planner's time per stop counts on
  * from there to say when they're one stop out with no fix to place them (maintainer, 2026-10-04).
  * [boardWarned] is the train whose "time to board" has been said ([OnTheWay.boardKey]): its leg and the train
@@ -1734,6 +1735,72 @@ object OnTheWay {
         }
         val soon = stopsLeft != null && (stopsLeft <= GET_OFF_SOON_STOPS || oneStopOutBy(trip, on, stopsLeft)?.isAfter(now) == false)
         return TripProgress.Riding(leg, next, stopsLeft, null, soon, seen = true, byPosition = true)
+    }
+
+    /**
+     * [trip] keeping how far its rider, on board a train counted by its calls ([progress]), is seen past the
+     * train's next call: a fix sure to [FIX_WITHIN_METERS] ([usableFix]) placing them at one of the ride's stops
+     * ([placeAlong]; the closest within reach where two are, never between stops), with its next stop beyond the one
+     * the calls count to. The caller acts only on two such fixes in a row ([ActiveTripTracker]), so one that jumps
+     * wide moves nothing (maintainer, 2026-10-19). TfL's predictions run a stop or so behind a bus, so
+     * the trip would still say a stop already passed is next (maintainer, 2026-10-19). Kept as
+     * [ActiveTrip.seenAlongStop], furthest, so a refresh with no fix doesn't take it back ([countedOn]); one
+     * [AHEAD_OF_RIDER_STOPS] past is another train, let go before this ([followedAhead], [aheadOfTrain]). Only on
+     * the ride's own line, whose stops the calls count ([ActiveTrip.vehicleLeg] null). Null when nothing moves on.
+     */
+    @WorkerThread
+    fun seenPastCalls(trip: ActiveTrip, progress: TripProgress, rider: LocationFix, positions: Map<String, Coordinates>, now: Instant): ActiveTrip? {
+        val riding = progress as? TripProgress.Riding ?: return null
+        if (!riding.seen || riding.byPosition || trip.vehicleId.isBlank() || trip.vehicleLeg != null) return null
+        val leg = trip.leg ?: return null
+        if (riding.leg != leg || leg.path.isEmpty()) return null
+        val next = callsNext(leg, riding) ?: return null
+        val fix = usableFix(rider) ?: return null
+        val placed = placeAlong(leg, fix, positions) ?: return null
+        // Only at one of the ride's own stops, never between them: a fix that jumps wide can still land near the
+        // ride's way (maintainer, 2026-10-19).
+        if (!placed.atStop && !placed.atEnd) return null
+        // At a stop, the closest to the fix of those within reach (the earlier where as close), not the furthest
+        // [placeAlong] takes: two stops a fix reaches both of would otherwise count them two on from where the calls
+        // say, or, taking the earlier, one short at the later (Codex, #993). So too where they get off, which
+        // [placeAlong] takes first: a fix at the stop before it that also reaches it counts from that stop, and only
+        // one closest to where they get off moves nothing (Codex, #993).
+        val closest = leg.path.indices
+            .mapNotNull { i -> positions[leg.path[i]]?.takeIf { near(fix, it, AT_STOP_WITHIN_METERS) }?.let { i to distance(fix.coordinates, it) } }
+            .minByOrNull { it.second }?.first
+        val along = Along(closest ?: if (placed.atEnd) return null else placed.from, atStop = true)
+        val ahead = ahead(along)
+        if (ahead <= next || ahead >= leg.path.size || ahead <= trip.seenAlongStop) return null
+        return trip.copy(seenAlongStop = ahead, seenAlongAt = now)
+    }
+
+    // The index into [leg]'s path of the next stop [riding]'s calls count to: its stops left from where it gets off,
+    // where that's the stop the calls name next. Null where it isn't (a train not calling at every stop of the path,
+    // whose calls left don't count its stops; Codex, #993), or nothing is counted.
+    private fun callsNext(leg: TripLeg, riding: TripProgress.Riding): Int? {
+        val left = riding.stopsLeft ?: return null
+        val next = leg.path.size - left
+        if (next !in leg.path.indices) return null
+        // Only where both name it: an unnamed stop can't show the count isn't off by a stop the train skips (Codex, #993).
+        return next.takeIf { sameStopName(leg.pathNames.getOrNull(next)?.takeIf { it.isNotBlank() }, riding.nextStop) }
+    }
+
+    /**
+     * [progress], counted by the calls of the train [trip] follows, moved on to the stop its rider was seen
+     * past ([seenPastCalls]) where that's further than the calls count: its next stop and the stops left from
+     * there, "get off soon" one stop out, the calls' time where they get off kept. Unchanged otherwise.
+     */
+    fun countedOn(trip: ActiveTrip, progress: TripProgress): TripProgress {
+        val riding = progress as? TripProgress.Riding ?: return progress
+        if (!riding.seen || riding.byPosition || trip.vehicleId.isBlank() || trip.vehicleLeg != null) return progress
+        val leg = trip.leg ?: return progress
+        val callsTo = callsNext(leg, riding) ?: return progress
+        val from = trip.seenAlongStop
+        if (riding.leg != leg || from <= callsTo || from >= leg.path.size) return progress
+        val stopsLeft = leg.path.size - from
+        // A stop not named is left unnamed, not called by the one the calls named (Codex, PR #449).
+        val next = leg.pathNames.getOrNull(from)?.takeIf { it.isNotBlank() } ?: leg.toName.takeIf { leg.path.getOrNull(from) == leg.toId }
+        return riding.copy(nextStop = next, stopsLeft = stopsLeft, getOffSoon = riding.getOffSoon || stopsLeft <= GET_OFF_SOON_STOPS)
     }
 
     /**
