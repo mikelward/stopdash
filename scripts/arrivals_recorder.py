@@ -14,6 +14,12 @@ This tool measures that, and a fix for it, against what actually happened:
              (as the app grays them, and a little further apart), and count which of the two left
              the board before it was due, and what the one that did looked like beforehand.
 
+With --vehicles, `record` also asks TfL, once a round, for every call ahead of each tube train listed
+within a minute of another at one platform number, on any line and however far off, and appends
+those to a second file: what a copy's own calls look like is what may tell it from a real train.
+That is a deliberate superset of the pairs the app grays (one line, the first due within 5 minutes,
+after its newest-answer and turnback stages): pick those out in analysis, from the recorded polls.
+
 Neither method is judged against its own numbers: the truth comes from where TfL says the train
 is, not from any prediction, to within half a poll interval.
 - When a train reached the platform: halfway between the poll where TfL first places it "At
@@ -30,7 +36,7 @@ is, not from any prediction, to within half a poll interval.
 
 Recordings carry nothing about any user, but which stops someone chose to record can: keep
 recordings of anything but a hub outside the repository (AGENTS.md *Privacy*). Keyless by default;
-set TFL_APP_KEY to use a key.
+set TFL_APP_KEY to use a key, which --vehicles needs.
 """
 import argparse
 import collections
@@ -42,6 +48,7 @@ import os
 import re
 import sys
 import time
+import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -50,6 +57,26 @@ BASE = "https://api.tfl.gov.uk"
 KEPT = (
     "vehicleId", "lineId", "platformName", "destinationName", "towards", "expectedArrival",
     "timeToStation", "currentLocation", "modeName",
+    # Not read by scoring; kept to tell a copy from a real train: when TfL made the prediction
+    # (`timestamp`, `timing`), its own id, and how long TfL says it holds.
+    "id", "timestamp", "timing", "timeToLive",
+    # Not read by scoring; kept so analysis can replay the app's stages before it pairs trains:
+    # `Turnback.relabel` knows a turnback by its destination being the stop polled, and flips its
+    # direction.
+    "destinationNaptanId", "direction",
+)
+# TfL's documented limit on the ids one `/Vehicle/{ids}/Arrivals` request takes ("max approx. 25").
+VEHICLES_PER_REQUEST = 25
+# TfL's rate limits in requests a minute (AGENTS.md *Cost and reliability*): about 50 keyless, 500
+# with TFL_APP_KEY. Every request goes through one Limiter, so no minute holds more.
+KEYLESS_PER_MINUTE = 50
+KEYED_PER_MINUTE = 500
+# The least time before the next round worth starting a vehicle request in, in seconds.
+MIN_VEHICLE_WAIT = 2
+# A train's own calls (`/Vehicle/{id}/Arrivals`): where and when it's due at each stop ahead.
+CALL_KEPT = (
+    "vehicleId", "lineId", "naptanId", "stationName", "platformName", "destinationName",
+    "expectedArrival", "timeToStation", "currentLocation", "id", "timestamp",
 )
 PLATFORM = re.compile(r"platform (\d+)", re.IGNORECASE)
 HORIZONS = ((0, 120), (120, 300), (300, 600), (600, None))
@@ -67,47 +94,220 @@ def parse_time(text):
     return datetime.datetime.fromisoformat(text)
 
 
-def fetch_arrivals(stop, opener=urllib.request.urlopen):
+def failure(e):
+    """An exception as a log can carry it: its type and message, then its stack (causes included),
+    with the app key cut out of all of it (a request URL in a message would carry `app_key`;
+    AGENTS.md *Error handling*)."""
+    stack = "".join(traceback.format_exception(type(e), e, e.__traceback__)).rstrip()
+    text = f"{type(e).__name__}: {e}\n{stack}"
+    text = re.sub(r"app_key=[^&\s'\"]*", "app_key=REDACTED", text)
+    key = os.environ.get("TFL_APP_KEY")
+    if key:
+        text = text.replace(key, "REDACTED")
+    return text
+
+
+class Answer(list):
+    """An answer's arrivals, with how old TfL's cache copy of it was (`age`, seconds, from the
+    `Age` header) and whether the cache had it (`cache`, `X-Cache`); None when not said."""
+    age = None
+    cache = None
+
+
+def read_by(response, deadline, now=time.monotonic):
+    """A response's whole body, read in pieces so a slow trickle can't run past `deadline` (a
+    `now()` value; None for no deadline): a socket timeout bounds each wait, not the transfer."""
+    if deadline is None:
+        return response.read()
+    pieces = []
+    while True:
+        if now() > deadline:
+            raise TimeoutError("response still arriving at its deadline")
+        piece = response.read(65536)
+        if not piece:
+            return b"".join(pieces)
+        pieces.append(piece)
+
+
+def fetch_json(path, opener=urllib.request.urlopen, timeout=30, deadline=None):
     query = {}
     key = os.environ.get("TFL_APP_KEY")
     if key:
         query["app_key"] = key
-    url = f"{BASE}/StopPoint/{urllib.parse.quote(stop)}/Arrivals"
+    url = f"{BASE}{path}"
     if query:
         url += "?" + urllib.parse.urlencode(query)
     request = urllib.request.Request(url, headers={"User-Agent": "stopdash-arrivals-recorder"})
-    with opener(request, timeout=30) as response:
-        return json.load(response)
+    with opener(request, timeout=timeout) as response:
+        answer = Answer(json.loads(read_by(response, deadline)))
+        age = response.headers.get("Age")
+        answer.age = int(age) if age and age.strip().isdigit() else None
+        answer.cache = response.headers.get("X-Cache")
+        return answer
+
+
+def fetch_arrivals(stop, opener=urllib.request.urlopen):
+    return fetch_json(f"/StopPoint/{urllib.parse.quote(stop)}/Arrivals", opener)
+
+
+def fetch_vehicles(ids, opener=urllib.request.urlopen, timeout=30):
+    """Every call ahead of each of `ids`, in one request, all of it within `timeout` seconds."""
+    return fetch_json(f"/Vehicle/{urllib.parse.quote(','.join(ids))}/Arrivals", opener, timeout,
+                      deadline=time.monotonic() + timeout)
+
+
+def near_trains(arrivals):
+    """The ids of every tube train listed within APP_PAIR of another at one platform number, on any
+    line, in the order first seen: a deliberate superset of the trains the app marks doubtful
+    (`DoubtfulTrains`), so analysis can apply the app's exact rule afterward. Copying that rule here
+    drifted with every stage before it (the newest answer kept, turnbacks relabeled, a train on
+    two lines); asking about every near neighbor costs a few ids a round and can't miss one.
+
+    Tube trains at a numbered platform, however TfL words it, timed by their own `expectedArrival`,
+    due or not and however far off. A blank mode takes its line's; where the whole answer leaves a
+    line's mode blank (the app then takes the stop's), the train counts, as a superset may hold
+    extras but not miss one. A train with no id still makes the train beside it near, but can't be
+    asked about, so it isn't named."""
+    line_modes = {a["lineId"]: a["modeName"] for a in arrivals if a.get("modeName") and a.get("lineId")}
+    platforms = collections.defaultdict(list)
+    for order, a in enumerate(arrivals):
+        mode = a.get("modeName") or line_modes.get(a.get("lineId")) or "tube"
+        key = platform_key("", a, "tube", {a.get("lineId"): mode})
+        if key is None or not a.get("expectedArrival"):
+            continue
+        platforms[key[2]].append((parse_time(a["expectedArrival"]), order, vehicle_id(a)))
+    near = set()
+    for trains in platforms.values():
+        trains.sort()
+        # A train near any other is near its closest neighbor in time, so neighbors are enough.
+        for (ahead, i, a), (behind, j, b) in zip(trains, trains[1:]):
+            if (behind - ahead).total_seconds() <= APP_PAIR:
+                near |= {(i, a), (j, b)}
+    ids = []
+    for _, vehicle in sorted(near):
+        if vehicle and vehicle not in ids:
+            ids.append(vehicle)
+    return ids
 
 
 def record_line(stop, polled_at, arrivals):
-    """One poll of one stop as a JSON line: when, and each arrival cut to the fields scoring reads."""
+    """One poll of one stop as a JSON line: when, how old TfL's copy was, and each arrival cut to
+    the fields kept (KEPT)."""
     return json.dumps({
         "stop": stop,
         "polledAt": polled_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "age": getattr(arrivals, "age", None),
+        "cache": getattr(arrivals, "cache", None),
         "arrivals": [{k: a.get(k) for k in KEPT} for a in arrivals],
     })
 
 
-def record(stops, interval, duration, out, fetch=fetch_arrivals, sleep=time.sleep, clock=None):
+def vehicles_line(ids, polled_at, calls):
+    """One ask after the trains `ids` as a JSON line: when, and each call cut to CALL_KEPT."""
+    return json.dumps({
+        "vehicles": ids,
+        "polledAt": polled_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "age": getattr(calls, "age", None),
+        "cache": getattr(calls, "cache", None),
+        "calls": [{k: c.get(k) for k in CALL_KEPT} for c in calls],
+    })
+
+
+class Limiter:
+    """Keeps every rolling minute to `per_minute` requests, however long each one takes: `take`
+    waits, when a minute is full, for its oldest request to leave it. Throttled, a request fails
+    like any other, and the poll it cost goes missing from the recording."""
+
+    WINDOW = datetime.timedelta(minutes=1)
+
+    def __init__(self, per_minute, clock, sleep):
+        self.per_minute, self.clock, self.sleep = per_minute, clock, sleep
+        self.sent = collections.deque()
+
+    def _trim(self):
+        now = self.clock()
+        while self.sent and self.sent[0] <= now - self.WINDOW:
+            self.sent.popleft()
+        return now
+
+    def room(self):
+        """Requests the last minute has room for now."""
+        self._trim()
+        return self.per_minute - len(self.sent)
+
+    def take(self):
+        now = self._trim()
+        while len(self.sent) >= self.per_minute:
+            self.sleep((self.sent[0] + self.WINDOW - now).total_seconds())
+            now = self._trim()
+        self.sent.append(now)
+
+
+def record(stops, interval, duration, out, fetch=fetch_arrivals, sleep=time.sleep, clock=None,
+           vehicles_out=None, fetch_vehicles=fetch_vehicles, per_minute=None):
     clock = clock or (lambda: datetime.datetime.now(datetime.timezone.utc))
+    if per_minute is None:
+        per_minute = KEYED_PER_MINUTE if os.environ.get("TFL_APP_KEY") else KEYLESS_PER_MINUTE
+    limiter = Limiter(per_minute, clock, sleep)
     start = clock()
     end = start + datetime.timedelta(seconds=duration)
     polls = 0
+    # The round each train was last asked about, so a round over budget asks first about the trains
+    # asked least lately: otherwise the first stops' trains would fill every round's budget.
+    last_asked = {}
     while clock() < end:
+        near = []
         for stop in stops:
+            limiter.take()
             try:
                 arrivals = fetch(stop)
             except (OSError, http.client.HTTPException, ValueError) as e:
                 # OSError covers URLError, timeouts and resets; HTTPException a dropped or cut
                 # response; ValueError a body that isn't JSON.
                 # A missed poll costs one sample; the next one resumes the series.
-                print(f"{clock():%H:%M:%S} {stop}: fetch failed: {e}", file=sys.stderr)
+                print(f"{clock():%H:%M:%S} {stop}: fetch failed: {failure(e)}", file=sys.stderr)
                 continue
             # Stamped when the answer came, the moment a rider could first have seen it.
             polled_at = clock()
             out.write(record_line(stop, polled_at, arrivals) + "\n")
             out.flush()
+            if vehicles_out is None:
+                continue
+            try:
+                near += [v for v in near_trains(arrivals) if v not in near]
+            except (ValueError, TypeError) as e:
+                # A time that won't parse costs this stop's pairs for one round; its poll is
+                # already written, and the recording carries on.
+                print(f"{clock():%H:%M:%S} {stop}: pairs unreadable: {failure(e)}", file=sys.stderr)
+        # A round's near trains in as few requests as TfL takes (VEHICLES_PER_REQUEST ids each), the
+        # ones asked least lately first. A batch goes only while the minute keeps room for a round
+        # of stop polls after it, so vehicle requests never hold a poll up; the rest wait for a
+        # later round.
+        near.sort(key=lambda v: last_asked.get(v, -1))
+        batches = [near[i:i + VEHICLES_PER_REQUEST] for i in range(0, len(near), VEHICLES_PER_REQUEST)]
+        # Vehicle requests also finish before the next round's start, so a slow one can't delay
+        # its stop polls: each times out a second before it, and none goes with less than
+        # MIN_VEHICLE_WAIT left.
+        elapsed = (clock() - start).total_seconds()
+        next_round = start + datetime.timedelta(seconds=math.ceil(elapsed / interval + 1e-9) * interval)
+        for k, ids in enumerate(batches):
+            left = (next_round - clock()).total_seconds()
+            if limiter.room() <= len(stops) or left < MIN_VEHICLE_WAIT:
+                skipped = sum(len(rest) for rest in batches[k:])
+                reason = (f"to keep under TfL's {per_minute}/min with {len(stops)} stops"
+                          if left >= MIN_VEHICLE_WAIT else "with no time left before the next round")
+                print(f"{clock():%H:%M:%S} vehicles: {skipped} trains not asked about this round, "
+                      f"{reason} every {interval:g} s", file=sys.stderr)
+                break
+            limiter.take()
+            last_asked.update((v, polls) for v in ids)
+            try:
+                calls = fetch_vehicles(ids, timeout=left - 1)
+            except (OSError, http.client.HTTPException, ValueError) as e:
+                print(f"{clock():%H:%M:%S} vehicles {','.join(ids)}: fetch failed: {failure(e)}", file=sys.stderr)
+            else:
+                vehicles_out.write(vehicles_line(ids, clock(), calls) + "\n")
+                vehicles_out.flush()
         polls += 1
         # Rounds start every `interval` from the first, however long the requests took, so a slow
         # answer doesn't stretch every stop's gap between polls. A round that overran waits for the
@@ -1125,6 +1325,13 @@ def report(result, gaps_by_platform, out=sys.stdout, lines=None):
         print(f"  {stop} {line} P{number}: {gaps[0]:.0f}, {median(gaps):.0f}, {len(gaps)}", file=out)
 
 
+def same_file(a, b):
+    """Whether paths a and b name one file: one path spelled two ways, a symlink or a hard link."""
+    if os.path.exists(a) and os.path.exists(b):
+        return os.path.samefile(a, b)
+    return os.path.realpath(a) == os.path.realpath(b)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1133,6 +1340,8 @@ def main(argv=None):
     rec.add_argument("--interval", type=float, default=20, help="seconds between polls (default 20)")
     rec.add_argument("--duration", type=float, default=3600, help="seconds to record (default 3600)")
     rec.add_argument("--out", required=True, help="file to append to")
+    rec.add_argument("--vehicles", metavar="FILE",
+                     help="also append the calls ahead of each train near another to FILE (not --out); needs TFL_APP_KEY")
     sc = sub.add_parser("score", help="score TfL's times and spaced times against a recording")
     sc.add_argument("recording")
     sc.add_argument("--gap", default="60,90,120,150",
@@ -1151,8 +1360,19 @@ def main(argv=None):
     pa.add_argument("--mode", default="tube")
     args = parser.parse_args(argv)
     if args.command == "record":
+        # Asking after vehicles as well as stops needs a key's limit: keyless, 50 a minute leaves
+        # too little beside the stop polls to be worth a recording.
+        if args.vehicles and not os.environ.get("TFL_APP_KEY"):
+            parser.error("--vehicles needs TFL_APP_KEY")
+        # One file holding both would interleave polls with vehicle calls, and neither could be read.
+        if args.vehicles and same_file(args.vehicles, args.out):
+            parser.error("--vehicles needs a file of its own, not --out")
         with open(args.out, "a", encoding="utf-8") as out:
-            record(args.stops, args.interval, args.duration, out)
+            if args.vehicles:
+                with open(args.vehicles, "a", encoding="utf-8") as vehicles_out:
+                    record(args.stops, args.interval, args.duration, out, vehicles_out=vehicles_out)
+            else:
+                record(args.stops, args.interval, args.duration, out)
         return 0
     with open(args.recording, encoding="utf-8") as f:
         lines = f.readlines()
