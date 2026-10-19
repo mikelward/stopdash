@@ -4148,9 +4148,11 @@ and marks nothing where the list ends. Without it, a list that happens to stop n
 of the screen reads the same as one cut off mid-content, so a rider misses stops or settings
 below the fold (maintainer, 2026-09-26). The mark is a short fade into the background with an
 up or down chevron centered over it — a fade alone proved too easy to miss, and the chevron
-follows Type Launcher's scroll chevrons. It is a hint, not a control: a tap on it reaches the
-row underneath, whose middle is its destination, and screen readers skip it, since their users
-already scroll by gesture. It covers every
+follows Type Launcher's scroll chevrons. A tap on the chevron scrolls a page that way
+(maintainer, 2026-10-19), reversing its first design as a hint only: the plate reads as a button,
+and a tap that reached the row under it surprised. Only the chevron's own 48dp target takes the
+tap; a drag starting there still scrolls, the rest of the row stays the row's, and screen readers
+skip it, since their users already scroll by gesture. It covers every
 scrolling screen on the phone — the near-me list and its empty and error states, a route's
 page, station search, the location gate, Settings, and Licenses. Dialogs are left as the
 platform draws them, and the watch's list already scales its edges.
