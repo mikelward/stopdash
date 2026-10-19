@@ -1561,12 +1561,45 @@ object OnTheWay {
      * short of the rider (Codex, PR #726).
      */
     @WorkerThread
-    fun followedAhead(trip: ActiveTrip, on: TripLeg, along: Along, calls: List<VehicleCall>, now: Instant, sequence: LineSequence, areas: Map<String, String> = sequence.stopAreas): Boolean {
+    fun followedAhead(
+        trip: ActiveTrip,
+        on: TripLeg,
+        along: Along,
+        calls: List<VehicleCall>,
+        now: Instant,
+        sequence: LineSequence,
+        areas: Map<String, String> = sequence.stopAreas,
+        // [on]'s stops' positions ([ridePositions]): where given, a rider seen at a station [STATION_APART_METERS]
+        // from the next is clear of a train one stop past them ([stationApart]).
+        positions: Map<String, Coordinates> = emptyMap(),
+    ): Boolean {
         if (along.atEnd) return false
         val at = followedAt(trip, on, calls, now, areas) ?: return false
         val next = ahead(along)
-        return at - next >= AHEAD_OF_RIDER_STOPS && passes(on, sequence, next + 1, at)
+        // A train with no calls left once it was due off ([followedAt]'s path end) has passed every stop of the ride:
+        // [passes] can't say so, its end being the ride's last stop again (Codex, #997). Not one whose calls only
+        // left the ride's path (a diversion), which says nothing about the stops it didn't call at (Codex, #997).
+        fun passed(stop: Int) = (at >= on.path.size && calls.isEmpty()) || passes(on, sequence, stop, at)
+        if (at - next >= AHEAD_OF_RIDER_STOPS && passed(next + 1)) return true
+        // Seen at a station, the train past the next one: a fix sure enough to place them at a station that far from
+        // the next can't be a stop out, nor the train one pulling away from theirs (maintainer, 2026-10-19: followed a
+        // train a stop ahead to where they get off while seen at Camden Town).
+        return at - next >= 1 && stationApart(on, along, positions) && passed(next)
     }
+
+    /**
+     * Whether a rider seen [along] [on] is at one of its stops at least [STATION_APART_METERS] from the next, by its
+     * stops' [positions]: far enough that a fix there ([AT_STOP_WITHIN_METERS]) is never one at the next.
+     */
+    fun stationApart(on: TripLeg, along: Along, positions: Map<String, Coordinates>): Boolean {
+        if (!along.atStop || along.atEnd) return false
+        val here = positions[on.path.getOrNull(along.from) ?: return false] ?: return false
+        val next = positions[on.path.getOrNull(along.from + 1) ?: on.toId] ?: return false
+        return distance(here, next) >= STATION_APART_METERS
+    }
+
+    /** How far apart a station and the next must be for a rider seen at one to be clear of a train past the next. */
+    const val STATION_APART_METERS = 400.0
 
     /**
      * How many of [on]'s stops the train followed, with [calls] ahead of it, is past (as [aheadOnLeg]),

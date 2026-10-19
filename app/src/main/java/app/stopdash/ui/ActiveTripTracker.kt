@@ -717,8 +717,10 @@ class ActiveTripTracker(
                 unsaved = true
             }
             _trip.value = moved.copy(alertLeft = false)
-            // A sighting is one of two only on the ride it was seen on, never across a move the rider made (Codex, #993).
+            // A sighting is one of two only on the ride it was seen on, never across a move the rider made (Codex, #993,
+            // #997).
             pastSeen = null
+            stationClear = null
             refollow()
             // The step moved to has no answer of its own yet: the last one's isn't passed off as its
             // (a ride's time, its next stop still blank), which waits for the pick below (Codex, PR #384).
@@ -1462,6 +1464,7 @@ class ActiveTripTracker(
         walkPlaces = null
         // A sighting is never one of two for another trip's ride (Codex, #993).
         pastSeen = null
+        stationClear = null
     }
 
     // The newest precise fix taken within [ESTIMATE_WITHIN], the trip's own or the app's remembered one,
@@ -1646,7 +1649,14 @@ class ActiveTripTracker(
                 trip = it
                 calls = null
             }
+        } else {
+            // A refresh with no fix, or one it couldn't check, breaks a run of two: so a doubt holds back only the
+            // refresh that raised it, never a trip left without fixes (Codex, #997).
+            stationClear = null
         }
+        // Seen once at a station a stop behind the train followed, this refresh, waiting for a second fix
+        // ([behindFollowed]): on this ride with that train only (Codex, #997).
+        val doubted = stationClear == stationKey(trip)
         // On board by where they were seen, the ride is counted from location, not TfL: a failed lookup
         // for their train leaves that standing, so the step still moves on with each fix (and says "get
         // off soon"), and only the failure is said (Codex, PR #449).
@@ -1676,6 +1686,13 @@ class ActiveTripTracker(
         // train's call there is theirs, however late, not a loop's next lap ([OnTheWay.atBoarding]).
         val atBoarding = OnTheWay.atBoarding(trip, rider?.let { aged(it, Duration.ofMillis(elapsed() - reading)) })
         var (next, progress) = OnTheWay.advance(trip, calls, now, atBoarding)
+        if (doubted && next.legIndex != trip.legIndex) {
+            // A train that may not be theirs doesn't end their ride while that waits to be confirmed: the step
+            // stands as it was this refresh (Codex, #997).
+            val same = trip.vehicleId == before.vehicleId && trip.vehicleLeg == before.vehicleLeg && trip.legIndex == before.legIndex
+            keep(trip, _progress.value?.takeIf { same } ?: standing(trip, now))
+            return false
+        }
         // Counted by the train's calls: how far ahead those calls run, said by stop counts and seconds only, so a
         // count that lags the rider can be told from one that's right (maintainer, 2026-10-19).
         val counted = progress as? TripProgress.Riding
@@ -1851,6 +1868,9 @@ class ActiveTripTracker(
     // them along the ride ([OnTheWay.followedAhead]); null when it isn't, or where they are can't be told.
     // Logged by stops, never a place.
     private suspend fun behindFollowed(trip: ActiveTrip, rider: LocationFix, seenAt: Long, calls: List<VehicleCall>, now: Instant): ActiveTrip? {
+        // Taken up front, so a fix that can't finish the check below breaks a run of two (Codex, #997).
+        val before = stationClear
+        stationClear = null
         val on = OnTheWay.ridden(trip) ?: return null
         if (on.isWalk || on.path.isEmpty()) return null
         val sequence = try {
@@ -1864,8 +1884,21 @@ class ActiveTripTracker(
         } ?: return null
         // Aged by the route's read: a fix fresh before it may be where the rider was.
         val seen = aged(rider, Duration.ofMillis(elapsed() - seenAt)) ?: return null
-        val along = withContext(compute) { OnTheWay.placeAlong(on, seen, OnTheWay.ridePositions(on, sequence)) } ?: return null
-        if (!withContext(compute) { OnTheWay.followedAhead(trip, on, along, calls, now, sequence) }) return null
+        val positions = withContext(compute) { OnTheWay.ridePositions(on, sequence) }
+        val along = withContext(compute) { OnTheWay.placeAlong(on, seen, positions) }
+        if (along == null) return null
+        if (!withContext(compute) { OnTheWay.followedAhead(trip, on, along, calls, now, sequence) }) {
+            // One stop past them while they're seen at a station: let go only on two fixes in a row, each its own
+            // refresh, as a fix can jump wide for a moment (maintainer, 2026-10-19).
+            val clear = withContext(compute) { OnTheWay.followedAhead(trip, on, along, calls, now, sequence, positions = positions) }
+            if (!clear) return null
+            val key = stationKey(trip)
+            if (before != key) {
+                stationClear = key
+                warn("on the way: seen at a station a stop behind the train followed on line ${on.lineId} once: waiting for another")
+                return null
+            }
+        }
         val trainAt = withContext(compute) { OnTheWay.followedAt(trip, on, calls, now, sequence.stopAreas) } ?: return null
         warn("on the way: seen ${trainAt - OnTheWay.ahead(along)} stops behind the train followed on line ${on.lineId}, let go")
         val let = OnTheWay.onBoardAlong(trip, along, now, on = on)
@@ -1899,6 +1932,13 @@ class ActiveTripTracker(
         warn("on the way: seen $behind stop(s) past the next call on line ${leg.lineId} twice, counted from stop ${confirmed + 1} of ${leg.path.size}, fix accuracy $accuracy m")
         return moved.copy(seenAlongStop = confirmed)
     }
+
+    // The trip (by when it started), leg and train the last refresh's fix saw the rider at a station a stop behind
+    // ([behindFollowed]): let go on a second fix that does too. In memory only; cleared as a trip starts or ends.
+    @Volatile private var stationClear: Triple<Instant, Int, String>? = null
+
+    // Which trip, ride and train a sighting at a station is kept for ([stationClear]).
+    private fun stationKey(trip: ActiveTrip) = Triple(trip.startedAt, trip.legIndex, trip.vehicleId)
 
     // Where the last refresh's fix saw the rider past their train's next call ([seenPastCalls]): the trip (by when it
     // started) and leg, and the next stop ahead of them. In memory only: a restart starts over, needing two fixes
