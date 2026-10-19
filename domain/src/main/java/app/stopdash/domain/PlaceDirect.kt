@@ -51,10 +51,16 @@ object PlaceDirect {
         val key: String = "$lineId>${offStop?.id.orEmpty()}"
 
         /**
-         * The stop a tap asks the row's ride for to ([DirectRoute]): the one it's named by; where it's named by
-         * none, the nearest the place the soonest train sure of its way gets off at, else the first any may.
+         * The stop a tap asks the row's ride for to ([DirectRoute]): the one it's named by where a train calls
+         * there, else the id of that stop its soonest train reaches it by (a station's other record, a bus
+         * stop's other pole: the row's name may be one the line doesn't call at, Codex on #992); where it's
+         * named by none, the nearest the place the soonest train sure of its way gets off at, else the first
+         * any may.
          */
-        val rideTo: DirectTrips.End? = offStop ?: rideToOf(trainReaches, trainForks)
+        val rideTo: DirectTrips.End? = offStop?.let { named ->
+            named.takeIf { trainReaches.any { reaches -> reaches.any { it.id == named.id } } }
+                ?: trainReaches.firstOrNull { it.isNotEmpty() }?.first()
+        } ?: rideToOf(trainReaches, trainForks)
     }
 
     private fun rideToOf(trainReaches: List<List<DirectTrips.End>>, trainForks: List<Boolean>): DirectTrips.End? =
@@ -68,9 +74,9 @@ object PlaceDirect {
         return trainReaches.first().firstOrNull { end -> trainReaches.all { reaches -> reaches.any { oneStation(it, end) } } }
     }
 
-    // One station's stops: the same id, or siblings under one interchange that name one station
-    // ([sameStation]: "St Pancras International" and its "LL"; a branch's route can list the station by
-    // another id), never two stations an interchange joins.
+    // One station's stops with no station model to ask: the same id, or siblings under one interchange that
+    // name one station ([sameStation]: "St Pancras International" and its "LL"; a branch's route can list
+    // the station by another id), never two stations an interchange joins.
     private fun oneStation(a: DirectTrips.End, b: DirectTrips.End): Boolean =
         a.id == b.id || (a.interchangeId.isNotBlank() && a.interchangeId == b.interchangeId && sameStation(a.name, b.name))
 
@@ -113,14 +119,18 @@ object PlaceDirect {
         // The rider's step-free level for a trip's routes, and the stations' access to judge it by.
         stepFree: StepFree = StepFree.ANY,
         access: StepFreeAccess? = null,
+        // Whether two stops are one, by the station model ([Hubs.oneStop]: one station's records or one bus
+        // stop's poles, an id it doesn't hold only itself); null while it isn't loaded, when sibling ids are
+        // told by interchange and name.
+        oneStop: ((String, String) -> Boolean)? = null,
     ): Result {
         val avoided = AvoidedLines.stopIds(hidden)
-        if (avoided.isEmpty()) return rowsOf(stops, ends, sequences, distanceMeters, now, hidden, stepFree, access)
+        if (avoided.isEmpty()) return rowsOf(stops, ends, sequences, distanceMeters, now, hidden, stepFree, access, oneStop)
         // Its arrivals emptied rather than the stop dropped, so it still counts as answered. A bus stop is
         // avoided by its area, so both its poles (its cluster here).
         val open = stops.map { if (it.stopId in avoided || it.interchangeId in avoided || it.clusterId in avoided) it.copy(departures = emptyList()) else it }
         val reachable = ends.filterNot { it.id in avoided || it.interchangeId in avoided || it.area in avoided }
-        return rowsOf(open, reachable, sequences, distanceMeters, now, hidden, stepFree, access)
+        return rowsOf(open, reachable, sequences, distanceMeters, now, hidden, stepFree, access, oneStop)
     }
 
     @WorkerThread
@@ -133,8 +143,12 @@ object PlaceDirect {
         hidden: Set<String>,
         stepFree: StepFree,
         access: StepFreeAccess?,
+        oneStop: ((String, String) -> Boolean)?,
     ): Result {
         if (ends.isEmpty()) return Result(emptyList(), pending = false, unresolved = false)
+        // One station's stops, by the model where it's loaded.
+        val sameAt: (DirectTrips.End, DirectTrips.End) -> Boolean =
+            oneStop?.let { same -> { a, b -> a.id == b.id || same(a.id, b.id) } } ?: ::oneStation
         val misses = LinkedHashSet<RouteMiss>()
         val hubs = stops.associate { it.stopId to it.interchangeId }
         val level = needed(stepFree)
@@ -264,7 +278,7 @@ object PlaceDirect {
                         val off = reaches.firstOrNull()?.takeUnless { fork }
                         // Its station as [ends] first names it, whichever sibling id this train reaches it by
                         // (Codex on #861): the row stays one row, in its place, as its trains come and go.
-                        val station = off?.let { end -> ends.firstOrNull { oneStation(it, end) } ?: end }
+                        val station = off?.let { end -> ends.firstOrNull { sameAt(it, end) } ?: end }
                         byOff.getOrPut(station) { ArrayList() } += candidate
                     }
                     for ((station, group) in byOff) {

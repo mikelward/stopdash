@@ -111,6 +111,36 @@ class PlaceDirectTest {
     }
 
     @Test
+    fun `a row's station is one by the station model where it's loaded, never by its name`() {
+        // Two ids of one station whose names share nothing, and two that do but are different stations.
+        val routes = LineSequence(
+            routes = listOf(
+                LineRoute("Top ↔ Bottom", listOf("TOP", "MID", "BOT")),
+                LineRoute("Top ↔ Lower", listOf("TOP", "MID", "LOW")),
+                LineRoute("Top ↔ Bottom Low", listOf("TOP", "MID", "BOTX")),
+            ),
+            stopNames = mapOf("TOP" to "Top", "MID" to "Mid", "BOT" to "Bottom", "LOW" to "Lower Platforms", "BOTX" to "Bottom Low"),
+            stopHubs = mapOf("BOT" to "HUBB", "LOW" to "HUBB", "BOTX" to "HUBB"),
+        )
+        val near = listOf(DirectTrips.End("BOT", "Bottom", "HUBB"), DirectTrips.End("LOW", "Lower Platforms", "HUBB"), DirectTrips.End("BOTX", "Bottom Low", "HUBB"))
+        val stations = mapOf("BOT" to "S1", "LOW" to "S1", "BOTX" to "S2")
+        val same = { a: String, b: String -> stations[a] != null && stations[a] == stations[b] }
+        fun rowsWith(vararg to: String, model: ((String, String) -> Boolean)?) = PlaceDirect.rows(
+            listOf(stop("TOP", "Top", *to.mapIndexed { i, it -> departure(it, 60L * (i + 1)) }.toTypedArray())),
+            near, mapOf("rail" to routes), emptyMap(), now, oneStop = model,
+        ).rows
+        // By the model: Bottom and Lower Platforms one row, Bottom Low its own.
+        assertEquals(listOf("BOT", "BOTX"), rowsWith("Bottom", "Lower Platforms", "Bottom Low", model = same).map { it.offStop?.id })
+        // Named Bottom, but a line that calls only at Lower Platforms is asked for there: never an id it doesn't serve.
+        val onlyLower = rowsWith("Lower Platforms", model = same).single()
+        assertEquals("BOT", onlyLower.offStop?.id)
+        assertEquals("LOW", onlyLower.rideTo?.id)
+        assertEquals("BOT", rowsWith("Bottom", "Lower Platforms", model = same).single().rideTo?.id)
+        // With none loaded, told by name: Bottom and Bottom Low one row, Lower Platforms its own.
+        assertEquals(listOf("BOT", "LOW"), rowsWith("Bottom", "Lower Platforms", "Bottom Low", model = null).map { it.offStop?.id })
+    }
+
+    @Test
     fun `a row's ride is asked for to the stop it's named by, else where its soonest sure train gets off`() {
         assertEquals("BOTB", row(listOf(bottomA, bottomB), listOf(bottomB)).rideTo?.id)
         // Apart: the soonest train's stop nearest the place.

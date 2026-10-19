@@ -70,6 +70,15 @@ class HubsTest {
     }
 
     @Test
+    fun `one stop to get off at is a station's records or a bus stop's poles, never a hub's two members`() {
+        assertTrue(hubs.oneStop("910GVALE", "910GVALELL"))
+        assertTrue(hubs.oneStop("490000001A", "490000001B"))
+        assertFalse(hubs.oneStop("490000001A", "910GHILLLL"))
+        assertFalse(hubs.oneStop("490000005A", "490000005B"))
+        assertFalse(hubs.oneStop("UNHELD1", "UNHELD2"))
+    }
+
+    @Test
     fun `a split area's id names its stops, never one of them`() {
         assertEquals(Membership.Split(setOf("490000005A", "490000005B")), hubs.stopOf("490G000005"))
         assertFalse(hubs.sameStop("490000005A", "490000005B"))

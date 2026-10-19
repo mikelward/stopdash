@@ -68,6 +68,9 @@ class PlaceDirectViewModel(
     // every few minutes), taken off the step-free table before it's read, so a platform only a broken
     // lift reaches never counts as step-free.
     private val liftsOut: suspend () -> Set<String> = { emptySet() },
+    // Whether two stops are one, by the station model as loaded now (one station, or one bus stop's poles); null
+    // while it isn't, so a look never waits on it. Asked on [compute] at each look.
+    private val oneStop: () -> ((String, String) -> Boolean)? = { null },
     // Stops' last closure lookups, shared with the other screens (the app passes [StopClosureCache.SHARED]).
     private val closureCache: StopClosureCache = StopClosureCache(),
     private val arrivals: ArrivalsCache = ArrivalsCache(),
@@ -338,6 +341,7 @@ class PlaceDirectViewModel(
         if (level != StepFree.ANY && access == null) access = withContext(io) { stepFreeAccess() }
         // With a level to meet, the table as of the lifts out now: the same outages keep the same table.
         val table = if (level == StepFree.ANY) access else withLifts(access, liftsOut())
+        val stations = oneStop()
         // When asked: what a fetch is stamped with.
         val askedAt = clock()
         // The trip's pull, which this section's is ([linePulls]), as the shared cache holds it:
@@ -360,7 +364,7 @@ class PlaceDirectViewModel(
         }
         // The lines the rows would show, so their status is in hand before they do: a delayed or
         // part-suspended line is said on its row, never shown as running normally.
-        val rowLines = PlaceDirect.rows(fetched.filterNotNull(), ends, sequences, chosen.distanceMeters, askedAt, hidden, level, table).rows
+        val rowLines = PlaceDirect.rows(fetched.filterNotNull(), ends, sequences, chosen.distanceMeters, askedAt, hidden, level, table, stations).rows
         // Each cache judged at the time it's read, not when the look began: arrivals and route loads may
         // have taken a while, and an answer at the edge of its reuse mustn't vouch past it. Those asked for
         // above are fresh, so this asks TfL again only for one that wasn't answered then.
@@ -387,7 +391,7 @@ class PlaceDirectViewModel(
         val next = if (ends.isNotEmpty() && open.isNotEmpty() && fresh.isEmpty()) {
             State.Failed
         } else {
-            val result = PlaceDirect.rows(fresh, ends, sequences, chosen.distanceMeters, now, hidden, level, table)
+            val result = PlaceDirect.rows(fresh, ends, sequences, chosen.distanceMeters, now, hidden, level, table, stations)
             // A departure whose route couldn't be told goes to the debug log, as the trip's own routes log
             // theirs: once per set, not again every tick.
             if (result.misses != reportedMisses) routes.reportMisses(result.misses)

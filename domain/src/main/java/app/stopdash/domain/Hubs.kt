@@ -148,6 +148,12 @@ class Hubs private constructor(
     /** Whether [a] and [b] are one bus stop; an id the bundle doesn't hold is only itself. */
     fun sameStop(a: String, b: String): Boolean = same(stopOf(a), stopOf(b), a, b)
 
+    /**
+     * Whether [a] and [b] are one stop a rider gets off at: one station's records or platforms, or one
+     * bus stop's poles. An id the bundle doesn't hold is only itself; two stations a hub joins are two.
+     */
+    fun oneStop(a: String, b: String): Boolean = sameStation(a, b) || sameStop(a, b)
+
     /** Whether [a] and [b] are in one hub; an id the bundle doesn't hold is only itself. */
     fun sameHub(a: String, b: String): Boolean = same(hubOf(a), hubOf(b), a, b)
 

@@ -91,6 +91,43 @@ class PlaceDirectViewModelTest {
     }
 
     @Test
+    fun `trains getting off at one station by two ids are one row by the station model, read on compute`() = runBlocking {
+        // Bottom's two ids share no name: only the model says they're one station.
+        val twoIds = LineSequence(
+            routes = listOf(LineRoute("Top ↔ Bottom", listOf("TOP", "MID", "BOT")), LineRoute("Top ↔ Lower", listOf("TOP", "MID", "LOW"))),
+            stopNames = mapOf("TOP" to "Top", "MID" to "Mid", "BOT" to "Bottom", "LOW" to "Lower Platforms"),
+        )
+        val source = object : RouteSequenceSource {
+            override suspend fun routeSequence(lineId: String, direction: String): LineSequence = twoIds
+        }
+        val compute = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "compute") }
+        val dispatcher = compute.asCoroutineDispatcher()
+        try {
+            var askedOn: String? = null
+            fun model(stations: (() -> ((String, String) -> Boolean)?)) = PlaceDirectViewModel(
+                ends = { listOf(DirectTrips.End("BOT", "Bottom"), DirectTrips.End("LOW", "Lower Platforms")) },
+                client = client { listOf(departure("Bottom", 60), departure("Lower Platforms", 120)) },
+                routes = RouteStopsRepository(source, clock = { now }),
+                oneStop = stations,
+                arrivals = ArrivalsCache(),
+                clock = { now },
+                io = Dispatchers.Unconfined,
+                compute = dispatcher,
+            ).apply { setOrigin(listOf(StopRef("TOP", "Top"))) }
+            val same = model { askedOn = Thread.currentThread().name; { a, b -> setOf(a, b) == setOf("BOT", "LOW") || a == b } }
+            same.refresh()
+            assertEquals(listOf("BOT"), (same.state.value as PlaceDirectViewModel.State.Ready).rows.map { it.row.offStop?.id })
+            assertTrue(askedOn.orEmpty().startsWith("compute"))
+            // With the model not loaded, told apart by name: a row each.
+            val none = model { null }
+            none.refresh()
+            assertEquals(listOf("BOT", "LOW"), (none.state.value as PlaceDirectViewModel.State.Ready).rows.map { it.row.offStop?.id })
+        } finally {
+            compute.shutdown()
+        }
+    }
+
+    @Test
     fun `an avoided stop isn't asked about, so its failing leaves the rest sure`() = runBlocking {
         val asked = mutableListOf<String>()
         // Top found closed, and TfL failing for it: Mid's row stands, not marked unsure, and Top is never asked.

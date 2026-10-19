@@ -851,7 +851,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                       owns (`Hubs.planTargetsOf`, read off the main thread by the trip's models).
                 - [x] The trip on the way's replans to a station's targets: its To… keeps the level
                       the trip was started at (`ToChoice.of`), so the trip list it opens plans the same.
-                - [ ] Far ends, Direct, off-plan and passing a stop.
+                - [ ] Far ends, Direct, off-plan and passing a stop:
+                    - [x] A Direct row's off stop: one station, or one bus stop's poles, by the model
+                          (`Hubs.oneStop`), by interchange and name only while it isn't loaded.
+                    - [ ] Direct's own filter (`DirectTrips.filter` `byStation`), far ends, off-plan,
+                          passing a stop on the way.
                 - [x] Getting off at any of the trip on the way's `destinationIds` (Codex, #981): on
                       the last ride, the ride's end moves to the first of them the train calls at.
           - [ ] The `Unbundled` interchange's trip, planned to its looked-up children.
