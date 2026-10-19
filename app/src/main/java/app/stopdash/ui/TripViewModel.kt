@@ -18,9 +18,11 @@ import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.JourneyPlanner
+import app.stopdash.domain.LegTimetables
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusCache
 import app.stopdash.domain.StopClosureCache
+import app.stopdash.domain.StopTimetable
 import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.BundledStops
@@ -59,6 +61,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -189,6 +192,9 @@ class TripViewModel(
     private val refused: RefusedStops = RefusedStops(),
     // Usage events, categories and counts only (UsageEvent): how each plan went, never its ends.
     private val usage: (UsageEvent) -> Unit = {},
+    // Rides' timetables, fetched for a ride reached past its live predictions ([wantTimetables]); the app
+    // passes one shared by every trip, kept for the service day. None by default (a test): nothing fetched.
+    private val legTimetables: LegTimetables? = null,
 ) : ViewModel() {
     /** Where the next plan starts ([TripOrigin]); set by the screen on every composition. */
     var origin: () -> TripOrigin = origin
@@ -329,6 +335,13 @@ class TripViewModel(
         val planError: DeparturesUiState.Error.Kind? = null,
         val live: Map<String, StopLive> = emptyMap(),
         val statuses: Map<String, LineStatus> = emptyMap(),
+        // Rides' timetables fetched so far today ([wantTimetables]), for how often a line runs past its
+        // live predictions ([TripTiming.estimate]'s schedule); null for a ride TfL has none for, so it
+        // isn't asked for again that day.
+        val timetables: Map<LegTimetables.Key, StopTimetable?> = emptyMap(),
+        // The London service day [timetables] are for ([LegTimetables.serviceDay]): past it they no
+        // longer count ([rideSchedule]), and are fetched again.
+        val timetablesDay: java.time.LocalDate? = null,
         // A bus leg's line status where its alerts were placed on the leg's ride and that changed it
         // ([onBusRides]), by [tripLegKey]: worked out with the page's frame ([tripFrame]), so a row or
         // page built in composition only looks it up ([legStatus]).
@@ -1008,6 +1021,37 @@ class TripViewModel(
      * rather than keep "Arrival unknown" until [PLAN_REUSE] runs out: once per plan, so a withheld
      * arrival asks at most every [REPLAN_WITHHELD], never in a loop.
      */
+    /**
+     * Fetches the timetables of [keys] not yet in ([LegTimetables.fetch]), the rides the page timed past
+     * their live predictions ([TripTiming.Estimate.scheduleAsked]), and puts every one found today in
+     * [State.timetables], so the page times them again. Off the main thread; returns at once. One that
+     * failed is asked again after [LegTimetables.retryAfter] while these rides are still the ones wanted.
+     */
+    fun wantTimetables(keys: Set<LegTimetables.Key>) {
+        val timetables = legTimetables ?: return
+        // The rides asked for last are superseded: their retries stop.
+        timetablesWanted?.cancel()
+        if (keys.isEmpty()) return
+        timetablesWanted = viewModelScope.launch(io) {
+            while (true) {
+                timetables.fetch(keys)
+                // Those another trip fetched today count too: a timetable for a ride doesn't change within the day.
+                val (day, known) = timetables.known()
+                val held = _state.value
+                if (known.keys != held.timetables.keys || day != held.timetablesDay) _state.update { it.copy(timetables = known, timetablesDay = day) }
+                // Every ride answered for the service day it is now: done. A failed one is asked again once
+                // its retry is due, while the same rides are still wanted (the page asks again only when they
+                // change); one answered for the day before, its fetch spanning 04:00, is asked again at once.
+                if (keys.all { it in known }) break
+                // Waited only until its retry is due, which another trip's failure may have started already.
+                timetables.retryDueIn(keys)?.let { delay(it.toMillis()) }
+            }
+        }
+    }
+
+    // The fetch of the rides last asked for ([wantTimetables]), retrying any that failed.
+    private var timetablesWanted: Job? = null
+
     fun noteWithheld(withheld: Map<String, TripTiming.Withheld?>) {
         for ((key, why) in withheld) {
             if (why == null) {

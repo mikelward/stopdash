@@ -62,6 +62,9 @@ object TripTiming {
         // A ride is on a line with severe delays ([AroundDelays]): [rank] sets it as if it got there
         // [DELAYED_BY] later, so a route clear of the delays arriving about as soon goes first.
         val delayed: Boolean = false,
+        // The legs, by index, whose timetable [estimate] asked for ([schedule]): reached past their
+        // live predictions, so a timetable fetched for them may time them better.
+        val scheduleAsked: Set<Int> = emptySet(),
     ) {
         /** Door-to-door time from now, or null when the arrival is withheld. */
         val duration: Duration? get() = arrival?.let { Duration.between(start, it) }
@@ -172,6 +175,11 @@ object TripTiming {
         otherLine: (Int) -> Boolean = { false },
         // The lines with severe delays ([AroundDelays.delayed]): a route riding one ranks lower ([Estimate.delayed]).
         delayed: Set<String> = emptySet(),
+        // Leg [index]'s line's timetable from its boarding stop, of the trains that call where it gets
+        // off ([StopTimetable.longestGapAround]); null when there's none to go by: not fetched, or a
+        // line not running a good service, whose trains a timetable can't speak for. Asked only of a
+        // leg reached past its live predictions ([Estimate.scheduleAsked]).
+        schedule: (Int) -> StopTimetable? = { null },
     ): Estimate {
         // Each ride by its index among the legs, as [otherLine] takes it; a walk has no line.
         val rides = route.legs.withIndex().filterNot { it.value.isWalk }
@@ -182,13 +190,36 @@ object TripTiming {
         var basis = Basis.LIVE
         var waits = false
         var withheld: Withheld? = null
-        // The longest a frequent leg [index] may keep the rider waiting: its line's longer typical gap
-        // between trains ([Headway]), or the longest a frequent line has when its trains can't say.
-        // Judged on the trains [runsFrequently] counts: a [Departure.doubtful] one, which TfL may be
-        // tracking twice, would split a gap the rider may wait out whole.
-        fun longestGap(index: Int): Duration =
+        val scheduleAsked = HashSet<Int>()
+        // The longest gap between leg [index]'s trains its timetable has around [ready], if it has one.
+        fun timetabledGap(index: Int, ready: Instant): Duration? {
+            scheduleAsked += index
+            return schedule(index)?.longestGapAround(ready)
+        }
+        // Whether leg [index]'s timetable, its Planner line's, speaks for the trains that time it: a
+        // [FREQUENT_MODES] line with a live train of its own it can vouch for, not only another line's
+        // sharing the stretch, whose gap may differ.
+        fun timetableSpeaksFor(index: Int): Boolean {
+            val leg = route.legs[index]
+            return leg.mode.lowercase() in FREQUENT_MODES && refreshed(index).any { !it.doubtful && it.lineId == leg.lineId }
+        }
+        // The longest a frequent leg [index] may keep a rider ready at [ready] waiting: its line's
+        // longer typical gap between trains ([Headway]), else the timetable's around then
+        // ([timetabledGap]; maintainer, 2026-10-19) on a [FREQUENT_MODES] line, not a bus, whose traffic
+        // keeps no timetable, else the longest a frequent line has. Judged on
+        // the trains [runsFrequently] counts: a [Departure.doubtful] one, which TfL may be tracking
+        // twice, would split a gap the rider may wait out whole.
+        fun longestGap(index: Int, ready: Instant): Duration =
             Headway.of(refreshed(index).filterNot { it.doubtful }.map { it.expectedArrival })
-                ?.let { Duration.ofMinutes(it.max.toLong()) } ?: FREQUENT_MAX_GAP
+                ?.let { Duration.ofMinutes(it.max.toLong()) }
+                ?: (if (timetableSpeaksFor(index)) timetabledGap(index, ready) else null)
+                ?: FREQUENT_MAX_GAP
+        // Whether leg [index]'s timetable has its [FREQUENT_MODES] line running every few minutes around
+        // [ready], while at least one live train of that same line it can vouch for shows it still
+        // running now: another line sharing the stretch says nothing of this one's. Not a bus, which
+        // its own predictions must show frequent ([frequentAt]): traffic keeps no timetable.
+        fun frequentBySchedule(index: Int, ready: Instant): Boolean =
+            timetableSpeaksFor(index) && timetabledGap(index, ready)?.let { it <= FREQUENT_MAX_GAP } == true
         // A leg's timing from when the rider is [ready] for it, and whether it boards a frequent line
         // as the rider arrives ([Timed.onArrival]), assuming away the wait for it, or takes the
         // Planner's train on a line live trains show running, past which the next may be a wait away
@@ -210,8 +241,12 @@ object TripTiming {
             // predictions show it running every few minutes now: how far ahead they reach says
             // nothing, since TfL predicts only trains already running, so near a line's start they
             // end within 15 minutes all day. Judged on trains from stops that refreshed
-            // ([refreshed]), not ones held from a stop that failed.
-            fun frequent() = leg.lineId !in notRunning && current(index) && frequentAt(leg.mode, refreshed(index))
+            // ([refreshed]), not ones held from a stop that failed. Where they're too few to show it, the
+            // timetable can, on a line live trains show still running: a Tube branch's predictions
+            // can reach only ten minutes, half its trains taking the other branch (maintainer,
+            // 2026-10-19).
+            fun frequent() = leg.lineId !in notRunning && current(index) &&
+                (frequentAt(leg.mode, refreshed(index)) || frequentBySchedule(index, ready))
             return when {
                 train != null -> Timed(LegTiming(train.expectedArrival, train.expectedArrival.plus(leg.run), train, true), Basis.LIVE)
                 !timetabled(index) -> unknown()
@@ -220,7 +255,7 @@ object TripTiming {
                 // Planner planned the trip leaving later, and an earlier train is the one they'd take
                 // (maintainer's report, 2026-09-30: a bus caught sooner than planned waited nine
                 // minutes at the change for the Planner's train on a line every few minutes).
-                !leg.departure.isBefore(ready) && !(frequent() && leg.departure.isAfter(ready.plus(longestGap(index)))) -> {
+                !leg.departure.isBefore(ready) && !(frequent() && leg.departure.isAfter(ready.plus(longestGap(index, ready)))) -> {
                     // On a line live trains show running, the timetable isn't all that stands behind it
                     // ([beatsEvenLate]), and should its train not come, the next may be up to a gap
                     // after the rider gets there ([slack]; maintainer, 2026-10-16).
@@ -259,10 +294,10 @@ object TripTiming {
                 late = if (timed[index]?.let { it.planned && it.timing.running } == true) {
                     // The next train within a gap of the rider getting there, if the Planner's doesn't
                     // come; never sooner than the Planner's own, which a wait at its longest can't beat.
-                    maxOf(leg.arrival, ready.plus(longestGap(index)).plus(leg.run))
+                    maxOf(leg.arrival, ready.plus(longestGap(index, ready)).plus(leg.run))
                 } else {
                     val again = time(index, leg, ready)
-                    val gap = if (again.onArrival) longestGap(index) else Duration.ZERO
+                    val gap = if (again.onArrival) longestGap(index, ready) else Duration.ZERO
                     again.timing.arrive?.plus(gap)
                 }?.plus(leg.changeAfter)
             }
@@ -270,7 +305,7 @@ object TripTiming {
             late?.minus(route.legs.lastOrNull()?.changeAfter ?: Duration.ZERO)?.let { Duration.between(arrival, it).coerceAtLeast(Duration.ZERO) }
         }
         val onDelayed = rides.any { (index, leg) -> decides(index, leg.lineId, delayed) }
-        return Estimate(route, basis, arrival, legs, blocked, now, unchecked, slack, withheld.takeIf { basis == Basis.UNKNOWN }, access, onDelayed)
+        return Estimate(route, basis, arrival, legs, blocked, now, unchecked, slack, withheld.takeIf { basis == Basis.UNKNOWN }, access, onDelayed, scheduleAsked)
     }
 
     // One leg timed by [estimate]: its [timing], the [basis] behind it, whether it boards a frequent

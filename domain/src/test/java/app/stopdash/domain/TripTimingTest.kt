@@ -289,6 +289,51 @@ class TripTimingTest {
         assertEquals(TripTiming.FREQUENT_MAX_GAP, TripTiming.estimate(twoLegs, now, Duration.ZERO, { split[it] }).slack)
     }
 
+    // Every day, a train every [gap] minutes from 05:00 to midnight.
+    private fun every(gap: Int) = StopTimetable(listOf(StopTimetable.DaySchedule(java.time.DayOfWeek.values().toSet(), (5 * 60 until 24 * 60 step gap).toList())))
+
+    // TfL's predictions can show the line still running yet too few to say it runs every few minutes:
+    // its timetable can (maintainer, 2026-10-19: a Northern line branch in the morning peak, two
+    // trains a minute apart, one of them maybe tracked twice, withheld its route).
+    @Test
+    fun `a line its timetable shows frequent is boarded on arrival past its predictions`() {
+        // Red at 12 reaches B ready at 25; blue's one vouched train is at 14, the Planner's at 20 gone.
+        val live = mapOf(0 to listOf(train("red", 12)), 1 to listOf(train("blue", 14), train("blue", 15).copy(doubtful = true)))
+        val estimate = TripTiming.estimate(twoLegs, now, Duration.ZERO, { live[it] }, schedule = { if (it == 1) every(5) else null })
+        assertEquals(TripTiming.Basis.ESTIMATED, estimate.basis)
+        assertEquals(at(25), estimate.legs[1].board)
+        assertEquals(at(35), estimate.arrival)
+        // The wait it assumes away is up to the timetable's gap.
+        assertEquals(Duration.ofMinutes(5), estimate.slack)
+        assertEquals(setOf(1), estimate.scheduleAsked)
+        // Not a timetable with trains far apart, nor with no live train vouched for: done for the night, or disrupted.
+        assertEquals(TripTiming.Basis.UNKNOWN, TripTiming.estimate(twoLegs, now, Duration.ZERO, { live[it] }, schedule = { every(15) }).basis)
+        val none = mapOf(0 to listOf(train("red", 12)), 1 to listOf(train("blue", 15).copy(doubtful = true)))
+        assertEquals(TripTiming.Basis.UNKNOWN, TripTiming.estimate(twoLegs, now, Duration.ZERO, { none[it] }, schedule = { every(5) }).basis)
+        // Nor on another line's live train sharing the stretch: it says nothing of this line's.
+        val other = mapOf(0 to listOf(train("red", 12)), 1 to listOf(train("green", 14)))
+        assertEquals(TripTiming.Basis.UNKNOWN, TripTiming.estimate(twoLegs, now, Duration.ZERO, { other[it] }, schedule = { every(5) }).basis)
+        // Nor a tram's or a bus's, however frequent: a bus's own predictions must show it ([frequentAt]).
+        for (mode in listOf("tram", "bus")) {
+            val route = TripRoute(listOf(twoLegs.legs[0], twoLegs.legs[1].copy(mode = mode)))
+            assertEquals(mode, TripTiming.Basis.UNKNOWN, TripTiming.estimate(route, now, Duration.ZERO, { live[it] }, schedule = { every(5) }).basis)
+        }
+        // Two live trains too few to say the gap: the timetable's stands in for the longest a frequent line has.
+        val two = mapOf(0 to listOf(train("red", 12)), 1 to listOf(train("blue", 14), train("blue", 15)))
+        assertEquals(Duration.ofMinutes(5), TripTiming.estimate(twoLegs, now, Duration.ZERO, { two[it] }, schedule = { every(5) }).slack)
+        // Two of another line's trains sharing the stretch: blue's timetable doesn't speak for them.
+        val green = mapOf(0 to listOf(train("red", 12)), 1 to listOf(train("green", 14), train("green", 15)))
+        assertEquals(TripTiming.FREQUENT_MAX_GAP, TripTiming.estimate(twoLegs, now, Duration.ZERO, { green[it] }, schedule = { every(5) }).slack)
+        // A bus's two buses keep the longest a frequent line has, and never ask: traffic keeps no timetable.
+        val bus = TripRoute(listOf(twoLegs.legs[0], twoLegs.legs[1].copy(mode = "bus")))
+        val buses = TripTiming.estimate(bus, now, Duration.ZERO, { two[it] }, schedule = { every(5) })
+        assertEquals(TripTiming.FREQUENT_MAX_GAP, buses.slack)
+        assertEquals(emptySet<Int>(), buses.scheduleAsked)
+        // A leg timed by a live train never asks.
+        val caught = mapOf(0 to listOf(train("red", 12)), 1 to listOf(train("blue", 26)))
+        assertEquals(emptySet<Int>(), TripTiming.estimate(twoLegs, now, Duration.ZERO, { caught[it] }, schedule = { every(5) }).scheduleAsked)
+    }
+
     @Test
     fun `a frequent line past its predictions is judged only on trains from stops that refreshed`() {
         // Red at 12 reaches B ready at 25, past the Planner's blue at 20. Blue's own stop failed, its

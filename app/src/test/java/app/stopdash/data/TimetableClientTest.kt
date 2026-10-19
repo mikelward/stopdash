@@ -32,6 +32,10 @@ class TimetableClientTest {
     private val tubePlain = fixture("timetable_victoria_kings_cross_plain.json")
     private val tubeOutbound = fixture("timetable_victoria_kings_cross_outbound.json")
 
+    // The Northern line from Euston to King's Cross, Monday to Thursday 08:00 to 08:50: one route for
+    // the Charing Cross branch's trains, which don't call there, one for the Bank branch's, which do.
+    private val northern = fixture("timetable_northern_euston_to_kings_cross.json")
+
     private fun client(answer: (HttpRequestData) -> Pair<String, HttpStatusCode>): KtorTflClient {
         val engine = MockEngine { request ->
             val (body, status) = answer(request)
@@ -140,4 +144,55 @@ class TimetableClientTest {
         assertEquals(false, withSchoolDays.readable)
         assertEquals(1, withSchoolDays.schedules.size)
     }
+
+    @Test
+    fun `a ride's timetable keeps only the trains that call where it gets off`() = runTest {
+        val asked = mutableListOf<HttpRequestData>()
+        val timetable = client { asked += it; northern to HttpStatusCode.OK }.legTimetable("northern", "940GZZLUEUS", "940GZZLUKSX")
+        assertEquals("/Line/northern/Timetable/940GZZLUEUS/to/940GZZLUKSX", asked.single().url.encodedPath)
+        // Each route's weekday schedule, the Charing Cross branch's with no train for King's Cross.
+        assertEquals(2, timetable.schedules.size)
+        assertTrue(timetable.schedules.all { it.complete })
+        val minutes = timetable.schedules.flatMap { it.minutes }.sorted()
+        assertEquals(listOf(482, 485, 488, 491, 493, 496, 498, 501, 503, 506, 508, 511, 513, 516, 518, 521, 523, 526, 528), minutes)
+        // Asked of the stop alone, every train counts.
+        val all = json.decodeFromString<TflTimetableResponseDto>(northern).toStopTimetable()
+        assertEquals(39, all.schedules.sumOf { it.minutes.size })
+    }
+
+    @Test
+    fun `a departure whose calling pattern can't be found leaves its schedule incomplete`() {
+        val unknown = """{"timetable":{"routes":[{"stationIntervals":[{"id":"0","intervals":[{"stopId":"B"}]}],
+            "schedules":[{"name":"Monday","knownJourneys":[{"hour":"8","minute":"10","intervalId":0},{"hour":"8","minute":"15","intervalId":7}]}]}]}}"""
+        val timetable = json.decodeFromString<TflTimetableResponseDto>(unknown).toStopTimetable(reaching = "B")
+        assertEquals(listOf(490), timetable.schedules.single().minutes)
+        assertEquals(false, timetable.schedules.single().complete)
+    }
+
+    @Test
+    fun `an unreadable time on another branch's departure leaves the schedule complete, on this one's not`() {
+        fun read(badInterval: Int) = json.decodeFromString<TflTimetableResponseDto>(
+            """{"timetable":{"routes":[{"stationIntervals":[{"id":"0","intervals":[{"stopId":"B"}]},{"id":"1","intervals":[{"stopId":"X"}]}],
+            "schedules":[{"name":"Monday","knownJourneys":[{"hour":"8","minute":"10","intervalId":0},{"hour":"8","minute":"??","intervalId":$badInterval}]}]}]}}""",
+        ).toStopTimetable(reaching = "B").schedules.single()
+        // The other branch's train doesn't take the rider to B: its time is never read.
+        assertEquals(listOf(490), read(1).minutes)
+        assertEquals(true, read(1).complete)
+        // One of this branch's trains whose time can't be read might be due: incomplete.
+        assertEquals(listOf(490), read(0).minutes)
+        assertEquals(false, read(0).complete)
+    }
+
+    @Test
+    fun `a pattern with an unreadable id doesn't match a departure with none`() {
+        val timetable = json.decodeFromString<TflTimetableResponseDto>(
+            """{"timetable":{"routes":[{"stationIntervals":[{"id":"0","intervals":[{"stopId":"B"}]},{"id":"x","intervals":[{"stopId":"B"}]}],
+            "schedules":[{"name":"Monday","knownJourneys":[{"hour":"8","minute":"10","intervalId":0},{"hour":"8","minute":"15"}]}]}]}}""",
+        ).toStopTimetable(reaching = "B")
+        // The departure with no pattern id is unknown, not matched to the unreadable pattern.
+        assertEquals(listOf(490), timetable.schedules.single().minutes)
+        assertEquals(false, timetable.schedules.single().complete)
+    }
+
+    private val json = Json { ignoreUnknownKeys = true }
 }

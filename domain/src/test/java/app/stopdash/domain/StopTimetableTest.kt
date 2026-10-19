@@ -175,4 +175,35 @@ class StopTimetableTest {
         // An ordinary Monday night, a week later: Monday's last train has gone.
         assertEquals(false, weekdays.departsWithin(java.time.Instant.parse("2027-04-06T00:00:00Z"), window))
     }
+
+    // A branch's trains every 5 minutes in the morning peak, every 10 after; nothing between 01:00 and 05:30.
+    private val peak = StopTimetable(
+        listOf(
+            StopTimetable.DaySchedule(
+                setOf(MONDAY, TUESDAY, WEDNESDAY, THURSDAY),
+                (5 * 60 + 30..8 * 60 step 10).toList() + (8 * 60 + 5..9 * 60 step 5).toList() + (9 * 60 + 10..25 * 60 step 10).toList(),
+            ),
+        ),
+    )
+
+    @Test
+    fun `the longest gap around a time is the timetable's`() {
+        assertEquals(Duration.ofMinutes(5), peak.longestGapAround(tuesday("08:30:00")))
+        // Reaching the stop as the trains thin out, the longer gap after counts.
+        assertEquals(Duration.ofMinutes(10), peak.longestGapAround(tuesday("08:50:00")))
+        // Past midnight, Monday's service day still runs.
+        assertEquals(Duration.ofMinutes(10), peak.longestGapAround(tuesday("00:20:00")))
+    }
+
+    @Test
+    fun `a gap the timetable can't vouch for gives no answer`() {
+        // The night's last trains, and before the first: no departure within the hour after.
+        assertNull(peak.longestGapAround(tuesday("00:55:00")))
+        assertNull(peak.longestGapAround(tuesday("04:20:00")))
+        // A day no schedule covers (2026-10-09 is a Friday), a holiday, an unreadable schedule.
+        assertNull(peak.longestGapAround(tuesday("08:30:00").plus(Duration.ofDays(3))))
+        assertNull(peak.longestGapAround(Instant.parse("2026-12-29T08:30:00Z")))
+        assertNull(peak.copy(readable = false).longestGapAround(tuesday("08:30:00")))
+        assertNull(StopTimetable(listOf(peak.schedules[0].copy(complete = false))).longestGapAround(tuesday("08:30:00")))
+    }
 }

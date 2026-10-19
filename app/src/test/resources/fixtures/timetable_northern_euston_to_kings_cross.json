@@ -1,0 +1,294 @@
+{
+ "lineId": "northern",
+ "lineName": "Northern",
+ "timetable": {
+  "departureStopId": "940GZZLUEUS",
+  "routes": [
+   {
+    "stationIntervals": [
+     {
+      "id": "0",
+      "intervals": [
+       {
+        "stopId": "940GZZLUWRR",
+        "timeToArrival": 1.0
+       },
+       {
+        "stopId": "940GZZLUGDG",
+        "timeToArrival": 2.0
+       },
+       {
+        "stopId": "940GZZLUTCR",
+        "timeToArrival": 3.0
+       }
+      ]
+     },
+     {
+      "id": "1",
+      "intervals": [
+       {
+        "stopId": "940GZZLUWRR",
+        "timeToArrival": 1.0
+       },
+       {
+        "stopId": "940GZZLUGDG",
+        "timeToArrival": 2.0
+       },
+       {
+        "stopId": "940GZZLUTCR",
+        "timeToArrival": 3.0
+       }
+      ]
+     },
+     {
+      "id": "2",
+      "intervals": [
+       {
+        "stopId": "940GZZLUWRR",
+        "timeToArrival": 1.0
+       },
+       {
+        "stopId": "940GZZLUGDG",
+        "timeToArrival": 2.0
+       },
+       {
+        "stopId": "940GZZLUTCR",
+        "timeToArrival": 3.0
+       }
+      ]
+     }
+    ],
+    "schedules": [
+     {
+      "name": "Monday - Thursday",
+      "knownJourneys": [
+       {
+        "hour": "8",
+        "minute": "0",
+        "intervalId": 1
+       },
+       {
+        "hour": "8",
+        "minute": "3",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "6",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "8",
+        "intervalId": 2
+       },
+       {
+        "hour": "8",
+        "minute": "11",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "13",
+        "intervalId": 1
+       },
+       {
+        "hour": "8",
+        "minute": "16",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "18",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "21",
+        "intervalId": 2
+       },
+       {
+        "hour": "8",
+        "minute": "23",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "26",
+        "intervalId": 1
+       },
+       {
+        "hour": "8",
+        "minute": "28",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "31",
+        "intervalId": 2
+       },
+       {
+        "hour": "8",
+        "minute": "33",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "36",
+        "intervalId": 1
+       },
+       {
+        "hour": "8",
+        "minute": "38",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "41",
+        "intervalId": 2
+       },
+       {
+        "hour": "8",
+        "minute": "43",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "46",
+        "intervalId": 1
+       },
+       {
+        "hour": "8",
+        "minute": "48",
+        "intervalId": 0
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "stationIntervals": [
+     {
+      "id": "0",
+      "intervals": [
+       {
+        "stopId": "940GZZLUKSX",
+        "timeToArrival": 1.0
+       },
+       {
+        "stopId": "940GZZLUAGL",
+        "timeToArrival": 3.0
+       },
+       {
+        "stopId": "940GZZLUODS",
+        "timeToArrival": 6.0
+       }
+      ]
+     }
+    ],
+    "schedules": [
+     {
+      "name": "Monday - Thursday",
+      "knownJourneys": [
+       {
+        "hour": "8",
+        "minute": "2",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "5",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "8",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "11",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "13",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "16",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "18",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "21",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "23",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "26",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "28",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "31",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "33",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "36",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "38",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "41",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "43",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "46",
+        "intervalId": 0
+       },
+       {
+        "hour": "8",
+        "minute": "48",
+        "intervalId": 0
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

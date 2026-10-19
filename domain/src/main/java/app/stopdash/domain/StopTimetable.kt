@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
 import java.time.DayOfWeek
 import java.time.Duration
 import java.time.Instant
@@ -14,8 +15,10 @@ import java.time.temporal.TemporalAdjusters
  * minutes after that service day's midnight in London. A service day runs past midnight, so a
  * night's last trains read 24:00 and later (TfL's "25:34" is 01:34 the next morning).
  *
- * Used only to tell an empty board's "none coming" from "none known" ([EmptyTimes]), never to show
- * a time: a timetable knows nothing of the disruption that empties a board (maintainer, 2026-10-03).
+ * Never used to show a time: a timetable knows nothing of the disruption that empties a board
+ * (maintainer, 2026-10-03). It tells an empty board's "none coming" from "none known" ([EmptyTimes]),
+ * and how long a trip may wait for the next train past its live predictions on a line running a good
+ * service ([longestGapAround], maintainer, 2026-10-19).
  *
  * [readable] is false when some schedule's days couldn't be read ("School days"): it's left out of
  * [schedules], but it might run on any day, so the timetable can then never say nothing is due.
@@ -87,8 +90,57 @@ data class StopTimetable(val schedules: List<DaySchedule>, val readable: Boolean
         return if (covered) false else null
     }
 
+    /**
+     * The longest a rider reaching the stop around [at] may wait for a departure, by this timetable:
+     * the longest gap between departures over [GAP_BEFORE] before [at] to [GAP_AFTER] after it, since
+     * when the rider gets there is itself an estimate. Null when the timetable can't say: a schedule
+     * left unread, a holiday ([publicHoliday]), a day it doesn't cover whole, or no departure within
+     * [GAP_LIMIT] either side of that stretch (a line starting or ending for the night).
+     */
+    @WorkerThread
+    fun longestGapAround(at: Instant): Duration? {
+        if (!readable) return null
+        val local = at.atZone(LONDON)
+        val today = local.toLocalDate()
+        // The days whose service could be running at [at]: today's, and yesterday's past midnight
+        // until the service day ends.
+        val running = if (local.hour < SERVICE_DAY_ENDS_HOUR) listOf(today.minusDays(1), today) else listOf(today)
+        val covered = running.all { day ->
+            val its = schedules.filter { day.dayOfWeek in it.days }
+            !publicHoliday(day) && its.isNotEmpty() && its.all { it.complete }
+        }
+        if (!covered) return null
+        val departures = listOf(today.minusDays(1), today, today.plusDays(1)).flatMap { day ->
+            val midnight = day.atStartOfDay()
+            schedules.filter { day.dayOfWeek in it.days }.flatMap { schedule ->
+                // In autumn's repeated hour a time has two instants: the earlier is taken, as a gap
+                // across it is never shorter for it.
+                schedule.minutes.map { midnight.plusMinutes(it.toLong()).atZone(LONDON).withEarlierOffsetAtOverlap().toInstant() }
+            }
+        }.distinct().sorted()
+        val start = at.minus(GAP_BEFORE)
+        val end = at.plus(GAP_AFTER)
+        val before = departures.lastOrNull { !it.isAfter(start) } ?: return null
+        val after = departures.firstOrNull { !it.isBefore(end) } ?: return null
+        if (Duration.between(before, start) > GAP_LIMIT || Duration.between(end, after) > GAP_LIMIT) return null
+        val stretch = departures.filter { !it.isBefore(before) && !it.isAfter(after) }
+        return stretch.zipWithNext { a, b -> Duration.between(a, b) }.maxOrNull()
+    }
+
     companion object {
         private val LONDON: ZoneId = ZoneId.of("Europe/London")
+
+        /** How far before the time asked [longestGapAround] reads the timetable. */
+        val GAP_BEFORE: Duration = Duration.ofMinutes(5)
+
+        /** How far after the time asked [longestGapAround] reads the timetable. */
+        val GAP_AFTER: Duration = Duration.ofMinutes(15)
+
+        /** The longest gap [longestGapAround] reads past its stretch before it gives no answer. */
+        val GAP_LIMIT: Duration = Duration.ofMinutes(60)
+
+        // A service day ends at 04:00 the next morning ([SERVICE_DAY_MINUTES]).
+        private const val SERVICE_DAY_ENDS_HOUR = 4
 
         // A service day runs to 04:00 the next morning, 28 hours after its midnight.
         private const val SERVICE_DAY_MINUTES = 28 * 60
@@ -179,4 +231,13 @@ private fun dayOf(word: String): DayOfWeek = when (word.take(3)) {
  */
 interface TimetableSource {
     suspend fun timetable(lineId: String, stopId: String): StopTimetable
+}
+
+/**
+ * Reads a line's timetable for a trip's ride from TfL: the departures from [fromId] whose trains call
+ * at [toId] after it ([LegTimetables]). Separate from [TimetableSource], since a board asks about a
+ * stop and a ride about where it gets off. Throws a [TflException] on failure.
+ */
+interface LegTimetableSource {
+    suspend fun legTimetable(lineId: String, fromId: String, toId: String): StopTimetable
 }

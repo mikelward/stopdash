@@ -305,10 +305,11 @@ class TripViewModelTest {
         sharedLines: LineStatusCache = LineStatusCache(),
         lineStatusReuse: Duration = Duration.ZERO,
         linePulls: String = TripViewModel.linePullsTo(""),
+        legTimetables: app.stopdash.domain.LegTimetables? = null,
     ) = TripViewModel(
         planner, client, "A", toIds.map { TripDestination.Stop(it) },
         clock = { now }, plans = plans, io = dispatcher, arrivals = arrivals, closureCache = closures,
-        sharedLines = sharedLines, lineStatusReuse = lineStatusReuse, linePulls = linePulls,
+        sharedLines = sharedLines, lineStatusReuse = lineStatusReuse, linePulls = linePulls, legTimetables = legTimetables,
     )
 
     // A ride, a walk between two named stations the Planner doesn't place, and a ride on.
@@ -3404,6 +3405,125 @@ class TripViewModelTest {
         val state = TripViewModel.State(routes = listOf(red, blue), statuses = statuses)
         assertEquals(emptySet<String>(), state.delayedLines)
         assertEquals(listOf(blue, red), tripEstimates(state, now, Duration.ZERO, emptyMap())?.map { it.route })
+    }
+
+    @Test
+    fun `a ride timed past its predictions on a good service fetches its timetable, and is timed by it`() = runTest(dispatcher) {
+        val red = leg("red", "A", "C", 5, 25)
+        val route = TripRoute(listOf(red))
+        val good = app.stopdash.domain.LineStatus("red", app.stopdash.domain.LineStatus.GOOD_SERVICE, "Good Service")
+        val estimate = TripTiming.Estimate(route, TripTiming.Basis.UNKNOWN, null, listOf(TripTiming.LegTiming(null, null, null, false)), false, now, scheduleAsked = setOf(0))
+        val key = app.stopdash.domain.LegTimetables.Key("red", "A", "C")
+        val state = TripViewModel.State(routes = listOf(route), statuses = mapOf("red" to good), statusesAt = mapOf("red" to now))
+        assertEquals(setOf(key), timetablesWanted(listOf(estimate), state, now))
+        // Nor on a good service the trip can't stand behind: its latest check failed, or it's gone stale.
+        assertEquals(emptySet<Any>(), timetablesWanted(listOf(estimate), state.copy(statusFailedLines = setOf("red")), now))
+        assertEquals(emptySet<Any>(), timetablesWanted(listOf(estimate), state.copy(statusesAt = emptyMap()), now))
+        // Not on a line with delays, whose trains a timetable can't speak for, nor one with no status known.
+        val delays = state.copy(statuses = mapOf("red" to app.stopdash.domain.LineStatus("red", 9, "Minor Delays")))
+        assertEquals(emptySet<Any>(), timetablesWanted(listOf(estimate), delays, now))
+        assertEquals(emptySet<Any>(), timetablesWanted(listOf(estimate), state.copy(statuses = emptyMap()), now))
+        // Fetched, the trip has it, and times the ride by it on a good service only.
+        val timetable = app.stopdash.domain.StopTimetable(listOf(app.stopdash.domain.StopTimetable.DaySchedule(java.time.DayOfWeek.values().toSet(), listOf(600))))
+        val source = object : app.stopdash.domain.LegTimetableSource {
+            override suspend fun legTimetable(lineId: String, fromId: String, toId: String) = timetable
+        }
+        val trip = model(FakePlanner(emptyList()), FakeClient(mutableMapOf()), legTimetables = app.stopdash.domain.LegTimetables(source, clock = { now }))
+        trip.wantTimetables(setOf(key))
+        advanceUntilIdle()
+        assertEquals(mapOf(key to timetable), trip.state.value.timetables)
+        val fetched = state.copy(timetables = trip.state.value.timetables, timetablesDay = trip.state.value.timetablesDay)
+        assertEquals(emptySet<Any>(), timetablesWanted(listOf(estimate), fetched, now))
+        assertEquals(timetable, rideSchedule(fetched, red, now))
+        assertNull(rideSchedule(fetched.copy(statuses = delays.statuses), red, now))
+        // The next service day, from 04:00 London, it no longer counts, and is fetched again.
+        val tomorrow = now.plus(Duration.ofDays(1))
+        val checked = fetched.copy(statusesAt = mapOf("red" to tomorrow))
+        assertNull(rideSchedule(checked, red, tomorrow))
+        assertEquals(setOf(key), timetablesWanted(listOf(estimate), checked, tomorrow))
+        // TfL having none answers the ride for the day: not asked again until the next.
+        val none = fetched.copy(timetables = mapOf(key to null))
+        assertEquals(emptySet<Any>(), timetablesWanted(listOf(estimate), none, now))
+        assertNull(rideSchedule(none, red, now))
+        assertEquals(setOf(key), timetablesWanted(listOf(estimate), none.copy(statusesAt = mapOf("red" to tomorrow)), tomorrow))
+    }
+
+    @Test
+    fun `a ride timetable that failed is fetched again while the same rides are wanted`() = runTest(dispatcher) {
+        val key = app.stopdash.domain.LegTimetables.Key("red", "A", "C")
+        val timetable = app.stopdash.domain.StopTimetable(listOf(app.stopdash.domain.StopTimetable.DaySchedule(java.time.DayOfWeek.values().toSet(), listOf(600))))
+        var fail = true
+        var asked = 0
+        val source = object : app.stopdash.domain.LegTimetableSource {
+            override suspend fun legTimetable(lineId: String, fromId: String, toId: String): app.stopdash.domain.StopTimetable {
+                asked++
+                if (fail) throw app.stopdash.domain.TflException.Offline(null)
+                return timetable
+            }
+        }
+        var clock = now
+        val timetables = app.stopdash.domain.LegTimetables(source, clock = { clock })
+        val trip = model(FakePlanner(emptyList()), FakeClient(mutableMapOf()), legTimetables = timetables)
+        trip.wantTimetables(setOf(key))
+        runCurrent()
+        assertEquals(1, asked)
+        assertEquals(emptyMap<Any, Any>(), trip.state.value.timetables)
+        // Its retry comes due with nothing else asking: fetched again, and found.
+        fail = false
+        clock = clock.plus(timetables.retryAfter)
+        advanceTimeBy(timetables.retryAfter.toMillis() + 1)
+        runCurrent()
+        assertEquals(2, asked)
+        assertEquals(mapOf(key to timetable), trip.state.value.timetables)
+        // Found, nothing more is asked.
+        advanceTimeBy(timetables.retryAfter.toMillis() * 3)
+        assertEquals(2, asked)
+    }
+
+    @Test
+    fun `a failed ride timetable stops being retried once nothing is wanted`() = runTest(dispatcher) {
+        val key = app.stopdash.domain.LegTimetables.Key("red", "A", "C")
+        var asked = 0
+        val source = object : app.stopdash.domain.LegTimetableSource {
+            override suspend fun legTimetable(lineId: String, fromId: String, toId: String): app.stopdash.domain.StopTimetable {
+                asked++
+                throw app.stopdash.domain.TflException.Offline(null)
+            }
+        }
+        var clock = now
+        val timetables = app.stopdash.domain.LegTimetables(source, clock = { clock })
+        val trip = model(FakePlanner(emptyList()), FakeClient(mutableMapOf()), legTimetables = timetables)
+        trip.wantTimetables(setOf(key))
+        runCurrent()
+        assertEquals(1, asked)
+        // The trip screen left: its retries stop.
+        trip.wantTimetables(emptySet())
+        clock = clock.plus(timetables.retryAfter.multipliedBy(3))
+        advanceTimeBy(timetables.retryAfter.toMillis() * 3)
+        runCurrent()
+        assertEquals(1, asked)
+    }
+
+    @Test
+    fun `a ride timetable fetched across the 4am change of service day is fetched again for the new day`() = runTest(dispatcher) {
+        val key = app.stopdash.domain.LegTimetables.Key("red", "A", "C")
+        val timetable = app.stopdash.domain.StopTimetable(listOf(app.stopdash.domain.StopTimetable.DaySchedule(java.time.DayOfWeek.values().toSet(), listOf(600))))
+        // 03:59 London when the fetch is asked; 04:01 when it's answered.
+        var clock = Instant.parse("2026-10-07T02:59:00Z")
+        var asked = 0
+        val source = object : app.stopdash.domain.LegTimetableSource {
+            override suspend fun legTimetable(lineId: String, fromId: String, toId: String): app.stopdash.domain.StopTimetable {
+                asked++
+                clock = Instant.parse("2026-10-07T03:01:00Z")
+                return timetable
+            }
+        }
+        val trip = model(FakePlanner(emptyList()), FakeClient(mutableMapOf()), legTimetables = app.stopdash.domain.LegTimetables(source, clock = { clock }))
+        trip.wantTimetables(setOf(key))
+        advanceUntilIdle()
+        // The day before's answer doesn't stand: asked again for the new day, and held.
+        assertEquals(2, asked)
+        assertEquals(mapOf(key to timetable), trip.state.value.timetables)
     }
 
     @Test
