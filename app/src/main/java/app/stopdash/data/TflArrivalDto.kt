@@ -35,6 +35,9 @@ data class TflArrivalDto(
     // arrivals already know which stop they're for).
     val naptanId: String? = null,
     val stationName: String? = null,
+    // When TfL made this prediction: answers come from cache copies of different ages, and this is
+    // what tells an older one from the last ([NewestArrivals]).
+    val timestamp: String? = null,
 )
 
 /**

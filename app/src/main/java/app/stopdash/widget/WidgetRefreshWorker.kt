@@ -7,6 +7,7 @@ import app.stopdash.data.StopdashProxy
 import app.stopdash.data.RailStationCodesStore
 import app.stopdash.data.StationIndexStore
 import app.stopdash.data.RejectedApiKey
+import app.stopdash.domain.NewestArrivals
 import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.LineStatusCache
 import app.stopdash.domain.CachingTflClient
@@ -545,6 +546,7 @@ internal suspend fun refreshStoredSnapshot(
                     appKey = { userKey },
                     rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
                     requestPool = SharedTflRequestPool.pool,
+                    newestArrivals = NewestArrivals.SHARED,
                     // The app says a refused key when it's next opened (SPEC D7).
                     keyAnswered = RejectedApiKey.SHARED::record,
                     // Where a failed alert-direction lookup is reported; it's caught inside the

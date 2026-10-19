@@ -350,6 +350,44 @@ class KtorTflClientTest {
     }
 
     @Test
+    fun `an answer from an older cache copy is set aside for the stop's last, and said so`() = runTest {
+        // A fresh answer made at 12:03:35, then a cache copy made at 12:03:05
+        // that still had the train further out.
+        fun answer(madeAt: String, expected: String) = """
+            [{"lineId": "northern", "lineName": "Northern", "platformName": "Southbound - Platform 4",
+              "destinationName": "Morden Underground Station", "modeName": "tube", "vehicleId": "124",
+              "expectedArrival": "$expected", "timestamp": "$madeAt"}]
+        """.trimIndent()
+        val answers = ArrayDeque(
+            listOf(
+                answer("2026-01-01T12:03:35.8092655Z", "2026-01-01T12:04:40Z"),
+                answer("2026-01-01T12:03:05.1234567Z", "2026-01-01T12:05:40Z"),
+                answer("2026-01-01T12:04:16Z", "2026-01-01T12:04:30Z"),
+            ),
+        )
+        val engine = MockEngine {
+            respond(ByteReadChannel(answers.removeFirst()), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val logged = mutableListOf<String>()
+        val client = KtorTflClient(
+            httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode,
+            clock = { Instant.parse("2026-01-01T12:04:10Z") }, logDoubtful = { logged += it },
+        )
+
+        val fresh = Instant.parse("2026-01-01T12:04:40Z")
+        assertEquals(listOf(fresh), client.arrivals("940GZZLUCTN").map { it.expectedArrival })
+        assertEquals(listOf(fresh), client.arrivals("940GZZLUCTN").map { it.expectedArrival })
+        assertEquals(listOf("older answer at 940GZZLUCTN set aside: 30s behind the last"), logged)
+        // A newer answer is taken as it comes.
+        assertEquals(listOf(Instant.parse("2026-01-01T12:04:30Z")), client.arrivals("940GZZLUCTN").map { it.expectedArrival })
+        assertEquals(1, logged.size)
+    }
+
+    @Test
     fun `one key snapshot drives both the limiter budget and the app_key`() = runTest {
         var limiterKey: String? = "unset"
         var captured: HttpRequestData? = null

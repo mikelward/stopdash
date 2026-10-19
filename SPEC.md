@@ -3989,6 +3989,11 @@ been set, so none keeps showing what it judged before.
   added or removed forgets them too. A station whose National Rail board a screen places under one
   of its twin stop ids isn't shared by stop, since another screen may place it under the other; the
   board itself is kept once for the station, and read by every screen. Nothing is saved to storage.
+- **An older answer never replaces a newer one** (maintainer, 2026-10-19): TfL answers a stop from
+  cache copies up to a minute old, so polling can step back in time, a train at the platform read
+  as approaching again. Each answer is dated by when TfL made its predictions, and one older than
+  the stop's last is set aside for that last (logged), unless it's more than 2 minutes older, which
+  no cache copy is, so TfL's clock moved and the stop isn't frozen on its last answer.
 - **A stalled request is asked once more** (maintainer, 2026-10-15): one that got no answer, or no
   connection, within the usual 10 s is tried again a moment later, on a fresh connection. A
   connection to TfL that stops answering after a network change otherwise left a stop failed until
