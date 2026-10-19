@@ -1962,7 +1962,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 and in the platform recording each such pair was two real trains, one of them the
                 rider's own. `DoubtfulTrains` could pass a pair whose two listings name different
                 branches or destinations, at the cost of keeping a copy TfL lists under another
-                destination. Needs more pairs from merges, and the maintainer's call.
+                destination; or one whose listings move independently (each location advancing
+                on its own), which covered every real pair recorded. Before either, record a
+                confirmed copy (`arrivals_recorder.py record --vehicles`) to see what tells it
+                apart: its own calls ahead, when its prediction was made, whether it moves. Needs
+                the maintainer's call.
         - [ ] **Tell a train back from the end of the line from one that moved platform** (2026-10-16
               recording): the recorder voids a train listed at two platforms of one line within
               `REAPPEARS_AFTER` (10 min). At Stockwell and Waterloo that was mostly the same train
