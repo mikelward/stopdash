@@ -2,6 +2,7 @@ package app.stopdash.ui
 
 import androidx.annotation.VisibleForTesting
 import app.stopdash.domain.ActiveTrip
+import app.stopdash.domain.Pick
 import app.stopdash.domain.ToChoice
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Workers
@@ -594,8 +595,8 @@ class ActiveTripTracker(
 
     /**
      * Start [route] to [destinationName], the rider at its first stop by [readyAt]: its first ride's
-     * train is picked on the next [refresh]. [destinations], [destinationIds] and [destinationStopId] are
-     * the destination as chosen ([ActiveTrip.destinations]).
+     * train is picked on the next [refresh]. [destinations], [destinationIds], [destinationStopId] and
+     * [destinationLevel] are the destination as chosen ([ActiveTrip.destinations]).
      */
     suspend fun start(
         route: TripRoute,
@@ -604,6 +605,7 @@ class ActiveTripTracker(
         destinations: List<TripDestination> = emptyList(),
         destinationIds: Map<String, String> = emptyMap(),
         destinationStopId: String = "",
+        destinationLevel: Pick.Level? = null,
         // In place of the trip on the way (a route planned again from partway along): it's ended first,
         // under the same lock, a kept one not read yet included ([restoreLocked]), and [onEnded] told.
         // One that can't be ended stays, and nothing is started ([endFailed] says so).
@@ -628,9 +630,9 @@ class ActiveTripTracker(
             val first = route.legs.firstOrNull()
             val trip = if (first != null && readyAt.isAfter(now)) {
                 val toStop = TripLeg(TripLeg.WALKING, "", "", "", "", first.fromId, first.fromName, now, readyAt)
-                ActiveTrip(TripRoute(listOf(toStop) + route.legs), destinationName, startedAt = now, legStartedAt = now, destinations = destinations, destinationIds = destinationIds, destinationStopId = destinationStopId)
+                ActiveTrip(TripRoute(listOf(toStop) + route.legs), destinationName, startedAt = now, legStartedAt = now, destinations = destinations, destinationIds = destinationIds, destinationStopId = destinationStopId, destinationLevel = destinationLevel)
             } else {
-                ActiveTrip(route, destinationName, startedAt = now, legIndex = 0, legStartedAt = readyAt, destinations = destinations, destinationIds = destinationIds, destinationStopId = destinationStopId)
+                ActiveTrip(route, destinationName, startedAt = now, legIndex = 0, legStartedAt = readyAt, destinations = destinations, destinationIds = destinationIds, destinationStopId = destinationStopId, destinationLevel = destinationLevel)
             }.let { planned ->
                 // Which walks are changes on foot, decided once now and kept with the trip, so its steps
                 // never change on the way. Off the caller's thread: it may read the station index.
@@ -659,6 +661,7 @@ class ActiveTripTracker(
         destinations: List<TripDestination> = emptyList(),
         destinationIds: Map<String, String> = emptyMap(),
         destinationStopId: String = "",
+        destinationLevel: Pick.Level? = null,
         // In place of the trip on the way ([start]'s [replacing]), [onEnded] told once it's ended.
         replacing: Boolean = false,
         onEnded: () -> Unit = {},
@@ -666,7 +669,7 @@ class ActiveTripTracker(
         _starting.update { it + 1 }
         return scope.launch {
             try {
-                start(route, destinationName, readyAt, destinations, destinationIds, destinationStopId, replacing, onEnded)
+                start(route, destinationName, readyAt, destinations, destinationIds, destinationStopId, destinationLevel, replacing, onEnded)
             } finally {
                 _starting.update { it - 1 }
             }

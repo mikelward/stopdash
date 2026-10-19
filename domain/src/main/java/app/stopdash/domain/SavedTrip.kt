@@ -9,7 +9,7 @@ package app.stopdash.domain
 object SavedTrip {
     /**
      * A [ToChoice]: whether its search is up, then a picked stop's id and name, or a place's coordinate,
-     * name and [PlaceArt.code].
+     * name and [PlaceArt.code], then the stop's [Pick.Level.code] (null where the row didn't say).
      */
     fun toChoiceFields(to: ToChoice): List<Any?> = listOf(
         to.picking,
@@ -19,9 +19,13 @@ object SavedTrip {
         to.place?.coordinate?.longitude,
         to.place?.name,
         to.place?.art?.code,
+        to.level?.code,
     )
 
-    /** What [toChoiceFields] saved, or the build before it, which kept no place's art (a plain place). */
+    /**
+     * What [toChoiceFields] saved, or the builds before it: one that kept no level (read through
+     * [Hubs.picked] where it's used, as a row that didn't say), or before that no place's art (a plain place).
+     */
     fun toChoiceOf(saved: List<Any?>): ToChoice {
         val lat = saved[3] as Double?
         val lon = saved[4] as Double?
@@ -31,7 +35,8 @@ object SavedTrip {
         } else {
             null
         }
-        return ToChoice(saved[0] as Boolean, saved[1] as String?, saved[2] as String, place)
+        val level = Pick.Level.ofCode(saved.getOrNull(TO_FIELDS_WITHOUT_LEVEL) as String?)?.takeIf { saved[1] != null }
+        return ToChoice(saved[0] as Boolean, saved[1] as String?, saved[2] as String, place, level)
     }
 
     /**
@@ -45,13 +50,14 @@ object SavedTrip {
     }
 
     /**
-     * What [originChangeFields] saved, or what the builds before it did: a To… without its place's art,
+     * What [originChangeFields] saved, or what the builds before it did: a To… without its level, or its place's art,
      * with or without the station's lead; or a station's id and name alone, or "" for near me. Those
      * changes could only begin at a *To…* search, so they keep one open. Anything else is no change
      * under way.
      */
     fun originChangeOf(saved: List<Any?>): OriginChange? = when (saved.size) {
         ORIGIN_FIELDS -> originChange(saved, TO_FIELDS)
+        ORIGIN_FIELDS_WITHOUT_LEVEL -> originChange(saved, TO_FIELDS_WITHOUT_LEVEL)
         ORIGIN_FIELDS_WITHOUT_ART, ORIGIN_FIELDS_WITHOUT_LEAD -> originChange(saved, TO_FIELDS_WITHOUT_ART)
         LEGACY_STATION_FIELDS -> OriginChange.Station(saved[0] as String, saved[1] as String, ToChoice.NONE.startPicking())
         LEGACY_NEAR_ME_FIELDS -> OriginChange.NearMe(ToChoice.NONE.startPicking())
@@ -67,10 +73,14 @@ object SavedTrip {
         return if (id == null) OriginChange.NearMe(to) else OriginChange.Station(id, saved[1] as String, to, lead)
     }
 
-    private const val TO_FIELDS = 7
+    private const val TO_FIELDS = 8
+    // A To… before its level was kept.
+    private const val TO_FIELDS_WITHOUT_LEVEL = 7
     // A To… before a place's art was kept.
     private const val TO_FIELDS_WITHOUT_ART = 6
     private const val ORIGIN_FIELDS = 2 + TO_FIELDS + 1
+    // The shape before a To…'s level was kept.
+    private const val ORIGIN_FIELDS_WITHOUT_LEVEL = 2 + TO_FIELDS_WITHOUT_LEVEL + 1
     // The shape before a place's art was kept.
     private const val ORIGIN_FIELDS_WITHOUT_ART = 2 + TO_FIELDS_WITHOUT_ART + 1
     // The shape before a station's lead was kept.

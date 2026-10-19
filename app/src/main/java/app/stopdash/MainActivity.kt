@@ -1170,6 +1170,8 @@ class MainActivity : ComponentActivity() {
                 var herePicking by rememberSaveable { mutableStateOf(false) }
                 var hereToId by rememberSaveable { mutableStateOf<String?>(null) }
                 var hereToName by rememberSaveable { mutableStateOf("") }
+                // The level [hereToId] was picked at ([Pick.Level.code]); null where the row didn't say.
+                var hereToLevel by rememberSaveable { mutableStateOf<String?>(null) }
                 // A trip opened to a saved favorite (SPEC D9): its coordinate destination, in place of a
                 // picked stop. Set when a favorite is tapped in Settings; null for an ordinary To… trip.
                 var hereFavorite by rememberSaveable(stateSaver = FAVORITE_TRIP_SAVER) {
@@ -1199,13 +1201,14 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 // The near-me trip's To… as a station's is held, for a change of start to carry.
-                val hereTo = { ToChoice(picking = herePicking, stopId = hereToId, name = hereToName, place = hereFavorite) }
+                val hereTo = { ToChoice(picking = herePicking, stopId = hereToId, name = hereToName, place = hereFavorite, level = Pick.Level.ofCode(hereToLevel)) }
                 val closeHereTrip = {
                     hereTripOpen = false
                     // Lines… comes back, at the stop whose To opened the trip.
                     linesPresence = linesPresence.tripClosed()
                     herePicking = false
                     hereToId = null
+                    hereToLevel = null
                     hereToName = ""
                     hereFavorite = null
                     // The next trip goes via nothing unless a view's Via opens it.
@@ -1239,6 +1242,7 @@ class MainActivity : ComponentActivity() {
                     listStores.clearAll()
                     hereFavorite = place
                     hereToId = null
+                    hereToLevel = null
                     hereToName = place.name
                     herePicking = false
                     hereTripOpen = true
@@ -1614,6 +1618,7 @@ class MainActivity : ComponentActivity() {
                             listStores.clearAll()
                             hereFavorite = null
                             hereToId = null
+                            hereToLevel = null
                             // Over a fresh To…, as a point's trip gets: no dialog left from before (a Recent removal
                             // being asked about) sits over the shared search (Codex on #800).
                             shownModels().toSearch?.clear()
@@ -1658,12 +1663,12 @@ class MainActivity : ComponentActivity() {
                 val hideUndoCarrier = remember { HideUndoCarrier() }
                 // Start a route on the way; [replacing], in place of the trip on the way (Plan again).
                 val startOnTheWay = { route: TripRoute, destinationName: String, readyAt: Instant, destinations: List<TripDestination>,
-                    destinationIds: Map<String, String>, destinationStopId: String, replacing: Boolean ->
+                    destinationIds: Map<String, String>, destinationStopId: String, destinationLevel: Pick.Level?, replacing: Boolean ->
                     // Its first refresh is [FollowActiveTrip]'s, once the trip is on the way.
                     // In the app's scope, so recreating the activity can't cut the save short.
                     tracker.launchStart(
                         (application as? StopdashApp)?.applicationScope ?: onTheWayScope,
-                        route, destinationName, readyAt, destinations, destinationIds, destinationStopId, replacing,
+                        route, destinationName, readyAt, destinations, destinationIds, destinationStopId, destinationLevel, replacing,
                         // The old trip's "get off soon" goes once it's ended, never before: one that couldn't
                         // be ended stays on the way, its alert with it (Codex on #479).
                         onEnded = { GetOffSoonAlert.cancel(applicationContext) },
@@ -1698,10 +1703,10 @@ class MainActivity : ComponentActivity() {
                     if (!planningAgain || actions == null) {
                         actions
                     } else {
-                        OnTheWayActions(active = false) { route, destinationName, readyAt, destinations, destinationIds, destinationStopId ->
+                        OnTheWayActions(active = false) { route, destinationName, readyAt, destinations, destinationIds, destinationStopId, destinationLevel ->
                             replanning = false
                             replanningHere = false
-                            startOnTheWay(route, destinationName, readyAt, destinations, destinationIds, destinationStopId, true)
+                            startOnTheWay(route, destinationName, readyAt, destinations, destinationIds, destinationStopId, destinationLevel, true)
                         }
                     }
                 }
@@ -1855,11 +1860,11 @@ class MainActivity : ComponentActivity() {
                     LocalOnTheWay provides OnTheWayActions(
                         active = onTheWayTrip != null,
                         open = { onTheWayOpen = true },
-                        replace = { route, destinationName, readyAt, destinations, destinationIds, destinationStopId ->
-                            startOnTheWay(route, destinationName, readyAt, destinations, destinationIds, destinationStopId, true)
+                        replace = { route, destinationName, readyAt, destinations, destinationIds, destinationStopId, destinationLevel ->
+                            startOnTheWay(route, destinationName, readyAt, destinations, destinationIds, destinationStopId, destinationLevel, true)
                         },
-                    ) { route, destinationName, readyAt, destinations, destinationIds, destinationStopId ->
-                        startOnTheWay(route, destinationName, readyAt, destinations, destinationIds, destinationStopId, false)
+                    ) { route, destinationName, readyAt, destinations, destinationIds, destinationStopId, destinationLevel ->
+                        startOnTheWay(route, destinationName, readyAt, destinations, destinationIds, destinationStopId, destinationLevel, false)
                     },
                     // A station tapped on a line page's map with no stop details of its own: Lines…'s, over it, only
                     // where nothing else is open above the page, so Lines… is what shows ([topOverlay]).
@@ -2583,6 +2588,7 @@ class MainActivity : ComponentActivity() {
                                                 listStores.clearAll()
                                                 // A station under several ids: its interchange, as From opens.
                                                 hereToId = stop.fromId ?: stop.id
+                                                hereToLevel = null
                                                 hereToName = stop.name
                                                 hereFavorite = null
                                                 herePicking = false
@@ -2704,6 +2710,7 @@ class MainActivity : ComponentActivity() {
                                                         hereTripOpen = true
                                                         herePicking = landing.to.picking
                                                         hereToId = landing.to.stopId
+                                                        hereToLevel = landing.to.level?.code
                                                         hereToName = landing.to.name
                                                         hereFavorite = landing.to.place
                                                     }
@@ -2932,6 +2939,7 @@ class MainActivity : ComponentActivity() {
                                         picking = herePicking,
                                         toId = hereToId,
                                         toName = hereToName,
+                                        toLevel = Pick.Level.ofCode(hereToLevel),
                                         favorite = hereFavorite,
                                         via = hereVia,
                                         // The trip's From row, over its To… search or its routes: start
@@ -2950,6 +2958,7 @@ class MainActivity : ComponentActivity() {
                                         onPickTo = { match ->
                                             herePicking = false
                                             hereToId = match.id
+                                            hereToLevel = match.level?.code
                                             hereToName = match.name
                                             hereFavorite = null
                                         },
@@ -2960,6 +2969,7 @@ class MainActivity : ComponentActivity() {
                                         onOpenPlace = { place ->
                                             herePicking = false
                                             hereToId = null
+                                            hereToLevel = null
                                             hereToName = place.name
                                             hereFavorite = place
                                         },
@@ -3251,7 +3261,8 @@ class MainActivity : ComponentActivity() {
                                             put(leg.toId, leg.toId)
                                             if (leg.toArea.isNotBlank()) put(leg.toArea, leg.toId)
                                         }
-                                        startOnTheWay(route, leg.toName, Instant.now(), listOf(TripDestination.Stop(leg.toId)), ids, leg.toId, replacing)
+                                        // A stop handed by the route, not picked: no level, read as what its id names.
+                                        startOnTheWay(route, leg.toName, Instant.now(), listOf(TripDestination.Stop(leg.toId)), ids, leg.toId, null, replacing)
                                     },
                                     distanceTo = fixDistance,
                                     // A station beside it, as a From… pick opens one: the details close for it.
@@ -4855,6 +4866,7 @@ class MainActivity : ComponentActivity() {
                 picking = to.picking,
                 toId = to.stopId,
                 toName = to.name,
+                toLevel = to.level,
                 favorite = to.place,
                 onPlanTo = { onTo(to.startPicking()) },
                 onPickTo = { onTo(to.pickStop(it)) },
@@ -5050,6 +5062,8 @@ class MainActivity : ComponentActivity() {
         picking: Boolean,
         toId: String?,
         toName: String,
+        // The level [toId] was picked at ([ToChoice.level]); null where the row didn't say.
+        toLevel: Pick.Level? = null,
         // A saved favorite this trip routes to (SPEC D9): its coordinate is the destination, so there's
         // no stop to pick and no interchange to expand — the picker and hub lookup below are skipped.
         // Null for an ordinary To… trip to a stop.
@@ -5707,10 +5721,10 @@ class MainActivity : ComponentActivity() {
             onDismissWriteFailureShown = trip::dismissWriteFailureShown,
             // Start: followed from here to [toName], the rider at the first stop once they've walked there,
             // keeping where to as chosen, so the trip can be planned again from partway along.
-            onStart = LocalOnTheWay.current?.let { onTheWay -> { route -> onTheWay.start(route, toName, Instant.now().plus(access), destinations, destinationIds, toId.orEmpty()) } },
+            onStart = LocalOnTheWay.current?.let { onTheWay -> { route -> onTheWay.start(route, toName, Instant.now().plus(access), destinations, destinationIds, toId.orEmpty(), toLevel) } },
             onOpenTrip = LocalOnTheWay.current?.takeIf { it.active }?.open,
             onReplaceTrip = LocalOnTheWay.current?.takeIf { it.active }?.replace?.let { replace ->
-                { route -> replace(route, toName, Instant.now().plus(access), destinations, destinationIds, toId.orEmpty()) }
+                { route -> replace(route, toName, Instant.now().plus(access), destinations, destinationIds, toId.orEmpty(), toLevel) }
             },
             onWithheld = trip::noteWithheld,
             onListShown = trip::noteListShown,

@@ -10,6 +10,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.LocationFix
+import app.stopdash.domain.Pick
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripFixes
 import app.stopdash.domain.TripRoute
@@ -43,6 +44,7 @@ class OnTheWayActions(
         destinations: List<TripDestination>,
         destinationIds: Map<String, String>,
         destinationStopId: String,
+        destinationLevel: Pick.Level?,
     ) -> Unit)? = null,
     val start: (
         route: TripRoute,
@@ -51,6 +53,7 @@ class OnTheWayActions(
         destinations: List<TripDestination>,
         destinationIds: Map<String, String>,
         destinationStopId: String,
+        destinationLevel: Pick.Level?,
     ) -> Unit,
 )
 

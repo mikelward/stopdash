@@ -2,6 +2,7 @@ package app.stopdash.data
 
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Coordinates
+import app.stopdash.domain.Pick
 import app.stopdash.domain.PlaceArt
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripLeg
@@ -328,6 +329,9 @@ private data class PersistedActiveTrip(
     // Absent from a trip kept before it was: planning again opens the trip list from the route's
     // own stops alone.
     val destinationStopId: String = "",
+    // The level [destinationStopId] was picked at ([Pick.Level.code]), from version 2: absent where the
+    // row didn't say, or from a trip kept before it was, read as a pick with none.
+    val destinationLevel: String? = null,
     // The walks decided to be changes on foot when the trip started, by leg index. Absent from a trip
     // kept before it was: its walks go by their names alone, as that trip was shown.
     val onFootChanges: List<Int>? = null,
@@ -373,6 +377,7 @@ private data class PersistedActiveTrip(
         destinations = destinations.mapNotNull { it.toDestination() },
         destinationIds = destinationIds,
         destinationStopId = destinationStopId,
+        destinationLevel = Pick.Level.ofCode(destinationLevel),
         onFootChanges = onFootChanges?.toSet(),
         aheadLeg = aheadLeg,
         aheadStop = aheadStop,
@@ -387,8 +392,11 @@ private data class PersistedActiveTrip(
     )
 
     companion object {
-        /** The current on-disk format. Bump when a field an older build would drop or misread is added. */
-        const val CURRENT_VERSION = 1
+        /**
+         * The current on-disk format. Bump when a field an older build would drop or misread is added: 2
+         * keeps the destination's level, which a build before it would drop on its next write.
+         */
+        const val CURRENT_VERSION = 2
 
         fun of(trip: ActiveTrip) = PersistedActiveTrip(
             version = CURRENT_VERSION,
@@ -418,6 +426,7 @@ private data class PersistedActiveTrip(
             destinationIds = trip.destinationIds,
             onFootChanges = trip.onFootChanges?.sorted(),
             destinationStopId = trip.destinationStopId,
+            destinationLevel = trip.destinationLevel?.code,
             aheadLeg = trip.aheadLeg,
             aheadStop = trip.aheadStop,
             branchTakenLeg = trip.branchTakenLeg,
