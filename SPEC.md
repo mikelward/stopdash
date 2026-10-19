@@ -2237,7 +2237,7 @@ trip's origin stops whose route calls at a stop within the rider's max walk of t
 pace (as far as the Planner lets the routes' own last walk go, so a stop the routes walk on from counts
 here too; maintainer, 2026-10-07; a change to either looks again),
 from its nearest stop, a row for each stop near the place its trains get the rider off at (each train's
-nearest the place on its way, a station's two ids one stop; maintainer, 2026-10-15), named by that stop,
+nearest the place on its way, a station's ids, or a bus stop's poles, one stop by the station model, never by name; maintainer, 2026-10-15), named by that stop,
 with its next three trains there ("3 · 8 · 13 min"), so a line whose branches get off at different
 stops is a row for each; trains whose stop can't be told (a train at a fork) share a row named by where
 it leaves from ("From Bank"); nearest stop first, a row on
