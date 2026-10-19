@@ -76,11 +76,11 @@
             ]
         },
         {
-            "uniqueId": "androidx.annotation:annotation-experimental",
-            "artifactVersion": "1.4.1",
-            "name": "Experimental annotation",
-            "description": "Java annotation for use on unstable Android API surfaces. When used in conjunction with the Experimental annotation lint checks, this annotation provides functional parity with Kotlin's Experimental annotation.",
-            "website": "https://developer.android.com/jetpack/androidx/releases/annotation#1.4.1",
+            "uniqueId": "androidx.annotation:annotation",
+            "artifactVersion": "1.11.0",
+            "name": "Annotation",
+            "description": "Provides source annotations for tooling and readability.",
+            "website": "https://developer.android.com/jetpack/androidx/releases/annotation#1.11.0",
             "developers": [
                 {
                     "name": "The Android Open Source Project"
@@ -101,11 +101,11 @@
             ]
         },
         {
-            "uniqueId": "androidx.annotation:annotation-jvm",
-            "artifactVersion": "1.10.0",
-            "name": "Annotation",
-            "description": "Provides source annotations for tooling and readability.",
-            "website": "https://developer.android.com/jetpack/androidx/releases/annotation#1.10.0",
+            "uniqueId": "androidx.annotation:annotation-experimental",
+            "artifactVersion": "1.4.1",
+            "name": "Experimental annotation",
+            "description": "Java annotation for use on unstable Android API surfaces. When used in conjunction with the Experimental annotation lint checks, this annotation provides functional parity with Kotlin's Experimental annotation.",
+            "website": "https://developer.android.com/jetpack/androidx/releases/annotation#1.4.1",
             "developers": [
                 {
                     "name": "The Android Open Source Project"
@@ -192,7 +192,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.collection:collection-jvm",
+            "uniqueId": "androidx.collection:collection",
             "artifactVersion": "1.5.0",
             "name": "collections",
             "description": "Standalone efficient collections.",
@@ -242,7 +242,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.compose.animation:animation-android",
+            "uniqueId": "androidx.compose.animation:animation",
             "artifactVersion": "1.12.1",
             "name": "Compose Animation",
             "description": "Compose animation library",
@@ -267,7 +267,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.compose.animation:animation-core-android",
+            "uniqueId": "androidx.compose.animation:animation-core",
             "artifactVersion": "1.12.1",
             "name": "Compose Animation Core",
             "description": "Animation engine and animation primitives that are the building blocks of the Compose animation library",
@@ -292,7 +292,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.compose.foundation:foundation-android",
+            "uniqueId": "androidx.compose.foundation:foundation",
             "artifactVersion": "1.12.1",
             "name": "Compose Foundation",
             "description": "Higher level abstractions of the Compose UI primitives. This library is design system agnostic, providing the high-level building blocks for both application and design-system developers",
@@ -317,7 +317,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.compose.foundation:foundation-layout-android",
+            "uniqueId": "androidx.compose.foundation:foundation-layout",
             "artifactVersion": "1.12.1",
             "name": "Compose Layouts",
             "description": "Compose layout implementations",
@@ -342,7 +342,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.compose.material3:material3-android",
+            "uniqueId": "androidx.compose.material3:material3",
             "artifactVersion": "1.4.0",
             "name": "Compose Material3 Components",
             "description": "Compose Material You Design Components library",
@@ -367,7 +367,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.compose.material:material-icons-core-android",
+            "uniqueId": "androidx.compose.material:material-icons-core",
             "artifactVersion": "1.7.8",
             "name": "Compose Material Icons Core",
             "description": "Compose Material Design core icons. This module contains the most commonly used set of Material icons.",
@@ -392,7 +392,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.compose.material:material-ripple-android",
+            "uniqueId": "androidx.compose.material:material-ripple",
             "artifactVersion": "1.12.1",
             "name": "Compose Material Ripple",
             "description": "Material ripple used to build interactive components",
@@ -417,7 +417,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.compose.runtime:runtime-android",
+            "uniqueId": "androidx.compose.runtime:runtime",
             "artifactVersion": "1.12.1",
             "name": "Compose Runtime",
             "description": "Tree composition support for code generated by the Compose compiler plugin and corresponding public API",
@@ -442,7 +442,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.compose.runtime:runtime-annotation-android",
+            "uniqueId": "androidx.compose.runtime:runtime-annotation",
             "artifactVersion": "1.12.1",
             "name": "Compose Runtime Annotation",
             "description": "Provides Compose-specific annotations used by the compiler and tooling",
@@ -467,7 +467,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.compose.runtime:runtime-retain-android",
+            "uniqueId": "androidx.compose.runtime:runtime-retain",
             "artifactVersion": "1.12.1",
             "name": "Compose Runtime Retain",
             "description": "Preserve state in composable methods across configuration changes and other transient content destruction scenarios",
@@ -492,7 +492,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.compose.runtime:runtime-saveable-android",
+            "uniqueId": "androidx.compose.runtime:runtime-saveable",
             "artifactVersion": "1.12.1",
             "name": "Compose Saveable",
             "description": "Compose components that allow saving and restoring the local ui state",
@@ -517,7 +517,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.compose.ui:ui-android",
+            "uniqueId": "androidx.compose.ui:ui",
             "artifactVersion": "1.12.1",
             "name": "Compose UI",
             "description": "Compose UI primitives. This library contains the primitives that form the Compose UI Toolkit, such as drawing, measurement and layout.",
@@ -542,7 +542,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.compose.ui:ui-geometry-android",
+            "uniqueId": "androidx.compose.ui:ui-geometry",
             "artifactVersion": "1.12.1",
             "name": "Compose Geometry",
             "description": "Compose classes related to dimensions without units",
@@ -567,7 +567,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.compose.ui:ui-graphics-android",
+            "uniqueId": "androidx.compose.ui:ui-graphics",
             "artifactVersion": "1.12.1",
             "name": "Compose Graphics",
             "description": "Compose graphics",
@@ -592,7 +592,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.compose.ui:ui-text-android",
+            "uniqueId": "androidx.compose.ui:ui-text",
             "artifactVersion": "1.12.1",
             "name": "Compose UI Text",
             "description": "Compose Text primitives and utilities",
@@ -617,7 +617,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.compose.ui:ui-tooling-preview-android",
+            "uniqueId": "androidx.compose.ui:ui-tooling-preview",
             "artifactVersion": "1.12.1",
             "name": "Compose UI Preview Tooling",
             "description": "Compose tooling library API. This library provides the API required to declare @Preview composables in user apps.",
@@ -642,7 +642,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.compose.ui:ui-unit-android",
+            "uniqueId": "androidx.compose.ui:ui-unit",
             "artifactVersion": "1.12.1",
             "name": "Compose Unit",
             "description": "Compose classes for simple units",
@@ -667,7 +667,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.compose.ui:ui-util-android",
+            "uniqueId": "androidx.compose.ui:ui-util",
             "artifactVersion": "1.12.1",
             "name": "Compose Util",
             "description": "Internal Compose utilities used by other modules",
@@ -880,7 +880,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.datastore:datastore-android",
+            "uniqueId": "androidx.datastore:datastore",
             "artifactVersion": "1.2.1",
             "name": "DataStore",
             "description": "Android DataStore - contains the underlying store used by each serialization method along with components that require an Android dependency",
@@ -905,7 +905,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.datastore:datastore-core-android",
+            "uniqueId": "androidx.datastore:datastore-core",
             "artifactVersion": "1.2.1",
             "name": "DataStore Core",
             "description": "Android DataStore Core - contains the underlying store used by each serialization method",
@@ -930,7 +930,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.datastore:datastore-core-okio-jvm",
+            "uniqueId": "androidx.datastore:datastore-core-okio",
             "artifactVersion": "1.2.1",
             "name": "DataStore Core Okio",
             "description": "Android DataStore Core Okio- contains APIs to use datastore-core in multiplatform via okio",
@@ -955,7 +955,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.datastore:datastore-preferences-android",
+            "uniqueId": "androidx.datastore:datastore-preferences",
             "artifactVersion": "1.2.1",
             "name": "Preferences DataStore",
             "description": "Android Preferences DataStore",
@@ -980,7 +980,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.datastore:datastore-preferences-core-android",
+            "uniqueId": "androidx.datastore:datastore-preferences-core",
             "artifactVersion": "1.2.1",
             "name": "Preferences DataStore Core",
             "description": "Android Preferences DataStore without the Android Dependencies",
@@ -1290,10 +1290,10 @@
             ]
         },
         {
-            "uniqueId": "androidx.lifecycle:lifecycle-common-java8",
+            "uniqueId": "androidx.lifecycle:lifecycle-common",
             "artifactVersion": "2.11.0",
-            "name": "Lifecycle-Common for Java 8",
-            "description": "Android Lifecycle-Common for Java 8 Language",
+            "name": "Lifecycle-Common",
+            "description": "Android Lifecycle-Common",
             "website": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
             "developers": [
                 {
@@ -1315,10 +1315,10 @@
             ]
         },
         {
-            "uniqueId": "androidx.lifecycle:lifecycle-common-jvm",
+            "uniqueId": "androidx.lifecycle:lifecycle-common-java8",
             "artifactVersion": "2.11.0",
-            "name": "Lifecycle-Common",
-            "description": "Android Lifecycle-Common",
+            "name": "Lifecycle-Common for Java 8",
+            "description": "Android Lifecycle-Common for Java 8 Language",
             "website": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
             "developers": [
                 {
@@ -1440,7 +1440,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.lifecycle:lifecycle-runtime-android",
+            "uniqueId": "androidx.lifecycle:lifecycle-runtime",
             "artifactVersion": "2.11.0",
             "name": "Lifecycle Runtime",
             "description": "Android Lifecycle Runtime",
@@ -1465,7 +1465,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.lifecycle:lifecycle-runtime-compose-android",
+            "uniqueId": "androidx.lifecycle:lifecycle-runtime-compose",
             "artifactVersion": "2.11.0",
             "name": "Lifecycle Runtime Compose",
             "description": "Compose integration with Lifecycle",
@@ -1490,7 +1490,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.lifecycle:lifecycle-runtime-ktx-android",
+            "uniqueId": "androidx.lifecycle:lifecycle-runtime-ktx",
             "artifactVersion": "2.11.0",
             "name": "Lifecycle Kotlin Extensions",
             "description": "Kotlin extensions for 'lifecycle' artifact",
@@ -1565,32 +1565,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.lifecycle:lifecycle-viewmodel-android",
-            "artifactVersion": "2.11.0",
-            "name": "Lifecycle ViewModel",
-            "description": "Android Lifecycle ViewModel",
-            "website": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
-            "developers": [
-                {
-                    "name": "The Android Open Source Project"
-                }
-            ],
-            "organization": {
-                "name": "The Android Open Source Project"
-            },
-            "scm": {
-                "connection": "scm:git:https://android.googlesource.com/platform/frameworks/support",
-                "url": "https://cs.android.com/androidx/platform/frameworks/support"
-            },
-            "licenses": [
-                "Apache-2.0"
-            ],
-            "funding": [
-                
-            ]
-        },
-        {
-            "uniqueId": "androidx.lifecycle:lifecycle-viewmodel-compose-android",
+            "uniqueId": "androidx.lifecycle:lifecycle-viewmodel-compose",
             "artifactVersion": "2.11.0",
             "name": "Lifecycle ViewModel Compose",
             "description": "Compose integration with Lifecycle ViewModel",
@@ -1640,7 +1615,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.lifecycle:lifecycle-viewmodel-savedstate-android",
+            "uniqueId": "androidx.lifecycle:lifecycle-viewmodel-savedstate",
             "artifactVersion": "2.11.0",
             "name": "Lifecycle ViewModel with SavedState",
             "description": "Android Lifecycle ViewModel",
@@ -1709,7 +1684,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.navigationevent:navigationevent-android",
+            "uniqueId": "androidx.navigationevent:navigationevent",
             "artifactVersion": "1.0.0",
             "name": "Navigation Event",
             "description": "Provides APIs to easily intercept platform navigation events, including swipes and clicks, to provide a consistent API surface for handling these events.",
@@ -1734,7 +1709,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.navigationevent:navigationevent-compose-android",
+            "uniqueId": "androidx.navigationevent:navigationevent-compose",
             "artifactVersion": "1.0.0",
             "name": "NavigationEvent Compose",
             "description": "Compose integration with NavigationEvent",
@@ -1856,7 +1831,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.room:room-common-jvm",
+            "uniqueId": "androidx.room:room-common",
             "artifactVersion": "2.7.0",
             "name": "Room-Common",
             "description": "Android Room-Common",
@@ -1881,7 +1856,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.room:room-runtime-android",
+            "uniqueId": "androidx.room:room-runtime",
             "artifactVersion": "2.7.0",
             "name": "Room-Runtime",
             "description": "Android Room-Runtime",
@@ -1906,7 +1881,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.savedstate:savedstate-android",
+            "uniqueId": "androidx.savedstate:savedstate",
             "artifactVersion": "1.4.0",
             "name": "Saved State",
             "description": "Android Lifecycle Saved State",
@@ -1931,7 +1906,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.savedstate:savedstate-compose-android",
+            "uniqueId": "androidx.savedstate:savedstate-compose",
             "artifactVersion": "1.4.0",
             "name": "Saved State Compose",
             "description": "Compose integration with Saved State",
@@ -1981,7 +1956,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.sqlite:sqlite-android",
+            "uniqueId": "androidx.sqlite:sqlite",
             "artifactVersion": "2.5.0",
             "name": "SQLite",
             "description": "SQLite API",
@@ -2006,7 +1981,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.sqlite:sqlite-framework-android",
+            "uniqueId": "androidx.sqlite:sqlite-framework",
             "artifactVersion": "2.5.0",
             "name": "SQLite Framework Integration",
             "description": "The implementation of SQLite library using the framework code.",
@@ -2032,15 +2007,18 @@
         },
         {
             "uniqueId": "androidx.startup:startup-runtime",
-            "artifactVersion": "1.1.1",
-            "name": "Android App Startup Runtime",
+            "artifactVersion": "1.2.0",
+            "name": "Startup Runtime",
             "description": "Android App Startup Runtime",
-            "website": "https://developer.android.com/jetpack/androidx/releases/startup#1.1.1",
+            "website": "https://developer.android.com/jetpack/androidx/releases/startup#1.2.0",
             "developers": [
                 {
                     "name": "The Android Open Source Project"
                 }
             ],
+            "organization": {
+                "name": "The Android Open Source Project"
+            },
             "scm": {
                 "connection": "scm:git:https://android.googlesource.com/platform/frameworks/support",
                 "url": "https://cs.android.com/androidx/platform/frameworks/support"
@@ -2216,7 +2194,7 @@
             ]
         },
         {
-            "uniqueId": "androidx.window:window-core-android",
+            "uniqueId": "androidx.window:window-core",
             "artifactVersion": "1.5.0",
             "name": "WindowManager Core",
             "description": "WindowManager Core Library.",
@@ -2291,7 +2269,7 @@
             ]
         },
         {
-            "uniqueId": "com.charleskorn.kaml:kaml-jvm",
+            "uniqueId": "com.charleskorn.kaml:kaml",
             "artifactVersion": "0.79.0",
             "name": "kaml",
             "description": "YAML support for kotlinx.serialization",
@@ -2402,7 +2380,7 @@
         },
         {
             "uniqueId": "com.google.android.gms:play-services-basement",
-            "artifactVersion": "18.9.0",
+            "artifactVersion": "18.10.0",
             "name": "play-services-basement",
             "description": "",
             "developers": [
@@ -2603,7 +2581,7 @@
         },
         {
             "uniqueId": "com.google.errorprone:error_prone_annotations",
-            "artifactVersion": "2.11.0",
+            "artifactVersion": "2.26.0",
             "name": "error-prone annotations",
             "description": "Error Prone is a static analysis tool for Java that catches common programming mistakes at compile-time.",
             "website": "https://errorprone.info/error_prone_annotations",
@@ -3008,8 +2986,8 @@
             ]
         },
         {
-            "uniqueId": "com.mikepenz:aboutlibraries-compose-core-android",
-            "artifactVersion": "12.2.4",
+            "uniqueId": "com.mikepenz:aboutlibraries-compose-core",
+            "artifactVersion": "15.3.0",
             "name": "AboutLibraries Compose UI Library",
             "description": "AboutLibraries automatically detects all dependencies of a project and collects their information including the license. Optionally visualising it via the provided ui components.",
             "website": "https://github.com/mikepenz/AboutLibraries",
@@ -3031,8 +3009,8 @@
             ]
         },
         {
-            "uniqueId": "com.mikepenz:aboutlibraries-compose-m3-android",
-            "artifactVersion": "12.2.4",
+            "uniqueId": "com.mikepenz:aboutlibraries-compose-m3",
+            "artifactVersion": "15.3.0",
             "name": "AboutLibraries Compose Material 3 Library",
             "description": "AboutLibraries automatically detects all dependencies of a project and collects their information including the license. Optionally visualising it via the provided ui components.",
             "website": "https://github.com/mikepenz/AboutLibraries",
@@ -3054,8 +3032,8 @@
             ]
         },
         {
-            "uniqueId": "com.mikepenz:aboutlibraries-core-android",
-            "artifactVersion": "12.2.4",
+            "uniqueId": "com.mikepenz:aboutlibraries-core",
+            "artifactVersion": "15.3.0",
             "name": "AboutLibraries Core Library",
             "description": "AboutLibraries automatically detects all dependencies of a project and collects their information including the license. Optionally visualising it via the provided ui components.",
             "website": "https://github.com/mikepenz/AboutLibraries",
@@ -3077,7 +3055,7 @@
             ]
         },
         {
-            "uniqueId": "com.squareup.okhttp3:okhttp-android",
+            "uniqueId": "com.squareup.okhttp3:okhttp",
             "artifactVersion": "5.5.0",
             "name": "okhttp",
             "description": "Square\u2019s meticulous HTTP client for Java and Kotlin.",
@@ -3100,7 +3078,7 @@
             ]
         },
         {
-            "uniqueId": "com.squareup.okio:okio-jvm",
+            "uniqueId": "com.squareup.okio:okio",
             "artifactVersion": "3.18.2",
             "name": "okio",
             "description": "A modern I/O library for Android, Java, and Kotlin Multiplatform.",
@@ -3123,7 +3101,7 @@
             ]
         },
         {
-            "uniqueId": "io.ktor:ktor-client-content-negotiation-jvm",
+            "uniqueId": "io.ktor:ktor-client-content-negotiation",
             "artifactVersion": "3.6.0",
             "name": "ktor-client-content-negotiation",
             "description": "Ktor is a framework for quickly creating web applications in Kotlin with minimal effort.",
@@ -3145,7 +3123,7 @@
             ]
         },
         {
-            "uniqueId": "io.ktor:ktor-client-core-jvm",
+            "uniqueId": "io.ktor:ktor-client-core",
             "artifactVersion": "3.6.0",
             "name": "ktor-client-core",
             "description": "Ktor is a framework for quickly creating web applications in Kotlin with minimal effort.",
@@ -3167,7 +3145,7 @@
             ]
         },
         {
-            "uniqueId": "io.ktor:ktor-client-okhttp-jvm",
+            "uniqueId": "io.ktor:ktor-client-okhttp",
             "artifactVersion": "3.6.0",
             "name": "ktor-client-okhttp",
             "description": "Ktor is a framework for quickly creating web applications in Kotlin with minimal effort.",
@@ -3189,7 +3167,7 @@
             ]
         },
         {
-            "uniqueId": "io.ktor:ktor-events-jvm",
+            "uniqueId": "io.ktor:ktor-events",
             "artifactVersion": "3.6.0",
             "name": "ktor-events",
             "description": "Ktor is a framework for quickly creating web applications in Kotlin with minimal effort.",
@@ -3211,29 +3189,7 @@
             ]
         },
         {
-            "uniqueId": "io.ktor:ktor-http-cio-jvm",
-            "artifactVersion": "3.6.0",
-            "name": "ktor-http-cio",
-            "description": "Ktor is a framework for quickly creating web applications in Kotlin with minimal effort.",
-            "website": "https://github.com/ktorio/ktor",
-            "developers": [
-                {
-                    "name": "Jetbrains Team",
-                    "organisationUrl": "https://www.jetbrains.com"
-                }
-            ],
-            "scm": {
-                "url": "https://github.com/ktorio/ktor.git"
-            },
-            "licenses": [
-                "Apache-2.0"
-            ],
-            "funding": [
-                
-            ]
-        },
-        {
-            "uniqueId": "io.ktor:ktor-http-jvm",
+            "uniqueId": "io.ktor:ktor-http",
             "artifactVersion": "3.6.0",
             "name": "ktor-http",
             "description": "Ktor is a framework for quickly creating web applications in Kotlin with minimal effort.",
@@ -3255,7 +3211,29 @@
             ]
         },
         {
-            "uniqueId": "io.ktor:ktor-io-jvm",
+            "uniqueId": "io.ktor:ktor-http-cio",
+            "artifactVersion": "3.6.0",
+            "name": "ktor-http-cio",
+            "description": "Ktor is a framework for quickly creating web applications in Kotlin with minimal effort.",
+            "website": "https://github.com/ktorio/ktor",
+            "developers": [
+                {
+                    "name": "Jetbrains Team",
+                    "organisationUrl": "https://www.jetbrains.com"
+                }
+            ],
+            "scm": {
+                "url": "https://github.com/ktorio/ktor.git"
+            },
+            "licenses": [
+                "Apache-2.0"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "io.ktor:ktor-io",
             "artifactVersion": "3.6.0",
             "name": "ktor-io",
             "description": "Ktor is a framework for quickly creating web applications in Kotlin with minimal effort.",
@@ -3277,7 +3255,7 @@
             ]
         },
         {
-            "uniqueId": "io.ktor:ktor-network-jvm",
+            "uniqueId": "io.ktor:ktor-network",
             "artifactVersion": "3.6.0",
             "name": "ktor-network",
             "description": "Ktor is a framework for quickly creating web applications in Kotlin with minimal effort.",
@@ -3299,7 +3277,7 @@
             ]
         },
         {
-            "uniqueId": "io.ktor:ktor-openapi-schema-jvm",
+            "uniqueId": "io.ktor:ktor-openapi-schema",
             "artifactVersion": "3.6.0",
             "name": "ktor-openapi-schema",
             "description": "Ktor is a framework for quickly creating web applications in Kotlin with minimal effort.",
@@ -3321,7 +3299,7 @@
             ]
         },
         {
-            "uniqueId": "io.ktor:ktor-serialization-jvm",
+            "uniqueId": "io.ktor:ktor-serialization",
             "artifactVersion": "3.6.0",
             "name": "ktor-serialization",
             "description": "Ktor is a framework for quickly creating web applications in Kotlin with minimal effort.",
@@ -3343,29 +3321,7 @@
             ]
         },
         {
-            "uniqueId": "io.ktor:ktor-serialization-kotlinx-json-jvm",
-            "artifactVersion": "3.6.0",
-            "name": "ktor-serialization-kotlinx-json",
-            "description": "Ktor is a framework for quickly creating web applications in Kotlin with minimal effort.",
-            "website": "https://github.com/ktorio/ktor",
-            "developers": [
-                {
-                    "name": "Jetbrains Team",
-                    "organisationUrl": "https://www.jetbrains.com"
-                }
-            ],
-            "scm": {
-                "url": "https://github.com/ktorio/ktor.git"
-            },
-            "licenses": [
-                "Apache-2.0"
-            ],
-            "funding": [
-                
-            ]
-        },
-        {
-            "uniqueId": "io.ktor:ktor-serialization-kotlinx-jvm",
+            "uniqueId": "io.ktor:ktor-serialization-kotlinx",
             "artifactVersion": "3.6.0",
             "name": "ktor-serialization-kotlinx",
             "description": "Ktor is a framework for quickly creating web applications in Kotlin with minimal effort.",
@@ -3387,7 +3343,29 @@
             ]
         },
         {
-            "uniqueId": "io.ktor:ktor-sse-jvm",
+            "uniqueId": "io.ktor:ktor-serialization-kotlinx-json",
+            "artifactVersion": "3.6.0",
+            "name": "ktor-serialization-kotlinx-json",
+            "description": "Ktor is a framework for quickly creating web applications in Kotlin with minimal effort.",
+            "website": "https://github.com/ktorio/ktor",
+            "developers": [
+                {
+                    "name": "Jetbrains Team",
+                    "organisationUrl": "https://www.jetbrains.com"
+                }
+            ],
+            "scm": {
+                "url": "https://github.com/ktorio/ktor.git"
+            },
+            "licenses": [
+                "Apache-2.0"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "io.ktor:ktor-sse",
             "artifactVersion": "3.6.0",
             "name": "ktor-sse",
             "description": "Ktor is a framework for quickly creating web applications in Kotlin with minimal effort.",
@@ -3409,7 +3387,7 @@
             ]
         },
         {
-            "uniqueId": "io.ktor:ktor-utils-jvm",
+            "uniqueId": "io.ktor:ktor-utils",
             "artifactVersion": "3.6.0",
             "name": "ktor-utils",
             "description": "Ktor is a framework for quickly creating web applications in Kotlin with minimal effort.",
@@ -3431,7 +3409,7 @@
             ]
         },
         {
-            "uniqueId": "io.ktor:ktor-websocket-serialization-jvm",
+            "uniqueId": "io.ktor:ktor-websocket-serialization",
             "artifactVersion": "3.6.0",
             "name": "ktor-websocket-serialization",
             "description": "Ktor is a framework for quickly creating web applications in Kotlin with minimal effort.",
@@ -3453,7 +3431,7 @@
             ]
         },
         {
-            "uniqueId": "io.ktor:ktor-websockets-jvm",
+            "uniqueId": "io.ktor:ktor-websockets",
             "artifactVersion": "3.6.0",
             "name": "ktor-websockets",
             "description": "Ktor is a framework for quickly creating web applications in Kotlin with minimal effort.",
@@ -3475,7 +3453,7 @@
             ]
         },
         {
-            "uniqueId": "it.krzeminski:snakeyaml-engine-kmp-jvm",
+            "uniqueId": "it.krzeminski:snakeyaml-engine-kmp",
             "artifactVersion": "3.1.1",
             "name": "SnakeYAML Engine KMP",
             "description": "SnakeYAML Engine KMP is a YAML 1.2 processor for Kotlin Multiplatform",
@@ -3520,7 +3498,7 @@
             ]
         },
         {
-            "uniqueId": "net.thauvin.erik.urlencoder:urlencoder-lib-jvm",
+            "uniqueId": "net.thauvin.erik.urlencoder:urlencoder-lib",
             "artifactVersion": "1.6.0",
             "name": "UrlEncoder for Kotlin Multiplatform",
             "description": "A simple defensive library to encode/decode URL components",
@@ -3577,11 +3555,11 @@
             ]
         },
         {
-            "uniqueId": "org.jetbrains.compose.ui:ui-backhandler-android",
-            "artifactVersion": "1.8.1",
-            "name": "Compose Multiplatform BackHandler",
+            "uniqueId": "org.jetbrains.compose.ui:ui-backhandler",
+            "artifactVersion": "1.12.1",
+            "name": "Compose BackHandler",
             "description": "Provides BackHandler in Compose Multiplatform projects",
-            "website": "https://github.com/JetBrains/compose-jb",
+            "website": "https://github.com/JetBrains/compose-multiplatform",
             "developers": [
                 {
                     "name": "Compose Multiplatform Team",
@@ -3589,9 +3567,9 @@
                 }
             ],
             "scm": {
-                "connection": "scm:git:https://github.com/JetBrains/compose-jb.git",
-                "developerConnection": "scm:git:https://github.com/JetBrains/compose-jb.git",
-                "url": "https://github.com/JetBrains/compose-jb"
+                "connection": "scm:git:https://github.com/JetBrains/compose-multiplatform.git",
+                "developerConnection": "scm:git:https://github.com/JetBrains/compose-multiplatform.git",
+                "url": "https://github.com/JetBrains/compose-multiplatform"
             },
             "licenses": [
                 "Apache-2.0"
@@ -3626,7 +3604,7 @@
         },
         {
             "uniqueId": "org.jetbrains.kotlin:kotlin-stdlib-jdk7",
-            "artifactVersion": "1.8.0",
+            "artifactVersion": "1.8.22",
             "name": "Kotlin Stdlib Jdk7",
             "description": "Kotlin Standard Library JDK 7 extension",
             "website": "https://kotlinlang.org/",
@@ -3650,7 +3628,7 @@
         },
         {
             "uniqueId": "org.jetbrains.kotlin:kotlin-stdlib-jdk8",
-            "artifactVersion": "1.8.0",
+            "artifactVersion": "1.8.22",
             "name": "Kotlin Stdlib Jdk8",
             "description": "Kotlin Standard Library JDK 8 extension",
             "website": "https://kotlinlang.org/",
@@ -3673,7 +3651,7 @@
             ]
         },
         {
-            "uniqueId": "org.jetbrains.kotlinx:kotlinx-collections-immutable-jvm",
+            "uniqueId": "org.jetbrains.kotlinx:kotlinx-collections-immutable",
             "artifactVersion": "0.5.2",
             "name": "kotlinx-collections-immutable",
             "description": "Kotlin Immutable Collections multiplatform library",
@@ -3717,7 +3695,7 @@
             ]
         },
         {
-            "uniqueId": "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm",
+            "uniqueId": "org.jetbrains.kotlinx:kotlinx-coroutines-core",
             "artifactVersion": "1.11.0",
             "name": "kotlinx-coroutines-core",
             "description": "Coroutines support libraries for Kotlin",
@@ -3783,7 +3761,7 @@
             ]
         },
         {
-            "uniqueId": "org.jetbrains.kotlinx:kotlinx-datetime-jvm",
+            "uniqueId": "org.jetbrains.kotlinx:kotlinx-datetime",
             "artifactVersion": "0.8.0-0.6.x-compat",
             "name": "kotlinx-datetime",
             "description": "Kotlin Datetime Library",
@@ -3805,7 +3783,7 @@
             ]
         },
         {
-            "uniqueId": "org.jetbrains.kotlinx:kotlinx-io-bytestring-jvm",
+            "uniqueId": "org.jetbrains.kotlinx:kotlinx-io-bytestring",
             "artifactVersion": "0.9.1",
             "name": "kotlinx-io-bytestring",
             "description": "IO support for Kotlin",
@@ -3827,7 +3805,7 @@
             ]
         },
         {
-            "uniqueId": "org.jetbrains.kotlinx:kotlinx-io-core-jvm",
+            "uniqueId": "org.jetbrains.kotlinx:kotlinx-io-core",
             "artifactVersion": "0.9.1",
             "name": "kotlinx-io-core",
             "description": "IO support for Kotlin",
@@ -3849,7 +3827,7 @@
             ]
         },
         {
-            "uniqueId": "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm",
+            "uniqueId": "org.jetbrains.kotlinx:kotlinx-serialization-core",
             "artifactVersion": "1.11.0",
             "name": "kotlinx-serialization-core",
             "description": "Kotlin multiplatform serialization runtime library",
@@ -3871,9 +3849,9 @@
             ]
         },
         {
-            "uniqueId": "org.jetbrains.kotlinx:kotlinx-serialization-json-io-jvm",
+            "uniqueId": "org.jetbrains.kotlinx:kotlinx-serialization-json",
             "artifactVersion": "1.11.0",
-            "name": "kotlinx-serialization-json-io",
+            "name": "kotlinx-serialization-json",
             "description": "Kotlin multiplatform serialization runtime library",
             "website": "https://github.com/Kotlin/kotlinx.serialization",
             "developers": [
@@ -3893,9 +3871,9 @@
             ]
         },
         {
-            "uniqueId": "org.jetbrains.kotlinx:kotlinx-serialization-json-jvm",
+            "uniqueId": "org.jetbrains.kotlinx:kotlinx-serialization-json-io",
             "artifactVersion": "1.11.0",
-            "name": "kotlinx-serialization-json",
+            "name": "kotlinx-serialization-json-io",
             "description": "Kotlin multiplatform serialization runtime library",
             "website": "https://github.com/Kotlin/kotlinx.serialization",
             "developers": [
