@@ -109,4 +109,5 @@ class EmptyTimesMarksTest {
         // Forty seconds on, still within the minute, they're past five: gone.
         assertEquals(emptyList<DepartureRow>(), resolveQuietRows(emptyList(), listOf(row), marks, tick, distances, tick.plusSeconds(40)))
     }
+
 }
