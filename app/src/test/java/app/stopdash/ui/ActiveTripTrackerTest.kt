@@ -2264,6 +2264,71 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `seen at a station twice with the train followed past the next, they're on board by where they're seen`() = runTest {
+        // A ride from A by B and C to D, its stations a kilometer or so apart; the 9 followed is already past C while
+        // they're at B: a train a stop ahead, which was taken to D while they were still two stops short
+        // (maintainer, 2026-10-19).
+        sequences["red"] = redLine.copy(
+            routes = listOf(app.stopdash.domain.LineRoute("A ↔ D", listOf("A", "B", "C", "D"))),
+            stopNames = redLine.stopNames + ("D" to "D"),
+            stopPositions = redLine.stopPositions + ("D" to (51.53 to -0.12)),
+        )
+        val toD = ride.copy(toId = "D", toName = "D", path = listOf("B", "C", "D"), arrival = at(20))
+        val saved = ActiveTrip(TripRoute(listOf(toD)), "D", startedAt = t0, vehicleId = "9", boarded = true, boardedAt = at(5), onBoardSeen = true)
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { saved })
+        tracker.restore()
+        trains["9"] = listOf(call("D", 14))
+        now = at(10)
+        // Once: kept, as a fix can jump wide.
+        tracker.refresh(fixAt(51.51))
+        assertEquals("9", tracker.trip.value?.vehicleId)
+        assertTrue(logged.any { it.startsWith("on the way: seen at a station a stop behind the train followed on line red once") })
+        // Twice in a row: let go, counted on from B by where they're seen, two stops left.
+        tracker.refresh(fixAt(51.51))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        // C is unnamed on the ride's path, so left unnamed rather than called anything else.
+        assertEquals(TripProgress.Riding(toD, null, 2, null, false, byPosition = true), tracker.progress.value)
+        // A fix between that doesn't place them there starts over.
+        val jumpy = tracker(StandardTestDispatcher(testScheduler), load = { saved })
+        jumpy.restore()
+        jumpy.refresh(fixAt(51.51))
+        jumpy.refresh(fixAt(51.5))
+        jumpy.refresh(fixAt(51.51))
+        assertEquals("9", jumpy.trip.value?.vehicleId)
+        // Seen once at C, the station before D, with the train's calls gone once it was due at D: the ride doesn't
+        // end on that train while a second fix is awaited (Codex, #997), then they're counted on by where they're seen.
+        trains["9"] = emptyList()
+        now = at(15)
+        val pastEnd = tracker(StandardTestDispatcher(testScheduler), load = { saved.copy(dueOffAt = at(14)) })
+        pastEnd.restore()
+        pastEnd.refresh(fixAt(51.52))
+        assertEquals("9", pastEnd.trip.value?.vehicleId)
+        assertEquals(0, pastEnd.trip.value?.legIndex)
+        assertTrue(pastEnd.progress.value !is TripProgress.Arrived)
+        // A refresh with no fix doesn't hold it back: the doubt was that fix's alone (Codex, #997).
+        val noFix = tracker(StandardTestDispatcher(testScheduler), load = { saved.copy(dueOffAt = at(14)) })
+        noFix.restore()
+        noFix.refresh(fixAt(51.52))
+        noFix.refresh()
+        assertEquals(TripProgress.Arrived, noFix.progress.value)
+        pastEnd.refresh(fixAt(51.52))
+        assertEquals("", pastEnd.trip.value?.vehicleId)
+        assertEquals(1, (pastEnd.progress.value as TripProgress.Riding).stopsLeft)
+        trains["9"] = listOf(call("D", 14))
+        now = at(10)
+        // So does a fix whose train couldn't be read, between two there (Codex, #997).
+        val unread = tracker(StandardTestDispatcher(testScheduler), load = { saved })
+        unread.restore()
+        unread.refresh(fixAt(51.51))
+        failing = true
+        unread.refresh(fixAt(51.51))
+        failing = false
+        unread.refresh(fixAt(51.51))
+        assertEquals("9", unread.trip.value?.vehicleId)
+        assertTrue(logged.none { "51." in it })
+    }
+
+    @Test
     fun `a followed train off its way with the route unread is a failed update, not lost`() = runTest {
         // Its calls now go by Q, but the line's route can't be read to say whether that's the ride: nothing new
         // is known, so the ride stands as it was and the update says it failed (Codex, #728).

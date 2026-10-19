@@ -3255,7 +3255,10 @@ train followed is theirs near where they get off** (maintainer, 2026-10-09: a bu
 stops ahead took a rider still on board off it to walk on): with the fix each refresh takes all trip (below), on any mode, a bus too, and while the trip is
 shown location is watched from four minutes before that train is due there to five after, as in a
 train ride's last stops (the screen's updates while it's open), a rider seen along the ride two or
-more of its stops short of where that train has got to isn't on it. The trip lets it go, its "get off soon" taken back, and they're on
+more of its stops short of where that train has got to isn't on it; nor, on two fixes in a row each at a station
+of the ride 400 m or more from the next (too far for a fix there to be one at the next, or a train pulling away),
+is a rider one stop short of it (maintainer, 2026-10-19: a train a stop ahead was followed to where they got off,
+the trip walking them on while they were still at Camden Town). The trip lets it go, its "get off soon" taken back, and they're on
 board by where they were seen (below) until their own is found, so another vehicle's calls neither
 count their stops nor end their ride. It also **sees a
 rider already on their way** (maintainer, 2026-09-29): for the first ten minutes they wait for a
