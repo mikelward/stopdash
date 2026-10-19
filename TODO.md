@@ -849,8 +849,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                       off at as its station, through the prefix step (`arrivalOf`, `platformRecord`).
                 - [x] A station picked is planned to at each of its records and one bus stop it
                       owns (`Hubs.planTargetsOf`, read off the main thread by the trip's models).
-                - [ ] The trip on the way's replans to a station's targets, as the trip list plans
-                      it (it replans to the id picked).
+                - [x] The trip on the way's replans to a station's targets: its To… keeps the level
+                      the trip was started at (`ToChoice.of`), so the trip list it opens plans the same.
                 - [ ] Far ends, Direct, off-plan and passing a stop.
                 - [x] Getting off at any of the trip on the way's `destinationIds` (Codex, #981): on
                       the last ride, the ride's end moves to the first of them the train calls at.
