@@ -599,7 +599,7 @@ report carries:
   instant you send,
 - **where the app placed you in the last 15 minutes** (at most the last 20 positions, the oldest
   left out where they don't fit, and a long one cut short): each
-  location fix it got (including a rough one it set aside for a more precise remembered one, and a saved place it recognized by its Wi-Fi) and
+  location fix it got (including a rough one it set aside for a more precise remembered one, a saved place it recognized by its Wi-Fi, and each fix taken to follow a trip on the way) and
   each nearby lookup (with the stops it found and how far each was), with
   the time — so a fix that put you at the wrong station can be seen. These are kept **in memory only**, never in the diagnostic log or its
   file, are deleted when they turn 15 minutes old (if the phone is asleep then, within a minute of

@@ -24,9 +24,12 @@ import app.stopdash.domain.raceFix
 import java.time.Duration
 import kotlin.coroutines.resume
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 /**
@@ -57,6 +60,8 @@ class AndroidLocationProvider(
     // The saved places' Wi-Fi (SPEC *Finding stops → Wi-Fi at saved places*): what stands in for a
     // rough fix at a saved place, and what each sure fix taken here teaches. None by default.
     private val wifiPlaces: WifiPlaceSource = WifiPlaceSource.NONE,
+    // Where [preciseUpdates] hands each update to [position]: its listener runs on the main thread.
+    private val recordOn: CoroutineDispatcher = Dispatchers.Default,
 ) : LocationProvider {
     // Whether [preciseUpdates] last found no accurate provider, so a caller asking again doesn't log
     // it each time (main thread only).
@@ -330,7 +335,15 @@ class AndroidLocationProvider(
         }
         updatesSkipped = false
         val listener = LocationListener { location ->
+            // Checked again: an update already queued can land after precise location is revoked (Codex, #993).
+            if (!hasFineLocationPermission()) return@LocationListener
             val fix = location.toLocated(provider).toFix()
+            // Each update is a fix the app got, kept in the bug report's window like the rest, off the main
+            // thread it's heard on (Codex, #993).
+            launch(recordOn) {
+                // Checked again where it's kept: a revoke can land while this waits its turn (Codex, #993).
+                if (hasFineLocationPermission()) position("$provider update", fix.coordinates)
+            }
             trySend(fix)
             observe(fix)
         }

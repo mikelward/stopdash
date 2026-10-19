@@ -22,6 +22,7 @@ import java.time.Duration
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -438,8 +439,12 @@ class AndroidLocationProviderTest {
         shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
         shadowOf(manager).setProviderEnabled(LocationManager.GPS_PROVIDER, true)
         val got = mutableListOf<LocationFix>()
+        val positions = mutableListOf<Pair<String, Double>>()
         val watching = launch {
-            AndroidLocationProvider(app, remembers = false).preciseUpdates(Duration.ofSeconds(5), 10f).collect { got += it }
+            AndroidLocationProvider(
+                app, remembers = false, position = { what, at -> positions += what to at.latitude },
+                recordOn = StandardTestDispatcher(testScheduler),
+            ).preciseUpdates(Duration.ofSeconds(5), 10f).collect { got += it }
         }
         runCurrent()
         // Every 5 s while they move 10 m, from GPS (no fused provider here).
@@ -448,13 +453,35 @@ class AndroidLocationProviderTest {
         assertEquals(10f, asked.minUpdateDistanceMeters, 0f)
         shadowOf(manager).simulateLocation(gps(51.5))
         shadowOf(Looper.getMainLooper()).idle()
+        // Recorded on the dispatcher it's handed to, never on the main thread the update is heard on (Codex, #993).
+        assertEquals(emptyList<Pair<String, Double>>(), positions)
         runCurrent()
         assertEquals(listOf(51.5), got.map { it.coordinates.latitude })
+        // Each one in the bug report's recent positions, as a fix the app got (Codex, #993).
+        assertEquals(listOf("gps update" to 51.5), positions)
         // With how sure it is and how old, for the trip to judge it by.
         assertEquals(5f, checkNotNull(got.single().accuracyMeters), 0f)
         assertTrue(checkNotNull(got.single().ageMillis) < 1_000L)
         // Not remembered for a later lookup: a trip's fixes never are.
         assertNull(recalledNear(51.5))
+        // One landing after precise location is revoked is neither kept nor used (Codex, #993).
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(6))
+        shadowOf(manager).simulateLocation(gps(51.55))
+        shadowOf(app).denyPermissions(Manifest.permission.ACCESS_FINE_LOCATION)
+        shadowOf(Looper.getMainLooper()).idle()
+        runCurrent()
+        assertEquals(listOf("gps update" to 51.5), positions)
+        assertEquals(1, got.size)
+        shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION)
+        // Nor one whose keeping waits its turn while it's revoked (Codex, #993).
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(6))
+        shadowOf(manager).simulateLocation(gps(51.56))
+        shadowOf(Looper.getMainLooper()).idle()
+        shadowOf(app).denyPermissions(Manifest.permission.ACCESS_FINE_LOCATION)
+        runCurrent()
+        assertEquals(listOf("gps update" to 51.5), positions)
+        assertEquals(2, got.size)
+        shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION)
         // No longer collected: the request is removed (battery), and no more come.
         watching.cancel()
         runCurrent()
@@ -462,7 +489,7 @@ class AndroidLocationProviderTest {
         shadowOf(manager).simulateLocation(gps(51.6))
         shadowOf(Looper.getMainLooper()).idle()
         runCurrent()
-        assertEquals(1, got.size)
+        assertEquals(2, got.size)
     }
 
     @Test

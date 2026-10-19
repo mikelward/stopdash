@@ -572,7 +572,9 @@ class MainActivity : ComponentActivity() {
     // The trip on the way's own fixes ([onTheWayFix]), apart from near me's: none remembered.
     private val onTheWayLocation by lazy {
         // Its fixes still teach the saved places' Wi-Fi: that keeps no fix, only a network's address.
-        AndroidLocationProvider(applicationContext, warn = ::logLocationWarning, remembers = false, wifiPlaces = wifiPlaces)
+        // Each fix goes to the bug report's recent positions too, as near me's do: where a trip placed the rider is
+        // what explains a stop it counted wrong (maintainer, 2026-10-19).
+        AndroidLocationProvider(applicationContext, warn = ::logLocationWarning, position = ::recordPosition, remembers = false, wifiPlaces = wifiPlaces)
     }
 
     // The saved places' Wi-Fi (SPEC *Finding stops → Wi-Fi at saved places*), shared by both providers.
@@ -7279,7 +7281,8 @@ private fun scheduleSweep(nowElapsedMillis: Long) {
     positionExpiry.postDelayed(positionSweep, minOf(until, RecentPositions.SWEEP_MILLIS))
 }
 
-private fun recordPosition(what: String, at: Coordinates) {
+// Also the trip's background service's ([OnTheWayService]): its fixes go to the same window (Codex, #993).
+internal fun recordPosition(what: String, at: Coordinates) {
     val now = SystemClock.elapsedRealtime()
     recentPositions.record(what, at, now, java.time.LocalTime.now().format(positionStamp))
     scheduleSweep(now)

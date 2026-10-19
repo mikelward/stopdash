@@ -29,10 +29,28 @@ class RecentPositionsTest {
     @Test
     fun `only the newest few are kept, however recent`() {
         val positions = RecentPositions()
-        repeat(RecentPositions.CAPACITY + 5) { i -> positions.record("fix $i", origin, nowElapsedMillis = i.toLong(), stamp = "t") }
+        repeat(RecentPositions.CAPACITY + 5) { i -> positions.record("fix $i", Coordinates(0.0, i / 1000.0), nowElapsedMillis = i.toLong(), stamp = "t") }
         val kept = positions.recent(RecentPositions.CAPACITY + 5L)
         assertEquals(RecentPositions.CAPACITY, kept.size)
-        assertEquals("t fix 5 at 0.00000,0.00000", kept.first())
+        assertEquals("t fix 5 at 0.00000,0.00500", kept.first())
+    }
+
+    @Test
+    fun `the same fix heard twice takes one entry`() {
+        // A trip's fix that near me follows too comes twice in a moment: once is enough (Codex, #993).
+        val positions = RecentPositions()
+        positions.record("gps update", origin, nowElapsedMillis = 0, stamp = "a")
+        positions.record("movement update ±5 m", origin, nowElapsedMillis = 10, stamp = "a")
+        assertEquals(listOf("a gps update at 0.00000,0.00000"), positions.recent(minute))
+        // A lookup from that fix, with its stops, is kept beside it: it says what the fix was used for.
+        positions.record("lookup: 3 stops", origin, nowElapsedMillis = 15, stamp = "a")
+        assertEquals(2, positions.recent(minute).size)
+        positions.record("fused update", origin, nowElapsedMillis = 16, stamp = "a")
+        positions.recent(minute).let { assertEquals(3, it.size) }
+        // Somewhere else, or there again a while later, is a position of its own.
+        positions.record("gps update", Coordinates(0.0, 0.001), nowElapsedMillis = 20, stamp = "b")
+        positions.record("gps update", Coordinates(0.0, 0.001), nowElapsedMillis = 20 + RecentPositions.SAME_FIX_MILLIS, stamp = "c")
+        assertEquals(5, positions.recent(minute).size)
     }
 
     @Test
