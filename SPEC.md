@@ -1189,8 +1189,14 @@ Pancras whichever of its ids was asked for — at the id the train calls at, whe
 predicted, not the one asked for (maintainer, 2026-10-19); a Direct row to a place still names the
 stop near the place it was matched by until ids are resolved where they enter the app
 (`dev-docs/station-resolution.md`). Never another station of the interchange (King's Cross beside
-it), never a bus pole, and the named id first: a train whose way calls at that id itself gets off
-there, never at another id of its station before it. A journey starred there keeps the id the departures
+it; decided 2026-10-19 to change, not built yet: a destination will be its hub, reached at a
+vehicle's first call anywhere in it, `dev-docs/station-resolution.md`), never a bus pole, and the
+named id first: a train whose way calls at that id itself gets off there, never at another id of its
+station before it (also decided 2026-10-19 to change, not built yet: a train will get off at its
+first call in the destination hub, whichever id was asked for, where that first call is one
+station record on every way the train could be running; where the ways or a dividing train's
+portions disagree, or a National Rail call names several records, it keeps the stop the route or
+Planner names). A journey starred there keeps the id the departures
 carry, and its card places it the same way. Which interchange a stop is in comes from the bundled
 station index, so this holds however the stop reached the screen — nearby, watched, or a journey's
 end. Whenever the list is unavailable, the
@@ -2241,7 +2247,12 @@ from a chip beside the max walk atop a trip's routes. In its menu, Station and F
 carry a line saying what they're for, since the bare names don't tell a rider with a suitcase or a
 buggy that Station suits them too. A change plans the trip again at once, as a walk change does; plans are kept per level. A plan's wait for the settings to be read
 (above) takes in the step-free level too, so a rider who needs step-free routes is never first shown
-routes with stairs.
+routes with stairs. Decided 2026-10-19 to add, not built yet (`dev-docs/station-resolution.md`):
+with Station or Fully set, the app doesn't take the plan's word alone but checks each ride's
+boarding and alighting call itself, on whichever line carries it, against the step-free table and
+today's lift outages (rechecked while the trip is open, at the platform where the call names one);
+a substitute train that fails isn't offered, and a ride whose stop no longer passes says it isn't
+step-free any more and offers to plan again, never sending the rider to a stop they can't use.
 
 **Direct to a place** (maintainer, 2026-10-07). A trip to a place (a favorite, or a place or postcode
 picked in *To…*) shows a **Direct** section under its choices and over its routes, and so does a trip to a
@@ -2434,7 +2445,10 @@ later by the Planner's times: planned to the bus stop, the Planner can ride thro
 Angel and bus back, where the rider would get off the first time. A detour nothing beats stays, as it
 may be the only way the plan found (maintainer, 2026-09-27), and only a route the rider can see beats
 one: a route riding a hidden mode never takes out one they can, and showing the mode again brings
-back what it beats. The answers merge, and of the routes not riding a hidden mode, the six arriving soonest by
+back what it beats. When the station model's phase 2 ships, a route that reaches the complex and rides on is no longer dropped
+or shown whole: it's kept but cut at its first call anywhere in the destination's hub that meets the
+trip's step-free level with today's lifts, the legs after it dropped, showing no fare (the Planner
+priced the whole detour) and, where the Planner gives no time there, no arrival time until a followed train times it, since the rider gets off there (`dev-docs/station-resolution.md`). The answers merge, and of the routes not riding a hidden mode, the six arriving soonest by
 the Planner's timetable are timed, and an opened route besides; routes show as each answer lands. If some stations (or a station's records or bus stop) can't be planned to, the others'
 routes stand and the trip says "Couldn't plan every route", with a retry; only a whole plan is
 reused. Not the complex's centre point: that ended every trip at a street address with a walk and
@@ -2443,10 +2457,14 @@ itself where a neighboring stop serves the trip better, so a same-named stand th
 the result is reached on foot rather than lost. A station is planned to at each of its records and
 one bus stop it owns, from the station model, as a complex is to its members: St Pancras's records
 and its forecourt stop, never King's Cross. Either is reached at the level it was picked at: a station at any of its records,
-platforms and own bus stops, a bus stop at any of its poles or its stop area. A platform TfL lists
+platforms and own bus stops, a bus stop at any of its poles or its stop area (decided 2026-10-19 to
+change, not built yet: either will be arrived at on a vehicle's first call anywhere in its hub,
+`dev-docs/station-resolution.md`). A platform TfL lists
 after the app's station data was built counts as its station. So a route riding on
 past St Pancras's low level is dropped for one getting off there no later; never one getting off at
-King's Cross or its Underground, the rest of the interchange. A trip on the way keeps those ids.
+King's Cross or its Underground, the rest of the interchange (decided 2026-10-19 to change, not built
+yet: a trip will arrive at its first call anywhere in the destination's hub,
+`dev-docs/station-resolution.md`). A trip on the way keeps those ids.
 On its last ride, once the rider is on a train seen due first at another of them, the ride ends
 there, and any walk planned on from the old end goes (maintainer, 2026-10-19). So a route riding on
 past the low level to St Pancras's main record counts down to the low level and names it. The route

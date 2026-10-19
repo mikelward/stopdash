@@ -22,7 +22,9 @@ Once all four phases have shipped (*Plan*):
 - **The rider gets the level they picked.** St Pancras's page and search row open St Pancras;
   the King's Cross row, which names two stations, opens the hub. A trip plans to, arrives at and
   replans at that level: a station's records plus one bus stop it owns, a hub's stations plus
-  one bus stop, or one bus stop. Avoiding a station avoids all its records. Direct aims from the
+  one bus stop, or one bus stop (arriving superseded by `station-resolution.md`, maintainer
+  2026-10-19: a trip's last ride arrives at its first call in the destination's hub, whatever
+  level was picked). Avoiding a station avoids all its records. Direct aims from the
   level's place and keeps its walking reach.
 - **Matching is by stop, boarding by pole.** The pole across the road counts as the same stop
   for a bus's end, but a bus boards at the pole its route places, and a closure belongs to the
@@ -114,7 +116,7 @@ out. The code's `hubId` fields hold TfL's interchange id, not a hub in this desi
 | `StopLinks.sameStation`: name and modes, then one interchange or `SAME_STATION_METERS` (250 m) | the board asking every id; stop details' `ownIds` and `linesById` | **Replaced** by ICS and a mode (phase 2); deleted with its constant (phase 4) |
 | `StopLinks.openId`: From and To on a station under several records open its whole interchange (Codex on #664) | a station page's From and To | **Replaced** by the station itself, every record of it (phase 2), so From and To on St Pancras's page are St Pancras, not King's Cross & St Pancras. The workaround existed only because nothing else gathered a station's records |
 | `StationIndex.twins` / `foldTwins` | search's twin fold, stations with no interchange only | **Replaced** by station membership, inside interchanges too (phase 2) |
-| `RouteStops.stationCodeOf`, `sameStationId`, `stationIds`, `throughStation`: route sequences' `icsId` | getting off, far ends, Direct, `RideLines`, `FavoriteJourney.matches` | **Replaced** by the bundled ICS code and mode (phase 2). A stop the bundle doesn't hold is a station of its own until a refresh takes it in (*Where it's built*), never grouped by a route's `icsId`. The named-record-first order (`candidatePaths`, `forLeg`) is **kept** |
+| `RouteStops.stationCodeOf`, `sameStationId`, `stationIds`, `throughStation`: route sequences' `icsId` | getting off, far ends, Direct, `RideLines`, `FavoriteJourney.matches` | **Replaced** by the bundled ICS code and mode (phase 2). A stop the bundle doesn't hold is a station of its own until a refresh takes it in (*Where it's built*), never grouped by a route's `icsId`. The named-record-first order (`candidatePaths`, `forLeg`) is **kept**, except for a trip's last ride, which arrives at its first call in the destination's hub (`station-resolution.md`, maintainer 2026-10-19) |
 | `RouteStops.sameStation`: one name the other plus a space ("… LL"), through `LineSequence.callingAt` | Direct, rides, off-plan, on the way, the route page | **Replaced** by station membership (phase 2). A name never pairs two stops, a stop the bundle doesn't hold included (*Where it's built*) |
 | `OffPlan`'s name-only matches, with no interchange check | off-plan branch detection | **Replaced** by station membership (phase 2): a name alone is what joins two stations wrongly |
 | On the way's `sameStation` and `stationPlaces` | passing a stop | **Replaced** by station membership, and by the stop for a bus (phase 2) |
@@ -174,7 +176,7 @@ out. The code's `hubId` fields hold TfL's interchange id, not a hub in this desi
 |---|---|---|
 | `PlanTargets.of`: each member that isn't a bus stop, plus the first bus stop | trips to an interchange | **Kept per record** (maintainer, 2026-10-16: no merge). What changes is the level (phases 2 and 3): every record of the station or hub picked, plus one bus stop it owns |
 | `PlanTargets.via` / `viaStops`: every station record, bus stops only where there's no station | a trip via a stop (SPEC *Going via a stop*) | **Kept per record, never merged**. The Planner counts a route as passing only the exact id it was asked via, so merging St Pancras's three records would drop a route through the one not named. What changes is the level the via resolves at (phases 2 and 3): a station picked as via is every record of that station, a hub every record of its stations, a bus stop that stop |
-| `destinationIds`: a member's id and cluster to the trip's end | a trip's arrivals | **Replaced** by the ids of the level the rider picked (the station and stop levels in phase 2, with the bus target that phase adds, and the hub level in phase 3): a hub's every station record and bus pole, a station's records plus the bus stops it owns, or a stop's poles, the same ends the trip is planned to (*The rider picks a level*). Each bus stop counts with its poles' TfL stop areas (`490G…`) too, as today's member cluster does, since the Planner names a bus call by its pole or its area, but only an area kept whole: a split area's poles lie in several stops, so its id maps to none of them (Codex on #890), and a leg named by it is placed at one of its poles instead (*A TfL stop area's id resolves too*). One `Hubs.idsOf(level)` gives it, so no caller rebuilds it: a map from every id TfL can name the level by, its stands as well as its records, poles and stop areas, to the stop or station that id belongs to, the shape `destinationIds` has today. A platform maps to its station, since the Planner can name a train's end by its platform alone (*A platform TfL lists under several records*, below); one `Unresolved` between two stations is in neither map. The map holds only bundled ids, so an id it doesn't hold is resolved on the way through `Hubs.stationOf`, the same prefix step that places a platform the bundle doesn't hold (`9400…` to `940G…`), and counts when that station is one of the level's: a platform TfL adds after the bundle was built still arrives, replans and compares as its station. Its keys say when a trip has arrived and where it replans to, so a trip to St Pancras arrives only there, never at King's Cross. Its values are what `withoutDetours` compares (its `stopOf`), so a call at one pole or its stop area and an end at a sibling pole are one stop, as today, and a call at one of St Pancras's records and an end at another are one station |
+| `destinationIds`: a member's id and cluster to the trip's end | a trip's arrivals | Superseded for arriving by `station-resolution.md` (maintainer, 2026-10-19): a trip's last ride arrives at its first call in the destination's hub, whatever level was picked; what follows still holds for replanning and planning targets. **Replaced** by the ids of the level the rider picked (the station and stop levels in phase 2, with the bus target that phase adds, and the hub level in phase 3): a hub's every station record and bus pole, a station's records plus the bus stops it owns, or a stop's poles, the same ends the trip is planned to (*The rider picks a level*). Each bus stop counts with its poles' TfL stop areas (`490G…`) too, as today's member cluster does, since the Planner names a bus call by its pole or its area, but only an area kept whole: a split area's poles lie in several stops, so its id maps to none of them (Codex on #890), and a leg named by it is placed at one of its poles instead (*A TfL stop area's id resolves too*). One `Hubs.idsOf(level)` gives it, so no caller rebuilds it: a map from every id TfL can name the level by, its stands as well as its records, poles and stop areas, to the stop or station that id belongs to, the shape `destinationIds` has today. A platform maps to its station, since the Planner can name a train's end by its platform alone (*A platform TfL lists under several records*, below); one `Unresolved` between two stations is in neither map. The map holds only bundled ids, so an id it doesn't hold is resolved on the way through `Hubs.stationOf`, the same prefix step that places a platform the bundle doesn't hold (`9400…` to `940G…`), and counts when that station is one of the level's: a platform TfL adds after the bundle was built still replans as its station. Its keys say where a trip replans to, so a trip to St Pancras replans to St Pancras, never to King's Cross. When a trip has arrived, and what `withoutDetours` compares, are `station-resolution.md`'s (first call in the destination's hub), not this map's |
 | `AvoidedLines.drops`: an exact id against from, to, area and planned ids | avoided stops | **Replaced** by the station's every record, or the stop (phase 2). Stored avoids keep their ids |
 
 ### Not membership, kept
@@ -608,20 +610,26 @@ and platforms as they do now. The model says what they belong to; it doesn't mer
   stations or bus stops.
 - A trip picked to a station (a station's own row or page) ends at any of that station's records or
   the bus stops it owns, never at another station of its hub: King's Cross is not St Pancras.
+  Superseded for arriving (maintainer, 2026-10-19; `station-resolution.md`): a destination is its
+  hub, and a vehicle arrives at its first call in it. The planner still plans to the level picked.
 - One picked to a bus stop ends at its stop, and only its stop. Its namesakes within
   reach are already in it (*The model*), and one outside it is another stop, so a stop between two
   groups is never accepted by both.
+  Superseded for arriving (maintainer, 2026-10-19; `station-resolution.md`): a bus stop picked as a
+  destination is arrived at on the first call in its hub. Its planning target is unchanged.
 - The rule already settled for St Pancras still holds: **the named record first**. A train whose
   way calls at that record gets off there, before any other record of its station, so
   Liverpool Street's terminus and the Elizabeth line beneath it never stand in for each other
   while the train's own record says where it goes.
+  Superseded for arriving (maintainer, 2026-10-19; `station-resolution.md`): a train gets off at its
+  first call in the destination hub, whichever id the rider asked for.
 
 ### Which level each feature asks
 
 | Feature | Asks | Changes from today |
 |---|---|---|
 | A station's board, details and search row | station, its platforms nearest the rider first | St Pancras's low level joins its board and search row (today only twins with no interchange fold) |
-| Getting off at a station the rider picked, a trip's far end at a station | station (named record first) | one lookup in place of the code and name rules |
+| Getting off at a station the rider picked, a trip's far end at a station | station (named record first); superseded by `station-resolution.md` (maintainer, 2026-10-19): the destination's hub, first call in it, on the last ride | one lookup in place of the code and name rules |
 | A favorite ride: its ends, its card and its alerts | hub (maintainer, 2026-10-16) | every line between the two hubs, from the rider's nearest station first; a train reaching St Pancras counts for a ride to King's Cross & St Pancras |
 | Telling trip options and Direct rows apart | station at each end | routes that start and end at the same stations are one route |
 | Off-plan branch detection, passing a stop on the way | station | by membership, not by name with no interchange check |
@@ -1339,7 +1347,8 @@ PR (AGENTS.md *Project documentation*), so `SPEC.md` is never behind a merged ph
    *Finding stops* gains the model in the same PR: its three levels, the bundle as their only
    source, worked out by the weekly build and loaded once on a worker as state, with the reasons.
 2. **Station identity** (`refactor:` where behavior holds). Point these at `Hubs.sameStation`,
-   keeping the named-record-first order:
+   keeping the named-record-first order (for arriving on a trip's last ride, superseded by
+   `station-resolution.md`'s first call in the hub):
    - stop details' `ownIds`, `linesById` and From and To (`openId`), which resolve to the station
      or stop picked. The planner then plans to that station's records plus one of the bus stops it
      owns, or to a picked stop, so narrowing From and To from the interchange to the station keeps
@@ -1382,15 +1391,13 @@ PR (AGENTS.md *Project documentation*), so `SPEC.md` is never behind a merged ph
      direct line served only from a sibling pole is found rather than saved grayed as unsupported;
    - From and To on St Pancras's page plan to St Pancras and one of its own bus stops, not its
      interchange;
-   - a trip's destination ids (`destinationIds`) at the station and stop levels: a trip to St
-     Pancras counts as arrived only at St Pancras's records or the bus stops it owns, and replans
-     to them, never to King's Cross or its Underground; a route ending at the bus target this phase
-     adds arrives; a trip to a bus stop joined from two areas arrives and replans at either pole or
-     whole stop area, and drops a route riding on past one pole for one ending at its sibling pole
-     no later; a planned leg ending at a platform id alone arrives at the station picked,
-     replanning there and counting for detours, a platform the bundle doesn't hold included,
-     through the prefix step; and a route riding on past one of a station's records is dropped
-     for one ending at another no later;
+   - a trip's replanning and planning targets at the station and stop levels: a trip to St
+     Pancras replans to St Pancras's records or the bus stops it owns, never to King's Cross or its
+     Underground; a trip to a bus stop joined from two areas replans at either pole or whole stop
+     area; and a planned leg ending at a platform id alone replans at the station picked, a
+     platform the bundle doesn't hold included, through the prefix step. Arriving, detours and
+     dropping a route for one ending at a sibling are `station-resolution.md`'s phase 2 (first
+     call in the destination's hub, maintainer 2026-10-19), tested there, not here;
    - a pending journey saved from St Pancras's member row before this phase, holding the
      interchange's id and St Pancras's name, restored as St Pancras, and replaced, not
      duplicated, when the same pair is picked again, in a persisted-state test;
@@ -1564,14 +1571,11 @@ PR (AGENTS.md *Project documentation*), so `SPEC.md` is never behind a merged ph
      picked hub's or station's place, for a fixture hub whose first target sits apart from it,
      and at the middle of a fixture junction's stops' poles when the junction is picked whole as
      To;
-   - a trip's destination ids (`destinationIds`) at the hub level, phase 2 having built the
-     station's and stop's: one to the hub arrives at any of its members, and a planned bus call
-     named by its stop area rather than its pole counts as reaching that stop, with a regression
-     test for each, a trip to a fixture stop area the bundle doesn't hold arriving at a leg that
-     ends at one of its looked-up poles, and a detour test: a route riding on past one pole of the
-     picked stop is dropped for one that gets off at its sibling pole no later; and a leg named by
-     an area split across two stops, placed by its named pole, else its nearest pole, arriving
-     only when that pole is in the trip's end and never at the other child stop;
+   - a trip's destination ids (`destinationIds`) at the hub level: arriving, detours and a leg
+     named by a split area are `station-resolution.md`'s phase 2 (first call in the destination's
+     hub; a split area placed by its own named or nearest pole, else matching nothing; maintainer
+     2026-10-19), tested there, not here. What stays here: a trip to a fixture stop area the bundle
+     doesn't hold plans and replans to its looked-up poles;
    - Direct's place for a hub picked as To, the middle of its stations' records as an
      interchange's is today (King's Cross & St Pancras's place from the real bundle equal to
      `StationIndex.positionOf`'s for its interchange), its reach still the rider's walk from
@@ -1634,7 +1638,8 @@ What the data shows:
     stations keep 1000174 and 1000175.
 - Adding the mode family keeps Liverpool Street's Underground apart. Its terminus and Elizabeth
   line, both rail, stay one station. The named-record-first rule keeps each train at its own
-  record, and display stays per record.
+  record (except where a trip's last ride arrives at its first call in the hub,
+  `station-resolution.md`), and display stays per record.
 - An interchange's ICS is its main station's (`HUBKGX` carries the Underground's 1000129), so
   only TfL's `HUB…` id names an interchange.
 
@@ -1700,7 +1705,8 @@ What follows from it:
   never matched as a hub to itself, so its card shows what it shows now.
 - A train reaching any station of the far hub counts. That reverses one part of the 2026-10-15
   rule for rides only, the part that kept King's Cross from counting for St Pancras. A trip to a
-  station the rider picked keeps it.
+  station the rider picked keeps it (superseded by `station-resolution.md`, maintainer 2026-10-19: a
+  trip's last ride also arrives at its first qualifying call in the destination's hub).
 
 ## Why "hub"
 

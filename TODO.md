@@ -894,6 +894,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                     - [ ] The name tests left: `PlaceDirect`'s and `StopLinks`' `sameStation`,
                           `OffPlan`'s name-only matches, and on the way's `sameStation` and
                           `stationPlaces` (passing a stop).
+                    - [ ] Resolve TfL ids once where they enter the app (`dev-docs/station-resolution.md`,
+                          maintainer 2026-10-19): each feed's mapper hands `:domain` a `Resolved` id
+                          (TfL id, station, hub) and nothing compares raw ids across feeds. Station for
+                          where the rider is and what's closest; hub for destinations and change points,
+                          arriving at the first call in the destination hub. Five PRs: the type, arriving
+                          by hub (with planner legs), arrivals at the mapper, where you are, the rest. Takes in the two items
+                          above.
                 - [x] Getting off at any of the trip on the way's `destinationIds` (Codex, #981): on
                       the last ride, the ride's end moves to the first of them the train calls at.
           - [ ] The `Unbundled` interchange's trip, planned to its looked-up children.
@@ -4828,6 +4835,19 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 ## Decisions needing review
 
+- [ ] **A detour is cut at the destination hub, not dropped or shown whole** (autopilot,
+  2026-10-19; Codex on #1005). `SPEC.md` drops a detour another route beats and keeps one nothing
+  beats (maintainer, 2026-09-27); with arrival at the first call in the destination hub, phase 2
+  keeps every such route but drops its legs after that call, so the rider is never told to ride on
+  past where they get off, and the cut route, possibly the fastest, isn't dropped on its old
+  endpoint's time. Alternative: keep today's drop-or-keep-whole rule. Reversible: design only,
+  nothing built.
+- [x] **Each trip leg carries where it ends, as a `(TripLeg, LegEnd)` pair** (autopilot, 2026-10-19;
+  Codex on #1005). Settled (maintainer left it to the agent, 2026-10-19): keep the pair. Four findings said a path judging a leg didn't know whether it was the trip's
+  last ride (`forLeg`, `DirectTrips`' trip paths, `TripVerdicts`, `RideLines`), so
+  `dev-docs/station-resolution.md` phase 2 pairs each leg with its end once per route and keys every
+  leg cache on the pair, instead of threading a flag path by path. Alternative: a last-ride flag
+  parameter on each. Reversible: design only, nothing built.
 - [x] **A line's stations re-merged once the station model loads (autopilot, 2026-10-19; Codex, #995).**
   Settled (maintainer, 2026-10-19): `RouteStopsRepository` waits for the model once (bounded by
   `HubsStore.ready`, 3 s) before its first merge, so no line is merged by TfL's codes and redone;
