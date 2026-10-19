@@ -78,7 +78,6 @@
     <string name="trip_planning">Planejando…</string>
     <string name="trip_replanning">Planejado há %1$d min · atualizando…</string>
     <string name="trip_plan_failed">Não foi possível planejar a viagem: %1$s</string>
-    <string name="trip_plan_incomplete">Não foi possível planejar até todas as estações</string>
     <string name="trip_direct_checking">Verificando…</string>
     <string name="trip_direct_not_planned">Não foi possível planejar</string>
     <string name="trip_avoiding">Evitando</string>
@@ -99,7 +98,7 @@
     <string name="trip_clear_via">Remover parada</string>
     <string name="station_search_via_hint">Estação ou parada</string>
     <string name="trip_later_not_now">Não planejado para agora</string>
-    <string name="trip_later_routes_missed">Não foi possível planejar todos os percursos</string>
+    <string name="trip_routes_missed">Não foi possível planejar todos os percursos</string>
     <string name="station_search_hint">Nome da estação ou parada</string>
     <string name="station_search_prompt">Digite um nome para pesquisar</string>
     <string name="station_search_from_hint">Estação, parada, local ou código postal</string>

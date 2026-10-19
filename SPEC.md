@@ -2420,13 +2420,14 @@ Angel and bus back, where the rider would get off the first time. A detour nothi
 may be the only way the plan found (maintainer, 2026-09-27), and only a route the rider can see beats
 one: a route riding a hidden mode never takes out one they can, and showing the mode again brings
 back what it beats. The answers merge, and of the routes not riding a hidden mode, the six arriving soonest by
-the Planner's timetable are timed, and an opened route besides; routes show as each answer lands. If some stations can't be planned to, the others'
-routes stand and the trip says "Couldn't plan to every station", with a retry; only a whole plan is
+the Planner's timetable are timed, and an opened route besides; routes show as each answer lands. If some stations (or a station's records or bus stop) can't be planned to, the others'
+routes stand and the trip says "Couldn't plan every route", with a retry; only a whole plan is
 reused. Not the complex's centre point: that ended every trip at a street address with a walk and
-didn't lift the lean. An ordinary pick is planned to as picked, the Planner walking the last
-stretch itself where a neighboring stop serves the trip better, so a same-named stand the search
-folded into the result is reached on foot rather than lost. It is still planned to once, but it is
-reached at the level it was picked at, from the station model: a station at any of its records,
+didn't lift the lean. A bus stop is planned to as picked, the Planner walking the last stretch
+itself where a neighboring stop serves the trip better, so a same-named stand the search folded into
+the result is reached on foot rather than lost. A station is planned to at each of its records and
+one bus stop it owns, from the station model, as a complex is to its members: St Pancras's records
+and its forecourt stop, never King's Cross. Either is reached at the level it was picked at: a station at any of its records,
 platforms and own bus stops, a bus stop at any of its poles or its stop area. A platform TfL lists
 after the app's station data was built counts as its station. So a route riding on
 past St Pancras's low level is dropped for one getting off there no later; never one getting off at
@@ -2507,9 +2508,8 @@ listed. Leaving at a time lists the soonest there first; arriving by one, the la
 (*Buses towards the destination*) included, each for the time picked; a stop the Planner finds no route
 through at that time is asked again for another time or for now, as a stop with no route through it at
 night may have one by day. Every bus line picks its stop there, hidden or avoided or not, as what's left
-out only lists the plan again: a line shown again lists its bus at once. Where every station answered but
-a request for more routes (via a stop, or via the fastest route's last stop) failed, the list says
-"Couldn't plan every route", with a retry, rather than that a station was missed. It plans once, and again only on *Try again* or when the rider's walk, step-free level or modes change
+out only lists the plan again: a line shown again lists its bus at once. Where a request for more routes (via a stop, or via the fastest route's last stop) failed, the list
+says the same, with a retry. It plans once, and again only on *Try again* or when the rider's walk, step-free level or modes change
 (a mode hidden or a line avoided only lists the plan again): no stop's departures, line status or
 closures are fetched, and it doesn't re-plan as the rider moves, except that a move far enough to change
 the trip's nearest stop makes the trip afresh, and its later list is planned again from there. Whatever it shows answers the time and

@@ -5360,6 +5360,9 @@ class MainActivity : ComponentActivity() {
         // thread by the trip's models: a station's records and own bus stops, a bus stop's poles. None for an
         // interchange, still looked up member by member below, or a place.
         var arrivalIds: suspend () -> Map<String, String>? = { null }
+        // Where the trip is planned to, from the model: a station's every record and one bus stop it owns. None
+        // (planned to the id picked) for a bus stop, an interchange, still planned member by member, or a place.
+        var planTargets: suspend () -> List<String>? = { null }
         if (favorite != null) {
             destinations = listOf(favorite)
             destKey = "place:${favorite.coordinate.latitude},${favorite.coordinate.longitude}"
@@ -5368,6 +5371,7 @@ class MainActivity : ComponentActivity() {
             val toStopId = checkNotNull(toId) { "a To… trip has a destination once past the picker" }
             val (toStopIds, ids) = if (!toStopId.startsWith(HUB_PREFIX)) {
                 arrivalIds = { withContext(Workers.compute) { HubsStore.ready()?.arrivalIdsOf(toStopId, toName, toLevel) } }
+                planTargets = { withContext(Workers.compute) { HubsStore.ready()?.planTargetsOf(toStopId, toName, toLevel) } }
                 listOf(toStopId) to mapOf(toStopId to toStopId)
             } else {
                 val toOwner = remember(toStopId) { toStores.ownerFor(toStopId, this@MainActivity) }
@@ -5489,6 +5493,7 @@ class MainActivity : ComponentActivity() {
                         writeFailures = writeFailures,
                         destinationIds = destinationIds,
                         arrivalIds = arrivalIds,
+                        planTargets = planTargets,
                         // Which walks are changes on foot, as a trip started on a route decides them.
                         stations = { StationIndexStore.load(appContext) },
                         // The bus stops towards the destination a plan from here asks via, found on the device.
@@ -5584,6 +5589,7 @@ class MainActivity : ComponentActivity() {
                             destinations = destinations,
                             destinationIds = destinationIds,
                             arrivalIds = arrivalIds,
+                            planTargets = planTargets,
                             warn = ::logDepartureWarning,
                             // The bus stops towards the destination a plan from here asks via, as for the trip for now.
                             stations = { StationIndexStore.load(appContext) },

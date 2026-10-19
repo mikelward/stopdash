@@ -844,12 +844,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 - [x] A trip's arrivals at the station and stop levels (`Hubs.arrivalIdsOf`, read
                       off the main thread by the trip's models and kept with the trip on the way):
                       a station's records, platforms and own bus stops, a stop's poles and whole
-                      areas. Planning is unchanged: one request to the id picked. An interchange
-                      keeps its member lookup until phase 3.
+                      areas. An interchange keeps its member lookup until phase 3.
                 - [x] A platform the bundle doesn't hold arrives, compares for detours and is got
                       off at as its station, through the prefix step (`arrivalOf`, `platformRecord`).
-                - [ ] The bus target a station's own stop adds; far ends, Direct, off-plan and
-                      passing a stop.
+                - [x] A station picked is planned to at each of its records and one bus stop it
+                      owns (`Hubs.planTargetsOf`, read off the main thread by the trip's models).
+                - [ ] The trip on the way's replans to a station's targets, as the trip list plans
+                      it (it replans to the id picked).
+                - [ ] Far ends, Direct, off-plan and passing a stop.
                 - [x] Getting off at any of the trip on the way's `destinationIds` (Codex, #981): on
                       the last ride, the ride's end moves to the first of them the train calls at.
           - [ ] The `Unbundled` interchange's trip, planned to its looked-up children.
@@ -4851,8 +4853,11 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   one-station trip. Taken: its own notice, "Couldn't plan every route", with Try again, the station notice
   kept for a station that didn't answer. English only, under the translation markers. *Alternatives:*
   one generic notice for both; or no notice, as the trip for now shows none for these (it plans again
-  every few minutes, which the later list doesn't). **Reversible:** `trip_later_routes_missed`,
-  `LaterTripViewModel.State.routesMissed` and their tests. **To confirm:** the wording on a device.
+  every few minutes, which the later list doesn't). **Since folded into one notice (Codex, #989):** once a
+  station is planned to at each record and its bus stop, a record failing missed no station either, so both
+  trip screens now say "Couldn't plan every route" for any partial plan, and the station notice and its
+  translations are gone. **Reversible:** `trip_routes_missed`, `LaterTripViewModel.State.routesMissed`,
+  `TripViewModel.State.planIncomplete` and their tests. **To confirm:** the wording on a device.
 - [ ] **A later trip's bus stops towards the destination ignore what's hidden (autopilot, 2026-10-15).**
   The trip for now picks no stop for a hidden mode or an avoided bus line, but it plans again every few
   minutes; the later list plans once and only lists the plan again when what's left out changes. Taken:

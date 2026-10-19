@@ -213,7 +213,6 @@
     <string name="trip_planning">প্ল্যান করা হচ্ছে…</string>
     <string name="trip_replanning">%1$d মিনিট আগে প্ল্যান করা · আপডেট হচ্ছে…</string>
     <string name="trip_plan_failed">ট্রিপ প্ল্যান করা যায়নি: %1$s</string>
-    <string name="trip_plan_incomplete">সব স্টেশন পর্যন্ত প্ল্যান করা যায়নি</string>
     <string name="trip_label_fastest">দ্রুততম</string>
     <string name="trip_label_simplest">সহজতম</string>
     <string name="trip_label_least_walking">সবচেয়ে কম হাঁটা</string>
@@ -295,7 +294,7 @@
     <string name="trip_later_times">%1$s–%2$s · %3$d মি.</string>
     <string name="trip_later_live_notice">এখনকার সময় দেখানো হচ্ছে, %1$s নয়</string>
     <string name="trip_later_not_now">এখনকার জন্য পরিকল্পিত নয়</string>
-    <string name="trip_later_routes_missed">সব রুট পরিকল্পনা করা যায়নি</string>
+    <string name="trip_routes_missed">সব রুট পরিকল্পনা করা যায়নি</string>
     <string name="station_search_hint">স্টেশন বা স্টপের নাম</string>
     <string name="station_search_prompt">খুঁজতে নাম লিখুন</string>
     <string name="station_search_no_matches">কিছু মেলেনি</string>

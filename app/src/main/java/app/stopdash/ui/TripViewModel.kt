@@ -147,6 +147,10 @@ class TripViewModel(
     // on [io] and added to [destinationIds]: a station's every record and own bus stop, a bus stop's every pole.
     // Null where the model doesn't decide them (an interchange, a place, no model).
     private val arrivalIds: suspend () -> Map<String, String>? = { null },
+    // Where the Planner is asked to plan to, from the station model ([Hubs.planTargetsOf]), read on [io] once and
+    // awaited by each plan: a station's every record and one bus stop it owns, in place of [destinations]' one id.
+    // Null to plan to [destinations] as they are (an interchange's members, a stop, a place, no model).
+    private val planTargets: suspend () -> List<String>? = { null },
     // The stops a trip the rider sends through a station goes via (SPEC *Going via a stop*): one per station
     // of what they picked ([PlanTargets.viaStops]), each asked of the Planner for every destination and the
     // answers merged, so every route passes one of them. Null for a trip that goes any way. Part of what the
@@ -188,6 +192,9 @@ class TripViewModel(
 ) : ViewModel() {
     /** Where the next plan starts ([TripOrigin]); set by the screen on every composition. */
     var origin: () -> TripOrigin = origin
+
+    // Where each plan asks the Planner to plan to ([planTargets]), read once on [io].
+    private val modelTargets = viewModelScope.async(io) { planTargets() }
 
     // The requests via bus stops towards the destination a plan from a position also makes ([TowardRequests]).
     private val toward = TowardRequests(planner, stations, bundledStops, refused, io, compute, warn, label = "trip plan")
@@ -340,8 +347,8 @@ class TripViewModel(
         // lines page).
         val statusOmitted: Set<String> = emptySet(),
         val refreshing: Boolean = false,
-        // The last plan reached only some of the trip's stops (a complex's other stations failed):
-        // its routes stand, and the trip says it couldn't plan to every station, with a retry.
+        // The last plan reached only some of the trip's targets (a complex's other stations, a station's
+        // other records or its bus stop failed): its routes stand, and the trip says some may be missing, with a retry.
         val planIncomplete: Boolean = false,
         // Each bus stop pair's poles the trip has looked up (and so fetches): a leg may board at one
         // before its arrivals are in, reading "Loading" meanwhile. A pair whose lookup failed is absent.
@@ -1267,7 +1274,10 @@ class TripViewModel(
                 // takes one stop to route via, and counts a route as passing only the station it was asked
                 // via (SPEC *Going via a stop*).
                 val throughs: List<String?> = via?.ids ?: listOf(null)
-                for (destination in destinations) for (through in throughs) {
+                // A station's every record and own bus stop, where the model gives them; a target that fails
+                // leaves the others' routes shown, as a complex's member does.
+                val targets = modelTargets.await()?.takeIf { it.isNotEmpty() }?.map { TripDestination.Stop(it) } ?: destinations
+                for (destination in targets) for (through in throughs) {
                     launch {
                         val routes = try {
                             withContext(io) { planner.journeys(from, destination, speed, limit, access, modes, via = through) }

@@ -215,7 +215,6 @@
     <string name="trip_planning">Planification…</string>
     <string name="trip_replanning">Planifié il y a %1$d min · mise à jour…</string>
     <string name="trip_plan_failed">Impossible de planifier l’itinéraire : %1$s</string>
-    <string name="trip_plan_incomplete">Impossible de planifier vers toutes les stations</string>
     <string name="trip_label_fastest">Le plus rapide</string>
     <string name="trip_label_simplest">Le plus simple</string>
     <string name="trip_label_least_walking">Moins de marche</string>
@@ -298,7 +297,7 @@
     <string name="trip_later_times">%1$s–%2$s · %3$d min</string>
     <string name="trip_later_live_notice">Horaires pour maintenant, pas pour %1$s</string>
     <string name="trip_later_not_now">Non prévu pour maintenant</string>
-    <string name="trip_later_routes_missed">Impossible de planifier tous les parcours</string>
+    <string name="trip_routes_missed">Impossible de planifier tous les parcours</string>
     <string name="station_search_hint">Nom de station ou d’arrêt</string>
     <string name="station_search_prompt">Saisissez un nom pour rechercher</string>
     <string name="station_search_no_matches">Aucun résultat</string>

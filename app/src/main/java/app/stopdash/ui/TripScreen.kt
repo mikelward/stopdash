@@ -2235,10 +2235,10 @@ private fun TripPlaceholder(state: TripViewModel.State, onRetry: () -> Unit, hea
 private fun PlanFailure(error: DeparturesUiState.Error.Kind, planning: Boolean, onRetry: () -> Unit) =
     PlanNotice(stringResource(R.string.trip_plan_failed, stringResource(errorMessage(error))), planning, onRetry)
 
-/** A plan that reached only some of a complex's stations: the routes shown may not be the best. */
+/** A plan that reached only some of its targets (stations, records, bus stops): the routes shown may not be the best. */
 @Composable
 private fun PlanIncomplete(planning: Boolean, onRetry: () -> Unit) =
-    PlanNotice(stringResource(R.string.trip_plan_incomplete), planning, onRetry)
+    PlanNotice(stringResource(R.string.trip_routes_missed), planning, onRetry)
 
 @Composable
 private fun PlanNotice(text: String, planning: Boolean, onRetry: () -> Unit) {
