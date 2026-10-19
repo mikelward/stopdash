@@ -366,8 +366,10 @@ class KtorTflClient(
             outcome = "canceled"
             throw e
         } catch (e: Exception) {
-            // Recorded for the timing line below, then left to the caller as it was.
-            outcome = e::class.simpleName ?: "failed"
+            // Recorded for the timing line below, then left to the caller as it was. A TfL failure says
+            // why (its sanitized reason, [TflException]), so "Unreachable" is told as a status TfL
+            // answered with or an answer StopDash couldn't read.
+            outcome = (e::class.simpleName ?: "failed") + ((e as? TflException)?.message?.let { " ($it)" }.orEmpty())
             throw e
         } finally {
             val sent = waited?.let { "waited $it ms to send" } ?: "not sent"
@@ -434,7 +436,7 @@ class KtorTflClient(
             // Journeys offered but none readable: a decode failure, not "no routes" (which would be
             // reused as a real answer for the plan's lifetime).
             if (routes.isEmpty() && dto.journeys.isNotEmpty()) {
-                throw TflException.Unreachable("$source: ${dto.journeys.size} routes, none readable", null)
+                throw TflException.Unreachable("${dto.journeys.size} routes, none readable", null)
             }
             if (routes.size < dto.journeys.size) {
                 warn("$source: ${dto.journeys.size - routes.size} of ${dto.journeys.size} routes unreadable")
@@ -1106,8 +1108,9 @@ class KtorTflClient(
             throw e
         } catch (e: Exception) {
             // A decode failure or anything else unexpected: reached the client but
-            // couldn't produce a result. Sanitized — the class name, no payload.
-            throw TflException.Unreachable("unexpected: ${e::class.simpleName}", e)
+            // couldn't produce a result. Sanitized — the class name, no payload; a decode failure
+            // adds where in the answer it stopped, which names only fields.
+            throw TflException.Unreachable("unexpected: ${e::class.simpleName}${decodePath(e)?.let { " at $it" }.orEmpty()}", e)
         }
     }
 
@@ -1269,3 +1272,14 @@ private data class PlanAsk(val preference: String?, val busOnly: Boolean = false
         )
     }
 }
+
+// Where in an answer a decode failure stopped (kotlinx's "at path: $.journeys[0].legs[1].mode"),
+// from [e] or what it wraps, or null for any other failure. Only the path: the rest of such a message
+// quotes the answer itself, which can carry the rider's trip.
+private fun decodePath(e: Throwable): String? =
+    generateSequence(e) { it.cause.takeIf { cause -> cause !== it } }.take(DECODE_CAUSE_DEPTH)
+        .firstNotNullOfOrNull { DECODE_PATH.find(it.message.orEmpty())?.groupValues?.get(1) }
+
+// A path names only fields and indexes; anything else stops it.
+private val DECODE_PATH = Regex("""at path: (\$[A-Za-z0-9_.\[\]]*)""")
+private const val DECODE_CAUSE_DEPTH = 4
