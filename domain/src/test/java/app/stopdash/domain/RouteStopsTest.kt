@@ -1182,4 +1182,26 @@ class RouteStopsTest {
         assertFalse(loaded.sameStationId("910GHILL", "940GZZLUHIL"))
         assertTrue(repository.cached("hill", "") === loaded)
     }
+
+    @Test
+    fun `a station's departures id finds its route by the station model, never by a name another station shares`() {
+        // The route calls at Hill's main rail record; departures come under its low-level one, and Hill's tube
+        // station, in the same interchange, shares the name "Hill" with the rail record.
+        val line = LineSequence(
+            routes = listOf(LineRoute("Top ↔ Hill", listOf("TOP", "910GHILL"))),
+            stopNames = mapOf("TOP" to "Top", "910GHILL" to "Hill", "910GHILLLL" to "Hill LL", "940GZZLUHIL" to "Hill"),
+            stopHubs = mapOf("910GHILL" to "HUBEXA", "910GHILLLL" to "HUBEXA", "940GZZLUHIL" to "HUBEXA"),
+        )
+        val placed = line.withModelStations { id -> (hillModel.stationOf(id) as? Hubs.Membership.Of)?.id }
+        // The low-level record is the main one's station: the route is seen from it.
+        assertEquals(listOf("TOP", "910GHILLLL"), placed.callingAt("910GHILLLL").routes.single().stopIds)
+        // The tube station shares the name but not the station: by the model it finds no route...
+        assertEquals(listOf("TOP", "910GHILL"), placed.callingAt("940GZZLUHIL").routes.single().stopIds)
+        // ...where by name alone, without the model, it took the rail record's place.
+        assertEquals(listOf("TOP", "940GZZLUHIL"), line.callingAt("940GZZLUHIL").routes.single().stopIds)
+        // A stop the model doesn't hold finds none.
+        val unheld = line.copy(stopNames = line.stopNames + ("910GHILLX" to "Hill"), stopHubs = line.stopHubs + ("910GHILLX" to "HUBEXA"))
+            .withModelStations { id -> (hillModel.stationOf(id) as? Hubs.Membership.Of)?.id }
+        assertEquals(listOf("TOP", "910GHILL"), unheld.callingAt("910GHILLX").routes.single().stopIds)
+    }
 }
