@@ -1176,7 +1176,8 @@ northbound and the main station's southbound, so every southbound train there ma
 dropped out of the Direct section and a trip's times; HS1's trains leave under the domestic id, which
 one route ends at under the main id) takes a train whose own id has no way at all to its terminus,
 whatever its board says it runs via, through the other:
-the same station by TfL's own station code. Only then, so a station's separate platforms that share a
+the same station by the station model (its records of one ICS code and mode family; TfL's own code
+only while the model isn't loaded, and a stop it doesn't hold a station of its own). Only then, so a station's separate platforms that share a
 code (Liverpool Street's terminus and the Elizabeth line beneath it) never stand in for each other
 while the train's own id says where it goes; never for a train naming no destination ("Check Front of
 Train"), whose own id only ending its routes says it arrives here; and never for a bus, whose code the
