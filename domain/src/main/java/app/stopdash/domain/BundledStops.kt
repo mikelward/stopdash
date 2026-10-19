@@ -109,6 +109,48 @@ class BundledStops private constructor(
     fun memberships(): List<Pair<StopLocation, StopMembership>> =
         if (memberships.size == stops.size) stops.zip(memberships) else emptyList()
 
+    // The build's station bundle ([StationBundle]): every field, so what it reads back equals this.
+    internal fun writeTo(out: StationBundle.Writer) {
+        out.string(revision)
+        out.int(skippedLines)
+        bounds.forEach(out::double)
+        val lineIds = LinkedHashMap<LineRef, Int>()
+        stops.forEach { stop -> stop.lines.forEach { lineIds.getOrPut(it) { lineIds.size } } }
+        out.int(lineIds.size)
+        lineIds.keys.forEach { out.string(it.id); out.string(it.name); out.string(it.mode) }
+        out.int(stops.size)
+        for (stop in stops) {
+            out.string(stop.id)
+            out.string(stop.name)
+            out.position(stop.latitude)
+            out.position(stop.longitude)
+            out.int(stop.lines.size)
+            stop.lines.forEach { out.int(lineIds.getValue(it)) }
+            out.string(stop.clusterId)
+            out.string(stop.interchangeId)
+            out.string(stop.stopLetter)
+            out.string(stop.bearing)
+            out.string(stop.towards)
+        }
+        out.bytes(types)
+        out.boolean(memberships.size == stops.size)
+        if (memberships.size == stops.size) {
+            for (member in memberships) {
+                out.int(member.type.code)
+                out.string(member.cluster)
+                out.string(member.icsCode)
+                out.string(member.level)
+                out.string(member.owner)
+                out.string(member.hub)
+            }
+        }
+    }
+
+    /** Whether [other] holds the same stops, in the same order, as this: for the bundle's round-trip test. */
+    internal fun sameAs(other: BundledStops): Boolean =
+        stops == other.stops && types.contentEquals(other.types) && bounds.contentEquals(other.bounds) &&
+            skippedLines == other.skippedLines && memberships == other.memberships && revision == other.revision
+
     companion object {
         const val FORMAT_VERSION = 2
 
@@ -126,6 +168,45 @@ class BundledStops private constructor(
         private const val BUS_TYPE = 2
 
         val EMPTY = BundledStops(emptyList(), ByteArray(0), DoubleArray(4), 0)
+
+        /** The stops [BundledStops.writeTo] wrote, read back for the station bundle ([StationBundle.read]). */
+        internal fun readFrom(input: StationBundle.Reader): BundledStops {
+            val revision = input.string()
+            val skipped = input.int()
+            val bounds = DoubleArray(4) { input.double() }
+            val lines = List(input.int()) { LineRef(input.string(), input.string(), input.string()) }
+            val stops = List(input.int()) {
+                StopLocation(
+                    id = input.string(),
+                    name = input.string(),
+                    latitude = input.position(),
+                    longitude = input.position(),
+                    lines = List(input.int()) { lines.getOrNull(input.int()) ?: throw IllegalArgumentException("station bundle: unknown line") },
+                    clusterId = input.string(),
+                    interchangeId = input.string(),
+                    stopLetter = input.string(),
+                    bearing = input.string(),
+                    towards = input.string(),
+                )
+            }
+            val types = input.bytes()
+            require(types.size == stops.size) { "station bundle: stop types don't match the stops" }
+            val memberships = if (input.boolean()) {
+                List(stops.size) {
+                    StopMembership(
+                        type = input.int().toChar(),
+                        cluster = input.string(),
+                        icsCode = input.string(),
+                        level = input.string(),
+                        owner = input.string(),
+                        hub = input.string(),
+                    )
+                }
+            } else {
+                emptyList()
+            }
+            return BundledStops(stops, types, bounds, skipped, memberships, revision)
+        }
 
         /**
          * Reads the file (see `scripts/build_stops.py`). Throws [IllegalArgumentException] on

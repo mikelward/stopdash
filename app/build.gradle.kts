@@ -231,6 +231,9 @@ android {
         // Lists the translated languages in the system's per-app language setting, from the
         // values-<lang> folders (res/resources.properties names the base's locale).
         generateLocaleConfig = true
+        // The station bundle's sources (stationBundle, below): the APK carries the bundle built from
+        // them, and the app reads nothing else for stations and stops.
+        ignoreAssetsPatterns += listOf("!stops.tsv", "!station_index.json")
     }
 
     testOptions {
@@ -346,6 +349,51 @@ val exportBundledLicenses = tasks.register("exportBundledLicenses") {
     }
 }
 
+// The bundled stops and the station model built over them (StationBundle, maintainer 2026-10-19),
+// worked out here by :domain's own readers rather than as the app starts, and shipped as one binary
+// asset beside the source assets: the app reads it back, and the source files only where it can't.
+abstract class StationBundleTask : JavaExec() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val stops: RegularFileProperty
+
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val stationIndex: RegularFileProperty
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+}
+
+val stationBundleTool: Configuration by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    attributes {
+        attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage.JAVA_RUNTIME))
+        attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category.LIBRARY))
+        attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements.JAR))
+        attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling.EXTERNAL))
+        attribute(TargetJvmEnvironment.TARGET_JVM_ENVIRONMENT_ATTRIBUTE, objects.named(TargetJvmEnvironment.STANDARD_JVM))
+    }
+}
+
+val stationBundle = tasks.register<StationBundleTask>("stationBundle") {
+    description = "Builds the bundled stops and station model into one binary asset."
+    val stopsFile = layout.projectDirectory.file("src/main/assets/stations/stops.tsv")
+    val indexFile = layout.projectDirectory.file("src/main/assets/stations/station_index.json")
+    val outDir = layout.buildDirectory.dir("generated/stationBundle")
+    stops.set(stopsFile)
+    stationIndex.set(indexFile)
+    outputDir.set(outDir)
+    classpath = stationBundleTool
+    mainClass.set("app.stopdash.domain.StationBundle")
+    args(
+        stopsFile.asFile.path,
+        indexFile.asFile.path,
+        outDir.get().file("stations/station_bundle.bin").asFile.path,
+    )
+}
+
 // A debug build names its commit and branch, so a sideloaded APK or a bug report from one says
 // which build it is; the shipped release keeps its plain "<count>+<sha>".
 androidComponents {
@@ -355,12 +403,16 @@ androidComponents {
             variant.outputs.forEach { it.versionName.set(name) }
         }
     }
+    onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(stationBundle, StationBundleTask::outputDir)
+    }
 }
 
 dependencies {
     // The repo's own lint check: WorkerThreadCall (AGENTS.md *Main thread: read and dispatch only*).
     lintChecks(project(":lint-rules"))
     implementation(project(":domain"))
+    stationBundleTool(project(":domain"))
     implementation(project(":shared"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)

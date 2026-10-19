@@ -334,7 +334,7 @@ open class StopdashApp : Application() {
      * or its background collector. Launches coroutines only (no first-frame I/O), like the log setup.
      */
     /**
-     * The bundled stops (`stops.tsv`) and the bus stop index built from them, read in the background
+     * The bundled stops (the station bundle, `StationBundleStore`) and the bus stop index built from them, read in the background
      * when the app's screen opens ([MainActivity]), so the first near-me lookup or search after a cold
      * start finds them in memory instead of waiting on the read (SPEC principle 4). Not from
      * [onCreate]: a process started only for a widget refresh or a journey alert has no search to

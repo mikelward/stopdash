@@ -391,6 +391,37 @@ class Hubs private constructor(
         wholeAreasOfStop[stop].orEmpty().forEach { ids[it] = stop }
     }
 
+    // The build's station bundle ([StationBundle]): every map [of] builds, so the model read back
+    // answers as this one does; the two drawn from the station index are drawn from it again.
+    internal fun writeTo(out: StationBundle.Writer) {
+        out.string(revision)
+        out.stringMap(stationOfRecord)
+        out.stringMap(hubOfStation)
+        out.map(stationPoints, out::points)
+        out.stringMap(stopOfPole)
+        out.stringMap(hubOfStop)
+        out.map(stopPoints, out::points)
+        out.map(stopsOfArea, out::strings)
+        out.map(hubMembers) { out.strings(it.stations); out.strings(it.stops) }
+        listOf(recordsOfStation, platformsOfRecord, polesOfStop, wholeAreasOfStop, ownedStops).forEach { out.map(it, out::strings) }
+        out.stringMap(poleName)
+        out.stringMap(recordName)
+        out.map(polesOfRecord, out::strings)
+        out.map(polesOfArea, out::strings)
+    }
+
+    /** Whether [other] holds the same model as this: for the bundle's round-trip test. */
+    internal fun sameAs(other: Hubs): Boolean =
+        revision == other.revision && stationOfRecord == other.stationOfRecord && hubOfStation == other.hubOfStation &&
+            stationPoints == other.stationPoints && stopOfPole == other.stopOfPole && hubOfStop == other.hubOfStop &&
+            stopPoints == other.stopPoints && stopsOfArea.mapValues { it.value.toList() } == other.stopsOfArea.mapValues { it.value.toList() } &&
+            hubMembers.mapValues { (_, m) -> m.stations.toList() to m.stops.toList() } ==
+            other.hubMembers.mapValues { (_, m) -> m.stations.toList() to m.stops.toList() } &&
+            recordsOfStation == other.recordsOfStation && platformsOfRecord == other.platformsOfRecord &&
+            polesOfStop == other.polesOfStop && wholeAreasOfStop == other.wholeAreasOfStop && ownedStops == other.ownedStops &&
+            poleName == other.poleName && recordName == other.recordName && polesOfRecord == other.polesOfRecord &&
+            polesOfArea == other.polesOfArea
+
     companion object {
         // A NaPTAN bus pole's or area's id, London's (`490…`, `490G…`) or another region's (`037…`):
         // stations' are `9…` (`910G…`, `940G…`).
@@ -508,6 +539,47 @@ class Hubs private constructor(
                 polesOfArea = clusterPoles.filterKeys { it !in stationOfRecord },
                 memberRows = { index.memberRows },
                 revision = index.revision,
+            )
+        }
+
+        /** The model [Hubs.writeTo] wrote, its index lookups through [index], read from the same bundle. */
+        internal fun readFrom(input: StationBundle.Reader, index: StationIndex): Hubs {
+            val revision = input.string()
+            require(revision == index.revision) { "station bundle: the model is from another revision" }
+            val stationOfRecord = input.stringMap()
+            val hubOfStation = input.stringMap()
+            val stationPoints = input.map(input::points)
+            val stopOfPole = input.stringMap()
+            val hubOfStop = input.stringMap()
+            val stopPoints = input.map(input::points)
+            val stopsOfArea = input.map { input.strings().toCollection(LinkedHashSet()) }
+            val hubMembers = input.map { Members(input.strings().toCollection(LinkedHashSet()), input.strings().toCollection(LinkedHashSet())) }
+            val (recordsOfStation, platformsOfRecord, polesOfStop, wholeAreasOfStop, ownedStops) = List(5) { input.map(input::strings) }
+            val poleName = input.stringMap()
+            val recordName = input.stringMap()
+            val polesOfRecord = input.map(input::strings)
+            val polesOfArea = input.map(input::strings)
+            return Hubs(
+                stationOfRecord = stationOfRecord,
+                hubOfStation = hubOfStation,
+                stationPoints = stationPoints,
+                stopOfPole = stopOfPole,
+                hubOfStop = hubOfStop,
+                stopPoints = stopPoints,
+                stopsOfArea = stopsOfArea,
+                hubMembers = hubMembers,
+                platformStation = index::stationOf,
+                recordsOfStation = recordsOfStation,
+                platformsOfRecord = platformsOfRecord,
+                polesOfStop = polesOfStop,
+                wholeAreasOfStop = wholeAreasOfStop,
+                ownedStops = ownedStops,
+                poleName = poleName,
+                recordName = recordName,
+                polesOfRecord = polesOfRecord,
+                polesOfArea = polesOfArea,
+                memberRows = { index.memberRows },
+                revision = revision,
             )
         }
 
