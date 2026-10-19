@@ -12,7 +12,7 @@ import kotlin.math.ceil
  *
  * A leg with no live train in reach falls back to the Planner's own time for it while the rider can
  * still make the Planner's departure ([Basis.ESTIMATED]); where live trains show its line running
- * ([runningAt]), the next one should that train not come is kept as the arrival's [Estimate.slack]
+ * ([frequentAt]), the next one should that train not come is kept as the arrival's [Estimate.slack]
  * too. Past that, a line running every few minutes
  * ([FREQUENT_MODES], its predictions showing it: [runsFrequently]) whose live trains all leave before
  * the rider reaches it — its predictions end short of them — is boarded as they arrive
@@ -30,7 +30,7 @@ object TripTiming {
      * One leg's timing: the live [train] the rider would catch (null for a walk or a fallback leg),
      * when they [board] and [arrive] (null once the route's timing is withheld), whether that came
      * from a live train ([live]), and, for one that didn't, whether live trains at its stop show its
-     * line running every few minutes now ([running]; [runningAt]), though none reaches that far.
+     * line running every few minutes now ([running]; [frequentAt]), though none reaches that far.
      */
     data class LegTiming(val board: Instant?, val arrive: Instant?, val train: Departure?, val live: Boolean, val running: Boolean = false)
 
@@ -184,8 +184,11 @@ object TripTiming {
         var withheld: Withheld? = null
         // The longest a frequent leg [index] may keep the rider waiting: its line's longer typical gap
         // between trains ([Headway]), or the longest a frequent line has when its trains can't say.
+        // Judged on the trains [runsFrequently] counts: a [Departure.doubtful] one, which TfL may be
+        // tracking twice, would split a gap the rider may wait out whole.
         fun longestGap(index: Int): Duration =
-            Headway.of(refreshed(index).map { it.expectedArrival })?.let { Duration.ofMinutes(it.max.toLong()) } ?: FREQUENT_MAX_GAP
+            Headway.of(refreshed(index).filterNot { it.doubtful }.map { it.expectedArrival })
+                ?.let { Duration.ofMinutes(it.max.toLong()) } ?: FREQUENT_MAX_GAP
         // A leg's timing from when the rider is [ready] for it, and whether it boards a frequent line
         // as the rider arrives ([Timed.onArrival]), assuming away the wait for it, or takes the
         // Planner's train on a line live trains show running, past which the next may be a wait away
@@ -209,9 +212,6 @@ object TripTiming {
             // end within 15 minutes all day. Judged on trains from stops that refreshed
             // ([refreshed]), not ones held from a stop that failed.
             fun frequent() = leg.lineId !in notRunning && current(index) && frequentAt(leg.mode, refreshed(index))
-            // The same, on the fewer trains a line near its start shows ([runningAt]): enough to vouch
-            // for the Planner's train, which stands behind the leg, not to board on arrival without it.
-            fun running() = leg.lineId !in notRunning && current(index) && runningAt(leg.mode, refreshed(index))
             return when {
                 train != null -> Timed(LegTiming(train.expectedArrival, train.expectedArrival.plus(leg.run), train, true), Basis.LIVE)
                 !timetabled(index) -> unknown()
@@ -224,7 +224,7 @@ object TripTiming {
                     // On a line live trains show running, the timetable isn't all that stands behind it
                     // ([beatsEvenLate]), and should its train not come, the next may be up to a gap
                     // after the rider gets there ([slack]; maintainer, 2026-10-16).
-                    val running = running()
+                    val running = frequent()
                     if (running) waits = true
                     Timed(LegTiming(leg.departure, leg.arrival, null, false, running), Basis.ESTIMATED, planned = true)
                 }
@@ -512,47 +512,33 @@ object TripTiming {
 
     /**
      * Whether a [mode] leg reached past its live [trains] is boarded as the rider arrives: a
-     * [FREQUENT_MODES] line running frequently now ([runsFrequently]), or a bus doing so on fewer
-     * predictions, since TfL predicts a bus only about half an hour ahead, so a bus every eight
-     * minutes shows two (maintainer, 2026-09-27: a bus past its two predictions withheld its route).
+     * [FREQUENT_MODES] line or a bus running frequently now ([runsFrequently]) on as few as
+     * [FREQUENT_MIN_PREDICTED] predictions. TfL predicts a bus only about half an hour ahead, so a bus
+     * every eight minutes shows two (maintainer, 2026-09-27: a bus past its two predictions withheld
+     * its route); a Tube branch shows as few where its predictions reach only ten minutes and half its
+     * trains take the other branch (maintainer, 2026-10-19: a Northern line branch in the morning peak,
+     * two trains a minute apart, withheld its route).
      */
     fun frequentAt(mode: String, trains: List<Departure>): Boolean = when (mode.lowercase()) {
-        in FREQUENT_MODES -> runsFrequently(trains)
-        BUS -> runsFrequently(trains, FREQUENT_MIN_BUSES)
-        else -> false
-    }
-
-    /**
-     * Whether a [mode] leg's live [trains] show its line running every few minutes now, enough to
-     * vouch for the Planner's train timing it ([LegTiming.running]): what [frequentAt] asks, on as few
-     * trains as a bus needs whatever the mode. Near a line's start TfL predicts only the few trains
-     * already running, two on one branch (maintainer, 2026-10-16); the Planner's train stands behind
-     * the leg, which [frequentAt]'s boarding on arrival has nothing to.
-     */
-    fun runningAt(mode: String, trains: List<Departure>): Boolean = when (mode.lowercase()) {
-        in FREQUENT_MODES, BUS -> runsFrequently(trains, FREQUENT_MIN_BUSES)
+        in FREQUENT_MODES, BUS -> runsFrequently(trains)
         else -> false
     }
 
     /**
      * Whether [trains] (a leg's live trains, in any order) show its line running every few minutes
-     * now: at least [minTrains] of them at distinct times, none following the one before by more than
-     * [FREQUENT_MAX_GAP]. Around the night's last trains they thin out and fail this.
+     * now: at least [FREQUENT_MIN_PREDICTED] of them at distinct times, not counting a
+     * [Departure.doubtful] one, none following the one before by more than [FREQUENT_MAX_GAP]. Around the night's last trains they thin out and fail this.
      */
-    fun runsFrequently(trains: List<Departure>, minTrains: Int = FREQUENT_MIN_TRAINS): Boolean {
-        // Distinct times: one train listed twice isn't two, and the gap between trains ([Headway]) the
-        // wait is bounded by needs as many distinct times as this does.
-        val times = trains.map { it.expectedArrival }.distinct().sorted()
-        if (times.size < minTrains) return false
+    fun runsFrequently(trains: List<Departure>): Boolean {
+        // Distinct times: one train listed twice isn't two, nor is a pair TfL may be tracking twice,
+        // whose later is [Departure.doubtful].
+        val times = trains.filterNot { it.doubtful }.map { it.expectedArrival }.distinct().sorted()
+        if (times.size < FREQUENT_MIN_PREDICTED) return false
         return times.zipWithNext().all { (a, b) -> Duration.between(a, b) <= FREQUENT_MAX_GAP }
     }
 
-    /** How many predicted trains show a line running frequently ([runsFrequently]). */
-    // As many as a gap between trains needs ([Headway.MIN_TRAINS]), so a frequent leg always has one.
-    const val FREQUENT_MIN_TRAINS = Headway.MIN_TRAINS
-
-    /** How many predicted buses show a bus route running frequently: see [frequentAt]. */
-    const val FREQUENT_MIN_BUSES = 2
+    /** How many predicted trains or buses show a leg's line running frequently: see [frequentAt]. */
+    const val FREQUENT_MIN_PREDICTED = 2
 
     private const val BUS = "bus"
 
