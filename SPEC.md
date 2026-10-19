@@ -409,9 +409,11 @@ The app finds stops two ways:
   model holds for it** (`dev-docs/station-model.md`), the ones its name doesn't share too: St Pancras's
   page takes in its Thameslink low level as well as its main and domestic records. A **bus stop's page
   takes in every pole of the stop** the model holds, either side of its road, across the TfL stop areas
-  it was joined from, at one request per area; so does adding a favorite ride from or to it, so a line
-  only the stop's other side serves is found. Without the model, or for an id it doesn't hold, the page
-  falls back on the same-name rule above, and a bus stop on the pole picked.
+  it was joined from, in one request; so does adding a favorite ride from or to it, so a line only the
+  stop's other side serves is found. The user's own rows are the model's stops too: a favorite ride's
+  end and a starred place at one bus stop, however each was saved (by a pole or a stop area), list as
+  one row, and one picked lately there lists once, as the pick. Without the model, or for an id it
+  doesn't hold, the page falls back on the same-name rule above, and a bus stop on the pole picked.
   Same-named places farther apart ("Church Street" in two boroughs) both stay, and a
   result with no position is never folded.
   Each stop row shows its **postcode district** before its modes ("EC4M · Bus"), from the nearest

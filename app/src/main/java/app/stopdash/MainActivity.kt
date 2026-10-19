@@ -2395,7 +2395,7 @@ class MainActivity : ComponentActivity() {
                                                     loadPlaceIndex = { PlaceIndexStore.load(appContext) },
                                                     searchPlaces = false,
                                                     // A Recent row removed here leaves From…'s list, which this is.
-                                                    recordRemove = { withContext(Dispatchers.IO) { recents.remove(it) } },
+                                                    recordRemove = { withContext(Dispatchers.IO) { recents.remove(it, HubsStore.stopRows()) } },
                                                     warn = ::logDepartureWarning,
                                                 )
                                             }
@@ -4349,8 +4349,8 @@ class MainActivity : ComponentActivity() {
                         loadYours = { loadYourStops(appContext, recents) },
                         searchPlaces = false,
                         warn = ::logDepartureWarning,
-                        recordOpen = { recents.add(it) },
-                        recordRemove = { withContext(Dispatchers.IO) { recents.remove(it) } },
+                        recordOpen = { recents.add(it, HubsStore.stopRows()) },
+                        recordRemove = { withContext(Dispatchers.IO) { recents.remove(it, HubsStore.stopRows()) } },
                     )
                 }
             },
@@ -4478,10 +4478,10 @@ class MainActivity : ComponentActivity() {
                     warn = ::logDepartureWarning,
                     // Without the rider's position, same-named stops rank from the last start picked.
                     nearFromRecent = true,
-                    recordOpen = { recents.add(it) },
+                    recordOpen = { recents.add(it, HubsStore.stopRows()) },
                     // A place started from joins From…'s own Recent, as a station opened there does.
                     recordPlace = { recents.addPlace(it) },
-                    recordRemove = { withContext(Dispatchers.IO) { recents.remove(it) } },
+                    recordRemove = { withContext(Dispatchers.IO) { recents.remove(it, HubsStore.stopRows()) } },
                 )
             }
         }
@@ -5147,10 +5147,10 @@ class MainActivity : ComponentActivity() {
                         // A place outside London, asked of TfL as From…'s is (maintainer, 2026-10-11).
                         findOutside = stationFinder::searchPlaces,
                         warn = ::logDepartureWarning,
-                        recordOpen = { recents.add(it) },
+                        recordOpen = { recents.add(it, HubsStore.stopRows()) },
                         // A place picked is remembered with the stops, where only To… lists it.
                         recordPlace = { recents.addPlace(it) },
-                        recordRemove = { withContext(Dispatchers.IO) { recents.remove(it) } },
+                        recordRemove = { withContext(Dispatchers.IO) { recents.remove(it, HubsStore.stopRows()) } },
                     )
                 }
             },
@@ -7458,12 +7458,18 @@ private suspend fun loadYourStops(context: Context, recents: FileRecentStationsS
     }
     // A journey starred before its ends' stop areas were saved takes them from what's been shown.
     fun JourneyEnd.withArea() = if (areaId.isNotBlank()) this else copy(areaId = placeOf[stopId]?.id.orEmpty())
+    // Waited for on a cold start (at most [HubsStore.ready]'s bound): the search reads these once, so rows
+    // read before the model arrived would stay apart until it was opened again.
+    val asRow = HubsStore.readyStopRows()
     return YourStops.of(
         journeys = journeys.map { it.copy(from = it.from.withArea(), to = it.to.withArea()) },
-        starred = starred.map { it.second }.distinctBy { it.id },
+        // Each by the pole it was starred at, so a stop area the bundle split lists the stop starred.
+        starred = starred.map { (stopId, place) -> YourStops.rowAt(place, stopId, asRow) }.distinctBy { it.key },
         recent = recents.loadPicks(),
         known = known.map { it.second },
         unnamedStarred = unnamed,
+        // Each bus stop at its model stop's own pole, so a ride's end and a star at one stop are one row.
+        asRow = asRow,
     )
 }
 

@@ -91,10 +91,13 @@ data class YourStops(
             recent: List<SearchEntry>,
             known: List<StationMatch>,
             unnamedStarred: List<String> = emptyList(),
+            // Each stop as a search row of what it is ([Hubs.asStopRow]): a bus stop at its stop's own
+            // pole, so the user's rows at one stop are one. As saved by default (no station model).
+            asRow: (StationMatch) -> StationMatch = { it },
         ): YourStops {
             val journeyEnds = journeys.flatMap { journey ->
                 val modes = listOf(journey.mode).filter { it.isNotBlank() }
-                listOf(journey.from, journey.to).map { StationMatch(it.areaId.ifBlank { it.stopId }, it.name, modes) }
+                listOf(journey.from, journey.to).map { rowAt(StationMatch(it.areaId.ifBlank { it.stopId }, it.name, modes), it.stopId, asRow) }
             }
             val picks = recent.mapNotNull { pick ->
                 when (pick) {
@@ -104,18 +107,40 @@ data class YourStops(
                         .takeIf { it.name.isNotBlank() && it.modes.any(String::isNotBlank) }?.let(SearchEntry::Stop)
                     is SearchEntry.Place -> pick.takeIf { it.hit.name.isNotBlank() }
                 }
-            }.distinctBy { it.key }
+            }.distinctBy { it.key }.distinctBy { pick ->
+                // Two picks at one bus stop (its poles either side of the road) list once, as the newer:
+                // Clear takes both ([RecentStations.remove]).
+                when (pick) {
+                    is SearchEntry.Stop -> asRow(pick.match).key
+                    is SearchEntry.Place -> pick.key
+                }
+            }
             val picked = picks.filterIsInstance<SearchEntry.Stop>().map { it.match }
-            val pickedKeys = picked.mapTo(HashSet()) { it.key }
+            // A recent pick keeps its saved id (Clear removes it by that), and a favorite or a stop shown
+            // lately at the same stop as one, by [asRow], is listed once, as the pick.
+            val pickedKeys = picked.mapTo(HashSet()) { it.key } + picked.map { asRow(it).key }
             return YourStops(
-                favorites = (journeyEnds + starred.sortedBy { cleanStopName(it.name) }).cleaned().filter { it.key !in pickedKeys },
+                favorites = (journeyEnds + starred.map(asRow).sortedBy { cleanStopName(it.name) }).cleaned().filter { it.key !in pickedKeys },
                 recent = picked,
                 // A stop shown lately with no lines (TfL lists some stands that way) has no departures to
                 // open: it would list with no mode and open to an empty page, so it isn't offered.
-                known = known.filter { it.modes.isNotEmpty() }.cleaned(),
+                known = known.filter { it.modes.isNotEmpty() }.map(asRow).cleaned().filter { it.key !in pickedKeys },
                 unnamedStarred = unnamedStarred,
                 recentPicks = picks,
             )
+        }
+
+        /**
+         * [place], a stop area or station one of the user's stops was saved under, as a search row
+         * ([asRow]) by the [pole] it was saved at, where the model holds that pole: an area the bundle
+         * split is the stop of the pole saved, not of its lowest pole of that name. Else [place] as
+         * [asRow] reads it, so with no model it stays the area, whose page holds every pole.
+         */
+        fun rowAt(place: StationMatch, pole: String, asRow: (StationMatch) -> StationMatch): StationMatch {
+            if (pole.isBlank() || pole == place.id) return asRow(place)
+            val byPole = place.copy(id = pole)
+            val row = asRow(byPole)
+            return if (row != byPole) row else asRow(place)
         }
 
         private fun List<StationMatch>.cleaned(): List<StationMatch> =
@@ -146,10 +171,13 @@ object RecentStations {
     /**
      * [current] with [picked], a stop or a geocoded place, moved (or added) to the front, capped at
      * [max]: one list, so a place picked last reads above a stop picked before it. A place is the same
-     * pick again by its name and coordinate ([SearchEntry.key]).
+     * pick again by its name and coordinate ([SearchEntry.key]). Picks at one bus stop by [asRow] (another
+     * pole or area of it) are one, the newest, before the cap, so the list keeps [max] places.
      */
-    fun add(current: List<SearchEntry>, picked: SearchEntry, max: Int = MAX): List<SearchEntry> =
-        (listOf(picked) + current.filter { it.key != picked.key }).take(max)
+    fun add(current: List<SearchEntry>, picked: SearchEntry, max: Int = MAX, asRow: (StationMatch) -> StationMatch = { it }): List<SearchEntry> =
+        // Every pick once by the stop it lists at, the newest kept, before the cap: two kept by an older
+        // build at one stop are one row ([YourStops.of]), so they'd otherwise cost an older place its slot.
+        (listOf(picked) + current.filter { it.key != picked.key }).distinctBy { rowKey(it, asRow) }.take(max)
 
     /**
      * [current] without [removed], a pick as the search listed it: a stop matched by its key once its
@@ -157,8 +185,16 @@ object RecentStations {
      * place by its name and coordinate. Every copy goes, so the row doesn't come back on the next read.
      */
     @WorkerThread
-    fun remove(current: List<SearchEntry>, removed: SearchEntry): List<SearchEntry> =
-        current.filterNot { listedKey(it) == removed.key }
+    fun remove(current: List<SearchEntry>, removed: SearchEntry, asRow: (StationMatch) -> StationMatch = { it }): List<SearchEntry> {
+        // Every pick at the stop the row lists ([YourStops.of] shows two at one bus stop as one, by [asRow]).
+        val row = (removed as? SearchEntry.Stop)?.let { asRow(it.match).key }
+        return current.filterNot { listedKey(it) == removed.key || (row != null && it is SearchEntry.Stop && asRow(it.match).key == row) }
+    }
+
+    private fun rowKey(entry: SearchEntry, asRow: (StationMatch) -> StationMatch): String = when (entry) {
+        is SearchEntry.Stop -> asRow(entry.match).key
+        is SearchEntry.Place -> entry.key
+    }
 
     private fun listedKey(entry: SearchEntry): String = when (entry) {
         is SearchEntry.Stop -> entry.match.copy(name = cleanStopName(entry.match.name)).key

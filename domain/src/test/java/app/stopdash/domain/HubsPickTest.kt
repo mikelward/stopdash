@@ -62,6 +62,99 @@ class HubsPickTest {
     }
 
     @Test
+    fun `the user's own bus stop rows are their stop's own pole, so one stop is one row`() {
+        val bus = listOf("bus")
+        assertEquals(StationMatch("490000001A", "Example Pancras", bus, level = Pick.Level.STOP), hubs.asStopRow(StationMatch("490G000001", "Example Pancras", bus)))
+        assertEquals("490000001A", hubs.asStopRow(StationMatch("490000001B", "Example Pancras", bus)).id)
+        // A stop joined from two areas: either area, either pole.
+        assertEquals("490000007A", hubs.asStopRow(StationMatch("490G000008", "Example Green", bus)).id)
+        assertEquals("490000007A", hubs.asStopRow(StationMatch("490000007B", "Example Green", bus)).id)
+        // A split area is the stop of the pole carrying the row's name.
+        assertEquals("490000005B", hubs.asStopRow(StationMatch("490G000005", "Mill Lane", bus)).id)
+        // A station, an interchange's station name, or an id the bundle doesn't hold stays as it is.
+        val station = StationMatch("910GEXPANC", "Example Pancras", listOf("national-rail"))
+        assertEquals(station, hubs.asStopRow(station))
+        val nameRow = StationMatch("HUBEXX", "Example Pancras", listOf("national-rail"), lead = listOf("national-rail"))
+        assertEquals(nameRow, hubs.asStopRow(nameRow))
+        val stranger = StationMatch("490099999X", "Elsewhere", bus)
+        assertEquals(stranger, hubs.asStopRow(stranger))
+        // A bus stop shown under the station record its poles are filed under is the stop of its named
+        // pole; the record's own rail row is the station.
+        assertEquals("490000009B", hubs.asStopRow(StationMatch("910GVALE", "Vale/High Road", bus)).id)
+        assertEquals(Pick.Level.STOP, hubs.asStopRow(StationMatch("910GVALE", "Vale", bus)).level)
+        val vale = StationMatch("910GVALE", "Vale", listOf("national-rail"))
+        assertEquals(vale, hubs.asStopRow(vale))
+    }
+
+    @Test
+    fun `two recent picks at one bus stop list once, as the newer, and clearing it takes both`() {
+        val bus = listOf("bus")
+        val newer = SearchEntry.Stop(StationMatch("490000007B", "Example Green", bus))
+        val older = SearchEntry.Stop(StationMatch("490G000007", "Example Green", bus))
+        val other = SearchEntry.Stop(StationMatch("490000001A", "Example Pancras", bus))
+        val recent = listOf(newer, older, other)
+        // Shown lately at that stop too, by its other area: not listed again.
+        val known = listOf(StationMatch("490G000008", "Example Green", bus))
+        val yours = YourStops.of(emptyList(), emptyList(), recent, known, asRow = hubs::asStopRow)
+        assertEquals(listOf("490000007B", "490000001A"), yours.recent.map { it.id })
+        assertEquals(listOf(newer, other), yours.recentPicks)
+        assertEquals(emptyList<StationMatch>(), yours.known)
+        assertEquals(listOf("490000007B", "490000001A"), yours.all.map { it.id })
+        // Without the model, each is its own row.
+        assertEquals(3, YourStops.of(emptyList(), emptyList(), recent, emptyList()).recent.size)
+        assertEquals(listOf(other), RecentStations.remove(recent, newer, hubs::asStopRow))
+        assertEquals(listOf(older, other), RecentStations.remove(recent, newer))
+        // Picked again by its other pole on a full list: the older pick at that stop goes, not the oldest place.
+        val full = listOf(older) + (1..7).map { SearchEntry.Stop(StationMatch("940GZZLUX$it", "Example $it", listOf("tube"))) }
+        val added = RecentStations.add(full, newer, max = 8, asRow = hubs::asStopRow)
+        assertEquals(listOf(newer) + full.drop(1), added)
+        // A pair an older build kept at one stop is one entry once anything else is picked: the full list
+        // keeps its oldest distinct place.
+        val pair = listOf(newer, older) + (1..6).map { SearchEntry.Stop(StationMatch("940GZZLUX$it", "Example $it", listOf("tube"))) }
+        val gallery = SearchEntry.Place(PlaceHit("Sample Gallery", Coordinates(51.5, -0.12), PlaceKind.PLACE))
+        assertEquals(listOf(gallery, newer) + pair.drop(2), RecentStations.add(pair, gallery, max = 8, asRow = hubs::asStopRow))
+    }
+
+    @Test
+    fun `a saved place in a split area lists as the stop of the pole it was saved at`() {
+        val bus = listOf("bus")
+        // Saved at the area, named as no pole is: the pole it was saved at decides, not the area's lowest pole.
+        val area = StationMatch("490G000005", "Example Junction", bus)
+        assertEquals("490000005B", YourStops.rowAt(area, "490000005B", hubs::asStopRow).id)
+        assertEquals("490000005A", YourStops.rowAt(area, "", hubs::asStopRow).id)
+        // A pole the bundle doesn't hold leaves the area to decide; with no model the area stays.
+        assertEquals("490000005A", YourStops.rowAt(area, "490099999X", hubs::asStopRow).id)
+        assertEquals(area, YourStops.rowAt(area, "490000005B") { it })
+        val ride = FavoriteJourney(
+            from = JourneyEnd("490000005B", "Example Junction", areaId = "490G000005"),
+            to = JourneyEnd("490000001A", "Example Pancras", areaId = "490G000001"),
+            lineId = "1",
+            mode = "bus",
+        )
+        assertEquals(listOf("490000005B", "490000001A"), YourStops.of(listOf(ride), emptyList(), emptyList(), emptyList(), asRow = hubs::asStopRow).favorites.map { it.id })
+    }
+
+    @Test
+    fun `a favorite ride's end and a starred place at one bus stop are one search row, and a recent pick there leads`() {
+        val bus = listOf("bus")
+        val ride = FavoriteJourney(
+            from = JourneyEnd("490000007A", "Example Green", areaId = "490G000007"),
+            to = JourneyEnd("490000001A", "Example Pancras", areaId = "490G000001"),
+            lineId = "1",
+            mode = "bus",
+        )
+        // The star's place was recorded by the other side's stop area.
+        val starred = listOf(StationMatch("490G000008", "Example Green", bus))
+        val yours = YourStops.of(listOf(ride), starred, recent = emptyList(), known = emptyList(), asRow = hubs::asStopRow)
+        assertEquals(listOf("490000007A", "490000001A"), yours.favorites.map { it.id })
+        assertEquals(listOf("490G000007", "490G000001", "490G000008"), YourStops.of(listOf(ride), starred, emptyList(), emptyList()).favorites.map { it.id })
+        // Picked lately by the pole across the road: listed once, as the pick, which keeps its own id.
+        val picked = YourStops.of(listOf(ride), starred, recent = listOf(SearchEntry.Stop(StationMatch("490000007B", "Example Green", bus))), known = emptyList(), asRow = hubs::asStopRow)
+        assertEquals(listOf("490000007B"), picked.recent.map { it.id })
+        assertEquals(listOf("490000001A"), picked.favorites.map { it.id })
+    }
+
+    @Test
     fun `a stop is looked up by its whole areas and its poles outside them, a station by every record`() {
         // One area, both its poles: one request, whichever id the row carries.
         assertEquals(listOf("490G000001"), hubs.lookupIdsOf("490000001A"))
