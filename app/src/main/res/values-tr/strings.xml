@@ -52,6 +52,7 @@
     <string name="widget_refresh_key_rejected">Yenilenemedi: API anahtarı reddedildi</string>
     <string name="widget_refresh_failed_short">Yenilenemedi</string>
     <string name="trip_disruptions_label">Aksaklıklar:</string>
+    <string name="trip_disruptions_clear">Aksaklık yok</string>
     <string name="trip_disruptions_checking">Kontrol ediliyor…</string>
     <string name="trip_disruptions_unknown">Bilinmiyor</string>
     <string name="trip_disruptions_unknown_label">Bilinmeyen:</string>
@@ -61,7 +62,14 @@
     <string name="trip_lines_title">Hat durumu</string>
     <string name="trip_lines_gone">Artık bu yolculukta yok</string>
     <string name="home_disruptions_more">+%1$d</string>
+    <string name="home_disruptions_no_line">Hatlarda aksaklık yok</string>
+    <string name="home_disruptions_none">İzlenen aksaklık yok</string>
     <string name="home_lines_gone">Artık yakınlarda değil</string>
+    <string name="home_lines_unwatched">Artık izlenmiyor</string>
+    <string name="home_lines_watched">İzlenen</string>
+    <string name="home_lines_other">Diğer</string>
+    <string name="lines_watch">İzle</string>
+    <string name="lines_unwatch">İzlemeyi bırak</string>
     <string name="trip_lines_line">Hattı aç</string>
     <string name="line_map_title">Harita</string>
     <string name="line_map_show_all">Tüm istasyonları göster</string>
@@ -114,6 +122,9 @@
     <string name="hide_mode">Tüm %1$s seferlerini gizle</string>
     <string name="hide_line">Gizle: %1$s</string>
     <string name="avoid_line">Kaçın: %1$s</string>
+    <string name="hide_line_from_ride">Bu binişte gizle: %1$s</string>
+    <string name="ride_line_hidden">Bu binişte gizlendi: %1$s</string>
+    <string name="ride_hidden_lines_title">Bu binişte gizli</string>
     <string name="more_actions">Seçenekler</string>
     <string name="modes_hidden">%1$s gizli</string>
     <string name="modes_show_all">Tümünü göster</string>
@@ -184,6 +195,7 @@
     <string name="line_stop_from">Buradan</string>
     <string name="route_stop_departure">Kalkış: %1$s, yön: %2$s</string>
     <string name="route_stop_departure_from">Kalkış: %1$s</string>
+    <string name="route_stop_to">Varış: %1$s</string>
     <string name="route_stop_go">Git</string>
     <string name="line_stop_to">Buraya</string>
     <string name="line_stop_departures">Kalkışlar</string>
@@ -205,6 +217,7 @@
     <string name="trip_label_fastest">En hızlı</string>
     <string name="trip_label_simplest">En basit</string>
     <string name="trip_label_least_walking">En az yürüyüş</string>
+    <string name="trip_label_cheapest">En ucuz</string>
     <string name="trip_label_separator">" · "</string>
     <string name="trip_label_other">Diğer</string>
     <string name="trip_no_routes">Yolculuk bulunamadı</string>
@@ -259,6 +272,30 @@
     <string name="trip_walk_first">Yürüyüş: %1$s (~%2$d dk)</string>
     <string name="trip_walk_first_now">Yürüyüş: %1$s</string>
     <string name="trip_line_not_running">%1$s: %2$s</string>
+    <string name="trip_via_pick">Üzerinden…</string>
+    <string name="trip_ends_via">Üzerinden</string>
+    <string name="trip_via">Üzerinden: %1$s</string>
+    <string name="trip_change_via">Durağı değiştir</string>
+    <string name="trip_clear_via">Durağı kaldır</string>
+    <string name="station_search_via_hint">İstasyon veya durak</string>
+    <string name="trip_no_routes_via">Üzerinden geçen yolculuk bulunamadı: %1$s</string>
+    <string name="trip_change_time">Saati değiştir…</string>
+    <string name="trip_time_title">Saati değiştir</string>
+    <string name="trip_leave_now">Şimdi yola çık</string>
+    <string name="trip_time_leave">Kalkış</string>
+    <string name="trip_time_arrive">En geç varış</string>
+    <string name="trip_time_today">Bugün</string>
+    <string name="trip_time_tomorrow">Yarın</string>
+    <string name="trip_time_past">Bu saat geçti</string>
+    <string name="trip_time_skipped">Saat değişikliği nedeniyle bu saat yok</string>
+    <string name="trip_time_on">%1$s %2$s</string>
+    <string name="trip_later_leave">Kalkış: %1$s</string>
+    <string name="trip_later_arrive">En geç varış: %1$s</string>
+    <string name="trip_later_timetable">Tarife, canlı değil</string>
+    <string name="trip_later_times">%1$s–%2$s · %3$d dk</string>
+    <string name="trip_later_live_notice">Şimdiki saatler gösteriliyor, %1$s değil</string>
+    <string name="trip_later_not_now">Şimdi için planlanmadı</string>
+    <string name="trip_later_routes_missed">Tüm güzergâhlar planlanamadı</string>
     <string name="station_search_hint">İstasyon veya durak adı</string>
     <string name="station_search_prompt">Aramak için bir ad yazın</string>
     <string name="station_search_no_matches">Eşleşme yok</string>
@@ -396,6 +433,9 @@
     <string name="settings_disruptions_row_show">Ana ekranda göster</string>
     <string name="settings_disruptions_row_off">Kapalı</string>
     <string name="settings_disruptions_row_description">Uyarıları ve gecikmeleri ana ekranda göster</string>
+    <string name="settings_summary_networks_title">Her zaman izlenir</string>
+    <string name="settings_summary_networks_summary">Yakınınızdaki hatlar ve favori binişleriniz her zaman izlenir</string>
+    <string name="settings_summary_lines_title">Bunları da izle</string>
     <string name="settings_disruptions_row_write_failed">Kaydedilemedi; StopDash yeniden başlatılınca sıfırlanır</string>
     <string name="settings_hidden_title">Gizli</string>
     <string name="settings_hidden_summary">Liste, yolculuklar, widget ve saatte gösterilmez</string>
@@ -462,6 +502,8 @@
     <string name="favorite_place_start_description">Kalkış: %1$s</string>
     <string name="settings_title">Ayarlar</string>
     <string name="settings_live_widget_refresh_title">Widget\'ı otomatik güncelle</string>
+    <string name="settings_keep_updating_title">Boştayken de güncelle</string>
+    <string name="settings_keep_updating_summary">Daha fazla pil kullanır</string>
     <string name="settings_live_widget_refresh_summary">Ana ekrandaki widget\'ı arka planda yaklaşık dakikada bir yeniler. Daha fazla pil ve veri kullanır.</string>
     <string name="settings_location_title">Konum</string>
     <string name="settings_location_precise">Tam</string>
@@ -470,6 +512,11 @@
     <string name="settings_wifi_places_title">Kayıtlı yerlerdeki Wi-Fi\'ı hatırla</string>
     <string name="settings_wifi_places_summary">Evde ve işte yavaş veya yanlış konumu düzeltir</string>
     <string name="settings_wifi_places_write_failed">Kaydedilemedi; StopDash yeniden başlatılınca sıfırlanır</string>
+    <string name="settings_train_spacing_title">Tren aralıklarını düzelt</string>
+    <string name="settings_train_spacing_summary">Trenler imkânsız derecede yakınsa saatleri ayarla</string>
+    <string name="settings_ride_grouping_title">Favori binişleri grupla</string>
+    <string name="settings_ride_grouping_ride">Binişe göre</string>
+    <string name="settings_ride_grouping_stop">Durağa göre</string>
     <string name="settings_widget_follows_title">Saat ve widget için otomatik konum</string>
     <string name="settings_widget_follows_summary">Konumunuzu arka planda kullanarak bulunduğunuz yerdeki durakları gösterir.</string>
     <string name="settings_live_widget_refresh_failed">Canlı yenileme güncellenemedi</string>
@@ -546,8 +593,12 @@
     <string name="action_back">Geri</string>
     <string name="action_show_platform">Yalnızca bu durağı göster</string>
     <string name="action_show_station">Tüm istasyonu göster</string>
+    <string name="action_whole_station">Tüm istasyon</string>
+    <string name="action_all_stops">Tüm duraklar</string>
     <string name="action_show_stop">Durağı göster</string>
     <string name="action_show_on_map">Haritada göster</string>
+    <string name="action_plan_via">Üzerinden</string>
+    <string name="action_plan_via_spoken">Üzerinden geçen yolculuk planla: %1$s</string>
     <string name="action_star_journey">Binişi favorilere ekle</string>
     <string name="action_flip_journey">Yönü değiştir</string>
     <string name="action_open_journey">Binişi göster</string>
@@ -564,6 +615,7 @@
     <string name="journey_checking_bus">Otobüsler kontrol ediliyor…</string>
     <string name="journey_none_bus">Yakında %1$s yönüne otobüs yok</string>
     <string name="journey_not_checked_bus">Otobüsler kontrol edilemedi</string>
+    <string name="journey_shown_above">Yukarıda gösteriliyor</string>
     <string name="journey_route_failed">Güzergâh yüklenemedi</string>
     <string name="journey_destination_unchecked">%1$s için kapatma kontrolü yapılamadı</string>
     <string name="journey_incomplete">Bazı güzergâhlar kontrol edilemedi</string>
@@ -596,6 +648,7 @@
     <string name="bug_report_failed">Hata raporu paylaşılamadı</string>
     <string name="on_the_way">Yolda</string>
     <string name="on_the_way_title">Hedef: %1$s</string>
+    <string name="on_the_way_cant_follow_rail">National Rail anahtarı gerekli</string>
     <string name="on_the_way_open_current">Mevcut yolculuğu aç</string>
     <string name="on_the_way_start">Başlat</string>
     <string name="on_the_way_replace_title">Mevcut yolculuk değiştirilsin mi?</string>
@@ -708,4 +761,6 @@
     <string name="route_disruption_missed">%1$s kaçırıldı</string>
     <string name="route_disruption_none_direct">%1$s yönüne aktarmasız sefer yok · Aktarma: %2$s</string>
     <string name="on_the_way_leg">%1$s → %2$s</string>
+    <string name="on_the_way_show_stops">Durakları göster</string>
+    <string name="on_the_way_hide_stops">Durakları gizle</string>
 </resources>

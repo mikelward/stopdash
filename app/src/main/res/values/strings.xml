@@ -101,9 +101,8 @@
     <string name="widget_refresh_failed_short">Couldn\'t refresh</string>
     <!-- Heard (not drawn) before a disruptions card's line pills and stops, on a trip and the home screen. -->
     <string name="trip_disruptions_label">Disruptions:</string>
-    <!-- TODO: translate -->
     <!-- A trip's disruptions card once every line and stop shown is checked and none is disrupted. -->
-    <string name="trip_disruptions_clear" tools:ignore="MissingTranslation">No disruptions</string>
+    <string name="trip_disruptions_clear">No disruptions</string>
     <!-- After a disruptions card's line pills while its lines and stops are being checked. -->
     <string name="trip_disruptions_checking">Checking…</string>
     <!-- Heard (drawn as a ? in a circle) on a disruptions card when a check failed, with nothing to name. -->
@@ -122,29 +121,22 @@
     <string name="trip_lines_gone">No longer on this trip</string>
     <!-- The home screen's disruptions row, counting what doesn't fit on its one line: "+3". -->
     <string name="home_disruptions_more">+%1$d</string>
-    <!-- TODO: translate -->
     <!-- The home screen's disruptions card when every line it covers is checked and none is disrupted at all; a stop's closure has its own card. -->
-    <string name="home_disruptions_no_line" tools:ignore="MissingTranslation">No line disruptions</string>
-    <!-- TODO: translate -->
+    <string name="home_disruptions_no_line">No line disruptions</string>
     <!-- The home screen's disruptions card when every line it covers is checked and the only disruptions are ones it doesn't count: dismissed, say. -->
-    <string name="home_disruptions_none" tools:ignore="MissingTranslation">No watched disruptions</string>
+    <string name="home_disruptions_none">No watched disruptions</string>
     <!-- On the home screen's lines page, a line under Other whose stops are no longer near since it opened. -->
     <string name="home_lines_gone">No longer nearby</string>
-    <!-- TODO: translate -->
     <!-- On the home screen's lines page, a line under Watched the summary no longer watches since the page opened: no longer near, unwatched, or off a favorite ride. -->
-    <string name="home_lines_unwatched" tools:ignore="MissingTranslation">No longer watched</string>
-    <!-- TODO: translate -->
+    <string name="home_lines_unwatched">No longer watched</string>
     <!-- Heading on the home screen's lines page over the lines the summary watches: near the rider, their favorites', the trip they're on, and the lines they chose. -->
-    <string name="home_lines_watched" tools:ignore="MissingTranslation">Watched</string>
-    <!-- TODO: translate -->
+    <string name="home_lines_watched">Watched</string>
     <!-- Heading on the home screen's lines page over the rest of the lines it covers. -->
-    <string name="home_lines_other" tools:ignore="MissingTranslation">Other</string>
-    <!-- TODO: translate -->
+    <string name="home_lines_other">Other</string>
     <!-- A line's long-press menu on the home screen's lines page: the summary watches it wherever the rider is. -->
-    <string name="lines_watch" tools:ignore="MissingTranslation">Watch</string>
-    <!-- TODO: translate -->
+    <string name="lines_watch">Watch</string>
     <!-- The long-press menu of a line the rider chose to watch, on the home screen's lines page: stops watching it. -->
-    <string name="lines_unwatch" tools:ignore="MissingTranslation">Unwatch</string>
+    <string name="lines_unwatch">Unwatch</string>
     <!-- Click label of a line on the lines page: it opens the line's own page, with its map. -->
     <string name="trip_lines_line">Open line</string>
     <!-- Heading of a line's map on its page (SPEC *Line page → Map*). -->
@@ -250,17 +242,14 @@
          stops avoiding it (maintainer, 2026-10-01). The argument names the line as it reads alone
          ("Northern line", "134"). -->
     <string name="avoid_line">Avoid %1$s</string>
-    <!-- TODO: translate -->
     <!-- A favorite ride's long-press item leaving this line off that ride's cards, both ways, until
          shown again from the ride's own view (maintainer, 2026-10-15). The argument names the line as
          it reads alone ("Northern line", "134"). -->
-    <string name="hide_line_from_ride" tools:ignore="MissingTranslation">Hide %1$s on this ride</string>
-    <!-- TODO: translate -->
+    <string name="hide_line_from_ride">Hide %1$s on this ride</string>
     <!-- Snackbar just after that hide, with Undo; the argument names the line ("134"). -->
-    <string name="ride_line_hidden" tools:ignore="MissingTranslation">%1$s hidden on this ride</string>
-    <!-- TODO: translate -->
+    <string name="ride_line_hidden">%1$s hidden on this ride</string>
     <!-- Heads the lines hidden from a favorite ride in its own view, each with a Show button. -->
-    <string name="ride_hidden_lines_title" tools:ignore="MissingTranslation">Hidden on this ride</string>
+    <string name="ride_hidden_lines_title">Hidden on this ride</string>
     <!-- Screen-reader label for the long press that opens that menu. -->
     <string name="more_actions">Options</string>
     <!-- One-line banner over the near-me list while modes are hidden; the argument lists them
@@ -404,9 +393,8 @@
     <string name="route_stop_departure">From %1$s, towards %2$s</string>
     <!-- As route_stop_departure, for a departure TfL names no destination for: "From Victoria". -->
     <string name="route_stop_departure_from">From %1$s</string>
-    <!-- TODO: translate -->
     <!-- Under route_stop_departure: the stop the details are for, where the ride gets off, "To Warren Street". -->
-    <string name="route_stop_to" tools:ignore="MissingTranslation">To %1$s</string>
+    <string name="route_stop_to">To %1$s</string>
     <!-- A stop's details opened from a route page's stop: starts the trip there on the way, on that line. -->
     <string name="route_stop_go">Go</string>
     <!-- A stop's details: go to this stop, as To… does. -->
@@ -450,8 +438,7 @@
     <string name="trip_label_fastest">Fastest</string>
     <string name="trip_label_simplest">Simplest</string>
     <string name="trip_label_least_walking">Least walking</string>
-    <!-- TODO: translate -->
-    <string name="trip_label_cheapest" tools:ignore="MissingTranslation">Cheapest</string>
+    <string name="trip_label_cheapest">Cheapest</string>
     <!-- Between two labels over one card: "Fastest · Simplest". -->
     <string name="trip_label_separator">" · "</string>
     <string name="trip_label_other">Other</string>
@@ -556,49 +543,46 @@
     <string name="trip_walk_first_now">Walk to %1$s</string>
     <!-- A route leg's line isn't running. %1$s is TfL's status ("Suspended"). -->
     <string name="trip_line_not_running">%1$s: %2$s</string>
-    <!-- TODO: translate -->
     <!-- Going via a stop (SPEC *Trips with a change → Going via a stop*): the trip page's overflow item
          that picks a station or stop for every route to pass; the label of the row the From/To bar then
          names it in, between From and To; that row as TalkBack reads it (%1$s is the stop's name) and
          what its tap and its × do; the search's placeholder; and a trip with no route through it. -->
-    <string name="trip_via_pick" tools:ignore="MissingTranslation">Via…</string>
-    <string name="trip_ends_via" tools:ignore="MissingTranslation">Via</string>
-    <string name="trip_via" tools:ignore="MissingTranslation">Via %1$s</string>
-    <string name="trip_change_via" tools:ignore="MissingTranslation">Change stop</string>
-    <string name="trip_clear_via" tools:ignore="MissingTranslation">Remove stop</string>
-    <string name="station_search_via_hint" tools:ignore="MissingTranslation">Station or stop</string>
-    <string name="trip_no_routes_via" tools:ignore="MissingTranslation">No trips found via %1$s</string>
-    <!-- TODO: translate -->
+    <string name="trip_via_pick">Via…</string>
+    <string name="trip_ends_via">Via</string>
+    <string name="trip_via">Via %1$s</string>
+    <string name="trip_change_via">Change stop</string>
+    <string name="trip_clear_via">Remove stop</string>
+    <string name="station_search_via_hint">Station or stop</string>
+    <string name="trip_no_routes_via">No trips found via %1$s</string>
     <!-- A later trip (SPEC *Trips with a change → A later trip*): the trip page's overflow item that
          picks a time to leave at or arrive by, the picker's title, and the item going back to now. -->
-    <string name="trip_change_time" tools:ignore="MissingTranslation">Change time…</string>
-    <string name="trip_time_title" tools:ignore="MissingTranslation">Change time</string>
-    <string name="trip_leave_now" tools:ignore="MissingTranslation">Leave now</string>
+    <string name="trip_change_time">Change time…</string>
+    <string name="trip_time_title">Change time</string>
+    <string name="trip_leave_now">Leave now</string>
     <!-- The picker's two choices: the time is when the trip leaves, or when it gets there. -->
-    <string name="trip_time_leave" tools:ignore="MissingTranslation">Leave</string>
-    <string name="trip_time_arrive" tools:ignore="MissingTranslation">Arrive by</string>
+    <string name="trip_time_leave">Leave</string>
+    <string name="trip_time_arrive">Arrive by</string>
     <!-- The picker's first two days; the rest are named by date ("Sat 18"). -->
-    <string name="trip_time_today" tools:ignore="MissingTranslation">Today</string>
-    <string name="trip_time_tomorrow" tools:ignore="MissingTranslation">Tomorrow</string>
+    <string name="trip_time_today">Today</string>
+    <string name="trip_time_tomorrow">Tomorrow</string>
     <!-- A time picked that has already gone by: nothing can be planned for it. -->
-    <string name="trip_time_past" tools:ignore="MissingTranslation">That time has passed</string>
+    <string name="trip_time_past">That time has passed</string>
     <!-- A time picked in the hour the clocks skip when they go forward: it never happens. -->
-    <string name="trip_time_skipped" tools:ignore="MissingTranslation">The clocks skip that time</string>
+    <string name="trip_time_skipped">The clocks skip that time</string>
     <!-- A day and a time: "Sat 18 10:00", "Tomorrow 09:30". -->
-    <string name="trip_time_on" tools:ignore="MissingTranslation">%1$s %2$s</string>
+    <string name="trip_time_on">%1$s %2$s</string>
     <!-- Over a later trip's routes: when it's planned for, then that its times are the timetable's. -->
-    <string name="trip_later_leave" tools:ignore="MissingTranslation">Leave %1$s</string>
-    <string name="trip_later_arrive" tools:ignore="MissingTranslation">Arrive by %1$s</string>
-    <string name="trip_later_timetable" tools:ignore="MissingTranslation">Timetable, not live</string>
+    <string name="trip_later_leave">Leave %1$s</string>
+    <string name="trip_later_arrive">Arrive by %1$s</string>
+    <string name="trip_later_timetable">Timetable, not live</string>
     <!-- A later trip's card: when it leaves and gets there, and how long that takes. -->
-    <string name="trip_later_times" tools:ignore="MissingTranslation">%1$s–%2$s · %3$d min</string>
+    <string name="trip_later_times">%1$s–%2$s · %3$d min</string>
     <!-- A later trip's route opened: it shows live times for now, not the time picked (%1$s). -->
-    <string name="trip_later_live_notice" tools:ignore="MissingTranslation">Times for now, not %1$s</string>
+    <string name="trip_later_live_notice">Times for now, not %1$s</string>
     <!-- A later trip's route tapped that the trip for now doesn't offer, so it can't open live. -->
-    <string name="trip_later_not_now" tools:ignore="MissingTranslation">Not planned for now</string>
-    <!-- TODO: translate -->
+    <string name="trip_later_not_now">Not planned for now</string>
     <!-- A later trip planned to every station, but a request for more routes failed: some may be missing. -->
-    <string name="trip_later_routes_missed" tools:ignore="MissingTranslation">Couldn\'t plan every route</string>
+    <string name="trip_later_routes_missed">Couldn\'t plan every route</string>
     <!-- Placeholder in the station search field. -->
     <string name="station_search_hint">Station or stop name</string>
     <!-- Shown under the empty search field. -->
@@ -797,14 +781,11 @@
     <string name="settings_disruptions_row_off">Off</string>
     <!-- Under "Disruptions summary" in Settings while the row shows: what it does. -->
     <string name="settings_disruptions_row_description">Show alerts and delays on the home screen</string>
-    <!-- TODO: translate -->
     <!-- Under the Disruptions summary switch: what the summary always watches, whatever's chosen below. -->
-    <string name="settings_summary_networks_title" tools:ignore="MissingTranslation">Always watch</string>
-    <!-- TODO: translate -->
-    <string name="settings_summary_networks_summary" tools:ignore="MissingTranslation">Lines near you and your favorite rides are always watched</string>
-    <!-- TODO: translate -->
+    <string name="settings_summary_networks_title">Always watch</string>
+    <string name="settings_summary_networks_summary">Lines near you and your favorite rides are always watched</string>
     <!-- The heading over the line chips: lines the summary watches by choice, wherever the rider is. -->
-    <string name="settings_summary_lines_title" tools:ignore="MissingTranslation">Also watch</string>
+    <string name="settings_summary_lines_title">Also watch</string>
     <!-- The header over the networks of one line each (Elizabeth line, DLR, Tram). -->
     <string name="settings_disruptions_row_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
     <!-- Settings' list of the modes and lines hidden from the near-me list, shown only while
@@ -898,13 +879,11 @@
     <string name="favorite_place_start_description">Start from %1$s</string>
     <string name="settings_title">Settings</string>
     <string name="settings_live_widget_refresh_title">Automatically update widget</string>
-    <!-- TODO: translate -->
     <!-- Under "Automatically update widget": on while StopDash's battery use is Unrestricted in
          Android's settings, which a tap opens, so the minute updates keep running while the device
          sits unused, a wall display or a phone in a pocket (maintainer, 2026-10-16). -->
-    <string name="settings_keep_updating_title" tools:ignore="MissingTranslation">Keep updating when idle</string>
-    <!-- TODO: translate -->
-    <string name="settings_keep_updating_summary" tools:ignore="MissingTranslation">Uses more battery</string>
+    <string name="settings_keep_updating_title">Keep updating when idle</string>
+    <string name="settings_keep_updating_summary">Uses more battery</string>
     <string name="settings_live_widget_refresh_summary">Refreshes the home-screen widget about once a minute in the background. Uses more battery and data.</string>
     <!-- Settings' Location row: how much location StopDash may use, from Android's grant. Tapping it
          asks for precise location, or opens Android's location settings for StopDash. -->
@@ -918,19 +897,17 @@
     <string name="settings_wifi_places_title">Remember Wi-Fi at saved places</string>
     <string name="settings_wifi_places_summary">Fix slow or wrong location at home and at work</string>
     <string name="settings_wifi_places_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
-    <!-- TODO: translate -->
     <!-- The switch for spacing out bunched tube trains: TfL times a queue of trains as if the line
          ahead were clear, so trains read due seconds apart that can only run a couple of minutes
          apart. On, each is shown no sooner than its line's gap after the one ahead; off shows TfL's
          own times. -->
-    <string name="settings_train_spacing_title" tools:ignore="MissingTranslation">Fix train spacing</string>
-    <string name="settings_train_spacing_summary" tools:ignore="MissingTranslation">Adjust times when trains are impossibly close</string>
-    <!-- TODO: translate -->
+    <string name="settings_train_spacing_title">Fix train spacing</string>
+    <string name="settings_train_spacing_summary">Adjust times when trains are impossibly close</string>
     <!-- How the near-me list groups a favorite ride's departures: under each stop the ride leaves
          from, starred and saying where it goes (the default), or under the ride's own name. -->
-    <string name="settings_ride_grouping_title" tools:ignore="MissingTranslation">Group favorite rides</string>
-    <string name="settings_ride_grouping_ride" tools:ignore="MissingTranslation">Group by ride</string>
-    <string name="settings_ride_grouping_stop" tools:ignore="MissingTranslation">Group by stop</string>
+    <string name="settings_ride_grouping_title">Group favorite rides</string>
+    <string name="settings_ride_grouping_ride">Group by ride</string>
+    <string name="settings_ride_grouping_stop">Group by stop</string>
     <string name="settings_widget_follows_title">Automatic watch and widget location</string>
     <string name="settings_widget_follows_summary">Shows the stops where you are, using your location in the background.</string>
     <!-- Shown under the toggle when the setting saved but the background refresh couldn't be
@@ -1034,20 +1011,17 @@
     <string name="action_show_platform">Show this stop only</string>
     <!-- Screen-reader action on a notice heading: opens the view of the whole station. -->
     <string name="action_show_station">Show whole station</string>
-    <!-- TODO: translate -->
     <!-- A platform view's button opening the view of its whole station. -->
-    <string name="action_whole_station" tools:ignore="MissingTranslation">Whole station</string>
-    <!-- TODO: translate -->
+    <string name="action_whole_station">Whole station</string>
     <!-- The same button for a bus place: the view of all its stops. -->
-    <string name="action_all_stops" tools:ignore="MissingTranslation">All stops</string>
+    <string name="action_all_stops">All stops</string>
     <!-- Screen-reader action on a route page's station: opens that station's page. -->
     <string name="action_show_stop">Show stop</string>
     <string name="action_show_on_map">Show on map</string>
-    <!-- TODO: translate -->
     <!-- A platform or station view's button opening a trip through it, where to still to pick (SPEC *Going via a
          stop*), and that button as TalkBack reads it (%1$s is the stop's name). -->
-    <string name="action_plan_via" tools:ignore="MissingTranslation">Via</string>
-    <string name="action_plan_via_spoken" tools:ignore="MissingTranslation">Plan a trip via %1$s</string>
+    <string name="action_plan_via">Via</string>
+    <string name="action_plan_via_spoken">Plan a trip via %1$s</string>
     <string name="action_star_journey">Favorite ride</string>
     <string name="action_flip_journey">Swap direction</string>
     <!-- Screen-reader action on a journey heading: opens the journey's own view. -->
@@ -1074,10 +1048,9 @@
     <string name="journey_checking_bus">Checking buses…</string>
     <string name="journey_none_bus">No buses to %1$s soon</string>
     <string name="journey_not_checked_bus">Couldn\'t check buses</string>
-    <!-- TODO: translate -->
     <!-- A favorite ride card whose every train or bus a nearer ride above already shows: in their
          place, under its heading, so the route shows once (SPEC Journeys, Not shown twice). -->
-    <string name="journey_shown_above" tools:ignore="MissingTranslation">Shown above</string>
+    <string name="journey_shown_above">Shown above</string>
     <string name="journey_route_failed">Couldn\'t load the route</string>
     <!-- Beneath a journey card's trains when some route or train couldn't be checked. -->
     <!-- A journey's far end whose closure check failed: it may be closed. %1$s is the stop's name. -->
@@ -1132,8 +1105,7 @@
     <string name="on_the_way_title">To %1$s</string>
     <!-- In place of Start, on a route with a National Rail train while no National Rail key is set:
          its train is followed from National Rail's boards, which need the rider's own key. -->
-    <!-- TODO: translate -->
-    <string name="on_the_way_cant_follow_rail" tools:ignore="MissingTranslation">National Rail key needed</string>
+    <string name="on_the_way_cant_follow_rail">National Rail key needed</string>
     <!-- In place of Start while another trip is on the way: opens that one. -->
     <string name="on_the_way_open_current">Open current trip</string>
     <string name="on_the_way_start">Start</string>
@@ -1300,8 +1272,6 @@
     <string name="route_disruption_none_direct">None direct to %1$s · Change at %2$s</string>
     <!-- A leg: %1$s from, %2$s to. -->
     <string name="on_the_way_leg">%1$s → %2$s</string>
-    <!-- TODO: translate -->
-    <string name="on_the_way_show_stops" tools:ignore="MissingTranslation">Show stops</string>
-    <!-- TODO: translate -->
-    <string name="on_the_way_hide_stops" tools:ignore="MissingTranslation">Hide stops</string>
+    <string name="on_the_way_show_stops">Show stops</string>
+    <string name="on_the_way_hide_stops">Hide stops</string>
 </resources>

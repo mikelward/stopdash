@@ -52,6 +52,7 @@
     <string name="widget_refresh_key_rejected">No se pudo actualizar: clave de API rechazada</string>
     <string name="widget_refresh_failed_short">No se pudo actualizar</string>
     <string name="trip_disruptions_label">Incidencias:</string>
+    <string name="trip_disruptions_clear">Sin incidencias</string>
     <string name="trip_disruptions_checking">Comprobando…</string>
     <string name="trip_disruptions_unknown">Sin comprobar</string>
     <string name="trip_disruptions_unknown_label">Sin comprobar:</string>
@@ -61,7 +62,14 @@
     <string name="trip_lines_title">Estado de las líneas</string>
     <string name="trip_lines_gone">Ya no está en este viaje</string>
     <string name="home_disruptions_more">+%1$d</string>
+    <string name="home_disruptions_no_line">Sin incidencias en las líneas</string>
+    <string name="home_disruptions_none">Sin incidencias seguidas</string>
     <string name="home_lines_gone">Ya no está cerca</string>
+    <string name="home_lines_unwatched">Ya no se sigue</string>
+    <string name="home_lines_watched">Seguidas</string>
+    <string name="home_lines_other">Otras</string>
+    <string name="lines_watch">Seguir</string>
+    <string name="lines_unwatch">Dejar de seguir</string>
     <string name="trip_lines_line">Abrir línea</string>
     <string name="line_map_title">Mapa</string>
     <string name="line_map_show_all">Ver todas las estaciones</string>
@@ -116,6 +124,9 @@
     <string name="hide_mode">Ocultar todos los servicios de %1$s</string>
     <string name="hide_line">Ocultar %1$s</string>
     <string name="avoid_line">Evitar %1$s</string>
+    <string name="hide_line_from_ride">Ocultar %1$s en este trayecto</string>
+    <string name="ride_line_hidden">Oculta en este trayecto: %1$s</string>
+    <string name="ride_hidden_lines_title">Ocultas en este trayecto</string>
     <string name="more_actions">Opciones</string>
     <string name="modes_hidden">Ocultos: %1$s</string>
     <string name="modes_show_all">Mostrar todo</string>
@@ -186,6 +197,7 @@
     <string name="line_stop_from">Desde</string>
     <string name="route_stop_departure">Desde %1$s, dirección %2$s</string>
     <string name="route_stop_departure_from">Desde %1$s</string>
+    <string name="route_stop_to">Hasta %1$s</string>
     <string name="route_stop_go">Ir</string>
     <string name="line_stop_to">Hasta</string>
     <string name="line_stop_departures">Salidas</string>
@@ -207,6 +219,7 @@
     <string name="trip_label_fastest">Más rápido</string>
     <string name="trip_label_simplest">Más sencillo</string>
     <string name="trip_label_least_walking">Menos a pie</string>
+    <string name="trip_label_cheapest">Más barato</string>
     <string name="trip_label_separator">" · "</string>
     <string name="trip_label_other">Otros</string>
     <string name="trip_no_routes">No se encontraron viajes</string>
@@ -262,6 +275,30 @@
     <string name="trip_walk_first">Camina hasta %1$s (~%2$d min)</string>
     <string name="trip_walk_first_now">Camina hasta %1$s</string>
     <string name="trip_line_not_running">%1$s: %2$s</string>
+    <string name="trip_via_pick">Pasando por…</string>
+    <string name="trip_ends_via">Por</string>
+    <string name="trip_via">Por %1$s</string>
+    <string name="trip_change_via">Cambiar parada</string>
+    <string name="trip_clear_via">Quitar parada</string>
+    <string name="station_search_via_hint">Estación o parada</string>
+    <string name="trip_no_routes_via">No se encontraron viajes por %1$s</string>
+    <string name="trip_change_time">Cambiar hora…</string>
+    <string name="trip_time_title">Cambiar hora</string>
+    <string name="trip_leave_now">Salir ahora</string>
+    <string name="trip_time_leave">Salida</string>
+    <string name="trip_time_arrive">Llegada antes de</string>
+    <string name="trip_time_today">Hoy</string>
+    <string name="trip_time_tomorrow">Mañana</string>
+    <string name="trip_time_past">Esa hora ya pasó</string>
+    <string name="trip_time_skipped">Esa hora no existe por el cambio de hora</string>
+    <string name="trip_time_on">%1$s %2$s</string>
+    <string name="trip_later_leave">Salida: %1$s</string>
+    <string name="trip_later_arrive">Llegada antes de %1$s</string>
+    <string name="trip_later_timetable">Horario, no en tiempo real</string>
+    <string name="trip_later_times">%1$s–%2$s · %3$d min</string>
+    <string name="trip_later_live_notice">Horas para ahora, no para %1$s</string>
+    <string name="trip_later_not_now">No planificado para ahora</string>
+    <string name="trip_later_routes_missed">No se pudieron planificar todas las rutas</string>
     <string name="station_search_hint">Nombre de estación o parada</string>
     <string name="station_search_prompt">Escribe un nombre para buscar</string>
     <string name="station_search_no_matches">Sin resultados</string>
@@ -399,6 +436,9 @@
     <string name="settings_disruptions_row_show">Mostrar en la pantalla de inicio</string>
     <string name="settings_disruptions_row_off">Desactivado</string>
     <string name="settings_disruptions_row_description">Muestra alertas y retrasos en la pantalla de inicio</string>
+    <string name="settings_summary_networks_title">Siempre se siguen</string>
+    <string name="settings_summary_networks_summary">Las líneas cerca de ti y tus trayectos favoritos se siguen siempre</string>
+    <string name="settings_summary_lines_title">Seguir también</string>
     <string name="settings_disruptions_row_write_failed">No se pudo guardar; se restablecerá al reiniciar StopDash</string>
     <string name="settings_hidden_title">Ocultos</string>
     <string name="settings_hidden_summary">Excluidos de la lista, los viajes, el widget y el reloj</string>
@@ -465,6 +505,8 @@
     <string name="favorite_place_start_description">Salir desde %1$s</string>
     <string name="settings_title">Ajustes</string>
     <string name="settings_live_widget_refresh_title">Actualizar el widget automáticamente</string>
+    <string name="settings_keep_updating_title">Actualizar también en reposo</string>
+    <string name="settings_keep_updating_summary">Gasta más batería</string>
     <string name="settings_live_widget_refresh_summary">Actualiza el widget de la pantalla de inicio aproximadamente una vez por minuto en segundo plano. Usa más batería y datos.</string>
     <string name="settings_location_title">Ubicación</string>
     <string name="settings_location_precise">Precisa</string>
@@ -473,6 +515,11 @@
     <string name="settings_wifi_places_title">Recordar la red Wi-Fi de los lugares guardados</string>
     <string name="settings_wifi_places_summary">Corrige una ubicación lenta o incorrecta en casa y en el trabajo</string>
     <string name="settings_wifi_places_write_failed">No se pudo guardar; se restablecerá al reiniciar StopDash</string>
+    <string name="settings_train_spacing_title">Corregir la separación de trenes</string>
+    <string name="settings_train_spacing_summary">Ajustar las horas cuando los trenes van imposiblemente juntos</string>
+    <string name="settings_ride_grouping_title">Agrupar trayectos favoritos</string>
+    <string name="settings_ride_grouping_ride">Por trayecto</string>
+    <string name="settings_ride_grouping_stop">Por parada</string>
     <string name="settings_widget_follows_title">Ubicación automática del reloj y el widget</string>
     <string name="settings_widget_follows_summary">Muestra las paradas de donde estés usando tu ubicación en segundo plano.</string>
     <string name="settings_live_widget_refresh_failed">No se pudo programar la actualización automática</string>
@@ -549,8 +596,12 @@
     <string name="action_back">Atrás</string>
     <string name="action_show_platform">Ver solo esta parada</string>
     <string name="action_show_station">Ver toda la estación</string>
+    <string name="action_whole_station">Toda la estación</string>
+    <string name="action_all_stops">Todas las paradas</string>
     <string name="action_show_stop">Ver parada</string>
     <string name="action_show_on_map">Ver en el mapa</string>
+    <string name="action_plan_via">Por</string>
+    <string name="action_plan_via_spoken">Planificar un viaje por %1$s</string>
     <string name="action_star_journey">Añadir trayecto a favoritos</string>
     <string name="action_flip_journey">Invertir sentido</string>
     <string name="action_open_journey">Ver trayecto</string>
@@ -567,6 +618,7 @@
     <string name="journey_checking_bus">Comprobando autobuses…</string>
     <string name="journey_none_bus">No hay autobuses a %1$s pronto</string>
     <string name="journey_not_checked_bus">No se pudieron comprobar los autobuses</string>
+    <string name="journey_shown_above">Se muestra arriba</string>
     <string name="journey_route_failed">No se pudo cargar la ruta</string>
     <string name="journey_destination_unchecked">No se pudieron comprobar cierres en %1$s</string>
     <string name="journey_incomplete">No se pudieron comprobar algunas rutas</string>
@@ -599,6 +651,7 @@
     <string name="bug_report_failed">No se pudo compartir el informe de errores</string>
     <string name="on_the_way">En camino</string>
     <string name="on_the_way_title">Hasta %1$s</string>
+    <string name="on_the_way_cant_follow_rail">Se necesita una clave de National Rail</string>
     <string name="on_the_way_open_current">Abrir viaje actual</string>
     <string name="on_the_way_start">Iniciar</string>
     <string name="on_the_way_replace_title">¿Reemplazar el viaje actual?</string>
@@ -715,4 +768,6 @@
     <string name="route_disruption_missed">Te pasaste de %1$s</string>
     <string name="route_disruption_none_direct">Ninguno directo a %1$s · Transbordo en %2$s</string>
     <string name="on_the_way_leg">%1$s → %2$s</string>
+    <string name="on_the_way_show_stops">Mostrar paradas</string>
+    <string name="on_the_way_hide_stops">Ocultar paradas</string>
 </resources>
