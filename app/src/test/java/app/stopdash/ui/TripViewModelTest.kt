@@ -6719,6 +6719,18 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `a route's closure rows carry each pole's letter from its stop area`() {
+        val bus = TripRoute(listOf(leg("25", "P1", "Q1", 5, 15).copy(mode = "bus", fromArea = "490GP", toArea = "490GQ")))
+        val state = TripViewModel.State(closures = mapOf("P1" to stationClosed, "Q1" to stationClosed))
+        val p1 = app.stopdash.domain.StopLocation("P1", "P", 0.0, 0.0, stopLetter = "K", towards = "Euston")
+        val rows = routeClosureRows(bus, state, now, poleOf = { id, area -> p1.takeIf { id == "P1" && area == "490GP" } })
+        assertEquals("K", rows.single { it.stopId == "P1" }.stopLetter)
+        assertEquals("Euston", rows.single { it.stopId == "P1" }.towards)
+        // Both directions: a pole its area doesn't list stays unlettered.
+        assertEquals("", rows.single { it.stopId == "Q1" }.stopLetter)
+    }
+
+    @Test
     fun `a route's closure card is placed as the list places it, so a dismissal holds on both`() {
         val bus = TripRoute(listOf(leg("25", "P1", "Q1", 5, 15).copy(mode = "bus", fromArea = "490GP", toArea = "490GQ")))
         val state = TripViewModel.State(closures = mapOf("P1" to stationClosed, "Q1" to stationClosed))

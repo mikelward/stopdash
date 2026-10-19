@@ -67,6 +67,24 @@ fun busPoleLabels(poles: List<BusPoleCues>): List<String?> {
     }
 }
 
+/** A bus pole a stop closure is about, for [closureTitle]: the stop name it goes by, and its own [cues]. */
+data class ClosurePole(val stopName: String, val cues: BusPoleCues)
+
+/**
+ * A stop closure's title, the most specific heading that still covers every pole its one notice is
+ * on (one card per notice, however many poles carry it): one pole is its [place] then the pole
+ * ("King's Cross & St Pancras International – Stop K"), where TfL's "Bus Stop Closed" names none;
+ * several poles sharing one stop name go by that name; otherwise, or about no pole (a station), the
+ * [place] alone. [place] is the interchange, else the stop.
+ */
+fun closureTitle(place: String, poles: List<ClosurePole>): String {
+    poles.singleOrNull()?.let { pole ->
+        val label = busPoleLabel(pole.cues.letter, pole.cues.towards, pole.cues.bearing) ?: return place
+        return "$place${groupHeaderJoin(label)}$label"
+    }
+    return poles.map { it.stopName.trim() }.distinct().singleOrNull()?.ifEmpty { null } ?: place
+}
+
 /**
  * A group header's full one-line text — the place [name], then the qualifier joined by
  * [groupHeaderJoin] when there is one ("King's Cross St. Pancras – Platform 1", "Turnpike Lane ➔

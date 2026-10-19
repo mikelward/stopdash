@@ -934,9 +934,9 @@ fun MainScreen(
             val destinationIds = journeyDestinationIds[journey.key].orEmpty() + reached
             val destinationClosures = rows.destinationClosures
                 .filter { it.stopId in destinationIds }.groupBy { it.stopDisruption }.values.toList()
-            val closures = boardingStops.mapNotNull { id ->
-                across.firstOrNull { it.stopId == id && it.stopDisruption != null }?.let(::listOf)
-            } + destinationClosures
+            // Its boarding stops' likewise: one card for a notice on several poles of one place.
+            val closures = boardingStops.mapNotNull { id -> across.firstOrNull { it.stopId == id && it.stopDisruption != null } }
+                .groupBy { stopPlaceKey(it) to it.stopDisruption }.values.toList() + destinationClosures
             // A destination whose check failed with nothing known: the card says so, not "open".
             // From the same check as the far end's closures ([ListRows.destinationsUnknown]) (Codex, #524).
             val destinationUnchecked = destinationIds.any { it in rows.destinationsUnknown }
@@ -2969,11 +2969,11 @@ private fun DepartureList(
                 }
                 // The origin's closure notice rides the journey card: a farther origin isn't on the near-me
                 // list, so without it the trains below would read as catchable at a closed station.
-                card.closures.forEach { rows ->
+                card.closures.forEachIndexed { index, rows ->
                     val closure = rows.first()
                     item(key = "journey-closure|${card.journey.key}|${closure.stopId}") {
                         // Dismissed on every pole that carries it, so the next pole's copy doesn't take its place.
-                        StopClosureCard(closure, onDismiss = { rows.forEach(onDismissAlert) })
+                        StopClosureCard(closure, onDismiss = { rows.forEach(onDismissAlert) }, title = card.closureTitles[index])
                     }
                 }
                 if (card.destinationUnchecked) {
@@ -4312,11 +4312,12 @@ private fun StopNoticeCard(row: DepartureRow, closed: Boolean, onDismiss: () -> 
 /**
  * A stop-closure alert as its own header-less card at the top of the list (SPEC *Disruptions*): the
  * disruption in an error-toned surface titled by the interchange (else the stop), the body collapsed
- * to its first line and expanded on tap. Kept as a standalone card — a whole-stop closure has no
- * platform/pole qualifier to head, and its departures (if any) show in the group cards below.
+ * to its first line and expanded on tap; a journey's or trip's card passes the [title] naming its poles
+ * ([closureTitleOf]). Kept as a standalone card — a whole-stop closure has no platform/pole qualifier to
+ * head, and its departures (if any) show in the group cards below.
  */
 @Composable
-internal fun StopClosureCard(row: DepartureRow, onDismiss: (() -> Unit)?) {
+internal fun StopClosureCard(row: DepartureRow, onDismiss: (() -> Unit)?, title: String = row.hubName.ifBlank { row.stopName }) {
     OutlinedCard(modifier = Modifier.fillMaxWidth()) {
         // A traversal group, matching the departure cards. The place name is stripped from the body
         // at display (not upstream) so the near-me fold's identity stays member-independent
@@ -4329,11 +4330,22 @@ internal fun StopClosureCard(row: DepartureRow, onDismiss: (() -> Unit)?) {
                     hubName = row.hubName,
                     aliases = row.placeAliases,
                 ),
-                title = row.hubName.ifBlank { row.stopName },
+                title = title,
                 onDismiss = onDismiss,
             )
         }
     }
+}
+
+/**
+ * The title of one closure notice carried by [rows] (one row per stop carrying it): the most specific
+ * heading covering them all ([closureTitle]) where every one is a bus pole, else the place's name.
+ */
+internal fun closureTitleOf(rows: List<DepartureRow>): String {
+    val first = rows.firstOrNull() ?: return ""
+    val poles = rows.takeIf { it.all(::isPole) }.orEmpty().distinctBy { it.stopId }
+        .map { ClosurePole(it.stopName, BusPoleCues(it.stopLetter, it.towards, it.bearing)) }
+    return closureTitle(first.hubName.ifBlank { first.stopName }, poles)
 }
 
 /**
@@ -4374,6 +4386,9 @@ internal data class JourneyCard(
     // Its origin's published position on its line's route ([LineSequence.stopPositions]); null where not loaded.
     val originPosition: Pair<Double, Double>? = null,
 ) {
+    /** Each of [closures]' titles ([closureTitleOf]), worked out with the card, off the main thread. */
+    val closureTitles: List<String> = closures.map(::closureTitleOf)
+
     /**
      * The ride as its Whole station and Show on map act on it: its origin's saved stop area and position, else the
      * ones its departures and route give, so a ride saved before those were recorded still opens all its stop's

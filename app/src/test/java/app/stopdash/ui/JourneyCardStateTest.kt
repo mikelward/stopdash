@@ -249,4 +249,33 @@ class JourneyCardStateTest {
         // Once the ride is placed, at the stop it boards from.
         assertEquals("KING-2", JourneyCard(ride, JourneyCardState.Trains(emptyList()), boardingIds = listOf("KING-2")).lineCard.group.rows.single().stopId)
     }
+
+    @Test
+    fun `a journey's closure is titled, with the card, by the most specific name covering its poles`() {
+        val kx = "King's Cross & St Pancras International"
+        fun row(id: String, name: String, letter: String) =
+            app.stopdash.domain.DepartureRow(
+                id, name, stopLetter = letter, hubName = kx, interchangeId = "HUBKX", lineId = "", lineName = "", direction = "", directionKey = "",
+                destination = "", mode = "bus", upcoming = emptyList(), fetchedAt = now, stopDisruption = "Bus Stop Closed",
+            )
+        val k = row("490000000K", "Pentonville Road", "K")
+        val l = row("490000000L", "Pentonville Road", "L")
+        val s = row("490000000S", "York Way", "S")
+        val card = JourneyCard(
+            app.stopdash.domain.FavoriteJourney(app.stopdash.domain.JourneyEnd("A", "A"), app.stopdash.domain.JourneyEnd("B", "B"), "example"),
+            JourneyCardState.Checking("test"),
+            closures = listOf(listOf(k), listOf(k, k), listOf(k, l), listOf(k, s)),
+        )
+        assertEquals(listOf("$kx – Stop K", "$kx – Stop K", "Pentonville Road", kx), card.closureTitles)
+        // Both directions: a station's notice (no pole) keeps the place's name.
+        assertEquals(kx, closureTitleOf(listOf(row("940GZZLUKSX", "King's Cross St. Pancras", ""))))
+        // A trip reaching two poles of one place with one notice draws one card (folded to K), titled by both.
+        val other = row("490000000Z", "Elsewhere", "Z").copy(interchangeId = "", hubName = "")
+        val rows = listOf(k, l, other)
+        val cards = tripClosureCards(foldedClosures(rows, emptySet()), rows)
+        assertEquals(setOf(k.stopId, other.stopId), cards.keys)
+        assertEquals("Pentonville Road", cards.getValue(k.stopId).title)
+        // Both directions: another place's pole keeps its own card, by its letter.
+        assertEquals("Elsewhere – Stop Z", cards.getValue(other.stopId).title)
+    }
 }

@@ -122,6 +122,22 @@ class HeaderQualifierTest {
     }
 
     @Test
+    fun `a closure is headed by the most specific name covering its poles`() {
+        val kx = "King's Cross & St Pancras International"
+        fun pole(name: String, letter: String, towards: String = "") = ClosurePole(name, BusPoleCues(letter, towards, ""))
+        // One pole: the place, then that pole.
+        assertEquals("$kx – Stop K", closureTitle(kx, listOf(pole("Pentonville Road", "k"))))
+        assertEquals("$kx ➔ Euston", closureTitle(kx, listOf(pole("Pentonville Road", "", "Euston"))))
+        // Several poles under one stop name: that name, not a list of poles.
+        assertEquals("Pentonville Road", closureTitle(kx, listOf(pole("Pentonville Road", "K"), pole("Pentonville Road", "L"))))
+        // Both directions: poles under different names, no pole (a station), or a pole that can't be named
+        // keep the place.
+        assertEquals(kx, closureTitle(kx, listOf(pole("Pentonville Road", "K"), pole("York Way", "S"))))
+        assertEquals(kx, closureTitle(kx, emptyList()))
+        assertEquals(kx, closureTitle(kx, listOf(pole("Pentonville Road", ""))))
+    }
+
+    @Test
     fun `a boarding stop is named by the platform its train leaves from`() {
         assertEquals(
             "King's Cross St. Pancras – Platform 7",
