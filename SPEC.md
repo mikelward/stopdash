@@ -2112,7 +2112,17 @@ predicted that far ahead) is boarded as they arrive, since those lines run every
 pair TfL may be tracking twice counting once), none long after the one before, where thinning trains may be the night's last (maintainer, 2026-09-27).
 Two are enough because a branch's predictions can reach only about ten minutes, with half its trains
 taking the other branch (maintainer, 2026-10-19: a Northern line branch in the morning peak, two
-trains a minute apart, withheld its route). How far
+trains a minute apart, withheld its route). Where the live trains are too few even for that (one,
+with a second TfL may be tracking twice), the line's **timetable** can show it running every few
+minutes around when the rider gets there, as long as one live train of that line shows it still
+running now (not a bus: traffic keeps no timetable, so its own predictions must show it); and
+where live trains can't say the gap between them, the timetable's gap around then sets the arrival's
+range rather than the longest a frequent line has (maintainer, 2026-10-19). Only on a line running a
+good service by a status check that is current and didn't fail: with delays or worse a timetable knows nothing of where the trains are, so the leg is
+timed from live trains alone and its arrival may be withheld. Only the trains that call where the
+ride gets off count, so a branch's are judged on their own. The timetable is fetched only for a ride
+reached past its live predictions, once a line and pair of stops a day (free; about 300 KB for a
+Tube station); until it lands, or if it fails, the ride is timed as it would be without one. How far
 the predictions reach is no test: TfL predicts only trains already running, so near a line's start
 they end within about a quarter of an hour all day, which withheld routes changing there. A bus
 leg is boarded on arrival the same way when its own predictions show it frequent now: TfL predicts a

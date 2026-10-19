@@ -77,6 +77,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.MutableIntState
 import androidx.compose.runtime.LaunchedEffect
@@ -138,6 +139,7 @@ import app.stopdash.domain.headedCards
 import app.stopdash.domain.remainingAfter
 import app.stopdash.domain.Headway
 import app.stopdash.domain.HiddenModes
+import app.stopdash.domain.LegTimetables
 import app.stopdash.domain.LineMap
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.JourneyAlerts
@@ -769,6 +771,22 @@ internal fun shownTrains(
 }
 
 /**
+ * Hands [wanted] (null until the trip frame is worked out) to [onWanted] while the trip is shown. In
+ * the background, or off screen, nothing is wanted, so a failed fetch's retries stop until the trip
+ * is shown again, as the live refresh does.
+ */
+@Composable
+internal fun WantTimetables(wanted: Set<LegTimetables.Key>?, onWanted: (Set<LegTimetables.Key>) -> Unit) {
+    val started = LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState().value
+        .isAtLeast(Lifecycle.State.STARTED)
+    val want by rememberUpdatedState(onWanted)
+    LaunchedEffect(wanted, started) {
+        if (started) wanted?.let(want) else want(emptySet())
+    }
+    DisposableEffect(Unit) { onDispose { want(emptySet()) } }
+}
+
+/**
  * Each of [state]'s routes timed from [now], best first; null until there is a plan. A route riding
  * a [hidden] mode is left out, as the list leaves out its departures. While the rider's position
  * isn't confirmed ([originUnconfirmed]: a re-locate in flight, failed, or approximate), no route is
@@ -815,6 +833,8 @@ internal fun tripEstimates(
             // A ride another running line can take and time isn't sunk by its Planner line's status.
             otherLine = { index -> otherLineRuns(state, route.legs[index], now, lines) },
             delayed = delayed,
+            // How often its line runs past its live predictions, by its timetable on a good service.
+            schedule = { index -> rideSchedule(state, route.legs[index], now) },
         )
             .let { if (originUnconfirmed && it.basis == TripTiming.Basis.LIVE) it.copy(basis = TripTiming.Basis.ESTIMATED) else it }
     }
@@ -1036,6 +1056,8 @@ internal fun TripScreen(
     // Why each timed route's arrival is withheld (null: it shows), by route key, for the debug log
     // ([TripViewModel.noteWithheld]).
     onWithheld: (Map<String, TripTiming.Withheld?>) -> Unit = {},
+    // The rides timed past their live predictions whose timetable to fetch ([TripViewModel.wantTimetables]).
+    onTimetablesWanted: (Set<LegTimetables.Key>) -> Unit = {},
     // The rider's walking speed atop the routes, and a pick of another; null shows no picker.
     walkingSpeed: WalkingSpeed = WalkingSpeed.AVERAGE,
     onWalkingSpeedChange: ((WalkingSpeed) -> Unit)? = null,
@@ -1129,6 +1151,7 @@ internal fun TripScreen(
             onOpenTrip,
             onReplaceTrip,
             onWithheld,
+            onTimetablesWanted,
             walkingSpeed,
             onWalkingSpeedChange,
             walkingSpeedWriteFailed,
@@ -1274,6 +1297,7 @@ private fun TripContent(
     onOpenTrip: (() -> Unit)? = null,
     onReplaceTrip: ((TripRoute) -> Unit)? = null,
     onWithheld: (Map<String, TripTiming.Withheld?>) -> Unit = {},
+    onTimetablesWanted: (Set<LegTimetables.Key>) -> Unit = {},
     walkingSpeed: WalkingSpeed = WalkingSpeed.AVERAGE,
     onWalkingSpeedChange: ((WalkingSpeed) -> Unit)? = null,
     walkingSpeedWriteFailed: Boolean = false,
@@ -1433,6 +1457,8 @@ private fun TripContent(
     LaunchedEffect(estimates) {
         estimates?.let { list -> onWithheld(list.associate { routeKey(it.route) to it.withheld }) }
     }
+    // The rides timed past their live predictions whose timetable the trip hasn't got ([timetablesWanted]).
+    WantTimetables(frame?.timetablesWanted, onTimetablesWanted)
     // The stops only the screen can name, handed to the trip to check ([shownStops]).
     val shownStops = frame?.shownStops
     LaunchedEffect(shownStops) { shownStops?.let(onShownStops) }

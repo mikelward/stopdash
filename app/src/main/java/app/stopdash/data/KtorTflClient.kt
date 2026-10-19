@@ -54,6 +54,7 @@ import app.stopdash.domain.mergedRoutes
 import app.stopdash.domain.TflException
 import app.stopdash.domain.StopTimetable
 import app.stopdash.domain.TimetableSource
+import app.stopdash.domain.LegTimetableSource
 import app.stopdash.domain.riderLineName
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -179,7 +180,7 @@ class KtorTflClient(
     // Where the proxy's answer is kept, shared by every client so they ask it once between them.
     private val railIncidents: RailIncidentCache = RailIncidentCache.SHARED,
 ) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, StopZoneSource, JourneyPlanner, PostcodeResolver, PlaceSearch, VehicleSource,
-    LiftOutageSource, TimetableSource {
+    LiftOutageSource, TimetableSource, LegTimetableSource {
     override suspend fun journeys(
         from: TripOrigin,
         to: TripDestination,
@@ -754,6 +755,19 @@ class KtorTflClient(
             readable = plain.readable && directions.all { it.readable },
         )
     }
+
+    /**
+     * [lineId]'s timetable at [fromId], of the departures that call at [toId] after it
+     * ([TflTimetableResponseDto.toStopTimetable]): TfL answers a tube line's this way without a
+     * direction. About 300 KB for a Tube station, so it's let take its time.
+     */
+    override suspend fun legTimetable(lineId: String, fromId: String, toId: String): StopTimetable =
+        tflRequest { key ->
+            httpClient.get("$baseUrl/Line/$lineId/Timetable/$fromId/to/$toId") {
+                applyAppKey(key)
+                allowSlowAnswer()
+            }.body<TflTimetableResponseDto>().toStopTimetable(reaching = toId)
+        }
 
     private suspend fun timetableRequest(lineId: String, stopId: String, direction: String?): StopTimetable =
         tflRequest { key ->

@@ -187,7 +187,11 @@ from your stops that go straight there; it isn't asked when you're already withi
 Your location and a favorite's coordinate are the same **Location** data
 the app already shares with TfL, so they add no Play Data Safety category. The Planner is asked when a trip opens, again when you've moved on from where it was planned, about every 15 minutes while it stays on screen (every 5 while a route's arrival can't be told without a fresh plan), and
 when you tap *Try again*; while a trip is on screen, the departures at each stop where a route
-boards are fetched from TfL like any other stop's, along with its lines' status. The plan is held
+boards are fetched from TfL like any other stop's, along with its lines' status, and, for a ride
+whose live trains don't reach as far as you'd get there on a line running a good service, that line's
+public timetable between the ride's two stops (naming only the line and the two stop ids; an answer is
+held in memory for the day and not asked again that day, while a failed request is asked again about
+every 5 minutes as long as the trip stays on screen). The plan is held
 in memory only, never saved or logged beyond coarse diagnostics (a stop id, an HTTP status), and
 nothing runs once you leave the trip.
 

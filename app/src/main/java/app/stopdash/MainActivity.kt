@@ -73,6 +73,7 @@ import app.stopdash.domain.StopDistance
 import app.stopdash.domain.StopLinks
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.TimetableRepository
+import app.stopdash.domain.LegTimetables
 import app.stopdash.domain.ToChoice
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripFixes
@@ -5514,6 +5515,7 @@ class MainActivity : ComponentActivity() {
                             StepFreeSetting.isLoaded.value && TripModesSetting.isLoaded.value && AvoidedLinesSetting.isLoaded.value &&
                             AvoidedLinesSetting.editsPending.value == 0,
                         usage = UsageEvents::log,
+                        legTimetables = legTimetables(),
                     )
                 }
             },
@@ -5763,6 +5765,7 @@ class MainActivity : ComponentActivity() {
                 { route -> replace(route, toName, Instant.now().plus(access), destinations, trip::destinationStops, toId.orEmpty(), toLevel) }
             },
             onWithheld = trip::noteWithheld,
+            onTimetablesWanted = trip::wantTimetables,
             onListShown = trip::noteListShown,
             aboveRoutes = if (direct != null && directState != null) {
                 {
@@ -6482,6 +6485,25 @@ class MainActivity : ComponentActivity() {
                 scope = (context.applicationContext as? StopdashApp)?.applicationScope ?: MainScope(),
                 warn = ::logTimetableWarning,
             ).also { timetablesInstance = it }
+        }
+
+        // Trip rides' timetables, for how often a line runs past its live predictions ([LegTimetables]):
+        // fetched only for a ride a trip times past them, kept in memory for the service day, shared by
+        // every trip. Never on the refresh path.
+        private val legTimetablesLock = Any()
+        private var legTimetablesInstance: LegTimetables? = null
+
+        internal fun legTimetables(): LegTimetables = synchronized(legTimetablesLock) {
+            legTimetablesInstance ?: LegTimetables(
+                source = KtorTflClient(
+                    httpClient,
+                    appKey = { UserApiKeySetting.current },
+                    rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
+                    requestPool = SharedTflRequestPool.pool,
+                    keyAnswered = RejectedApiKey.SHARED::record,
+                ),
+                warn = ::logTimetableWarning,
+            ).also { legTimetablesInstance = it }
         }
 
         // Internal for the widget's refresh, which reads only what's held ([placeWidgetAlerts]).

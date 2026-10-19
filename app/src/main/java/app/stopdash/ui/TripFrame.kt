@@ -4,6 +4,7 @@ import androidx.annotation.WorkerThread
 import app.stopdash.domain.AroundDelays
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DismissedAlert
+import app.stopdash.domain.LegTimetables
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
@@ -44,6 +45,8 @@ internal class TripFrame(
     val shownStops: Set<String>,
     val list: TripListView?,
     val openView: TripOpenView?,
+    // The rides whose timetable the estimates asked for and the trip hasn't got ([timetablesWanted]).
+    val timetablesWanted: Set<LegTimetables.Key> = emptySet(),
 )
 
 /**
@@ -157,7 +160,7 @@ internal fun tripFrame(
     // The list even with a route open: closed again, the list shows at once from the frame in hand.
     val list = cards?.let { listView(it, state, now, access, sequences, rideLines, dismissed, loading, hubOf, openRoutesOf(it.flatten().map { e -> e.route }, poled, sequences, excluded), previousOrder) }
     val openView = open?.let { openView(it, state, now, sequences, rideLines, dismissed, loading, originUnconfirmed, hubOf, topology) }
-    return TripFrame(tripKey, state, now, access, sequences, rideLines, estimates, cards, open, openKey, shownStops, list, openView)
+    return TripFrame(tripKey, state, now, access, sequences, rideLines, estimates, cards, open, openKey, shownStops, list, openView, timetablesWanted(timed.orEmpty(), state, now))
 }
 
 /**
@@ -254,3 +257,41 @@ private fun framing(
     tripMisses(state, shown, now, sequences, rideLines),
     failedStops(shown, state, rideLines),
 )
+
+/**
+ * The rides of [estimates] timed past their live predictions ([TripTiming.Estimate.scheduleAsked]) on a
+ * line running a good service ([rideSchedule]) whose timetable [state] hasn't got for [now]'s service
+ * day: the trip fetches them ([TripViewModel.wantTimetables]).
+ */
+@WorkerThread
+internal fun timetablesWanted(estimates: List<TripTiming.Estimate>, state: TripViewModel.State, now: Instant): Set<LegTimetables.Key> {
+    val held = if (timetablesCurrent(state, now)) state.timetables.keys else emptySet()
+    return estimates.flatMapTo(HashSet()) { estimate ->
+        estimate.scheduleAsked.mapNotNull { index -> estimate.route.legs.getOrNull(index) }
+            .filter { leg -> goodService(state, leg.lineId, now) }
+            .map(::legTimetableKey)
+            .filterNot { it in held }
+    }
+}
+
+// Whether [state]'s timetables are for [now]'s service day: a trip left open past 04:00 holds the day before's.
+private fun timetablesCurrent(state: TripViewModel.State, now: Instant): Boolean =
+    state.timetablesDay == LegTimetables.serviceDay(now)
+
+/** The ride [leg]'s timetable is fetched for ([LegTimetables]). */
+internal fun legTimetableKey(leg: TripLeg): LegTimetables.Key = LegTimetables.Key(leg.lineId, leg.fromId, leg.toId)
+
+/**
+ * Whether [lineId] runs a good service at [now], by a status the trip can stand behind
+ * ([tripLineInDoubt]: not one whose latest check failed or went stale): only then does a trip go by its
+ * timetable ([rideSchedule]), which knows nothing of delays (maintainer, 2026-10-19).
+ */
+internal fun goodService(state: TripViewModel.State, lineId: String, now: Instant): Boolean =
+    !tripLineInDoubt(state, lineId, now) && state.statuses[lineId]?.severity == LineStatus.GOOD_SERVICE
+
+/**
+ * [leg]'s timetable for [TripTiming.estimate]'s schedule: fetched for [now]'s service day, on a line
+ * running a good service.
+ */
+internal fun rideSchedule(state: TripViewModel.State, leg: TripLeg, now: Instant) =
+    state.timetables[legTimetableKey(leg)]?.takeIf { goodService(state, leg.lineId, now) && timetablesCurrent(state, now) }
