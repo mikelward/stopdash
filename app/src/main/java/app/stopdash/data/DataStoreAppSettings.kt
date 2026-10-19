@@ -250,8 +250,9 @@ class DataStoreAppSettings internal constructor(
          * The version of what the bug report discloses. Bump it whenever the report carries more,
          * so a saved "don't ask again" is set aside and the consent screen shows the new payload.
          * 2: recent positions (the last 15 minutes) were added (2026-09-25).
+         * 3: a trip on the way's fixes joined them (2026-10-19, Codex #993).
          */
-        const val BUG_REPORT_CONSENT_VERSION = 2
+        const val BUG_REPORT_CONSENT_VERSION = 3
 
         /** Backoff between retries of a transient settings read, so [liveWidgetRefresh]'s
          *  retryWhen doesn't hot-loop while storage is briefly unavailable. */

@@ -14,16 +14,24 @@ package app.stopdash.domain
  * wall-clock label, so an entry lines up with the diagnostic log's lines around it.
  */
 class RecentPositions {
-    private data class Entry(val atElapsedMillis: Long, val line: String)
+    private data class Entry(val atElapsedMillis: Long, val line: String, val at: Coordinates, val update: Boolean)
 
     // Guarded by `this`: the location provider and the nearby lookup record from different threads.
     private val entries = ArrayDeque<Entry>()
 
-    /** Records that [what] placed the rider at [at], at [nowElapsedMillis], labeled [stamp]. */
+    /**
+     * Records that [what] placed the rider at [at], at [nowElapsedMillis], labeled [stamp]. One location update
+     * heard twice within [SAME_FIX_MILLIS] (the provider's record and near me's of the same one, exactly where the
+     * last entry is) takes no second entry, so it doesn't push out the earlier ones; anything else there, such as
+     * a lookup from that fix with its stops, is always kept (Codex, #993).
+     */
     @Synchronized
     fun record(what: String, at: Coordinates, nowElapsedMillis: Long, stamp: String) {
         expire(nowElapsedMillis)
-        entries.addLast(Entry(nowElapsedMillis, "$stamp $what at ${FixDiagnostics.position(at)}"))
+        val update = isUpdate(what)
+        val last = entries.lastOrNull()
+        if (update && last != null && last.update && last.at == at && nowElapsedMillis - last.atElapsedMillis < SAME_FIX_MILLIS) return
+        entries.addLast(Entry(nowElapsedMillis, "$stamp $what at ${FixDiagnostics.position(at)}", at, update))
         while (entries.size > CAPACITY) entries.removeFirst()
     }
 
@@ -59,6 +67,13 @@ class RecentPositions {
 
         /** The most positions kept, however recent. */
         const val CAPACITY = 20
+
+        /** How soon one position recorded again is taken for the same fix heard twice. */
+        const val SAME_FIX_MILLIS = 2_000L
+
+        // A continuous location update, as its recorders label one: the provider's "<provider> update", near me's
+        // "movement update ±N m".
+        private fun isUpdate(what: String) = what.endsWith(" update") || what.startsWith("movement update")
 
         /**
          * The longest the app's sweep waits between checks while it holds any position. The sweep

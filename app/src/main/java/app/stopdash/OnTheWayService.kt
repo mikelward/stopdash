@@ -157,7 +157,7 @@ class OnTheWayService : Service() {
         ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
     private val location by lazy {
-        AndroidLocationProvider(applicationContext, warn = { StopdashDebugLog.warning("on the way: %s", it) }, remembers = false)
+        AndroidLocationProvider(applicationContext, warn = { StopdashDebugLog.warning("on the way: %s", it) }, position = ::recordPosition, remembers = false)
     }
 
     override fun onDestroy() {

@@ -243,6 +243,13 @@ class DataStoreAppSettingsTest {
     }
 
     @Test
+    fun `an opt-out saved before a trip's fixes joined the report asks again`() = runTest {
+        // Version 2 carried the last 15 minutes' positions, but not a trip's own fixes (Codex, #993).
+        val store = DataStoreAppSettings(FakeDataStore(PersistedSettings(skipBugReportConsent = true, skipBugReportConsentVersion = 2)))
+        assertFalse(store.skipBugReportConsent().first())
+    }
+
+    @Test
     fun `the journey tip shows until dismissed, and stays dismissed`() = runTest {
         val store = DataStoreAppSettings(FakeDataStore(null))
         assertFalse(store.journeyTipDismissed().first())

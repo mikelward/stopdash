@@ -274,7 +274,8 @@ The app finds stops two ways:
   coordinate — and each lookup's stop count. The positions themselves, and each lookup's stops
   with their distances (which would pin the position down), go only to a short in-memory window —
   each fix the app got (a rough one set aside for a remembered precise one included — it is where
-  the network placed the user, the underground diagnosis) and each lookup, the last 15 minutes and
+  the network placed the user, the underground diagnosis — and a trip on the way's, where a count of
+  stops went wrong; maintainer, 2026-10-19) and each lookup, the last 15 minutes and
   at most 20 entries, never the log or its file — which the consent-gated bug report includes
   (maintainer, 2026-09-25: a window around a problem, not a record of where someone has been).
   Together they make a misfire, like station Wi-Fi placing the user at the wrong station,
