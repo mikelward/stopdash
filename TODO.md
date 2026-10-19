@@ -846,9 +846,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                       a station's records, platforms and own bus stops, a stop's poles and whole
                       areas. Planning is unchanged: one request to the id picked. An interchange
                       keeps its member lookup until phase 3.
-                - [ ] A platform the bundle doesn't hold, arriving through `Hubs.stationOf`'s prefix
-                      step; the bus target a station's own stop adds; getting off, far ends, Direct,
-                      off-plan and passing a stop.
+                - [x] A platform the bundle doesn't hold arrives, compares for detours and is got
+                      off at as its station, through the prefix step (`arrivalOf`, `platformRecord`).
+                - [ ] The bus target a station's own stop adds; far ends, Direct, off-plan and
+                      passing a stop.
                 - [x] Getting off at any of the trip on the way's `destinationIds` (Codex, #981): on
                       the last ride, the ride's end moves to the first of them the train calls at.
           - [ ] The `Unbundled` interchange's trip, planned to its looked-up children.
@@ -4770,6 +4771,13 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
       before implementation, per *Cost and reliability*.
 
 ## Decisions needing review
+
+- [ ] **A platform the arrival ids don't hold counts as the station its code names, unchecked against
+  the bundle's own listing** (autopilot, 2026-10-19; Codex on #986). `arrivalOf` reads only the trip's
+  saved ids, so a platform the bundle lists under another station than its code names would count as
+  the coded one. No shipped platform does (`BundledStationIndexTest` now fails if one ever does), so
+  the check stays out of the saved trip. Alternative: save the bundle's listed platforms' owners with
+  the trip, or resolve through `Hubs` where it's at hand. Reversible: one function and its test.
 
 - [ ] **A moved end waits for the rider on board, and comes back when the train is let go**
   (autopilot, 2026-10-19; #982). The last ride's end moves to the first of the destination's stops
