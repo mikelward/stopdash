@@ -1,0 +1,36 @@
+package app.stopdash.domain
+
+/**
+ * A TfL id with its places in the station model, resolved once where it entered the app
+ * (dev-docs/station-resolution.md). Compare [station] or [hub], chosen per question; [tflId] is for
+ * what TfL itself needs: requests, predictions and closures.
+ *
+ * Built by [Hubs.resolve] (one id) or [Hubs.resolveAll] (a call naming several records), or [exact]
+ * where there's no model. Not read by any feature yet: phase 2 points arriving at it.
+ */
+data class Resolved(
+    /** As TfL gave it; null for a call naming several records, which names no one id. */
+    val tflId: String?,
+    /** The model's station, or a bus stop (both directions of its road); null where it can't be told. */
+    val station: String?,
+    /** The model's hub; null where it can't be told. */
+    val hub: String?,
+    /** Every stop it names: more than one only for a stop area the bundle split. */
+    val stops: Set<String> = setOfNotNull(station),
+    /** Every hub those stops are in. */
+    val hubs: Set<String> = setOfNotNull(hub),
+    /** The exact TfL ids it names: an area's own poles, never its stops' others; every record of a call. */
+    val poles: Set<String> = setOfNotNull(tflId),
+) {
+    companion object {
+        /**
+         * [id] as its own station and hub: an id the model doesn't hold, or every id with no model.
+         * Its station and hub are upper-cased, as [Hubs.sameStation] already matches unbundled ids
+         * whatever their case, so one id from two feeds still compares equal; [tflId] keeps TfL's.
+         */
+        fun exact(id: String): Resolved {
+            val key = id.uppercase()
+            return Resolved(tflId = id, station = key, hub = key)
+        }
+    }
+}

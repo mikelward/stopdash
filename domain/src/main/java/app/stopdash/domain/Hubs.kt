@@ -116,6 +116,77 @@ class Hubs private constructor(
     }
 
     /**
+     * [id] as the model places it ([Resolved]): its station (or bus stop) and hub, worked out once where
+     * the id enters the app. A stop area the bundle split ([Membership.Split]) is placed through what
+     * came with it: the [pole] the feed names with it, else the child stop nearest [near]; with
+     * neither, its station and hub are null, and [Resolved.stops] and [Resolved.hubs] hold every child's,
+     * [Resolved.poles] the area's own. An id the bundle doesn't hold is its own station and hub.
+     */
+    @WorkerThread
+    fun resolve(id: String, pole: String? = null, near: Coordinates? = null): Resolved {
+        // The model's ids are TfL's upper case; an id a feed sends in another case is the same record
+        // (as [sameStation] already holds), so it's looked up again upper-cased before it's unbundled.
+        // [Resolved.tflId] keeps the feed's spelling either way.
+        val key = id.uppercase()
+        return placed(id, id, pole, near) ?: (if (key != id) placed(id, key, pole, near) else null) ?: unbundled(id, key)
+    }
+
+    // [id] placed by looking up [key], or null where the model holds no station or stop for it.
+    private fun placed(id: String, key: String, pole: String?, near: Coordinates?): Resolved? {
+        (stationOf(key) as? Membership.Of)?.let { return Resolved(id, it.id, hubOfStation[it.id]) }
+        return when (val stop = stopOf(key)) {
+            // A whole stop area names its poles, as a split one does; a pole or a stop's id names itself.
+            is Membership.Of -> Resolved(id, stop.id, hubOfStop[stop.id], poles = polesOfArea[key]?.toSet() ?: setOf(id))
+            is Membership.Split -> {
+                val hubs = stop.ids.mapNotNullTo(LinkedHashSet()) { hubOfStop[it] }
+                val areaPoles = polesOfArea[key].orEmpty()
+                // Placed by one of the area's own poles: the one the feed named, else the nearest.
+                val placedBy = pole?.let { named -> areaPoles.firstOrNull { it.equals(named, ignoreCase = true) } }
+                    ?: near?.let { point -> areaPoles.minByOrNull { distanceTo(it, point) } }
+                val at = placedBy?.let { stopOfPole[it] }
+                Resolved(id, at, at?.let { hubOfStop[it] }, stops = stop.ids, hubs = hubs, poles = areaPoles.toSet().ifEmpty { setOf(id) })
+            }
+            Membership.Unbundled -> null
+        }
+    }
+
+    // [id] where the model holds no station or stop for it: a hub id is that hub, else it's its own.
+    private fun unbundled(id: String, key: String): Resolved =
+        ((hubOf(id) as? Membership.Of) ?: (hubOf(key) as? Membership.Of))?.let { Resolved(id, null, it.id) } ?: Resolved.exact(id)
+
+    /**
+     * A call naming several TfL records, as a National Rail station's CRS does: no one id to get off
+     * at, so [Resolved.tflId] is null and [Resolved.poles] holds them all. Its station and hub are set
+     * where every record agrees, null where they differ.
+     */
+    @WorkerThread
+    fun resolveAll(ids: Collection<String>): Resolved {
+        if (ids.size == 1) return resolve(ids.single())
+        val each = ids.map(::resolve)
+        val station = each.map { it.station }.distinct().singleOrNull()
+        val hub = each.map { it.hub }.distinct().singleOrNull()
+        return Resolved(
+            tflId = null,
+            station = station,
+            hub = hub,
+            stops = each.flatMapTo(LinkedHashSet()) { it.stops },
+            hubs = each.flatMapTo(LinkedHashSet()) { it.hubs },
+            poles = ids.toSet(),
+        )
+    }
+
+    // How far [point] is from [pole], in meters; unplaced poles last.
+    private fun distanceTo(pole: String, point: Coordinates): Double =
+        polePoint(pole)?.let { NearestStops.distanceMeters(it.latitude, it.longitude, point.latitude, point.longitude) } ?: Double.MAX_VALUE
+
+    // Where [pole] stands: its stop's points are in the order of the stop's poles.
+    private fun polePoint(pole: String): Coordinates? {
+        val stop = stopOfPole[pole] ?: return null
+        val at = polesOfStop[stop]?.binarySearch(pole)?.takeIf { it >= 0 } ?: return null
+        return stopPoints[stop]?.getOrNull(at)
+    }
+
+    /**
      * Every TfL record of the station [id] belongs to (a record's, a platform's or the station's own
      * id), the lead record first: St Pancras's main, low-level and domestic records together. Empty
      * for an id the bundle doesn't hold as a station's, a hub's included.
@@ -517,19 +588,23 @@ class Hubs private constructor(
             val hubMembers = HashMap<String, Pair<MutableSet<String>, MutableSet<String>>>()
             hubOfStation.forEach { (station, hub) -> hubMembers.getOrPut(hub) { LinkedHashSet<String>() to LinkedHashSet() }.first += station }
             hubOfStop.forEach { (stop, hub) -> hubMembers.getOrPut(hub) { LinkedHashSet<String>() to LinkedHashSet() }.second += stop }
+            // Each stop's poles by id, its points in the same order ([polePoint] reads one by the other).
+            val sortedStops = polesOfStop.mapValues { (stop, poles) ->
+                poles.zip(stopPoints.getValue(stop)).sortedBy { it.first }
+            }
             return Hubs(
                 stationOfRecord = stationOfRecord,
                 hubOfStation = hubOfStation,
                 stationPoints = stationPoints,
                 stopOfPole = stopOfPole,
                 hubOfStop = hubOfStop,
-                stopPoints = stopPoints,
+                stopPoints = sortedStops.mapValues { (_, pairs) -> pairs.map { it.second } },
                 stopsOfArea = areaStops,
                 hubMembers = hubMembers.mapValues { (_, m) -> Members(m.first, m.second) },
                 platformStation = index::stationOf,
                 recordsOfStation = recordsOfStation,
                 platformsOfRecord = platformsOfRecord,
-                polesOfStop = polesOfStop.mapValues { (_, poles) -> poles.sorted() },
+                polesOfStop = sortedStops.mapValues { (_, pairs) -> pairs.map { it.first } },
                 wholeAreasOfStop = wholeAreasOfStop,
                 ownedStops = ownedStops,
                 poleName = poleName,
@@ -559,13 +634,17 @@ class Hubs private constructor(
             val recordName = input.stringMap()
             val polesOfRecord = input.map(input::strings)
             val polesOfArea = input.map(input::strings)
+            // Each stop's poles by id, its points in the same order ([polePoint] reads one by the other).
+            val sortedStops = polesOfStop.mapValues { (stop, poles) ->
+                poles.zip(stopPoints.getValue(stop)).sortedBy { it.first }
+            }
             return Hubs(
                 stationOfRecord = stationOfRecord,
                 hubOfStation = hubOfStation,
                 stationPoints = stationPoints,
                 stopOfPole = stopOfPole,
                 hubOfStop = hubOfStop,
-                stopPoints = stopPoints,
+                stopPoints = sortedStops.mapValues { (_, pairs) -> pairs.map { it.second } },
                 stopsOfArea = stopsOfArea,
                 hubMembers = hubMembers,
                 platformStation = index::stationOf,

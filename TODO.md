@@ -901,6 +901,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                           arriving at the first call in the destination hub. Five PRs: the type, arriving
                           by hub (with planner legs), arrivals at the mapper, where you are, the rest. Takes in the two items
                           above.
+                        - [x] Phase 1: `Resolved`, `Hubs.resolve` and `resolveAll`, and route
+                              sequences carrying each stop resolved (`LineSequence.resolved`), unread.
                 - [x] Getting off at any of the trip on the way's `destinationIds` (Codex, #981): on
                       the last ride, the ride's end moves to the first of them the train calls at.
           - [ ] The `Unbundled` interchange's trip, planned to its looked-up children.

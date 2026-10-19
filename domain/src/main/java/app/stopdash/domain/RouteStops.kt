@@ -50,6 +50,9 @@ data class LineSequence(
     // Each stop's station as the station model files it ([withModelStations]), the same for every id of
     // one station; none for a bus stop, or an id the model doesn't hold, which is a station of its own.
     val stationCodes: Map<String, String> = emptyMap(),
+    // Each stop as the station model places it ([withResolved]): its station and hub; none with no
+    // model ([resolvedOf]). Not read yet: phase 2 of dev-docs/station-resolution.md moves arriving onto it.
+    val resolved: Map<String, Resolved> = emptyMap(),
 ) {
     operator fun plus(other: LineSequence) =
         LineSequence(
@@ -60,6 +63,7 @@ data class LineSequence(
             stopAreas + other.stopAreas,
             stopHubs + other.stopHubs,
             stationCodes + other.stationCodes,
+            resolved + other.resolved,
         )
 
     // Each station code's ids on this line ([stationCodes] inverted), for [stationIds]: built once, on the
@@ -67,6 +71,9 @@ data class LineSequence(
     private val idsByCode: Map<String, Set<String>> by lazy {
         stationCodes.entries.filter { it.value.isNotBlank() }.groupBy({ it.value }, { it.key }).mapValues { it.value.toSet() }
     }
+
+    /** [stopId] as the station model placed it ([resolved]); as itself alone where it didn't, or with no model. */
+    fun resolvedOf(stopId: String): Resolved = resolved[stopId] ?: Resolved.exact(stopId)
 
     /** TfL's station code for [stopId] ([stationCodes]); null for a blank one, or an id this line codes none for (every bus stop). */
     fun stationCodeOf(stopId: String): String? = stationCodes[stopId]?.takeIf { it.isNotBlank() }
@@ -146,6 +153,16 @@ data class LineSequence(
     fun withModelStations(stationOf: (String) -> String?): LineSequence {
         val ids = stopNames.keys + stationCodes.keys + routes.flatMap { it.stopIds }
         return copy(stationCodes = ids.mapNotNull { id -> stationOf(id)?.takeIf { it.isNotBlank() }?.let { id to it } }.toMap())
+    }
+
+    /**
+     * This sequence with each of its stops placed by [resolve] ([resolved]), given the stop's published
+     * position for a stop area the model split. Walks every stop: on a worker only.
+     */
+    @WorkerThread
+    fun withResolved(resolve: (id: String, near: Coordinates?) -> Resolved): LineSequence {
+        val ids = stopNames.keys + routes.flatMap { it.stopIds }
+        return copy(resolved = ids.associateWith { id -> resolve(id, stopPositions[id]?.let { (lat, lon) -> Coordinates(lat, lon) }) })
     }
 
     /**
@@ -1056,6 +1073,7 @@ class RouteStopsRepository(
     // own codes or a name (maintainer, 2026-10-19: one source).
     private fun LineSequence.byModel(hubs: Hubs?): LineSequence =
         withModelStations { id -> (hubs?.stationOf(id) as? Hubs.Membership.Of)?.id }
+            .let { line -> if (hubs == null) line else line.withResolved { id, near -> hubs.resolve(id, near = near) } }
 
     private fun mergedKey(lineId: String, direction: String) = "$lineId|${RouteStops.directionsFor(direction).joinToString(",")}"
 
