@@ -118,7 +118,8 @@ class LinesOverlayTest {
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithTag("lineSearchList").performScrollToIndex(40)
+        // Two rows short of the top edge, where the scroll chevron's tap would take it.
+        composeRule.onNodeWithTag("lineSearchList").performScrollToIndex(38)
         composeRule.onNodeWithText("40").performClick()
         composeRule.waitForIdle()
         open = null

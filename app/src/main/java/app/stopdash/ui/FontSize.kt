@@ -335,6 +335,19 @@ class FontSizeState internal constructor(
 }
 
 /**
+ * Whether the gesture under way has had two fingers down at once, as the [pinchFontSize] host saw
+ * it: it is hosted around every screen and window, so it sees every finger, where a handler inside
+ * a list sees only the fingers that landed on the list. Read on the main thread by a handler that
+ * takes taps (the scroll cue's chevron, [scrollEdgeCue]), for which a pinch is never a tap. Set
+ * from the second finger down until the next gesture starts, not cleared as the last finger
+ * lifts, since that lift reaches the host before the handlers inside it.
+ */
+internal object MultiTouch {
+    var seen = false
+        internal set
+}
+
+/**
  * A two-finger pinch anywhere in StopDash resizes its text (SPEC *Display size*), tracking the
  * fingers as they move and persisting where they stopped once they lift.
  *
@@ -354,6 +367,7 @@ internal fun Modifier.pinchFontSize(
     val slopPx = FONT_SCALE_PINCH_SLOP_DP.dp.toPx()
     awaitEachGesture {
         awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        MultiTouch.seen = false
         var pinching = false
         // The gesture's running size, kept unclamped: what is shown and stored is clamped, but the
         // gesture remembers an overshoot so pinching back returns where the fingers say.
@@ -366,6 +380,7 @@ internal fun Modifier.pinchFontSize(
                 val event = awaitPointerEvent(PointerEventPass.Initial)
                 val pressed = event.changes.count { it.pressed }
                 if (pressed == 0) break
+                if (pressed >= 2) MultiTouch.seen = true
                 // The switch is read per event, so turning pinch off applies to the next pinch.
                 if (pressed >= 2 && enabled()) {
                     val spread = event.pressedSpread()

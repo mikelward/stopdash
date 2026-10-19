@@ -42,6 +42,9 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.TextUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.click
+import androidx.compose.ui.geometry.Offset
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -494,7 +497,8 @@ class SettingsScreenScreenshotTest {
         composeRule.onNodeWithTag("watchInstallRow").performScrollTo()
         composeRule.onNodeWithText("Install on watch").assertIsDisplayed()
         captureSnapshot("settings-install-on-watch.png", heightPx = 2400)
-        composeRule.onNodeWithTag("watchInstallRow").performClick()
+        // On its label: scrolled to the edge, its middle sits under the scroll chevron, which pages.
+        composeRule.onNodeWithTag("watchInstallRow").performTouchInput { click(centerLeft + Offset(48f, 0f)) }
         assertEquals(1, installs)
     }
 
@@ -698,7 +702,8 @@ class SettingsScreenScreenshotTest {
         telemetry = false
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("telemetrySwitch").assertIsOff()
-        composeRule.onNodeWithText("Help make StopDash better").performScrollTo().performClick()
+        // On its label's start: scrolled to the edge, its middle sits under the scroll chevron, which pages.
+        composeRule.onNodeWithText("Help make StopDash better").performScrollTo().performTouchInput { click(centerLeft + Offset(8f, 0f)) }
         composeRule.runOnIdle { assert(latest == true) }
     }
 
@@ -976,7 +981,8 @@ class SettingsScreenScreenshotTest {
         }
         composeRule.onNodeWithTag("walkingSpeedSetting-SLOW").performScrollTo().assertIsSelected()
         composeRule.onNodeWithText("Medium").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithTag("walkingSpeedSetting-FAST").performScrollTo().performClick()
+        // Off its middle: scrolled to the edge, that sits under the scroll chevron, which pages.
+        composeRule.onNodeWithTag("walkingSpeedSetting-FAST").performScrollTo().performTouchInput { click(centerRight - Offset(8f, 0f)) }
         assertEquals(WalkingSpeed.FAST, chosen)
     }
 
@@ -1339,7 +1345,8 @@ class SettingsScreenScreenshotTest {
         access = app.stopdash.LocationAccess.APPROXIMATE
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Approximate").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithTag("locationRow").performClick()
+        // On its label: scrolled to the edge, its middle sits under the scroll chevron, which pages.
+        composeRule.onNodeWithTag("locationRow").performTouchInput { click(centerLeft + Offset(48f, 0f)) }
         assertEquals(1, taps)
         access = app.stopdash.LocationAccess.PRECISE
         composeRule.waitForIdle()
